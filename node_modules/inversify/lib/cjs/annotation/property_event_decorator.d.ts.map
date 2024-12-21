@@ -1,0 +1,1 @@
+{"version":3,"file":"property_event_decorator.d.ts","sourceRoot":"","sources":["../../../src/annotation/property_event_decorator.ts"],"names":[],"mappings":"AAEA,iBAAS,sBAAsB,CAAC,QAAQ,EAAE,MAAM,EAAE,YAAY,EAAE,MAAM,kBAElD;IAAE,WAAW,EAAE,eAAe,CAAA;CAAE,eAAe,MAAM,UASxE;AAED,OAAO,EAAE,sBAAsB,EAAE,CAAC"}

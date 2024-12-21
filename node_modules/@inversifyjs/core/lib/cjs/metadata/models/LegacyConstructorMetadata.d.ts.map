@@ -1,0 +1,1 @@
+{"version":3,"file":"LegacyConstructorMetadata.d.ts","sourceRoot":"","sources":["../../../../src/metadata/models/LegacyConstructorMetadata.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,iBAAiB,EAAE,MAAM,qBAAqB,CAAC;AAExD,MAAM,WAAW,yBAAyB;IACxC,yBAAyB,EAAE,eAAe,EAAE,GAAG,SAAS,CAAC;IACzD,qBAAqB,EAAE,iBAAiB,CAAC;CAC1C"}

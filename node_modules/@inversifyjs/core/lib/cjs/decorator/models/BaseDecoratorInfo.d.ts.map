@@ -1,0 +1,1 @@
+{"version":3,"file":"BaseDecoratorInfo.d.ts","sourceRoot":"","sources":["../../../../src/decorator/models/BaseDecoratorInfo.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,iBAAiB,CAAC,KAAK;IACtC,IAAI,EAAE,KAAK,CAAC;IAEZ,WAAW,EAAE,QAAQ,CAAC;CACvB"}

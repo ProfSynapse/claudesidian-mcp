@@ -1,0 +1,1 @@
+{"version":3,"file":"getDefaultClassMetadata.js","sourceRoot":"","sources":["../../../../src/metadata/calculations/getDefaultClassMetadata.ts"],"names":[],"mappings":";;AAEA,0DASC;AATD,SAAgB,uBAAuB;IACrC,OAAO;QACL,oBAAoB,EAAE,EAAE;QACxB,SAAS,EAAE;YACT,uBAAuB,EAAE,SAAS;YAClC,oBAAoB,EAAE,SAAS;SAChC;QACD,UAAU,EAAE,IAAI,GAAG,EAAE;KACtB,CAAC;AACJ,CAAC"}

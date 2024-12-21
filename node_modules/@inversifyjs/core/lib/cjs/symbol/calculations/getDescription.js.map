@@ -1,0 +1,1 @@
+{"version":3,"file":"getDescription.js","sourceRoot":"","sources":["../../../../src/symbol/calculations/getDescription.ts"],"names":[],"mappings":";;AAGA,wCAEC;AALD,MAAM,kBAAkB,GAAW,CAAC,CAAC;AACrC,MAAM,gBAAgB,GAAW,CAAC,CAAC,CAAC;AAEpC,SAAgB,cAAc,CAAC,MAAc;IAC3C,OAAO,MAAM,CAAC,QAAQ,EAAE,CAAC,KAAK,CAAC,kBAAkB,EAAE,gBAAgB,CAAC,CAAC;AACvE,CAAC"}

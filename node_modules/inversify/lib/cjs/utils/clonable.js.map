@@ -1,0 +1,1 @@
+{"version":3,"file":"clonable.js","sourceRoot":"","sources":["../../../src/utils/clonable.ts"],"names":[],"mappings":";;AAWS,gCAAU;AATnB,SAAS,UAAU,CAAI,GAAY;IACjC,OAAO,CACL,OAAO,GAAG,KAAK,QAAQ;QACvB,GAAG,KAAK,IAAI;QACZ,OAAO,IAAI,GAAG;QACd,OAAQ,GAA8B,CAAC,KAAK,KAAK,UAAU,CAC5D,CAAC;AACJ,CAAC"}

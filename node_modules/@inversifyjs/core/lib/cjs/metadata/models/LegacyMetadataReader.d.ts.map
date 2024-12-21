@@ -1,0 +1,1 @@
+{"version":3,"file":"LegacyMetadataReader.d.ts","sourceRoot":"","sources":["../../../../src/metadata/models/LegacyMetadataReader.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,yBAAyB,EAAE,MAAM,6BAA6B,CAAC;AACxE,OAAO,EAAE,iBAAiB,EAAE,MAAM,qBAAqB,CAAC;AAExD,MAAM,WAAW,oBAAoB;IACnC,sBAAsB,CACpB,eAAe,EAAE,eAAe,GAC/B,yBAAyB,CAAC;IAC7B,qBAAqB,CAAC,eAAe,EAAE,eAAe,GAAG,iBAAiB,CAAC;CAC5E"}

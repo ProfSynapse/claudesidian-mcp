@@ -1,0 +1,1 @@
+{"version":3,"file":"LegacyMetadataMap.d.ts","sourceRoot":"","sources":["../../../../src/metadata/models/LegacyMetadataMap.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,cAAc,EAAE,MAAM,kBAAkB,CAAC;AAElD,MAAM,WAAW,iBAAiB;IAChC,CAAC,2BAA2B,EAAE,MAAM,GAAG,MAAM,GAAG,cAAc,EAAE,CAAC;CAClE"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"get_base_type.js","sourceRoot":"","sources":["../../../src/utils/get_base_type.ts"],"names":[],"mappings":";;AAOA,kCAQC;AATD,sEAAsE;AACtE,SAAgB,WAAW,CAAC,IAAc;IACxC,MAAM,SAAS,GAAqB,MAAM,CAAC,cAAc,CACvD,IAAI,CAAC,SAAS,CACK,CAAC;IAEtB,MAAM,QAAQ,GAAwB,SAAS,EAAE,WAAW,CAAC;IAE7D,OAAO,QAAQ,CAAC;AAClB,CAAC"}

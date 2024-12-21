@@ -1,0 +1,42 @@
+/* Status Bar Styles */
+.bridge-mcp-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    cursor: pointer;
+}
+
+.bridge-mcp-status:hover {
+    opacity: 0.8;
+}
+
+/* Status Colors */
+.bridge-mcp-status-running {
+    color: var(--text-success);
+}
+
+.bridge-mcp-status-error {
+    color: var(--text-error);
+}
+
+.bridge-mcp-status-stopped {
+    color: var(--text-muted);
+}
+
+.bridge-mcp-status-initializing,
+.bridge-mcp-status-starting,
+.bridge-mcp-status-stopping {
+    color: var(--text-accent);
+}
+
+/* Settings Styles */
+.bridge-mcp-settings {
+    padding: 12px;
+}
+
+.bridge-mcp-settings textarea {
+    min-height: 100px;
+    width: 100%;
+    font-family: var(--font-monospace);
+}

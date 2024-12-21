@@ -1,0 +1,1 @@
+{"version":3,"file":"getLegacyMetadata.d.ts","sourceRoot":"","sources":["../../../../src/metadata/calculations/getLegacyMetadata.ts"],"names":[],"mappings":"AAQA,OAAO,EAAE,oBAAoB,EAAE,MAAM,gCAAgC,CAAC;AAEtE,OAAO,EAAE,cAAc,EAAE,MAAM,0BAA0B,CAAC;AAG1D,wBAAgB,iBAAiB,CAC/B,oBAAoB,EAAE,oBAAoB,GACzC,cAAc,EAAE,CAOlB"}

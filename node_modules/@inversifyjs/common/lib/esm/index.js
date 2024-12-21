@@ -1,0 +1,2 @@
+function e(e){switch(typeof e){case"string":case"symbol":return e.toString();case"function":return e.name;default:throw new Error(`Unexpected ${typeof e} service id type`)}}const t=Symbol.for("@inversifyjs/common/islazyServiceIdentifier");class r{[t];#e;constructor(e){this.#e=e,this[t]=!0}static is(e){return"object"==typeof e&&null!==e&&!0===e[t]}unwrap(){return this.#e()}}export{r as LazyServiceIdentifier,e as stringifyServiceIdentifier};
+//# sourceMappingURL=index.js.map

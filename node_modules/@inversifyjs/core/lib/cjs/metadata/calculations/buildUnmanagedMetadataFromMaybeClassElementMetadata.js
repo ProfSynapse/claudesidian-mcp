@@ -1,0 +1,8 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.buildUnmanagedMetadataFromMaybeClassElementMetadata = void 0;
+const buildClassElementMetadataFromMaybeClassElementMetadata_1 = require("./buildClassElementMetadataFromMaybeClassElementMetadata");
+const buildDefaultUnmanagedMetadata_1 = require("./buildDefaultUnmanagedMetadata");
+const buildUnmanagedMetadataFromMaybeManagedMetadata_1 = require("./buildUnmanagedMetadataFromMaybeManagedMetadata");
+exports.buildUnmanagedMetadataFromMaybeClassElementMetadata = (0, buildClassElementMetadataFromMaybeClassElementMetadata_1.buildClassElementMetadataFromMaybeClassElementMetadata)(buildDefaultUnmanagedMetadata_1.buildDefaultUnmanagedMetadata, buildUnmanagedMetadataFromMaybeManagedMetadata_1.buildUnmanagedMetadataFromMaybeManagedMetadata);
+//# sourceMappingURL=buildUnmanagedMetadataFromMaybeClassElementMetadata.js.map

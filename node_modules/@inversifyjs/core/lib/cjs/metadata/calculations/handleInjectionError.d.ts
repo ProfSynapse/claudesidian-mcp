@@ -1,0 +1,2 @@
+export declare function handleInjectionError(target: object, propertyKey: string | symbol | undefined, parameterIndex: number | undefined, error: unknown): never;
+//# sourceMappingURL=handleInjectionError.d.ts.map

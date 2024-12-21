@@ -1,0 +1,1 @@
+{"version":3,"file":"pre_destroy.d.ts","sourceRoot":"","sources":["../../../src/annotation/pre_destroy.ts"],"names":[],"mappings":"AAIA,QAAA,MAAM,UAAU,EAAE,MAAM,CACtB,MAAM,EAAE;IACN,WAAW,EAAE,eAAe,CAAC;CAC9B,EACD,WAAW,EAAE,MAAM,KAChB,IAGJ,CAAC;AAEF,OAAO,EAAE,UAAU,EAAE,CAAC"}

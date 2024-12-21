@@ -1,0 +1,1 @@
+{"version":3,"file":"BindingMetadata.d.ts","sourceRoot":"","sources":["../../../../src/binding/models/BindingMetadata.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,oCAAoC,CAAC;AAClE,OAAO,EAAE,WAAW,EAAE,MAAM,mCAAmC,CAAC;AAEhE,MAAM,WAAW,eAAe;IAC9B,QAAQ,CAAC,IAAI,EAAE,YAAY,GAAG,SAAS,CAAC;IACxC,QAAQ,CAAC,IAAI,EAAE,GAAG,CAAC,WAAW,EAAE,OAAO,CAAC,CAAC;CAC1C"}
