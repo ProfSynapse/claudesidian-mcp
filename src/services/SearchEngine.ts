@@ -96,6 +96,25 @@ export class SearchEngine {
     }
 
     /**
+     * Search through vault files by path
+     */
+    async searchByPath(query: string, options: SearchOptions = {}): Promise<TFile | null> {
+        const opts = { ...DEFAULT_OPTIONS, ...options };
+        const files = this.vault.getFiles()
+            .filter(file => (opts.extensions || []).includes(file.extension));
+
+        const fuzzySearch = prepareFuzzySearch(query);
+        let bestMatch: { score: number; file: TFile } | null = null;
+        for (const file of files) {
+            const match = fuzzySearch(file.path);
+            if (match && (!bestMatch || match.score > bestMatch.score)) {
+                bestMatch = { score: match.score, file };
+            }
+        }
+        return bestMatch ? bestMatch.file : null;
+    }
+
+    /**
      * Clear the search cache
      */
     clearCache(): void {

@@ -125,13 +125,21 @@ export class VaultManager {
     async listNotes(folderPath: string = '/'): Promise<TFile[]> {
         try {
             const normalizedPath = this.normalizePath(folderPath);
-            const folder = this.vault.getAbstractFileByPath(normalizedPath);
+            const file = this.vault.getAbstractFileByPath(normalizedPath);
 
-            if (!folder || !(folder instanceof TFolder)) {
-                throw new Error(`No folder found at path: ${normalizedPath}`);
+            if (!file) {
+                throw new Error(`Path not found: ${normalizedPath}`);
             }
 
-            return folder.children
+            if (file instanceof TFile) {
+                return [file]; // Return the file itself if path points to a file
+            }
+
+            if (!(file instanceof TFolder)) {
+                throw new Error(`Path is neither a file nor folder: ${normalizedPath}`);
+            }
+
+            return file.children
                 .filter(file => file instanceof TFile && file.extension === 'md')
                 .map(file => file as TFile);
         } catch (error) {
@@ -158,6 +166,21 @@ export class VaultManager {
             return null;
         } catch (error) {
             throw this.handleError('getNoteMetadata', error);
+        }
+    }
+
+    /**
+     * Creates a folder if it doesn't exist
+     */
+    async createFolder(path: string): Promise<void> {
+        try {
+            const exists = await this.app.vault.adapter.exists(path);
+            if (!exists) {
+                await this.app.vault.createFolder(path);
+            }
+        } catch (error) {
+            console.error(`Error creating folder ${path}:`, error);
+            throw error;
         }
     }
 

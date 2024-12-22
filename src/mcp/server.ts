@@ -1,27 +1,44 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { App, TFile } from 'obsidian';
-import { ListResourcesRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { 
+    ListResourcesRequestSchema, 
+    ReadResourceRequestSchema,
+    ListToolsRequestSchema,
+    CallToolRequestSchema 
+} from "@modelcontextprotocol/sdk/types.js";
 import { ToolRegistry } from '../tools/ToolRegistry';
+import { Server as NetServer, createServer } from 'net';
 
-export class ObsidianMCPServer {
+export class BridgeMCPServer {
     private server: Server;
     private app: App;
     private toolRegistry: ToolRegistry;
-    private transport: StdioServerTransport;
+    private transport: StdioServerTransport | null = null;
+    private ipcServer: NetServer | null = null;
 
     constructor(app: App, toolRegistry: ToolRegistry) {
+        console.log('BridgeMCPServer: constructor called');
         this.app = app;
         this.toolRegistry = toolRegistry;
         this.server = new Server(
             {
-                name: "obsidian-mcp",
+                name: "bridge-mcp",
                 version: "1.0.0"
             },
             {
                 capabilities: {
-                    resources: {},  // Enable resources for vault access
-                    tools: {}       // Enable tools for vault operations
+                    resources: {
+                        // Add specific resource capabilities
+                        supportsUriTemplates: true,
+                        supportsContentWatch: false,
+                        supportsListWatch: false
+                    },  
+                    tools: {
+                        // Add specific tool capabilities
+                        supportsToolDescriptionMarkdown: true,
+                        supportsToolArgumentsMarkdown: true
+                    }
                 }
             }
         );
@@ -80,30 +97,129 @@ export class ObsidianMCPServer {
     }
 
     private initializeToolHandlers() {
-        // Tool handlers will go here
-        // We'll implement these in the next step
+        // List available tools
+        this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+            const tools = this.toolRegistry.getAvailableTools().map(tool => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        action: {
+                            type: "string",
+                            enum: ["create", "update", "read", "list"],
+                            description: "The operation to perform"
+                        },
+                        path: {
+                            type: "string",
+                            description: "Path to the note or folder"
+                        },
+                        content: {
+                            type: "string",
+                            description: "Content for create/update operations"
+                        }
+                    },
+                    required: ["action"]
+                }
+            }));
+            
+            return { tools };
+        });
+
+        // Handle tool execution
+        this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+            const { name, arguments: args } = request.params;
+            
+            try {
+                const result = await this.toolRegistry.executeTool(name, args);
+                
+                return {
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify(result, null, 2)
+                    }]
+                };
+            } catch (error) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text", 
+                        text: error instanceof Error ? error.message : String(error)
+                    }]
+                };
+            }
+        });
     }
 
     public async start() {
-        console.log('ObsidianMCPServer: Starting server'); // Log server start
+        console.log('BridgeMCPServer: Starting server');
+        
         try {
-            this.transport = new StdioServerTransport();
-            await this.server.connect(this.transport);
-            console.log('ObsidianMCPServer: Server started successfully'); // Log successful start
+            // Start both transports in parallel
+            const [stdioTransport, ipcServer] = await Promise.all([
+                this.startStdioTransport(),
+                this.startIPCTransport()
+            ]);
+
+            this.transport = stdioTransport;
+            this.ipcServer = ipcServer;
+            
+            console.log('BridgeMCPServer: Server started successfully on both transports');
         } catch (error) {
-            console.error('ObsidianMCPServer: Error starting server', error); // Log any errors
+            console.error('BridgeMCPServer: Error starting server', error);
+            throw error;
         }
     }
 
+    private async startStdioTransport() {
+        if (this.transport) {
+            console.log('BridgeMCPServer: Stdio transport already running');
+            return this.transport;
+        }
+
+        const transport = new StdioServerTransport();
+        await this.server.connect(transport);
+        console.log('BridgeMCPServer: Stdio transport started successfully');
+        return transport;
+    }
+
+    private async startIPCTransport(): Promise<NetServer> {
+        if (this.ipcServer) {
+            console.log('BridgeMCPServer: IPC server already running');
+            return this.ipcServer;
+        }
+
+        return new Promise((resolve) => {
+            const pipeName = '\\\\.\\pipe\\bridge_mcp';
+            const server = createServer((socket) => {
+                const transport = new StdioServerTransport(socket, socket);
+                this.server.connect(transport);
+                console.log('IPC connection established');
+            });
+
+            server.listen(pipeName, () => {
+                console.log(`IPC server listening on ${pipeName}`);
+                resolve(server);
+            });
+        });
+    }
+
     public async stop() {
-        console.log('ObsidianMCPServer: Stopping server'); // Log server stop
-        try {
-            if (this.transport) {
+        console.log('BridgeMCPServer: Stopping server');
+        if (this.transport) {
+            try {
                 await this.transport.close();
-                console.log('ObsidianMCPServer: Server stopped successfully'); // Log successful stop
+                this.transport = null;
+                console.log('BridgeMCPServer: Server stopped successfully');
+            } catch (error) {
+                console.error('BridgeMCPServer: Error stopping server', error);
+                throw error;
             }
-        } catch (error) {
-            console.error('ObsidianMCPServer: Error stopping server', error); // Log any errors
+        }
+
+        if (this.ipcServer) {
+            this.ipcServer.close();
+            this.ipcServer = null;
         }
     }
 }

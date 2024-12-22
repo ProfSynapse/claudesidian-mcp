@@ -2,6 +2,9 @@ import { TFile } from 'obsidian';
 import { VaultManager } from './VaultManager';
 import { SearchEngine, SearchResult } from './SearchEngine';
 import { injectable } from 'inversify';
+import type { BridgeMCPSettings } from '../settings';
+import { DEFAULT_SETTINGS } from '../settings';
+import { EventManager, EventTypes } from './EventManager';
 
 export interface Memory {
     title: string;
@@ -35,16 +38,28 @@ interface MemoryFile extends TFile {
  */
 @injectable()
 export class MemoryManager {
-    private readonly memoryFolder = 'claudesidian/memory';
-    private readonly indexFile = 'claudesidian/index.md';
+    private settings: BridgeMCPSettings;
     private storage: Map<string, any> = new Map();
     private vaultManager: VaultManager;
 
     constructor(
         vaultManager: VaultManager,
-        private searchEngine: SearchEngine
+        private searchEngine: SearchEngine,
+        private eventManager: EventManager,
+        settings?: BridgeMCPSettings
     ) {
         this.vaultManager = vaultManager;
+        this.settings = settings || DEFAULT_SETTINGS;
+        this.ensureDirectoriesExist();
+    }
+
+    private async ensureDirectoriesExist() {
+        try {
+            // Only create the root MCP directory
+            await this.vaultManager.createFolder(this.settings.rootPath);
+        } catch (error) {
+            console.error('Error creating directory:', error);
+        }
     }
 
     set(key: string, value: any): void {
@@ -68,6 +83,10 @@ export class MemoryManager {
      */
     async createMemory(memory: Memory): Promise<TFile> {
         try {
+            // Ensure path doesn't include .md extension
+            const basePath = memory.title.replace(/\.md$/, '');
+            const notePath = `${this.settings.rootPath}/${basePath}`;
+            
             // Prepare metadata
             const metadata: MemoryMetadata = {
                 type: memory.type,
@@ -78,9 +97,8 @@ export class MemoryManager {
             };
 
             // Create memory note
-            const notePath = `${this.memoryFolder}/${memory.title}.md`;
             const file = await this.vaultManager.createNote(
-                notePath,
+                `${notePath}.md`,
                 memory.content,
                 {
                     frontmatter: metadata,
@@ -88,7 +106,13 @@ export class MemoryManager {
                 }
             );
 
-            // Update index
+            this.eventManager.emit(EventTypes.MEMORY_CREATED, {
+                type: memory.type,
+                title: memory.title,
+                path: file.path
+            });
+
+            // Update index with settings path
             await this.updateIndex(memory);
 
             return file;
@@ -102,7 +126,7 @@ export class MemoryManager {
      */
     async getMemory(title: string): Promise<Memory | null> {
         try {
-            const path = `${this.memoryFolder}/${title}.md`;
+            const path = `${this.settings.rootPath}/${title}.md`;
             const content = await this.vaultManager.readNote(path);
             const metadata = await this.vaultManager.getNoteMetadata(path);
 
@@ -143,7 +167,7 @@ export class MemoryManager {
             const results = [];
             for (const match of matches) {
                 const file = match.item as MemoryFile;
-                if (!file.path.startsWith(this.memoryFolder)) {
+                if (!file.path.startsWith(this.settings.memoryPath)) {
                     continue;
                 }
 
@@ -176,7 +200,7 @@ export class MemoryManager {
      */
     async getRecentMemories(limit: number = 10): Promise<Memory[]> {
         try {
-            const files = await this.vaultManager.listNotes(this.memoryFolder);
+            const files = await this.vaultManager.listNotes(this.settings.memoryPath);
             const memories: Memory[] = [];
 
             // Sort by ctime
@@ -201,7 +225,7 @@ export class MemoryManager {
      */
     async getMemoriesByType(type: MemoryType): Promise<Memory[]> {
         try {
-            const files = await this.vaultManager.listNotes(this.memoryFolder);
+            const files = await this.vaultManager.listNotes(this.settings.memoryPath);
             const memories: Memory[] = [];
 
             for (const file of files) {
@@ -225,19 +249,96 @@ export class MemoryManager {
      */
     private async updateIndex(memory: Memory): Promise<void> {
         try {
-            const indexEntry = `- [[${memory.title}]] - ${memory.description}\n`;
+            // First read existing index content
+            let indexContent = '';
+            try {
+                indexContent = await this.vaultManager.readNote(this.settings.indexPath) || '';
+            } catch {
+                // Index doesn't exist yet, that's ok
+            }
+
+            // Parse sections
+            const sections = this.parseIndexSections(indexContent);
             
-            await this.vaultManager.updateNote(
-                this.indexFile,
-                indexEntry,
-                {
-                    createFolders: true
-                }
+            // Add memory to appropriate section based on type
+            const sectionTitle = this.getMemoryTypeSection(memory.type);
+            if (!sections[sectionTitle]) {
+                sections[sectionTitle] = [];
+            }
+            
+            // Add new entry, avoiding duplicates
+            const newEntry = `- [[${memory.title}]] - ${memory.description}`;
+            if (!sections[sectionTitle].includes(newEntry)) {
+                sections[sectionTitle].push(newEntry);
+            }
+
+            // Rebuild index content
+            const newContent = this.formatIndexContent(sections);
+            
+            // Write back to index
+            await this.vaultManager.createNote(
+                this.settings.indexPath,
+                newContent,
+                { createFolders: true }
             );
         } catch (error) {
             console.error(`Error updating index: ${error.message}`);
-            // Don't throw - index update failure shouldn't prevent memory creation
         }
+    }
+
+    private parseIndexSections(content: string): Record<string, string[]> {
+        const sections: Record<string, string[]> = {};
+        let currentSection = '';
+        
+        content.split('\n').forEach(line => {
+            if (line.startsWith('## ')) {
+                currentSection = line.substring(3);
+                sections[currentSection] = [];
+            } else if (currentSection && line.trim().startsWith('-')) {
+                sections[currentSection].push(line.trim());
+            }
+        });
+        
+        return sections;
+    }
+
+    private formatIndexContent(sections: Record<string, string[]>): string {
+        const lines: string[] = ['# Memory Index\n'];
+        
+        // Sort sections in preferred order
+        const orderedSections = [
+            'Core Memories',
+            'Episodic Memories',
+            'Semantic Memories',
+            'Procedural Memories',
+            'Emotional Memories',
+            'Contextual Memories'
+        ];
+
+        orderedSections.forEach(section => {
+            if (sections[section] && sections[section].length > 0) {
+                lines.push(`## ${section}`);
+                // Sort entries alphabetically within each section
+                sections[section].sort();
+                lines.push(...sections[section]);
+                lines.push(''); // Empty line between sections
+            }
+        });
+
+        return lines.join('\n');
+    }
+
+    private getMemoryTypeSection(type: MemoryType): string {
+        const sectionMap: Record<MemoryType, string> = {
+            core: 'Core Memories',
+            episodic: 'Episodic Memories',
+            semantic: 'Semantic Memories',
+            procedural: 'Procedural Memories',
+            emotional: 'Emotional Memories',
+            contextual: 'Contextual Memories'
+        };
+        
+        return sectionMap[type] || 'Other Memories';
     }
 
     /**

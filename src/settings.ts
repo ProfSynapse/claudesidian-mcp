@@ -3,13 +3,10 @@ import { Plugin } from 'obsidian';
 export interface BridgeMCPSettings {
     // Server Configuration
     autoStart: boolean;
-    debugMode: boolean;
+    rootPath: string; // Add rootPath property
     
     // Vault Access
     allowedPaths: string[];
-    
-    // Security & Performance
-    requireConfirmation: boolean;
     
     // Tool Configuration
     enabledVault: boolean;
@@ -18,19 +15,24 @@ export interface BridgeMCPSettings {
     memoryFolderPath: string;
     reasoningFolderPath: string;
     cacheTimeout: number;
+    indexPath: string;
+    memoryPath: string;  
+    reasoningPath: string;
 }
 
 export const DEFAULT_SETTINGS: BridgeMCPSettings = {
     autoStart: false,
-    debugMode: false,
+    rootPath: 'bridge-mcp', // Add default value
     allowedPaths: [],
-    requireConfirmation: true,
     enabledVault: true,
     enabledMemory: true,
     enabledReasoning: true,
     memoryFolderPath: '',
     reasoningFolderPath: '',
-    cacheTimeout: 300
+    cacheTimeout: 300,
+    indexPath: 'bridge-mcp/index.md',
+    memoryPath: 'bridge-mcp/memories',
+    reasoningPath: 'bridge-mcp/reasoning'
 };
 
 export class Settings {

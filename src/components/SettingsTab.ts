@@ -22,6 +22,71 @@ export class AllowedPathsModal extends Modal {
     }
 }
 
+export class ClaudeConfigModal extends Modal {
+    constructor(app: App) {
+        super(app);
+    }
+
+    onOpen() {
+        const {contentEl} = this;
+        contentEl.empty();
+
+        contentEl.createEl('h2', {text: 'Claude Desktop Configuration'});
+
+        const instructions = contentEl.createEl('div');
+        instructions.createEl('p', {text: 'To configure Claude Desktop to work with Bridge MCP:'});
+        
+        const steps = instructions.createEl('ol');
+        steps.createEl('li', {text: 'Open your Claude Desktop config file:'});
+        
+        const paths = steps.createEl('ul');
+        paths.createEl('li', {text: 'Mac: ~/Library/Application Support/Claude/claude_desktop_config.json'});
+        paths.createEl('li', {text: 'Windows: %AppData%\\Claude\\claude_desktop_config.json'});
+        
+        steps.createEl('li', {text: 'Copy the following JSON configuration:'});
+
+        const config = {
+            mcpServers: {
+                "bridge-mcp": {
+                    command: "node",
+                    args: [this.getConnectorPath()]
+                }
+            }
+        };
+
+        const codeBlock = contentEl.createEl('pre');
+        codeBlock.createEl('code', {
+            text: JSON.stringify(config, null, 2)
+        });
+
+        steps.createEl('li', {text: 'Paste this into your config file, replacing any existing content'});
+        steps.createEl('li', {text: 'Save the file and restart Claude Desktop'});
+
+        const copyButton = contentEl.createEl('button', {
+            text: 'Copy Configuration',
+            cls: 'mod-cta'
+        });
+        
+        copyButton.onclick = () => {
+            navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+            copyButton.setText('Copied!');
+            setTimeout(() => copyButton.setText('Copy Configuration'), 2000);
+        };
+    }
+
+    private getConnectorPath(): string {
+        // Use the correct method to get the vault path
+        const vaultPath = this.app.vault.configDir;
+        const pluginDir = 'plugins/bridge-mcp';
+        return `${vaultPath}/${pluginDir}/connector.js`;
+    }
+
+    onClose() {
+        const {contentEl} = this;
+        contentEl.empty();
+    }
+}
+
 export class SettingsTab extends PluginSettingTab {
     plugin: BridgeMCPPlugin;
 
@@ -38,6 +103,28 @@ export class SettingsTab extends PluginSettingTab {
         containerEl.createEl('h2', { text: 'Bridge MCP Settings' });
         console.log('SettingsTab: Created Bridge MCP Settings header'); // Log header creation
 
+        // Add the Claude Desktop configuration button near the top
+        new Setting(containerEl)
+            .setName('Claude Desktop Setup')
+            .setDesc('Show instructions for configuring Claude Desktop')
+            .addButton(button => button
+                .setButtonText('Show Configuration')
+                .onClick(() => {
+                    new ClaudeConfigModal(this.app).open();
+                }));
+
+        // Root Path Setting
+        new Setting(containerEl)
+            .setName('MCP Root Folder')
+            .setDesc('Folder where all MCP content will be stored')
+            .addText(text => text
+                .setPlaceholder('bridge-mcp')
+                .setValue(this.plugin.settings.rootPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.rootPath = value;
+                    await this.plugin.saveSettings();
+                }));
+
         // Server Settings Section
         containerEl.createEl('h3', { text: 'Server Settings' });
 
@@ -53,28 +140,8 @@ export class SettingsTab extends PluginSettingTab {
                     console.log('SettingsTab: Auto-start server setting saved'); // Confirm save
                 }));
 
-        new Setting(containerEl)
-            .setName('Debug mode')
-            .setDesc('Enable detailed logging for troubleshooting')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.debugMode)
-                .onChange(async (value) => {
-                    this.plugin.settings.debugMode = value;
-                    await this.plugin.saveSettings();
-                }));
-
         // Vault Security Section - Combined security settings
         containerEl.createEl('h3', { text: 'Vault Security' });
-
-        new Setting(containerEl)
-            .setName('Require confirmation')
-            .setDesc('Confirm before executing tool operations')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.requireConfirmation)
-                .onChange(async (value) => {
-                    this.plugin.settings.requireConfirmation = value;
-                    await this.plugin.saveSettings();
-                }));
 
         new Setting(containerEl)
             .setName('Allowed Paths')
@@ -91,30 +158,8 @@ export class SettingsTab extends PluginSettingTab {
         // Tool Settings Section
         containerEl.createEl('h3', { text: 'Tool Settings' });
 
-        // Enable/disable specific tools
-        new Setting(containerEl)
-            .setName('Enabled tools')
-            .setDesc('Select which tools to enable')
-            .addDropdown(dropdown => {
-                // Add core tools
-                const coreTools = ['memory', 'reasoning', 'search'];
-                coreTools.forEach(tool => {
-                    const isEnabled = this.plugin.settings.enabledTools.includes(tool);
-                    dropdown.addOption(tool, `${tool} ${isEnabled ? '(enabled)' : '(disabled)'}`);
-                });
-                dropdown.setValue(this.plugin.settings.enabledTools[0] || 'memory');
-                dropdown.onChange(async (value) => {
-                    // Toggle tool in enabledTools array
-                    const index = this.plugin.settings.enabledTools.indexOf(value);
-                    if (index === -1) {
-                        this.plugin.settings.enabledTools.push(value);
-                    } else {
-                        this.plugin.settings.enabledTools.splice(index, 1);
-                    }
-                    await this.plugin.saveSettings();
-                });
-            });
-
+        // Remove the enabled tools dropdown and just keep the individual toggles
+        
         // Vault Tool Toggle
         new Setting(containerEl)
             .setName('Enable Vault')

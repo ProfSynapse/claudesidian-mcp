@@ -2,12 +2,14 @@ import { App } from 'obsidian';
 import { VaultManager } from '../services/VaultManager';
 import { MemoryManager } from '../services/MemoryManager';
 import { ReasoningManager } from '../services/ReasoningManager';
+import { SearchEngine } from '../services/SearchEngine';
 
 export interface IToolContext {
     app: App;
     vault: VaultManager;
     memory: MemoryManager;
     reasoning: ReasoningManager;
+    searchEngine: SearchEngine;
 }
 
 export interface IToolMetadata {
@@ -66,5 +68,14 @@ export class BaseTool {
     protected validateArgs(args: any, schema: any): boolean {
         // Implementation of JSON schema validation
         return true; // Placeholder
+    }
+
+    // Add this new method
+    getSchema(): any {
+        return {
+            type: "object",
+            properties: {},
+            required: []
+        };
     }
 }

@@ -40,3 +40,58 @@
     width: 100%;
     font-family: var(--font-monospace);
 }
+
+/* Modal Styles */
+.folder-container {
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 1em 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.folder-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 0;
+    cursor: pointer;
+}
+
+.folder-checkbox {
+    margin-right: 8px;
+}
+
+.folder-name {
+    flex: 1;
+}
+
+.modal-button-container {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 1em;
+}
+
+.folder-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.folder-indent {
+    padding-left: 20px;
+}
+
+.bridge-mcp-folder-item {
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    cursor: pointer;
+}
+
+.bridge-mcp-checkbox {
+    margin-right: 8px;
+}
+
+.bridge-mcp-folder-name {
+    flex: 1;
+}

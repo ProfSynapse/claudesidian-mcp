@@ -1,6 +1,8 @@
 import { TFile } from 'obsidian';
 import { VaultManager } from './VaultManager';
-import { injectable } from 'inversify';
+import { injectable, inject } from 'inversify';
+import type { BridgeMCPSettings } from '../settings';
+import { EventManager, EventTypes } from './EventManager';
 
 export interface Reasoning {
     title: string;
@@ -51,11 +53,10 @@ export interface Reasoning {
  */
 @injectable()
 export class ReasoningManager {
-    private readonly reasoningFolder = 'claudesidian/reasoning';
-    private readonly indexFile = 'claudesidian/index.md';
-
     constructor(
-        private vaultManager: VaultManager
+        private vaultManager: VaultManager,
+        @inject('Settings') private settings: BridgeMCPSettings,
+        private eventManager: EventManager
     ) {}
 
     /**
@@ -66,7 +67,7 @@ export class ReasoningManager {
             // Generate filename with timestamp for uniqueness
             const timestamp = Date.now();
             const filename = `${timestamp}_${this.sanitizeTitle(reasoning.title)}`;
-            const path = `${this.reasoningFolder}/${filename}.md`;
+            const path = `${this.settings.rootPath}/${filename}.md`;
 
             // Create content from reasoning schema
             const content = this.formatReasoningContent(reasoning);
@@ -86,8 +87,11 @@ export class ReasoningManager {
                 }
             );
 
-            // Update index
-            await this.updateIndex(reasoning);
+            this.eventManager.emit(EventTypes.REASONING_CREATED, {
+                type: 'reasoning',
+                title: reasoning.title,
+                path: file.path
+            });
 
             return file;
         } catch (error) {
@@ -100,7 +104,7 @@ export class ReasoningManager {
      */
     async getLastReasoning(): Promise<Reasoning | null> {
         try {
-            const files = await this.vaultManager.listNotes(this.reasoningFolder);
+            const files = await this.vaultManager.listNotes(this.settings.rootPath);
             if (files.length === 0) return null;
 
             // Sort by ctime descending
@@ -307,25 +311,6 @@ export class ReasoningManager {
                 .filter(l => l.startsWith('- '))
                 .map(l => l.replace('- ', ''))
         };
-    }
-
-    /**
-     * Update the index with new reasoning entry
-     */
-    private async updateIndex(reasoning: Reasoning): Promise<void> {
-        try {
-            const indexEntry = `- [[${reasoning.title}]] - ${reasoning.description}\n`;
-            
-            await this.vaultManager.updateNote(
-                this.indexFile,
-                indexEntry,
-                {
-                    createFolders: true
-                }
-            );
-        } catch (error) {
-            console.error(`Error updating index: ${error.message}`);
-        }
     }
 
     /**

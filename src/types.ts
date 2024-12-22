@@ -19,6 +19,10 @@ export interface MCPSettings {
     // Tool Paths
     memoryFolderPath: string;    // Add this
     reasoningFolderPath: string; // Add this
+
+    // Server Settings
+    serverHost: string;
+    serverPort: number;
 }
 
 export const DEFAULT_SETTINGS: MCPSettings = {
@@ -33,4 +37,6 @@ export const DEFAULT_SETTINGS: MCPSettings = {
     enabledTools: ['memory', 'reasoning', 'search'],
     memoryFolderPath: '',    // Add this
     reasoningFolderPath: '', // Add this
+    serverHost: 'localhost',
+    serverPort: 3000,
 };

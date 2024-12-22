@@ -6,6 +6,7 @@ import { MemoryManager } from '../services/MemoryManager';
 import { ReasoningManager } from '../services/ReasoningManager';
 import { MemoryTool } from './core/MemoryTool';
 import { ReasoningTool } from './core/ReasoningTool';
+import { SearchEngine } from '../services/SearchEngine';
 
 export class ToolRegistry {
     private tools: Map<string, typeof BaseTool> = new Map();
@@ -16,13 +17,15 @@ export class ToolRegistry {
         app: App,
         vaultManager: VaultManager,
         memoryManager: MemoryManager,
-        reasoningManager: ReasoningManager
+        reasoningManager: ReasoningManager,
+        searchEngine: SearchEngine
     ) {
         this.context = {
             app,
             vault: vaultManager,
             memory: memoryManager,
-            reasoning: reasoningManager
+            reasoning: reasoningManager,
+            searchEngine
         };
 
         // Register core tools
