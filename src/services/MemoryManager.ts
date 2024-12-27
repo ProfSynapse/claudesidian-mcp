@@ -20,6 +20,7 @@ export interface Memory {
     createdAt: string;      // Add created timestamp
     modifiedAt?: string;    // Add modified timestamp
     lastViewedAt?: string;  // Add last viewed timestamp
+    success?: boolean;  // Optional success flag for task-based memories
 }
 
 // Add values array for MemoryType
@@ -29,7 +30,8 @@ export const MemoryTypes = [
     'semantic',
     'procedural',
     'emotional',
-    'contextual'
+    'contextual',
+    'search'  // Add search type
 ] as const;
 
 export type MemoryType = typeof MemoryTypes[number];
@@ -66,16 +68,6 @@ export class MemoryManager {
     ) {
         this.vaultManager = vaultManager;
         this.settings = settings || DEFAULT_SETTINGS;
-        this.ensureDirectoriesExist();
-    }
-
-    private async ensureDirectoriesExist() {
-        try {
-            // Only create the root MCP directory
-            await this.vaultManager.createFolder(this.settings.rootPath);
-        } catch (error) {
-            console.error('Error creating directory:', error);
-        }
     }
 
     set(key: string, value: any): void {
@@ -99,27 +91,31 @@ export class MemoryManager {
      */
     async createMemory(memory: Memory): Promise<TFile> {
         try {
-            // Ensure path doesn't include .md extension
-            const basePath = memory.title.replace(/\.md$/, '');
-            const notePath = `${this.settings.rootPath}/${basePath}`;
+            // Ensure memory folder exists
+            const memoryFolder = `${this.settings.rootPath}/memory`;
+            await this.vaultManager.createFolder(memoryFolder);
             
-            // Prepare metadata
-            const now = new Date().toISOString();
-            const metadata: MemoryMetadata = {
-                category: memory.category,  // Changed from type to category
-                description: memory.description,
-                tags: memory.tags,
-                createdAt: now,
-                modifiedAt: now,
-                lastViewedAt: now
-            };
-
-            // Create memory note
+            // Create safe filename from title
+            const safeTitle = memory.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_|_$/g, '');
+            
+            // Create memory note in the memory folder
             const file = await this.vaultManager.createNote(
-                `${notePath}.md`,
+                `${memoryFolder}/${safeTitle}`,  // Remove .md as it's handled by VaultManager
                 memory.content,
                 {
-                    frontmatter: metadata,
+                    frontmatter: {
+                        category: memory.category,
+                        description: memory.description,
+                        tags: memory.tags,
+                        relationships: memory.relationships,
+                        createdAt: memory.createdAt,
+                        modifiedAt: memory.modifiedAt,
+                        lastViewedAt: memory.lastViewedAt,
+                        success: memory.success
+                    },
                     createFolders: true
                 }
             );
@@ -157,7 +153,8 @@ export class MemoryManager {
                         relationships: memory.relationships,
                         createdAt: memory.createdAt,
                         modifiedAt: now,
-                        lastViewedAt: memory.lastViewedAt
+                        lastViewedAt: memory.lastViewedAt,
+                        success: memory.success
                     }
                 }
             );
@@ -226,7 +223,8 @@ export class MemoryManager {
                 relationships: metadata.relationships,
                 createdAt: metadata.createdAt,
                 modifiedAt: metadata.modifiedAt,
-                lastViewedAt: now
+                lastViewedAt: now,
+                success: metadata.success
             };
         } catch (error) {
             console.error(`Error retrieving memory: ${error.message}`);
@@ -351,7 +349,8 @@ export class MemoryManager {
             'Semantic Memories',
             'Procedural Memories',
             'Emotional Memories',
-            'Contextual Memories'
+            'Contextual Memories',
+            'Search Results'  // Add search section
         ];
 
         orderedSections.forEach(section => {
@@ -374,7 +373,8 @@ export class MemoryManager {
             semantic: 'Semantic Memories',
             procedural: 'Procedural Memories',
             emotional: 'Emotional Memories',
-            contextual: 'Contextual Memories'
+            contextual: 'Contextual Memories',
+            search: 'Search Results'  // Add search section
         };
         
         return sectionMap[type] || 'Other Memories';

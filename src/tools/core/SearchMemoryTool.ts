@@ -100,6 +100,12 @@ export class SearchMemoryTool extends BaseTool {
     }
 
     private async getMemory(path: string): Promise<SearchMemoryResult[]> {
+        const memoryFolder = `${this.context.settings.rootPath}/memory`;
+        // Ensure path is within memory folder
+        if (!path.startsWith(memoryFolder)) {
+            path = `${memoryFolder}/${path}`;
+        }
+        
         const file = this.context.app.vault.getAbstractFileByPath(path) as TFile;
         if (!file) {
             throw new Error(`Memory not found: ${path}`);
@@ -128,7 +134,9 @@ export class SearchMemoryTool extends BaseTool {
 
     private async listMemories(args: SearchMemoryArgs): Promise<SearchMemoryResult[]> {
         const { type, category, tags, limit = 10 } = args;
-        const files = this.context.app.vault.getMarkdownFiles();
+        const memoryPath = `${this.context.settings.rootPath}/memory`;
+        const files = this.context.app.vault.getMarkdownFiles()
+            .filter(file => file.path.startsWith(memoryPath));
         let results: SearchMemoryResult[] = [];
 
         const defaultMetadata = {

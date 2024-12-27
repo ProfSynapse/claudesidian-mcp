@@ -2,6 +2,8 @@ import { App } from 'obsidian';
 import { VaultManager } from '../services/VaultManager';
 import { MemoryManager } from '../services/MemoryManager';
 import { ToolRegistry } from './ToolRegistry';  // Add this import
+import { MCPSettings } from '../types';
+import { IndexManager } from '../services/IndexManager';
 
 export interface IToolContext {
     app: App;
@@ -9,6 +11,8 @@ export interface IToolContext {
     vault: VaultManager;
     memory: MemoryManager;
     toolRegistry: ToolRegistry;  // Add this line
+    settings: MCPSettings; // Add this line
+    indexManager: IndexManager;  // Add this line
 }
 
 export interface IToolMetadata {

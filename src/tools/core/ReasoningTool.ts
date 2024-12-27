@@ -245,7 +245,11 @@ export class ReasoningTool extends BaseTool {
     }
 
     private async saveReasoningNote(analysis: any): Promise<void> {
+        const reasoningFolder = `${this.context.settings.rootPath}/reasoning`;
+        await this.context.vault.ensureFolder(reasoningFolder);
+        
         const filename = `${analysis.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.md`;
+        const fullPath = `${reasoningFolder}/${filename}`;
         
         const content = [
             '---',
@@ -254,9 +258,8 @@ export class ReasoningTool extends BaseTool {
             `query: "${analysis.query}"`,
             '---',
             '',
-            `# ${analysis.title}`,
-            '',
-            '## Goal',
+            '# Memory',
+            `## Goal: ${analysis.title}`,
             analysis.goal,
             '',
             analysis.currentSubgoal ? [
@@ -264,14 +267,11 @@ export class ReasoningTool extends BaseTool {
                 analysis.currentSubgoal,
                 ''
             ].join('\n') : '',
-            '## Knowledge Graph',
-            '_Relationships between concepts:_',
-            '',
+            '# Relationships',
             analysis.knowledgeGraph?.map((t: KnowledgeTriplet) => 
-                `- ${t.subject.startsWith('[[') ? t.subject : `[[${t.subject}]]`} ${
-                    t.predicate.startsWith('#') ? t.predicate : `#${t.predicate.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`
-                } ${t.object.startsWith('[[') ? t.object : `[[${t.object}]]`}`
-            ).join('\n') || '_No knowledge graph provided_',
+                `${t.predicate.startsWith('#') ? t.predicate : `#${t.predicate}`} ${
+                    t.object.startsWith('[[') ? t.object : `[[${t.object}]]`}`
+            ).join('\n') || '_No relationships defined_',
             '',
             '## Proposer',
             `**Method**: ${analysis.proposer?.method || 'Not specified'}`,
@@ -302,8 +302,15 @@ export class ReasoningTool extends BaseTool {
             ).join('\n') || '_No steps defined_'
         ].filter(Boolean).join('\n');
 
-        await this.context.vault.createNote(filename, content, {
+        await this.context.vault.createNote(fullPath, content, {
             createFolders: true
+        });
+
+        // Update index using IndexManager
+        await this.context.indexManager.addToIndex({
+            title: analysis.title,
+            description: analysis.query,
+            section: 'Reasoning Sessions'
         });
     }
 }

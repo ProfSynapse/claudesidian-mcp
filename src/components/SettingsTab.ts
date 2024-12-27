@@ -7,13 +7,38 @@ import { ClaudeConfigModal } from './ClaudeConfigModal';
 
 export class SettingsTab extends PluginSettingTab {
     plugin: BridgeMCPPlugin;
+    private oldPath: string = '';
 
     constructor(app: App, plugin: BridgeMCPPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }
 
+    async handleRootPathChange(newPath: string) {
+        // Store the old path before updating
+        this.oldPath = this.plugin.settings.rootPath;
+        
+        // Update settings
+        this.plugin.settings.rootPath = newPath;
+        await this.plugin.saveSettings();
+    }
+
+    async handleToolToggle(toolName: 'memory' | 'reasoning', enabled: boolean) {
+        if (toolName === 'memory') {
+            this.plugin.settings.enabledMemory = enabled;
+        } else {
+            this.plugin.settings.enabledReasoning = enabled;
+        }
+        await this.plugin.saveSettings();
+        
+        // Initialize folder structure after settings change
+        await this.plugin.initializeFolderStructure();
+    }
+
     display(): void {
+        // Store the current path when displaying settings
+        this.oldPath = this.plugin.settings.rootPath;
+
         console.log('SettingsTab: Displaying settings tab'); // Log display start
         const { containerEl } = this;
         containerEl.empty();
@@ -31,7 +56,7 @@ export class SettingsTab extends PluginSettingTab {
                     new ClaudeConfigModal(this.app).open();
                 }));
 
-        // Root Path Setting
+        // Root Path Setting with Save/Migrate Button
         new Setting(containerEl)
             .setName('Claudesidian')
             .setDesc('Folder where all MCP content will be stored')
@@ -39,8 +64,40 @@ export class SettingsTab extends PluginSettingTab {
                 .setPlaceholder('claudesidian')
                 .setValue(this.plugin.settings.rootPath)
                 .onChange(async (value) => {
+                    // Just update settings, don't change oldPath
                     this.plugin.settings.rootPath = value;
                     await this.plugin.saveSettings();
+                }))
+            .addButton(button => button
+                .setButtonText('Create/Migrate Folders')
+                .onClick(async () => {
+                    try {
+                        button.setDisabled(true);
+                        button.setButtonText('Migrating...');
+                        
+                        // Use the stored old path for migration
+                        const fromPath = this.oldPath;
+                        const toPath = this.plugin.settings.rootPath;
+                        console.log(`Migrating from ${fromPath} to ${toPath}`);
+                        
+                        await this.plugin.migrateAndInitializeFolders(fromPath); // Pass the old path
+                        
+                        // Update oldPath after successful migration
+                        this.oldPath = toPath;
+                        
+                        button.setButtonText('Done!');
+                        setTimeout(() => {
+                            button.setButtonText('Create/Migrate Folders');
+                            button.setDisabled(false);
+                        }, 2000);
+                    } catch (error) {
+                        console.error('Failed to migrate folders:', error);
+                        button.setButtonText('Failed!');
+                        setTimeout(() => {
+                            button.setButtonText('Create/Migrate Folders');
+                            button.setDisabled(false);
+                        }, 2000);
+                    }
                 }));
 
         // Server Settings Section
@@ -85,8 +142,7 @@ export class SettingsTab extends PluginSettingTab {
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enabledMemory)
                 .onChange(async (value) => {
-                    this.plugin.settings.enabledMemory = value;
-                    await this.plugin.saveSettings();
+                    await this.handleToolToggle('memory', value);
                 })
             );
 
@@ -97,8 +153,7 @@ export class SettingsTab extends PluginSettingTab {
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enabledReasoning)
                 .onChange(async (value) => {
-                    this.plugin.settings.enabledReasoning = value;
-                    await this.plugin.saveSettings();
+                    await this.handleToolToggle('reasoning', value);
                 })
             );
 
