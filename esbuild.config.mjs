@@ -36,7 +36,8 @@ const context = await esbuild.context({
   sourcemap: prod ? false : "inline",
   treeShaking: true,
   outfile: "main.js",
-  platform: "node",  // Add this line to properly handle Node.js built-ins
+  platform: "node",
+  mainFields: ["browser", "module", "main"]
 });
 
 if (prod) {

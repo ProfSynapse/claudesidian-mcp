@@ -1,15 +1,14 @@
 import { App } from 'obsidian';
 import { VaultManager } from '../services/VaultManager';
 import { MemoryManager } from '../services/MemoryManager';
-import { ReasoningManager } from '../services/ReasoningManager';
-import { SearchEngine } from '../services/SearchEngine';
+import { ToolRegistry } from './ToolRegistry';  // Add this import
 
 export interface IToolContext {
     app: App;
+    plugin: any;
     vault: VaultManager;
     memory: MemoryManager;
-    reasoning: ReasoningManager;
-    searchEngine: SearchEngine;
+    toolRegistry: ToolRegistry;  // Add this line
 }
 
 export interface IToolMetadata {
@@ -60,7 +59,7 @@ export class BaseTool {
     }
 
     // Optional method to implement undo functionality
-    async undo?(): Promise<void> {
+    async undo?(args: any, previousResult: any): Promise<void> {
         throw new Error('Undo not implemented');
     }
 

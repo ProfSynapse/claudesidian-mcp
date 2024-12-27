@@ -99,29 +99,14 @@ export class BridgeMCPServer {
     private initializeToolHandlers() {
         // List available tools
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-            const tools = this.toolRegistry.getAvailableTools().map(tool => ({
-                name: tool.name,
-                description: tool.description,
-                inputSchema: {
-                    type: "object",
-                    properties: {
-                        action: {
-                            type: "string",
-                            enum: ["create", "update", "read", "list"],
-                            description: "The operation to perform"
-                        },
-                        path: {
-                            type: "string",
-                            description: "Path to the note or folder"
-                        },
-                        content: {
-                            type: "string",
-                            description: "Content for create/update operations"
-                        }
-                    },
-                    required: ["action"]
-                }
-            }));
+            const tools = this.toolRegistry.getAvailableTools().map(tool => {
+                const toolInstance = this.toolRegistry.getTool(tool.name);
+                return {
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: toolInstance.getSchema() // Use each tool's own schema definition
+                };
+            });
             
             return { tools };
         });

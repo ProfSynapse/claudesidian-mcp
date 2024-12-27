@@ -84,6 +84,34 @@ export class VaultManager {
     }
 
     /**
+     * Updates note metadata without changing content
+     */
+    async updateNoteMetadata(path: string, metadata: Record<string, any>): Promise<void> {
+        try {
+            const content = await this.readNote(path);
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+            
+            let newContent;
+            if (frontmatterMatch) {
+                // Update existing frontmatter
+                newContent = `---\n${yaml.stringify(metadata)}---\n${frontmatterMatch[2]}`;
+            } else {
+                // Add new frontmatter
+                newContent = `---\n${yaml.stringify(metadata)}---\n\n${content}`;
+            }
+
+            const file = this.vault.getAbstractFileByPath(path) as TFile;
+            if (!file) {
+                throw new Error(`No note found at path: ${path}`);
+            }
+
+            await this.vault.modify(file, newContent);
+        } catch (error) {
+            throw this.handleError('updateNoteMetadata', error);
+        }
+    }
+
+    /**
      * Reads a note's content from the vault
      */
     async readNote(path: string): Promise<string> {
@@ -98,6 +126,24 @@ export class VaultManager {
             return await this.vault.read(file);
         } catch (error) {
             throw this.handleError('readNote', error);
+        }
+    }
+
+    /**
+     * Deletes a note from the vault
+     */
+    async deleteNote(path: string): Promise<void> {
+        try {
+            const normalizedPath = this.normalizePath(path);
+            const file = this.vault.getAbstractFileByPath(normalizedPath);
+
+            if (!file || !(file instanceof TFile)) {
+                throw new Error(`No note found at path: ${normalizedPath}`);
+            }
+
+            await this.vault.delete(file);
+        } catch (error) {
+            throw this.handleError('deleteNote', error);
         }
     }
 

@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 export enum EventTypes {
     MEMORY_CREATED = 'memory:created',
     MEMORY_UPDATED = 'memory:updated',
+    MEMORY_DELETED = 'memory:deleted',
     REASONING_CREATED = 'reasoning:created',
     REASONING_UPDATED = 'reasoning:updated'
 }

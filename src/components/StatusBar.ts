@@ -1,16 +1,25 @@
-import { Plugin } from 'obsidian';
-import { App } from 'obsidian';
+import { setIcon } from 'obsidian';
 import BridgeMCPPlugin from '../main';
 
 export type ServerStatus = 'initializing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
 
 export class StatusBarComponent {
     private statusEl: HTMLElement;
+    private iconEl: HTMLElement;
+    private textEl: HTMLElement;
     private currentStatus: ServerStatus = 'stopped';
 
     constructor(statusBarItem: HTMLElement) {
         this.statusEl = statusBarItem;
         this.statusEl.addClass('bridge-mcp-status');
+        
+        // Create icon element
+        this.iconEl = this.statusEl.createDiv('bridge-mcp-status-icon');
+        
+        // Create text element
+        this.textEl = this.statusEl.createSpan('bridge-mcp-status-text');
+        this.textEl.textContent = 'MCP';
+        
         this.setStatus('stopped');
     }
 
@@ -24,17 +33,20 @@ export class StatusBarComponent {
 
         // Update status text and icon
         const statusConfig = {
-            initializing: { text: 'MCP: Initializing...', icon: '⚙️' },
-            starting: { text: 'MCP: Starting...', icon: '🔄' },
-            running: { text: 'MCP: Running', icon: '🟢' },
-            stopping: { text: 'MCP: Stopping...', icon: '🔄' },
-            stopped: { text: 'MCP: Stopped', icon: '⭕' },
-            error: { text: 'MCP: Error', icon: '❌' }
+            initializing: { text: 'MCP: Initializing...', icon: 'loader' },
+            starting: { text: 'MCP: Starting...', icon: 'loader' },
+            running: { text: 'MCP: Running', icon: 'check-circle' },
+            stopping: { text: 'MCP: Stopping...', icon: 'loader' },
+            stopped: { text: 'MCP: Stopped', icon: 'circle' },
+            error: { text: 'MCP: Error', icon: 'alert-circle' }
         };
 
         const config = statusConfig[status];
         this.statusEl.setAttribute('aria-label', config.text);
-        this.statusEl.innerHTML = `${config.icon} MCP`;
+        
+        // Clear and set new icon
+        this.iconEl.empty();
+        setIcon(this.iconEl, config.icon);
     }
 
     getStatus(): ServerStatus {

@@ -1,91 +1,9 @@
 import { App, Modal, PluginSettingTab, Setting } from 'obsidian';
+import { AIProvider, AIModelMap, AIModel } from '../ai/models';
+import { MCPSettings } from '../types';
 import BridgeMCPPlugin from '../main';
-
-export class AllowedPathsModal extends Modal {
-    plugin: BridgeMCPPlugin;
-
-    constructor(app: App, plugin: BridgeMCPPlugin) {
-        super(app);
-        this.plugin = plugin;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-        contentEl.createEl('h2', { text: 'Select Allowed Paths' });
-        // TODO: Recursively list folders, show checkboxes. Save results to plugin settings.
-    }
-
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
-    }
-}
-
-export class ClaudeConfigModal extends Modal {
-    constructor(app: App) {
-        super(app);
-    }
-
-    onOpen() {
-        const {contentEl} = this;
-        contentEl.empty();
-
-        contentEl.createEl('h2', {text: 'Claude Desktop Configuration'});
-
-        const instructions = contentEl.createEl('div');
-        instructions.createEl('p', {text: 'To configure Claude Desktop to work with Bridge MCP:'});
-        
-        const steps = instructions.createEl('ol');
-        steps.createEl('li', {text: 'Open your Claude Desktop config file:'});
-        
-        const paths = steps.createEl('ul');
-        paths.createEl('li', {text: 'Mac: ~/Library/Application Support/Claude/claude_desktop_config.json'});
-        paths.createEl('li', {text: 'Windows: %AppData%\\Claude\\claude_desktop_config.json'});
-        
-        steps.createEl('li', {text: 'Copy the following JSON configuration:'});
-
-        const config = {
-            mcpServers: {
-                "bridge-mcp": {
-                    command: "node",
-                    args: [this.getConnectorPath()]
-                }
-            }
-        };
-
-        const codeBlock = contentEl.createEl('pre');
-        codeBlock.createEl('code', {
-            text: JSON.stringify(config, null, 2)
-        });
-
-        steps.createEl('li', {text: 'Paste this into your config file, replacing any existing content'});
-        steps.createEl('li', {text: 'Save the file and restart Claude Desktop'});
-
-        const copyButton = contentEl.createEl('button', {
-            text: 'Copy Configuration',
-            cls: 'mod-cta'
-        });
-        
-        copyButton.onclick = () => {
-            navigator.clipboard.writeText(JSON.stringify(config, null, 2));
-            copyButton.setText('Copied!');
-            setTimeout(() => copyButton.setText('Copy Configuration'), 2000);
-        };
-    }
-
-    private getConnectorPath(): string {
-        // Use the correct method to get the vault path
-        const vaultPath = this.app.vault.configDir;
-        const pluginDir = 'plugins/bridge-mcp';
-        return `${vaultPath}/${pluginDir}/connector.js`;
-    }
-
-    onClose() {
-        const {contentEl} = this;
-        contentEl.empty();
-    }
-}
+import { AllowedPathsModal } from './AllowedPathsModal';
+import { ClaudeConfigModal } from './ClaudeConfigModal';
 
 export class SettingsTab extends PluginSettingTab {
     plugin: BridgeMCPPlugin;
@@ -106,7 +24,7 @@ export class SettingsTab extends PluginSettingTab {
         // Add the Claude Desktop configuration button near the top
         new Setting(containerEl)
             .setName('Claude Desktop Setup')
-            .setDesc('Show instructions for configuring Claude Desktop')
+            .setDesc('Open the configuration modal for Claude Desktop')
             .addButton(button => button
                 .setButtonText('Show Configuration')
                 .onClick(() => {
@@ -115,10 +33,10 @@ export class SettingsTab extends PluginSettingTab {
 
         // Root Path Setting
         new Setting(containerEl)
-            .setName('MCP Root Folder')
+            .setName('Claudesidian')
             .setDesc('Folder where all MCP content will be stored')
             .addText(text => text
-                .setPlaceholder('bridge-mcp')
+                .setPlaceholder('claudesidian')
                 .setValue(this.plugin.settings.rootPath)
                 .onChange(async (value) => {
                     this.plugin.settings.rootPath = value;
@@ -127,18 +45,6 @@ export class SettingsTab extends PluginSettingTab {
 
         // Server Settings Section
         containerEl.createEl('h3', { text: 'Server Settings' });
-
-        new Setting(containerEl)
-            .setName('Auto-start server')
-            .setDesc('Start MCP server automatically when Obsidian launches')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.autoStart)
-                .onChange(async (value) => {
-                    console.log('SettingsTab: Auto-start server toggled', value); // Log toggle change
-                    this.plugin.settings.autoStart = value;
-                    await this.plugin.saveSettings(); // This will now work correctly
-                    console.log('SettingsTab: Auto-start server setting saved'); // Confirm save
-                }));
 
         // Vault Security Section - Combined security settings
         containerEl.createEl('h3', { text: 'Vault Security' });
@@ -184,17 +90,6 @@ export class SettingsTab extends PluginSettingTab {
                 })
             );
 
-        new Setting(containerEl)
-            .setName('Memory Folder')
-            .setDesc('Folder path where memories will be stored')
-            .addText(text => text
-                .setPlaceholder('memories')
-                .setValue(this.plugin.settings.memoryFolderPath)
-                .onChange(async (value) => {
-                    this.plugin.settings.memoryFolderPath = value;
-                    await this.plugin.saveSettings();
-                }));
-
         // Reasoning Tool Toggle
         new Setting(containerEl)
             .setName('Enable Reasoning')
@@ -206,17 +101,6 @@ export class SettingsTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 })
             );
-
-        new Setting(containerEl)
-            .setName('Reasoning Folder')
-            .setDesc('Folder path where reasoning outputs will be stored')
-            .addText(text => text
-                .setPlaceholder('reasoning')
-                .setValue(this.plugin.settings.reasoningFolderPath)
-                .onChange(async (value) => {
-                    this.plugin.settings.reasoningFolderPath = value;
-                    await this.plugin.saveSettings();
-                }));
 
         // Cache Settings
         containerEl.createEl('h3', { text: 'Performance Settings' });
@@ -233,6 +117,84 @@ export class SettingsTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        console.log('SettingsTab: Settings tab rendered successfully'); // Confirm rendering
+        // Add AI Configuration Section
+        containerEl.createEl('h3', { text: 'AI Configuration' });
+
+        // AI Provider Selection
+        new Setting(containerEl)
+            .setName('AI Provider')
+            .setDesc('Select which AI provider to use')
+            .addDropdown(dropdown => {
+                Object.values(AIProvider).forEach(provider => {
+                    dropdown.addOption(String(provider), provider === AIProvider.OpenRouter ? 'OpenRouter' : 'LM Studio');
+                });
+                
+                dropdown
+                    .setValue(this.plugin.settings.aiProvider)
+                    .onChange(async (value) => {
+                        this.plugin.settings.aiProvider = value as AIProvider;
+                        await this.plugin.saveSettings();
+                        this.display();
+                    });
+            });
+
+        // OpenRouter Settings
+        const settings = this.plugin.settings as MCPSettings;
+        if (settings.aiProvider === AIProvider.OpenRouter) {
+            new Setting(containerEl)
+                .setName('OpenRouter API Key')
+                .setDesc('Enter your OpenRouter API key')
+                .addText(text => {
+                    text
+                        .setPlaceholder('Enter API key')
+                        .setValue(settings.apiKeys[AIProvider.OpenRouter] || '')
+                        .onChange(async (value) => {
+                            settings.apiKeys[AIProvider.OpenRouter] = value;
+                            await this.plugin.saveSettings();
+                        });
+                    text.inputEl.type = 'password';
+                })
+                .addExtraButton(button => {
+                    button
+                        .setIcon('external-link')
+                        .setTooltip('Get API key')
+                        .onClick(() => {
+                            window.open('https://openrouter.ai/keys');
+                        });
+                });
+
+            // Default Model Selection
+            new Setting(containerEl)
+                .setName('Default AI Model')
+                .setDesc('Select the default model to use')
+                .addDropdown(dropdown => {
+                    const models = AIModelMap[AIProvider.OpenRouter];
+                    models.forEach((model: AIModel) => {
+                        dropdown.addOption(model.apiName, model.name);
+                    });
+                    
+                    dropdown
+                        .setValue(settings.defaultModel)
+                        .onChange(async (value) => {
+                            settings.defaultModel = value;
+                            await this.plugin.saveSettings();
+                        });
+                });
+
+            // Temperature Setting
+            new Setting(containerEl)
+                .setName('Default Temperature')
+                .setDesc('Set the default temperature for completions (0.0 - 1.0)')
+                .addSlider(slider => {
+                    slider
+                        .setLimits(0, 1, 0.05)
+                        .setValue(settings.defaultTemperature)
+                        .setDynamicTooltip()
+                        .onChange(async (value) => {
+                            settings.defaultTemperature = value;
+                            await this.plugin.saveSettings();
+                        });
+                });
+        }
     }
 }

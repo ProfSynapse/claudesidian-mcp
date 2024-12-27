@@ -1,4 +1,4 @@
-import { App, Modal, TFolder } from 'obsidian';
+import { App, Modal, TFolder, TFile, setIcon } from 'obsidian';
 import BridgeMCPPlugin from '../main';
 
 export class AllowedPathsModal extends Modal {
@@ -13,45 +13,115 @@ export class AllowedPathsModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
+        // Add modal-specific styles
+        contentEl.createEl('style', {
+            text: `
+                .bridge-mcp-folder-container {
+                    max-height: 400px;
+                    overflow-y: auto;
+                    margin: 1em 0;
+                    border: 1px solid var(--background-modifier-border);
+                    border-radius: 4px;
+                }
+                .bridge-mcp-folder-item, .bridge-mcp-file-item {
+                    display: flex;
+                    align-items: center;
+                    padding: 6px 8px;
+                    cursor: pointer;
+                    transition: background-color 0.1s ease;
+                }
+                .bridge-mcp-folder-item:hover, .bridge-mcp-file-item:hover {
+                    background-color: var(--background-modifier-hover);
+                }
+                .bridge-mcp-checkbox {
+                    margin-right: 8px;
+                }
+                .bridge-mcp-folder-name, .bridge-mcp-file-name {
+                    flex: 1;
+                }
+                .bridge-mcp-toggle {
+                    margin-right: 4px;
+                    width: 16px;
+                    height: 16px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: transform 0.15s ease;
+                }
+                .bridge-mcp-toggle.collapsed {
+                    transform: rotate(-90deg);
+                }
+                .bridge-mcp-children {
+                    display: none;
+                }
+                .bridge-mcp-children.expanded {
+                    display: block;
+                }
+                .bridge-mcp-file-item {
+                    padding-left: 44px;
+                }
+                .bridge-mcp-icon {
+                    margin-right: 4px;
+                    color: var(--text-muted);
+                }
+            `
+        });
+
         contentEl.createEl('h2', { text: 'Select Allowed Paths' });
         contentEl.createEl('p', { 
             text: 'Choose which folders MCP tools can access. Subfolders are automatically included.'
         });
 
-        const folderContainer = contentEl.createDiv({ cls: 'folder-container' });
+        const folderContainer = contentEl.createDiv({ 
+            cls: 'bridge-mcp-folder-container'
+        });
         
         const rootFolder = this.app.vault.getRoot();
-        console.log('Root folder:', rootFolder); // Debug log
+        console.log('[AllowedPathsModal] Root folder:', rootFolder);
 
         if (rootFolder) {
-            // Start with root folder
+            // Render root folder first
             this.renderFolder(rootFolder, folderContainer, 0);
             
-            // Get all subfolders
             const allFolders = this.getAllFolders(rootFolder);
-            console.log('All folders:', allFolders); // Debug log
+            console.log('[AllowedPathsModal] Found folders:', allFolders.length);
             
             if (allFolders.length === 0) {
-                contentEl.createEl('p', { text: 'No subfolders found in vault.' });
+                folderContainer.createEl('p', { 
+                    text: 'No subfolders found in vault.',
+                    cls: 'bridge-mcp-no-folders'
+                });
             }
         } else {
-            contentEl.createEl('p', { text: 'Could not access vault root folder.' });
+            console.error('[AllowedPathsModal] Failed to access vault root folder');
+            contentEl.createEl('p', { 
+                text: 'Error: Could not access vault folders.',
+                cls: 'bridge-mcp-error'
+            });
         }
 
-        const buttonContainer = contentEl.createDiv('modal-button-container');
+        // Add button container at the bottom
+        const buttonContainer = contentEl.createDiv({
+            cls: 'bridge-mcp-button-container'
+        });
         
-        buttonContainer.createEl('button', {
+        const saveButton = buttonContainer.createEl('button', {
             text: 'Save',
             cls: ['mod-cta']
-        }).addEventListener('click', async () => {
+        });
+        
+        const cancelButton = buttonContainer.createEl('button', {
+            text: 'Cancel'
+        });
+
+        saveButton.addEventListener('click', async () => {
+            console.log('[AllowedPathsModal] Saving paths:', Array.from(this.selectedPaths));
             this.plugin.settings.allowedPaths = Array.from(this.selectedPaths);
             await this.plugin.saveSettings();
             this.close();
         });
 
-        buttonContainer.createEl('button', {
-            text: 'Cancel'
-        }).addEventListener('click', () => {
+        cancelButton.addEventListener('click', () => {
             this.close();
         });
     }
@@ -76,6 +146,12 @@ export class AllowedPathsModal extends Modal {
         // Ensure minimum left padding
         folderDiv.style.paddingLeft = `${Math.max(8, depth * 20)}px`;
 
+        // Replace arrow with folder icon
+        const toggleIcon = folderDiv.createSpan({
+            cls: 'bridge-mcp-toggle'
+        });
+        setIcon(toggleIcon, 'folder');
+
         const checkbox = folderDiv.createEl('input', {
             type: 'checkbox',
             cls: ['folder-checkbox', 'bridge-mcp-checkbox']
@@ -88,26 +164,104 @@ export class AllowedPathsModal extends Modal {
             cls: ['folder-name', 'bridge-mcp-folder-name']
         });
 
-        // Make the entire div clickable
+        // Create container for children
+        const childrenContainer = container.createDiv({
+            cls: ['bridge-mcp-children', 'expanded']
+        });
+
+        // Toggle handler
+        toggleIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isExpanded = childrenContainer.classList.toggle('expanded');
+            setIcon(toggleIcon, isExpanded ? 'folder' : 'folder-closed');
+        });
+
+        // Update folder click handler to properly handle all children
+        const updateChildren = (checked: boolean) => {
+            const updateChildCheckbox = (element: HTMLElement) => {
+                const checkbox = element.querySelector('input[type="checkbox"]') as HTMLInputElement;
+                if (checkbox) {
+                    checkbox.checked = checked;
+                    const path = checkbox.getAttribute('data-path');
+                    if (path) {
+                        this.handleCheckboxChange(checked, path);
+                    }
+                }
+            };
+
+            // Update all child folders and files
+            childrenContainer.querySelectorAll('.bridge-mcp-folder-item, .bridge-mcp-file-item')
+                .forEach(child => updateChildCheckbox(child as HTMLElement));
+        };
+
         folderDiv.addEventListener('click', (e) => {
-            if (e.target !== checkbox) {
+            if (e.target !== checkbox && e.target !== toggleIcon) {
                 checkbox.checked = !checkbox.checked;
                 this.handleCheckboxChange(checkbox.checked, folder.path);
+                updateChildren(checkbox.checked);
             }
         });
 
         checkbox.addEventListener('change', (e) => {
             const target = e.target as HTMLInputElement;
             this.handleCheckboxChange(target.checked, folder.path);
+            updateChildren(target.checked);
         });
 
-        // Sort and render subfolders
-        const subfolders = folder.children
-            .filter((child): child is TFolder => child instanceof TFolder)
-            .sort((a, b) => a.name.localeCompare(b.name));
+        // Sort and render children
+        const children = folder.children.sort((a, b) => {
+            // Folders first, then files
+            const aIsFolder = a instanceof TFolder;
+            const bIsFolder = b instanceof TFolder;
+            if (aIsFolder && !bIsFolder) return -1;
+            if (!aIsFolder && bIsFolder) return 1;
+            return a.name.localeCompare(b.name);
+        });
 
-        subfolders.forEach(subfolder => {
-            this.renderFolder(subfolder, container, depth + 1);
+        children.forEach(child => {
+            if (child instanceof TFolder) {
+                this.renderFolder(child, childrenContainer, depth + 1);
+            } else if (child instanceof TFile) {
+                this.renderFile(child, childrenContainer, depth + 1);
+            }
+        });
+    }
+
+    private renderFile(file: TFile, container: HTMLElement, depth: number) {
+        const fileDiv = container.createDiv({
+            cls: ['file-item', 'bridge-mcp-file-item']
+        });
+
+        fileDiv.style.paddingLeft = `${Math.max(8, depth * 20)}px`;
+
+        const fileIcon = fileDiv.createSpan({
+            cls: 'bridge-mcp-icon'
+        });
+        setIcon(fileIcon, 'document');
+
+        const checkbox = fileDiv.createEl('input', {
+            type: 'checkbox',
+            cls: ['file-checkbox', 'bridge-mcp-checkbox']
+        });
+        
+        checkbox.checked = this.selectedPaths.has(file.path);
+        checkbox.setAttribute('data-path', file.path);
+
+        const nameSpan = fileDiv.createSpan({
+            text: file.name,
+            cls: ['file-name', 'bridge-mcp-file-name']
+        });
+
+        fileDiv.addEventListener('click', (e) => {
+            if (e.target !== checkbox) {
+                checkbox.checked = !checkbox.checked;
+                this.handleCheckboxChange(checkbox.checked, file.path);
+            }
+        });
+
+        checkbox.addEventListener('change', (e) => {
+            const target = e.target as HTMLInputElement;
+            this.handleCheckboxChange(target.checked, file.path);
         });
     }
 

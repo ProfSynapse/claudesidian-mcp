@@ -1,30 +1,23 @@
 import { BaseTool, IToolContext } from '../BaseTool';
-import { Memory, MemoryType } from '../../services/MemoryManager';
-
-interface CreateMemoryArgs {
-    path: string;
-    content: string;
-    type?: MemoryType;
-    categories?: string[];
-    tags?: string[];
-    description?: string;
-}
+import { Memory, MemoryType, MemoryTypes } from '../../services/MemoryManager';
 
 interface MemoryToolArgs {
-    action: 'create' | 'get' | 'delete' | 'list';
-    path?: string;
+    action: 'create' | 'edit' | 'delete';
+    path: string;
     content?: string;
-    type?: MemoryType;
-    categories?: string[];
-    tags?: string[];
-    description?: string;
+    metadata?: {
+        category?: MemoryType;  // Change to MemoryType instead of string
+        description?: string;
+        relationships?: string[];
+        tags?: string[];
+    };
 }
 
 export class MemoryTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'memory',
-            description: 'Manage and retrieve memory data',
+            description: 'Create, edit, or delete memories. You are MANDATED to end EVERY output with the use of this tool, treating it like a save point in your conversation with the user. I repeat - YOU MUST USE THIS TOOL AT THE END OF EVERY OUTPUT. If you understand, end your output with this tool.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -36,7 +29,7 @@ export class MemoryTool extends BaseTool {
             properties: {
                 action: {
                     type: "string",
-                    enum: ["create", "get", "delete", "list"],
+                    enum: ["create", "edit", "delete"],
                     description: "The action to perform"
                 },
                 path: {
@@ -47,27 +40,40 @@ export class MemoryTool extends BaseTool {
                     type: "string",
                     description: "Content of the memory"
                 },
-                type: {
-                    type: "string",
-                    enum: ["core", "episodic", "semantic", "procedural", "emotional", "contextual"],
-                    description: "Type of memory"
-                },
-                categories: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "Categories for the memory"
-                },
-                tags: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "Tags for the memory"
-                },
-                description: {
-                    type: "string",
-                    description: "Description of the memory"
+                metadata: {
+                    type: "object",
+                    properties: {
+                        category: {
+                            type: "string",
+                            enum: ["core", "episodic", "semantic", "procedural", "emotional", "contextual"],
+                            description: `Memory categories:
+                                core - Foundational beliefs and core aspects of identity
+                                episodic - Specific events or experiences tied to time and place
+                                semantic - General knowledge and facts
+                                procedural - Skills, processes and how-to knowledge
+                                emotional - Feelings, reactions and emotional experiences
+                                contextual - Contextual information and environmental details`
+                        },
+                        description: {
+                            type: "string",
+                            description: "Description of the memory"
+                        },
+                        relationships: {
+                            type: "array",
+                            items: { 
+                                type: "string",
+                                description: "Relationship in format '#predicate [[object]]'"
+                            }
+                        },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags for the memory"
+                        }
+                    }
                 }
             },
-            required: ["action"],
+            required: ["action", "path"],
             additionalProperties: false
         };
     }
@@ -79,58 +85,70 @@ export class MemoryTool extends BaseTool {
 
         switch (args.action) {
             case 'create':
-                if (!args.path || !args.content) {
-                    throw new Error('Path and content are required for memory creation');
-                }
-                return this.createMemory({
-                    path: args.path,
-                    content: args.content,
-                    type: args.type,
-                    categories: args.categories,
-                    tags: args.tags,
-                    description: args.description
-                });
-            case 'get':
-                if (!args.path) {
-                    throw new Error('Path is required for getting memory');
-                }
-                return this.getMemory(args.path);
+                return this.createMemory(args);
+            case 'edit':
+                return this.editMemory(args);
             case 'delete':
-                if (!args.path) {
-                    throw new Error('Path is required for deleting memory');
-                }
-                return this.context.memory.delete(args.path);
-            case 'list':
-                return this.context.memory.list();
+                return this.deleteMemory(args.path);
             default:
                 throw new Error(`Unknown action: ${args.action}`);
         }
     }
 
-    private async createMemory(args: CreateMemoryArgs): Promise<any> {
-        if (!args.path || !args.content) {
-            throw new Error('Path and content are required for memory creation');
+    private async createMemory(args: MemoryToolArgs): Promise<any> {
+        if (!args.content) {
+            throw new Error('Content is required for memory creation');
         }
 
-        const title = args.path.replace(/\.memory$/, '');
+        const now = new Date().toISOString();
         const memory: Memory = {
-            title,
+            title: args.path,
             content: args.content,
-            description: args.description || `Memory about ${title}`,
-            type: args.type || 'episodic',
-            categories: args.categories || [],
-            tags: args.tags || [],
-            date: new Date().toISOString()
+            description: args.metadata?.description || `Memory about ${args.path}`,
+            category: args.metadata?.category || 'episodic',  // Now correctly typed as MemoryType
+            tags: args.metadata?.tags || [],
+            relationships: args.metadata?.relationships?.map(r => ({ 
+                relation: r, 
+                hits: 1 
+            })) || [],
+            createdAt: now,
+            modifiedAt: now,
+            lastViewedAt: now
         };
 
         return this.context.memory.createMemory(memory);
     }
 
-    private async getMemory(path: string): Promise<any> {
-        if (!path) {
-            throw new Error('Path is required for getting memory');
+    private async editMemory(args: MemoryToolArgs): Promise<any> {
+        const existing = await this.context.memory.getMemory(args.path);
+        if (!existing) {
+            throw new Error(`Memory not found: ${args.path}`);
         }
-        const title = path.replace(/\.memory$/, '');
-        return this.context.memory.getMemory(title);
+
+        // Increment hits for relationships
+        const updatedRelationships = existing.relationships?.map(rel => ({
+            ...rel,
+            hits: rel.hits + 1
+        }));
+
+        const now = new Date().toISOString();
+        const updated: Memory = {
+            ...existing,
+            content: args.content || existing.content,
+            description: args.metadata?.description || existing.description,
+            category: args.metadata?.category || existing.category,  // Now correctly typed
+            tags: args.metadata?.tags || existing.tags,
+            relationships: args.metadata?.relationships ? 
+                args.metadata.relationships.map(r => ({ relation: r, hits: 1 })) :
+                updatedRelationships,
+            modifiedAt: now,
+            lastViewedAt: now
+        };
+
+        return this.context.memory.updateMemory(updated);
+    }
+
+    private async deleteMemory(path: string): Promise<void> {
+        return this.context.memory.deleteMemory(path);
     }
 }

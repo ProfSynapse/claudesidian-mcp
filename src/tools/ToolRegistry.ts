@@ -1,12 +1,22 @@
 import { App } from 'obsidian';
 import { BaseTool, IToolContext } from './BaseTool';
-import { VaultTool } from './core/VaultTool';
 import { VaultManager } from '../services/VaultManager';
 import { MemoryManager } from '../services/MemoryManager';
-import { ReasoningManager } from '../services/ReasoningManager';
+// Remove VaultTool import
 import { MemoryTool } from './core/MemoryTool';
 import { ReasoningTool } from './core/ReasoningTool';
-import { SearchEngine } from '../services/SearchEngine';
+import { CreateNoteTool } from './core/CreateNoteTool';
+import { EditNoteTool } from './core/EditNoteTool';
+import { MoveNoteTool } from './core/MoveNoteTool';
+import { ReadNoteTool } from './core/ReadNoteTool';
+import { InsertContentTool } from './core/InsertContentTool';
+import { UpdateFrontmatterTool } from './core/UpdateFrontmatterTool';
+import { TagsTool } from './core/TagsTool';
+import { DeleteNoteTool } from './core/DeleteNoteTool';
+import { SearchMemoryTool } from './core/SearchMemoryTool';
+// Remove PuppeteerTool import
+import { SearchTool } from './core/SearchTool';
+import { CompletionTool } from './core/LLMTool';
 
 export class ToolRegistry {
     private tools: Map<string, typeof BaseTool> = new Map();
@@ -15,23 +25,34 @@ export class ToolRegistry {
 
     constructor(
         app: App,
+        plugin: any, // Add plugin parameter
         vaultManager: VaultManager,
-        memoryManager: MemoryManager,
-        reasoningManager: ReasoningManager,
-        searchEngine: SearchEngine
+        memoryManager: MemoryManager
     ) {
         this.context = {
             app,
+            plugin, // Add this line
             vault: vaultManager,
             memory: memoryManager,
-            reasoning: reasoningManager,
-            searchEngine
+            toolRegistry: this  // Add this line
         };
 
-        // Register core tools
-        this.registerTool(VaultTool);
-        this.registerTool(MemoryTool);
-        this.registerTool(ReasoningTool);
+        // Register all core tools
+        [
+            CreateNoteTool,
+            ReadNoteTool,
+            InsertContentTool,
+            DeleteNoteTool,
+            EditNoteTool,
+            MoveNoteTool,
+            UpdateFrontmatterTool,
+            TagsTool,
+            MemoryTool,
+            SearchMemoryTool,
+            ReasoningTool,
+            SearchTool,
+            CompletionTool  // Add CompletionTool
+        ].forEach(Tool => this.registerTool(Tool));
     }
 
     registerTool(toolClass: new (context: IToolContext) => BaseTool) {
@@ -76,5 +97,13 @@ export class ToolRegistry {
     async loadExternalTools(toolsPath: string) {
         // Implementation for loading external tools
         // This would scan the tools directory and load any valid tool modules
+    }
+
+    getTool(name: string): BaseTool {
+        const tool = this.instances.get(name);
+        if (!tool) {
+            throw new Error(`Tool '${name}' not found`);
+        }
+        return tool;
     }
 }

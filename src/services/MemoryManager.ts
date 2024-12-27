@@ -1,29 +1,46 @@
 import { TFile } from 'obsidian';
 import { VaultManager } from './VaultManager';
-import { SearchEngine, SearchResult } from './SearchEngine';
 import { injectable } from 'inversify';
 import type { BridgeMCPSettings } from '../settings';
 import { DEFAULT_SETTINGS } from '../settings';
 import { EventManager, EventTypes } from './EventManager';
 
+// Remove SearchResult interface since it's no longer needed
+
 export interface Memory {
     title: string;
     description: string;
     content: string;
-    type: MemoryType;
-    categories: string[];
+    category: MemoryType;  // Changed from type to category
     tags: string[];
-    date: string;
+    relationships?: Array<{
+        relation: string;
+        hits: number;
+    }>;
+    createdAt: string;      // Add created timestamp
+    modifiedAt?: string;    // Add modified timestamp
+    lastViewedAt?: string;  // Add last viewed timestamp
 }
 
-export type MemoryType = 'core' | 'episodic' | 'semantic' | 'procedural' | 'emotional' | 'contextual';
+// Add values array for MemoryType
+export const MemoryTypes = [
+    'core',
+    'episodic',
+    'semantic',
+    'procedural',
+    'emotional',
+    'contextual'
+] as const;
+
+export type MemoryType = typeof MemoryTypes[number];
 
 interface MemoryMetadata {
-    type: MemoryType;
-    categories: string[];
+    category: MemoryType;  // Changed from type to category
     description: string;
     tags: string[];
-    date: string;
+    createdAt: string;      // Add created timestamp
+    modifiedAt?: string;    // Add modified timestamp
+    lastViewedAt?: string;  // Add last viewed timestamp
 }
 
 interface MemoryFile extends TFile {
@@ -44,7 +61,6 @@ export class MemoryManager {
 
     constructor(
         vaultManager: VaultManager,
-        private searchEngine: SearchEngine,
         private eventManager: EventManager,
         settings?: BridgeMCPSettings
     ) {
@@ -88,12 +104,14 @@ export class MemoryManager {
             const notePath = `${this.settings.rootPath}/${basePath}`;
             
             // Prepare metadata
+            const now = new Date().toISOString();
             const metadata: MemoryMetadata = {
-                type: memory.type,
-                categories: memory.categories,
+                category: memory.category,  // Changed from type to category
                 description: memory.description,
                 tags: memory.tags,
-                date: memory.date || new Date().toISOString()
+                createdAt: now,
+                modifiedAt: now,
+                lastViewedAt: now
             };
 
             // Create memory note
@@ -107,7 +125,7 @@ export class MemoryManager {
             );
 
             this.eventManager.emit(EventTypes.MEMORY_CREATED, {
-                type: memory.type,
+                type: memory.category,  // Changed from type to category
                 title: memory.title,
                 path: file.path
             });
@@ -118,6 +136,64 @@ export class MemoryManager {
             return file;
         } catch (error) {
             throw this.handleError('createMemory', error);
+        }
+    }
+
+    /**
+     * Update an existing memory
+     */
+    async updateMemory(memory: Memory): Promise<TFile> {
+        try {
+            const path = `${this.settings.rootPath}/${memory.title}.md`;
+            const now = new Date().toISOString();
+            const file = await this.vaultManager.createNote(
+                path,
+                memory.content,
+                {
+                    frontmatter: {
+                        category: memory.category,  // Changed from type to category
+                        description: memory.description,
+                        tags: memory.tags,
+                        relationships: memory.relationships,
+                        createdAt: memory.createdAt,
+                        modifiedAt: now,
+                        lastViewedAt: memory.lastViewedAt
+                    }
+                }
+            );
+
+            this.eventManager.emit(EventTypes.MEMORY_UPDATED, {
+                type: memory.category,  // Changed from type to category
+                title: memory.title,
+                path: file.path
+            });
+
+            return file;
+        } catch (error) {
+            throw this.handleError('updateMemory', error);
+        }
+    }
+
+    /**
+     * Delete a memory by title
+     */
+    async deleteMemory(title: string): Promise<void> {
+        try {
+            const path = `${this.settings.rootPath}/${title}.md`;
+            
+            // Get memory type before deletion
+            const metadata = await this.vaultManager.getNoteMetadata(path);
+            const type = metadata?.type || 'episodic';
+            
+            await this.vaultManager.deleteNote(path);
+            
+            this.eventManager.emit(EventTypes.MEMORY_DELETED, {
+                type,
+                title,
+                path
+            });
+        } catch (error) {
+            throw this.handleError('deleteMemory', error);
         }
     }
 
@@ -134,64 +210,27 @@ export class MemoryManager {
                 return null;
             }
 
+            // Update last viewed timestamp
+            const now = new Date().toISOString();
+            await this.vaultManager.updateNoteMetadata(path, {
+                ...metadata,
+                lastViewedAt: now
+            });
+
             return {
                 title,
                 content,
                 description: metadata.description,
-                type: metadata.type,
-                categories: metadata.categories,
+                category: metadata.category,  // Changed from type to category
                 tags: metadata.tags,
-                date: metadata.date
+                relationships: metadata.relationships,
+                createdAt: metadata.createdAt,
+                modifiedAt: metadata.modifiedAt,
+                lastViewedAt: now
             };
         } catch (error) {
             console.error(`Error retrieving memory: ${error.message}`);
             return null;
-        }
-    }
-
-    /**
-     * Search through memories
-     */
-    async searchMemories(
-        query: string, 
-        options: { type?: MemoryType; category?: string; } = {}
-    ): Promise<SearchResult[]> {
-        try {
-            const matches = await this.searchEngine.search(query, {
-                threshold: 60,
-                searchContent: true,
-                limit: 10
-            });
-
-            // Filter for memory files and process them sequentially
-            const results = [];
-            for (const match of matches) {
-                const file = match.item as MemoryFile;
-                if (!file.path.startsWith(this.settings.memoryPath)) {
-                    continue;
-                }
-
-                // Apply type/category filters if specified
-                if (options.type || options.category) {
-                    const metadata = await this.vaultManager.getNoteMetadata(file.path);
-                    if (options.type && metadata?.type !== options.type) {
-                        continue;
-                    }
-                    if (options.category && !metadata?.categories?.includes(options.category)) {
-                        continue;
-                    }
-                }
-
-                results.push({
-                    file: match.item,
-                    score: match.match?.score || 0,
-                    matches: [match]
-                });
-            }
-
-            return results;
-        } catch (error) {
-            throw this.handleError('searchMemories', error);
         }
     }
 
@@ -261,7 +300,7 @@ export class MemoryManager {
             const sections = this.parseIndexSections(indexContent);
             
             // Add memory to appropriate section based on type
-            const sectionTitle = this.getMemoryTypeSection(memory.type);
+            const sectionTitle = this.getMemoryTypeSection(memory.category);  // Changed from type to category
             if (!sections[sectionTitle]) {
                 sections[sectionTitle] = [];
             }

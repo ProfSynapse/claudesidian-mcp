@@ -11,17 +11,34 @@
     opacity: 0.8;
 }
 
+.bridge-mcp-status-icon {
+    display: flex;
+    align-items: center;
+}
+
 /* Status Colors */
 .bridge-mcp-status-running {
     color: var(--text-success);
+}
+
+.bridge-mcp-status-running .bridge-mcp-status-icon {
+    color: var(--color-green);
 }
 
 .bridge-mcp-status-error {
     color: var(--text-error);
 }
 
+.bridge-mcp-status-error .bridge-mcp-status-icon {
+    color: var(--color-red);
+}
+
 .bridge-mcp-status-stopped {
     color: var(--text-muted);
+}
+
+.bridge-mcp-status-stopped .bridge-mcp-status-icon {
+    color: var(--color-muted);
 }
 
 .bridge-mcp-status-initializing,

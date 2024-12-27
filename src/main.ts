@@ -2,11 +2,9 @@ import { Plugin } from 'obsidian';
 import { BridgeMCPServer } from './mcp/server';
 import { StatusBar } from './components/StatusBar';
 import { MemoryManager } from './services/MemoryManager';
-import { ReasoningManager } from './services/ReasoningManager';
-import { SearchEngine } from './services/SearchEngine';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { VaultManager } from './services/VaultManager';
-import { BridgeMCPSettings, DEFAULT_SETTINGS } from './settings';
+import { MCPSettings, DEFAULT_SETTINGS } from './types';
 import { SettingsTab } from './components/SettingsTab';
 import { EventManager } from './services/EventManager';
 import { IndexManager } from './services/IndexManager';
@@ -16,9 +14,7 @@ export default class BridgeMCPPlugin extends Plugin {
     private statusBar: StatusBar;
     private toolRegistry: ToolRegistry;
     private memoryManager: MemoryManager;
-    private reasoningManager: ReasoningManager;
-    private searchEngine: SearchEngine;
-    settings: BridgeMCPSettings;  // Changed from MCPSettings to BridgeMCPSettings
+    settings: MCPSettings;
 
     async onload() {
         console.log('BridgeMCPPlugin: onload started');
@@ -26,25 +22,27 @@ export default class BridgeMCPPlugin extends Plugin {
             // Load settings
             this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
             
-            // Initialize managers
+            // Initialize core managers
             const vaultManager = new VaultManager(this.app);
-            this.searchEngine = new SearchEngine(this.app.vault, vaultManager);
-            
             const eventManager = new EventManager();
             const indexManager = new IndexManager(vaultManager, eventManager, this.settings);
             
-            this.memoryManager = new MemoryManager(vaultManager, this.searchEngine, eventManager);
-            this.reasoningManager = new ReasoningManager(vaultManager, this.settings, eventManager);
+            // Create memory manager
+            this.memoryManager = new MemoryManager(
+                vaultManager, 
+                eventManager,
+                this.settings
+            );
             
-            // Initialize Tool Registry and MCP Server
+            // Initialize Tool Registry with memory manager
             this.toolRegistry = new ToolRegistry(
                 this.app,
+                this, // Add plugin instance
                 vaultManager,
-                this.memoryManager,
-                this.reasoningManager,
-                this.searchEngine
+                this.memoryManager
             );
-
+            
+            // Initialize MCP Server
             this.mcpServer = new BridgeMCPServer(this.app, this.toolRegistry);
             
             // Add settings tab and initialize UI
@@ -52,10 +50,8 @@ export default class BridgeMCPPlugin extends Plugin {
             this.initializeStatusBar();
             this.registerCommands();
 
-            // Start server if auto-start is enabled
-            if (this.settings.autoStart) {
-                await this.mcpServer.start();
-            }
+            // Always start server when plugin loads
+            await this.mcpServer.start();
         } catch (error: any) {
             console.error('BridgeMCPPlugin: Error during onload', error);
         }
