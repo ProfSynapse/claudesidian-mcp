@@ -1,4 +1,5 @@
 import { BaseTool, IToolContext } from '../BaseTool';
+import { formatRelationshipSection, formatPredicate, formatWikilink } from '../../utils/relationshipUtils';
 
 interface KnowledgeTriplet {
     subject: string;
@@ -251,11 +252,15 @@ export class ReasoningTool extends BaseTool {
         const filename = `${analysis.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.md`;
         const fullPath = `${reasoningFolder}/${filename}`;
         
+        const relationships = analysis.knowledgeGraph?.map((t: KnowledgeTriplet) => 
+            `${formatPredicate(t.predicate)} ${formatWikilink(t.object)}`
+        ) || [];
+
         const content = [
             '---',
             'type: reasoning',
             `created: ${new Date().toISOString()}`,
-            `query: "${analysis.query}"`,
+            `query: ${analysis.query}`, // Removed extra quotes
             '---',
             '',
             '# Memory',
@@ -267,12 +272,7 @@ export class ReasoningTool extends BaseTool {
                 analysis.currentSubgoal,
                 ''
             ].join('\n') : '',
-            '# Relationships',
-            analysis.knowledgeGraph?.map((t: KnowledgeTriplet) => 
-                `${t.predicate.startsWith('#') ? t.predicate : `#${t.predicate}`} ${
-                    t.object.startsWith('[[') ? t.object : `[[${t.object}]]`}`
-            ).join('\n') || '_No relationships defined_',
-            '',
+            formatRelationshipSection(relationships),
             '## Proposer',
             `**Method**: ${analysis.proposer?.method || 'Not specified'}`,
             '',

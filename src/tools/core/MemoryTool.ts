@@ -3,6 +3,7 @@ import { Memory, MemoryType, MemoryTypes } from '../../services/MemoryManager';
 import { TFile } from 'obsidian';
 import { BridgeMCPSettings } from '../../settings';
 import { VaultManager } from '../../services/VaultManager';
+import { formatRelationshipSection } from '../../utils/relationshipUtils';
 
 interface MemoryToolArgs {
     action: 'create' | 'edit' | 'delete';
@@ -112,6 +113,12 @@ export class MemoryTool extends BaseTool {
     }
 
     private async createMemory(args: MemoryToolArgs): Promise<any> {
+        console.log('📝 Creating new memory:', {
+            title: args.title,
+            category: args.metadata?.category,
+            contentLength: args.content?.length
+        });
+
         if (!args.content) {
             throw new Error('Content is required for memory creation');
         }
@@ -140,16 +147,14 @@ export class MemoryTool extends BaseTool {
             description: args.metadata?.description || `Memory created on ${new Date().toLocaleString()}`,
             category: args.metadata?.category || 'episodic',  // Now correctly typed as MemoryType
             tags: args.metadata?.tags || [],
-            relationships: args.metadata?.relationships?.map(r => ({ 
-                relation: r, 
-                hits: 1 
-            })) || [],
+            relationships: [],
             createdAt: now,
             modifiedAt: now,
             lastViewedAt: now
         };
 
         const memoryFolder = `${this.settings.rootPath}/memory`;
+        console.log('📂 Creating in memory folder:', memoryFolder);
         await this.context.vault.ensureFolder(memoryFolder);
         
         const safeTitle = memory.title
@@ -162,8 +167,7 @@ export class MemoryTool extends BaseTool {
             '# Memory',
             args.content,
             '',
-            '# Relationships',
-            ...(args.metadata?.relationships?.map(r => r) || [])
+            formatRelationshipSection(args.metadata?.relationships)
         ].join('\n');
         
         const file = await this.context.vault.createNote(
@@ -174,11 +178,10 @@ export class MemoryTool extends BaseTool {
                     category: memory.category,
                     description: memory.description,
                     tags: memory.tags,
-                    relationships: memory.relationships,
                     createdAt: memory.createdAt,
                     modifiedAt: memory.modifiedAt,
                     lastViewedAt: memory.lastViewedAt,
-                    success: args.metadata?.success,  // Add success to frontmatter if provided
+                    success: args.metadata?.success
                 },
                 createFolders: true
             }
@@ -191,12 +194,16 @@ export class MemoryTool extends BaseTool {
             section: this.getMemoryTypeSection(memory.category)
         });
 
+        console.log(`✅ Memory created: ${memory.title}`);
         return file;
     }
 
     private async editMemory(args: MemoryToolArgs): Promise<any> {
+        console.log('✏️ Editing memory:', args.title);
         const existing = await this.context.memory.getMemory(args.title!);
+        
         if (!existing) {
+            console.error(`❌ Memory not found: ${args.title}`);
             throw new Error(`Memory not found: ${args.title}`);
         }
 
@@ -220,19 +227,25 @@ export class MemoryTool extends BaseTool {
             lastViewedAt: now
         };
 
+        console.log(`✅ Memory updated: ${args.title}`);
         return this.context.memory.updateMemory(updated);
     }
 
     private async deleteMemory(title: string): Promise<void> {
+        console.log('🗑️ Deleting memory:', title);
         const memoryFolder = `${this.settings.rootPath}/memory`;
         const path = `${memoryFolder}/${title}`;
-        return this.context.vault.deleteNote(path);
+        console.log('🗑️ Deleting from memory folder:', path);
+        await this.context.vault.deleteNote(path);
+        console.log(`✅ Memory deleted: ${title}`);
     }
 
     async getMemory(title: string): Promise<Memory | null> {
+        console.log('📖 Getting memory:', title);
         try {
             const memoryFolder = `${this.settings.rootPath}/memory`;
             const path = `${memoryFolder}/${title}`;
+            console.log('📖 Reading from memory folder:', path);
             
             // Replace vaultManager with context.vault
             const content = await this.context.vault.readNote(path);
@@ -249,18 +262,19 @@ export class MemoryTool extends BaseTool {
                 lastViewedAt: now
             });
 
+            console.log(`✅ Memory retrieved: ${title}`);
             return {
                 title,
                 content,
                 description: metadata.description || '',
                 category: metadata.category || 'episodic',
                 tags: metadata.tags || [],
-                relationships: metadata.relationships || [],
                 createdAt: metadata.createdAt || now,
                 modifiedAt: metadata.modifiedAt || now,
                 lastViewedAt: now
             };
         } catch (error) {
+            console.error(`❌ Failed to get memory: ${error.message}`);
             throw new Error(`Failed to get memory: ${error.message}`);
         }
     }

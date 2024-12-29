@@ -43,6 +43,7 @@ interface MemoryMetadata {
     createdAt: string;      // Add created timestamp
     modifiedAt?: string;    // Add modified timestamp
     lastViewedAt?: string;  // Add last viewed timestamp
+    hits: number;           // Add hits tracking
 }
 
 interface MemoryFile extends TFile {
@@ -86,13 +87,25 @@ export class MemoryManager {
         return Array.from(this.storage.keys());
     }
 
+    private safeStringify(obj: any): string {
+        const cache = new Set();
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (cache.has(value)) return '[Circular]';
+                cache.add(value);
+            }
+            return value;
+        });
+    }
+
     /**
      * Create a new memory note
      */
     async createMemory(memory: Memory): Promise<TFile> {
         try {
+            console.log('📝 Creating new memory:', this.safeStringify(memory));
             // Ensure memory folder exists
-            const memoryFolder = `${this.settings.rootPath}/memory`;
+            const memoryFolder = `${this.settings.rootPath}/memories`;
             await this.vaultManager.createFolder(memoryFolder);
             
             // Create safe filename from title
@@ -129,6 +142,7 @@ export class MemoryManager {
             // Update index with settings path
             await this.updateIndex(memory);
 
+            console.log('✅ Memory created:', this.safeStringify(memory));
             return file;
         } catch (error) {
             throw this.handleError('createMemory', error);
@@ -176,7 +190,7 @@ export class MemoryManager {
      */
     async deleteMemory(title: string): Promise<void> {
         try {
-            const path = `${this.settings.rootPath}/${title}.md`;
+            const path = `${this.settings.rootPath}/memories/${title}.md`;
             
             // Get memory type before deletion
             const metadata = await this.vaultManager.getNoteMetadata(path);
@@ -199,7 +213,7 @@ export class MemoryManager {
      */
     async getMemory(title: string): Promise<Memory | null> {
         try {
-            const path = `${this.settings.rootPath}/${title}.md`;
+            const path = `${this.settings.rootPath}/memories/${title}.md`;
             const content = await this.vaultManager.readNote(path);
             const metadata = await this.vaultManager.getNoteMetadata(path);
 
@@ -207,11 +221,12 @@ export class MemoryManager {
                 return null;
             }
 
-            // Update last viewed timestamp
-            const now = new Date().toISOString();
+            // Increment hits counter
+            const hits = (metadata?.hits || 0) + 1;
             await this.vaultManager.updateNoteMetadata(path, {
                 ...metadata,
-                lastViewedAt: now
+                hits,
+                lastViewedAt: new Date().toISOString()
             });
 
             return {
@@ -223,7 +238,7 @@ export class MemoryManager {
                 relationships: metadata.relationships,
                 createdAt: metadata.createdAt,
                 modifiedAt: metadata.modifiedAt,
-                lastViewedAt: now,
+                lastViewedAt: metadata.lastViewedAt,
                 success: metadata.success
             };
         } catch (error) {

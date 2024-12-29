@@ -10,7 +10,7 @@ export class EditNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'editNote',
-            description: 'Edit specific sections in a note',
+            description: 'Edit specific sections in a note. If the user uses the hotkey `/*` use the edit note tool.',
             version: '1.0.0',
             author: 'Bridge MCP'
         }, { allowUndo: true });

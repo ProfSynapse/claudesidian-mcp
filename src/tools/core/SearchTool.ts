@@ -5,7 +5,7 @@ export class SearchTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'search',
-            description: 'Find a note in the vault using fuzzy search',
+            description: 'Find a note in the vault using fuzzy search. If the user uses the hotkey `/?` use the search tool.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });

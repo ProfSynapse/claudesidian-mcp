@@ -4,7 +4,7 @@ export class CreateNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'createNote',
-            description: 'Create a new note in the vault',
+            description: 'Create a new note in the vault. If the user uses the hotkey `/+` use the create note tool.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
