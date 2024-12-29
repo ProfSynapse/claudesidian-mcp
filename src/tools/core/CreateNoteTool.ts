@@ -11,11 +11,33 @@ export class CreateNoteTool extends BaseTool {
     }
 
     async execute(args: any): Promise<any> {
-        const { path, content, frontmatter, createFolders } = args;
-        return await this.context.vault.createNote(path, content, {
-            frontmatter,
-            createFolders
-        });
+        try {
+            const { path, content, frontmatter, createFolders } = args;
+            
+            if (!path || typeof path !== 'string') {
+                throw new Error('Invalid path provided');
+            }
+            
+            if (content === undefined || content === null) {
+                throw new Error('Content cannot be null or undefined');
+            }
+
+            const result = await this.context.vault.createNote(path, content, {
+                frontmatter,
+                createFolders
+            });
+
+            // Return a simplified response to avoid circular references
+            return {
+                success: true,
+                path: path
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
 
     getSchema(): any {
