@@ -1,61 +1,70 @@
+# Claudesidian MCP Plugin for Obsidian
+
+Bridge MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system.
+
+## Features
+
+- 🔌 MCP Server Integration
+  - Seamlessly connects your vault to Claude Desktop via MCP
+  - Exposes vault operations as MCP tools
+  - Implements secure access controls
+
+- 📝 Vault Operations
+  - Create and read notes
+  - Search vault content
+  - Manage file structure
+  - Operate on frontmatter
+
+- 🧠 Memory Architecture
+  - Persistent memory storage in dedicated notes
+  - Structured knowledge organization
+  - Automatic memory indexing
+  - Memory retrieval and search
+
+## Installation
+
+1. Install the plugin by putting the manifest.json, styles.css, main.js and connector.js the following path:
+    `path/to/vault/.obsidian/plugins/bridge-mcp` (you will need to make the bridge-mcp folder)
+2. Enable the plugin in Obsidian's settings
+3. Configure your claude desktop config file (instructions in the plugin settings)
+4. Restart obsidian (if it's open) and fully restart claude (you might have to go to your task manager and end the task, as it runs in the background if you just `x` out).
+
+## Configuration
+
+The plugin creates the following folder structure in your vault:
+
 ```
-bridge-mcp/
-├── manifest.json
-├── package.json
-├── tsconfig.json
-├── styles.css
-├── src/
-│   ├── main.ts                    # Plugin entry point
-│   ├── settings.ts                # Plugin settings
-│   ├── types.ts                   # Shared types
-│   ├── components/
-│   │   ├── StatusBar.ts
-│   │   └── SettingsTab.ts
-│   ├── mcp/
-│   │   ├── server.ts              # MCP server core
-│   │   ├── transport.ts           # stdio transport
-│   │   └── interfaces/            # Core interfaces
-│   │       ├── ITool.ts          # Tool interface
-│   │       ├── IToolProvider.ts  # Tool provider interface
-│   │       └── IToolContext.ts   # Tool context interface
-│   ├── services/
-│   │   ├── VaultManager.ts
-│   │   ├── MemoryManager.ts
-│   │   ├── ReasoningManager.ts
-│   │   ├── SearchEngine.ts
-│   │   └── ToolManager.ts        # Tool loading & management
-│   ├── tools/                    # Core tool implementations
-│   │   ├── base/
-│   │   │   ├── BaseTool.ts       # Base tool class
-│   │   │   └── decorators.ts     # Tool decorators
-│   │   ├── core/                 # Built-in tools
-│   │   │   ├── MemoryTool.ts
-│   │   │   ├── ReasoningTool.ts
-│   │   │   └── SearchTool.ts
-│   │   └── registry.ts          # Tool registry
-│   ├── api/                     # Public API for extensions
-│   │   ├── index.ts             # API entry point
-│   │   ├── toolKit.ts           # Tool development utilities
-│   │   └── events.ts            # Event system
-│   └── utils/
-│       ├── constants.ts
-│       ├── helpers.ts
-│       └── logger.ts
-├── tools/                       # Example custom tools
-│   ├── GitTool/                # Example Git integration
-│   │   ├── package.json
-│   │   └── src/
-│   │       └── index.ts
-│   └── WeatherTool/            # Example Weather API
-│       ├── package.json
-│       └── src/
-│           └── index.ts
-└── docs/                       # Documentation
-    ├── tool-development.md     # Tool development guide
-    └── examples/               # Example implementations
+claudesidian/
+├── memory/        # Persistent memory storage
+├── reasoning/     # Reasoning traces and logs
+└── index          # Search indices
 ```
 
-Key Extensibility Features:
+
+
+3. Restart Claude Desktop
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Build the plugin
+npm run build
+
+# Run tests
+npm run test
+```
+
+## Security
+
+- The plugin runs an MCP server that only accepts local connections
+- All vault operations require explicit user permission
+- Memory storage is contained within your vault
+- No data is sent externally without consent
+
+## Key Extensibility Features:
 
 1. **Tool Interface & Base Class**
 ```typescript
@@ -137,4 +146,3 @@ export class WeatherTool extends BaseTool {
     }
 }
 ```
-
