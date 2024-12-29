@@ -23,7 +23,7 @@ Bridge MCP is an Obsidian plugin that enables AI assistants to interact with you
 
 ## Installation
 
-1. Install the plugin by putting the manifest.json, styles.css, main.js and connector.js the following path:
+1. Install the plugin by downloading the latest release, and putting the manifest.json, styles.css, main.js, and connector.js in the following path:
     `path/to/vault/.obsidian/plugins/bridge-mcp` (you will need to make the bridge-mcp folder)
 2. Enable the plugin in Obsidian's settings
 3. Configure your claude desktop config file (instructions in the plugin settings)
@@ -38,23 +38,6 @@ claudesidian/
 ├── memory/        # Persistent memory storage
 ├── reasoning/     # Reasoning traces and logs
 └── index          # Search indices
-```
-
-
-
-3. Restart Claude Desktop
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Build the plugin
-npm run build
-
-# Run tests
-npm run test
 ```
 
 ## Security
