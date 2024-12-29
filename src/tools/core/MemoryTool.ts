@@ -55,7 +55,7 @@ export class MemoryTool extends BaseTool {
                     properties: {
                         category: {
                             type: "string",
-                            enum: ["core", "episodic", "semantic", "procedural", "emotional", "contextual", "search"],
+                            enum: ["core", "episodic", "semantic", "procedural", "emotional", "contextual", "search", "relationship"],
                             description: `Memory categories:
                                 core - Foundational beliefs and core aspects of identity
                                 episodic - Specific events or experiences tied to time and place
@@ -63,7 +63,8 @@ export class MemoryTool extends BaseTool {
                                 procedural - Skills, processes and how-to knowledge
                                 emotional - Feelings, reactions and emotional experiences
                                 contextual - Contextual information and environmental details
-                                search - Results from search operations`
+                                search - Results from search operations
+                                relationship - A memory related to a personal relationship of the user`
                         },
                         description: {
                             type: "string",

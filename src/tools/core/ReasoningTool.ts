@@ -40,7 +40,7 @@ export class ReasoningTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'reasoning',
-            description: 'You are MANDATED to start EVERY interaction with your reasoning tool, as it will help guide you through the conversation, and consider what tools you might need, and in what sequence to use them. I repeat EVERY SINGLE OUT starts with you using the reasoning tool. If you understand, start by using this tool.',
+            description: 'You are MANDATED to start EVERY interaction with your reasoning tool. If the query relates to past experiences, knowledge, or context, set requiresMemoryContext to true and your first step should be using the searchMemory tool. This applies to personal queries, context-dependent questions, or references to past events. Then determine what additional tools you might need.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -115,17 +115,17 @@ export class ReasoningTool extends BaseTool {
                         },
                         reasoning_prompt: {
                             type: "string",
-                            description: "Given the goal and current state, what logical step should come next and why?"
+                            description: "Given the goal and current state, reason step-by-step what comes next and why?"
                         }
                     },
                     required: ["method", "reasoning_prompt"]
                 },
                 critic: {
                     type: "array",
-                    description: "Provide constructive criticism about the current approach and potential improvements",
+                    description: "Provide constructive criticism about the proposer's approach and potential improvements",
                     items: {
                         type: "string",
-                        description: "Each criticism should be specific, actionable, and focused on improving the solution"
+                        description: "Each criticism will be specific, actionable, and focused on improving the solution"
                     }
                 },
                 reflector: {
@@ -141,6 +141,10 @@ export class ReasoningTool extends BaseTool {
                         }
                     }
                 },
+                requiresMemoryContext: {
+                    type: "boolean",
+                    description: "Set to true if this reasoning requires searching memories first. Consider true for: personal queries, context-dependent questions, references to past events, or building on previous interactions. If true, first step must use searchMemory tool."
+                },
                 steps: {
                     type: "array",
                     items: {
@@ -152,7 +156,7 @@ export class ReasoningTool extends BaseTool {
                             },
                             description: {
                                 type: "string",
-                                description: "Clear description of the step"
+                                description: "Clear description of the step. If requiresMemoryContext is true, first step must be memory search."
                             },
                             requires_tool: {
                                 type: "boolean",
@@ -164,13 +168,17 @@ export class ReasoningTool extends BaseTool {
                                 enum: {
                                     "$ref": "#/definitions/available_tools"
                                 }
+                            },
+                            memory_context_used: {
+                                type: "boolean",
+                                description: "Whether this step utilized memory search results"
                             }
                         },
                         required: ["step_number", "description", "requires_tool"]
                     }
                 }
             },
-            required: ["title", "query", "goal"],
+            required: ["title", "query", "goal", "requiresMemoryContext"],
             definitions: {
                 available_tools: {
                     type: "string",
@@ -181,26 +189,6 @@ export class ReasoningTool extends BaseTool {
         };
     }
 
-    private formatKnowledgeTriplet(triplet: KnowledgeTriplet): KnowledgeTriplet {
-        const wrapWikilink = (text: string) => {
-            text = text.trim();
-            return text.startsWith('[[') ? text : `[[${text}]]`;
-        };
-
-        const formatPredicate = (text: string) => {
-            text = text.trim()
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '_')
-                .replace(/^_|_$/g, '');
-            return `#${text}`;
-        };
-
-        return {
-            subject: wrapWikilink(triplet.subject),
-            predicate: formatPredicate(triplet.predicate),
-            object: wrapWikilink(triplet.object)
-        };
-    }
 
     // Update execute method to handle dynamic tool list
     async execute(args: ReasoningArgs): Promise<any> {
@@ -260,7 +248,7 @@ export class ReasoningTool extends BaseTool {
             '---',
             'type: reasoning',
             `created: ${new Date().toISOString()}`,
-            `query: ${analysis.query}`, // Removed extra quotes
+            `query: ${analysis.query}`,
             '---',
             '',
             '# Memory',
