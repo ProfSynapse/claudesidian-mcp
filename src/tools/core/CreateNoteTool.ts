@@ -1,4 +1,5 @@
 import { BaseTool, IToolContext } from '../BaseTool';
+import { join } from 'path';
 
 export class CreateNoteTool extends BaseTool {
     constructor(context: IToolContext) {
@@ -10,19 +11,36 @@ export class CreateNoteTool extends BaseTool {
         });
     }
 
+    private ensureMdExtension(path: string): string {
+        if (!path.toLowerCase().endsWith('.md')) {
+            return path + '.md';
+        }
+        return path;
+    }
+
     async execute(args: any): Promise<any> {
         try {
-            const { path, content, frontmatter, createFolders } = args;
+            let { title, path, content, frontmatter, createFolders } = args;
             
-            if (!path || typeof path !== 'string') {
-                throw new Error('Invalid path provided');
+            // If no path specified but title exists, create in inbox
+            if (!path && title) {
+                path = join(this.context.settings.rootPath, 'inbox', this.ensureMdExtension(title));
+            } else if (!path) {
+                // Fallback if neither path nor title specified
+                path = join(this.context.settings.rootPath, 'inbox', `${Date.now()}.md`);
+            } else if (!path.startsWith(this.context.settings.rootPath)) {
+                // If path provided but not absolute, prefix with root path
+                path = join(this.context.settings.rootPath, path);
             }
-            
+
             if (content === undefined || content === null) {
                 throw new Error('Content cannot be null or undefined');
             }
 
-            const result = await this.context.vault.createNote(path, content, {
+            // Ensure path has .md extension
+            const finalPath = this.ensureMdExtension(path);
+
+            const result = await this.context.vault.createNote(finalPath, content, {
                 frontmatter,
                 createFolders
             });
@@ -30,7 +48,7 @@ export class CreateNoteTool extends BaseTool {
             // Return a simplified response to avoid circular references
             return {
                 success: true,
-                path: path
+                path: finalPath
             };
         } catch (error) {
             return {
@@ -44,9 +62,14 @@ export class CreateNoteTool extends BaseTool {
         return {
             type: "object",
             properties: {
+                title: {
+                    type: "string",
+                    description: "Title of the note (will be used as filename if path not specified)"
+                },
                 path: {
                     type: "string",
-                    description: "Path where to create the note"
+                    description: "Full path where to create the note (overrides title-based path)",
+                    default: `${this.context.settings.rootPath}/inbox`
                 },
                 content: {
                     type: "string",
@@ -63,7 +86,7 @@ export class CreateNoteTool extends BaseTool {
                     default: false
                 }
             },
-            required: ["path", "content"]
+            required: ["content"]
         };
     }
 }

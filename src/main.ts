@@ -94,6 +94,13 @@ export default class BridgeMCPPlugin extends Plugin {
                 await this.vaultManager.createFolder(this.settings.rootPath);
             }
 
+            // Create inbox folder for default content
+            const inboxPath = `${this.settings.rootPath}/inbox`;
+            const inboxExists = await this.vaultManager.folderExists(inboxPath);
+            if (!inboxExists) {
+                await this.vaultManager.createFolder(inboxPath);
+            }
+
             // Create subfolders only if their features are enabled
             if (this.settings.enabledMemory) {
                 const memoryPath = `${this.settings.rootPath}/memory`;
