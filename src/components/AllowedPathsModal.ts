@@ -16,30 +16,30 @@ export class AllowedPathsModal extends Modal {
         // Add modal-specific styles
         contentEl.createEl('style', {
             text: `
-                .bridge-mcp-folder-container {
+                .claudesidian-mcp-folder-container {
                     max-height: 400px;
                     overflow-y: auto;
                     margin: 1em 0;
                     border: 1px solid var(--background-modifier-border);
                     border-radius: 4px;
                 }
-                .bridge-mcp-folder-item, .bridge-mcp-file-item {
+                .claudesidian-mcp-folder-item, .claudesidian-mcp-file-item {
                     display: flex;
                     align-items: center;
                     padding: 6px 8px;
                     cursor: pointer;
                     transition: background-color 0.1s ease;
                 }
-                .bridge-mcp-folder-item:hover, .bridge-mcp-file-item:hover {
+                .claudesidian-mcp-folder-item:hover, .claudesidian-mcp-file-item:hover {
                     background-color: var(--background-modifier-hover);
                 }
-                .bridge-mcp-checkbox {
+                .claudesidian-mcp-checkbox {
                     margin-right: 8px;
                 }
-                .bridge-mcp-folder-name, .bridge-mcp-file-name {
+                .claudesidian-mcp-folder-name, .claudesidian-mcp-file-name {
                     flex: 1;
                 }
-                .bridge-mcp-toggle {
+                .claudesidian-mcp-toggle {
                     margin-right: 4px;
                     width: 16px;
                     height: 16px;
@@ -48,19 +48,19 @@ export class AllowedPathsModal extends Modal {
                     justify-content: center;
                     transition: transform 0.15s ease;
                 }
-                .bridge-mcp-toggle.collapsed {
+                .claudesidian-mcp-toggle.collapsed {
                     transform: rotate(-90deg);
                 }
-                .bridge-mcp-children {
+                .claudesidian-mcp-children {
                     display: none;
                 }
-                .bridge-mcp-children.expanded {
+                .claudesidian-mcp-children.expanded {
                     display: block;
                 }
-                .bridge-mcp-file-item {
+                .claudesidian-mcp-file-item {
                     padding-left: 44px;
                 }
-                .bridge-mcp-icon {
+                .claudesidian-mcp-icon {
                     margin-right: 4px;
                     color: var(--text-muted);
                 }
@@ -73,7 +73,7 @@ export class AllowedPathsModal extends Modal {
         });
 
         const folderContainer = contentEl.createDiv({ 
-            cls: 'bridge-mcp-folder-container'
+            cls: 'claudesidian-mcp-folder-container'
         });
         
         const rootFolder = this.app.vault.getRoot();
@@ -89,20 +89,20 @@ export class AllowedPathsModal extends Modal {
             if (allFolders.length === 0) {
                 folderContainer.createEl('p', { 
                     text: 'No subfolders found in vault.',
-                    cls: 'bridge-mcp-no-folders'
+                    cls: 'claudesidian-mcp-no-folders'
                 });
             }
         } else {
             console.error('[AllowedPathsModal] Failed to access vault root folder');
             contentEl.createEl('p', { 
                 text: 'Error: Could not access vault folders.',
-                cls: 'bridge-mcp-error'
+                cls: 'claudesidian-mcp-error'
             });
         }
 
         // Add button container at the bottom
         const buttonContainer = contentEl.createDiv({
-            cls: 'bridge-mcp-button-container'
+            cls: 'claudesidian-mcp-button-container'
         });
         
         const saveButton = buttonContainer.createEl('button', {
@@ -140,7 +140,7 @@ export class AllowedPathsModal extends Modal {
         console.log('Rendering folder:', folder.path, folder.name); // Debug log
         
         const folderDiv = container.createDiv({ 
-            cls: ['folder-item', 'bridge-mcp-folder-item'] // Added specific class
+            cls: ['folder-item', 'claudesidian-mcp-folder-item'] // Added specific class
         });
         
         // Ensure minimum left padding
@@ -148,25 +148,25 @@ export class AllowedPathsModal extends Modal {
 
         // Replace arrow with folder icon
         const toggleIcon = folderDiv.createSpan({
-            cls: 'bridge-mcp-toggle'
+            cls: 'claudesidian-mcp-toggle'
         });
         setIcon(toggleIcon, 'folder');
 
         const checkbox = folderDiv.createEl('input', {
             type: 'checkbox',
-            cls: ['folder-checkbox', 'bridge-mcp-checkbox']
+            cls: ['folder-checkbox', 'claudesidian-mcp-checkbox']
         });
         
         checkbox.checked = this.selectedPaths.has(folder.path);
 
         const nameSpan = folderDiv.createSpan({
             text: folder.path === '/' ? '/' : folder.name,
-            cls: ['folder-name', 'bridge-mcp-folder-name']
+            cls: ['folder-name', 'claudesidian-mcp-folder-name']
         });
 
         // Create container for children
         const childrenContainer = container.createDiv({
-            cls: ['bridge-mcp-children', 'expanded']
+            cls: ['claudesidian-mcp-children', 'expanded']
         });
 
         // Toggle handler
@@ -190,7 +190,7 @@ export class AllowedPathsModal extends Modal {
             };
 
             // Update all child folders and files
-            childrenContainer.querySelectorAll('.bridge-mcp-folder-item, .bridge-mcp-file-item')
+            childrenContainer.querySelectorAll('.claudesidian-mcp-folder-item, .claudesidian-mcp-file-item')
                 .forEach(child => updateChildCheckbox(child as HTMLElement));
         };
 
@@ -229,19 +229,19 @@ export class AllowedPathsModal extends Modal {
 
     private renderFile(file: TFile, container: HTMLElement, depth: number) {
         const fileDiv = container.createDiv({
-            cls: ['file-item', 'bridge-mcp-file-item']
+            cls: ['file-item', 'claudesidian-mcp-file-item']
         });
 
         fileDiv.style.paddingLeft = `${Math.max(8, depth * 20)}px`;
 
         const fileIcon = fileDiv.createSpan({
-            cls: 'bridge-mcp-icon'
+            cls: 'claudesidian-mcp-icon'
         });
         setIcon(fileIcon, 'document');
 
         const checkbox = fileDiv.createEl('input', {
             type: 'checkbox',
-            cls: ['file-checkbox', 'bridge-mcp-checkbox']
+            cls: ['file-checkbox', 'claudesidian-mcp-checkbox']
         });
         
         checkbox.checked = this.selectedPaths.has(file.path);
@@ -249,7 +249,7 @@ export class AllowedPathsModal extends Modal {
 
         const nameSpan = fileDiv.createSpan({
             text: file.name,
-            cls: ['file-name', 'bridge-mcp-file-name']
+            cls: ['file-name', 'claudesidian-mcp-file-name']
         });
 
         fileDiv.addEventListener('click', (e) => {

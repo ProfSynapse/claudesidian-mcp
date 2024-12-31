@@ -1,5 +1,5 @@
 {
-    "name": "bridge-mcp",
+    "name": "claudesidian-mcp",
     "version": "0.1.0",
     "description": "Model Context Protocol (MCP) integration for Obsidian",
     "main": "main.js",

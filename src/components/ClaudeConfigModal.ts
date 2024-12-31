@@ -47,7 +47,7 @@ export class ClaudeConfigModal extends Modal {
 
         const config = {
             mcpServers: {
-                "bridge-mcp": {
+                "claudesidian-mcp": {
                     command: "node",
                     args: [this.getConnectorPath()]
                 }
@@ -77,7 +77,7 @@ export class ClaudeConfigModal extends Modal {
     private getConnectorPath(): string {
         // Get the vault's root path using the correct method
         const vaultRoot = (this.app.vault.adapter as any).basePath;
-        return path.join(vaultRoot, '.obsidian/plugins/bridge-mcp/connector.js');
+        return path.join(vaultRoot, '.obsidian/plugins/claudesidian-mcp/connector.js');
     }
 
     private getConfigPath(): string {

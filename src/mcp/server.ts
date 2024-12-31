@@ -29,7 +29,7 @@ export class BridgeMCPServer {
         this.settings = settings;
         this.server = new Server(
             {
-                name: "bridge-mcp",
+                name: "claudesidian-mcp",
                 version: "1.0.0"
             },
             {

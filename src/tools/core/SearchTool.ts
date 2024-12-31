@@ -59,7 +59,7 @@ export class SearchTool extends BaseTool {
 
         // If saveAsDistinct is true or there are similarly named files, use distinct name
         if (saveAsDistinct || this.hasSimilarFiles(matches[0].file.path, files)) {
-            const distinctPath = `bridge-mcp/${this.createDistinctFilename(query)}`;
+            const distinctPath = `${this.context.settings.rootPath}/${this.createDistinctFilename(query)}`;
             console.log(`Using distinct path: ${distinctPath}`);
             return distinctPath;
         }

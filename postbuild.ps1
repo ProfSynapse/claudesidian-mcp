@@ -1,7 +1,7 @@
 # postbuild.ps1
 
 $SRC_PATH = ".\main.js"
-$TARGET_PATH = "C:\Users\Joseph\Documents\Plugin_Tester\.obsidian\plugins\bridge-mcp\main.js"
+$TARGET_PATH = "C:\Users\Joseph\Documents\Plugin_Tester\.obsidian\plugins\claudesidian-mcp\main.js"
 
 Write-Host "Copying $SRC_PATH to $TARGET_PATH"
 Copy-Item $SRC_PATH $TARGET_PATH -Force

@@ -1,4 +1,4 @@
-.bridge-mcp-folder-container {
+.claudesidian-mcp-folder-container {
     max-height: 400px;
     overflow-y: auto;
     margin: 1em 0;
@@ -6,7 +6,7 @@
     border-radius: 4px;
 }
 
-.bridge-mcp-folder-item {
+.claudesidian-mcp-folder-item {
     display: flex;
     align-items: center;
     padding: 6px 8px;
@@ -14,31 +14,31 @@
     transition: background-color 0.1s ease;
 }
 
-.bridge-mcp-folder-item:hover {
+.claudesidian-mcp-folder-item:hover {
     background-color: var(--background-modifier-hover);
 }
 
-.bridge-mcp-checkbox {
+.claudesidian-mcp-checkbox {
     margin-right: 8px;
 }
 
-.bridge-mcp-folder-name {
+.claudesidian-mcp-folder-name {
     flex: 1;
 }
 
-.bridge-mcp-button-container {
+.claudesidian-mcp-button-container {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
     margin-top: 1em;
 }
 
-.bridge-mcp-error {
+.claudesidian-mcp-error {
     color: var(--text-error);
     padding: 1em;
 }
 
-.bridge-mcp-no-folders {
+.claudesidian-mcp-no-folders {
     padding: 1em;
     text-align: center;
     color: var(--text-muted);

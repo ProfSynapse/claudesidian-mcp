@@ -6,6 +6,7 @@ interface SearchMemoryResult {
     file: {
         path: string;
         basename: string;
+        stat?: { mtime: number };
     };
     title: string;
     type: MemoryType;
@@ -14,6 +15,18 @@ interface SearchMemoryResult {
     strength: number;
     score: number;
     content: string;
+}
+
+interface SearchMemoryArgs {
+    action: 'get' | 'list' | 'search';
+    path?: string;
+    query?: string;
+    type?: MemoryType;
+    category?: string[];
+    tags?: string[];
+    includeRelated?: boolean;
+    minStrength?: number;
+    limit?: number;
 }
 
 export class SearchMemoryTool extends BaseTool {
@@ -62,82 +75,119 @@ export class SearchMemoryTool extends BaseTool {
         return { score, matchType: matches };
     }
 
-    async execute(args: {
-        keywords?: string[];
-        limit?: number;
-    }): Promise<SearchMemoryResult[]> {
-        console.log('🔎 Searching memory notes:', args);
+    async execute(args: SearchMemoryArgs): Promise<SearchMemoryResult[]> {
+        switch (args.action) {
+            case 'get':
+                return this.getMemory(args.path!);
+            case 'list':
+                return this.listMemories(args);
+            case 'search':
+                return this.searchMemories(args);
+            default:
+                throw new Error(`Unknown action: ${args.action}`);
+        }
+    }
 
-        // Ensure we have a valid memory type
-        let memoryType: MemoryType = 'episodic'; // Default
-        if (args.keywords) {
-            const typeKeyword = args.keywords.find(kw => MemoryTypes.includes(kw as MemoryType));
-            if (typeKeyword && MemoryTypes.includes(typeKeyword as MemoryType)) {
-                memoryType = typeKeyword as MemoryType;
-            }
+    private async getMemory(path: string): Promise<SearchMemoryResult[]> {
+        const file = this.context.app.vault.getAbstractFileByPath(path) as TFile;
+        if (!file) {
+            throw new Error(`Memory not found: ${path}`);
         }
 
-        const memoryPath = `${this.context.settings.rootPath}/memory`;
-        const files = this.context.app.vault.getMarkdownFiles()
-            .filter(file => file.path.startsWith(memoryPath));
-
-        // Prepare search query without the memory type
-        const searchTerms = (args.keywords || [])
-            .filter(kw => !MemoryTypes.includes(kw as MemoryType))
-            .join(' ')
-            .toLowerCase();
-
-        let matches: Array<{ 
-            score: number; 
-            file: TFile; 
-            matchType: string[];
-            content: string;
-        }> = [];
-
-        for (const file of files) {
-            try {
-                const content = await this.readNoteContent(file);
-                const metadata = await this.context.vault.getNoteMetadata(file.path);
-
-                if (metadata?.category && memoryType && metadata.category !== memoryType) {
-                    continue;
-                }
-
-                const searchResult = this.getSearchScore(searchTerms, {
-                    content,
-                    tags: metadata?.tags,
-                    basename: file.basename
-                });
-
-                if (searchResult.score > 0) {
-                    matches.push({ 
-                        score: searchResult.score, 
-                        file,
-                        matchType: searchResult.matchType,
-                        content
-                    });
-                }
-            } catch (error) {
-                console.error(`Error processing file ${file.path}:`, error);
-            }
-        }
-
-        matches.sort((a, b) => b.score - a.score);
-        const topMatches = matches.slice(0, args.limit || 5);
-
-        return topMatches.map(match => ({
-            file: {
-                path: match.file.path,
-                basename: match.file.basename
-            },
-            title: match.file.basename,
-            type: memoryType,
+        const content = await this.readNoteContent(file);
+        const metadata = await this.context.vault.getNoteMetadata(file.path);
+        const defaultMetadata = {
+            type: 'episodic' as MemoryType,
             description: '',
             relationships: [],
             strength: 0,
-            score: match.score,
-            content: match.content
-        }));
+            score: 1
+        };
+
+        return [{
+            file: {
+                path: file.path,
+                basename: file.basename,
+                stat: { mtime: file.stat.mtime }
+            },
+            title: file.basename,
+            content,
+            ...defaultMetadata,
+            ...(metadata && {
+                type: metadata.type || defaultMetadata.type,
+                description: metadata.description || defaultMetadata.description,
+                relationships: metadata.relationships || defaultMetadata.relationships,
+                strength: metadata.strength || defaultMetadata.strength
+            })
+        }];
+    }
+
+    private async listMemories(args: SearchMemoryArgs): Promise<SearchMemoryResult[]> {
+        const { type, category, tags, limit = 10 } = args;
+        const memoryPath = `${this.context.settings.rootPath}/memory`;
+        const files = this.context.app.vault.getMarkdownFiles()
+            .filter(file => file.path.startsWith(memoryPath));
+        
+        let results: SearchMemoryResult[] = [];
+
+        for (const file of files) {
+            const content = await this.readNoteContent(file);
+            const metadata = await this.context.vault.getNoteMetadata(file.path);
+            
+            // Skip files without metadata or invalid memory type
+            if (!metadata?.type || !MemoryTypes.includes(metadata.type as MemoryType)) {
+                continue;
+            }
+
+            // Apply filters
+            if (type && metadata.type !== type) continue;
+            if (category && !category.some((cat: string) => metadata.categories?.includes(cat))) continue;
+            if (tags && !tags.every((tag: string) => metadata.tags?.includes(tag))) continue;
+
+            results.push({
+                file: {
+                    path: file.path,
+                    basename: file.basename,
+                    stat: { mtime: file.stat.mtime }
+                },
+                title: file.basename,
+                type: metadata.type as MemoryType,
+                description: metadata.description || '',
+                relationships: metadata.relationships || [],
+                strength: metadata.strength || 0,
+                score: 1,
+                content
+            });
+        }
+
+        // Sort by most recent and limit results
+        results.sort((a, b) => (b.file.stat?.mtime || 0) - (a.file.stat?.mtime || 0));
+        return results.slice(0, limit);
+    }
+
+    private async searchMemories(args: SearchMemoryArgs): Promise<SearchMemoryResult[]> {
+        const results = await this.listMemories(args);
+        
+        if (args.includeRelated) {
+            const related = await this.findRelatedMemories(results, args.minStrength || 0.5);
+            results.push(...related);
+        }
+
+        return this.sortByRelevance(results, args.query);
+    }
+
+    private async findRelatedMemories(seeds: SearchMemoryResult[], minStrength: number): Promise<SearchMemoryResult[]> {
+        // Implementation for relationship-based memory retrieval
+        // This would follow the relationship chains defined in the memory metadata
+        // ...implementation details...
+        return [];
+    }
+
+    private sortByRelevance(results: SearchMemoryResult[], query?: string): SearchMemoryResult[] {
+        // Implementation for sorting results by relevance score
+        // Consider relationship strength, recency, and query relevance
+        // ...implementation details...
+        return results;
     }
 
     private async readNoteContent(file: TFile): Promise<string> {
@@ -190,116 +240,5 @@ export class SearchMemoryTool extends BaseTool {
                 description: "List recent experience-based memories"
             }]
         };
-    }
-
-    async execute(args: SearchMemoryArgs): Promise<SearchMemoryResult[]> {
-        switch (args.action) {
-            case 'get':
-                return this.getMemory(args.path!);
-            case 'list':
-                return this.listMemories(args);
-            case 'search':
-                return this.searchMemories(args);
-            default:
-                throw new Error(`Unknown action: ${args.action}`);
-        }
-    }
-
-    private async getMemory(path: string): Promise<SearchMemoryResult[]> {
-        const file = this.context.app.vault.getAbstractFileByPath(path) as TFile;
-        if (!file) {
-            throw new Error(`Memory not found: ${path}`);
-        }
-
-        const metadata = await this.context.vault.getNoteMetadata(file.path);
-        const defaultMetadata = {
-            type: 'episodic' as MemoryType,
-            description: '',
-            relationships: [],
-            strength: 0
-        };
-
-        return [{
-            file,
-            title: file.basename,
-            ...defaultMetadata,
-            ...(metadata && {
-                type: metadata.type || defaultMetadata.type,
-                description: metadata.description || defaultMetadata.description,
-                relationships: metadata.relationships || defaultMetadata.relationships,
-                strength: metadata.strength || defaultMetadata.strength
-            })
-        }];
-    }
-
-    private async listMemories(args: SearchMemoryArgs): Promise<SearchMemoryResult[]> {
-        const { type, category, tags, limit = 10 } = args;
-        const files = this.context.app.vault.getMarkdownFiles();
-        let results: SearchMemoryResult[] = [];
-
-        const defaultMetadata = {
-            type: 'episodic' as MemoryType,
-            description: '',
-            relationships: [],
-            strength: 0
-        };
-
-        for (const file of files) {
-            const metadata = await this.context.vault.getNoteMetadata(file.path);
-            
-            // Skip files without metadata or invalid memory type
-            if (!metadata?.type || !MemoryTypes.includes(metadata.type as MemoryType)) {
-                continue;
-            }
-
-            // Apply filters
-            if (type && metadata.type !== type) {
-                continue;
-            }
-            if (category && !category.some(cat => metadata.categories?.includes(cat))) {
-                continue;
-            }
-            if (tags && !tags.every(tag => metadata.tags?.includes(tag))) {
-                continue;
-            }
-
-            results.push({
-                file,
-                title: file.basename,
-                type: metadata.type || defaultMetadata.type,
-                description: metadata.description || defaultMetadata.description,
-                relationships: metadata.relationships || defaultMetadata.relationships,
-                strength: metadata.strength || defaultMetadata.strength
-            });
-        }
-
-        // Sort by most recent and limit results
-        results.sort((a, b) => b.file.stat.mtime - a.file.stat.mtime);
-        return results.slice(0, limit);
-    }
-
-    private async searchMemories(args: SearchMemoryArgs): Promise<SearchMemoryResult[]> {
-        const results = await this.listMemories(args);
-        
-        if (args.includeRelated) {
-            const related = await this.findRelatedMemories(results, args.minStrength || 0.5);
-            results.push(...related);
-        }
-
-        return this.sortByRelevance(results, args.query);
-    }
-
-    private async findRelatedMemories(seeds: SearchMemoryResult[], minStrength: number): Promise<SearchMemoryResult[]> {
-        // Implementation for relationship-based memory retrieval
-        // This would follow the relationship chains defined in the memory metadata
-        // ...implementation details...
-        return [];
-    }
-
-    private sortByRelevance(results: SearchMemoryResult[], query?: string): SearchMemoryResult[] {
-        // Implementation for sorting results by relevance score
-        // Consider relationship strength, recency, and query relevance
-        // ...implementation details...
-        return results;
     }
 }

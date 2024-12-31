@@ -1,5 +1,5 @@
 /* Status Bar Styles */
-.bridge-mcp-status {
+.claudesidian-mcp-status {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -7,52 +7,52 @@
     cursor: pointer;
 }
 
-.bridge-mcp-status:hover {
+.claudesidian-mcp-status:hover {
     opacity: 0.8;
 }
 
-.bridge-mcp-status-icon {
+.claudesidian-mcp-status-icon {
     display: flex;
     align-items: center;
 }
 
 /* Status Colors */
-.bridge-mcp-status-running {
+.claudesidian-mcp-status-running {
     color: var(--text-success);
 }
 
-.bridge-mcp-status-running .bridge-mcp-status-icon {
+.claudesidian-mcp-status-running .claudesidian-mcp-status-icon {
     color: var(--color-green);
 }
 
-.bridge-mcp-status-error {
+.claudesidian-mcp-status-error {
     color: var(--text-error);
 }
 
-.bridge-mcp-status-error .bridge-mcp-status-icon {
+.claudesidian-mcp-status-error .claudesidian-mcp-status-icon {
     color: var(--color-red);
 }
 
-.bridge-mcp-status-stopped {
+.claudesidian-mcp-status-stopped {
     color: var(--text-muted);
 }
 
-.bridge-mcp-status-stopped .bridge-mcp-status-icon {
+.claudesidian-mcp-status-stopped .claudesidian-mcp-status-icon {
     color: var(--color-muted);
 }
 
-.bridge-mcp-status-initializing,
-.bridge-mcp-status-starting,
-.bridge-mcp-status-stopping {
+.claudesidian-mcp-status-initializing,
+.claudesidian-mcp-status-starting,
+.claudesidian-mcp-status-stopping {
     color: var(--text-accent);
 }
 
 /* Settings Styles */
-.bridge-mcp-settings {
+.claudesidian-mcp-settings {
     padding: 12px;
 }
 
-.bridge-mcp-settings textarea {
+.claudesidian-mcp-settings textarea {
     min-height: 100px;
     width: 100%;
     font-family: var(--font-monospace);
@@ -98,17 +98,17 @@
     padding-left: 20px;
 }
 
-.bridge-mcp-folder-item {
+.claudesidian-mcp-folder-item {
     display: flex;
     align-items: center;
     padding: 4px;
     cursor: pointer;
 }
 
-.bridge-mcp-checkbox {
+.claudesidian-mcp-checkbox {
     margin-right: 8px;
 }
 
-.bridge-mcp-folder-name {
+.claudesidian-mcp-folder-name {
     flex: 1;
 }

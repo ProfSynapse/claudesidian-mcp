@@ -179,7 +179,7 @@ export default class BridgeMCPPlugin extends Plugin {
 
     private async getOldPath(): Promise<string> {
         try {
-            const settingsPath = '.obsidian/plugins/bridge-mcp/data.json';
+            const settingsPath = '.obsidian/plugins/claudesidian-mcp/data.json';
             const exists = await this.app.vault.adapter.exists(settingsPath);
             
             if (exists) {

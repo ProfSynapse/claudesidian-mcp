@@ -11,13 +11,13 @@ export class StatusBarComponent {
 
     constructor(statusBarItem: HTMLElement) {
         this.statusEl = statusBarItem;
-        this.statusEl.addClass('bridge-mcp-status');
+        this.statusEl.addClass('claudesidian-mcp-status');
         
         // Create icon element
-        this.iconEl = this.statusEl.createDiv('bridge-mcp-status-icon');
+        this.iconEl = this.statusEl.createDiv('claudesidian-mcp-status-icon');
         
         // Create text element
-        this.textEl = this.statusEl.createSpan('bridge-mcp-status-text');
+        this.textEl = this.statusEl.createSpan('claudesidian-mcp-status-text');
         this.textEl.textContent = 'MCP';
         
         this.setStatus('stopped');
@@ -25,11 +25,11 @@ export class StatusBarComponent {
 
     setStatus(status: ServerStatus) {
         // Remove old status class
-        this.statusEl.removeClass(`bridge-mcp-status-${this.currentStatus}`);
+        this.statusEl.removeClass(`claudesidian-mcp-status-${this.currentStatus}`);
         
         // Add new status class
         this.currentStatus = status;
-        this.statusEl.addClass(`bridge-mcp-status-${status}`);
+        this.statusEl.addClass(`claudesidian-mcp-status-${status}`);
 
         // Update status text and icon
         const statusConfig = {
