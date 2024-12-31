@@ -4,7 +4,7 @@ export class InsertContentTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'insertContent',
-            description: 'Insert content into a note at a specific position',
+            description: 'Atomic tool: Insert content into a note at a specific position. Prerequisites: Must have exact file path (use search) and verify structure (use readNote first). Common sequence: search → readNote → insertContent',
             version: '1.0.0',
             author: 'Bridge MCP'
         }, { allowUndo: true });

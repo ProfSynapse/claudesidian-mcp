@@ -27,7 +27,8 @@ export class SearchMemoryTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'searchMemory',
-            description: 'Search and retrieve memories with relationship awareness',
+            description: 'Search and retrieve memories with relationship awareness. Use this for accessing learned information, ' +
+                        'past context, or connected knowledge. For general note operations (edit, insert, move), use search instead.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -40,7 +41,7 @@ export class SearchMemoryTool extends BaseTool {
                 action: {
                     type: "string",
                     enum: ["get", "list", "search"],
-                    description: "The search action to perform"
+                    description: "The memory search action to perform"
                 },
                 path: {
                     type: "string",
@@ -82,7 +83,18 @@ export class SearchMemoryTool extends BaseTool {
                     default: 10
                 }
             },
-            required: ["action"]
+            required: ["action"],
+            examples: [{
+                action: "search",
+                query: "python error handling",
+                type: "semantic",
+                includeRelated: true,
+                description: "Find memories about Python error handling including related concepts"
+            }, {
+                action: "list",
+                type: "episodic",
+                description: "List recent experience-based memories"
+            }]
         };
     }
 

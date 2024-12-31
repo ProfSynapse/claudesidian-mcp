@@ -5,7 +5,8 @@ export class SearchTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'search',
-            description: 'Find a note in the vault using fuzzy search',
+            description: 'Find a note in the vault using fuzzy search. Use this for general note operations (edit, insert, move). ' + 
+                        'For memory-related operations like retrieving past context or learned information, use searchMemory instead.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -35,7 +36,7 @@ export class SearchTool extends BaseTool {
             properties: {
                 query: {
                     type: "string",
-                    description: "Search query to find a note"
+                    description: "Search query to find a note for editing, inserting, or other note operations"
                 }
             },
             required: ["query"]

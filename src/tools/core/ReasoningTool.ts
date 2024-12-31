@@ -39,7 +39,18 @@ export class ReasoningTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'reasoning',
-            description: 'You are MANDATED to start EVERY interaction with your reasoning tool, as it will help guide you through the conversation, and consider what tools you might need, and in what sequence to use them. I repeat EVERY SINGLE OUT starts with you using the reasoning tool. If you understand, start by using this tool.',
+            description: 'You are MANDATED to start EVERY interaction with your reasoning tool. It helps plan steps and tool sequences.\n' +
+                        'Note: Not all steps require tools - some may be observations or logical conclusions.\n\n' +
+                        'Common tool sequences when tools ARE needed:\n' +
+                        'For Note Operations (using search):\n' +
+                        '- Edit specific content: search → readNote → editNote\n' +
+                        '- Insert at location: search → readNote → insertContent\n' +
+                        '- Update frontmatter: search → readNote → updateFrontmatter\n' +
+                        '- Move and update links: search → readNote → moveNote\n\n' +
+                        'For Memory Operations (using searchMemory):\n' +
+                        '- Add to memory: searchMemory → readNote → memory\n' +
+                        '- Complex edit with context: searchMemory → readNote → memory → completion → editNote\n' +
+                        '- Recall and relate: searchMemory → memory',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -142,6 +153,7 @@ export class ReasoningTool extends BaseTool {
                 },
                 steps: {
                     type: "array",
+                    description: "Sequence of steps to achieve the goal. Not all steps require tools.",
                     items: {
                         type: "object",
                         properties: {
@@ -151,15 +163,15 @@ export class ReasoningTool extends BaseTool {
                             },
                             description: {
                                 type: "string",
-                                description: "Clear description of the step"
+                                description: "Clear description of what this step accomplishes"
                             },
                             requires_tool: {
                                 type: "boolean",
-                                description: "Whether this step needs a tool to be executed"
+                                description: "Whether this step needs a tool (false for logical steps, observations, or conclusions)"
                             },
                             selected_tool: {
                                 type: "string",
-                                description: "Selected tool if requires_tool is true",
+                                description: "Selected tool name if requires_tool is true, omit otherwise",
                                 enum: {
                                     "$ref": "#/definitions/available_tools"
                                 }

@@ -10,7 +10,7 @@ export class EditNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'editNote',
-            description: 'Edit specific sections in a note',
+            description: 'Atomic tool: Edit specific sections in a note. Prerequisites: Must have exact file path (use search) and content markers (use readNote first). Common sequence: search → readNote → editNote',
             version: '1.0.0',
             author: 'Bridge MCP'
         }, { allowUndo: true });
