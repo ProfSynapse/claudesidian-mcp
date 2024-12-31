@@ -1,61 +1,62 @@
 import { BaseTool, IToolContext } from '../BaseTool';
 
-interface Section {
-    start: string;
-    end?: string;
+interface EditRequest {
+    text: string;
+    instruction: string;
     content: string;
+}
+
+interface MappedEdit extends EditRequest {
+    startIndex: number;
 }
 
 export class EditNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'editNote',
-            description: 'Atomic tool: Edit specific sections in a note. Prerequisites: Must have exact file path (use search) and content markers (use readNote first). Common sequence: search → readNote → editNote',
+            description: 'Replace sections of text with improved versions based on instructions',
             version: '1.0.0',
             author: 'Bridge MCP'
         }, { allowUndo: true });
     }
 
     async execute(args: any): Promise<any> {
-        const { path, sections, frontmatter } = args;
+        const { path, edits, frontmatter } = args;
+        
+        if (edits.length > 100) {
+            throw new Error('Too many edits to process at once (limit: 100)');
+        }
+
         const oldContent = await this.context.vault.readNote(path);
         let newContent = oldContent;
 
-        for (const section of sections) {
-            const startIndex = newContent.indexOf(section.start);
-            if (startIndex === -1) {
-                throw new Error(`Section starting with "${section.start}" not found`);
-            }
+        // Process from bottom to top to maintain positions
+        const sortedEdits = edits
+            .map((edit: EditRequest) => ({
+                ...edit,
+                startIndex: newContent.indexOf(edit.text)
+            }))
+            .filter((edit: MappedEdit) => edit.startIndex !== -1)
+            .sort((a: MappedEdit, b: MappedEdit) => b.startIndex - a.startIndex);
 
-            let endIndex: number;
-            if (section.end) {
-                endIndex = newContent.indexOf(section.end, startIndex);
-                if (endIndex === -1) {
-                    throw new Error(`Section ending with "${section.end}" not found`);
-                }
-                endIndex += section.end.length;
-            } else {
-                // If no end marker, replace until next section or end of content
-                const nextSectionIndex = sections
-                    .map((s: Section) => newContent.indexOf(s.start, startIndex + 1))
-                    .filter((i: number) => i > -1)
-                    .sort((a: number, b: number) => a - b)[0];
-                endIndex = nextSectionIndex || newContent.length;
+        for (const edit of sortedEdits) {
+            try {
+                // Direct replacement with provided content
+                newContent = 
+                    newContent.substring(0, edit.startIndex) +
+                    edit.content +
+                    newContent.substring(edit.startIndex + edit.text.length);
+            } catch (error) {
+                console.error(`Error processing edit: ${error}`);
             }
-
-            newContent = newContent.substring(0, startIndex) + 
-                        section.content +
-                        newContent.substring(endIndex);
         }
 
         await this.context.vault.updateNote(path, newContent, { frontmatter });
-        return { oldContent };
-    }
-
-    async undo(args: any, previousResult: any): Promise<void> {
-        if (previousResult?.oldContent) {
-            await this.context.vault.updateNote(args.path, previousResult.oldContent);
-        }
+        return { 
+            oldContent,
+            newContent,
+            editsApplied: sortedEdits.length
+        };
     }
 
     getSchema(): any {
@@ -66,27 +67,27 @@ export class EditNoteTool extends BaseTool {
                     type: "string",
                     description: "Path to the note to edit"
                 },
-                sections: {
+                edits: {
                     type: "array",
                     items: {
                         type: "object",
                         properties: {
-                            start: {
+                            text: {
                                 type: "string",
-                                description: "Starting text of the section to replace"
+                                description: "The original text to find and replace"
                             },
-                            end: {
+                            instruction: {
                                 type: "string",
-                                description: "Optional ending text of the section"
+                                description: "The instruction that was used (e.g. 'make more formal')"
                             },
                             content: {
                                 type: "string",
-                                description: "New content to replace the section with"
+                                description: "The improved content to replace the original text with"
                             }
                         },
-                        required: ["start", "content"]
+                        required: ["text", "instruction", "content"]
                     },
-                    description: "Sections to edit in the note"
+                    description: "Text sections with their improvements"
                 },
                 frontmatter: {
                     type: "object",
@@ -94,7 +95,13 @@ export class EditNoteTool extends BaseTool {
                     additionalProperties: true
                 }
             },
-            required: ["path", "sections"]
+            required: ["path", "edits"]
         };
+    }
+
+    async undo(args: any, previousResult: any): Promise<void> {
+        if (previousResult?.oldContent) {
+            await this.context.vault.updateNote(args.path, previousResult.oldContent);
+        }
     }
 }

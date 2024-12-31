@@ -29,41 +29,65 @@ export class SearchTool extends BaseTool {
     async execute(args: any): Promise<string | null> {
         const { query, saveAsDistinct } = args;
         console.log(`Searching for: "${query}"`);
+
+        const files = this.context.app.vault.getMarkdownFiles();
+        console.log(`Found ${files.length} markdown files to search`);
+
+        // Break query into individual words and remove common articles
+        const stopWords = new Set(['the', 'a', 'an']);
+        const queryWords = query.toLowerCase()
+            .split(/\s+/)
+            .filter((word: string) => !stopWords.has(word) && word.length > 1);
         
-        const files = this.context.app.vault.getFiles()
-            .filter(file => file.extension === 'md');
-        console.log(`Found ${files.length} markdown files`);
+        console.log('Search words:', queryWords);
 
-        const fuzzySearch = prepareFuzzySearch(query.toLowerCase());
-        let matches: Array<{ score: number; file: TFile }> = [];
+        const matches = files.map(file => {
+            const pathLower = file.path.toLowerCase();
+            let score = 0;
+            let debugMatches: string[] = [];
 
-        console.log('\nSearching through files:');
-        for (const file of files) {
-            const result = fuzzySearch(file.path.toLowerCase());
-            if (result) {
-                // Use raw score - higher is better (whether positive or negative)
-                console.log(`Match: "${file.path}" (score: ${result.score})`);
-                matches.push({ score: result.score, file });
+            // Score each word separately
+            for (const word of queryWords) {
+                const fuzzyMatch = prepareFuzzySearch(word)(pathLower);
+                if (fuzzyMatch && fuzzyMatch.score > 0) {
+                    score += fuzzyMatch.score;
+                    debugMatches.push(`"${word}": ${fuzzyMatch.score.toFixed(2)}`);
+                }
             }
-        }
 
-        // Sort by raw score (higher numbers first)
-        matches.sort((a, b) => b.score - a.score);
-        
+            // Boost score if path contains the exact words
+            queryWords.forEach((word: string) => {
+                if (pathLower.includes(word)) {
+                    score += 1;
+                    debugMatches.push(`exact "${word}"`);
+                }
+            });
+
+            return { file, score, debugMatches };
+        })
+        .filter(match => match.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+        // Log results with match details
         console.log("\nTop matches:");
         matches.slice(0, 10).forEach((match, i) => {
             console.log(`${i + 1}. [${match.score.toFixed(2)}] ${match.file.path}`);
+            console.log(`   Matches: ${match.debugMatches.join(', ')}`);
         });
 
-        if (!matches.length) return null;
+        if (!matches.length) {
+            console.log("No matches found");
+            return null;
+        }
 
-        // If saveAsDistinct is true or there are similarly named files, use distinct name
-        if (saveAsDistinct || this.hasSimilarFiles(matches[0].file.path, files)) {
+        // For saving new files, use the claudesidian folder
+        if (saveAsDistinct) {
             const distinctPath = `${this.context.settings.rootPath}/${this.createDistinctFilename(query)}`;
             console.log(`Using distinct path: ${distinctPath}`);
             return distinctPath;
         }
 
+        // Return the best match
         return matches[0].file.path;
     }
 

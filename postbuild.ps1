@@ -12,7 +12,7 @@ Stop-Process -Name "Obsidian" -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 
 Write-Host "Starting Obsidian..."
-Start-Process "C:\Users\Joseph\AppData\Local\Obsidian\Obsidian.exe" `
+Start-Process "C:\Users\Joseph\AppData\Local\Programs\obsidian\Obsidian.exe" `
   -ArgumentList "--vault", "C:\Users\Joseph\Documents\Plugin_Tester"
 
 Write-Host "`nDone!"

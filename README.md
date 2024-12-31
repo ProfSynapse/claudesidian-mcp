@@ -133,3 +133,49 @@ export class WeatherTool extends BaseTool {
     }
 }
 ```
+
+## Roadmap
+
+### Calendar Functionality
+
+Calendar Provider Configuration:
+User first selects provider (Google or Microsoft)
+Each provider needs its own OAuth setup
+Store tokens securely in plugin settings
+Calendar Management UI:
+Settings Tab Flow:
+
+Calendar List:
+[ ] Default | Personal Calendar (Google) | Edit | Remove
+[✓] Default | Work Calendar (Microsoft) | Edit | Remove
+[ ] Default | Side Project (Google) | Edit | Remove
+[+] Add New Calendar
+
+Each calendar entry stores:
+- Display name (e.g. "Personal Calendar")
+- Provider type (Google/Microsoft)
+- OAuth credentials
+- Calendar ID from provider
+- Default status (boolean)
+
+Settings Tab Flow:
+A. Provider Section:
+   - Google Calendar Setup
+     - OAuth Configuration
+     - Test Connection button
+   - Microsoft Calendar Setup  
+     - OAuth Configuration
+     - Test Connection button
+
+B. Calendars Section:
+   - List of configured calendars
+   - Default calendar radio selection
+   - Add/Edit/Remove calendar buttons
+   
+C. Add/Edit Calendar Modal:
+   1. Select provider (Google/Microsoft)
+   2. Enter display name
+   3. If not authenticated for provider:
+      - Complete OAuth flow
+   4. Select specific calendar from provider's available calendars
+   5. Set as default option
