@@ -46,9 +46,9 @@ export interface MCPSettings extends BridgeMCPSettings {
 export const DEFAULT_SETTINGS: MCPSettings = {
     // Base settings
     enabled: true,
-    rootPath: 'bridge-mcp',
-    memoryPath: 'bridge-mcp/memories',
-    indexPath: 'bridge-mcp/index.md',
+    rootPath: 'claudesidian',
+    memoryPath: 'claudesidian/memories',
+    indexPath: 'claudesidian/index.md',
     allowedPaths: [],
     mcp: {
         enabled: true,
@@ -64,8 +64,8 @@ export const DEFAULT_SETTINGS: MCPSettings = {
     enabledMemory: true,
     enabledReasoning: true,
     enabledTools: ['memory', 'reasoning', 'search'],
-    memoryFolderPath: 'bridge-mcp/memories',
-    reasoningFolderPath: 'bridge-mcp/reasoning',
+    memoryFolderPath: 'claudesidian/memories',
+    reasoningFolderPath: 'claudesidian/reasoning',
 
     // AI Configuration
     aiProvider: AIProvider.OpenRouter,

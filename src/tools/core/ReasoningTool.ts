@@ -1,4 +1,5 @@
 import { BaseTool, IToolContext } from '../BaseTool';
+import { formatRelationshipSection, formatPredicate, formatWikilink } from '../../utils/relationshipUtils';
 
 interface KnowledgeTriplet {
     subject: string;
@@ -125,17 +126,17 @@ export class ReasoningTool extends BaseTool {
                         },
                         reasoning_prompt: {
                             type: "string",
-                            description: "Given the goal and current state, what logical step should come next and why?"
+                            description: "Given the goal and current state, reason step-by-step what comes next and why?"
                         }
                     },
                     required: ["method", "reasoning_prompt"]
                 },
                 critic: {
                     type: "array",
-                    description: "Provide constructive criticism about the current approach and potential improvements",
+                    description: "Provide constructive criticism about the proposer's approach and potential improvements",
                     items: {
                         type: "string",
-                        description: "Each criticism should be specific, actionable, and focused on improving the solution"
+                        description: "Each criticism will be specific, actionable, and focused on improving the solution"
                     }
                 },
                 reflector: {
@@ -150,6 +151,10 @@ export class ReasoningTool extends BaseTool {
                             items: { type: "string" }
                         }
                     }
+                },
+                requiresMemoryContext: {
+                    type: "boolean",
+                    description: "Set to true if this reasoning requires searching memories first. Consider true for: personal queries, context-dependent questions, references to past events, or building on previous interactions. If true, first step must use searchMemory tool."
                 },
                 steps: {
                     type: "array",
@@ -175,13 +180,17 @@ export class ReasoningTool extends BaseTool {
                                 enum: {
                                     "$ref": "#/definitions/available_tools"
                                 }
+                            },
+                            memory_context_used: {
+                                type: "boolean",
+                                description: "Whether this step utilized memory search results"
                             }
                         },
                         required: ["step_number", "description", "requires_tool"]
                     }
                 }
             },
-            required: ["title", "query", "goal"],
+            required: ["title", "query", "goal", "requiresMemoryContext"],
             definitions: {
                 available_tools: {
                     type: "string",
@@ -192,26 +201,6 @@ export class ReasoningTool extends BaseTool {
         };
     }
 
-    private formatKnowledgeTriplet(triplet: KnowledgeTriplet): KnowledgeTriplet {
-        const wrapWikilink = (text: string) => {
-            text = text.trim();
-            return text.startsWith('[[') ? text : `[[${text}]]`;
-        };
-
-        const formatPredicate = (text: string) => {
-            text = text.trim()
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '_')
-                .replace(/^_|_$/g, '');
-            return `#${text}`;
-        };
-
-        return {
-            subject: wrapWikilink(triplet.subject),
-            predicate: formatPredicate(triplet.predicate),
-            object: wrapWikilink(triplet.object)
-        };
-    }
 
     // Update execute method to handle dynamic tool list
     async execute(args: ReasoningArgs): Promise<any> {
@@ -257,18 +246,25 @@ export class ReasoningTool extends BaseTool {
     }
 
     private async saveReasoningNote(analysis: any): Promise<void> {
-        const filename = `${analysis.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.md`;
+        const reasoningFolder = `${this.context.settings.rootPath}/reasoning`;
+        await this.context.vault.ensureFolder(reasoningFolder);
         
+        const filename = `${analysis.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.md`;
+        const fullPath = `${reasoningFolder}/${filename}`;
+        
+        const relationships = analysis.knowledgeGraph?.map((t: KnowledgeTriplet) => 
+            `${formatPredicate(t.predicate)} ${formatWikilink(t.object)}`
+        ) || [];
+
         const content = [
             '---',
             'type: reasoning',
             `created: ${new Date().toISOString()}`,
-            `query: "${analysis.query}"`,
+            `query: ${analysis.query}`,
             '---',
             '',
-            `# ${analysis.title}`,
-            '',
-            '## Goal',
+            '# Memory',
+            `## Goal: ${analysis.title}`,
             analysis.goal,
             '',
             analysis.currentSubgoal ? [
@@ -276,15 +272,7 @@ export class ReasoningTool extends BaseTool {
                 analysis.currentSubgoal,
                 ''
             ].join('\n') : '',
-            '## Knowledge Graph',
-            '_Relationships between concepts:_',
-            '',
-            analysis.knowledgeGraph?.map((t: KnowledgeTriplet) => 
-                `- ${t.subject.startsWith('[[') ? t.subject : `[[${t.subject}]]`} ${
-                    t.predicate.startsWith('#') ? t.predicate : `#${t.predicate.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`
-                } ${t.object.startsWith('[[') ? t.object : `[[${t.object}]]`}`
-            ).join('\n') || '_No knowledge graph provided_',
-            '',
+            formatRelationshipSection(relationships),
             '## Proposer',
             `**Method**: ${analysis.proposer?.method || 'Not specified'}`,
             '',
@@ -314,8 +302,15 @@ export class ReasoningTool extends BaseTool {
             ).join('\n') || '_No steps defined_'
         ].filter(Boolean).join('\n');
 
-        await this.context.vault.createNote(filename, content, {
+        await this.context.vault.createNote(fullPath, content, {
             createFolders: true
+        });
+
+        // Update index using IndexManager
+        await this.context.indexManager.addToIndex({
+            title: analysis.title,
+            description: analysis.query,
+            section: 'Reasoning Sessions'
         });
     }
 }

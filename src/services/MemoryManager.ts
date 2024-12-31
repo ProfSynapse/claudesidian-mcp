@@ -20,6 +20,7 @@ export interface Memory {
     createdAt: string;      // Add created timestamp
     modifiedAt?: string;    // Add modified timestamp
     lastViewedAt?: string;  // Add last viewed timestamp
+    success?: boolean;  // Optional success flag for task-based memories
 }
 
 // Add values array for MemoryType
@@ -29,7 +30,8 @@ export const MemoryTypes = [
     'semantic',
     'procedural',
     'emotional',
-    'contextual'
+    'contextual',
+    'search'  // Add search type
 ] as const;
 
 export type MemoryType = typeof MemoryTypes[number];
@@ -41,6 +43,7 @@ interface MemoryMetadata {
     createdAt: string;      // Add created timestamp
     modifiedAt?: string;    // Add modified timestamp
     lastViewedAt?: string;  // Add last viewed timestamp
+    hits: number;           // Add hits tracking
 }
 
 interface MemoryFile extends TFile {
@@ -66,16 +69,6 @@ export class MemoryManager {
     ) {
         this.vaultManager = vaultManager;
         this.settings = settings || DEFAULT_SETTINGS;
-        this.ensureDirectoriesExist();
-    }
-
-    private async ensureDirectoriesExist() {
-        try {
-            // Only create the root MCP directory
-            await this.vaultManager.createFolder(this.settings.rootPath);
-        } catch (error) {
-            console.error('Error creating directory:', error);
-        }
     }
 
     set(key: string, value: any): void {
@@ -94,32 +87,48 @@ export class MemoryManager {
         return Array.from(this.storage.keys());
     }
 
+    private safeStringify(obj: any): string {
+        const cache = new Set();
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (cache.has(value)) return '[Circular]';
+                cache.add(value);
+            }
+            return value;
+        });
+    }
+
     /**
      * Create a new memory note
      */
     async createMemory(memory: Memory): Promise<TFile> {
         try {
-            // Ensure path doesn't include .md extension
-            const basePath = memory.title.replace(/\.md$/, '');
-            const notePath = `${this.settings.rootPath}/${basePath}`;
+            console.log('📝 Creating new memory:', this.safeStringify(memory));
+            // Ensure memory folder exists
+            const memoryFolder = `${this.settings.rootPath}/memories`;
+            await this.vaultManager.createFolder(memoryFolder);
             
-            // Prepare metadata
-            const now = new Date().toISOString();
-            const metadata: MemoryMetadata = {
-                category: memory.category,  // Changed from type to category
-                description: memory.description,
-                tags: memory.tags,
-                createdAt: now,
-                modifiedAt: now,
-                lastViewedAt: now
-            };
-
-            // Create memory note
+            // Create safe filename from title
+            const safeTitle = memory.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_|_$/g, '');
+            
+            // Create memory note in the memory folder
             const file = await this.vaultManager.createNote(
-                `${notePath}.md`,
+                `${memoryFolder}/${safeTitle}`,  // Remove .md as it's handled by VaultManager
                 memory.content,
                 {
-                    frontmatter: metadata,
+                    frontmatter: {
+                        category: memory.category,
+                        description: memory.description,
+                        tags: memory.tags,
+                        relationships: memory.relationships,
+                        createdAt: memory.createdAt,
+                        modifiedAt: memory.modifiedAt,
+                        lastViewedAt: memory.lastViewedAt,
+                        success: memory.success
+                    },
                     createFolders: true
                 }
             );
@@ -133,6 +142,7 @@ export class MemoryManager {
             // Update index with settings path
             await this.updateIndex(memory);
 
+            console.log('✅ Memory created:', this.safeStringify(memory));
             return file;
         } catch (error) {
             throw this.handleError('createMemory', error);
@@ -157,7 +167,8 @@ export class MemoryManager {
                         relationships: memory.relationships,
                         createdAt: memory.createdAt,
                         modifiedAt: now,
-                        lastViewedAt: memory.lastViewedAt
+                        lastViewedAt: memory.lastViewedAt,
+                        success: memory.success
                     }
                 }
             );
@@ -179,7 +190,7 @@ export class MemoryManager {
      */
     async deleteMemory(title: string): Promise<void> {
         try {
-            const path = `${this.settings.rootPath}/${title}.md`;
+            const path = `${this.settings.rootPath}/memories/${title}.md`;
             
             // Get memory type before deletion
             const metadata = await this.vaultManager.getNoteMetadata(path);
@@ -202,7 +213,7 @@ export class MemoryManager {
      */
     async getMemory(title: string): Promise<Memory | null> {
         try {
-            const path = `${this.settings.rootPath}/${title}.md`;
+            const path = `${this.settings.rootPath}/memories/${title}.md`;
             const content = await this.vaultManager.readNote(path);
             const metadata = await this.vaultManager.getNoteMetadata(path);
 
@@ -210,11 +221,12 @@ export class MemoryManager {
                 return null;
             }
 
-            // Update last viewed timestamp
-            const now = new Date().toISOString();
+            // Increment hits counter
+            const hits = (metadata?.hits || 0) + 1;
             await this.vaultManager.updateNoteMetadata(path, {
                 ...metadata,
-                lastViewedAt: now
+                hits,
+                lastViewedAt: new Date().toISOString()
             });
 
             return {
@@ -226,7 +238,8 @@ export class MemoryManager {
                 relationships: metadata.relationships,
                 createdAt: metadata.createdAt,
                 modifiedAt: metadata.modifiedAt,
-                lastViewedAt: now
+                lastViewedAt: metadata.lastViewedAt,
+                success: metadata.success
             };
         } catch (error) {
             console.error(`Error retrieving memory: ${error.message}`);
@@ -351,7 +364,8 @@ export class MemoryManager {
             'Semantic Memories',
             'Procedural Memories',
             'Emotional Memories',
-            'Contextual Memories'
+            'Contextual Memories',
+            'Search Results'  // Add search section
         ];
 
         orderedSections.forEach(section => {
@@ -374,7 +388,8 @@ export class MemoryManager {
             semantic: 'Semantic Memories',
             procedural: 'Procedural Memories',
             emotional: 'Emotional Memories',
-            contextual: 'Contextual Memories'
+            contextual: 'Contextual Memories',
+            search: 'Search Results'  // Add search section
         };
         
         return sectionMap[type] || 'Other Memories';

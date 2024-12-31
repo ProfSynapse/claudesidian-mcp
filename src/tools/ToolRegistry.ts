@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { BaseTool, IToolContext } from './BaseTool';
 import { VaultManager } from '../services/VaultManager';
 import { MemoryManager } from '../services/MemoryManager';
+import { MCPSettings } from '../types';  // Add this import
 // Remove VaultTool import
 import { MemoryTool } from './core/MemoryTool';
 import { ReasoningTool } from './core/ReasoningTool';
@@ -17,6 +18,8 @@ import { SearchMemoryTool } from './core/SearchMemoryTool';
 // Remove PuppeteerTool import
 import { SearchTool } from './core/SearchTool';
 import { CompletionTool } from './core/LLMTool';
+import { FolderTool } from './core/FolderTool';  // Add this import
+import { IndexManager } from '../services/IndexManager';  // Add this import
 
 export class ToolRegistry {
     private tools: Map<string, typeof BaseTool> = new Map();
@@ -27,14 +30,17 @@ export class ToolRegistry {
         app: App,
         plugin: any, // Add plugin parameter
         vaultManager: VaultManager,
-        memoryManager: MemoryManager
+        memoryManager: MemoryManager,
+        indexManager: IndexManager  // Add this parameter
     ) {
         this.context = {
             app,
             plugin, // Add this line
             vault: vaultManager,
             memory: memoryManager,
-            toolRegistry: this  // Add this line
+            toolRegistry: this,  // Add this line
+            settings: plugin.settings,  // Add settings from plugin
+            indexManager  // Add this line
         };
 
         // Register all core tools
@@ -51,7 +57,8 @@ export class ToolRegistry {
             SearchMemoryTool,
             ReasoningTool,
             SearchTool,
-            CompletionTool  // Add CompletionTool
+            CompletionTool,  // Add CompletionTool
+            FolderTool  // Add FolderTool
         ].forEach(Tool => this.registerTool(Tool));
     }
 

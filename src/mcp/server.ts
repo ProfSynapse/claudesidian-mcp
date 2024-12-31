@@ -9,6 +9,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { ToolRegistry } from '../tools/ToolRegistry';
 import { Server as NetServer, createServer } from 'net';
+import { MCPSettings } from '../types';
+import { VaultManager } from '../services/VaultManager';
 
 export class BridgeMCPServer {
     private server: Server;
@@ -16,11 +18,15 @@ export class BridgeMCPServer {
     private toolRegistry: ToolRegistry;
     private transport: StdioServerTransport | null = null;
     private ipcServer: NetServer | null = null;
+    private settings: MCPSettings;
+    private vaultManager: VaultManager;
 
-    constructor(app: App, toolRegistry: ToolRegistry) {
+    constructor(app: App, toolRegistry: ToolRegistry, vaultManager: VaultManager, settings: MCPSettings) {
         console.log('BridgeMCPServer: constructor called');
         this.app = app;
         this.toolRegistry = toolRegistry;
+        this.vaultManager = vaultManager;
+        this.settings = settings;
         this.server = new Server(
             {
                 name: "bridge-mcp",
@@ -136,11 +142,39 @@ export class BridgeMCPServer {
         });
     }
 
+    private async initializeFolders() {
+        try {
+            // Create root folder if it doesn't exist
+            const rootPath = this.settings.rootPath.replace(/\.md$/, '');
+            if (!await this.vaultManager.folderExists(rootPath)) {
+                await this.vaultManager.createFolder(rootPath);
+            }
+
+            // Create subfolders based on enabled tools
+            if (this.settings.enabledMemory) {
+                const memoryPath = `${rootPath}/memory`;
+                if (!await this.vaultManager.folderExists(memoryPath)) {
+                    await this.vaultManager.createFolder(memoryPath);
+                }
+            }
+
+            if (this.settings.enabledReasoning) {
+                const reasoningPath = `${rootPath}/reasoning`;
+                if (!await this.vaultManager.folderExists(reasoningPath)) {
+                    await this.vaultManager.createFolder(reasoningPath);
+                }
+            }
+        } catch (error) {
+            console.error('Error initializing folders:', error);
+            throw error;
+        }
+    }
+
     public async start() {
         console.log('BridgeMCPServer: Starting server');
         
         try {
-            // Start both transports in parallel
+            // Remove folder initialization from here
             const [stdioTransport, ipcServer] = await Promise.all([
                 this.startStdioTransport(),
                 this.startIPCTransport()
@@ -149,7 +183,7 @@ export class BridgeMCPServer {
             this.transport = stdioTransport;
             this.ipcServer = ipcServer;
             
-            console.log('BridgeMCPServer: Server started successfully on both transports');
+            console.log('BridgeMCPServer: Server started successfully');
         } catch (error) {
             console.error('BridgeMCPServer: Error starting server', error);
             throw error;

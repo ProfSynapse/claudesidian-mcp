@@ -4,7 +4,7 @@ export class DeleteNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'deleteNote',
-            description: 'Delete a note from the vault',
+            description: 'Delete a note from the vault. If the user uses the hotkey `/-` use the delete note tool.',
             version: '1.0.0',
             author: 'Bridge MCP'
         }, { allowUndo: true });
