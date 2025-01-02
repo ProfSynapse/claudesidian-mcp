@@ -5,7 +5,7 @@ export class CreateNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'createNote',
-            description: 'Create a new note in the vault. If the user uses the hotkey `/+` use the create note tool.',
+            description: 'Create a new note in the vault. If the user uses the hotkey `/+` use the create note tool. New Note should always go to claudesidian/inbox. For each note, add YAML properties that make sense to have for that note. Decide based on the content.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -21,7 +21,7 @@ export class CreateNoteTool extends BaseTool {
     async execute(args: any): Promise<any> {
         try {
             let { title, path, content, frontmatter, createFolders } = args;
-            
+
             // If no path specified but title exists, create in inbox
             if (!path && title) {
                 path = join(this.context.settings.rootPath, 'inbox', this.ensureMdExtension(title));
