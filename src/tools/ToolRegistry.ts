@@ -2,24 +2,13 @@ import { App } from 'obsidian';
 import { BaseTool, IToolContext } from './BaseTool';
 import { VaultManager } from '../services/VaultManager';
 import { MemoryManager } from '../services/MemoryManager';
-import { MCPSettings } from '../types';  // Add this import
-// Remove VaultTool import
-import { MemoryTool } from './core/MemoryTool';
+import { ManageMemoryTool } from './core/ManageMemoryTool';
 import { ReasoningTool } from './core/ReasoningTool';
-import { CreateNoteTool } from './core/CreateNoteTool';
-import { EditNoteTool } from './core/EditNoteTool';
-import { MoveNoteTool } from './core/MoveNoteTool';
-import { ReadNoteTool } from './core/ReadNoteTool';
-import { InsertContentTool } from './core/InsertContentTool';
-import { UpdateFrontmatterTool } from './core/UpdateFrontmatterTool';
-import { TagsTool } from './core/TagsTool';
-import { DeleteNoteTool } from './core/DeleteNoteTool';
-import { SearchMemoryTool } from './core/SearchMemoryTool';
-// Remove PuppeteerTool import
-import { SearchTool } from './core/SearchTool';
-import { CompletionTool } from './core/LLMTool';
-import { FolderTool } from './core/FolderTool';  // Add this import
-import { IndexManager } from '../services/IndexManager';  // Add this import
+import { ManageNoteTool } from './core/ManageNoteTool';
+import { ManageMetadataTool } from './core/ManageMetadataTool';
+import { CompletionTool } from './core/LLMTool'; 
+import { IndexManager } from '../services/IndexManager';  
+import { ManageFolderTool } from './core/ManageFolderTool';
 
 export class ToolRegistry {
     private tools: Map<string, typeof BaseTool> = new Map();
@@ -45,20 +34,12 @@ export class ToolRegistry {
 
         // Register all core tools
         [
-            CreateNoteTool,
-            ReadNoteTool,
-            InsertContentTool,
-            DeleteNoteTool,
-            EditNoteTool,
-            MoveNoteTool,
-            UpdateFrontmatterTool,
-            TagsTool,
-            MemoryTool,
-            SearchMemoryTool,
+            ManageMetadataTool,
+            ManageMemoryTool,
             ReasoningTool,
-            SearchTool,
-            CompletionTool,  // Add CompletionTool
-            FolderTool  // Add FolderTool
+            CompletionTool,  
+            ManageNoteTool,
+            ManageFolderTool
         ].forEach(Tool => this.registerTool(Tool));
     }
 

@@ -46,12 +46,11 @@ export class ReasoningTool extends BaseTool {
                         'For Note Operations (using search):\n' +
                         '- Edit specific content: search → readNote → editNote\n' +
                         '- Insert at location: search → readNote → insertContent\n' +
-                        '- Update frontmatter: search → readNote → updateFrontmatter\n' +
-                        '- Move and update links: search → readNote → moveNote\n\n' +
+                        '- Update frontmatter: search → readNote → updateMetadata\n' +
+                        '- Move and update links: search → readNote → moveTool\n\n' +
                         'For Memory Operations (using searchMemory):\n' +
                         '- Add to memory: searchMemory → readNote → memory\n' +
-                        '- Complex edit with context: searchMemory → readNote → memory → completion → editNote\n' +
-                        '- Recall and relate: searchMemory → memory',
+                        '- Procedural memory: These are memories of how to run more complex operations and have the metadata category of *procedural*. Prior to performing a complex operation, search your procedural memories to see if you already know how to successfully run the operation.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -154,7 +153,7 @@ export class ReasoningTool extends BaseTool {
                 },
                 requiresMemoryContext: {
                     type: "boolean",
-                    description: "Set to true if this reasoning requires searching memories first. Consider true for: personal queries, context-dependent questions, references to past events, or building on previous interactions. If true, first step must use searchMemory tool."
+                    description: "Set to true if this reasoning requires searching memories first. Consider true for: personal queries, multistep procedures, context-dependent questions, references to past events, or building on previous interactions. If true, first step must use searchMemory tool."
                 },
                 steps: {
                     type: "array",
@@ -190,7 +189,7 @@ export class ReasoningTool extends BaseTool {
                     }
                 }
             },
-            required: ["title", "query", "goal", "requiresMemoryContext"],
+            required: ["title", "query", "currentSubgoal", "knowledgeGraph", "proposer", "critic", "reflector", "requiresMemoryContext", "steps"],
             definitions: {
                 available_tools: {
                     type: "string",
@@ -251,6 +250,12 @@ export class ReasoningTool extends BaseTool {
         
         const filename = `${analysis.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.md`;
         const fullPath = `${reasoningFolder}/${filename}`;
+
+        // Check if this reasoning builds on procedural memories
+        const usedProceduralMemories = analysis.steps?.some((s: any) => 
+            s.memory_context_used && s.selected_tool === 'searchMemory' && 
+            s.description.toLowerCase().includes('procedural')
+        );
         
         const relationships = analysis.knowledgeGraph?.map((t: KnowledgeTriplet) => 
             `${formatPredicate(t.predicate)} ${formatWikilink(t.object)}`
@@ -261,11 +266,22 @@ export class ReasoningTool extends BaseTool {
             'type: reasoning',
             `created: ${new Date().toISOString()}`,
             `query: ${analysis.query}`,
+            usedProceduralMemories ? 'category: procedural' : '',
+            'metadata:',
+            '  isMoc: true',
+            '  mocLinks: []',
             '---',
             '',
             '# Memory',
             `## Goal: ${analysis.title}`,
             analysis.goal,
+            '',
+            '## Memory Context',
+            'This reasoning note serves as a map of content (#moc) for:',
+            '1. The goal and approach taken',
+            '2. Knowledge relationships discovered',
+            '3. Tool sequences used',
+            usedProceduralMemories ? '4. Procedural patterns identified' : '',
             '',
             analysis.currentSubgoal ? [
                 '## Current Subgoal',

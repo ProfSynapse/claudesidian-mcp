@@ -9,7 +9,7 @@ export class CompletionTool extends BaseTool {
     constructor(context: IToolContext) {
         const metadata: IToolMetadata = {
             name: 'completion',
-            description: 'Generate AI completions using OpenRouter',
+            description: 'Generate AI completions using OpenRouter. Note that anything related to current or fact based information should default to Perplexity Huge, as this has access to the internet.',
             version: '1.0.0'
         };
 

@@ -24,6 +24,10 @@ export class VaultManager {
         this.vault = app.vault;
     }
 
+    getApp(): App {
+        return this.app;
+    }
+
     async getFile(path: string): Promise<TFile | null> {
         return this.vault.getAbstractFileByPath(path) as TFile;
     }

@@ -183,6 +183,30 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             inputCostPer1M: 15.00,
             outputCostPer1M: 60.00,
             contextWindow: 128000
+        },
+        {
+            name: 'Perplexity Huge',
+            apiName: 'perplexity/llama-3.1-sonar-huge-128k-online',
+            capabilities: {
+                maxTokens: 8000,
+                supportsFunctions: true,
+                supportsStreaming: true
+            },
+            inputCostPer1M: 5.00,
+            outputCostPer1M: 5.00,
+            contextWindow: 127000
+        },
+        {
+            name: 'Perplexity Large',
+            apiName: 'perplexity/llama-3.1-sonar-large-128k-online',
+            capabilities: {
+                maxTokens: 8000,
+                supportsFunctions: true,
+                supportsStreaming: true
+            },
+            inputCostPer1M: 1.00,
+            outputCostPer1M: 1.00,
+            contextWindow: 131000
         }
     ]
 };
