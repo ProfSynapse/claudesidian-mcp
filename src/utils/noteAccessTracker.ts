@@ -1,6 +1,5 @@
 import { Vault, TFile, App } from 'obsidian';
 import { VaultManager } from '../services/VaultManager';
-import * as yaml from 'yaml';
 
 export interface AccessMetadata {
     lastViewedAt: string;
@@ -20,34 +19,26 @@ export async function trackNoteAccess(vault: Vault | VaultManager, path: string,
             const cache = app?.metadataCache.getFileCache(file);
             const currentMetadata = cache?.frontmatter || {};
 
-            // Extract existing content and frontmatter
-            const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-            const existingContent = match ? match[2] : content;
-            const existingFrontmatter = match ? yaml.parse(match[1]) || {} : {};
+            // Extract existing content without frontmatter
+            const contentWithoutFrontmatter = content.replace(/^---\n[\s\S]*?\n---\n/, '');
 
-            // Merge new access data with existing frontmatter
+            // Create new frontmatter
             const newFrontmatter = {
-                ...existingFrontmatter,
                 ...currentMetadata,
                 lastViewedAt: now,
-                accessCount: ((existingFrontmatter.accessCount || 0) + 1)
+                accessCount: (currentMetadata.accessCount || 0) + 1
             };
 
-            // Only include frontmatter if there's something to include
-            const newContent = Object.keys(newFrontmatter).length > 0
-                ? `---\n${yaml.stringify(newFrontmatter)}---\n${existingContent}`
-                : existingContent;
-
+            // Construct new content with updated frontmatter
+            const newContent = `---\n${JSON.stringify(newFrontmatter, null, 2)}\n---\n${contentWithoutFrontmatter}`;
             await vault.modify(file, newContent);
         } else {
             // For VaultManager, use its methods
-            const metadata = await vault.getNoteMetadata(path) || {};
-            
-            // Only update the access tracking fields
+            const metadata = await vault.getNoteMetadata(path);
             await vault.updateNoteMetadata(path, {
-                ...metadata,
+                ...(metadata || {}),
                 lastViewedAt: now,
-                accessCount: (metadata.accessCount || 0) + 1
+                accessCount: ((metadata?.accessCount as number) || 0) + 1
             });
         }
     } catch (error) {
