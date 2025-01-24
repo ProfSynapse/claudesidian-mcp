@@ -5,7 +5,7 @@ import { createConnection } from 'net';
  * Creates a connection to the MCP server's named pipe
  * This connector is used by Claude Desktop to communicate with our Obsidian plugin
  */
-const pipeName = '\\\\.\\pipe\\bridge_mcp';
+const pipeName = '\\\\.\\pipe\\claudesidian_mcp';
 const socket = createConnection(pipeName);
 
 // Pipe stdin/stdout to/from the socket

@@ -3,6 +3,15 @@ import { join } from 'path';
 import { TFile, TFolder, TAbstractFile, prepareFuzzySearch } from 'obsidian';
 import { trackNoteAccess } from '../../utils/noteAccessTracker';
 import { SearchUtil } from '../../utils/searchUtil';
+import { 
+    sanitizePath, 
+    ensureMdExtension, 
+    getFolderPath, 
+    isValidPath,
+    sanitizeName,
+    isAbsolutePath,
+    isMemoryOrReasoningPath 
+} from '../../utils/pathUtils';
 
 interface EditRequest {
     text: string;
@@ -20,19 +29,48 @@ export class ManageNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'manageNote',
-            description: 'Manage notes by creating, reading, inserting, editing, deleting, listing and searching in one tool.',
+            description: 'Manage notes by creating, reading, inserting, editing, deleting, listing and searching in one tool. The reviewIndex tool from memory must be used prior to using any tool at the beginning of a conversation.',
             version: '1.0.0',
-            author: 'Bridge MCP'
+            author: 'Claudesidian MCP'
         }, { allowUndo: true });
 
         this.searchUtil = new SearchUtil(context.vault);
     }
 
-    private ensureMdExtension(path: string): string {
-        if (!path.toLowerCase().endsWith('.md')) {
-            return path + '.md';
+    /**
+     * Prepares a path for file operations by sanitizing and validating it
+     * @throws Error if path is invalid
+     */
+    private preparePath(path: string, title?: string): string {
+        let finalPath: string;
+
+        // Handle no path case
+        if (!path) {
+            const fileName = title ? sanitizeName(title) : `note_${Date.now()}`;
+            finalPath = join('claudesidian/inbox', fileName);
+        } else {
+            // Handle existing path
+            if (isAbsolutePath(path)) {
+                // Keep absolute paths as-is
+                finalPath = path;
+            } else if (!path.includes('/')) {
+                // If it's a single file name (no directories), put it in Inbox
+                finalPath = join('claudesidian/inbox', path);
+            } else {
+                // Keep all other paths as-is
+                finalPath = path;
+            }
         }
-        return path;
+
+        // Sanitize the path based on whether it's in memory/reasoning folders
+        const rootPath = this.context.settings.rootPath;
+        const sanitizedPath = sanitizePath(finalPath, rootPath);
+        if (!sanitizedPath) {
+            throw new Error('Invalid path after sanitization');
+        }
+
+        // Ensure .md extension
+        return ensureMdExtension(sanitizedPath);
     }
 
     private async ensureTrashFolder(): Promise<void> {
@@ -73,33 +111,20 @@ export class ManageNoteTool extends BaseTool {
 
     private async createNote(args: any): Promise<any> {
         try {
-            let { title, path, content, frontmatter, createFolders } = args;
-
-            // If no path specified but title exists, create in inbox
-            if (!path && title) {
-                path = join(this.context.settings.rootPath, 'inbox', this.ensureMdExtension(title));
-            } else if (!path) {
-                // Fallback if neither path nor title specified
-                path = join(this.context.settings.rootPath, 'inbox', `${Date.now()}.md`);
-            } else if (!path.startsWith(this.context.settings.rootPath)) {
-                // If path provided but not absolute, prefix with root path
-                path = join(this.context.settings.rootPath, path);
-            }
+            const { title, path: rawPath, content, frontmatter } = args;
 
             if (content === undefined || content === null) {
                 throw new Error('Content cannot be null or undefined');
             }
 
-            // Ensure path has .md extension
-            const finalPath = this.ensureMdExtension(path);
-
+            // Prepare and validate path
+            const finalPath = this.preparePath(rawPath, title);
+            
+            // Always enable createFolders to ensure parent directories exist
             const result = await this.context.vault.createNote(finalPath, content, {
                 frontmatter,
-                createFolders
+                createFolders: true
             });
-
-            // Add tracking after creation
-            await trackNoteAccess(this.context.app.vault, finalPath, this.context.app);
 
             // Return a simplified response to avoid circular references
             return {
@@ -115,10 +140,16 @@ export class ManageNoteTool extends BaseTool {
     }
 
     private async readNote(args: any): Promise<any> {
-        const { path, includeFrontmatter, findSections } = args;
+        const { path: rawPath, includeFrontmatter, findSections } = args;
         
-        await trackNoteAccess(this.context.app.vault, path);
-        const content = await this.context.vault.readNote(path);
+        // Prepare and validate path
+        const finalPath = this.preparePath(rawPath);
+        const content = await this.context.vault.readNote(finalPath);
+        
+        // Only track access when actually reading content
+        if (content) {
+            await trackNoteAccess(this.context.app.vault, finalPath);
+        }
         let result: any = content;
 
         if (findSections?.length > 0) {
@@ -140,7 +171,7 @@ export class ManageNoteTool extends BaseTool {
         }
 
         if (includeFrontmatter) {
-            const metadata = await this.context.vault.getNoteMetadata(path);
+            const metadata = await this.context.vault.getNoteMetadata(finalPath);
             return {
                 ...(typeof result === 'string' ? { content: result } : result),
                 frontmatter: metadata
@@ -151,10 +182,11 @@ export class ManageNoteTool extends BaseTool {
     }
 
     private async insertContent(args: any): Promise<any> {
-        const { path, content, mode, heading } = args;
+        const { path: rawPath, content, mode, heading } = args;
         
-        await trackNoteAccess(this.context.app.vault, path, this.context.app);
-        const currentContent = await this.context.vault.readNote(path);
+        // Prepare and validate path
+        const finalPath = this.preparePath(rawPath);
+        const currentContent = await this.context.vault.readNote(finalPath);
         let newContent: string;
 
         switch (mode) {
@@ -184,19 +216,21 @@ export class ManageNoteTool extends BaseTool {
                 throw new Error(`Unknown insertion mode: ${mode}`);
         }
 
-        await this.context.vault.updateNote(path, newContent);
+        await this.context.vault.updateNote(finalPath, newContent);
         return { oldContent: currentContent };
     }
 
     private async editNote(args: any): Promise<any> {
-        const { path, edits, frontmatter } = args;
+        const { path: rawPath, edits, frontmatter } = args;
         
-        await trackNoteAccess(this.context.vault, path);
+        // Prepare and validate path
+        const finalPath = this.preparePath(rawPath);
+        
         if (edits.length > 100) {
             throw new Error('Too many edits to process at once (limit: 100)');
         }
 
-        const oldContent = await this.context.vault.readNote(path);
+        const oldContent = await this.context.vault.readNote(finalPath);
         let newContent = oldContent;
 
         // Process from bottom to top to maintain positions
@@ -220,7 +254,11 @@ export class ManageNoteTool extends BaseTool {
             }
         }
 
-        await this.context.vault.updateNote(path, newContent, { frontmatter });
+        await this.context.vault.updateNote(finalPath, newContent, { frontmatter });
+        
+        // Track access only after successful edit
+        await trackNoteAccess(this.context.vault, finalPath);
+        
         return { 
             oldContent,
             newContent,
@@ -229,14 +267,16 @@ export class ManageNoteTool extends BaseTool {
     }
 
     private async deleteNote(args: any): Promise<any> {
-        const { path, permanent } = args;
-        const file = await this.context.vault.getFile(path);
+        const { path: rawPath, permanent } = args;
+        const finalPath = this.preparePath(rawPath);
+        
+        const file = await this.context.vault.getFile(finalPath);
         if (!file) {
-            throw new Error(`Note not found: ${path}`);
+            throw new Error(`Note not found: ${finalPath}`);
         }
 
         // Store content for undo
-        const oldContent = await this.context.vault.readNote(path);
+        const oldContent = await this.context.vault.readNote(finalPath);
         const oldPath = file.path;
 
         if (!permanent) {
@@ -330,7 +370,11 @@ export class ManageNoteTool extends BaseTool {
     }
 
     private async moveNote(args: any): Promise<any> {
-        const { fromPath, toPath, createFolders } = args;
+        const { fromPath: rawFromPath, toPath: rawToPath } = args;
+        
+        // Prepare and validate paths
+        const fromPath = this.preparePath(rawFromPath);
+        const toPath = this.preparePath(rawToPath);
         
         // Get the source item
         const source = this.context.app.vault.getAbstractFileByPath(fromPath);
@@ -338,18 +382,10 @@ export class ManageNoteTool extends BaseTool {
             throw new Error(`Path not found: ${fromPath}`);
         }
 
-        // Track access before move
-        if (source instanceof TFile) {
-            await trackNoteAccess(this.context.app.vault, fromPath, this.context.app);
-        }
+        // Always create parent folders
+        const toFolder = getFolderPath(toPath);
+        await this.context.vault.ensureFolder(toFolder);
 
-        // Create parent folders if needed
-        if (createFolders) {
-            const toFolder = toPath.split('/').slice(0, -1).join('/');
-            if (toFolder) {
-                await this.context.app.vault.createFolder(toFolder);
-            }
-        }
 
         // Store old path for undo
         const oldPath = source.path;
@@ -357,8 +393,6 @@ export class ManageNoteTool extends BaseTool {
         // Use appropriate rename method based on type
         if (source instanceof TFile) {
             await this.context.app.fileManager.renameFile(source, toPath);
-            // Track access at new location
-            await trackNoteAccess(this.context.app.vault, toPath, this.context.app);
         } else if (source instanceof TFolder) {
             await this.context.app.vault.rename(source, toPath);
         }
@@ -367,43 +401,47 @@ export class ManageNoteTool extends BaseTool {
     }
 
     async undo(args: any, previousResult: any): Promise<void> {
-        switch (args.action) {
-            case 'move':
-                if (previousResult?.oldPath) {
-                    const item = this.context.app.vault.getAbstractFileByPath(args.toPath);
-                    if (item) {
-                        // Track access before moving back
-                        if (item instanceof TFile) {
-                            await trackNoteAccess(this.context.app.vault, args.toPath, this.context.app);
-                        }
-                        
-                        if (previousResult.type === 'file' && item instanceof TFile) {
-                            await this.context.app.fileManager.renameFile(item, previousResult.oldPath);
-                            // Track access at restored location
-                            await trackNoteAccess(this.context.app.vault, previousResult.oldPath, this.context.app);
-                        } else if (previousResult.type === 'folder' && item instanceof TFolder) {
-                            await this.context.app.vault.rename(item, previousResult.oldPath);
+        try {
+            switch (args.action) {
+                case 'move':
+                    if (previousResult?.oldPath) {
+                        const toPath = this.preparePath(args.toPath);
+                        const item = this.context.app.vault.getAbstractFileByPath(toPath);
+                        if (item) {
+                            if (previousResult.type === 'file' && item instanceof TFile) {
+                                await this.context.app.fileManager.renameFile(item, previousResult.oldPath);
+                            } else if (previousResult.type === 'folder' && item instanceof TFolder) {
+                                await this.context.app.vault.rename(item, previousResult.oldPath);
+                            }
                         }
                     }
-                }
-                break;
-            case 'create':
-                await this.context.vault.deleteNote(previousResult.path);
-                break;
-            case 'edit':
-            case 'insert':
-                if (previousResult?.oldContent) {
-                    await this.context.vault.updateNote(args.path, previousResult.oldContent);
-                }
-                break;
-            case 'delete':
-                if (previousResult?.oldPath && previousResult?.oldContent) {
-                    await this.context.vault.createNote(
-                        previousResult.oldPath,
-                        previousResult.oldContent
-                    );
-                }
-                break;
+                    break;
+                case 'create':
+                    if (previousResult?.path) {
+                        const finalPath = this.preparePath(previousResult.path);
+                        await this.context.vault.deleteNote(finalPath);
+                    }
+                    break;
+                case 'edit':
+                case 'insert':
+                    if (previousResult?.oldContent) {
+                        const finalPath = this.preparePath(args.path);
+                        await this.context.vault.updateNote(finalPath, previousResult.oldContent);
+                    }
+                    break;
+                case 'delete':
+                    if (previousResult?.oldPath && previousResult?.oldContent) {
+                        const finalPath = this.preparePath(previousResult.oldPath);
+                        await this.context.vault.createNote(
+                            finalPath,
+                            previousResult.oldContent
+                        );
+                    }
+                    break;
+            }
+        } catch (error) {
+            console.error('Error in undo operation:', error);
+            throw error;
         }
     }
 

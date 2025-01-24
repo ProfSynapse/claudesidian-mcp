@@ -55,22 +55,25 @@ export class StatusBarComponent {
 }
 
 export class StatusBar {
-    private statusEl: HTMLElement;
+    private component: StatusBarComponent;
     private plugin: BridgeMCPPlugin;
 
     constructor(plugin: BridgeMCPPlugin) {
         this.plugin = plugin;
-        this.statusEl = document.createElement('div');
-        this.statusEl.className = 'mcp-status-bar';
-        this.setStatus('stopped');
+        const statusEl = document.createElement('div');
+        statusEl.className = 'mcp-status-bar';
+        this.component = new StatusBarComponent(statusEl);
     }
 
-    setStatus(status: 'running' | 'stopped' | 'error') {
-        this.statusEl.textContent = `MCP: ${status}`;
-        this.statusEl.className = `mcp-status-bar mcp-status-${status}`;
+    setStatus(status: ServerStatus) {
+        this.component.setStatus(status);
+    }
+
+    getStatus(): ServerStatus {
+        return this.component.getStatus();
     }
 
     getElement(): HTMLElement {
-        return this.statusEl;
+        return this.component['statusEl'];
     }
 }

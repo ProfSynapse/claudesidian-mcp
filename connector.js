@@ -5,7 +5,7 @@ var net_1 = require("net");
  * Creates a connection to the MCP server's named pipe
  * This connector is used by Claude Desktop to communicate with our Obsidian plugin
  */
-var pipeName = '\\\\.\\pipe\\bridge_mcp';
+var pipeName = '\\\\.\\pipe\\claudesidian_mcp';
 var socket = (0, net_1.createConnection)(pipeName);
 // Pipe stdin/stdout to/from the socket
 process.stdin.pipe(socket);

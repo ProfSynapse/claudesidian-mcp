@@ -43,8 +43,8 @@ export class SettingsTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'Bridge MCP Settings' });
-        console.log('SettingsTab: Created Bridge MCP Settings header'); // Log header creation
+        containerEl.createEl('h2', { text: 'Claudesidian MCP Settings' });
+        console.log('SettingsTab: Created Claudesidian MCP Settings header'); // Log header creation
 
         // Add the Claude Desktop configuration button near the top
         new Setting(containerEl)

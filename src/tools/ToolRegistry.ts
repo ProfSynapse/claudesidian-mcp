@@ -9,27 +9,82 @@ import { ManageMetadataTool } from './core/ManageMetadataTool';
 import { CompletionTool } from './core/LLMTool'; 
 import { IndexManager } from '../services/IndexManager';  
 import { ManageFolderTool } from './core/ManageFolderTool';
+import { EventManager } from '../services/EventManager';
+
+export type ConversationPhase = 'start' | 'reviewed' | 'reasoned' | 'active';
+
+export interface ConversationState {
+    phase: ConversationPhase;
+    hasSavedMemory: boolean;
+    currentMemoryOperation?: {
+        action: string;
+        endConversation?: boolean;
+    };
+}
 
 export class ToolRegistry {
     private tools: Map<string, typeof BaseTool> = new Map();
     private instances: Map<string, BaseTool> = new Map();
     private context: IToolContext;
+    private conversationState: ConversationState;
+
+    // Expose getters for conversation state
+    get phase(): ConversationPhase {
+        return this.conversationState.phase;
+    }
+
+    get hasSavedMemory(): boolean {
+        return this.conversationState.hasSavedMemory;
+    }
+
+    // Phase transition methods
+    setPhaseToReviewed(): void {
+        if (this.conversationState.phase !== 'start') {
+            throw new Error('Can only transition to reviewed from start phase');
+        }
+        this.conversationState.phase = 'reviewed';
+    }
+
+    setPhaseToReasoned(): void {
+        if (this.conversationState.phase !== 'reviewed') {
+            throw new Error('Can only transition to reasoned from reviewed phase');
+        }
+        this.conversationState.phase = 'reasoned';
+    }
+
+    setPhaseToActive(): void {
+        if (this.conversationState.phase !== 'reasoned') {
+            throw new Error('Can only transition to active from reasoned phase');
+        }
+        this.conversationState.phase = 'active';
+    }
+
+    setHasSavedMemory(action: string, endConversation?: boolean): void {
+        this.conversationState.hasSavedMemory = true;
+        this.conversationState.currentMemoryOperation = {
+            action,
+            endConversation
+        };
+    }
 
     constructor(
         app: App,
-        plugin: any, // Add plugin parameter
+        plugin: any,
         vaultManager: VaultManager,
         memoryManager: MemoryManager,
-        indexManager: IndexManager  // Add this parameter
+        indexManager: IndexManager,
+        private eventManager: EventManager
     ) {
+        this.resetConversationState();
         this.context = {
             app,
-            plugin, // Add this line
+            plugin,
             vault: vaultManager,
             memory: memoryManager,
-            toolRegistry: this,  // Add this line
-            settings: plugin.settings,  // Add settings from plugin
-            indexManager  // Add this line
+            toolRegistry: this,
+            settings: plugin.settings,
+            indexManager,
+            eventManager
         };
 
         // Register all core tools
@@ -70,6 +125,32 @@ export class ToolRegistry {
         }
 
         try {
+            // Validate workflow requirements
+            if (name === 'manageMemory') {
+                if (args.action === 'reviewIndex') {
+                    if (this.phase !== 'start') {
+                        throw new Error('reviewIndex must be the first action');
+                    }
+                    this.setPhaseToReviewed();
+                }
+
+                if (['create', 'edit'].includes(args.action)) {
+                    this.setHasSavedMemory(args.action, args.endConversation);
+                }
+            } else if (name === 'reasoning') {
+                if (this.phase === 'start') {
+                    throw new Error('Must call reviewIndex before reasoning');
+                }
+                if (this.phase === 'reviewed') {
+                    this.setPhaseToReasoned();
+                    this.setPhaseToActive();
+                }
+            } else if (this.phase === 'start') {
+                throw new Error('Must call reviewIndex as first action');
+            } else if (this.phase === 'reviewed') {
+                throw new Error('Must use reasoning after reviewIndex');
+            }
+
             if (instance.requiresConfirmation()) {
                 // TODO: Implement confirmation dialog
             }
@@ -80,6 +161,22 @@ export class ToolRegistry {
             console.error(`Error executing tool ${name}:`, error);
             throw error;
         }
+    }
+
+    // Method to check if memory workflow is properly completed
+    isMemoryWorkflowComplete(): boolean {
+        return this.phase === 'active' &&
+               this.hasSavedMemory &&
+               this.conversationState.currentMemoryOperation?.endConversation === true;
+    }
+
+    // Reset conversation state
+    resetConversationState(): void {
+        this.conversationState = {
+            phase: 'start',
+            hasSavedMemory: false,
+            currentMemoryOperation: undefined
+        };
     }
 
     getAvailableTools(): Array<{name: string; description: string}> {

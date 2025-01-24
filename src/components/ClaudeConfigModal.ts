@@ -13,7 +13,7 @@ export class ClaudeConfigModal extends Modal {
         contentEl.createEl('h2', { text: 'Claude Desktop Configuration' });
 
         const instructions = contentEl.createEl('div');
-        instructions.createEl('p', { text: 'To configure Claude Desktop to work with Bridge MCP:' });
+        instructions.createEl('p', { text: 'To configure Claude Desktop to work with Claudesidian MCP:' });
 
         const steps = instructions.createEl('ol');
         steps.createEl('li', { text: 'Open your Claude Desktop config file:' });

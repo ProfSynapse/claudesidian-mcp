@@ -1,5 +1,5 @@
 import { Plugin } from 'obsidian';
-import { BridgeMCPServer } from './mcp/server';
+import { ClaudesidianMCPServer } from './mcp/server';
 import { StatusBar } from './components/StatusBar';
 import { MemoryManager } from './services/MemoryManager';
 import { ToolRegistry } from './tools/ToolRegistry';
@@ -9,12 +9,12 @@ import { SettingsTab } from './components/SettingsTab';
 import { EventManager } from './services/EventManager';
 import { IndexManager } from './services/IndexManager';
 
-export default class BridgeMCPPlugin extends Plugin {
-    private mcpServer: BridgeMCPServer;
+export default class ClaudesidianMCPPlugin extends Plugin {
+    private mcpServer: ClaudesidianMCPServer;
     private statusBar: StatusBar;
     private toolRegistry: ToolRegistry;
     private memoryManager: MemoryManager;
-    public vaultManager: VaultManager; // Add this line
+    public vaultManager: VaultManager;
     settings: MCPSettings;
 
     private initStage = {
@@ -26,66 +26,64 @@ export default class BridgeMCPPlugin extends Plugin {
     private currentStage: keyof typeof this.initStage = 'CORE';
 
     private async initializeCoreComponents(): Promise<void> {
-        console.debug('BridgeMCPPlugin: Initializing core components...');
+        console.debug('ClaudesidianMCPPlugin: Initializing essential components...');
         
-        if (!this.app.workspace) {
-            throw new Error('Workspace not available during core initialization');
+        if (!this.app.workspace || !this.app.vault) {
+            throw new Error('Essential Obsidian components not available');
         }
 
-        // Load settings
+        // Only load settings and create essential managers
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-        
-        if (!this.app.vault) {
-            throw new Error('Vault not available during core initialization');
-        }
-
-        // Initialize vault manager
         this.vaultManager = new VaultManager(this.app);
         
-        console.debug('BridgeMCPPlugin: Core components initialized');
+        console.debug('ClaudesidianMCPPlugin: Essential components initialized');
     }
 
     private async initializeFeatures(eventManager: EventManager): Promise<void> {
-        console.debug('BridgeMCPPlugin: Initializing features...');
+        console.debug('ClaudesidianMCPPlugin: Initializing features...');
         
-        // Initialize base folder structure
-        await this.initializeFolderStructure();
+        // Create both instances but don't pass MemoryManager dependency yet
+        let memoryManagerTemp: any = {};
         
-        // Create memory manager
-        this.memoryManager = new MemoryManager(
-            this.vaultManager,
-            eventManager,
-            this.settings
-        );
-
-        // Wait for file operations to settle
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Create index manager
         const indexManager = new IndexManager(
             this.vaultManager,
             eventManager,
             this.settings,
-            { memoryManager: this.memoryManager }
+            { memoryManager: memoryManagerTemp }
         );
 
-        // Initialize tool registry
+        this.memoryManager = new MemoryManager(
+            this.vaultManager,
+            eventManager,
+            indexManager,
+            this.settings
+        );
+        
+        // Now update the temporary reference to point to the real MemoryManager
+        Object.assign(memoryManagerTemp, this.memoryManager);
+
         this.toolRegistry = new ToolRegistry(
             this.app,
             this,
             this.vaultManager,
             this.memoryManager,
-            indexManager
+            indexManager,
+            eventManager
         );
 
-        console.debug('BridgeMCPPlugin: Features initialized');
+        // Start non-blocking folder creation
+        this.initializeFolderStructure().catch(error => 
+            console.error('Error creating folders:', error)
+        );
+
+        console.debug('ClaudesidianMCPPlugin: Basic features initialized');
     }
 
     private async initializeServer(): Promise<void> {
-        console.debug('BridgeMCPPlugin: Initializing server components...');
+        console.debug('ClaudesidianMCPPlugin: Initializing server components...');
         
         // Create MCP server
-        this.mcpServer = new BridgeMCPServer(
+        this.mcpServer = new ClaudesidianMCPServer(
             this.app,
             this.toolRegistry,
             this.vaultManager,
@@ -100,59 +98,38 @@ export default class BridgeMCPPlugin extends Plugin {
         // Start server
         await this.mcpServer.start();
         
-        console.debug('BridgeMCPPlugin: Server components initialized');
+        console.debug('ClaudesidianMCPPlugin: Server components initialized');
     }
 
     async onload() {
-        console.log('BridgeMCPPlugin: onload started');
+        console.log('ClaudesidianMCPPlugin: Starting minimal initialization');
         
         try {
+            // Phase 1: Essential Setup
             this.currentStage = 'CORE';
             await this.initializeCoreComponents();
-            
-            // Create event manager for inter-component communication
             const eventManager = new EventManager();
 
-            this.currentStage = 'FEATURES';
-            // Set up staged initialization with timeout
-            const timeoutMs = 10000; // 10 second timeout
-            const layoutReadyPromise = new Promise<void>((resolve) => {
-                if (this.app.workspace.layoutReady) {
-                    resolve();
-                    return;
-                }
+            // Register status bar early for user feedback
+            this.initializeStatusBar();
+            this.statusBar.setStatus('initializing');
 
-                // Register event using Obsidian's event system
-                const eventRef = this.registerEvent(
-                    this.app.workspace.on('layout-change', () => {
-                        if (this.app.workspace.layoutReady) {
-                            resolve();
-                        }
-                    })
-                );
+            // Register minimal commands
+            this.addSettingTab(new SettingsTab(this.app, this));
+            this.registerCommands();
 
-                // Timeout fallback
-                setTimeout(() => {
-                    // Event will be automatically cleaned up by Obsidian's plugin system
-                    console.warn('BridgeMCPPlugin: Layout ready timeout - proceeding with limited functionality');
-                    resolve();
-                }, timeoutMs);
+            // Phase 2: Deferred Initialization
+            this.app.workspace.onLayoutReady(() => {
+                this.completeInitialization(eventManager).catch(error => {
+                    console.error('Error during post-layout initialization:', error);
+                    this.statusBar.setStatus('error');
+                });
             });
 
-            // Wait for layout or timeout
-            await layoutReadyPromise;
-            
-            // Initialize features
-            await this.initializeFeatures(eventManager);
-            
-            this.currentStage = 'SERVER';
-            // Start server and UI components
-            await this.initializeServer();
-            
-            console.log('BridgeMCPPlugin: Initialization complete');
+            console.log('ClaudesidianMCPPlugin: Essential initialization complete');
             
         } catch (error: any) {
-            console.error('BridgeMCPPlugin: Error during initialization', {
+            console.error('ClaudesidianMCPPlugin: Error during initialization', {
                 error: error.message || error,
                 failedStage: this.initStage[this.currentStage],
                 workspaceStatus: {
@@ -168,39 +145,48 @@ export default class BridgeMCPPlugin extends Plugin {
         }
     }
 
-    public async initializeFolderStructure() {
+    private async completeInitialization(eventManager: EventManager) {
         try {
-            // Create root folder if it doesn't exist
-            const rootExists = await this.vaultManager.folderExists(this.settings.rootPath);
-            if (!rootExists) {
-                await this.vaultManager.createFolder(this.settings.rootPath);
-            }
+            console.debug('ClaudesidianMCPPlugin: Starting post-layout initialization');
+            
+            // Phase 2a: Feature Initialization
+            this.currentStage = 'FEATURES';
+            await this.initializeFeatures(eventManager);
+            
+            // Phase 2b: Server Initialization
+            this.currentStage = 'SERVER';
+            await this.initializeServer();
+            
+            this.statusBar.setStatus('running');
+            console.log('ClaudesidianMCPPlugin: Full initialization complete');
+        } catch (error) {
+            console.error('Error during post-layout initialization:', error);
+            this.statusBar.setStatus('error');
+            throw error;
+        }
+    }
 
-            // Create inbox folder for default content
-            const inboxPath = `${this.settings.rootPath}/inbox`;
-            const inboxExists = await this.vaultManager.folderExists(inboxPath);
-            if (!inboxExists) {
-                await this.vaultManager.createFolder(inboxPath);
-            }
+    public async initializeFolderStructure() {
+        // Create all folders concurrently for better performance
+        const folderCreationPromises = [
+            this.createFolderIfNeeded(this.settings.rootPath),
+            this.createFolderIfNeeded(`${this.settings.rootPath}/inbox`),
+            this.settings.enabledMemory && this.createFolderIfNeeded(`${this.settings.rootPath}/memory`),
+            this.settings.enabledReasoning && this.createFolderIfNeeded(`${this.settings.rootPath}/reasoning`)
+        ].filter(Boolean); // Remove undefined promises from disabled features
 
-            // Create subfolders only if their features are enabled
-            if (this.settings.enabledMemory) {
-                const memoryPath = `${this.settings.rootPath}/memory`;
-                const memoryExists = await this.vaultManager.folderExists(memoryPath);
-                if (!memoryExists) {
-                    await this.vaultManager.createFolder(memoryPath);
-                }
-            }
+        // Wait for all folder creations to complete
+        await Promise.all(folderCreationPromises);
+    }
 
-            if (this.settings.enabledReasoning) {
-                const reasoningPath = `${this.settings.rootPath}/reasoning`;
-                const reasoningExists = await this.vaultManager.folderExists(reasoningPath);
-                if (!reasoningExists) {
-                    await this.vaultManager.createFolder(reasoningPath);
-                }
+    private async createFolderIfNeeded(path: string): Promise<void> {
+        try {
+            if (!await this.vaultManager.folderExists(path)) {
+                await this.vaultManager.createFolder(path);
             }
         } catch (error) {
-            console.error('Error initializing folder structure:', error);
+            console.error(`Error creating folder ${path}:`, error);
+            // Don't throw - allow other operations to continue
         }
     }
 
@@ -248,7 +234,7 @@ export default class BridgeMCPPlugin extends Plugin {
                 // Clean up old folders
                 if (hadMemory) await this.vaultManager.cleanupEmptyFolders(oldMemoryPath);
                 if (hadReasoning) await this.vaultManager.cleanupEmptyFolders(oldReasoningPath);
-                await this.vaultManager.cleanupEmptyFolders(sourceRootPath); // Use sourceRootPath instead of oldRootPath
+                await this.vaultManager.cleanupEmptyFolders(sourceRootPath);
             } else {
                 console.log('No old folder found, creating new structure');
                 await this.initializeFolderStructure();
@@ -329,10 +315,11 @@ export default class BridgeMCPPlugin extends Plugin {
             id: 'start-mcp-server',
             name: 'Start MCP Server',
             callback: async () => {
-                console.log('BridgeMCPPlugin: start-mcp-server command triggered');
+                console.log('ClaudesidianMCPPlugin: start-mcp-server command triggered');
                 try {
-                    await this.mcpServer.start();
-                    this.statusBar.setStatus('running');
+                this.statusBar.setStatus('starting');
+                await this.mcpServer.start();
+                this.statusBar.setStatus('running');
                 } catch (error: any) {
                     console.error('Failed to start MCP server:', error);
                     this.statusBar.setStatus('error');
@@ -344,10 +331,11 @@ export default class BridgeMCPPlugin extends Plugin {
             id: 'stop-mcp-server',
             name: 'Stop MCP Server',
             callback: async () => {
-                console.log('BridgeMCPPlugin: stop-mcp-server command triggered');
+                console.log('ClaudesidianMCPPlugin: stop-mcp-server command triggered');
                 try {
-                    await this.mcpServer.stop();
-                    this.statusBar.setStatus('stopped');
+            this.statusBar.setStatus('stopping');
+            await this.mcpServer.stop();
+            this.statusBar.setStatus('stopped');
                 } catch (error: any) {
                     console.error('Failed to stop MCP server:', error);
                     this.statusBar.setStatus('error');
@@ -357,17 +345,17 @@ export default class BridgeMCPPlugin extends Plugin {
     }
 
     async saveSettings() {
-        console.log('MCP Plugin: Saving settings'); // Log settings saving
+        console.log('MCP Plugin: Saving settings');
         await this.saveData(this.settings);
-        console.log('MCP Plugin: Settings saved'); // Confirm save
+        console.log('MCP Plugin: Settings saved');
     }
 
     async onunload() {
-        console.log('BridgeMCPPlugin: onunload started');
+        console.log('ClaudesidianMCPPlugin: onunload started');
         try {
             await this.mcpServer?.stop();
         } catch (error: any) {
-            console.error('BridgeMCPPlugin: Error during onunload', error);
+            console.error('ClaudesidianMCPPlugin: Error during onunload', error);
         }
     }
 }

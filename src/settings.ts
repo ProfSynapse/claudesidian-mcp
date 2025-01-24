@@ -1,5 +1,5 @@
 import { Plugin } from 'obsidian';
-import { BridgeMCPSettings, MCPSettings, DEFAULT_SETTINGS } from './types';
+import { MCPSettings, DEFAULT_SETTINGS } from './types';
 import { join } from 'path';
 
 export class Settings {
@@ -38,5 +38,5 @@ export class Settings {
 }
 
 // Re-export types and constants from types.ts
-export type { BridgeMCPSettings, MCPSettings };
+export type { MCPSettings };
 export { DEFAULT_SETTINGS };

@@ -4,9 +4,9 @@ export class ManageMetadataTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'manageMetadata',
-            description: 'Manage Metadata fields in a note',
+            description: 'Manage Metadata fields in a note. The reviewIndex tool from memory must be used prior to using any tool at the beginning of a conversation.',
             version: '1.1.0',
-            author: 'Bridge MCP'
+            author: 'Claudesidian MCP'
         }, { allowUndo: true });
     }
 

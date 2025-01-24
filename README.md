@@ -1,6 +1,6 @@
 # Claudesidian MCP Plugin for Obsidian
 
-Bridge MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system.
+Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system.
 
 ## Features
 

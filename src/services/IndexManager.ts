@@ -1,6 +1,6 @@
 import { VaultManager } from './VaultManager';
 import { EventManager, EventTypes, MemoryEvent, ReasoningEvent } from './EventManager';
-import { BridgeMCPSettings } from '../settings';
+import { MCPSettings } from '../settings';
 
 interface IndexEntry {
     title: string;
@@ -78,17 +78,146 @@ export class IndexManager {
         memoryManager: any; // Replace with proper type when available
     };
 
+    private guideInitialized: boolean = false;
+    private guideExists: boolean = false;
+
+    private indexInitialized: boolean = false;
+    private indexInitializing: Promise<void> | null = null;
+
     constructor(
         private vaultManager: VaultManager,
         private eventManager: EventManager,
-        private settings: BridgeMCPSettings,
+        private settings: MCPSettings,
         context: { memoryManager: any }
     ) {
         this.context = context;
         this.subscribeToEvents();
         // Add subscription to memory access events
         this.eventManager.on(EventTypes.MEMORY_ACCESSED, this.handleMemoryAccess.bind(this));
-        this.initializeCoreProcedures();
+        
+        // Start index initialization immediately
+        this.initializeIndex().catch(error => {
+            console.error('Failed to initialize index:', error);
+        });
+    }
+
+    /**
+     * Ensures the memory index exists and is properly structured.
+     * Uses a promise to prevent multiple simultaneous initializations.
+     */
+    private async initializeIndex(): Promise<void> {
+        if (this.indexInitialized) {
+            return;
+        }
+
+        // If already initializing, wait for that to complete
+        if (this.indexInitializing) {
+            await this.indexInitializing;
+            return;
+        }
+
+        // Start initialization
+        this.indexInitializing = (async () => {
+            try {
+                await this.ensureCoreProcedures();
+                
+                const indexPath = `${this.settings.rootPath}/index.md`;
+                const exists = await this.vaultManager.fileExists(indexPath);
+
+                if (!exists) {
+                    // Create initial index structure with empty sections
+                    console.log('IndexManager: Creating initial memory index structure...');
+                    const initialSections: Record<string, string[]> = {
+                        'Core Memories': [],
+                        'Episodic Memories': [],
+                        'Semantic Memories': [],
+                        'Procedural Memories': [],
+                        'Emotional Memories': [],
+                        'Contextual Memories': [],
+                        'Reasoning Sessions': []
+                    };
+
+                    // Add core memory traversal guide to Procedural section
+                    if (this.guideExists) {
+                        initialSections['Procedural Memories'].push([
+                            `- [[${this.CORE_PROCEDURAL_MEMORY.title}]]`,
+                            `  path:: memory/${this.CORE_PROCEDURAL_MEMORY.title}`,
+                            `  type:: procedural`,
+                            `  timestamp:: ${Date.now()}`,
+                            `  context:: Core system procedure for memory traversal`
+                        ].join('\n'));
+                    }
+
+                    const content = this.formatUnifiedIndex(initialSections);
+                    await this.vaultManager.createNote(indexPath, content, { createFolders: true });
+                }
+
+                this.indexInitialized = true;
+                console.log('IndexManager: Index initialization complete');
+            } catch (error) {
+                console.error('IndexManager: Failed to initialize index:', error);
+                // Reset flags to allow retry
+                this.indexInitialized = false;
+                throw error;
+            } finally {
+                this.indexInitializing = null;
+            }
+        })();
+
+        await this.indexInitializing;
+    }
+
+
+    private async ensureCoreProcedures(): Promise<void> {
+        if (this.guideInitialized) {
+            return;
+        }
+
+        try {
+            console.debug('IndexManager: Checking for existing memory traversal guide...');
+            const memoryManager = this.context.memoryManager;
+            
+            // Check if memory already exists in memory manager
+            const existingGuide = await memoryManager.getMemory(this.CORE_PROCEDURAL_MEMORY.title);
+            
+            if (existingGuide) {
+                console.debug('IndexManager: Found existing memory traversal guide');
+                this.guideExists = true;
+                this.guideInitialized = true;
+                return;
+            }
+
+            // Only create if it doesn't exist
+            console.log('IndexManager: Creating new memory traversal guide...');
+            const memoryPath = `${this.settings.rootPath}/memory`;
+
+            // Ensure memory folder exists
+            const folderExists = await this.vaultManager.folderExists(memoryPath);
+            if (!folderExists) {
+                await this.vaultManager.createFolder(memoryPath);
+            }
+
+            // Create core procedural memory
+            await memoryManager.createProceduralMemory(
+                this.CORE_PROCEDURAL_MEMORY.title,
+                this.CORE_PROCEDURAL_MEMORY.description,
+                this.CORE_PROCEDURAL_MEMORY.pattern
+            );
+
+            this.guideExists = true;
+            this.guideInitialized = true;
+            console.log('IndexManager: Memory traversal guide created successfully');
+            
+        } catch (error) {
+            console.error('IndexManager: Failed to initialize memory traversal guide:', {
+                error: error instanceof Error ? error.message : error,
+                title: this.CORE_PROCEDURAL_MEMORY.title,
+                path: `${this.settings.rootPath}/memory`
+            });
+            // Don't set flags on error to allow retry
+            this.guideExists = false;
+            this.guideInitialized = false;
+        }
     }
 
     private async archiveOldMemories(sections: Record<string, string[]>): Promise<Record<string, string[]>> {
@@ -289,7 +418,11 @@ export class IndexManager {
         if (!entry.timestamp) {
             entry.timestamp = Date.now();
         }
+
         try {
+            // Ensure core procedures are initialized before adding to index
+            await this.ensureCoreProcedures();
+            
             const indexPath = `${this.settings.rootPath}/index.md`;
             let indexContent = '';
             
@@ -298,6 +431,13 @@ export class IndexManager {
             if (exists) {
                 indexContent = await this.vaultManager.readNote(indexPath);
             }
+
+            // Add debug logging
+            console.debug('IndexManager: Adding entry to index', {
+                title: entry.title,
+                section: entry.section,
+                timestamp: entry.timestamp
+            });
 
             const sections = this.parseIndexSections(indexContent);
 
@@ -394,40 +534,102 @@ export class IndexManager {
             'index_version: 2.0',
             `last_updated: ${new Date(timestamp).toISOString()}`,
             'type: memory_index',
-            'max_size_bytes: 102400',
-            'archive_after_days: 30',
             '---',
             '',
             '# Memory Index',
             '',
-            '## 📖 Navigation Guide',
-            'This index is designed for efficient LLM traversal of memories. Follow these steps:',
+            '## ⚡ Required Workflow',
+            'Follow this two-step sequence for all interactions:',
             '',
-            '1. **Memory Categories**: Each section below represents a distinct memory type',
-            '   - Use the emoji prefixes for quick category recognition',
-            '   - Read the description to understand the category\'s purpose',
+            '1. **Start with Memory Review**',
+            '   - MUST use `manageMemory reviewIndex` as first action',
+            '   - Study available memory categories and context',
+            '   - Review existing memories for relevance',
             '',
-            '2. **Finding Memories**:',
-            '   - Use `type::` to filter by memory type',
-            '   - Use `timestamp::` for temporal queries',
-            '   - Use `tags::` for thematic grouping',
-            '   - Use `relationships::` to follow memory connections',
+            '2. **Complete with Reasoning**',
+            '   - MUST use `reasoning` tool after review',
+            '   - Analyze context and plan actions',
+            '   - Form connections between memories',
+            '   - Automatically creates memory and ends conversation',
             '',
-            '3. **Memory Format**:',
-            '   ```memory-entry',
-            '   - [[Title]] - Primary memory reference',
-            '     type:: Memory classification',
-            '     timestamp:: Unix timestamp',
-            '     tags:: Comma-separated list',
-            '     relationships:: Connected memories',
-            '     context:: Additional information',
+            '> Note: The reasoning tool automatically creates a memory of your analysis',
+            '> and ends the conversation. No separate memory creation step is needed.',
+            '',
+            '## 🧭 Memory Traversal Guide',
+            'How to effectively use memory tools:',
+            '',
+            '1. **Review Index Phase** (MANDATORY FIRST)',
+            '   ```json',
+            '   {',
+            '     "tool": "manageMemory",',
+            '     "args": { "action": "reviewIndex" },',
+            '     "purpose": "Understand available context and navigation"',
+            '   }',
             '   ```',
             '',
-            '4. **Best Practices**:',
-            '   - Start with Quick Stats for overview',
-            '   - Use Memory Map for structural understanding',
-            '   - Follow relationship graph for memory connections',
-            '   - Check timestamps for temporal relevance',
+            '2. **Search & Analysis Phase**',
+            '   ```json',
+            '   {',
+            '     "tool": "manageMemory",',
+            '     "args": { ',
+            '       "action": "search",',
+            '       "query": "your search terms"',
+            '     },',
+            '     "purpose": "Find relevant existing memories"',
+            '   }',
+            '   ```',
+            '',
+            '3. **Reasoning Phase** (REQUIRED)',
+            '   ```json',
+            '   {',
+            '     "tool": "reasoning",',
+            '     "args": { "requiresMemoryContext": true },',
+            '     "purpose": "Analyze and plan next actions"',
+            '   }',
+            '   ```',
+            '',
+            '4. **Memory Creation Phase** (FINAL)',
+            '   ```json',
+            '   {',
+            '     "tool": "manageMemory",',
+            '     "args": {',
+            '       "action": "create",',
+            '       "endConversation": true',
+            '     },',
+            '     "purpose": "Document insights and conclusions"',
+            '   }',
+            '   ```',
+            '',
+            '## ✍️ Memory Writing Guidelines',
+            '1. **Content Best Practices**',
+            '   - Write detailed, specific descriptions',
+            '   - Include context and reasoning',
+            '   - Document both successes and failures',
+            '   - Link to related memories',
+            '',
+            '2. **Organization**',
+            '   - Use appropriate categories',
+            '   - Add relevant tags for searchability',
+            '   - Build meaningful relationships',
+            '   - Keep information current',
+            '',
+            '3. **Technical Details**',
+            '   - **Memory Format**:',
+            '     ```memory-entry',
+            '     - [[Title]] - Primary memory reference',
+            '       type:: Memory classification',
+            '       timestamp:: Unix timestamp',
+            '       tags:: Comma-separated list',
+            '       relationships:: Connected memories',
+            '       context:: Additional information',
+            '     ```',
+            '',
+            '4. **Navigation Tips**',
+            '   - Use emoji prefixes for quick recognition',
+            '   - Check Quick Stats for overview',
+            '   - Follow the Memory Map for structure',
+            '   - Use relationship graph for connections',
+            '   - Sort by timestamp for chronological view',
             '',
             '## 🔍 Quick Stats',
             '```statblock',
@@ -547,48 +749,25 @@ export class IndexManager {
         });
     }
 
-    private async initializeCoreProcedures(retries = 3): Promise<void> {
-        for (let i = 0; i < retries; i++) {
-            try {
-                const memoryManager = this.context.memoryManager;
-                const memoryPath = `${this.settings.rootPath}/memory`;
-
-                // Check if memory folder exists first
-                const folderExists = await this.vaultManager.folderExists(memoryPath);
-                if (!folderExists) {
-                    console.log('Creating memory folder...');
-                    await this.vaultManager.createFolder(memoryPath);
-                    // Wait a bit for the folder to be recognized
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
-
-                // Create core procedural memory
-                await memoryManager.createProceduralMemory(
-                    this.CORE_PROCEDURAL_MEMORY.title,
-                    this.CORE_PROCEDURAL_MEMORY.description,
-                    this.CORE_PROCEDURAL_MEMORY.pattern
-                );
-                
-                console.log('Core procedures initialized successfully');
-                return;
-            } catch (error) {
-                console.warn(`Attempt ${i + 1} failed:`, error);
-                if (i === retries - 1) {
-                    console.error('Failed to initialize core procedures after retries:', error);
-                } else {
-                    // Wait before retrying
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            }
-        }
-    }
 
     // Add method to search memories with relevance scoring
     async searchMemories(query: string, context?: string): Promise<IndexEntry[]> {
-        const sections = await this.loadCurrentIndex();
-        const results: IndexEntry[] = [];
+        try {
+            // Ensure guide exists before searching
+            await this.ensureCoreProcedures();
+            
+            console.debug('IndexManager: Searching memories', {
+                query,
+                hasContext: !!context
+            });
 
-        for (const [section, entries] of Object.entries(sections)) {
+            const sections = await this.loadCurrentIndex();
+            const results: IndexEntry[] = [];
+
+            // Track start time for performance logging
+            const startTime = Date.now();
+
+            for (const [section, entries] of Object.entries(sections)) {
             for (const entry of entries) {
                 const titleMatch = entry.match(/\[\[(.*?)\]\]/);
                 if (!titleMatch) continue;
@@ -637,11 +816,25 @@ export class IndexManager {
             }
         }
 
-        return results.sort((a, b) => {
-            const statsA = this.memoryStats.get(a.title);
-            const statsB = this.memoryStats.get(b.title);
-            return (statsB?.importance || 0.5) - (statsA?.importance || 0.5);
-        });
+            // Sort results by importance and recency
+            const sortedResults = results.sort((a, b) => {
+                const statsA = this.memoryStats.get(a.title);
+                const statsB = this.memoryStats.get(b.title);
+                return (statsB?.importance || 0.5) - (statsA?.importance || 0.5);
+            });
+
+            // Log search performance
+            console.debug('IndexManager: Search completed', {
+                query,
+                resultsCount: sortedResults.length,
+                timeMs: Date.now() - startTime
+            });
+
+            return sortedResults;
+        } catch (error) {
+            console.error('Error searching memories:', error);
+            return [];
+        }
     }
 
     private parseEntryMetadata(entry: string): any {
@@ -673,6 +866,8 @@ export class IndexManager {
     }
 
     private async loadCurrentIndex(): Promise<Record<string, string[]>> {
+        // Ensure guide exists before loading index
+        await this.ensureCoreProcedures();
         const indexPath = `${this.settings.rootPath}/index.md`;
         const content = await this.vaultManager.fileExists(indexPath) ? 
             await this.vaultManager.readNote(indexPath) : '';

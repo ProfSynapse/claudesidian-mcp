@@ -1,18 +1,20 @@
 import { App } from 'obsidian';
 import { VaultManager } from '../services/VaultManager';
 import { MemoryManager } from '../services/MemoryManager';
-import { ToolRegistry } from './ToolRegistry';  // Add this import
+import { ToolRegistry } from './ToolRegistry';
 import { MCPSettings } from '../types';
 import { IndexManager } from '../services/IndexManager';
+import { EventManager } from '../services/EventManager';
 
 export interface IToolContext {
     app: App;
     plugin: any;
     vault: VaultManager;
     memory: MemoryManager;
-    toolRegistry: ToolRegistry;  // Add this line
-    settings: MCPSettings; // Add this line
-    indexManager: IndexManager;  // Add this line
+    toolRegistry: ToolRegistry;
+    settings: MCPSettings;
+    indexManager: IndexManager;
+    eventManager: EventManager;
 }
 
 export interface IToolMetadata {

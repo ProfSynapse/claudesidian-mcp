@@ -1,10 +1,11 @@
 import { TFile } from 'obsidian';
 import { VaultManager } from './VaultManager';
 import { injectable } from 'inversify';
-import type { BridgeMCPSettings } from '../settings';
+import type { MCPSettings } from '../settings';
 import { DEFAULT_SETTINGS } from '../settings';
 import { EventManager, EventTypes } from './EventManager';
 import { ProceduralPattern, ProceduralStep } from '../types';
+import { IndexManager } from './IndexManager';
 
 export interface Memory {
     title: string;
@@ -60,19 +61,31 @@ interface MemoryFile extends TFile {
 
 @injectable()
 export class MemoryManager {
-    private settings: BridgeMCPSettings;
+    private settings: MCPSettings;
     private memoryCache: Map<string, Memory> = new Map();
     private vaultManager: VaultManager;
     private folderInitialized: boolean = false;
+    private indexReviewed: boolean = false;
     private readonly RETRY_DELAYS = {
         SHORT: 100,  // Reduced from 500ms
         LONG: 200    // Reduced from 1000ms
     };
 
+    private ensureIndexReviewed(): void {
+        if (!this.indexReviewed) {
+            throw new Error('reviewIndex must be the first action. Please review the memory index before proceeding.');
+        }
+    }
+
+    public setIndexReviewed(): void {
+        this.indexReviewed = true;
+    }
+
     constructor(
         vaultManager: VaultManager,
         private eventManager: EventManager,
-        settings?: BridgeMCPSettings
+        private indexManager: IndexManager,
+        settings?: MCPSettings
     ) {
         this.vaultManager = vaultManager;
         this.settings = settings || DEFAULT_SETTINGS;
@@ -161,6 +174,7 @@ export class MemoryManager {
     }
 
     async createMemory(memory: Memory, retries = 3): Promise<TFile> {
+        this.ensureIndexReviewed();
         try {
             console.log('📝 Creating new memory:', memory.title);
             await this.ensureMemoryFolder();
@@ -200,6 +214,10 @@ export class MemoryManager {
             // Cache the memory
             this.memoryCache.set(safeTitle, memory);
 
+            // Update index first
+            await this.updateIndex(memory);
+
+            // Then emit event for other subscribers
             this.eventManager.emit(EventTypes.MEMORY_CREATED, {
                 type: memory.category,
                 title: memory.title,
@@ -215,6 +233,7 @@ export class MemoryManager {
     }
 
     async updateMemory(memory: Memory): Promise<TFile> {
+        this.ensureIndexReviewed();
         try {
             const path = this.getMemoryPath(memory.title);
             const now = new Date().toISOString();
@@ -232,6 +251,10 @@ export class MemoryManager {
             // Update cache
             this.memoryCache.set(memory.title, memory);
 
+            // Update index first
+            await this.updateIndex(memory);
+
+            // Then emit event for other subscribers
             this.eventManager.emit(EventTypes.MEMORY_UPDATED, {
                 type: memory.category,
                 title: memory.title,
@@ -248,6 +271,19 @@ export class MemoryManager {
     }
 
     private async updateIndex(memory: Memory): Promise<void> {
+        // Create structured entry for index
+        await this.indexManager.addToIndex({
+            title: memory.title,
+            description: memory.description,
+            section: memory.category,
+            type: memory.category,
+            timestamp: Date.now(),
+            tags: memory.tags,
+            relationships: memory.relationships?.map(r => r.relation),
+            context: memory.content
+        });
+
+        // Also emit event for other subscribers
         this.eventManager.emit(EventTypes.MEMORY_CREATED, {
             type: 'memory:created',
             title: memory.title,
@@ -263,6 +299,7 @@ export class MemoryManager {
     }
 
     async trackMemoryAccess(title: string): Promise<void> {
+        this.ensureIndexReviewed();
         // Check cache first
         let memory = this.memoryCache.get(title);
         if (!memory) {
@@ -309,6 +346,7 @@ export class MemoryManager {
     }
 
     async getMemoriesByType(type: MemoryType): Promise<Memory[]> {
+        this.ensureIndexReviewed();
         try {
             const files = await this.vaultManager.listNotes(this.getMemoryFolderPath());
             const memories: Memory[] = [];
@@ -361,6 +399,10 @@ export class MemoryManager {
     }
 
     async getMemory(title: string): Promise<Memory | undefined> {
+        if (title === 'memory_traversal_guide') {
+            return this.memoryCache.get(title);
+        }
+        this.ensureIndexReviewed();
         try {
             // Check cache first
             const cached = this.memoryCache.get(title);

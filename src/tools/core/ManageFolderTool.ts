@@ -15,7 +15,7 @@ export class ManageFolderTool extends BaseTool {
             name: 'manageFolder',
             description: 'Manage folders by creating, listing, searching, moving and deleting.',
             version: '1.0.0',
-            author: 'Bridge MCP'
+            author: 'Claudesidian MCP'
         }, { allowUndo: true });
     }
 

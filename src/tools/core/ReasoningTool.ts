@@ -57,26 +57,28 @@ export class ReasoningTool extends BaseTool {
     ) {
         super(context, {
             name: 'reasoning',
-            description: 'IMPORTANT: Before using this tool, ALWAYS start by reviewing memories using manageMemory tool with action "reviewIndex".\n\n' +
-                        'This tool helps plan steps and tool sequences after reviewing relevant memories.\n' +
-                        'Note: Not all steps require tools - some may be observations or logical conclusions.\n\n' +
-                        'Standard workflow:\n' +
-                        '1. Review memory index (manageMemory with reviewIndex)\n' +
-                        '2. Search relevant memories (manageMemory with search/list)\n' +
-                        '3. Use this reasoning tool to plan steps\n' +
-                        '4. Execute planned steps\n' +
-                        '5. Save new memories (manageMemory with create/edit)\n\n' +
-                        'Common tool sequences when tools ARE needed:\n' +
-                        'For Note Operations (using search):\n' +
-                        '- Edit specific content: search → readNote → editNote\n' +
-                        '- Insert at location: search → readNote → insertContent\n' +
-                        '- Update frontmatter: search → readNote → updateMetadata\n' +
-                        '- Move and update links: search → readNote → moveTool\n\n' +
-                        'For Memory Operations (using searchMemory):\n' +
-                        '- Add to memory: searchMemory → readNote → memory\n' +
-                        '- Procedural memory: These are memories of how to run more complex operations and have the metadata category of *procedural*. Prior to performing a complex operation, search your procedural memories index to see if you already know how to successfully run the operation.',
+            description: 'ENFORCED WORKFLOW REQUIREMENT: This tool MUST be used after reviewIndex. It automatically creates a memory at the end.\n\n' +
+                        'Required Sequence:\n' +
+                        '1. manageMemory reviewIndex (MUST BE DONE FIRST)\n' +
+                        '2. Use this reasoning tool (YOU ARE HERE)\n' +
+                        '   - Automatically creates memory when done\n' +
+                        '   - Sets endConversation: true\n\n' +
+                        'Purpose:\n' +
+                        '- Analyze reviewed memories\n' +
+                        '- Plan necessary steps\n' +
+                        '- Document decision process\n' +
+                        '- Create memory of reasoning\n\n' +
+                        'Key Features:\n' +
+                        '- Validates memory review was done\n' +
+                        '- Automatically creates memory\n' +
+                        '- Saves reasoning process\n' +
+                        '- Creates procedural patterns\n' +
+                        '- Auto-completes conversation\n\n' +
+                        'Note: The tool automatically creates a memory with your reasoning\n' +
+                        'and marks the conversation as complete. No additional memory\n' +
+                        'creation step is needed.',
             version: '1.0.0',
-            author: 'Bridge MCP'
+            author: 'Claudesidian MCP'
         });
         this.memoryManager = memoryManager;
     }
@@ -224,6 +226,14 @@ export class ReasoningTool extends BaseTool {
 
     async execute(args: ReasoningArgs): Promise<any> {
         try {
+            // Validate workflow state using ToolRegistry
+            if (this.context.toolRegistry.phase === 'start') {
+                throw new Error('Must call reviewIndex before using reasoning tool');
+            }
+            if (this.context.toolRegistry.phase !== 'reviewed') {
+                throw new Error('Reasoning tool must be used immediately after reviewIndex');
+            }
+
             const schema = this.getSchema();
             const tools = await this.context.toolRegistry.getAvailableTools();
             
@@ -261,6 +271,24 @@ export class ReasoningTool extends BaseTool {
             if (this.isSuccessfulPattern(args)) {
                 await this.saveProceduralPattern(args);
             }
+
+            // Save reasoning as memory note
+            await this.context.toolRegistry.executeTool('manageMemory', {
+                action: 'create',
+                title: args.title,
+                content: `# ${args.title}\n\n${args.goal}\n\n## Reasoning Steps\n${args.steps?.map(s => 
+                    `- ${s.description}${s.tool ? ` (Using: ${s.tool})` : ''}`
+                ).join('\n')}`,
+                metadata: {
+                    category: 'Procedural',
+                    description: args.goal,
+                    tags: ['reasoning', args.proposer?.method || 'unspecified_method'],
+                    success: this.isSuccessfulPattern(args)
+                },
+                endConversation: true
+            });
+
+            // Phase transitions will happen in ToolRegistry.executeTool
 
             return result;
         } catch (error) {
