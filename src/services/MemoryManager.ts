@@ -4,46 +4,51 @@ import { injectable } from 'inversify';
 import type { BridgeMCPSettings } from '../settings';
 import { DEFAULT_SETTINGS } from '../settings';
 import { EventManager, EventTypes } from './EventManager';
-
-// Remove SearchResult interface since it's no longer needed
+import { ProceduralPattern, ProceduralStep } from '../types';
 
 export interface Memory {
     title: string;
     description: string;
     content: string;
-    category: MemoryType;  // Changed from type to category
+    category: MemoryType;
     tags: string[];
     relationships?: Array<{
         relation: string;
         hits: number;
     }>;
-    createdAt: string;      // Add created timestamp
-    modifiedAt?: string;    // Add modified timestamp
-    lastViewedAt?: string;  // Add last viewed timestamp
-    success?: boolean;  // Optional success flag for task-based memories
+    createdAt: string;
+    modifiedAt?: string;
+    lastViewedAt?: string;
+    success?: boolean;
+    pattern?: ProceduralPattern;
+    metadata?: {
+        accessCount?: number;
+        lastAccessed?: number;
+        importance?: number;
+    };
 }
 
-// Add values array for MemoryType
 export const MemoryTypes = [
-    'core',
-    'episodic',
-    'semantic',
-    'procedural',
-    'emotional',
-    'contextual',
-    'search'  // Add search type
+    'Core',
+    'Episodic',
+    'Semantic',
+    'Procedural',
+    'Emotional',
+    'Contextual',
+    'Search'
 ] as const;
 
 export type MemoryType = typeof MemoryTypes[number];
 
 interface MemoryMetadata {
-    category: MemoryType;  // Changed from type to category
+    category: MemoryType;
     description: string;
     tags: string[];
-    createdAt: string;      // Add created timestamp
-    modifiedAt?: string;    // Add modified timestamp
-    lastViewedAt?: string;  // Add last viewed timestamp
-    hits: number;           // Add hits tracking
+    createdAt: string;
+    modifiedAt?: string;
+    lastViewedAt?: string;
+    hits: number;
+    pattern?: ProceduralPattern;
 }
 
 interface MemoryFile extends TFile {
@@ -53,14 +58,16 @@ interface MemoryFile extends TFile {
     };
 }
 
-/**
- * Manages memory creation, retrieval, and searching
- */
 @injectable()
 export class MemoryManager {
     private settings: BridgeMCPSettings;
-    private storage: Map<string, any> = new Map();
+    private memoryCache: Map<string, Memory> = new Map();
     private vaultManager: VaultManager;
+    private folderInitialized: boolean = false;
+    private readonly RETRY_DELAYS = {
+        SHORT: 100,  // Reduced from 500ms
+        LONG: 200    // Reduced from 1000ms
+    };
 
     constructor(
         vaultManager: VaultManager,
@@ -71,20 +78,16 @@ export class MemoryManager {
         this.settings = settings || DEFAULT_SETTINGS;
     }
 
-    set(key: string, value: any): void {
-        this.storage.set(key, value);
+    private getMemoryFolderPath(): string {
+        return `${this.settings.rootPath}/memory`;
     }
 
-    get(key: string): any | undefined {
-        return this.storage.get(key);
+    private getMemoryPath(title: string): string {
+        return `${this.getMemoryFolderPath()}/${title}.md`;
     }
 
-    delete(key: string): boolean {
-        return this.storage.delete(key);
-    }
-
-    list(): string[] {
-        return Array.from(this.storage.keys());
+    private getIndexPath(): string {
+        return `${this.settings.rootPath}/index.md`;
     }
 
     private safeStringify(obj: any): string {
@@ -98,85 +101,144 @@ export class MemoryManager {
         });
     }
 
-    /**
-     * Create a new memory note
-     */
-    async createMemory(memory: Memory): Promise<TFile> {
+    async createProceduralMemory(title: string, description: string, pattern: ProceduralPattern): Promise<Memory> {
         try {
-            console.log('📝 Creating new memory:', this.safeStringify(memory));
-            // Ensure memory folder exists
-            const memoryFolder = `${this.settings.rootPath}/memories`;
+            const memory: Memory = {
+                title,
+                description,
+                content: JSON.stringify(pattern, null, 2),
+                category: 'Procedural',
+                tags: ['Procedural', 'pattern'],
+                createdAt: new Date().toISOString(),
+                success: pattern.success,
+                pattern,
+                metadata: {
+                    accessCount: 0,
+                    lastAccessed: Date.now(),
+                    importance: 0
+                }
+            };
+
+            await this.createMemory(memory);
+            return memory;
+        } catch (error) {
+            throw this.handleError('createProceduralMemory', error);
+        }
+    }
+
+    async updatePatternStats(title: string, success: boolean): Promise<void> {
+        try {
+            const memory = await this.getMemory(title);
+            if (!memory?.pattern) return;
+
+            const now = new Date().toISOString();
+            memory.pattern.success = success;
+            memory.pattern.usageCount++;
+            memory.pattern.lastUsed = now;
+
+            memory.content = JSON.stringify(memory.pattern, null, 2);
+            memory.success = success;
+            memory.modifiedAt = now;
+
+            await this.updateMemory(memory);
+        } catch (error) {
+            throw this.handleError('updatePatternStats', error);
+        }
+    }
+
+    private async ensureMemoryFolder(): Promise<void> {
+        if (this.folderInitialized) return;
+        
+        const memoryFolder = this.getMemoryFolderPath();
+        const exists = await this.vaultManager.folderExists(memoryFolder);
+        
+        if (!exists) {
             await this.vaultManager.createFolder(memoryFolder);
+            await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAYS.SHORT));
+        }
+        
+        this.folderInitialized = true;
+    }
+
+    async createMemory(memory: Memory, retries = 3): Promise<TFile> {
+        try {
+            console.log('📝 Creating new memory:', memory.title);
+            await this.ensureMemoryFolder();
             
-            // Create safe filename from title
             const safeTitle = memory.title
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '_')
                 .replace(/^_|_$/g, '');
             
-            // Create memory note in the memory folder
-            const file = await this.vaultManager.createNote(
-                `${memoryFolder}/${safeTitle}`,  // Remove .md as it's handled by VaultManager
-                memory.content,
-                {
-                    frontmatter: {
-                        category: memory.category,
-                        description: memory.description,
-                        tags: memory.tags,
-                        relationships: memory.relationships,
-                        createdAt: memory.createdAt,
-                        modifiedAt: memory.modifiedAt,
-                        lastViewedAt: memory.lastViewedAt,
-                        success: memory.success
-                    },
-                    createFolders: true
+            const path = this.getMemoryPath(safeTitle);
+            
+            // Format memory content for storage
+            const formattedContent = this.formatMemoryContent(memory);
+            
+            // Create note with retries
+            let file: TFile | null = null;
+            for (let i = 0; i < retries; i++) {
+                try {
+                    file = await this.vaultManager.createNote(
+                        path,
+                        formattedContent.content,
+                        {
+                            frontmatter: formattedContent.frontmatter,
+                            createFolders: true
+                        }
+                    );
+                    break;
+                } catch (error) {
+                    console.warn(`Attempt ${i + 1} to create note failed:`, error);
+                    if (i === retries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAYS.LONG));
                 }
-            );
+            }
+
+            if (!file) throw new Error('Failed to create memory note after retries');
+            
+            // Cache the memory
+            this.memoryCache.set(safeTitle, memory);
 
             this.eventManager.emit(EventTypes.MEMORY_CREATED, {
-                type: memory.category,  // Changed from type to category
+                type: memory.category,
                 title: memory.title,
-                path: file.path
+                path: file.path,
+                memoryType: memory.category === 'Search' ? undefined : memory.category,
+                metadata: memory.metadata
             });
 
-            // Update index with settings path
-            await this.updateIndex(memory);
-
-            console.log('✅ Memory created:', this.safeStringify(memory));
             return file;
         } catch (error) {
             throw this.handleError('createMemory', error);
         }
     }
 
-    /**
-     * Update an existing memory
-     */
     async updateMemory(memory: Memory): Promise<TFile> {
         try {
-            const path = `${this.settings.rootPath}/${memory.title}.md`;
+            const path = this.getMemoryPath(memory.title);
             const now = new Date().toISOString();
+            memory.modifiedAt = now;
+
+            // Format memory content using the new structure
+            const formattedContent = this.formatMemoryContent(memory);
+            
             const file = await this.vaultManager.createNote(
                 path,
-                memory.content,
-                {
-                    frontmatter: {
-                        category: memory.category,  // Changed from type to category
-                        description: memory.description,
-                        tags: memory.tags,
-                        relationships: memory.relationships,
-                        createdAt: memory.createdAt,
-                        modifiedAt: now,
-                        lastViewedAt: memory.lastViewedAt,
-                        success: memory.success
-                    }
-                }
+                formattedContent.content,
+                { frontmatter: formattedContent.frontmatter }
             );
 
+            // Update cache
+            this.memoryCache.set(memory.title, memory);
+
             this.eventManager.emit(EventTypes.MEMORY_UPDATED, {
-                type: memory.category,  // Changed from type to category
+                type: memory.category,
                 title: memory.title,
-                path: file.path
+                path: file.path,
+                memoryType: memory.category === 'Search' ? undefined : memory.category,
+                timestamp: Date.now(),
+                metadata: memory.metadata
             });
 
             return file;
@@ -185,99 +247,70 @@ export class MemoryManager {
         }
     }
 
-    /**
-     * Delete a memory by title
-     */
-    async deleteMemory(title: string): Promise<void> {
-        try {
-            const path = `${this.settings.rootPath}/memories/${title}.md`;
-            
-            // Get memory type before deletion
-            const metadata = await this.vaultManager.getNoteMetadata(path);
-            const type = metadata?.type || 'episodic';
-            
-            await this.vaultManager.deleteNote(path);
-            
-            this.eventManager.emit(EventTypes.MEMORY_DELETED, {
-                type,
-                title,
-                path
-            });
-        } catch (error) {
-            throw this.handleError('deleteMemory', error);
-        }
+    private async updateIndex(memory: Memory): Promise<void> {
+        this.eventManager.emit(EventTypes.MEMORY_CREATED, {
+            type: 'memory:created',
+            title: memory.title,
+            path: this.getMemoryPath(memory.title),
+            description: memory.description,
+            tags: memory.tags,
+            relationships: memory.relationships?.map(r => r.relation),
+            timestamp: Date.now(),
+            context: memory.content,
+            memoryType: memory.category === 'Search' ? undefined : memory.category,
+            metadata: memory.metadata
+        });
     }
 
-    /**
-     * Get a memory by its title
-     */
-    async getMemory(title: string): Promise<Memory | null> {
-        try {
-            const path = `${this.settings.rootPath}/memories/${title}.md`;
-            const content = await this.vaultManager.readNote(path);
-            const metadata = await this.vaultManager.getNoteMetadata(path);
+    async trackMemoryAccess(title: string): Promise<void> {
+        // Check cache first
+        let memory = this.memoryCache.get(title);
+        if (!memory) {
+            memory = await this.getMemory(title);
+            if (!memory) return;
+        }
 
-            if (!content || !metadata) {
-                return null;
+        const now = new Date().toISOString();
+        const accessCount = (memory.metadata?.accessCount || 0) + 1;
+        
+        // Update memory with new access info
+        const updatedMemory = {
+            ...memory,
+            lastViewedAt: now,
+            metadata: {
+                ...memory.metadata,
+                accessCount,
+                lastAccessed: Date.now(),
+                importance: Math.min(100, (memory.metadata?.importance || 0) + 1) // Increase importance with use
             }
+        };
 
-            // Increment hits counter
-            const hits = (metadata?.hits || 0) + 1;
-            await this.vaultManager.updateNoteMetadata(path, {
-                ...metadata,
-                hits,
-                lastViewedAt: new Date().toISOString()
-            });
+        // Update cache immediately
+        this.memoryCache.set(title, updatedMemory);
 
-            return {
-                title,
-                content,
-                description: metadata.description,
-                category: metadata.category,  // Changed from type to category
-                tags: metadata.tags,
-                relationships: metadata.relationships,
-                createdAt: metadata.createdAt,
-                modifiedAt: metadata.modifiedAt,
-                lastViewedAt: metadata.lastViewedAt,
-                success: metadata.success
-            };
-        } catch (error) {
-            console.error(`Error retrieving memory: ${error.message}`);
-            return null;
-        }
+        // Emit event before file update for faster UI response
+        this.eventManager.emit(EventTypes.MEMORY_ACCESSED, {
+            type: 'memory_accessed',
+            title,
+            path: this.getMemoryPath(title),
+            timestamp: Date.now(),
+            accessCount,
+            description: memory.description,
+            metadata: updatedMemory.metadata
+        });
+
+        // Update file asynchronously
+        await this.updateMemory(updatedMemory);
     }
 
-    /**
-     * Get most recent memories
-     */
-    async getRecentMemories(limit: number = 10): Promise<Memory[]> {
-        try {
-            const files = await this.vaultManager.listNotes(this.settings.memoryPath);
-            const memories: Memory[] = [];
-
-            // Sort by ctime
-            files.sort((a, b) => b.stat.ctime - a.stat.ctime);
-
-            // Get limited number of most recent memories
-            for (const file of files.slice(0, limit)) {
-                const memory = await this.getMemory(file.basename);
-                if (memory) {
-                    memories.push(memory);
-                }
-            }
-
-            return memories;
-        } catch (error) {
-            throw this.handleError('getRecentMemories', error);
-        }
+    private handleError(operation: string, error: any): Error {
+        const message = error instanceof Error ? error.message : String(error);
+        return new Error(`MemoryManager.${operation}: ${message}`);
     }
 
-    /**
-     * Get memories by type
-     */
     async getMemoriesByType(type: MemoryType): Promise<Memory[]> {
         try {
-            const files = await this.vaultManager.listNotes(this.settings.memoryPath);
+            const files = await this.vaultManager.listNotes(this.getMemoryFolderPath());
             const memories: Memory[] = [];
 
             for (const file of files) {
@@ -296,110 +329,86 @@ export class MemoryManager {
         }
     }
 
-    /**
-     * Update the memory index
-     */
-    private async updateIndex(memory: Memory): Promise<void> {
+    private formatMemoryContent(memory: Memory): { content: string; frontmatter: any } {
+        // Store all structured data in frontmatter
+        const frontmatter = {
+            category: memory.category,
+            description: memory.description,
+            tags: memory.tags,
+            relationships: memory.relationships,
+            createdAt: memory.createdAt,
+            modifiedAt: memory.modifiedAt,
+            lastViewedAt: memory.lastViewedAt,
+            success: memory.success,
+            pattern: memory.pattern,
+            metadata: memory.metadata
+        };
+
+        // Create human-readable content
+        const content = [
+            `# ${memory.title}`,
+            '',
+            memory.description,
+            '',
+            '## Relationships',
+            ...(memory.relationships?.map(r => `- ${r.relation} (${r.hits} hits)`) || []),
+            '',
+            memory.pattern ? '## Pattern' : '',
+            memory.pattern ? '```json\n' + JSON.stringify(memory.pattern, null, 2) + '\n```' : ''
+        ].filter(Boolean).join('\n');
+
+        return { content, frontmatter };
+    }
+
+    async getMemory(title: string): Promise<Memory | undefined> {
         try {
-            // First read existing index content
-            let indexContent = '';
-            try {
-                indexContent = await this.vaultManager.readNote(this.settings.indexPath) || '';
-            } catch {
-                // Index doesn't exist yet, that's ok
+            // Check cache first
+            const cached = this.memoryCache.get(title);
+            if (cached) {
+                return cached;
             }
 
-            // Parse sections
-            const sections = this.parseIndexSections(indexContent);
+            const path = this.getMemoryPath(title);
+            const metadata = await this.vaultManager.getNoteMetadata(path);
             
-            // Add memory to appropriate section based on type
-            const sectionTitle = this.getMemoryTypeSection(memory.category);  // Changed from type to category
-            if (!sections[sectionTitle]) {
-                sections[sectionTitle] = [];
-            }
-            
-            // Add new entry, avoiding duplicates
-            const newEntry = `- [[${memory.title}]] - ${memory.description}`;
-            if (!sections[sectionTitle].includes(newEntry)) {
-                sections[sectionTitle].push(newEntry);
-            }
+            if (!metadata) return undefined;
 
-            // Rebuild index content
-            const newContent = this.formatIndexContent(sections);
-            
-            // Write back to index
-            await this.vaultManager.createNote(
-                this.settings.indexPath,
-                newContent,
-                { createFolders: true }
-            );
+            // Only read content if needed
+            const content = await this.vaultManager.readNote(path);
+            if (!content) return undefined;
+
+            const memory: Memory = {
+                title,
+                content,
+                description: metadata.description,
+                category: metadata.category,
+                tags: metadata.tags,
+                relationships: metadata.relationships,
+                createdAt: metadata.createdAt,
+                modifiedAt: metadata.modifiedAt,
+                lastViewedAt: metadata.lastViewedAt,
+                success: metadata.success,
+                pattern: metadata.pattern,
+                metadata: {
+                    ...metadata.metadata,
+                    accessCount: metadata.metadata?.accessCount || 0,
+                    lastAccessed: metadata.metadata?.lastAccessed || Date.now(),
+                    importance: metadata.metadata?.importance || 0
+                }
+            };
+
+            // Cache the memory
+            this.memoryCache.set(title, memory);
+            return memory;
         } catch (error) {
-            console.error(`Error updating index: ${error.message}`);
+            console.error(`Error retrieving memory: ${error.message}`);
+            return undefined;
         }
     }
 
-    private parseIndexSections(content: string): Record<string, string[]> {
-        const sections: Record<string, string[]> = {};
-        let currentSection = '';
-        
-        content.split('\n').forEach(line => {
-            if (line.startsWith('## ')) {
-                currentSection = line.substring(3);
-                sections[currentSection] = [];
-            } else if (currentSection && line.trim().startsWith('-')) {
-                sections[currentSection].push(line.trim());
-            }
-        });
-        
-        return sections;
-    }
-
-    private formatIndexContent(sections: Record<string, string[]>): string {
-        const lines: string[] = ['# Memory Index\n'];
-        
-        // Sort sections in preferred order
-        const orderedSections = [
-            'Core Memories',
-            'Episodic Memories',
-            'Semantic Memories',
-            'Procedural Memories',
-            'Emotional Memories',
-            'Contextual Memories',
-            'Search Results'  // Add search section
-        ];
-
-        orderedSections.forEach(section => {
-            if (sections[section] && sections[section].length > 0) {
-                lines.push(`## ${section}`);
-                // Sort entries alphabetically within each section
-                sections[section].sort();
-                lines.push(...sections[section]);
-                lines.push(''); // Empty line between sections
-            }
-        });
-
-        return lines.join('\n');
-    }
-
-    private getMemoryTypeSection(type: MemoryType): string {
-        const sectionMap: Record<MemoryType, string> = {
-            core: 'Core Memories',
-            episodic: 'Episodic Memories',
-            semantic: 'Semantic Memories',
-            procedural: 'Procedural Memories',
-            emotional: 'Emotional Memories',
-            contextual: 'Contextual Memories',
-            search: 'Search Results'  // Add search section
-        };
-        
-        return sectionMap[type] || 'Other Memories';
-    }
-
-    /**
-     * Create a standardized error with context
-     */
-    private handleError(operation: string, error: any): Error {
-        const message = error instanceof Error ? error.message : String(error);
-        return new Error(`MemoryManager.${operation}: ${message}`);
+    // Clear cache when plugin is disabled
+    clearCache(): void {
+        this.memoryCache.clear();
+        this.folderInitialized = false;
     }
 }

@@ -4,13 +4,18 @@ import { MemoryType } from './services/MemoryManager';
 export interface BridgeMCPSettings {
     enabled: boolean;
     rootPath: string;
-    memoryPath: string;
-    indexPath: string;
+    memoryPath: string; // Path to the memories folder (relative to rootPath)
+    indexPath: string;  // Path to the index file (relative to rootPath)
     allowedPaths: string[];
     mcp: {
         enabled: boolean;
         server: boolean;
     };
+    // Tool enablement flags
+    enabledVault: boolean;
+    enabledMemory: boolean;
+    enabledReasoning: boolean;
+    enabledTools: string[];
 }
 
 export interface MCPSettings extends BridgeMCPSettings {
@@ -22,13 +27,7 @@ export interface MCPSettings extends BridgeMCPSettings {
     requireConfirmation: boolean;
     cacheTimeout: number;
     
-    // Tool Configuration
-    enabledVault: boolean;
-    enabledMemory: boolean;
-    enabledReasoning: boolean;
-    enabledTools: string[];
-    
-    // Tool Paths
+    // Tool Paths (full paths including rootPath)
     memoryFolderPath: string;
     reasoningFolderPath: string;
 
@@ -43,28 +42,48 @@ export interface MCPSettings extends BridgeMCPSettings {
     serverPort: number;
 }
 
+export interface ProceduralStep {
+    tool: string;
+    args: Record<string, any>;
+    expectedOutcome: string;
+    actualOutcome?: string;
+}
+
+export interface ProceduralPattern {
+    input: Record<string, any>;
+    context?: Record<string, any>;
+    steps: ProceduralStep[];
+    success: boolean;
+    usageCount: number;
+    lastUsed: string;
+}
+
 export const DEFAULT_SETTINGS: MCPSettings = {
     // Base settings
     enabled: true,
     rootPath: 'claudesidian',
-    memoryPath: 'claudesidian/memories',
-    indexPath: 'claudesidian/index.md',
+    memoryPath: 'memory', // Just the folder name, will be joined with rootPath
+    indexPath: 'index.md',  // Just the file name, will be joined with rootPath
     allowedPaths: [],
     mcp: {
         enabled: true,
         server: true
     },
-
-    // Extended settings
-    autoStart: false,
-    debugMode: false,
-    requireConfirmation: true,
-    cacheTimeout: 300,
+    
+    // Tool enablement
     enabledVault: true,
     enabledMemory: true,
     enabledReasoning: true,
     enabledTools: ['memory', 'reasoning', 'search'],
-    memoryFolderPath: 'claudesidian/memories',
+
+    // Server & Debug settings
+    autoStart: false,
+    debugMode: false,
+    requireConfirmation: true,
+    cacheTimeout: 300,
+
+    // Full paths for tools
+    memoryFolderPath: 'claudesidian/memory',
     reasoningFolderPath: 'claudesidian/reasoning',
 
     // AI Configuration

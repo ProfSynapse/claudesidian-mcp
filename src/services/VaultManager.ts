@@ -163,17 +163,54 @@ export class VaultManager {
     /**
      * Ensures a folder exists, creating it and any parent folders if necessary
      */
-    async ensureFolder(path: string): Promise<void> {
+    async ensureFolder(path: string, retries = 3): Promise<void> {
+        const normalizedPath = this.normalizePath(path);
         try {
-            const normalizedPath = this.normalizePath(path);
-            const folder = this.vault.getAbstractFileByPath(normalizedPath);
-
-            if (!folder) {
-                await this.vault.createFolder(normalizedPath);
-            } else if (!(folder instanceof TFolder)) {
-                throw new Error(`Path exists but is not a folder: ${normalizedPath}`);
+            // First check if folder exists in filesystem
+            const exists = await this.vault.adapter.exists(normalizedPath);
+            if (exists) {
+                // Wait for Obsidian to recognize it
+                for (let i = 0; i < retries; i++) {
+                    const folder = this.vault.getAbstractFileByPath(normalizedPath);
+                    if (folder instanceof TFolder) {
+                        return; // Folder exists and is recognized
+                    }
+                    if (this.app.workspace.layoutReady) {
+                        await this.refreshVault();
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
             }
+
+            // Create folder if it doesn't exist or isn't properly recognized
+            await this.vault.createFolder(normalizedPath);
+            
+            // Wait for folder to be recognized
+            for (let i = 0; i < retries; i++) {
+                const folder = this.vault.getAbstractFileByPath(normalizedPath);
+                if (folder instanceof TFolder) {
+                    return;
+                }
+                if (this.app.workspace.layoutReady) {
+                    await this.refreshVault();
+                }
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            // Don't throw an error if the folder exists in filesystem
+            // This prevents race conditions during initialization
+            if (await this.vault.adapter.exists(normalizedPath)) {
+                console.log(`Folder exists but not yet recognized: ${normalizedPath}`);
+                return;
+            }
+
+            throw new Error(`Failed to create/verify folder: ${normalizedPath}`);
         } catch (error) {
+            // Log error but don't throw if folder exists
+            if (await this.vault.adapter.exists(normalizedPath)) {
+                console.warn(`ensureFolder warning: ${error.message}`);
+                return;
+            }
             throw this.handleError('ensureFolder', error);
         }
     }

@@ -70,14 +70,21 @@ export class SearchUtil {
         includeFolders?: boolean;
         includeMetadata?: boolean;
         searchFields?: string[];
+        weights?: Partial<SearchWeights>;
     } = {}): Promise<SearchResult[]> {
         const {
             path,
             limit = 10,
             includeFolders = false,
             includeMetadata = true,
-            searchFields = ['title', 'content', 'tags']
+            searchFields = ['title', 'content', 'tags'],
+            weights
         } = options;
+
+        // Apply custom weights if provided, otherwise use defaults
+        const searchWeights = weights ? 
+            { ...this.weights, ...weights } : 
+            this.weights;
 
         // Break query into searchable terms
         const searchTerms = this.prepareSearchTerms(query);
@@ -95,10 +102,10 @@ export class SearchUtil {
             const matches = [];
             let totalScore = 0;
 
-            // Fuzzy path matching
-            const pathScore = this.scoreFuzzyMatch(file.path, searchTerms);
+            // Fuzzy path matching with custom weights
+            const pathScore = this.scoreFuzzyMatch(file.path, searchTerms, searchWeights);
             if (pathScore.score > 0) {
-                totalScore += pathScore.score * this.weights.fuzzyMatch;
+                totalScore += pathScore.score * searchWeights.fuzzyMatch;
                 matches.push(...pathScore.matches.map(m => ({
                     type: 'fuzzy',
                     ...m,
@@ -108,17 +115,17 @@ export class SearchUtil {
 
             // Metadata matching if available
             if (metadata) {
-                const metadataScore = this.scoreMetadata(metadata, searchTerms);
+                const metadataScore = this.scoreMetadata(metadata, searchTerms, searchWeights);
                 totalScore += metadataScore.score;
                 matches.push(...metadataScore.matches);
 
                 // Access tracking boost
                 if (metadata.lastViewedAt) {
                     const recencyScore = this.calculateRecencyScore(metadata.lastViewedAt);
-                    totalScore += recencyScore * this.weights.lastViewed;
+                    totalScore += recencyScore * searchWeights.lastViewed;
                 }
                 if (metadata.accessCount) {
-                    const accessScore = Math.log(metadata.accessCount + 1) * this.weights.accessCount;
+                    const accessScore = Math.log(metadata.accessCount + 1) * searchWeights.accessCount;
                     totalScore += accessScore;
                     matches.push({
                         type: 'access',
@@ -152,7 +159,7 @@ export class SearchUtil {
             .filter(word => !stopWords.has(word) && word.length > 1);
     }
 
-    private scoreFuzzyMatch(text: string, terms: string[]): {
+    private scoreFuzzyMatch(text: string, terms: string[], weights: SearchWeights): {
         score: number;
         matches: Array<{ term: string; score: number }>;
     } {
@@ -168,7 +175,7 @@ export class SearchUtil {
 
             // Boost score for exact matches
             if (text.toLowerCase().includes(term)) {
-                const exactScore = this.weights.exactMatch;
+                const exactScore = weights.exactMatch;
                 totalScore += exactScore;
                 matches.push({ term, score: exactScore });
             }
@@ -177,7 +184,7 @@ export class SearchUtil {
         return { score: totalScore, matches };
     }
 
-    private scoreMetadata(metadata: Record<string, any>, terms: string[]): {
+    private scoreMetadata(metadata: Record<string, any>, terms: string[], weights: SearchWeights): {
         score: number;
         matches: Array<{ type: string; term: string; score: number; location: string }>;
     } {
@@ -185,13 +192,13 @@ export class SearchUtil {
         const matches = [];
 
         // Score each metadata field
-        for (const [field, weight] of Object.entries(this.weights.metadata)) {
+        for (const [field, weight] of Object.entries(weights.metadata)) {
             if (metadata[field]) {
                 const fieldValue = Array.isArray(metadata[field])
                     ? metadata[field].join(' ')
                     : String(metadata[field]);
 
-                const { score, matches: fieldMatches } = this.scoreFuzzyMatch(fieldValue, terms);
+                const { score, matches: fieldMatches } = this.scoreFuzzyMatch(fieldValue, terms, weights);
                 const weightedScore = score * weight;
                 totalScore += weightedScore;
 

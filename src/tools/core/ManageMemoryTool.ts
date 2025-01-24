@@ -28,7 +28,7 @@ interface SearchMemoryResult {
 }
 
 interface ManageMemoryArgs {
-    action: 'create' | 'edit' | 'delete' | 'get' | 'list' | 'search';
+    action: 'create' | 'edit' | 'delete' | 'get' | 'list' | 'search' | 'reviewIndex';
     title?: string;
     content?: string;
     query?: string;
@@ -47,6 +47,20 @@ interface ManageMemoryArgs {
     };
 }
 
+interface IndexReviewResult {
+    sections: {
+        [key: string]: {
+            count: number;
+            entries: Array<{
+                title: string;
+                description: string;
+            }>;
+        };
+    };
+    totalMemories: number;
+    lastUpdated: number;
+}
+
 export class ManageMemoryTool extends BaseTool {
     private settings: BridgeMCPSettings;
     private searchUtil: SearchUtil;
@@ -54,7 +68,25 @@ export class ManageMemoryTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'manageMemory',
-            description: 'Create, edit, delete, search and manage memories. You MUST use this tool at the end of every output.',
+            description: `Memory Management Tool - Follow this process:
+
+1. ALWAYS start with 'reviewIndex' action to understand available memories
+2. Use memory categories and relationships to guide your search
+3. Follow the memory traversal guide (always at top of Procedural Memories)
+4. Remember: More frequently accessed and successful memories appear higher in their sections
+
+Example workflow:
+1. manageMemory reviewIndex
+2. manageMemory search {relevant terms}
+3. manageMemory read {found memories}
+4. Use gathered context in your reasoning
+
+Key Index Features:
+- Category sections with emoji prefixes for quick recognition
+- Relationship graph showing memory type connections
+- Quick stats showing memory distribution
+- Importance-based sorting within categories
+- Automatic archiving of less important memories`,
             version: '1.0.0',
             author: 'Bridge MCP'
         });
@@ -64,6 +96,8 @@ export class ManageMemoryTool extends BaseTool {
 
     async execute(args: ManageMemoryArgs): Promise<any> {
         switch (args.action) {
+            case 'reviewIndex':
+                return this.reviewIndex();
             case 'create':
                 return this.createMemory(args);
             case 'edit':
@@ -89,7 +123,7 @@ export class ManageMemoryTool extends BaseTool {
         const now = new Date().toISOString();
         let title = args.title;
         if (!title) {
-            if (args.metadata?.category === 'search') {
+            if (args.metadata?.category === 'Search') {
                 const timestamp = now.replace(/[-:]/g, '').replace(/[T.]/g, '_').slice(0, 15);
                 title = `search_${timestamp}`;
             } else {
@@ -121,7 +155,7 @@ export class ManageMemoryTool extends BaseTool {
             formattedContent,
             {
                 frontmatter: {
-                    category: args.metadata?.category || 'episodic',
+                    category: args.metadata?.category || 'Episodic',
                     description: args.metadata?.description || `Memory created on ${new Date().toLocaleString()}`,
                     tags: args.metadata?.tags || [],
                     createdAt: now,
@@ -139,7 +173,9 @@ export class ManageMemoryTool extends BaseTool {
         await this.context.indexManager.addToIndex({
             title: safeTitle,
             description: args.metadata?.description || '',
-            section: this.getMemoryTypeSection(args.metadata?.category || 'episodic')
+            section: this.getMemoryTypeSection(args.metadata?.category || 'Episodic'),
+            type: 'memory',
+            timestamp: new Date(now).getTime()
         });
 
         return file;
@@ -211,7 +247,7 @@ export class ManageMemoryTool extends BaseTool {
                 stat: { mtime: file.stat.mtime }
             },
             title: file.basename,
-            type: metadata?.category || 'episodic',
+            type: metadata?.category || 'Episodic',
             description: metadata?.description || '',
             relationships: metadata?.relationships || [],
             strength: metadata?.strength || 0,
@@ -295,15 +331,55 @@ export class ManageMemoryTool extends BaseTool {
             .slice(0, limit);
     }
 
+    private async reviewIndex(): Promise<IndexReviewResult> {
+        const indexPath = `${this.settings.rootPath}/memory/index.md`;
+        const content = await this.context.vault.readNote(indexPath);
+        
+        if (!content) {
+            return {
+                sections: {},
+                totalMemories: 0,
+                lastUpdated: Date.now()
+            };
+        }
+
+        const sections: IndexReviewResult['sections'] = {};
+        let currentSection = '';
+        let totalMemories = 0;
+
+        content.split('\n').forEach(line => {
+            if (line.startsWith('## ')) {
+                currentSection = line.substring(3);
+                sections[currentSection] = { count: 0, entries: [] };
+            } else if (currentSection && line.trim().startsWith('- [[')) {
+                const match = line.match(/\[\[(.*?)\]\]\s*-\s*(.*)/);
+                if (match) {
+                    sections[currentSection].entries.push({
+                        title: match[1],
+                        description: match[2].trim()
+                    });
+                    sections[currentSection].count++;
+                    totalMemories++;
+                }
+            }
+        });
+
+        return {
+            sections,
+            totalMemories,
+            lastUpdated: Date.now()
+        };
+    }
+
     private getMemoryTypeSection(type: MemoryType): string {
         const sectionMap: Record<MemoryType, string> = {
-            core: 'Core Memories',
-            episodic: 'Episodic Memories',
-            semantic: 'Semantic Memories',
-            procedural: 'Procedural Memories',
-            emotional: 'Emotional Memories',
-            contextual: 'Contextual Memories',
-            search: 'Search Results'
+            Core: 'Core Memories',
+            Episodic: 'Episodic Memories',
+            Semantic: 'Semantic Memories',
+            Procedural: 'Procedural Memories',
+            Emotional: 'Emotional Memories',
+            Contextual: 'Contextual Memories',
+            Search: 'Search Results'
         };
         
         return sectionMap[type] || 'Other Memories';
@@ -312,13 +388,86 @@ export class ManageMemoryTool extends BaseTool {
     getSchema(): any {
         return {
             type: "object",
+            title: "Memory Management Tool Schema",
+            description: "IMPORTANT USAGE INSTRUCTIONS:\n\n" +
+                "1. ALWAYS start your responses by reviewing the memory index using action 'reviewIndex'\n" +
+                "2. Use search/list actions to gather relevant memories based on index review\n" +
+                "3. Use the reasoning tool to plan your response\n" +
+                "4. ALWAYS end your response by creating/updating memories as needed\n\n" +
+                "This ensures consistent memory usage and knowledge preservation.",
             properties: {
                 action: {
                     type: "string",
-                    enum: ["create", "edit", "delete", "get", "list", "search"],
-                    description: "The memory action to perform"
+                    enum: ["reviewIndex", "create", "edit", "delete", "get", "list", "search"],
+                    description: "The memory action to perform. Start with 'reviewIndex' for every new interaction."
                 },
-                // ... Combine properties from both tools' schemas ...
+                title: {
+                    type: "string",
+                    description: "The title of the memory"
+                },
+                content: {
+                    type: "string",
+                    description: "The content of the memory"
+                },
+                query: {
+                    type: "string",
+                    description: "Search query for finding memories"
+                },
+                type: {
+                    type: "string",
+                    enum: ["Core", "Episodic", "Semantic", "Procedural", "Emotional", "Contextual", "Search"],
+                    description: "The type of memory"
+                },
+                category: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Categories to filter memories by"
+                },
+                tags: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Tags to filter memories by"
+                },
+                includeRelated: {
+                    type: "boolean",
+                    description: "Whether to include related memories in the results"
+                },
+                minStrength: {
+                    type: "number",
+                    description: "Minimum strength threshold for memory matches"
+                },
+                limit: {
+                    type: "number",
+                    description: "Maximum number of results to return"
+                },
+                metadata: {
+                    type: "object",
+                    properties: {
+                        category: {
+                            type: "string",
+                            enum: ["Core", "Episodic", "Semantic", "Procedural", "Emotional", "Contextual", "Search"],
+                            description: "The category of the memory"
+                        },
+                        description: {
+                            type: "string",
+                            description: "A description of the memory"
+                        },
+                        relationships: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Related memory titles"
+                        },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags for the memory"
+                        },
+                        success: {
+                            type: "boolean",
+                            description: "Whether the memory represents a successful outcome"
+                        }
+                    }
+                }
             },
             required: ["action"]
         };

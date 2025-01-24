@@ -20,7 +20,7 @@
     "reasoning",
     "search"
   ],
-  "memoryFolderPath": "claudesidian/memories",
+  "memoryFolderPath": "claudesidian/memory",
   "reasoningFolderPath": "claudesidian/reasoning",
   "aiProvider": "openrouter",
   "apiKeys": {

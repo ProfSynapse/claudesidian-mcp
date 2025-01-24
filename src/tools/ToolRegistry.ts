@@ -43,8 +43,16 @@ export class ToolRegistry {
         ].forEach(Tool => this.registerTool(Tool));
     }
 
-    registerTool(toolClass: new (context: IToolContext) => BaseTool) {
-        const instance = new toolClass(this.context);
+    registerTool(toolClass: new (context: IToolContext, ...args: any[]) => BaseTool) {
+        let instance: BaseTool;
+        
+        // Special handling for ReasoningTool to inject MemoryManager
+        if (toolClass === ReasoningTool) {
+            instance = new ReasoningTool(this.context, this.context.memory);
+        } else {
+            instance = new toolClass(this.context);
+        }
+
         const name = instance.getName();
         
         if (this.tools.has(name)) {

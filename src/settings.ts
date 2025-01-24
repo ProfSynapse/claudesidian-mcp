@@ -23,9 +23,9 @@ export class Settings {
 
     private updateRelativePaths() {
         const { rootPath } = this.settings;
-        this.settings.memoryPath = join(rootPath, 'memories');
+        this.settings.memoryPath = join(rootPath, 'memory');
         this.settings.indexPath = join(rootPath, 'index.md');
-        this.settings.memoryFolderPath = join(rootPath, 'memories');
+        this.settings.memoryFolderPath = join(rootPath, 'memory');
         this.settings.reasoningFolderPath = join(rootPath, 'reasoning');
     }
 

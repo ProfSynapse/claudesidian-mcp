@@ -17,72 +17,154 @@ export default class BridgeMCPPlugin extends Plugin {
     public vaultManager: VaultManager; // Add this line
     settings: MCPSettings;
 
-    private async waitForObsidian(): Promise<void> {
-        // Wait for workspace and file explorer to be ready
-        let attempts = 0;
-        while (attempts < 50) {
-            if (this.app.workspace.layoutReady && 
-                this.app.workspace.getLeavesOfType('file-explorer').length > 0) {
-                return;
-            }
-            await new Promise(resolve => setTimeout(resolve, 100));
-            attempts++;
+    private initStage = {
+        CORE: 'core',
+        FEATURES: 'features',
+        SERVER: 'server'
+    } as const;
+
+    private currentStage: keyof typeof this.initStage = 'CORE';
+
+    private async initializeCoreComponents(): Promise<void> {
+        console.debug('BridgeMCPPlugin: Initializing core components...');
+        
+        if (!this.app.workspace) {
+            throw new Error('Workspace not available during core initialization');
         }
-        throw new Error('Timeout waiting for Obsidian to initialize');
+
+        // Load settings
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        
+        if (!this.app.vault) {
+            throw new Error('Vault not available during core initialization');
+        }
+
+        // Initialize vault manager
+        this.vaultManager = new VaultManager(this.app);
+        
+        console.debug('BridgeMCPPlugin: Core components initialized');
+    }
+
+    private async initializeFeatures(eventManager: EventManager): Promise<void> {
+        console.debug('BridgeMCPPlugin: Initializing features...');
+        
+        // Initialize base folder structure
+        await this.initializeFolderStructure();
+        
+        // Create memory manager
+        this.memoryManager = new MemoryManager(
+            this.vaultManager,
+            eventManager,
+            this.settings
+        );
+
+        // Wait for file operations to settle
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Create index manager
+        const indexManager = new IndexManager(
+            this.vaultManager,
+            eventManager,
+            this.settings,
+            { memoryManager: this.memoryManager }
+        );
+
+        // Initialize tool registry
+        this.toolRegistry = new ToolRegistry(
+            this.app,
+            this,
+            this.vaultManager,
+            this.memoryManager,
+            indexManager
+        );
+
+        console.debug('BridgeMCPPlugin: Features initialized');
+    }
+
+    private async initializeServer(): Promise<void> {
+        console.debug('BridgeMCPPlugin: Initializing server components...');
+        
+        // Create MCP server
+        this.mcpServer = new BridgeMCPServer(
+            this.app,
+            this.toolRegistry,
+            this.vaultManager,
+            this.settings
+        );
+
+        // Initialize UI components
+        this.addSettingTab(new SettingsTab(this.app, this));
+        this.initializeStatusBar();
+        this.registerCommands();
+
+        // Start server
+        await this.mcpServer.start();
+        
+        console.debug('BridgeMCPPlugin: Server components initialized');
     }
 
     async onload() {
         console.log('BridgeMCPPlugin: onload started');
+        
         try {
-            // Load settings first
-            this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+            this.currentStage = 'CORE';
+            await this.initializeCoreComponents();
             
-            // Initialize VaultManager before anything else
-            this.vaultManager = new VaultManager(this.app);
-            
-            // Initialize remaining services
+            // Create event manager for inter-component communication
             const eventManager = new EventManager();
-            const indexManager = new IndexManager(this.vaultManager, eventManager, this.settings);
-            
-            // Create memory manager
-            this.memoryManager = new MemoryManager(
-                this.vaultManager, 
-                eventManager,
-                this.settings
-            );
 
-            // Only create initial folder structure if it doesn't exist yet
-            this.app.workspace.onLayoutReady(async () => {
-                const rootExists = await this.vaultManager.folderExists(this.settings.rootPath);
-                if (!rootExists) {
-                    await this.initializeFolderStructure();
+            this.currentStage = 'FEATURES';
+            // Set up staged initialization with timeout
+            const timeoutMs = 10000; // 10 second timeout
+            const layoutReadyPromise = new Promise<void>((resolve) => {
+                if (this.app.workspace.layoutReady) {
+                    resolve();
+                    return;
+                }
+
+                // Register event using Obsidian's event system
+                const eventRef = this.registerEvent(
+                    this.app.workspace.on('layout-change', () => {
+                        if (this.app.workspace.layoutReady) {
+                            resolve();
+                        }
+                    })
+                );
+
+                // Timeout fallback
+                setTimeout(() => {
+                    // Event will be automatically cleaned up by Obsidian's plugin system
+                    console.warn('BridgeMCPPlugin: Layout ready timeout - proceeding with limited functionality');
+                    resolve();
+                }, timeoutMs);
+            });
+
+            // Wait for layout or timeout
+            await layoutReadyPromise;
+            
+            // Initialize features
+            await this.initializeFeatures(eventManager);
+            
+            this.currentStage = 'SERVER';
+            // Start server and UI components
+            await this.initializeServer();
+            
+            console.log('BridgeMCPPlugin: Initialization complete');
+            
+        } catch (error: any) {
+            console.error('BridgeMCPPlugin: Error during initialization', {
+                error: error.message || error,
+                failedStage: this.initStage[this.currentStage],
+                workspaceStatus: {
+                    exists: !!this.app.workspace,
+                    layoutReady: this.app.workspace?.layoutReady
+                },
+                vaultStatus: {
+                    exists: !!this.app.vault,
+                    adapter: !!this.app.vault?.adapter
                 }
             });
-            
-            // Initialize remaining components
-            this.toolRegistry = new ToolRegistry(
-                this.app,
-                this,
-                this.vaultManager,
-                this.memoryManager,
-                indexManager  // Add this parameter
-            );
-            this.mcpServer = new BridgeMCPServer(
-                this.app, 
-                this.toolRegistry,
-                this.vaultManager,
-                this.settings
-            );
-            
-            // Add settings tab and initialize UI
-            this.addSettingTab(new SettingsTab(this.app, this));
-            this.initializeStatusBar();
-            this.registerCommands();
-
-            // Start server
-            await this.mcpServer.start();
-        } catch (error: any) {
-            console.error('BridgeMCPPlugin: Error during onload', error);
+            throw error;
         }
     }
 

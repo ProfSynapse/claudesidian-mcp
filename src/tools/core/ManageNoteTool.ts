@@ -259,23 +259,60 @@ export class ManageNoteTool extends BaseTool {
     }
 
     private async searchNotes(args: any): Promise<any> {
-        const { query, saveAsDistinct, path, limit } = args;
-        
-        const results = await this.searchUtil.search(query, {
+        const { 
+            query, 
+            saveAsDistinct, 
+            path, 
+            searchOptions = {} 
+        } = args;
+
+        const {
+            weights,
+            searchFields,
+            threshold = 0,
+            maxResults = 10
+        } = searchOptions;
+
+        // Get search results with rich metadata
+        const searchResults = await this.searchUtil.search(query, {
             path,
-            limit,
-            includeMetadata: true
+            limit: maxResults,
+            includeMetadata: true,
+            searchFields,
+            weights
         });
 
-        if (!results.length) {
+        // Filter by score threshold and map to desired format
+        const filteredResults = searchResults
+            .filter(result => result.score >= threshold)
+            .map(result => ({
+                path: result.file.path,
+                score: result.score,
+                matches: result.matches,
+                metadata: result.metadata
+            }));
+
+        if (!filteredResults.length) {
             return null;
         }
 
         if (saveAsDistinct) {
-            return `${this.context.settings.rootPath}/${this.createDistinctFilename(query)}`;
+            const distinctPath = `${this.context.settings.rootPath}/${this.createDistinctFilename(query)}`;
+            return {
+                distinctPath,
+                results: filteredResults
+            };
         }
 
-        return results[0].file.path;
+        // Calculate average score
+        const totalScore = filteredResults.reduce((sum, r) => sum + r.score, 0);
+        
+        return {
+            results: filteredResults,
+            totalResults: filteredResults.length,
+            averageScore: totalScore / filteredResults.length,
+            topResult: filteredResults[0].path // For backwards compatibility
+        };
     }
 
     private createDistinctFilename(query: string): string {
@@ -441,6 +478,67 @@ export class ManageNoteTool extends BaseTool {
                 query: {
                     type: "string",
                     description: "Search query to find notes (search action)"
+                },
+                searchOptions: {
+                    type: "object",
+                    properties: {
+                        weights: {
+                            type: "object",
+                            properties: {
+                                fuzzyMatch: {
+                                    type: "number",
+                                    description: "Weight for fuzzy text matches"
+                                },
+                                exactMatch: {
+                                    type: "number",
+                                    description: "Weight for exact text matches"
+                                },
+                                lastViewed: {
+                                    type: "number",
+                                    description: "Weight for recently viewed notes"
+                                },
+                                accessCount: {
+                                    type: "number",
+                                    description: "Weight for frequently accessed notes"
+                                },
+                                metadata: {
+                                    type: "object",
+                                    properties: {
+                                        title: {
+                                            type: "number",
+                                            description: "Weight for title matches"
+                                        },
+                                        tags: {
+                                            type: "number",
+                                            description: "Weight for tag matches"
+                                        },
+                                        category: {
+                                            type: "number",
+                                            description: "Weight for category matches"
+                                        },
+                                        description: {
+                                            type: "number",
+                                            description: "Weight for description matches"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        searchFields: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Fields to include in search (e.g. title, content, tags)"
+                        },
+                        threshold: {
+                            type: "number",
+                            description: "Minimum score threshold for results"
+                        },
+                        maxResults: {
+                            type: "number",
+                            description: "Maximum number of results to return"
+                        }
+                    },
+                    description: "Advanced search configuration options"
                 },
                 saveAsDistinct: {
                     type: "boolean",

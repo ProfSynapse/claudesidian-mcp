@@ -1,23 +1,53 @@
 import { EventEmitter } from 'events';
 
-export enum EventTypes {
-    MEMORY_CREATED = 'memory:created',
-    MEMORY_UPDATED = 'memory:updated',
-    MEMORY_DELETED = 'memory:deleted',
-    REASONING_CREATED = 'reasoning:created',
-    REASONING_UPDATED = 'reasoning:updated'
-}
+export const EventTypes = {
+    MEMORY_CREATED: 'memory:created',
+    MEMORY_UPDATED: 'memory:updated',
+    MEMORY_DELETED: 'memory:deleted',
+    REASONING_CREATED: 'reasoning:created',
+    REASONING_UPDATED: 'reasoning:updated',
+    MEMORY_ACCESSED: 'memory_accessed',
+    MEMORY_ARCHIVED: 'memory_archived'
+} as const;
 
-export interface MemoryEvent {
+export interface BaseEvent {
     type: string;
     title: string;
     path: string;
+    tags?: string[];
+    relationships?: string[];
+    context?: string;
+    timestamp?: number;
+    description?: string;
+    accessCount?: number;
+    metadata?: {
+        accessCount?: number;
+        lastAccessed?: number;
+        importance?: number;
+    };
 }
 
-export interface ReasoningEvent {
-    type: string;
+export type MemoryAccessEvent = {
+    type: 'memory_accessed';
     title: string;
     path: string;
+    timestamp: number;
+    accessCount: number;
+    description?: string;
+    importance?: number;
+    metadata?: {
+        accessCount?: number;
+        lastAccessed?: number;
+        importance?: number;
+    };
+};
+
+export type MemoryEvent = BaseEvent & {
+    memoryType?: 'Core' | 'Episodic' | 'Semantic' | 'Procedural' | 'Emotional' | 'Contextual';
+};
+
+export interface ReasoningEvent extends BaseEvent {
+    reasoningType?: 'Analysis' | 'Decision' | 'Planning' | 'Problem Solving';
 }
 
 export class EventManager {
@@ -27,11 +57,11 @@ export class EventManager {
         this.emitter = new EventEmitter();
     }
 
-    on(event: EventTypes, handler: (data: MemoryEvent | ReasoningEvent) => void) {
+    on(event: typeof EventTypes[keyof typeof EventTypes], handler: (data: MemoryEvent | ReasoningEvent | MemoryAccessEvent) => void) {
         this.emitter.on(event, handler);
     }
 
-    emit(event: EventTypes, data: MemoryEvent | ReasoningEvent) {
+    emit(event: typeof EventTypes[keyof typeof EventTypes], data: MemoryEvent | ReasoningEvent | MemoryAccessEvent) {
         this.emitter.emit(event, data);
     }
 }

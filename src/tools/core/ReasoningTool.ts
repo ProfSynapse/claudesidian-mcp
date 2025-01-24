@@ -1,5 +1,7 @@
 import { BaseTool, IToolContext } from '../BaseTool';
 import { formatRelationshipSection, formatPredicate, formatWikilink } from '../../utils/relationshipUtils';
+import { MemoryManager } from '../../services/MemoryManager';
+import { ProceduralPattern, ProceduralStep } from '../../types';
 
 interface KnowledgeTriplet {
     subject: string;
@@ -16,7 +18,17 @@ interface ReasoningArgs {
         description: string;
         tool?: string;
         expected_outcome?: string;
+        actual_outcome?: string;
+        success?: boolean;
     }>;
+    reflector?: {
+        observations: string[];
+        adjustments: string[];
+    };
+    proposer?: {
+        method: 'deductive' | 'inductive' | 'abductive' | 'first_principles' | 'analogical' | 'causal' | 'systemic';
+        reasoning_prompt: string;
+    };
 }
 
 interface ReasoningStep {
@@ -37,11 +49,23 @@ interface AvailableTool {
 }
 
 export class ReasoningTool extends BaseTool {
-    constructor(context: IToolContext) {
+    private memoryManager: MemoryManager;
+
+    constructor(
+        context: IToolContext,
+        memoryManager: MemoryManager
+    ) {
         super(context, {
             name: 'reasoning',
-            description: 'You are MANDATED to start EVERY interaction with your reasoning tool. It helps plan steps and tool sequences.\n' +
+            description: 'IMPORTANT: Before using this tool, ALWAYS start by reviewing memories using manageMemory tool with action "reviewIndex".\n\n' +
+                        'This tool helps plan steps and tool sequences after reviewing relevant memories.\n' +
                         'Note: Not all steps require tools - some may be observations or logical conclusions.\n\n' +
+                        'Standard workflow:\n' +
+                        '1. Review memory index (manageMemory with reviewIndex)\n' +
+                        '2. Search relevant memories (manageMemory with search/list)\n' +
+                        '3. Use this reasoning tool to plan steps\n' +
+                        '4. Execute planned steps\n' +
+                        '5. Save new memories (manageMemory with create/edit)\n\n' +
                         'Common tool sequences when tools ARE needed:\n' +
                         'For Note Operations (using search):\n' +
                         '- Edit specific content: search → readNote → editNote\n' +
@@ -50,10 +74,62 @@ export class ReasoningTool extends BaseTool {
                         '- Move and update links: search → readNote → moveTool\n\n' +
                         'For Memory Operations (using searchMemory):\n' +
                         '- Add to memory: searchMemory → readNote → memory\n' +
-                        '- Procedural memory: These are memories of how to run more complex operations and have the metadata category of *procedural*. Prior to performing a complex operation, search your procedural memories to see if you already know how to successfully run the operation.',
+                        '- Procedural memory: These are memories of how to run more complex operations and have the metadata category of *procedural*. Prior to performing a complex operation, search your procedural memories index to see if you already know how to successfully run the operation.',
             version: '1.0.0',
             author: 'Bridge MCP'
         });
+        this.memoryManager = memoryManager;
+    }
+
+    /**
+     * Check if current reasoning session was successful
+     */
+    private isSuccessfulPattern(args: ReasoningArgs): boolean {
+        if (!args.steps || args.steps.length === 0) return false;
+
+        const stepsWithOutcomes = args.steps.filter(s => s.expected_outcome);
+        if (stepsWithOutcomes.length === 0) return false;
+
+        return stepsWithOutcomes.every(step => 
+            step.success || 
+            (step.actual_outcome && step.actual_outcome.includes(step.expected_outcome || ''))
+        );
+    }
+
+    /**
+     * Save successful reasoning as a procedural pattern
+     */
+    private async saveProceduralPattern(args: ReasoningArgs) {
+        try {
+            const pattern: ProceduralPattern = {
+                input: {
+                    goal: args.goal,
+                    query_type: args.query,
+                    tools_needed: args.steps?.filter(s => s.tool).map(s => s.tool || '').filter(t => t !== '') || []
+                },
+                context: {
+                    knowledgeGraph: args.knowledgeGraph || [],
+                    reasoning_method: args.proposer?.method
+                },
+                steps: args.steps?.filter(s => s.tool).map(step => ({
+                    tool: step.tool || '',
+                    args: {},
+                    expectedOutcome: step.expected_outcome || '',
+                    actualOutcome: step.actual_outcome || ''
+                })) as ProceduralStep[] || [],
+                success: true,
+                usageCount: 1,
+                lastUsed: new Date().toISOString()
+            };
+
+            await this.memoryManager.createProceduralMemory(
+                `pattern_${args.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+                `Procedural pattern for: ${args.goal}`,
+                pattern
+            );
+        } catch (error) {
+            console.error('Error saving procedural pattern:', error);
+        }
     }
 
     getSchema() {
@@ -78,29 +154,19 @@ export class ReasoningTool extends BaseTool {
                 },
                 knowledgeGraph: {
                     type: "array",
-                    description: "Knowledge triplets that model all relevant aspects of the problem space. Create as many as needed for complete understanding.",
+                    description: "Knowledge triplets that model all relevant aspects of the problem space",
                     items: {
                         type: "object",
                         properties: {
-                            subject: {
-                                type: "string",
-                                description: "Entity that is the source or origin"
-                            },
-                            predicate: {
-                                type: "string",
-                                description: "Relationship between subject and object"
-                            },
-                            object: {
-                                type: "string",
-                                description: "Entity that is the target or destination"
-                            }
+                            subject: { type: "string" },
+                            predicate: { type: "string" },
+                            object: { type: "string" }
                         },
                         required: ["subject", "predicate", "object"]
                     }
                 },
                 proposer: {
                     type: "object",
-                    description: "System for proposing next steps using specified reasoning method",
                     properties: {
                         method: {
                             type: "string",
@@ -112,78 +178,34 @@ export class ReasoningTool extends BaseTool {
                                 "analogical",
                                 "causal",
                                 "systemic"
-                            ],
-                            description: `
-                                deductive: Best for reaching certain conclusions from general principles
-                                inductive: Use when building general theories from specific observations
-                                abductive: For finding simplest explanation of observations
-                                first_principles: Break down complex problems into fundamental truths
-                                analogical: Apply solutions from similar problems
-                                causal: Analyze cause-effect relationships
-                                systemic: Consider whole system interactions
-                            `
+                            ]
                         },
-                        reasoning_prompt: {
-                            type: "string",
-                            description: "Given the goal and current state, reason step-by-step what comes next and why?"
-                        }
+                        reasoning_prompt: { type: "string" }
                     },
                     required: ["method", "reasoning_prompt"]
                 },
                 critic: {
                     type: "array",
-                    description: "Provide constructive criticism about the proposer's approach and potential improvements",
-                    items: {
-                        type: "string",
-                        description: "Each criticism will be specific, actionable, and focused on improving the solution"
-                    }
+                    items: { type: "string" }
                 },
                 reflector: {
                     type: "object",
                     properties: {
-                        observations: {
-                            type: "array",
-                            items: { type: "string" }
-                        },
-                        adjustments: {
-                            type: "array",
-                            items: { type: "string" }
-                        }
+                        observations: { type: "array", items: { type: "string" } },
+                        adjustments: { type: "array", items: { type: "string" } }
                     }
                 },
-                requiresMemoryContext: {
-                    type: "boolean",
-                    description: "Set to true if this reasoning requires searching memories first. Consider true for: personal queries, multistep procedures, context-dependent questions, references to past events, or building on previous interactions. If true, first step must use searchMemory tool."
-                },
+                requiresMemoryContext: { type: "boolean" },
                 steps: {
                     type: "array",
-                    description: "Sequence of steps to achieve the goal. Not all steps require tools.",
                     items: {
                         type: "object",
                         properties: {
-                            step_number: {
-                                type: "integer",
-                                minimum: 1
-                            },
-                            description: {
-                                type: "string",
-                                description: "Clear description of what this step accomplishes"
-                            },
-                            requires_tool: {
-                                type: "boolean",
-                                description: "Whether this step needs a tool (false for logical steps, observations, or conclusions)"
-                            },
-                            selected_tool: {
-                                type: "string",
-                                description: "Selected tool name if requires_tool is true, omit otherwise",
-                                enum: {
-                                    "$ref": "#/definitions/available_tools"
-                                }
-                            },
-                            memory_context_used: {
-                                type: "boolean",
-                                description: "Whether this step utilized memory search results"
-                            }
+                            step_number: { type: "integer", minimum: 1 },
+                            description: { type: "string" },
+                            requires_tool: { type: "boolean" },
+                            selected_tool: { "$ref": "#/definitions/available_tools" },
+                            memory_context_used: { type: "boolean" }
                         },
                         required: ["step_number", "description", "requires_tool"]
                     }
@@ -193,55 +215,58 @@ export class ReasoningTool extends BaseTool {
             definitions: {
                 available_tools: {
                     type: "string",
-                    enum: [] as string[],  // Explicitly type as string array
-                    description: ""  // Will be populated with tool descriptions
+                    enum: [] as string[],
+                    description: ""
                 }
             }
         };
     }
 
-
-    // Update execute method to handle dynamic tool list
     async execute(args: ReasoningArgs): Promise<any> {
-        const schema = this.getSchema();
-        
-        // Get tools and their metadata
-        const tools = await this.context.toolRegistry.getAvailableTools();
-        
-        // Create tool mapping
-        const toolNames: string[] = [];
-        const toolDescriptions: string[] = [];
-        
-        // Populate arrays
-        tools.forEach((tool: AvailableTool) => {
-            toolNames.push(tool.name);
-            toolDescriptions.push(`${tool.name}: ${tool.description}`);
-        });
+        try {
+            const schema = this.getSchema();
+            const tools = await this.context.toolRegistry.getAvailableTools();
+            
+            const toolNames: string[] = [];
+            const toolDescriptions: string[] = [];
+            
+            tools.forEach((tool: AvailableTool) => {
+                toolNames.push(tool.name);
+                toolDescriptions.push(`${tool.name}: ${tool.description}`);
+            });
 
-        // Update schema with available tools
-        schema.definitions.available_tools = {
-            type: "string",
-            enum: toolNames,
-            description: toolDescriptions.join('\n')
-        };
+            schema.definitions.available_tools = {
+                type: "string",
+                enum: toolNames,
+                description: toolDescriptions.join('\n')
+            };
 
-        if (!this.validateArgs(args, schema)) {
-            throw new Error('Invalid arguments provided to reasoning tool');
+            if (!this.validateArgs(args, schema)) {
+                throw new Error('Invalid arguments provided to reasoning tool');
+            }
+
+            // Format knowledge graph triplets
+            if (args.knowledgeGraph) {
+                args.knowledgeGraph = args.knowledgeGraph.map(triplet => ({
+                    subject: triplet.subject.startsWith('[[') ? triplet.subject : `[[${triplet.subject}]]`,
+                    predicate: triplet.predicate.startsWith('#') ? triplet.predicate : 
+                        `#${triplet.predicate.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+                    object: triplet.object.startsWith('[[') ? triplet.object : `[[${triplet.object}]]`
+                }));
+            }
+
+            const result = args;
+            await this.saveReasoningNote(result);
+
+            if (this.isSuccessfulPattern(args)) {
+                await this.saveProceduralPattern(args);
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Error in reasoning execution:', error);
+            throw error;
         }
-
-        // Format knowledge graph triplets
-        if (args.knowledgeGraph) {
-            args.knowledgeGraph = args.knowledgeGraph.map(triplet => ({
-                subject: triplet.subject.startsWith('[[') ? triplet.subject : `[[${triplet.subject}]]`,
-                predicate: triplet.predicate.startsWith('#') ? triplet.predicate : 
-                    `#${triplet.predicate.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-                object: triplet.object.startsWith('[[') ? triplet.object : `[[${triplet.object}]]`
-            }));
-        }
-
-        const result = args;
-        await this.saveReasoningNote(result);
-        return result;
     }
 
     private async saveReasoningNote(analysis: any): Promise<void> {
@@ -251,7 +276,6 @@ export class ReasoningTool extends BaseTool {
         const filename = `${analysis.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.md`;
         const fullPath = `${reasoningFolder}/${filename}`;
 
-        // Check if this reasoning builds on procedural memories
         const usedProceduralMemories = analysis.steps?.some((s: any) => 
             s.memory_context_used && s.selected_tool === 'searchMemory' && 
             s.description.toLowerCase().includes('procedural')
@@ -322,11 +346,12 @@ export class ReasoningTool extends BaseTool {
             createFolders: true
         });
 
-        // Update index using IndexManager
         await this.context.indexManager.addToIndex({
             title: analysis.title,
             description: analysis.query,
-            section: 'Reasoning Sessions'
+            section: 'Reasoning Sessions',
+            type: 'reasoning',
+            timestamp: Date.now()  // Use current Unix timestamp instead of ISO string
         });
     }
 }
