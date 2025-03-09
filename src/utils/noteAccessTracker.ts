@@ -1,12 +1,13 @@
 import { Vault, TFile, App } from 'obsidian';
 import { VaultManager } from '../services/VaultManager';
+import { IVaultManager } from '../tools/interfaces/ToolInterfaces';
 
 export interface AccessMetadata {
     lastViewedAt: string;
     accessCount: number;
 }
 
-export async function trackNoteAccess(vault: Vault | VaultManager, path: string, app?: App): Promise<void> {
+export async function trackNoteAccess(vault: Vault | VaultManager | IVaultManager, path: string, app?: App): Promise<void> {
     try {
         const now = new Date().toISOString();
 
@@ -33,7 +34,7 @@ export async function trackNoteAccess(vault: Vault | VaultManager, path: string,
             const newContent = `---\n${JSON.stringify(newFrontmatter, null, 2)}\n---\n${contentWithoutFrontmatter}`;
             await vault.modify(file, newContent);
         } else {
-            // For VaultManager, use its methods
+            // For VaultManager or IVaultManager, use its methods
             const metadata = await vault.getNoteMetadata(path);
             await vault.updateNoteMetadata(path, {
                 ...(metadata || {}),

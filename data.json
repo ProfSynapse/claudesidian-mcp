@@ -14,14 +14,13 @@
   "cacheTimeout": 300,
   "enabledVault": true,
   "enabledMemory": true,
-  "enabledReasoning": true,
+  "enabledReasoning": false,
   "enabledTools": [
     "memory",
-    "reasoning",
     "search"
   ],
-  "memoryFolderPath": "claudesidian/memory",
-  "reasoningFolderPath": "claudesidian/reasoning",
+  "memoryFolderPath": "claudesidian/memories",
+  "reasoningFolderPath": "claudesidian/memories",
   "aiProvider": "openrouter",
   "apiKeys": {
     "openrouter": "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"

@@ -1,21 +1,12 @@
 import { App } from 'obsidian';
 import { VaultManager } from '../services/VaultManager';
-import { MemoryManager } from '../services/MemoryManager';
 import { ToolRegistry } from './ToolRegistry';
 import { MCPSettings } from '../types';
-import { IndexManager } from '../services/IndexManager';
 import { EventManager } from '../services/EventManager';
+import { IToolContext } from './interfaces/ToolInterfaces';
 
-export interface IToolContext {
-    app: App;
-    plugin: any;
-    vault: VaultManager;
-    memory: MemoryManager;
-    toolRegistry: ToolRegistry;
-    settings: MCPSettings;
-    indexManager: IndexManager;
-    eventManager: EventManager;
-}
+// Re-export the IToolContext interface for backward compatibility
+export type { IToolContext };
 
 export interface IToolMetadata {
     name: string;

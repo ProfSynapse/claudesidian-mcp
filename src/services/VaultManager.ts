@@ -43,10 +43,8 @@ export class VaultManager {
         try {
             const normalizedPath = this.normalizePath(path);
             
-            // Ensure parent folders exist if requested
-            if (options.createFolders) {
-                await this.ensureFolder(this.getFolderPath(normalizedPath));
-            }
+            // Always ensure parent folders exist
+            await this.ensureFolder(this.getFolderPath(normalizedPath));
 
             // Check if file exists and generate unique name if needed
             let finalPath = normalizedPath;
@@ -80,8 +78,16 @@ export class VaultManager {
     ): Promise<void> {
         try {
             const normalizedPath = this.normalizePath(path);
+            
+            // Check if file exists
+            const exists = await this.fileExists(normalizedPath);
+            if (!exists) {
+                console.debug(`VaultManager: File doesn't exist, creating instead: ${normalizedPath}`);
+                await this.createNote(path, content, options);
+                return;
+            }
+            
             const file = this.vault.getAbstractFileByPath(normalizedPath);
-
             if (!file || !(file instanceof TFile)) {
                 throw new Error(`No note found at path: ${normalizedPath}`);
             }
@@ -164,7 +170,10 @@ export class VaultManager {
      * Ensures a folder exists, creating it and any parent folders if necessary
      */
     async ensureFolder(path: string, retries = 3): Promise<void> {
+        if (!path || path === '/') return; // Skip empty paths
+        
         const normalizedPath = this.normalizePath(path);
+        
         try {
             // First check if folder exists in filesystem
             const exists = await this.vault.adapter.exists(normalizedPath);
@@ -182,8 +191,22 @@ export class VaultManager {
                 }
             }
 
+            // Ensure parent folder exists first (recursive)
+            const parentPath = this.getFolderPath(normalizedPath);
+            if (parentPath && parentPath !== normalizedPath) {
+                await this.ensureFolder(parentPath);
+            }
+
             // Create folder if it doesn't exist or isn't properly recognized
-            await this.vault.createFolder(normalizedPath);
+            try {
+                await this.vault.createFolder(normalizedPath);
+                console.debug(`Created folder: ${normalizedPath}`);
+            } catch (e) {
+                // Folder might have been created by another process
+                if (!await this.vault.adapter.exists(normalizedPath)) {
+                    throw e; // Re-throw if folder still doesn't exist
+                }
+            }
             
             // Wait for folder to be recognized
             for (let i = 0; i < retries; i++) {
@@ -305,8 +328,21 @@ export class VaultManager {
             // First check if folder exists in filesystem
             const exists = await this.vault.adapter.exists(normalizedPath);
             if (!exists) {
-                await this.vault.createFolder(normalizedPath);
-                console.log(`Created folder: ${normalizedPath}`);
+                // Ensure parent folders exist first
+                const parentPath = this.getFolderPath(normalizedPath);
+                if (parentPath && parentPath !== normalizedPath) {
+                    await this.createFolder(parentPath);
+                }
+                
+                try {
+                    await this.vault.createFolder(normalizedPath);
+                    console.log(`Created folder: ${normalizedPath}`);
+                } catch (e) {
+                    // Check if folder was created by another process
+                    if (!await this.vault.adapter.exists(normalizedPath)) {
+                        throw e;
+                    }
+                }
 
                 // Safely try to refresh UI without throwing errors
                 if (this.app.workspace.layoutReady) {
@@ -450,6 +486,9 @@ export class VaultManager {
         return `---\n${yamlStr}---\n\n${content}`;
     }
 
+    /**
+     * Refresh the vault UI
+     */
     private async refreshVault(): Promise<void> {
         // During startup, don't trigger UI events
         if (!this.app.workspace.layoutReady) {

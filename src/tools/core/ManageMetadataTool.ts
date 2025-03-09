@@ -4,7 +4,7 @@ export class ManageMetadataTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'manageMetadata',
-            description: 'Manage Metadata fields in a note. The reviewIndex tool from memory must be used prior to using any tool at the beginning of a conversation.',
+            description: 'Manage Metadata fields in a note.',
             version: '1.1.0',
             author: 'Claudesidian MCP'
         }, { allowUndo: true });
@@ -41,7 +41,7 @@ export class ManageMetadataTool extends BaseTool {
                 // Remove specific values from arrays
                 Object.entries(removes).forEach(([key, values]) => {
                     if (Array.isArray(values) && Array.isArray(newMetadata[key])) {
-                        newMetadata[key] = newMetadata[key].filter(item => !values.includes(item));
+                        newMetadata[key] = newMetadata[key].filter((item: any) => !values.includes(item));
                     }
                 });
             }

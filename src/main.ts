@@ -1,19 +1,19 @@
 import { Plugin } from 'obsidian';
 import { ClaudesidianMCPServer } from './mcp/server';
 import { StatusBar } from './components/StatusBar';
-import { MemoryManager } from './services/MemoryManager';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { VaultManager } from './services/VaultManager';
 import { MCPSettings, DEFAULT_SETTINGS } from './types';
 import { SettingsTab } from './components/SettingsTab';
 import { EventManager } from './services/EventManager';
-import { IndexManager } from './services/IndexManager';
+import { ServiceProvider } from './services/ServiceProvider';
+import { IVaultManager } from './tools/interfaces/ToolInterfaces';
+import { VaultManagerFacade } from './services/VaultManagerFacade';
 
 export default class ClaudesidianMCPPlugin extends Plugin {
     private mcpServer: ClaudesidianMCPServer;
     private statusBar: StatusBar;
     private toolRegistry: ToolRegistry;
-    private memoryManager: MemoryManager;
     public vaultManager: VaultManager;
     settings: MCPSettings;
 
@@ -25,6 +25,8 @@ export default class ClaudesidianMCPPlugin extends Plugin {
 
     private currentStage: keyof typeof this.initStage = 'CORE';
 
+    private serviceProvider: ServiceProvider;
+
     private async initializeCoreComponents(): Promise<void> {
         console.debug('ClaudesidianMCPPlugin: Initializing essential components...');
         
@@ -34,7 +36,12 @@ export default class ClaudesidianMCPPlugin extends Plugin {
 
         // Only load settings and create essential managers
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-        this.vaultManager = new VaultManager(this.app);
+        
+        // Create service provider
+        this.serviceProvider = new ServiceProvider(this.app, this);
+        
+        // Get vault manager from service provider
+        this.vaultManager = this.serviceProvider.get<VaultManager>('vaultManager');
         
         console.debug('ClaudesidianMCPPlugin: Essential components initialized');
     }
@@ -42,41 +49,31 @@ export default class ClaudesidianMCPPlugin extends Plugin {
     private async initializeFeatures(eventManager: EventManager): Promise<void> {
         console.debug('ClaudesidianMCPPlugin: Initializing features...');
         
-        // Create both instances but don't pass MemoryManager dependency yet
-        let memoryManagerTemp: any = {};
-        
-        const indexManager = new IndexManager(
-            this.vaultManager,
-            eventManager,
-            this.settings,
-            { memoryManager: memoryManagerTemp }
-        );
+        try {
+            // First ensure folder structure exists
+            console.debug('ClaudesidianMCPPlugin: Creating folder structure');
+            await this.initializeFolderStructure();
+            console.debug('ClaudesidianMCPPlugin: Folder structure created');
 
-        this.memoryManager = new MemoryManager(
-            this.vaultManager,
-            eventManager,
-            indexManager,
-            this.settings
-        );
-        
-        // Now update the temporary reference to point to the real MemoryManager
-        Object.assign(memoryManagerTemp, this.memoryManager);
+            // Initialize tool registry using service provider
+            this.toolRegistry = this.serviceProvider.initializeToolRegistry(
+                eventManager
+            );
+            
+            // Register tools
+            this.serviceProvider.registerTools(
+                this.toolRegistry,
+                eventManager
+            );
 
-        this.toolRegistry = new ToolRegistry(
-            this.app,
-            this,
-            this.vaultManager,
-            this.memoryManager,
-            indexManager,
-            eventManager
-        );
+            // Configure AI adapter
+            this.serviceProvider.configureAIAdapter();
 
-        // Start non-blocking folder creation
-        this.initializeFolderStructure().catch(error => 
-            console.error('Error creating folders:', error)
-        );
-
-        console.debug('ClaudesidianMCPPlugin: Basic features initialized');
+            console.debug('ClaudesidianMCPPlugin: Basic features initialized');
+        } catch (error) {
+            console.error('Error initializing features:', error);
+            throw error;
+        }
     }
 
     private async initializeServer(): Promise<void> {
@@ -89,9 +86,11 @@ export default class ClaudesidianMCPPlugin extends Plugin {
             this.vaultManager,
             this.settings
         );
+        
+        // Register MCP server with service provider
+        this.serviceProvider.register('mcpServer', this.mcpServer);
 
         // Initialize UI components
-        this.addSettingTab(new SettingsTab(this.app, this));
         this.initializeStatusBar();
         this.registerCommands();
 
@@ -108,15 +107,21 @@ export default class ClaudesidianMCPPlugin extends Plugin {
             // Phase 1: Essential Setup
             this.currentStage = 'CORE';
             await this.initializeCoreComponents();
+            
+            // Create event manager
             const eventManager = new EventManager();
+            
+            // Register event manager with service provider
+            this.serviceProvider.register('eventManager', eventManager);
 
             // Register status bar early for user feedback
             this.initializeStatusBar();
             this.statusBar.setStatus('initializing');
 
-            // Register minimal commands
+            // Register minimal commands and vault events
             this.addSettingTab(new SettingsTab(this.app, this));
             this.registerCommands();
+            this.registerVaultEvents(); // Register vault events to ensure folders are created
 
             // Phase 2: Deferred Initialization
             this.app.workspace.onLayoutReady(() => {
@@ -171,8 +176,7 @@ export default class ClaudesidianMCPPlugin extends Plugin {
         const folderCreationPromises = [
             this.createFolderIfNeeded(this.settings.rootPath),
             this.createFolderIfNeeded(`${this.settings.rootPath}/inbox`),
-            this.settings.enabledMemory && this.createFolderIfNeeded(`${this.settings.rootPath}/memory`),
-            this.settings.enabledReasoning && this.createFolderIfNeeded(`${this.settings.rootPath}/reasoning`)
+            this.createFolderIfNeeded(this.settings.templateFolderPath)
         ].filter(Boolean); // Remove undefined promises from disabled features
 
         // Wait for all folder creations to complete
@@ -192,66 +196,34 @@ export default class ClaudesidianMCPPlugin extends Plugin {
 
     public async migrateAndInitializeFolders(oldRootPath?: string): Promise<void> {
         try {
-            const newRootPath = this.settings.rootPath;
-            // Use provided oldRootPath or try to get it from settings
-            const sourceRootPath = oldRootPath || await this.getOldPath();
-
-            console.log(`Migrating from ${sourceRootPath} to ${newRootPath}`);
-
-            if (sourceRootPath === newRootPath) {
-                console.log('Paths are the same, no migration needed');
-                await this.initializeFolderStructure();
-                return;
-            }
-
-            const oldPathExists = await this.vaultManager.folderExists(sourceRootPath);
-            if (oldPathExists) {
-                // Store old paths
-                const oldMemoryPath = `${sourceRootPath}/memory`;
-                const oldReasoningPath = `${sourceRootPath}/reasoning`;
-                const hadMemory = await this.vaultManager.folderExists(oldMemoryPath);
-                const hadReasoning = await this.vaultManager.folderExists(oldReasoningPath);
-
-                console.log(`Old folder exists: ${sourceRootPath}`);
-                console.log(`Memory exists: ${hadMemory}, Reasoning exists: ${hadReasoning}`);
-
-                // Create new structure first
-                await this.initializeFolderStructure();
-
-                // Migrate contents
-                if (hadMemory && this.settings.enabledMemory) {
-                    const newMemoryPath = `${newRootPath}/memory`;
-                    console.log(`Moving memory from ${oldMemoryPath} to ${newMemoryPath}`);
-                    await this.vaultManager.moveContents(oldMemoryPath, newMemoryPath);
-                }
-
-                if (hadReasoning && this.settings.enabledReasoning) {
-                    const newReasoningPath = `${newRootPath}/reasoning`;
-                    console.log(`Moving reasoning from ${oldReasoningPath} to ${newReasoningPath}`);
-                    await this.vaultManager.moveContents(oldReasoningPath, newReasoningPath);
-                }
-
-                // Clean up old folders
-                if (hadMemory) await this.vaultManager.cleanupEmptyFolders(oldMemoryPath);
-                if (hadReasoning) await this.vaultManager.cleanupEmptyFolders(oldReasoningPath);
-                await this.vaultManager.cleanupEmptyFolders(sourceRootPath);
-            } else {
-                console.log('No old folder found, creating new structure');
-                await this.initializeFolderStructure();
-            }
+            // Simply initialize the folder structure without complex migration
+            console.log('Initializing folder structure');
+            await this.initializeFolderStructure();
         } catch (error) {
-            console.error('Error during folder migration:', error);
+            console.error('Error during folder initialization:', error);
             throw error;
         }
     }
 
     private async getOldPath(): Promise<string> {
         try {
-            const settingsPath = '.obsidian/plugins/claudesidian-mcp/data.json';
-            const exists = await this.app.vault.adapter.exists(settingsPath);
+            // Try to read settings from claudesidian-mcp first
+            const newSettingsPath = '.obsidian/plugins/claudesidian-mcp/data.json';
+            const newExists = await this.app.vault.adapter.exists(newSettingsPath);
             
-            if (exists) {
-                const content = await this.app.vault.adapter.read(settingsPath);
+            if (newExists) {
+                const content = await this.app.vault.adapter.read(newSettingsPath);
+                const data = JSON.parse(content);
+                return data.rootPath || DEFAULT_SETTINGS.rootPath;
+            }
+            
+            // If not found, try to read from bridge-mcp (for migration)
+            const oldSettingsPath = '.obsidian/plugins/bridge-mcp/data.json';
+            const oldExists = await this.app.vault.adapter.exists(oldSettingsPath);
+            
+            if (oldExists) {
+                console.log('Found old bridge-mcp settings, migrating...');
+                const content = await this.app.vault.adapter.read(oldSettingsPath);
                 const data = JSON.parse(content);
                 return data.rootPath || DEFAULT_SETTINGS.rootPath;
             }
@@ -279,26 +251,28 @@ export default class ClaudesidianMCPPlugin extends Plugin {
         if (!this.app.workspace.layoutReady) return;
 
         try {
+            // Create root folder if it doesn't exist
             const rootExists = await this.vaultManager.folderExists(this.settings.rootPath);
             if (!rootExists) {
                 await this.vaultManager.createFolder(this.settings.rootPath);
+                console.debug(`Created root folder: ${this.settings.rootPath}`);
             }
 
-            if (this.settings.enabledMemory) {
-                const memoryPath = `${this.settings.rootPath}/memory`;
-                const memoryExists = await this.vaultManager.folderExists(memoryPath);
-                if (!memoryExists) {
-                    await this.vaultManager.createFolder(memoryPath);
-                }
+            // Create inbox folder if it doesn't exist
+            const inboxPath = `${this.settings.rootPath}/inbox`;
+            const inboxExists = await this.vaultManager.folderExists(inboxPath);
+            if (!inboxExists) {
+                await this.vaultManager.createFolder(inboxPath);
+                console.debug(`Created inbox folder: ${inboxPath}`);
             }
 
-            if (this.settings.enabledReasoning) {
-                const reasoningPath = `${this.settings.rootPath}/reasoning`;
-                const reasoningExists = await this.vaultManager.folderExists(reasoningPath);
-                if (!reasoningExists) {
-                    await this.vaultManager.createFolder(reasoningPath);
-                }
+            // Create template folder if it doesn't exist
+            const templateExists = await this.vaultManager.folderExists(this.settings.templateFolderPath);
+            if (!templateExists) {
+                await this.vaultManager.createFolder(this.settings.templateFolderPath);
+                console.debug(`Created template folder: ${this.settings.templateFolderPath}`);
             }
+
         } catch (error) {
             console.error('Error checking/creating folders:', error);
         }
@@ -306,6 +280,10 @@ export default class ClaudesidianMCPPlugin extends Plugin {
 
     private initializeStatusBar() {
         this.statusBar = new StatusBar(this);
+        
+        // Register status bar with service provider
+        this.serviceProvider.register('statusBar', this.statusBar);
+        
         const statusBarItem = this.addStatusBarItem();
         statusBarItem.appendChild(this.statusBar.getElement());
     }

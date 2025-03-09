@@ -2,6 +2,7 @@ import { BaseTool, IToolContext, IToolMetadata } from '../BaseTool';
 import { OpenRouterAdapter } from '../../ai/adapters/openRouter';
 import { AIProvider, AIModelMap } from '../../ai/models';
 import { MCPSettings } from '../../types';
+import { HttpClient } from '../../ai/HttpClient';
 
 export class CompletionTool extends BaseTool {
     private adapter: OpenRouterAdapter;
@@ -9,7 +10,7 @@ export class CompletionTool extends BaseTool {
     constructor(context: IToolContext) {
         const metadata: IToolMetadata = {
             name: 'completion',
-            description: 'Generate AI completions using OpenRouter. Note that anything related to current or fact based information should default to Perplexity Huge, as this has access to the internet. The reviewIndex tool from memory must be used prior to using any tool at the beginning of a conversation.',
+            description: 'Generate AI completions using OpenRouter.',
             version: '1.0.0'
         };
 
@@ -17,7 +18,9 @@ export class CompletionTool extends BaseTool {
             requireConfirmation: false
         });
         
-        this.adapter = new OpenRouterAdapter();
+        // Create HttpClient and pass it to OpenRouterAdapter as required by DI pattern
+        const httpClient = new HttpClient();
+        this.adapter = new OpenRouterAdapter(httpClient);
         // API key will be set through configuration
     }
 
@@ -31,7 +34,7 @@ export class CompletionTool extends BaseTool {
                 },
                 model: {
                     type: 'string',
-                    description: 'Optional: The model to use',
+                    description: 'Optional: The model to use. Defalt to Perplexity Sonar',
                     enum: AIModelMap[AIProvider.OpenRouter].map(m => m.apiName)
                 },
                 temperature: {

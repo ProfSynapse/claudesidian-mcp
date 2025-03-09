@@ -35,6 +35,14 @@ export interface AIResponseOptions {
     temperature?: number;
     /** Additional provider-specific options */
     providerOptions?: Record<string, unknown>;
+    /** Selected text from the editor */
+    selectedText?: string;
+    /** Query parameter for search */
+    query?: string;
+    /** Content parameter for Claude's prompt */
+    content?: string;
+    /** Action parameter */
+    action?: string;
 }
 
 /**
@@ -185,20 +193,8 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             contextWindow: 128000
         },
         {
-            name: 'Perplexity Huge',
-            apiName: 'perplexity/llama-3.1-sonar-huge-128k-online',
-            capabilities: {
-                maxTokens: 8000,
-                supportsFunctions: true,
-                supportsStreaming: true
-            },
-            inputCostPer1M: 5.00,
-            outputCostPer1M: 5.00,
-            contextWindow: 127000
-        },
-        {
-            name: 'Perplexity Large',
-            apiName: 'perplexity/llama-3.1-sonar-large-128k-online',
+            name: 'Perplexity Sonar',
+            apiName: 'perplexity/sonar',
             capabilities: {
                 maxTokens: 8000,
                 supportsFunctions: true,
@@ -206,6 +202,18 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             },
             inputCostPer1M: 1.00,
             outputCostPer1M: 1.00,
+            contextWindow: 127000
+        },
+        {
+            name: 'Perplexity Sonar Pro',
+            apiName: 'perplexity/sonar-pro',
+            capabilities: {
+                maxTokens: 8000,
+                supportsFunctions: true,
+                supportsStreaming: true
+            },
+            inputCostPer1M: 5.00,
+            outputCostPer1M: 5.00,
             contextWindow: 131000
         }
     ]

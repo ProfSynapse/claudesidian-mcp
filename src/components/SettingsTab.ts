@@ -23,12 +23,8 @@ export class SettingsTab extends PluginSettingTab {
         await this.plugin.saveSettings();
     }
 
-    async handleToolToggle(toolName: 'memory' | 'reasoning', enabled: boolean) {
-        if (toolName === 'memory') {
-            this.plugin.settings.enabledMemory = enabled;
-        } else {
-            this.plugin.settings.enabledReasoning = enabled;
-        }
+    async handleToolToggle(enabled: boolean) {
+        this.plugin.settings.enabledVault = enabled;
         await this.plugin.saveSettings();
         
         // Initialize folder structure after settings change
@@ -115,8 +111,7 @@ export class SettingsTab extends PluginSettingTab {
                     new AllowedPathsModal(this.app, this.plugin).open();
                 }));
 
-        // Memory Tool Settings with path
-        containerEl.createEl('h3', { text: 'Memory Settings' });
+        // Memory section removed
 
         // Tool Settings Section
         containerEl.createEl('h3', { text: 'Tool Settings' });
@@ -130,32 +125,44 @@ export class SettingsTab extends PluginSettingTab {
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enabledVault)
                 .onChange(async (value) => {
-                    this.plugin.settings.enabledVault = value;
+                    await this.handleToolToggle(value);
+                })
+            );
+            
+        // Template Folder Path Setting
+        new Setting(containerEl)
+            .setName('Template Folder')
+            .setDesc('Folder where note templates are stored')
+            .addText(text => text
+                .setPlaceholder('claudesidian/templates')
+                .setValue(this.plugin.settings.templateFolderPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.templateFolderPath = value;
                     await this.plugin.saveSettings();
-                })
-            );
-
-        // Memory Tool Toggle
-        new Setting(containerEl)
-            .setName('Enable Memory')
-            .setDesc('Manage memory creation and retrieval.')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.enabledMemory)
-                .onChange(async (value) => {
-                    await this.handleToolToggle('memory', value);
-                })
-            );
-
-        // Reasoning Tool Toggle
-        new Setting(containerEl)
-            .setName('Enable Reasoning')
-            .setDesc('Enable advanced reasoning functionality.')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.enabledReasoning)
-                .onChange(async (value) => {
-                    await this.handleToolToggle('reasoning', value);
-                })
-            );
+                }))
+            .addButton(button => button
+                .setButtonText('Create Folder')
+                .onClick(async () => {
+                    try {
+                        button.setDisabled(true);
+                        button.setButtonText('Creating...');
+                        
+                        await this.plugin.vaultManager.ensureFolder(this.plugin.settings.templateFolderPath);
+                        
+                        button.setButtonText('Done!');
+                        setTimeout(() => {
+                            button.setButtonText('Create Folder');
+                            button.setDisabled(false);
+                        }, 2000);
+                    } catch (error) {
+                        console.error('Failed to create template folder:', error);
+                        button.setButtonText('Failed!');
+                        setTimeout(() => {
+                            button.setButtonText('Create Folder');
+                            button.setDisabled(false);
+                        }, 2000);
+                    }
+                }));
 
         // Cache Settings
         containerEl.createEl('h3', { text: 'Performance Settings' });

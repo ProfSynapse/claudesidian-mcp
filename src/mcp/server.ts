@@ -12,7 +12,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { ToolRegistry } from '../tools/ToolRegistry';
 import { Server as NetServer, createServer } from 'net';
-import { MCPSettings, ConversationState } from '../types';
+import { promises as fs } from 'fs';
+import { platform } from 'os';
+import { MCPSettings } from '../types';
 import { VaultManager } from '../services/VaultManager';
 
 interface ToolCallRequest extends Request {
@@ -33,11 +35,9 @@ export class ClaudesidianMCPServer {
     private ipcServer: NetServer | null = null;
     private settings: MCPSettings;
     private vaultManager: VaultManager;
-    private conversations: Map<string, ConversationState>;
 
     constructor(app: App, toolRegistry: ToolRegistry, vaultManager: VaultManager, settings: MCPSettings) {
         console.log('ClaudesidianMCPServer: constructor called');
-        this.conversations = new Map();
         this.app = app;
         this.toolRegistry = toolRegistry;
         this.vaultManager = vaultManager;
@@ -135,29 +135,9 @@ export class ClaudesidianMCPServer {
         // Handle tool execution
         this.server.setRequestHandler(CallToolRequestSchema, async (request: ToolCallRequest) => {
             const { name, arguments: args } = request.params;
-            const conversationId = request.headers?.['x-conversation-id'] || 'default';
-            
             try {
-                // Get or initialize conversation state
-                let state = this.conversations.get(conversationId);
-                if (!state) {
-                    state = {
-                        hasInitialMemoryReview: false,
-                        lastMemoryOperation: 0,
-                        pendingMemoryUpdates: false,
-                        conversationId
-                    };
-                    this.conversations.set(conversationId, state);
-                }
-
-                // Validate memory workflow
-                await this.validateMemoryWorkflow(name, args, state);
-
                 // Execute the tool
                 const result = await this.toolRegistry.executeTool(name, args);
-
-                // Update conversation state
-                this.updateConversationState(name, args, state);
                 
                 return {
                     content: [{
@@ -180,42 +160,6 @@ export class ClaudesidianMCPServer {
         });
     }
 
-    private async validateMemoryWorkflow(name: string, args: any, state: ConversationState) {
-        // Only check for initial memory review if it hasn't been done yet
-        if (!state.hasInitialMemoryReview && name === 'manageMemory' && args.action === 'reviewIndex') {
-            // Mark memory review as complete if this is a reviewIndex action
-            state.hasInitialMemoryReview = true;
-            return;
-        }
-
-        // If ending conversation (detected by special flag in args)
-        if (args.endConversation && state.pendingMemoryUpdates) {
-            throw new McpError(
-                ErrorCode.InvalidRequest,
-                'Must create or update memories before ending conversation'
-            );
-        }
-    }
-
-    private updateConversationState(name: string, args: any, state: ConversationState) {
-        if (name === 'manageMemory') {
-            if (args.action === 'reviewIndex') {
-                state.hasInitialMemoryReview = true;
-            }
-            if (args.action === 'create' || args.action === 'edit') {
-                state.pendingMemoryUpdates = false;
-            }
-            state.lastMemoryOperation = Date.now();
-        } else {
-            // Any non-memory tool use creates pending updates
-            state.pendingMemoryUpdates = true;
-        }
-
-        // Clean up conversation if ending
-        if (args.endConversation) {
-            this.conversations.delete(state.conversationId);
-        }
-    }
 
     private async initializeFolders() {
         try {
@@ -225,20 +169,6 @@ export class ClaudesidianMCPServer {
                 await this.vaultManager.createFolder(rootPath);
             }
 
-            // Create subfolders based on enabled tools
-            if (this.settings.enabledMemory) {
-                const memoryPath = `${rootPath}/memory`;
-                if (!await this.vaultManager.folderExists(memoryPath)) {
-                    await this.vaultManager.createFolder(memoryPath);
-                }
-            }
-
-            if (this.settings.enabledReasoning) {
-                const reasoningPath = `${rootPath}/reasoning`;
-                if (!await this.vaultManager.folderExists(reasoningPath)) {
-                    await this.vaultManager.createFolder(reasoningPath);
-                }
-            }
         } catch (error) {
             console.error('Error initializing folders:', error);
             throw error;
@@ -277,24 +207,82 @@ export class ClaudesidianMCPServer {
         return transport;
     }
 
+    private getIPCPath(): string {
+        return process.platform === 'win32'
+            ? '\\\\.\\pipe\\claudesidian_mcp'
+            : '/tmp/claudesidian_mcp.sock';
+    }
+
+    private async cleanupSocket(): Promise<void> {
+        if (platform() !== 'win32') {
+            try {
+                await fs.unlink(this.getIPCPath());
+            } catch (error) {
+                // Ignore if file doesn't exist
+                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                    process.stderr.write(`Error cleaning up socket file: ${error}\n`);
+                }
+            }
+        }
+    }
+
     private async startIPCTransport(): Promise<NetServer> {
         if (this.ipcServer) {
-            console.log('ClaudesidianMCPServer: IPC server already running');
             return this.ipcServer;
         }
 
-        return new Promise((resolve) => {
-            const pipeName = '\\\\.\\pipe\\claudesidian_mcp';
-            const server = createServer((socket) => {
-                const transport = new StdioServerTransport(socket, socket);
-                this.server.connect(transport);
-                console.log('IPC connection established');
-            });
+        const isWindows = process.platform === 'win32';
+        const ipcPath = this.getIPCPath();
 
-            server.listen(pipeName, () => {
-                console.log(`IPC server listening on ${pipeName}`);
-                resolve(server);
-            });
+        if (!isWindows) {
+            await this.cleanupSocket();
+        }
+
+        return new Promise((resolve, reject) => {
+            try {
+                const server = createServer((socket) => {
+                    try {
+                        const transport = new StdioServerTransport(socket, socket);
+                        this.server.connect(transport).catch(err => {
+                            console.error('Error connecting transport:', err);
+                        });
+                    } catch (error) {
+                        console.error('Error creating transport:', error);
+                    }
+                });
+
+                server.on('error', (error) => {
+                    console.error(`IPC server error: ${error}`);
+                    if (!isWindows && (error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+                        this.cleanupSocket().then(() => {
+                            try {
+                                server.listen(ipcPath);
+                            } catch (listenError) {
+                                console.error('Error listening after cleanup:', listenError);
+                                reject(listenError);
+                            }
+                        }).catch(cleanupError => {
+                            console.error('Error cleaning up socket:', cleanupError);
+                            reject(cleanupError);
+                        });
+                    } else {
+                        reject(error);
+                    }
+                });
+
+                server.listen(ipcPath, () => {
+                    console.log(`IPC server listening on ${ipcPath}`);
+                    if (!isWindows) {
+                        fs.chmod(ipcPath, 0o666).catch(error => {
+                            console.error(`Error setting socket permissions: ${error}`);
+                        });
+                    }
+                    resolve(server);
+                });
+            } catch (error) {
+                console.error('Error creating IPC server:', error);
+                reject(error);
+            }
         });
     }
 
@@ -314,6 +302,8 @@ export class ClaudesidianMCPServer {
         if (this.ipcServer) {
             this.ipcServer.close();
             this.ipcServer = null;
+            // Clean up socket file on Unix systems
+            await this.cleanupSocket();
         }
     }
 }

@@ -1,67 +1,48 @@
-import { EventEmitter } from 'events';
+import { EventType } from '../types/event-types';
 
-export const EventTypes = {
-    MEMORY_CREATED: 'memory:created',
-    MEMORY_UPDATED: 'memory:updated',
-    MEMORY_DELETED: 'memory:deleted',
-    REASONING_CREATED: 'reasoning:created',
-    REASONING_UPDATED: 'reasoning:updated',
-    MEMORY_ACCESSED: 'memory_accessed',
-    MEMORY_ARCHIVED: 'memory_archived'
-} as const;
+export type { EventType };
 
-export interface BaseEvent {
+export type EventPayload = {
     type: string;
     title: string;
     path: string;
-    tags?: string[];
-    relationships?: string[];
-    context?: string;
-    timestamp?: number;
-    description?: string;
-    accessCount?: number;
-    metadata?: {
-        accessCount?: number;
-        lastAccessed?: number;
-        importance?: number;
-    };
-}
-
-export type MemoryAccessEvent = {
-    type: 'memory_accessed';
-    title: string;
-    path: string;
     timestamp: number;
-    accessCount: number;
-    description?: string;
-    importance?: number;
-    metadata?: {
-        accessCount?: number;
-        lastAccessed?: number;
-        importance?: number;
-    };
 };
-
-export type MemoryEvent = BaseEvent & {
-    memoryType?: 'Core' | 'Episodic' | 'Semantic' | 'Procedural' | 'Emotional' | 'Contextual';
-};
-
-export interface ReasoningEvent extends BaseEvent {
-    reasoningType?: 'Analysis' | 'Decision' | 'Planning' | 'Problem Solving';
-}
 
 export class EventManager {
-    private emitter: EventEmitter;
+    private listeners: Map<EventType, Array<(event: EventPayload) => void>> = new Map();
 
-    constructor() {
-        this.emitter = new EventEmitter();
+    on(eventType: EventType, callback: (event: EventPayload) => void): void {
+        if (!this.listeners.has(eventType)) {
+            this.listeners.set(eventType, []);
+        }
+        this.listeners.get(eventType)?.push(callback);
     }
 
-    on(event: typeof EventTypes[keyof typeof EventTypes], handler: (data: MemoryEvent | ReasoningEvent | MemoryAccessEvent) => void) {
-        this.emitter.on(event, handler);
+    off(eventType: EventType, callback: (event: EventPayload) => void): void {
+        const callbacks = this.listeners.get(eventType);
+        if (callbacks) {
+            const index = callbacks.indexOf(callback);
+            if (index !== -1) {
+                callbacks.splice(index, 1);
+            }
+        }
     }
 
-    emit(event: typeof EventTypes[keyof typeof EventTypes], data: MemoryEvent | ReasoningEvent | MemoryAccessEvent) {
-        this.emitter.emit(event, data);
+    emit(eventType: EventType, event: EventPayload): void {
+        const callbacks = this.listeners.get(eventType);
+        if (callbacks) {
+            callbacks.forEach(callback => {
+                try {
+                    callback(event);
+                } catch (error) {
+                    console.error(`Error in event listener for ${eventType}:`, error);
+                }
+            });
+        }
+    }
+
+    clear(): void {
+        this.listeners.clear();
     }
 }

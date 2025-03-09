@@ -1,5 +1,5 @@
 import { TFile, prepareFuzzySearch, App } from 'obsidian';
-import { VaultManager } from '../services/VaultManager';
+import { IVaultManager } from '../tools/interfaces/ToolInterfaces';
 
 interface SearchWeights {
     fuzzyMatch: number;
@@ -14,7 +14,7 @@ interface SearchWeights {
     };
 }
 
-export const MEMORY_SEARCH_WEIGHTS: SearchWeights = {
+export const SEARCH_WEIGHTS: SearchWeights = {
     fuzzyMatch: 0.8,
     exactMatch: 1.2,
     lastViewed: 1.0,
@@ -22,7 +22,7 @@ export const MEMORY_SEARCH_WEIGHTS: SearchWeights = {
     metadata: {
         title: 1.5,
         tags: 1.0,
-        category: 2.0,  // Higher weight for memory category
+        category: 2.0,  // Higher weight for category
         description: 1.2
     }
 };
@@ -53,11 +53,11 @@ export class SearchUtil {
         }
     };
 
-    private vault: VaultManager;
+    private vault: IVaultManager;
     private app: App;
     private weights: SearchWeights;
 
-    constructor(vault: VaultManager, weights?: Partial<SearchWeights>) {
+    constructor(vault: IVaultManager, weights?: Partial<SearchWeights>) {
         this.vault = vault;
         this.weights = { ...SearchUtil.DEFAULT_WEIGHTS, ...weights };
         // Get app instance from vault manager's getApp() method

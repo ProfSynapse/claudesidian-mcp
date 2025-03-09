@@ -3,15 +3,6 @@
  */
 
 /**
- * Determines if a path is within memory or reasoning folders
- */
-export function isMemoryOrReasoningPath(path: string, rootPath: string): boolean {
-    const memoryPath = `${rootPath}/memory`;
-    const reasoningPath = `${rootPath}/reasoning`;
-    return path.startsWith(memoryPath) || path.startsWith(reasoningPath);
-}
-
-/**
  * Determines if a path should be treated as absolute
  */
 export function isAbsolutePath(path: string): boolean {
@@ -22,7 +13,7 @@ export function isAbsolutePath(path: string): boolean {
 /**
  * Sanitizes a filename or folder name
  * @param name The name to sanitize
- * @param useUnderscores Whether to replace spaces with underscores (true for memory/reasoning files)
+ * @param useUnderscores Whether to replace spaces with underscores
  */
 export function sanitizeName(name: string, useUnderscores: boolean = false): string {
     if (!name || typeof name !== 'string') {
@@ -49,7 +40,7 @@ export function sanitizeName(name: string, useUnderscores: boolean = false): str
 /**
  * Sanitizes a file path by replacing invalid characters with safe alternatives
  * @param path The file path to sanitize
- * @param rootPath The root path of the vault, used to determine if path is memory/reasoning
+ * @param rootPath The root path of the vault
  * @returns A sanitized path safe for file system operations
  */
 export function sanitizePath(path: string, rootPath?: string): string {
@@ -64,9 +55,6 @@ export function sanitizePath(path: string, rootPath?: string): string {
     // Split path into parts
     const parts = normalizedPath.split('/');
 
-    // Determine if this path is in memory/reasoning folders
-    const useUnderscores = rootPath ? isMemoryOrReasoningPath(normalizedPath, rootPath) : false;
-
     // Sanitize each part while preserving structure
     const sanitizedParts = parts.map((part, index) => {
         // Skip empty parts, dots, and root indicators
@@ -75,8 +63,7 @@ export function sanitizePath(path: string, rootPath?: string): string {
             return part;
         }
 
-        // Use underscores only for memory/reasoning paths
-        return sanitizeName(part, useUnderscores);
+        return sanitizeName(part, false);
     });
 
     // Reconstruct path

@@ -154,7 +154,11 @@ export class ManageFolderTool extends BaseTool {
         if (force) {
             await this.context.app.vault.delete(folder, true);
         } else {
-            await this.context.vault.cleanupEmptyFolders(path);
+            // Delete the folder if it's empty
+            const children = (folder as any).children;
+            if (children && children.length === 0) {
+                await this.context.app.vault.delete(folder);
+            }
         }
 
         return { success: true, folderInfo };
@@ -182,7 +186,14 @@ export class ManageFolderTool extends BaseTool {
     async undo(args: any, previousResult: any): Promise<void> {
         switch (args.action) {
             case 'create':
-                await this.context.vault.cleanupEmptyFolders(previousResult.path);
+                // Delete the folder if it exists and is empty
+                const folder = this.context.app.vault.getAbstractFileByPath(previousResult.path);
+                if (folder && folder instanceof TFolder) {
+                    const children = (folder as any).children;
+                    if (children && children.length === 0) {
+                        await this.context.app.vault.delete(folder);
+                    }
+                }
                 break;
             case 'move':
                 if (previousResult?.oldPath) {
