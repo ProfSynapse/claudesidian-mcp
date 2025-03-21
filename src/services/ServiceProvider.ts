@@ -6,20 +6,13 @@ import { ConversationManager } from './ConversationManager';
 import { VaultManagerFacade } from './VaultManagerFacade';
 import { HttpClient } from '../ai/HttpClient';
 import { OpenRouterAdapter } from '../ai/adapters/openRouter';
-import { IPathService } from './interfaces/IPathService';
-import { INoteService } from './interfaces/INoteService';
-import { IFolderService } from './interfaces/IFolderService';
-import { IConversationManager } from './interfaces/IConversationManager';
-import { IHttpClient } from '../ai/interfaces/IHttpClient';
+// Unused imports removed: IPathService, INoteService, IFolderService, IConversationManager, IHttpClient
 import { IAIAdapter } from '../ai/interfaces/IAIAdapter';
 import { AIProvider } from '../ai/models';
 import { IVaultManager, IToolRegistry, IToolContext } from '../tools/interfaces/ToolInterfaces';
 import { ToolRegistry } from '../tools/ToolRegistry';
-import { ManageNoteTool } from '../tools/core/ManageNoteTool';
-import { CompletionTool } from '../tools/core/LLMTool';
-import { CompletionToolDI } from '../tools/core/CompletionTool';
-import { ManageMetadataTool } from '../tools/core/ManageMetadataTool';
-import { ManageFolderTool } from '../tools/core/ManageFolderTool';
+// Unused imports removed: ManageNoteTool, ManageMetadataTool, ManageFolderTool
+import { CompletionTool } from '../tools/core/CompletionTool';
 import { EventManager } from './EventManager';
 
 /**
@@ -111,12 +104,14 @@ export class ServiceProvider {
         eventManager: EventManager
     ): ToolRegistry {
         // Create tool registry
-        // Note: ToolRegistry expects VaultManager, not IVaultManager
-        // This is a temporary solution until ToolRegistry is updated to use interfaces
+        // Get the vault manager from the service provider
+        const vaultManager = this.get<IVaultManager>('vaultManager');
+        
+        // Create a new tool registry with the vault manager
         const toolRegistry = new ToolRegistry(
             this.app,
             this.plugin,
-            this.get<IVaultManager>('vaultManager') as any,
+            vaultManager, // No type casting needed now that ToolRegistry accepts IVaultManager
             eventManager
         );
         
@@ -155,22 +150,20 @@ export class ServiceProvider {
             eventManager: eventManager
         };
         
-        // Don't register core tools here as they're already registered in ToolRegistry constructor
+        // Don't register most core tools here as they're already registered in ToolRegistry constructor
         // This prevents the "Tool is already registered" error
         
-        // Register only the DI version of CompletionTool
-        // The original CompletionTool is already registered in ToolRegistry constructor
+        // Override the CompletionTool registration with our dependency-injected version
+        // This ensures the CompletionTool uses the properly configured AI adapter
         
-        // New CompletionToolDI with dependency injection
-        // Cast toolContext to any to avoid type mismatch between interfaces
-        const completionToolDI = new CompletionToolDI(
-            toolContext as any,
+        // Create CompletionTool with dependency injection
+        const completionTool = new CompletionTool(
+            toolContext, // No type casting needed with updated CompletionTool
             this.get<IAIAdapter>('aiAdapter')
         );
         
-        // Register the instance directly
-        const name = completionToolDI.getName();
-        (toolRegistry as any).instances.set(name, completionToolDI);
-        (toolRegistry as any).tools.set(name, completionToolDI.constructor);
+        // Register the tool using the registry's registerTool method
+        const registry = toolRegistry as ToolRegistry;
+        registry.registerTool(CompletionTool);
     }
 }

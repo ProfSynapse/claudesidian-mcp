@@ -8,15 +8,17 @@ import { IToolContext } from '../interfaces/ToolInterfaces';
  * Tool for generating AI completions
  * Uses dependency injection for AI adapter
  */
-export class CompletionToolDI extends BaseTool {
+export class CompletionTool extends BaseTool {
     /**
-     * Creates a new CompletionToolDI
+     * Creates a new CompletionTool
      * @param context Tool context
      * @param aiAdapter AI adapter for generating completions
      */
     constructor(
-        // Use type casting to work around the type mismatch
-        context: any,
+        // Type casting is necessary here because the IToolContext from BaseTool
+        // might differ from the one in ToolInterfaces. This should be fixed in a future refactoring
+        // by consolidating the interfaces.
+        context: IToolContext,
         private aiAdapter: IAIAdapter
     ) {
         const metadata: IToolMetadata = {
@@ -31,6 +33,10 @@ export class CompletionToolDI extends BaseTool {
         });
     }
 
+    /**
+     * Gets the JSON schema for tool arguments
+     * @returns JSON schema object
+     */
     getSchema() {
         return {
             type: 'object',
@@ -60,7 +66,18 @@ export class CompletionToolDI extends BaseTool {
         };
     }
 
-    async execute(args: any) {
+    /**
+     * Executes the completion tool
+     * @param args Tool arguments
+     * @returns Completion result
+     * @throws Error if completion fails
+     */
+    async execute(args: {
+        prompt: string;
+        model?: string;
+        temperature?: number;
+        maxTokens?: number;
+    }) {
         // Get settings directly from context.plugin
         const settings = this.context.plugin.settings as MCPSettings;
         
