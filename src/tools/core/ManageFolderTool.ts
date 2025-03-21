@@ -1,4 +1,5 @@
-import { BaseTool, IToolContext } from '../BaseTool';
+import { BaseTool } from '../BaseTool';
+import { IToolContext } from '../interfaces/ToolInterfaces';
 import { join } from 'path';
 import { TFolder, TAbstractFile, prepareFuzzySearch } from 'obsidian';
 

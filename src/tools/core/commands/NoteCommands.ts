@@ -2,7 +2,6 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IToolContext } from '../../interfaces/ToolInterfaces';
 import { BaseNoteCommand } from './NoteCommandHandler';
 import { sanitizeName } from '../../../utils/pathUtils';
-import { trackNoteAccess } from '../../../utils/noteAccessTracker';
 import { join } from 'path';
 
 /**
@@ -96,10 +95,7 @@ export class ReadNoteCommand extends BaseNoteCommand {
         const finalPath = this.preparePath(rawPath, context);
         const content = await context.vault.readNote(finalPath);
         
-        // Only track access when actually reading content
-        if (content) {
-            await trackNoteAccess(context.app.vault, finalPath);
-        }
+        // Note access tracking has been removed
 
         let result: any = content;
 

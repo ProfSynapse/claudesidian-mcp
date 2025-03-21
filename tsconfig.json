@@ -11,6 +11,7 @@
       "importHelpers": true,
       "isolatedModules": true,
       "strictNullChecks": true,
+      "skipLibCheck": true,
       "lib": [
         "DOM",
         "ES5",

@@ -1,4 +1,5 @@
-import { BaseTool, IToolContext } from '../BaseTool';
+import { BaseTool } from '../BaseTool';
+import { IToolContext } from '../interfaces/ToolInterfaces';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { CreateNoteCommand } from './commands/NoteCommands';
 import { ReadNoteCommand } from './commands/NoteCommands';

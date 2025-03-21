@@ -1,4 +1,4 @@
-import { VaultManager } from '../VaultManager';
+import { IVaultManager } from '../../tools/interfaces/ToolInterfaces';
 import { StorageInterface } from './StorageInterface';
 
 /**
@@ -6,7 +6,7 @@ import { StorageInterface } from './StorageInterface';
  * This is used in the plugin context when running inside Obsidian
  */
 export class ObsidianStorage implements StorageInterface {
-    constructor(private vaultManager: VaultManager) {}
+    constructor(private vaultManager: IVaultManager) {}
 
     async createNote(path: string, content: string, options?: { createFolders?: boolean }): Promise<any> {
         return this.vaultManager.createNote(path, content, options);

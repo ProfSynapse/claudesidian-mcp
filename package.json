@@ -32,9 +32,6 @@
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.0.0",
-        "graphology": "^0.25.4",
-        "graphology-shortest-path": "^2.0.2",
-        "graphology-types": "^0.24.7",
         "inversify": "^6.2.1",
         "mnemonist": "^0.39.5",
         "uuid": "^11.1.0",

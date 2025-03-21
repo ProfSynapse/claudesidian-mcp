@@ -1,4 +1,5 @@
-import { BaseTool, IToolContext } from '../BaseTool';
+import { BaseTool } from '../BaseTool';
+import { IToolContext } from '../interfaces/ToolInterfaces';
 
 export class ManageMetadataTool extends BaseTool {
     constructor(context: IToolContext) {

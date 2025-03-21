@@ -1,7 +1,6 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IToolContext } from '../../interfaces/ToolInterfaces';
 import { BaseNoteCommand } from './NoteCommandHandler';
-import { trackNoteAccess } from '../../../utils/noteAccessTracker';
 
 interface ReplaceRequest {
     text: string;
@@ -71,8 +70,7 @@ export class ReplaceNoteCommand extends BaseNoteCommand {
             await context.vault.updateNote(finalPath, newContent, { frontmatter });
         }
         
-        // Track access only after all replacements are complete
-        await trackNoteAccess(context.app.vault, finalPath);
+        // Note access tracking has been removed
         
         return { 
             oldContent,

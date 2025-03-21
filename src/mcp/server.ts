@@ -15,7 +15,7 @@ import { Server as NetServer, createServer } from 'net';
 import { promises as fs } from 'fs';
 import { platform } from 'os';
 import { MCPSettings } from '../types';
-import { VaultManager } from '../services/VaultManager';
+import { IVaultManager } from '../tools/interfaces/ToolInterfaces';
 
 interface ToolCallRequest extends Request {
     params: {
@@ -34,9 +34,9 @@ export class ClaudesidianMCPServer {
     private transport: StdioServerTransport | null = null;
     private ipcServer: NetServer | null = null;
     private settings: MCPSettings;
-    private vaultManager: VaultManager;
+    private vaultManager: IVaultManager;
 
-    constructor(app: App, toolRegistry: ToolRegistry, vaultManager: VaultManager, settings: MCPSettings) {
+    constructor(app: App, toolRegistry: ToolRegistry, vaultManager: IVaultManager, settings: MCPSettings) {
         console.log('ClaudesidianMCPServer: constructor called');
         this.app = app;
         this.toolRegistry = toolRegistry;

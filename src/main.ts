@@ -2,7 +2,6 @@ import { Plugin } from 'obsidian';
 import { ClaudesidianMCPServer } from './mcp/server';
 import { StatusBar } from './components/StatusBar';
 import { ToolRegistry } from './tools/ToolRegistry';
-import { VaultManager } from './services/VaultManager';
 import { MCPSettings, DEFAULT_SETTINGS } from './types';
 import { SettingsTab } from './components/SettingsTab';
 import { EventManager } from './services/EventManager';
@@ -14,7 +13,7 @@ export default class ClaudesidianMCPPlugin extends Plugin {
     private mcpServer: ClaudesidianMCPServer;
     private statusBar: StatusBar;
     private toolRegistry: ToolRegistry;
-    public vaultManager: VaultManager;
+    public vaultManager: VaultManagerFacade;
     settings: MCPSettings;
 
     private initStage = {
@@ -41,7 +40,7 @@ export default class ClaudesidianMCPPlugin extends Plugin {
         this.serviceProvider = new ServiceProvider(this.app, this);
         
         // Get vault manager from service provider
-        this.vaultManager = this.serviceProvider.get<VaultManager>('vaultManager');
+        this.vaultManager = this.serviceProvider.get<VaultManagerFacade>('vaultManager');
         
         console.debug('ClaudesidianMCPPlugin: Essential components initialized');
     }
