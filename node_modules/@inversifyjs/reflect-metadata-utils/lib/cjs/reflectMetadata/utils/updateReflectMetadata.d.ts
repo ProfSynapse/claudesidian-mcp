@@ -1,2 +1,0 @@
-export declare function updateReflectMetadata<TMetadata>(target: object, metadataKey: unknown, defaultValue: TMetadata, callback: (metadata: TMetadata) => TMetadata): void;
-//# sourceMappingURL=updateReflectMetadata.d.ts.map
