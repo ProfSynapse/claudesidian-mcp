@@ -12,7 +12,7 @@ import { AIProvider } from '../ai/models';
 import { IVaultManager, IToolRegistry, IToolContext } from '../tools/interfaces/ToolInterfaces';
 import { ToolRegistry } from '../tools/ToolRegistry';
 // Unused imports removed: ManageNoteTool, ManageMetadataTool, ManageFolderTool
-import { AIGenerationTool } from '../tools/core/AIGenerationTool';
+import { TextGeneratorTool } from '../tools/core/TextGeneratorTool';
 import { EventManager } from './EventManager';
 
 /**
@@ -156,17 +156,17 @@ export class ServiceProvider {
         // Configure the existing AIGenerationTool with our AI adapter
         try {
             // Get the existing AIGenerationTool instance
-            const aiGenerationTool = toolRegistry.getTool('ai-generation') as AIGenerationTool;
+            const textGeneratorTool = toolRegistry.getTool('textGenerator') as TextGeneratorTool;
             
             // Set the AI adapter on the existing instance
-            if (aiGenerationTool && typeof aiGenerationTool.setAIAdapter === 'function') {
-                aiGenerationTool.setAIAdapter(this.get<IAIAdapter>('aiAdapter'));
-                console.debug('Successfully configured AIGenerationTool with AI adapter');
+            if (textGeneratorTool && typeof textGeneratorTool.setAIAdapter === 'function') {
+                textGeneratorTool.setAIAdapter(this.get<IAIAdapter>('aiAdapter'));
+                console.debug('Successfully configured TextGeneratorTool with AI adapter');
             } else {
-                console.warn('AIGenerationTool does not support setAIAdapter method');
+                console.warn('TextGeneratorTool does not support setAIAdapter method');
             }
         } catch (error) {
-            console.error('Error configuring AIGenerationTool:', error);
+            console.error('Error configuring TextGeneratorTool:', error);
         }
     }
 }

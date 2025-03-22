@@ -89,47 +89,81 @@ export class ReadNoteCommand extends BaseNoteCommand {
     async execute(args: any, context: IToolContext): Promise<any> {
         this.validateArgs(args);
         
-        const { path: rawPath, includeFrontmatter, findSections } = args;
+        const { path: rawPath, findSections } = args;
         
-        // Prepare and validate path
-        const finalPath = this.preparePath(rawPath, context);
-        const content = await context.vault.readNote(finalPath);
+        // Parse paths from the input
+        const paths = this.parsePaths(rawPath);
         
-        // Note access tracking has been removed
+        // Process all notes in parallel and concatenate their contents
+        const contents = await Promise.all(
+            paths.map(path => this.readSingleNote(path, findSections, context))
+        );
 
-        let result: any = content;
+        // Filter out nulls (failed reads) and combine contents
+        const combinedContent = contents
+            .filter(content => content !== null)
+            .join('');
 
-        // Handle section finding
-        if (findSections?.length > 0) {
-            const sections = findSections
-                .map((section: {start: string, end: string}) => {
-                    const startIdx = content.indexOf(section.start);
-                    if (startIdx === -1) return null;
+        return combinedContent || '';
+    }
 
-                    const endIdx = content.indexOf(section.end, startIdx + section.start.length);
-                    if (endIdx === -1) return null;
-
-                    return {
-                        start: section.start,
-                        end: section.end,
-                        content: content.substring(startIdx + section.start.length, endIdx)
-                    };
-                })
-                .filter(Boolean);
-
-            result = { content, sections };
+    /**
+     * Parse the path parameter which could be a string path, array of paths,
+     * or a JSON string containing an array of paths
+     */
+    private parsePaths(rawPath: any): string[] {
+        if (typeof rawPath === 'string') {
+            try {
+                // Attempt to parse as JSON
+                const parsed = JSON.parse(rawPath);
+                if (Array.isArray(parsed)) {
+                    return parsed;
+                }
+            } catch (e) {
+                // Not JSON, treat as single path
+                return [rawPath];
+            }
         }
-
-        // Include frontmatter if requested
-        if (includeFrontmatter) {
-            const metadata = await context.vault.getNoteMetadata(finalPath);
-            return {
-                ...(typeof result === 'string' ? { content: result } : result),
-                frontmatter: metadata
-            };
+        if (Array.isArray(rawPath)) {
+            return rawPath;
         }
+        return [rawPath];
+    }
 
-        return result;
+    /**
+     * Read a single note and process its content
+     */
+    private async readSingleNote(
+        path: string,
+        findSections: Array<{start: string, end: string}> | undefined,
+        context: IToolContext
+    ): Promise<string | null> {
+        try {
+            const finalPath = this.preparePath(path, context);
+            const content = await context.vault.readNote(finalPath);
+
+            // Handle section finding if specified
+            if (findSections && findSections.length > 0) {
+                const sections = findSections
+                    .map(section => {
+                        const startIdx = content.indexOf(section.start);
+                        if (startIdx === -1) return null;
+
+                        const endIdx = content.indexOf(section.end, startIdx + section.start.length);
+                        if (endIdx === -1) return null;
+
+                        return content.substring(startIdx + section.start.length, endIdx);
+                    })
+                    .filter(Boolean);
+
+                return sections.join('\n');
+            }
+
+            return content;
+        } catch (error) {
+            console.error(`Error reading note ${path}: ${error}`);
+            return null;
+        }
     }
 
     getSchema(): any {
@@ -137,8 +171,19 @@ export class ReadNoteCommand extends BaseNoteCommand {
             type: "object",
             properties: {
                 path: {
-                    type: "string",
-                    description: "Path to the note to read"
+                    oneOf: [
+                        {
+                            type: "string",
+                            description: "Path to a single note to read"
+                        },
+                        {
+                            type: "array",
+                            items: {
+                                type: "string"
+                            },
+                            description: "Array of paths to read multiple notes"
+                        }
+                    ]
                 },
                 includeFrontmatter: {
                     type: "boolean",

@@ -2,15 +2,15 @@ import { App, TFile } from 'obsidian';
 import { TextOperationType } from '../tools/core/editor/TextOperationProcessor';
 
 /**
- * Example usage of the NoteDiffTool
+ * Example usage of the NoteEditorTool
  */
-export async function noteDiffToolExample(app: App) {
+export async function noteEditorToolExample(app: App) {
     // Get the tool registry
     const toolRegistry = (app as any).plugins.plugins['claudesidian-mcp'].toolRegistry;
     
     // Example 1: Insert content under a heading with wiki-links
     const example1 = async () => {
-        const result = await toolRegistry.executeTool('noteDiff', {
+        const result = await toolRegistry.executeTool('noteEditor', {
             path: 'Notes/Example.md',
             operations: [
                 {
@@ -26,7 +26,7 @@ export async function noteDiffToolExample(app: App) {
     
     // Example 2: Replace all occurrences of text
     const example2 = async () => {
-        const result = await toolRegistry.executeTool('noteDiff', {
+        const result = await toolRegistry.executeTool('noteEditor', {
             path: 'Notes/Example.md',
             operations: [
                 {
@@ -42,7 +42,7 @@ export async function noteDiffToolExample(app: App) {
     
     // Example 3: Multiple operations in a single call
     const example3 = async () => {
-        const result = await toolRegistry.executeTool('noteDiff', {
+        const result = await toolRegistry.executeTool('noteEditor', {
             path: 'Notes/Example.md',
             operations: [
                 {
@@ -72,7 +72,7 @@ export async function noteDiffToolExample(app: App) {
     
     // Example 4: Insert at a specific position
     const example4 = async () => {
-        const result = await toolRegistry.executeTool('noteDiff', {
+        const result = await toolRegistry.executeTool('noteEditor', {
             path: 'Notes/Example.md',
             operations: [
                 {
@@ -98,15 +98,15 @@ export async function noteDiffToolExample(app: App) {
 }
 
 /**
- * Example of how to handle errors when using the NoteDiffTool
+ * Example of how to handle errors when using the NoteEditorTool
  */
-export async function noteDiffToolErrorHandling(app: App) {
+export async function noteEditorToolErrorHandling(app: App) {
     // Get the tool registry
     const toolRegistry = (app as any).plugins.plugins['claudesidian-mcp'].toolRegistry;
     
     try {
         // Try to insert under a non-existent heading
-        const result = await toolRegistry.executeTool('noteDiff', {
+        const result = await toolRegistry.executeTool('noteEditor', {
             path: 'Notes/Example.md',
             operations: [
                 {
@@ -123,7 +123,7 @@ export async function noteDiffToolErrorHandling(app: App) {
     
     try {
         // Try to replace text that doesn't exist
-        const result = await toolRegistry.executeTool('noteDiff', {
+        const result = await toolRegistry.executeTool('noteEditor', {
             path: 'Notes/Example.md',
             operations: [
                 {

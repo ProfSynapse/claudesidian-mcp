@@ -1,11 +1,8 @@
 import { BaseTool } from '../BaseTool';
 import { IToolContext } from '../interfaces/ToolInterfaces';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { CreateNoteCommand } from './commands/NoteCommands';
-import { ReadNoteCommand } from './commands/NoteCommands';
-// ReplaceNoteCommand removed - use NoteDiffTool instead
-// InsertContentCommand removed - use NoteDiffTool instead
-import { SearchNotesCommand, ListNotesCommand, MoveNoteCommand } from './commands/ManageNoteCommands';
+import { CreateNoteCommand, ReadNoteCommand } from './commands/NoteCommands';
+import { MoveNoteCommand } from './commands/ManageNoteCommands';
 import { DeleteNoteCommand } from './commands/DeleteNoteCommand';
 import { INoteCommandHandler } from './commands/NoteCommandHandler';
 
@@ -19,8 +16,8 @@ export class ManageNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'manageNote',
-            description: 'Manage notes with these actions: create (new notes), read (view content), delete (remove notes), list (show notes), search (find content), and move (relocate notes). Note: For editing operations like inserting content or replacing text, use the NoteDiffTool instead.',
-            version: '3.0.0',
+            description: 'Manage notes with these actions: create (new notes), read (view content), delete (remove notes), and move (relocate notes). Note: For editing operations like inserting content or replacing text, use the NoteEditorTool instead. For searching and listing notes, use the VaultLibrarianTool.',
+            version: '4.0.0',
             author: 'Claudesidian MCP'
         }, { allowUndo: true });
 
@@ -28,10 +25,7 @@ export class ManageNoteTool extends BaseTool {
         this.commandHandlers = new Map<string, INoteCommandHandler>([
             ['create', new CreateNoteCommand()],
             ['read', new ReadNoteCommand()],
-            // 'replace' and 'edit' actions removed - use NoteDiffTool instead
             ['delete', new DeleteNoteCommand()],
-            ['list', new ListNotesCommand()],
-            ['search', new SearchNotesCommand(context)],
             ['move', new MoveNoteCommand()]
         ]);
     }
@@ -102,7 +96,7 @@ export class ManageNoteTool extends BaseTool {
                 action: {
                     type: "string",
                     enum: Array.from(this.commandHandlers.keys()),
-                    description: "The note action to perform. Use 'create' for new notes, 'read' to view content, 'delete' to remove notes, 'list' to show notes, 'search' to find content, and 'move' to relocate notes. Note: For editing operations like inserting content or replacing text, use the NoteDiffTool instead."
+                    description: "The note action to perform. Use 'create' for new notes, 'read' to view content, 'delete' to remove notes, and 'move' to relocate notes. Note: For editing operations like inserting content or replacing text, use the NoteEditorTool instead. For searching and listing notes, use the VaultLibrarianTool."
                 },
                 // Each action's schema is referenced here
                 ...Object.fromEntries(

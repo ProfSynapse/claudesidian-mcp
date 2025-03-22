@@ -10,9 +10,9 @@ import { TFile } from 'obsidian';
  * Tool for generating AI completions
  * Uses dependency injection for AI adapter
  */
-export class AIGenerationTool extends BaseTool {
+export class TextGeneratorTool extends BaseTool {
     /**
-     * Creates a new AIGenerationTool
+     * Creates a new TextGeneratorTool
      * @param context Tool context
      * @param aiAdapter AI adapter for generating completions
      */
@@ -24,7 +24,7 @@ export class AIGenerationTool extends BaseTool {
         private aiAdapter: IAIAdapter
     ) {
         const metadata: IToolMetadata = {
-            name: 'ai-generation',
+            name: '✨ textGenerator',
             description: 'Generate AI completions using OpenRouter.\n\n' +
                         'Note: Uses the default model from vault settings unless specified. Models follow provider/model format (e.g., \'openai/gpt-4o-mini\').',
             version: '1.0.0'

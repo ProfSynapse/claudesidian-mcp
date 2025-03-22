@@ -1,4 +1,15 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, Command } from 'obsidian';
+
+// Extend App type to include commands
+declare module 'obsidian' {
+    interface App {
+        commands: {
+            listCommands(): Command[];
+            executeCommandById(id: string): Promise<void>;
+            commands: { [id: string]: Command };
+        };
+    }
+}
 
 export interface MCPSettings {
     rootPath: string;

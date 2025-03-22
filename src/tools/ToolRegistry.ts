@@ -1,10 +1,11 @@
 import { App } from 'obsidian';
 import { BaseTool } from './BaseTool';
-import { ManageNoteTool } from './core/ManageNoteTool';
-import { ManageMetadataTool } from './core/ManageMetadataTool';
-import { AIGenerationTool } from './core/AIGenerationTool';
-import { ManageFolderTool } from './core/ManageFolderTool';
-import { NoteDiffTool } from './core/NoteDiffTool';
+import { VaultLibrarianTool } from './core/VaultLibrarianTool';
+import { VaultManagerTool } from './core/VaultManagerTool';
+import { NoteReaderTool } from './core/NoteReaderTool';
+import { TextGeneratorTool } from './core/TextGeneratorTool';
+import { PaletteCommanderTool } from './core/PaletteCommanderTool';
+import { NoteEditorTool } from './core/NoteEditorTool';
 import { ProjectTool } from './core/ProjectTool';
 import { EventManager } from '../services/EventManager';
 import { IToolContext, IToolRegistry, IVaultManager } from './interfaces/ToolInterfaces';
@@ -52,12 +53,13 @@ export class ToolRegistry implements IToolRegistry {
 
         // Register all core tools
         [
-            ManageMetadataTool,
-            AIGenerationTool,
-            ManageNoteTool,
-            ManageFolderTool,
-            NoteDiffTool,
-            ProjectTool
+            VaultLibrarianTool,   // For navigating and searching
+            VaultManagerTool,     // For creating/updating/deleting
+            NoteReaderTool,       // For reading note content
+            TextGeneratorTool,    // For AI text generation
+            PaletteCommanderTool, // For command palette operations
+            NoteEditorTool,       // For precise note editing operations
+            ProjectTool           // For project management operations
         ].forEach(Tool => this.registerTool(Tool));
     }
 
@@ -100,7 +102,6 @@ export class ToolRegistry implements IToolRegistry {
 
             // For tools that require confirmation, we should implement a confirmation dialog
             // Currently, we proceed without confirmation
-            // This should be implemented in a future update
             
             const result = await instance.execute(args);
             return result;
@@ -129,17 +130,6 @@ export class ToolRegistry implements IToolRegistry {
             name: tool.getName(),
             description: tool.getDescription()
         }));
-    }
-
-    /**
-     * Loads external tools from a directory
-     * @param toolsPath Path to the directory containing tool modules
-     * @remarks This is a placeholder for future implementation
-     */
-    async loadExternalTools(toolsPath: string): Promise<void> {
-        // Implementation for loading external tools
-        // This would scan the tools directory and load any valid tool modules
-        console.log(`External tools would be loaded from: ${toolsPath}`);
     }
 
     /**

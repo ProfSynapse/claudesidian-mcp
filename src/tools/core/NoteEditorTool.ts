@@ -6,9 +6,9 @@ import { TextOperationProcessor, TextOperation, TextOperationType } from './edit
 import { EditorPosition } from './editor/EditorInterfaces';
 
 /**
- * Arguments for the NoteDiffTool
+ * Arguments for the NoteEditorTool
  */
-interface NoteDiffArgs {
+interface NoteEditorArgs {
     path: string;
     operations: TextOperation[];
 }
@@ -16,12 +16,12 @@ interface NoteDiffArgs {
 /**
  * Tool for performing precise text operations on notes using Obsidian's APIs
  */
-export class NoteDiffTool extends BaseTool {
+export class NoteEditorTool extends BaseTool {
     private processor: TextOperationProcessor;
     
     constructor(context: IToolContext) {
         super(context, {
-            name: 'noteDiff',
+            name: '✏️ noteEditor',
             description: 'Edit notes with precise operations using Obsidian\'s APIs. Supports inserting at headings (including wiki-links), replacing text, and more.',
             version: '2.0.0',
             author: 'Claudesidian MCP'
@@ -34,7 +34,7 @@ export class NoteDiffTool extends BaseTool {
         // Validate arguments
         this.validateArgs(args, this.getSchema());
         
-        const { path, operations } = args as NoteDiffArgs;
+        const { path, operations } = args as NoteEditorArgs;
         
         // Process the operations
         return await this.processor.processOperations(path, operations);
@@ -42,7 +42,7 @@ export class NoteDiffTool extends BaseTool {
     
     async undo(args: any, previousResult: any): Promise<void> {
         if (previousResult?.oldContent) {
-            const { path } = args as NoteDiffArgs;
+            const { path } = args as NoteEditorArgs;
             // Get the file
             const file = this.context.app.vault.getAbstractFileByPath(path);
             if (!file || !(file instanceof TFile)) {
