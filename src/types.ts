@@ -7,7 +7,6 @@ export interface MCPSettings {
     apiKeys: Record<string, string>;
     defaultModel: string;
     defaultTemperature: number;
-    templateFolderPath: string;
 }
 
 export const DEFAULT_SETTINGS: MCPSettings = {
@@ -16,8 +15,7 @@ export const DEFAULT_SETTINGS: MCPSettings = {
     aiProvider: 'openrouter',
     apiKeys: {},
     defaultModel: 'gpt-4o-mini',
-    defaultTemperature: 0.7,
-    templateFolderPath: 'claudesidian/templates'
+    defaultTemperature: 0.7
 };
 
 // Memory-related interfaces removed

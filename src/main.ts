@@ -174,8 +174,7 @@ export default class ClaudesidianMCPPlugin extends Plugin {
         // Create all folders concurrently for better performance
         const folderCreationPromises = [
             this.createFolderIfNeeded(this.settings.rootPath),
-            this.createFolderIfNeeded(`${this.settings.rootPath}/inbox`),
-            this.createFolderIfNeeded(this.settings.templateFolderPath)
+            this.createFolderIfNeeded(`${this.settings.rootPath}/inbox`)
         ].filter(Boolean); // Remove undefined promises from disabled features
 
         // Wait for all folder creations to complete
@@ -265,12 +264,6 @@ export default class ClaudesidianMCPPlugin extends Plugin {
                 console.debug(`Created inbox folder: ${inboxPath}`);
             }
 
-            // Create template folder if it doesn't exist
-            const templateExists = await this.vaultManager.folderExists(this.settings.templateFolderPath);
-            if (!templateExists) {
-                await this.vaultManager.createFolder(this.settings.templateFolderPath);
-                console.debug(`Created template folder: ${this.settings.templateFolderPath}`);
-            }
 
         } catch (error) {
             console.error('Error checking/creating folders:', error);

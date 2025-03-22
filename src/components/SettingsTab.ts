@@ -116,41 +116,6 @@ export class SettingsTab extends PluginSettingTab {
                 })
             );
             
-        // Template Folder Path Setting
-        new Setting(containerEl)
-            .setName('Template Folder')
-            .setDesc('Folder where note templates are stored')
-            .addText(text => text
-                .setPlaceholder('claudesidian/templates')
-                .setValue(this.plugin.settings.templateFolderPath)
-                .onChange(async (value) => {
-                    this.plugin.settings.templateFolderPath = value;
-                    await this.plugin.saveSettings();
-                }))
-            .addButton(button => button
-                .setButtonText('Create Folder')
-                .onClick(async () => {
-                    try {
-                        button.setDisabled(true);
-                        button.setButtonText('Creating...');
-                        
-                        await this.plugin.vaultManager.ensureFolder(this.plugin.settings.templateFolderPath);
-                        
-                        button.setButtonText('Done!');
-                        setTimeout(() => {
-                            button.setButtonText('Create Folder');
-                            button.setDisabled(false);
-                        }, 2000);
-                    } catch (error) {
-                        console.error('Failed to create template folder:', error);
-                        button.setButtonText('Failed!');
-                        setTimeout(() => {
-                            button.setButtonText('Create Folder');
-                            button.setDisabled(false);
-                        }, 2000);
-                    }
-                }));
-
 
         // Add AI Configuration Section
         containerEl.createEl('h3', { text: 'AI Configuration' });

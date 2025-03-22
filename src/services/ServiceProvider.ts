@@ -12,7 +12,7 @@ import { AIProvider } from '../ai/models';
 import { IVaultManager, IToolRegistry, IToolContext } from '../tools/interfaces/ToolInterfaces';
 import { ToolRegistry } from '../tools/ToolRegistry';
 // Unused imports removed: ManageNoteTool, ManageMetadataTool, ManageFolderTool
-import { CompletionTool } from '../tools/core/CompletionTool';
+import { AIGenerationTool } from '../tools/core/AIGenerationTool';
 import { EventManager } from './EventManager';
 
 /**
@@ -153,20 +153,20 @@ export class ServiceProvider {
         // Don't register most core tools here as they're already registered in ToolRegistry constructor
         // This prevents the "Tool is already registered" error
         
-        // Configure the existing CompletionTool with our AI adapter
+        // Configure the existing AIGenerationTool with our AI adapter
         try {
-            // Get the existing CompletionTool instance
-            const completionTool = toolRegistry.getTool('completion') as CompletionTool;
+            // Get the existing AIGenerationTool instance
+            const aiGenerationTool = toolRegistry.getTool('ai-generation') as AIGenerationTool;
             
             // Set the AI adapter on the existing instance
-            if (completionTool && typeof completionTool.setAIAdapter === 'function') {
-                completionTool.setAIAdapter(this.get<IAIAdapter>('aiAdapter'));
-                console.debug('Successfully configured CompletionTool with AI adapter');
+            if (aiGenerationTool && typeof aiGenerationTool.setAIAdapter === 'function') {
+                aiGenerationTool.setAIAdapter(this.get<IAIAdapter>('aiAdapter'));
+                console.debug('Successfully configured AIGenerationTool with AI adapter');
             } else {
-                console.warn('CompletionTool does not support setAIAdapter method');
+                console.warn('AIGenerationTool does not support setAIAdapter method');
             }
         } catch (error) {
-            console.error('Error configuring CompletionTool:', error);
+            console.error('Error configuring AIGenerationTool:', error);
         }
     }
 }
