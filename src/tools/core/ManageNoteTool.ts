@@ -3,8 +3,8 @@ import { IToolContext } from '../interfaces/ToolInterfaces';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { CreateNoteCommand } from './commands/NoteCommands';
 import { ReadNoteCommand } from './commands/NoteCommands';
-import { ReplaceNoteCommand } from './commands/ReplaceNoteCommands';
-import { InsertContentCommand } from './commands/InsertNoteCommands';
+// ReplaceNoteCommand removed - use NoteDiffTool instead
+// InsertContentCommand removed - use NoteDiffTool instead
 import { SearchNotesCommand, ListNotesCommand, MoveNoteCommand } from './commands/ManageNoteCommands';
 import { DeleteNoteCommand } from './commands/DeleteNoteCommand';
 import { INoteCommandHandler } from './commands/NoteCommandHandler';
@@ -19,8 +19,8 @@ export class ManageNoteTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'manageNote',
-            description: 'Manage notes with these actions: create (new notes), read (view content), insert (append/prepend/add under headings), replace (find and replace text), delete (remove notes), list (show notes), search (find content). Use insert action for adding new content, replace for modifying existing text.',
-            version: '2.0.0',
+            description: 'Manage notes with these actions: create (new notes), read (view content), delete (remove notes), list (show notes), search (find content), and move (relocate notes). Note: For editing operations like inserting content or replacing text, use the NoteDiffTool instead.',
+            version: '3.0.0',
             author: 'Claudesidian MCP'
         }, { allowUndo: true });
 
@@ -28,10 +28,7 @@ export class ManageNoteTool extends BaseTool {
         this.commandHandlers = new Map<string, INoteCommandHandler>([
             ['create', new CreateNoteCommand()],
             ['read', new ReadNoteCommand()],
-            ['replace', new ReplaceNoteCommand()],
-            // Keep edit for backward compatibility, but it will eventually be deprecated
-            ['edit', new ReplaceNoteCommand()],
-            ['insert', new InsertContentCommand()],
+            // 'replace' and 'edit' actions removed - use NoteDiffTool instead
             ['delete', new DeleteNoteCommand()],
             ['list', new ListNotesCommand()],
             ['search', new SearchNotesCommand(context)],
@@ -105,7 +102,7 @@ export class ManageNoteTool extends BaseTool {
                 action: {
                     type: "string",
                     enum: Array.from(this.commandHandlers.keys()),
-                    description: "The note action to perform. Use 'insert' for adding content (append/prepend/under headings), 'replace' for finding and replacing text (formerly edit), 'create' for new notes, 'read' to view content, 'delete' to remove notes, 'list' to show notes, 'search' to find content, and 'move' to relocate notes."
+                    description: "The note action to perform. Use 'create' for new notes, 'read' to view content, 'delete' to remove notes, 'list' to show notes, 'search' to find content, and 'move' to relocate notes. Note: For editing operations like inserting content or replacing text, use the NoteDiffTool instead."
                 },
                 // Each action's schema is referenced here
                 ...Object.fromEntries(
@@ -121,13 +118,19 @@ export class ManageNoteTool extends BaseTool {
             },
             required: ["action"],
             // Use oneOf to indicate that parameters depend on the action
-            oneOf: Array.from(this.commandHandlers.entries()).map(([action, handler]) => ({
-                properties: {
-                    action: { const: action },
-                    ...handler.getSchema().properties
-                },
-                required: ["action", ...(handler.getSchema().required || [])]
-            }))
+            oneOf: Array.from(this.commandHandlers.entries()).map(([action, handler]) => {
+                const schema = {
+                    properties: {
+                        action: { const: action },
+                        ...handler.getSchema().properties
+                    },
+                    required: ["action", ...(handler.getSchema().required || [])]
+                };
+                
+                // Examples for specific actions could be added here if needed
+                
+                return schema;
+            })
         };
     }
 }

@@ -2,9 +2,10 @@ import { App } from 'obsidian';
 import { BaseTool } from './BaseTool';
 import { ManageNoteTool } from './core/ManageNoteTool';
 import { ManageMetadataTool } from './core/ManageMetadataTool';
-import { CompletionTool } from './core/CompletionTool'; 
+import { CompletionTool } from './core/CompletionTool';
 import { ManageFolderTool } from './core/ManageFolderTool';
 import { TemplateTool } from './core/TemplateTool';
+import { NoteDiffTool } from './core/NoteDiffTool';
 import { EventManager } from '../services/EventManager';
 import { IToolContext, IToolRegistry, IVaultManager } from './interfaces/ToolInterfaces';
 
@@ -52,10 +53,11 @@ export class ToolRegistry implements IToolRegistry {
         // Register all core tools
         [
             ManageMetadataTool,
-            CompletionTool,  
+            CompletionTool,
             ManageNoteTool,
             ManageFolderTool,
-            TemplateTool
+            TemplateTool,
+            NoteDiffTool
         ].forEach(Tool => this.registerTool(Tool));
     }
 

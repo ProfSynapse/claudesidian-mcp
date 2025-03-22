@@ -2,7 +2,6 @@ import { App, Modal, PluginSettingTab, Setting } from 'obsidian';
 import { AIProvider, AIModelMap, AIModel } from '../ai/models';
 import { MCPSettings } from '../types';
 import BridgeMCPPlugin from '../main';
-import { AllowedPathsModal } from './AllowedPathsModal';
 import { ClaudeConfigModal } from './ClaudeConfigModal';
 
 export class SettingsTab extends PluginSettingTab {
@@ -99,18 +98,6 @@ export class SettingsTab extends PluginSettingTab {
         // Server Settings Section
         containerEl.createEl('h3', { text: 'Server Settings' });
 
-        // Vault Security Section - Combined security settings
-        containerEl.createEl('h3', { text: 'Vault Security' });
-
-        new Setting(containerEl)
-            .setName('Allowed Paths')
-            .setDesc('Choose which vault folders are accessible by MCP.')
-            .addButton(button => button
-                .setButtonText('Configure')
-                .onClick(() => {
-                    new AllowedPathsModal(this.app, this.plugin).open();
-                }));
-
         // Memory section removed
 
         // Tool Settings Section
@@ -164,20 +151,6 @@ export class SettingsTab extends PluginSettingTab {
                     }
                 }));
 
-        // Cache Settings
-        containerEl.createEl('h3', { text: 'Performance Settings' });
-
-        new Setting(containerEl)
-            .setName('Cache timeout')
-            .setDesc('How long to cache results (in seconds)')
-            .addSlider(slider => slider
-                .setLimits(60, 3600, 60)
-                .setValue(this.plugin.settings.cacheTimeout)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.plugin.settings.cacheTimeout = value;
-                    await this.plugin.saveSettings();
-                }));
 
         // Add AI Configuration Section
         containerEl.createEl('h3', { text: 'AI Configuration' });

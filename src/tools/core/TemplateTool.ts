@@ -11,9 +11,10 @@ interface TemplateInfo {
 
 export class TemplateTool extends BaseTool {
     constructor(context: IToolContext) {
+        const templateFolderPath = context.settings.templateFolderPath;
         super(context, {
             name: 'template',
-            description: 'Manage note templates with these actions: list (view available templates), read (view template content), use (create notes from templates)',
+            description: `Manage note templates in ${templateFolderPath} with these actions: list (view available templates), read (view template content), use (create notes from templates)`,
             version: '1.0.0',
             author: 'Claudesidian MCP'
         }, { allowUndo: true });
@@ -57,7 +58,10 @@ export class TemplateTool extends BaseTool {
         // Ensure template folder exists
         if (!await this.context.vault.folderExists(templateFolderPath)) {
             await this.context.vault.ensureFolder(templateFolderPath);
-            return { templates: [] };
+            return {
+                message: `No templates found in ${templateFolderPath} (folder created)`,
+                templates: []
+            };
         }
 
         // Get all files in the template folder
@@ -87,57 +91,78 @@ export class TemplateTool extends BaseTool {
             };
         }
 
-        return { templates };
+        return {
+            message: `Templates found in ${templateFolderPath}:`,
+            templates
+        };
     }
 
     private async readTemplate(args: any): Promise<any> {
         const { name, path } = args;
+        const templateFolderPath = this.context.settings.templateFolderPath;
         
         if (!name && !path) {
             throw new McpError(
                 ErrorCode.InvalidParams,
-                'Either name or path parameter is required'
+                `Either name or path parameter is required for reading templates from ${templateFolderPath}`
             );
         }
 
         let templatePath: string;
         
         if (path) {
+            // Validate that path is within template folder
+            if (!path.startsWith(templateFolderPath)) {
+                throw new McpError(
+                    ErrorCode.InvalidParams,
+                    `Template path must be within ${templateFolderPath}`
+                );
+            }
             templatePath = path;
         } else {
             // Construct path from name
-            templatePath = join(this.context.settings.templateFolderPath, `${name}.md`);
+            templatePath = join(templateFolderPath, `${name}.md`);
         }
 
         try {
             const content = await this.context.vault.readNote(templatePath);
-            return { content };
+            return {
+                message: `Template content from ${templatePath}:`,
+                content
+            };
         } catch (error) {
             throw new McpError(
                 ErrorCode.InternalError,
-                `Failed to read template: ${error instanceof Error ? error.message : String(error)}`
+                `Failed to read template from ${templateFolderPath}: ${error instanceof Error ? error.message : String(error)}`
             );
         }
     }
 
     private async useTemplate(args: any): Promise<any> {
         const { name, path, destination, title } = args;
+        const templateFolderPath = this.context.settings.templateFolderPath;
         
         if (!name && !path) {
             throw new McpError(
                 ErrorCode.InvalidParams,
-                'Either name or path parameter is required'
+                `Either name or path parameter is required for using templates from ${templateFolderPath}`
             );
         }
 
         // Get template content
         let templatePath: string;
-        
         if (path) {
+            // Validate that path is within template folder
+            if (!path.startsWith(templateFolderPath)) {
+                throw new McpError(
+                    ErrorCode.InvalidParams,
+                    `Template path must be within ${templateFolderPath}`
+                );
+            }
             templatePath = path;
         } else {
             // Construct path from name
-            templatePath = join(this.context.settings.templateFolderPath, `${name}.md`);
+            templatePath = join(templateFolderPath, `${name}.md`);
         }
 
         try {
@@ -157,7 +182,9 @@ export class TemplateTool extends BaseTool {
             // Create the note from the template
             const file = await this.context.vault.createNote(destPath, templateContent);
             
+            const templateName = name || templatePath.split('/').pop()?.replace('.md', '');
             return {
+                message: `Created note using template from ${templateFolderPath}/${templateName}.md`,
                 success: true,
                 path: file.path,
                 title: file.basename
@@ -165,7 +192,7 @@ export class TemplateTool extends BaseTool {
         } catch (error) {
             throw new McpError(
                 ErrorCode.InternalError,
-                `Failed to use template: ${error instanceof Error ? error.message : String(error)}`
+                `Failed to use template from ${templateFolderPath}: ${error instanceof Error ? error.message : String(error)}`
             );
         }
     }
@@ -178,25 +205,26 @@ export class TemplateTool extends BaseTool {
     }
 
     getSchema(): any {
+        const templateFolderPath = this.context.settings.templateFolderPath;
         return {
             type: "object",
             properties: {
                 action: {
                     type: "string",
                     enum: ["list", "read", "use"],
-                    description: "The template action to perform"
+                    description: `The template action to perform on templates in ${templateFolderPath}`
                 },
                 name: {
                     type: "string",
-                    description: "Template name (without .md extension)"
+                    description: `Template name (without .md extension) from ${templateFolderPath}`
                 },
                 path: {
                     type: "string",
-                    description: "Full path to the template file"
+                    description: `Full path to the template file (must be within ${templateFolderPath})`
                 },
                 filter: {
                     type: "string",
-                    description: "Filter string for listing templates"
+                    description: `Filter string for listing templates in ${templateFolderPath}`
                 },
                 destination: {
                     type: "string",

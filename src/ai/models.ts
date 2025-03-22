@@ -86,8 +86,8 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             contextWindow: 200000
         },
         {
-            name: 'Anthropic Claude 3.5 Sonnet',
-            apiName: 'anthropic/claude-3.5-sonnet',
+            name: 'Anthropic Claude 3.7 Sonnet',
+            apiName: 'anthropic/claude-3.7-sonnet',
             capabilities: {
                 maxTokens: 8192,
                 supportsFunctions: true,
@@ -99,8 +99,8 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             contextWindow: 200000
         },
         {
-            name: 'Google Gemini Flash 1.5',
-            apiName: 'google/gemini-flash-1.5',
+            name: 'Google Gemini Flash 2.0',
+            apiName: 'google/gemini-2.0-flash-001',
             capabilities: {
                 maxTokens: 8192,
                 supportsStreaming: true
@@ -110,19 +110,19 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             contextWindow: 1000000
         },
         {
-            name: 'Google Gemini Flash 1.5 8B',
-            apiName: 'google/gemini-flash-1.5-8b',
+            name: 'Gemini 2.0 Flash Thinking',
+            apiName: 'google/gemini-2.0-flash-thinking-exp:free',
             capabilities: {
                 maxTokens: 8192,
                 supportsStreaming: true
             },
-            inputCostPer1M: 0.0375,
-            outputCostPer1M: 0.15,
+            inputCostPer1M: 0.0,
+            outputCostPer1M: 0.0,
             contextWindow: 1000000
         },
         {
-            name: 'Google Gemini Pro 1.5',
-            apiName: 'google/gemini-pro-1.5',
+            name: 'Google Gemini Pro 2.0',
+            apiName: 'google/gemini-2.0-pro-exp-02-05:free',
             capabilities: {
                 maxTokens: 8192,
                 supportsStreaming: true,
@@ -131,17 +131,6 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             inputCostPer1M: 1.25,
             outputCostPer1M: 5.00,
             contextWindow: 2000000
-        },
-        {
-            name: 'Mistral Large',
-            apiName: 'mistralai/mistral-large-2407',
-            capabilities: {
-                maxTokens: 128000,
-                supportsStreaming: true
-            },
-            inputCostPer1M: 2.00,
-            outputCostPer1M: 6.00,
-            contextWindow: 128000
         },
         {
             name: 'OpenAI 4o',
@@ -169,20 +158,20 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
             contextWindow: 128000
         },
         {
-            name: 'OpenAI o1 Mini',
-            apiName: 'openai/gpt-o1-mini',
+            name: 'OpenAI o3 Mini High',
+            apiName: 'openai/o3-mini-high',
             capabilities: {
                 maxTokens: 66000,
                 supportsFunctions: true,
                 supportsStreaming: true
             },
-            inputCostPer1M: 3.00,
-            outputCostPer1M: 12.00,
+            inputCostPer1M: 1.10,
+            outputCostPer1M: 4.40,
             contextWindow: 128000
         },
         {
-            name: 'OpenAI o1 Preview',
-            apiName: 'openai/gpt-o1-preview',
+            name: 'OpenAI o1',
+            apiName: 'openai/o1',
             capabilities: {
                 maxTokens: 33000,
                 supportsFunctions: true,
@@ -212,8 +201,20 @@ export const AIModelMap: Record<AIProvider, AIModel[]> = {
                 supportsFunctions: true,
                 supportsStreaming: true
             },
-            inputCostPer1M: 5.00,
-            outputCostPer1M: 5.00,
+            inputCostPer1M: 3.00,
+            outputCostPer1M: 15.00,
+            contextWindow: 131000
+        },
+        {
+            name: 'Perplexity Deep Research',
+            apiName: 'perplexity/sonar-deep-research',
+            capabilities: {
+                maxTokens: 8000,
+                supportsFunctions: true,
+                supportsStreaming: true
+            },
+            inputCostPer1M: 2.00,
+            outputCostPer1M: 8.00,
             contextWindow: 131000
         }
     ]

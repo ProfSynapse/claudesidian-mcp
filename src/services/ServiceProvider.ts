@@ -153,17 +153,20 @@ export class ServiceProvider {
         // Don't register most core tools here as they're already registered in ToolRegistry constructor
         // This prevents the "Tool is already registered" error
         
-        // Override the CompletionTool registration with our dependency-injected version
-        // This ensures the CompletionTool uses the properly configured AI adapter
-        
-        // Create CompletionTool with dependency injection
-        const completionTool = new CompletionTool(
-            toolContext, // No type casting needed with updated CompletionTool
-            this.get<IAIAdapter>('aiAdapter')
-        );
-        
-        // Register the tool using the registry's registerTool method
-        const registry = toolRegistry as ToolRegistry;
-        registry.registerTool(CompletionTool);
+        // Configure the existing CompletionTool with our AI adapter
+        try {
+            // Get the existing CompletionTool instance
+            const completionTool = toolRegistry.getTool('completion') as CompletionTool;
+            
+            // Set the AI adapter on the existing instance
+            if (completionTool && typeof completionTool.setAIAdapter === 'function') {
+                completionTool.setAIAdapter(this.get<IAIAdapter>('aiAdapter'));
+                console.debug('Successfully configured CompletionTool with AI adapter');
+            } else {
+                console.warn('CompletionTool does not support setAIAdapter method');
+            }
+        } catch (error) {
+            console.error('Error configuring CompletionTool:', error);
+        }
     }
 }

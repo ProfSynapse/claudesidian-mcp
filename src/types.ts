@@ -3,8 +3,6 @@ import { App, TFile } from 'obsidian';
 export interface MCPSettings {
     rootPath: string;
     enabledVault: boolean;
-    allowedPaths: string[];
-    cacheTimeout: number;
     aiProvider: string;
     apiKeys: Record<string, string>;
     defaultModel: string;
@@ -15,8 +13,6 @@ export interface MCPSettings {
 export const DEFAULT_SETTINGS: MCPSettings = {
     rootPath: 'claudesidian',
     enabledVault: true,
-    allowedPaths: [],
-    cacheTimeout: 300,
     aiProvider: 'openrouter',
     apiKeys: {},
     defaultModel: 'gpt-4o-mini',
