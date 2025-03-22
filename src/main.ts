@@ -1,7 +1,7 @@
 import { Plugin } from 'obsidian';
 import { ClaudesidianMCPServer } from './mcp/server';
-import { StatusBar } from './components/StatusBar';
 import { ToolRegistry } from './tools/ToolRegistry';
+import { StatusManager } from './services/StatusManager';
 import { MCPSettings, DEFAULT_SETTINGS } from './types';
 import { SettingsTab } from './components/SettingsTab';
 import { EventManager } from './services/EventManager';
@@ -10,8 +10,12 @@ import { IVaultManager } from './tools/interfaces/ToolInterfaces';
 import { VaultManagerFacade } from './services/VaultManagerFacade';
 
 export default class ClaudesidianMCPPlugin extends Plugin {
+    // Hardcoded paths
+    private static readonly CLAUDESIDIAN_PATH = 'claudesidian';
+    private static readonly INBOX_PATH = `${ClaudesidianMCPPlugin.CLAUDESIDIAN_PATH}/inbox`;
+
     private mcpServer: ClaudesidianMCPServer;
-    private statusBar: StatusBar;
+    private statusManager: StatusManager;
     private toolRegistry: ToolRegistry;
     public vaultManager: VaultManagerFacade;
     settings: MCPSettings;
@@ -25,6 +29,16 @@ export default class ClaudesidianMCPPlugin extends Plugin {
     private currentStage: keyof typeof this.initStage = 'CORE';
 
     private serviceProvider: ServiceProvider;
+
+    // Helper method to get claudesidian path
+    public static getClaudesidianPath(): string {
+        return this.CLAUDESIDIAN_PATH;
+    }
+
+    // Helper method to get inbox path
+    public static getInboxPath(): string {
+        return this.INBOX_PATH;
+    }
 
     private async initializeCoreComponents(): Promise<void> {
         console.debug('ClaudesidianMCPPlugin: Initializing essential components...');
@@ -89,8 +103,8 @@ export default class ClaudesidianMCPPlugin extends Plugin {
         // Register MCP server with service provider
         this.serviceProvider.register('mcpServer', this.mcpServer);
 
-        // Initialize UI components
-        this.initializeStatusBar();
+        // Initialize components
+        this.statusManager = new StatusManager();
         this.registerCommands();
 
         // Start server
@@ -113,9 +127,9 @@ export default class ClaudesidianMCPPlugin extends Plugin {
             // Register event manager with service provider
             this.serviceProvider.register('eventManager', eventManager);
 
-            // Register status bar early for user feedback
-            this.initializeStatusBar();
-            this.statusBar.setStatus('initializing');
+            // Initialize status manager early for feedback
+            this.statusManager = new StatusManager();
+            this.statusManager.setStatus('initializing');
 
             // Register minimal commands and vault events
             this.addSettingTab(new SettingsTab(this.app, this));
@@ -126,7 +140,7 @@ export default class ClaudesidianMCPPlugin extends Plugin {
             this.app.workspace.onLayoutReady(() => {
                 this.completeInitialization(eventManager).catch(error => {
                     console.error('Error during post-layout initialization:', error);
-                    this.statusBar.setStatus('error');
+                    this.statusManager.setStatus('error');
                 });
             });
 
@@ -160,12 +174,12 @@ export default class ClaudesidianMCPPlugin extends Plugin {
             // Phase 2b: Server Initialization
             this.currentStage = 'SERVER';
             await this.initializeServer();
-            
-            this.statusBar.setStatus('running');
+            this.statusManager.setStatus('running');
+            console.log('ClaudesidianMCPPlugin: Full initialization complete');
             console.log('ClaudesidianMCPPlugin: Full initialization complete');
         } catch (error) {
             console.error('Error during post-layout initialization:', error);
-            this.statusBar.setStatus('error');
+            this.statusManager.setStatus('error');
             throw error;
         }
     }
@@ -173,8 +187,8 @@ export default class ClaudesidianMCPPlugin extends Plugin {
     public async initializeFolderStructure() {
         // Create all folders concurrently for better performance
         const folderCreationPromises = [
-            this.createFolderIfNeeded(this.settings.rootPath),
-            this.createFolderIfNeeded(`${this.settings.rootPath}/inbox`)
+            this.createFolderIfNeeded(ClaudesidianMCPPlugin.CLAUDESIDIAN_PATH),
+            this.createFolderIfNeeded(ClaudesidianMCPPlugin.INBOX_PATH)
         ].filter(Boolean); // Remove undefined promises from disabled features
 
         // Wait for all folder creations to complete
@@ -192,44 +206,7 @@ export default class ClaudesidianMCPPlugin extends Plugin {
         }
     }
 
-    public async migrateAndInitializeFolders(oldRootPath?: string): Promise<void> {
-        try {
-            // Simply initialize the folder structure without complex migration
-            console.log('Initializing folder structure');
-            await this.initializeFolderStructure();
-        } catch (error) {
-            console.error('Error during folder initialization:', error);
-            throw error;
-        }
-    }
-
-    private async getOldPath(): Promise<string> {
-        try {
-            // Try to read settings from claudesidian-mcp first
-            const newSettingsPath = '.obsidian/plugins/claudesidian-mcp/data.json';
-            const newExists = await this.app.vault.adapter.exists(newSettingsPath);
-            
-            if (newExists) {
-                const content = await this.app.vault.adapter.read(newSettingsPath);
-                const data = JSON.parse(content);
-                return data.rootPath || DEFAULT_SETTINGS.rootPath;
-            }
-            
-            // If not found, try to read from bridge-mcp (for migration)
-            const oldSettingsPath = '.obsidian/plugins/bridge-mcp/data.json';
-            const oldExists = await this.app.vault.adapter.exists(oldSettingsPath);
-            
-            if (oldExists) {
-                console.log('Found old bridge-mcp settings, migrating...');
-                const content = await this.app.vault.adapter.read(oldSettingsPath);
-                const data = JSON.parse(content);
-                return data.rootPath || DEFAULT_SETTINGS.rootPath;
-            }
-        } catch (e) {
-            console.log('Could not read old settings:', e);
-        }
-        return DEFAULT_SETTINGS.rootPath;
-    }
+    // Removed migrateAndInitializeFolders and getOldPath methods as they are no longer needed
 
     private registerVaultEvents() {
         // Use 'layout-change' instead of 'layout-ready'
@@ -250,34 +227,21 @@ export default class ClaudesidianMCPPlugin extends Plugin {
 
         try {
             // Create root folder if it doesn't exist
-            const rootExists = await this.vaultManager.folderExists(this.settings.rootPath);
+            const rootExists = await this.vaultManager.folderExists(ClaudesidianMCPPlugin.CLAUDESIDIAN_PATH);
             if (!rootExists) {
-                await this.vaultManager.createFolder(this.settings.rootPath);
-                console.debug(`Created root folder: ${this.settings.rootPath}`);
+                await this.vaultManager.createFolder(ClaudesidianMCPPlugin.CLAUDESIDIAN_PATH);
+                console.debug(`Created root folder: ${ClaudesidianMCPPlugin.CLAUDESIDIAN_PATH}`);
             }
 
             // Create inbox folder if it doesn't exist
-            const inboxPath = `${this.settings.rootPath}/inbox`;
-            const inboxExists = await this.vaultManager.folderExists(inboxPath);
+            const inboxExists = await this.vaultManager.folderExists(ClaudesidianMCPPlugin.INBOX_PATH);
             if (!inboxExists) {
-                await this.vaultManager.createFolder(inboxPath);
-                console.debug(`Created inbox folder: ${inboxPath}`);
+                await this.vaultManager.createFolder(ClaudesidianMCPPlugin.INBOX_PATH);
+                console.debug(`Created inbox folder: ${ClaudesidianMCPPlugin.INBOX_PATH}`);
             }
-
-
         } catch (error) {
             console.error('Error checking/creating folders:', error);
         }
-    }
-
-    private initializeStatusBar() {
-        this.statusBar = new StatusBar(this);
-        
-        // Register status bar with service provider
-        this.serviceProvider.register('statusBar', this.statusBar);
-        
-        const statusBarItem = this.addStatusBarItem();
-        statusBarItem.appendChild(this.statusBar.getElement());
     }
 
     private registerCommands() {
@@ -287,12 +251,12 @@ export default class ClaudesidianMCPPlugin extends Plugin {
             callback: async () => {
                 console.log('ClaudesidianMCPPlugin: start-mcp-server command triggered');
                 try {
-                this.statusBar.setStatus('starting');
-                await this.mcpServer.start();
-                this.statusBar.setStatus('running');
+                    this.statusManager.setStatus('starting');
+                    await this.mcpServer.start();
+                    this.statusManager.setStatus('running');
                 } catch (error: any) {
                     console.error('Failed to start MCP server:', error);
-                    this.statusBar.setStatus('error');
+                    this.statusManager.setStatus('error');
                 }
             }
         });
@@ -303,12 +267,12 @@ export default class ClaudesidianMCPPlugin extends Plugin {
             callback: async () => {
                 console.log('ClaudesidianMCPPlugin: stop-mcp-server command triggered');
                 try {
-            this.statusBar.setStatus('stopping');
-            await this.mcpServer.stop();
-            this.statusBar.setStatus('stopped');
+                    this.statusManager.setStatus('stopping');
+                    await this.mcpServer.stop();
+                    this.statusManager.setStatus('stopped');
                 } catch (error: any) {
                     console.error('Failed to stop MCP server:', error);
-                    this.statusBar.setStatus('error');
+                    this.statusManager.setStatus('error');
                 }
             }
         });

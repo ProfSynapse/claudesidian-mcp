@@ -1,5 +1,7 @@
 import { App, TFile, Command } from 'obsidian';
 
+export type ServerStatus = 'initializing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
+
 // Extend App type to include commands
 declare module 'obsidian' {
     interface App {
@@ -12,7 +14,6 @@ declare module 'obsidian' {
 }
 
 export interface MCPSettings {
-    rootPath: string;
     enabledVault: boolean;
     aiProvider: string;
     apiKeys: Record<string, string>;
@@ -21,7 +22,6 @@ export interface MCPSettings {
 }
 
 export const DEFAULT_SETTINGS: MCPSettings = {
-    rootPath: 'claudesidian',
     enabledVault: true,
     aiProvider: 'openrouter',
     apiKeys: {},

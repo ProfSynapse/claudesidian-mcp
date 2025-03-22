@@ -4,6 +4,7 @@ import { MCPSettings } from '../../types';
 import { IAIAdapter } from '../../ai/interfaces/IAIAdapter';
 import { IToolContext } from '../interfaces/ToolInterfaces';
 import { join } from 'path';
+import ClaudesidianMCPPlugin from '../../main';
 import { TFile } from 'obsidian';
 
 /**
@@ -161,7 +162,7 @@ export class TextGeneratorTool extends BaseTool {
             const filename = `completion-${dateFormatted}-${timeFormatted}`;
             
             // Determine the path in the inbox folder
-            const inboxPath = join(this.context.settings.rootPath, 'inbox');
+            const inboxPath = ClaudesidianMCPPlugin.getInboxPath();
             const notePath = join(inboxPath, `${filename}.md`);
             
             // Create the note content with frontmatter and sections

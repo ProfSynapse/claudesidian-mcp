@@ -3,6 +3,7 @@ import { IToolContext } from '../../interfaces/ToolInterfaces';
 import { BaseNoteCommand } from './NoteCommandHandler';
 import { getFolderPath } from '../../../utils/pathUtils';
 import { SearchUtil, SEARCH_WEIGHTS } from '../../../utils/searchUtil';
+import ClaudesidianMCPPlugin from '../../../main';
 
 /**
  * Command for searching notes
@@ -56,7 +57,7 @@ export class SearchNotesCommand extends BaseNoteCommand {
         }
 
         if (saveAsDistinct) {
-            const distinctPath = `${context.settings.rootPath}/${this.createDistinctFilename(query)}`;
+            const distinctPath = `${ClaudesidianMCPPlugin.getClaudesidianPath()}/${this.createDistinctFilename(query)}`;
             return {
                 distinctPath,
                 results: filteredResults

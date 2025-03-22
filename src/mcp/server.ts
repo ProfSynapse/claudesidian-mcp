@@ -1,8 +1,8 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { App, TFile } from 'obsidian';
-import { 
-    ListResourcesRequestSchema, 
+import {
+    ListResourcesRequestSchema,
     ReadResourceRequestSchema,
     ListToolsRequestSchema,
     CallToolRequestSchema,
@@ -16,6 +16,7 @@ import { promises as fs } from 'fs';
 import { platform } from 'os';
 import { MCPSettings } from '../types';
 import { IVaultManager } from '../tools/interfaces/ToolInterfaces';
+import ClaudesidianMCPPlugin from '../main';
 
 interface ToolCallRequest extends Request {
     params: {
@@ -164,11 +165,16 @@ export class ClaudesidianMCPServer {
     private async initializeFolders() {
         try {
             // Create root folder if it doesn't exist
-            const rootPath = this.settings.rootPath.replace(/\.md$/, '');
+            const rootPath = ClaudesidianMCPPlugin.getClaudesidianPath();
             if (!await this.vaultManager.folderExists(rootPath)) {
                 await this.vaultManager.createFolder(rootPath);
             }
 
+            // Create inbox folder if it doesn't exist
+            const inboxPath = ClaudesidianMCPPlugin.getInboxPath();
+            if (!await this.vaultManager.folderExists(inboxPath)) {
+                await this.vaultManager.createFolder(inboxPath);
+            }
         } catch (error) {
             console.error('Error initializing folders:', error);
             throw error;

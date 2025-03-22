@@ -1,6 +1,7 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IToolContext } from '../../interfaces/ToolInterfaces';
 import { sanitizePath, ensureMdExtension } from '../../../utils/pathUtils';
+import ClaudesidianMCPPlugin from '../../../main';
 
 /**
  * Interface for note command handlers
@@ -76,7 +77,7 @@ export abstract class BaseNoteCommand implements INoteCommandHandler {
      * @returns Sanitized and validated path
      */
     protected preparePath(rawPath: string, context: IToolContext): string {
-        const rootPath = context.settings.rootPath;
+        const rootPath = ClaudesidianMCPPlugin.getClaudesidianPath();
         const sanitizedPath = sanitizePath(rawPath, rootPath);
         if (!sanitizedPath) {
             throw new McpError(

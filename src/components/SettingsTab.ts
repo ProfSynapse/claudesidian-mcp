@@ -6,20 +6,10 @@ import { ClaudeConfigModal } from './ClaudeConfigModal';
 
 export class SettingsTab extends PluginSettingTab {
     plugin: BridgeMCPPlugin;
-    private oldPath: string = '';
 
     constructor(app: App, plugin: BridgeMCPPlugin) {
         super(app, plugin);
         this.plugin = plugin;
-    }
-
-    async handleRootPathChange(newPath: string) {
-        // Store the old path before updating
-        this.oldPath = this.plugin.settings.rootPath;
-        
-        // Update settings
-        this.plugin.settings.rootPath = newPath;
-        await this.plugin.saveSettings();
     }
 
     async handleToolToggle(enabled: boolean) {
@@ -31,9 +21,6 @@ export class SettingsTab extends PluginSettingTab {
     }
 
     display(): void {
-        // Store the current path when displaying settings
-        this.oldPath = this.plugin.settings.rootPath;
-
         console.log('SettingsTab: Displaying settings tab'); // Log display start
         const { containerEl } = this;
         containerEl.empty();
@@ -51,49 +38,14 @@ export class SettingsTab extends PluginSettingTab {
                     new ClaudeConfigModal(this.app).open();
                 }));
 
-        // Root Path Setting with Save/Migrate Button
+        // Display static path information
         new Setting(containerEl)
             .setName('Claudesidian')
-            .setDesc('Folder where all MCP content will be stored')
+            .setDesc('Folder where all MCP content is stored')
             .addText(text => text
-                .setPlaceholder('claudesidian')
-                .setValue(this.plugin.settings.rootPath)
-                .onChange(async (value) => {
-                    // Just update settings, don't change oldPath
-                    this.plugin.settings.rootPath = value;
-                    await this.plugin.saveSettings();
-                }))
-            .addButton(button => button
-                .setButtonText('Create/Migrate Folders')
-                .onClick(async () => {
-                    try {
-                        button.setDisabled(true);
-                        button.setButtonText('Migrating...');
-                        
-                        // Use the stored old path for migration
-                        const fromPath = this.oldPath;
-                        const toPath = this.plugin.settings.rootPath;
-                        console.log(`Migrating from ${fromPath} to ${toPath}`);
-                        
-                        await this.plugin.migrateAndInitializeFolders(fromPath); // Pass the old path
-                        
-                        // Update oldPath after successful migration
-                        this.oldPath = toPath;
-                        
-                        button.setButtonText('Done!');
-                        setTimeout(() => {
-                            button.setButtonText('Create/Migrate Folders');
-                            button.setDisabled(false);
-                        }, 2000);
-                    } catch (error) {
-                        console.error('Failed to migrate folders:', error);
-                        button.setButtonText('Failed!');
-                        setTimeout(() => {
-                            button.setButtonText('Create/Migrate Folders');
-                            button.setDisabled(false);
-                        }, 2000);
-                    }
-                }));
+                .setValue('claudesidian')
+                .setDisabled(true)
+                .setPlaceholder('claudesidian'));
 
         // Server Settings Section
         containerEl.createEl('h3', { text: 'Server Settings' });

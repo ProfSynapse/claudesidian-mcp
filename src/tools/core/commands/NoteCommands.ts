@@ -65,7 +65,8 @@ export class CreateNoteCommand extends BaseNoteCommand {
                 },
                 path: {
                     type: "string",
-                    description: "Path where the note should be created"
+                    description: "Path where the note should be created",
+                    default: "claudesidian/inbox"
                 },
                 content: {
                     type: "string",
