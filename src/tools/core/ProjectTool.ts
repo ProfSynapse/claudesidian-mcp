@@ -13,7 +13,7 @@ export class ProjectTool extends BaseTool {
 
     constructor(context: IToolContext) {
         super(context, {
-            name: '📋 projectManager',
+            name: 'projectManager',
             description: 'Manage project-related operations including planning, completion tracking, and information gathering.',
             version: '1.0.0',
             author: 'Claudesidian MCP'

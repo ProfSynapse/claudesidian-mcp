@@ -21,7 +21,7 @@ export class NoteEditorTool extends BaseTool {
     
     constructor(context: IToolContext) {
         super(context, {
-            name: '✏️ noteEditor',
+            name: 'noteEditor',
             description: 'Edit notes with precise operations using Obsidian\'s APIs. Supports inserting at headings (including wiki-links), replacing text, and more.',
             version: '2.0.0',
             author: 'Claudesidian MCP'

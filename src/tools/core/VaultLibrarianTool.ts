@@ -37,7 +37,7 @@ export class VaultLibrarianTool extends BaseTool {
 
     constructor(context: IToolContext) {
         super(context, {
-            name: '📚 vaultLibrarian',
+            name: 'vaultLibrarian',
             description: 'Navigate and search vault contents including notes, folders, and metadata',
             version: '1.0.0',
             author: 'Claudesidian MCP'

@@ -24,7 +24,7 @@ export class TextGeneratorTool extends BaseTool {
         private aiAdapter: IAIAdapter
     ) {
         const metadata: IToolMetadata = {
-            name: '✨ textGenerator',
+            name: 'textGenerator',
             description: 'Generate AI completions using OpenRouter.\n\n' +
                         'Note: Uses the default model from vault settings unless specified. Models follow provider/model format (e.g., \'openai/gpt-4o-mini\').',
             version: '1.0.0'

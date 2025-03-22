@@ -8,7 +8,7 @@ import { getFolderPath } from '../../utils/pathUtils';
 export class VaultManagerTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
-            name: '📁 vaultManager',
+            name: 'vaultManager',
             description: 'Manage vault content with operations for notes and folders: create, delete, and move.',
             version: '1.0.0',
             author: 'Claudesidian MCP'

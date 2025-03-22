@@ -10,7 +10,7 @@ interface PaletteCommanderArgs {
 export class PaletteCommanderTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
-            name: '🎮 paletteCommander',
+            name: 'paletteCommander',
             description: 'Access and execute Obsidian commands',
             version: '1.0.0'
         }, {

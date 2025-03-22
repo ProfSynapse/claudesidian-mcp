@@ -11,11 +11,11 @@ graph TD
     B --> C[Test in Claude]
     
     subgraph "Tool Modifications"
-        D1[NoteEditorTool: ✏️ noteEditor]
+        D1[NoteEditorTool: noteEditor]
         D2[NoteReaderTool: 📖 noteReader]
         D3[VaultLibrarianTool: 📚 vaultLibrarian]
         D4[VaultManagerTool: 📁 vaultManager]
-        D5[TextGeneratorTool: ✨ textGenerator]
+        D5[TextGeneratorTool: textGenerator]
         D6[PaletteCommanderTool: 🎮 paletteCommander]
         D7[ProjectTool: 📋 projectManager]
     end
@@ -37,7 +37,7 @@ graph TD
    // Example for NoteEditorTool
    constructor(context: IToolContext) {
        super(context, {
-           name: '✏️ noteEditor',
+           name: 'noteEditor',
            description: 'Edit notes with precise operations...',
            // other properties
        });
@@ -45,7 +45,7 @@ graph TD
    ```
 
 2. We'll apply the following emoji associations:
-   - ✏️ NoteEditorTool
+   - noteEditorTool
    - 📖 NoteReaderTool
    - 📚 VaultLibrarianTool
    - 📁 VaultManagerTool

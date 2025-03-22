@@ -12,7 +12,7 @@ export interface NoteContent {
 export class NoteReaderTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
-            name: '📖 noteReader',
+            name: 'noteReader',
             description: 'Read note content and metadata, supporting both single and batch operations.',
             version: '1.0.0',
             author: 'Claudesidian MCP'
