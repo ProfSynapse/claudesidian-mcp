@@ -44,44 +44,49 @@ export class AskQuestionCommand implements IProjectCommandHandler {
 }
 
 /**
- * Command handler for checking task completion status
- * Used to determine if a task is complete and provide reasoning
+ * Command handler for creating checkpoints in task execution
+ * Used to pause for user feedback, summarize progress, and suggest next steps
  */
-export class CheckCompletionCommand implements IProjectCommandHandler {
+export class CheckpointCommand implements IProjectCommandHandler {
     async execute(args: any, context: IToolContext): Promise<any> {
         // Validate args
-        if (!args.task || typeof args.task !== 'string') {
+        if (!args.description || typeof args.description !== 'string') {
             throw new McpError(
                 ErrorCode.InvalidParams,
-                'Task parameter is required and must be a string'
+                'Description parameter is required and must be a string'
             );
         }
 
-        // Return the completion status
+        // Return the checkpoint status
         return {
-            isComplete: args.isComplete !== undefined ? args.isComplete : false,
-            reasoning: args.reasoning || '',
-            task: args.task
+            description: args.description,
+            progressSummary: args.progressSummary || '',
+            checkpointReason: args.checkpointReason || '',
+            nextStep: args.nextStep || ''
         };
     }
 
     getSchema(): any {
         return {
             properties: {
-                task: {
+                description: {
                     type: 'string',
-                    description: 'The task to check for completion. Describe the task in detail including what would constitute it being complete.'
+                    description: 'Description of the checkpoint - what has been completed and why feedback is needed'
                 },
-                isComplete: {
-                    type: 'boolean',
-                    description: 'Whether the task is complete. Set to true if all requirements are met, false otherwise.'
-                },
-                reasoning: {
+                progressSummary: {
                     type: 'string',
-                    description: 'Detailed reasoning about why the task is or is not complete. If not complete, explain what still needs to be done.'
+                    description: 'Summary of what has been accomplished up to this point'
+                },
+                checkpointReason: {
+                    type: 'string',
+                    description: 'Explanation of why this is a good point to pause and get feedback'
+                },
+                nextStep: {
+                    type: 'string',
+                    description: 'Suggested next step or action after this checkpoint'
                 }
             },
-            required: ['task']
+            required: ['description']
         };
     }
 }

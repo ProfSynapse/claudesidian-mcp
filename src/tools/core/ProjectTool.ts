@@ -1,27 +1,27 @@
 import { BaseTool } from '../BaseTool';
 import { IToolContext } from '../interfaces/ToolInterfaces';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { AskQuestionCommand, CheckCompletionCommand, CreatePlanCommand } from './commands/ProjectCommands';
+import { AskQuestionCommand, CheckpointCommand, CreatePlanCommand } from './commands/ProjectCommands';
 
 /**
  * Tool for project management operations like planning, tracking completion, and gathering information
  */
 export class ProjectTool extends BaseTool {
     private askQuestionCommand: AskQuestionCommand;
-    private checkCompletionCommand: CheckCompletionCommand;
+    private checkpointCommand: CheckpointCommand;
     private createPlanCommand: CreatePlanCommand;
 
     constructor(context: IToolContext) {
         super(context, {
             name: 'projectManager',
-            description: 'Manage project-related operations including planning, completion tracking, and information gathering.',
+            description: 'Manage project-related operations including planning, checkpointing, and information gathering.',
             version: '1.0.0',
             author: 'Claudesidian MCP'
         });
 
         // Initialize command handlers
         this.askQuestionCommand = new AskQuestionCommand();
-        this.checkCompletionCommand = new CheckCompletionCommand();
+        this.checkpointCommand = new CheckpointCommand();
         this.createPlanCommand = new CreatePlanCommand();
     }
 
@@ -36,8 +36,8 @@ export class ProjectTool extends BaseTool {
         switch (args.action) {
             case 'askQuestion':
                 return await this.askQuestionCommand.execute(args, this.context);
-            case 'checkCompletion':
-                return await this.checkCompletionCommand.execute(args, this.context);
+            case 'checkpoint':
+                return await this.checkpointCommand.execute(args, this.context);
             case 'createPlan':
                 return await this.createPlanCommand.execute(args, this.context);
             default:
@@ -54,12 +54,12 @@ export class ProjectTool extends BaseTool {
             properties: {
                 action: {
                     type: 'string',
-                    enum: ['askQuestion', 'checkCompletion', 'createPlan'],
+                    enum: ['askQuestion', 'checkpoint', 'createPlan'],
                     description: 'The project management action to perform'
                 },
                 // Action-specific parameters are validated by individual command handlers
                 ...this.askQuestionCommand.getSchema().properties,
-                ...this.checkCompletionCommand.getSchema().properties,
+                ...this.checkpointCommand.getSchema().properties,
                 ...this.createPlanCommand.getSchema().properties
             },
             required: ['action'],
@@ -75,11 +75,11 @@ export class ProjectTool extends BaseTool {
                 },
                 {
                     if: {
-                        properties: { action: { const: 'checkCompletion' } },
+                        properties: { action: { const: 'checkpoint' } },
                         required: ['action']
                     },
                     then: {
-                        required: this.checkCompletionCommand.getSchema().required
+                        required: this.checkpointCommand.getSchema().required
                     }
                 },
                 {
