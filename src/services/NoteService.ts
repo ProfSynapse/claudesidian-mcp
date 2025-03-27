@@ -1,4 +1,4 @@
-import { TFile, Vault } from 'obsidian';
+import { App, TFile, Vault, getAllTags } from 'obsidian';
 import { INoteService, NoteOptions } from './interfaces/INoteService';
 import { IPathService } from './interfaces/IPathService';
 import * as yaml from 'yaml';
@@ -15,7 +15,8 @@ export class NoteService implements INoteService {
      */
     constructor(
         private vault: Vault,
-        private pathService: IPathService
+        private pathService: IPathService,
+        private app: App
     ) {}
     
     /**
@@ -127,26 +128,116 @@ export class NoteService implements INoteService {
     }
     
     /**
-     * Gets note metadata (frontmatter)
+     * Gets note metadata (frontmatter) using Obsidian's metadata cache
+     * Handles both markdown and non-markdown files gracefully
      * @param path Path to the note
      * @returns The note's metadata or null if none exists
      */
     async getNoteMetadata(path: string): Promise<Record<string, any> | null> {
         try {
-            const content = await this.readNote(path);
-            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-            
-            if (frontmatterMatch && frontmatterMatch[1]) {
-                try {
-                    return yaml.parse(frontmatterMatch[1]);
-                } catch {
-                    return null;
+            const normalizedPath = this.pathService.normalizePath(path);
+            const file = this.vault.getAbstractFileByPath(normalizedPath);
+
+            // Skip non-existent files or non-TFiles
+            if (!file || !(file instanceof TFile)) {
+                return null;
+            }
+
+            // For markdown files, use metadata cache
+            if (file.extension === 'md') {
+                const cache = this.app.metadataCache.getCache(file.path);
+                if (cache?.frontmatter) {
+                    // Filter out internal Obsidian properties
+                    const { position, ...metadata } = cache.frontmatter;
+                    
+                    // Add tags from both frontmatter and content
+                    const allTags = getAllTags(cache);
+                    if (allTags) {
+                        metadata.tags = allTags.map(tag => 
+                            tag.startsWith('#') ? tag.slice(1) : tag
+                        );
+                    }
+                    
+                    return metadata;
                 }
             }
-            return null;
+
+            // For non-markdown files or if cache doesn't have frontmatter,
+            // return basic metadata
+            return {
+                extension: file.extension,
+                basename: file.basename,
+                ctime: file.stat.ctime,
+                mtime: file.stat.mtime
+            };
         } catch (error) {
-            throw this.handleError('getNoteMetadata', error);
+            console.error(`Error getting metadata for ${path}:`, error);
+            return null;
         }
+    }
+
+    /**
+     * Finds all notes with a specific tag
+     * @param tag Tag to search for (with or without # prefix)
+     * @returns Array of files that have the tag
+     */
+    async findNotesByTag(tag: string): Promise<TFile[]> {
+        // Normalize tag (with and without # prefix)
+        const searchTag = tag.startsWith('#') ? tag : '#' + tag;
+        const plainTag = tag.startsWith('#') ? tag.slice(1) : tag;
+        
+        const files = this.vault.getMarkdownFiles();
+        const results: TFile[] = [];
+        
+        for (const file of files) {
+            try {
+                const cache = this.app.metadataCache.getCache(file.path);
+                if (!cache) continue;
+                
+                // Get all tags (both frontmatter and inline)
+                const tags = getAllTags(cache);
+                if (!tags) continue;
+                
+                // Check for tag match (with or without # prefix)
+                if (tags.includes(searchTag) || tags.includes(plainTag)) {
+                    results.push(file);
+                }
+            } catch (error) {
+                console.error(`Error checking tags for ${file.path}:`, error);
+            }
+        }
+        
+        return results;
+    }
+
+    /**
+     * Finds all notes with a specific property value
+     * @param key Property key to search for
+     * @param value Optional property value to match
+     * @returns Array of files that have the property (and value if specified)
+     */
+    async findNotesByProperty(key: string, value?: any): Promise<TFile[]> {
+        const files = this.vault.getMarkdownFiles();
+        const results: TFile[] = [];
+        
+        for (const file of files) {
+            try {
+                const cache = this.app.metadataCache.getCache(file.path);
+                if (!cache?.frontmatter) continue;
+                
+                const propertyValue = cache.frontmatter[key];
+                if (propertyValue !== undefined) {
+                    const matches = value === undefined || propertyValue === value;
+                    if (matches) {
+                        results.push(file);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error checking properties for ${file.path}:`, error);
+            }
+        }
+        
+        return results;
     }
     
     /**

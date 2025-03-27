@@ -73,12 +73,36 @@ export class VaultManagerFacade implements IVaultManager {
     }
     
     /**
-     * Gets note metadata (frontmatter)
+     * Gets note metadata (frontmatter) using Obsidian's metadata cache for markdown files
      * @param path Path to the note
      * @returns The note's metadata or null if none exists
      */
     async getNoteMetadata(path: string): Promise<Record<string, any> | null> {
-        return this.noteService.getNoteMetadata(path);
+        try {
+            // Get file by path
+            const file = this.app.vault.getAbstractFileByPath(path);
+            
+            // Skip non-existent files or non-TFiles
+            if (!file || !(file instanceof TFile)) {
+                return null;
+            }
+            
+            // For markdown files, use metadata cache
+            if (file.extension === 'md') {
+                const cache = this.app.metadataCache.getCache(file.path);
+                if (cache?.frontmatter) {
+                    // Filter out internal Obsidian properties
+                    const { position, ...metadata } = cache.frontmatter;
+                    return metadata;
+                }
+            }
+            
+            // For non-markdown files, return null
+            return null;
+        } catch (error) {
+            console.error(`Error getting metadata for ${path}:`, error);
+            return null;
+        }
     }
     
     /**

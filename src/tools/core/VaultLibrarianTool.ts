@@ -1,7 +1,7 @@
 import { BaseTool } from '../BaseTool';
 import { IToolContext } from '../interfaces/ToolInterfaces';
 import { SearchUtil, SEARCH_WEIGHTS } from '../../utils/searchUtil';
-import { prepareFuzzySearch, TFolder, TAbstractFile } from 'obsidian';
+import { prepareFuzzySearch, TFolder, TAbstractFile, CachedMetadata, getAllTags } from 'obsidian';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 
 export interface VaultItem {
@@ -193,19 +193,29 @@ export class VaultLibrarianTool extends BaseTool {
     }
 
     /**
-     * Get all unique tags from vault
+     * Get all unique tags from vault using Obsidian's native metadata cache
+     * This includes both frontmatter tags and inline tags
      */
     private async getTags(args: any): Promise<string[]> {
-        const files = this.context.app.vault.getFiles();
+        const files = this.context.app.vault.getMarkdownFiles();
         const tagSet = new Set<string>();
 
         for (const file of files) {
-            const metadata = await this.context.vault.getNoteMetadata(file.path);
-            if (metadata?.tags) {
-                const tags = Array.isArray(metadata.tags) 
-                    ? metadata.tags 
-                    : [metadata.tags];
-                tags.forEach(tag => tagSet.add(tag));
+            try {
+                const cache = this.context.app.metadataCache.getCache(file.path);
+                if (!cache) continue;
+
+                const tags = getAllTags(cache);
+                if (tags) {
+                    tags.forEach(tag => {
+                        // Remove the '#' prefix if present
+                        const cleanTag = tag.startsWith('#') ? tag.slice(1) : tag;
+                        tagSet.add(cleanTag);
+                    });
+                }
+            } catch (error) {
+                console.error(`Error getting tags from file ${file.path}:`, error);
+                // Continue with next file instead of failing entire operation
             }
         }
 
@@ -213,16 +223,25 @@ export class VaultLibrarianTool extends BaseTool {
     }
 
     /**
-     * Get all property keys used in vault
+     * Get all property keys used in vault's frontmatter using Obsidian's metadata cache
      */
     private async getProperties(args: any): Promise<string[]> {
-        const files = this.context.app.vault.getFiles();
+        const files = this.context.app.vault.getMarkdownFiles();
         const propertySet = new Set<string>();
 
         for (const file of files) {
-            const metadata = await this.context.vault.getNoteMetadata(file.path);
-            if (metadata) {
-                Object.keys(metadata).forEach(key => propertySet.add(key));
+            try {
+                const cache = this.context.app.metadataCache.getCache(file.path);
+                if (!cache?.frontmatter) continue;
+
+                // Add all frontmatter keys except 'position' which is internal to Obsidian
+                Object.keys(cache.frontmatter)
+                    .filter(key => key !== 'position')
+                    .forEach(key => propertySet.add(key));
+
+            } catch (error) {
+                console.error(`Error getting properties from file ${file.path}:`, error);
+                // Continue with next file instead of failing entire operation
             }
         }
 
@@ -230,7 +249,8 @@ export class VaultLibrarianTool extends BaseTool {
     }
 
     /**
-     * Search for notes with specific tag
+     * Search for notes with specific tag using Obsidian's native metadata cache
+     * This will find tags in both frontmatter and inline tags
      */
     private async searchByTag(args: any): Promise<SearchResult[]> {
         const { tag } = args;
@@ -241,16 +261,22 @@ export class VaultLibrarianTool extends BaseTool {
             );
         }
 
-        const files = this.context.app.vault.getFiles();
+        // Add '#' prefix if not present for comparison with inline tags
+        const searchTag = tag.startsWith('#') ? tag : '#' + tag;
+        const files = this.context.app.vault.getMarkdownFiles();
         const results: SearchResult[] = [];
 
         for (const file of files) {
-            const metadata = await this.context.vault.getNoteMetadata(file.path);
-            if (metadata?.tags) {
-                const tags = Array.isArray(metadata.tags) 
-                    ? metadata.tags 
-                    : [metadata.tags];
-                if (tags.includes(tag)) {
+            try {
+                const cache = this.context.app.metadataCache.getCache(file.path);
+                if (!cache) continue;
+
+                const tags = getAllTags(cache);
+                if (!tags) continue;
+
+                // Check both with and without '#' prefix
+                if (tags.includes(searchTag) || tags.includes(tag)) {
+                    const metadata = cache.frontmatter || {};
                     results.push({
                         path: file.path,
                         score: 1,
@@ -258,11 +284,14 @@ export class VaultLibrarianTool extends BaseTool {
                             type: 'tag',
                             term: tag,
                             score: 1,
-                            location: 'metadata'
+                            location: cache.frontmatter?.tags ? 'frontmatter' : 'content'
                         }],
                         metadata
                     });
                 }
+            } catch (error) {
+                console.error(`Error searching tags in file ${file.path}:`, error);
+                // Continue with next file instead of failing entire search
             }
         }
 
@@ -270,7 +299,7 @@ export class VaultLibrarianTool extends BaseTool {
     }
 
     /**
-     * Search for notes with specific property value
+     * Search for notes with specific property value using Obsidian's metadata cache
      */
     private async searchByProperty(args: any): Promise<SearchResult[]> {
         const { key, value } = args;
@@ -281,26 +310,34 @@ export class VaultLibrarianTool extends BaseTool {
             );
         }
 
-        const files = this.context.app.vault.getFiles();
+        const files = this.context.app.vault.getMarkdownFiles();
         const results: SearchResult[] = [];
 
         for (const file of files) {
-            const metadata = await this.context.vault.getNoteMetadata(file.path);
-            if (metadata?.[key] !== undefined) {
-                const matches = value === undefined || metadata[key] === value;
-                if (matches) {
-                    results.push({
-                        path: file.path,
-                        score: 1,
-                        matches: [{
-                            type: 'property',
-                            term: key,
+            try {
+                const cache = this.context.app.metadataCache.getCache(file.path);
+                if (!cache?.frontmatter) continue;
+
+                const propertyValue = cache.frontmatter[key];
+                if (propertyValue !== undefined) {
+                    const matches = value === undefined || propertyValue === value;
+                    if (matches) {
+                        results.push({
+                            path: file.path,
                             score: 1,
-                            location: 'metadata'
-                        }],
-                        metadata
-                    });
+                            matches: [{
+                                type: 'property',
+                                term: key,
+                                score: 1,
+                                location: 'frontmatter'
+                            }],
+                            metadata: cache.frontmatter
+                        });
+                    }
                 }
+            } catch (error) {
+                console.error(`Error searching properties in file ${file.path}:`, error);
+                // Continue with next file instead of failing entire search
             }
         }
 

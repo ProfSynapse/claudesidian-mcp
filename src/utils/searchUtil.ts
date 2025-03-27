@@ -1,4 +1,4 @@
-import { TFile, prepareFuzzySearch, App } from 'obsidian';
+import { TFile, prepareFuzzySearch, App, getAllTags } from 'obsidian';
 import { IVaultManager } from '../tools/interfaces/ToolInterfaces';
 
 interface SearchWeights {
@@ -96,8 +96,23 @@ export class SearchUtil {
         const results: SearchResult[] = [];
 
         for (const file of files) {
-            const metadata = includeMetadata ? 
-                await this.vault.getNoteMetadata(file.path) : undefined;
+            let metadata: Record<string, any> | undefined;
+            if (includeMetadata) {
+                const cache = this.app.metadataCache.getCache(file.path);
+                if (cache?.frontmatter) {
+                    // Filter out internal Obsidian properties
+                    const { position, ...frontmatter } = cache.frontmatter;
+                    metadata = frontmatter;
+
+                    // Add tags from both frontmatter and content
+                    const allTags = getAllTags(cache);
+                    if (allTags) {
+                        metadata.tags = allTags.map(tag => 
+                            tag.startsWith('#') ? tag.slice(1) : tag
+                        );
+                    }
+                }
+            }
 
             const matches = [];
             let totalScore = 0;

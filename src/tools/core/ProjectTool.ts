@@ -14,7 +14,7 @@ export class ProjectTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'projectManager',
-            description: 'Manage project-related operations including planning, checkpointing, and information gathering.',
+            description: 'Manage project-related operations including planning, checkpointing, and information gathering. IMPORTANT: When using checkpoint or createPlan actions, you MUST stop execution immediately after and wait for user feedback before continuing with any other tools or actions.',
             version: '1.0.0',
             author: 'Claudesidian MCP'
         });
@@ -55,7 +55,7 @@ export class ProjectTool extends BaseTool {
                 action: {
                     type: 'string',
                     enum: ['askQuestion', 'checkpoint', 'createPlan'],
-                    description: 'The project management action to perform'
+                    description: 'The project management action to perform. NOTE: If using "checkpoint" or "createPlan", you MUST stop execution after this tool call and wait for user feedback before proceeding with any other tools.'
                 },
                 // Action-specific parameters are validated by individual command handlers
                 ...this.askQuestionCommand.getSchema().properties,

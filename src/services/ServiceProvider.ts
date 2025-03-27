@@ -46,7 +46,7 @@ export class ServiceProvider {
         this.services.set('pathService', pathService);
         
         // Register vault services
-        const noteService = new NoteService(this.app.vault, pathService);
+        const noteService = new NoteService(this.app.vault, pathService, this.app);
         this.services.set('noteService', noteService);
         
         const folderService = new FolderService(this.app.vault, pathService);

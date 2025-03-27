@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian';
+import { App, TFile } from 'obsidian';
 
 /**
  * Options for note creation/modification
@@ -15,6 +15,21 @@ export interface NoteOptions {
  * Follows Single Responsibility Principle by focusing only on note operations
  */
 export interface INoteService {
+    /**
+     * Finds all notes with a specific tag
+     * @param tag Tag to search for (with or without # prefix)
+     * @returns Array of files that have the tag
+     */
+    findNotesByTag(tag: string): Promise<TFile[]>;
+
+    /**
+     * Finds all notes with a specific property value
+     * @param key Property key to search for
+     * @param value Optional property value to match
+     * @returns Array of files that have the property (and value if specified)
+     */
+    findNotesByProperty(key: string, value?: any): Promise<TFile[]>;
+
     /**
      * Creates a new note in the vault
      * @param path Path to the note

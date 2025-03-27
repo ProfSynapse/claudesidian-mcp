@@ -44,8 +44,15 @@ export class AskQuestionCommand implements IProjectCommandHandler {
 }
 
 /**
- * Command handler for creating checkpoints in task execution
- * Used to pause for user feedback, summarize progress, and suggest next steps
+ * Command handler for creating checkpoints in task execution.
+ * 
+ * IMPORTANT: This command is designed to pause execution and require user feedback
+ * before proceeding. When this command is executed, the MCP client MUST:
+ * 1. Stop current execution
+ * 2. Present the checkpoint information to the user
+ * 3. Wait for explicit user confirmation before continuing
+ * 
+ * This ensures proper reflection on progress and validation of next steps.
  */
 export class CheckpointCommand implements IProjectCommandHandler {
     async execute(args: any, context: IToolContext): Promise<any> {
@@ -57,12 +64,15 @@ export class CheckpointCommand implements IProjectCommandHandler {
             );
         }
 
-        // Return the checkpoint status
+        // Return the checkpoint status with explicit pause indicators
         return {
             description: args.description,
             progressSummary: args.progressSummary || '',
             checkpointReason: args.checkpointReason || '',
-            nextStep: args.nextStep || ''
+            nextStep: args.nextStep || '',
+            requiresUserInput: true, // Signal that user input is required
+            pauseExecution: true, // Explicit signal to pause execution
+            message: "CHECKPOINT: Please review progress and provide feedback before continuing." // Clear message about expected behavior
         };
     }
 
@@ -71,19 +81,19 @@ export class CheckpointCommand implements IProjectCommandHandler {
             properties: {
                 description: {
                     type: 'string',
-                    description: 'Description of the checkpoint - what has been completed and why feedback is needed'
+                    description: 'IMPORTANT: After sending this checkpoint, you MUST wait for user feedback before using any other tools. Describe what has been completed and why feedback is needed.'
                 },
                 progressSummary: {
                     type: 'string',
-                    description: 'Summary of what has been accomplished up to this point'
+                    description: 'Summary of accomplished work. After the checkpoint, STOP and wait for user review before continuing.'
                 },
                 checkpointReason: {
                     type: 'string',
-                    description: 'Explanation of why this is a good point to pause and get feedback'
+                    description: 'Why you are stopping at this point. You MUST pause here and get user feedback before proceeding.'
                 },
                 nextStep: {
                     type: 'string',
-                    description: 'Suggested next step or action after this checkpoint'
+                    description: 'Suggested next steps to discuss with the user. Do not execute these steps until after user feedback.'
                 }
             },
             required: ['description']
@@ -92,8 +102,15 @@ export class CheckpointCommand implements IProjectCommandHandler {
 }
 
 /**
- * Command handler for creating structured project plans
- * Used to break down objectives into sequenced subgoals with multiple steps and dependencies
+ * Command handler for creating structured project plans.
+ * 
+ * IMPORTANT: This command is designed to pause execution and require user approval
+ * of the plan before proceeding. When this command is executed, the MCP client MUST:
+ * 1. Stop current execution
+ * 2. Present the proposed plan to the user
+ * 3. Wait for explicit user approval before implementing the plan
+ * 
+ * This ensures the plan meets user requirements and expectations before execution.
  */
 export class CreatePlanCommand implements IProjectCommandHandler {
     async execute(args: any, context: IToolContext): Promise<any> {
@@ -105,12 +122,15 @@ export class CreatePlanCommand implements IProjectCommandHandler {
             );
         }
 
-        // Return the plan
+        // Return the plan with pause indicators
         return {
             plan: {
                 primaryGoal: args.primaryGoal,
                 subgoals: args.subgoals || []
-            }
+            },
+            requiresUserInput: true, // Signal that user approval is required
+            pauseExecution: true, // Explicit signal to pause execution
+            message: "PLAN REVIEW: Please review and approve this plan before proceeding with implementation." // Clear message about expected behavior
         };
     }
 
@@ -119,11 +139,11 @@ export class CreatePlanCommand implements IProjectCommandHandler {
             properties: {
                 primaryGoal: {
                     type: 'string',
-                    description: 'The primary goal of the plan. Be specific about what you want to accomplish overall.'
+                    description: 'IMPORTANT: After creating this plan, you MUST wait for user approval before executing any tools. Describe the overall goal you want to accomplish.'
                 },
                 subgoals: {
                     type: 'array',
-                    description: 'Sequenced subgoals to accomplish the primary goal. Each subgoal represents a distinct phase or component of the overall plan.',
+                    description: 'Proposed subgoals to accomplish the primary goal. These are suggestions that require user approval before execution.',
                     items: {
                         type: 'object',
                         properties: {
