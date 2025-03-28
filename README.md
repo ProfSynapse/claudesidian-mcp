@@ -39,9 +39,7 @@ The plugin creates the following folder structure in your vault:
 
 ```
 claudesidian/
-├── memory/        # Persistent memory storage
-├── reasoning/     # Reasoning traces and logs
-└── index          # Search indices
+└── inbox          # Search indices
 ```
 
 ## Security
