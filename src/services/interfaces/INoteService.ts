@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { TFile } from 'obsidian';
 
 /**
  * Options for note creation/modification
@@ -8,6 +8,18 @@ export interface NoteOptions {
     frontmatter?: Record<string, any>;
     /** Whether to ensure parent folders exist */
     createFolders?: boolean;
+}
+
+/**
+ * Options for line-specific note reading
+ */
+export interface NoteLineOptions {
+    /** First line to read (1-based) */
+    startLine: number;
+    /** Last line to read (1-based, optional) */
+    endLine?: number;
+    /** Whether to skip frontmatter (optional) */
+    skipFrontmatter?: boolean;
 }
 
 /**
@@ -47,6 +59,14 @@ export interface INoteService {
     readNote(path: string): Promise<string>;
     
     /**
+     * Reads specific lines from a note
+     * @param path Path to the note
+     * @param options Line options specifying which lines to read
+     * @returns The requested lines as a string
+     */
+    readNoteLines(path: string, options: NoteLineOptions): Promise<string>;
+    
+    /**
      * Updates an existing note's content
      * @param path Path to the note
      * @param content New content for the note
@@ -80,4 +100,23 @@ export interface INoteService {
      * @returns The TFile or null if not found
      */
     getFile(path: string): Promise<TFile | null>;
+    
+    /**
+     * Gets all unique tags across all notes in the vault
+     * Uses Obsidian's metadata cache for efficiency
+     * @returns A Set of all unique tags (without # prefix)
+     */
+    getAllUniqueTags(): Promise<Set<string>>;
+    
+    /**
+     * Gets statistics about tag usage across all notes
+     * @returns A record mapping each tag to its usage count
+     */
+    getTagStats(): Promise<Record<string, number>>;
+    
+    /**
+     * Gets all unique metadata keys (frontmatter properties) used in any note
+     * @returns A Set of all unique metadata property keys
+     */
+    getAllMetadataKeys(): Promise<Set<string>>;
 }

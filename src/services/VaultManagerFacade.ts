@@ -185,4 +185,29 @@ export class VaultManagerFacade implements IVaultManager {
             await this.app.vault.delete(folder);
         }
     }
+
+    /**
+     * Gets all unique tags across all notes in the vault
+     * Uses Obsidian's metadata cache for efficiency
+     * @returns A Set of all unique tags (without # prefix)
+     */
+    async getAllUniqueTags(): Promise<Set<string>> {
+        return this.noteService.getAllUniqueTags();
+    }
+    
+    /**
+     * Gets statistics about tag usage across all notes
+     * @returns A record mapping each tag to its usage count
+     */
+    async getTagStats(): Promise<Record<string, number>> {
+        return this.noteService.getTagStats();
+    }
+    
+    /**
+     * Gets all unique metadata keys (frontmatter properties) used in any note
+     * @returns A Set of all unique metadata property keys
+     */
+    async getAllMetadataKeys(): Promise<Set<string>> {
+        return this.noteService.getAllMetadataKeys();
+    }
 }

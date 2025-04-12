@@ -1,6 +1,7 @@
 import { App, TFile, Vault, getAllTags } from 'obsidian';
-import { INoteService, NoteOptions } from './interfaces/INoteService';
+import { INoteService, NoteLineOptions, NoteOptions } from './interfaces/INoteService';
 import { IPathService } from './interfaces/IPathService';
+import { LineUtils } from '../utils/LineUtils';
 import * as yaml from 'yaml';
 
 /**
@@ -72,6 +73,44 @@ export class NoteService implements INoteService {
             return await this.vault.read(file);
         } catch (error) {
             throw this.handleError('readNote', error);
+        }
+    }
+    
+    /**
+     * Reads specific lines from a note
+     * @param path Path to the note
+     * @param options Line options specifying which lines to read
+     * @returns The requested lines as a string
+     */
+    async readNoteLines(path: string, options: NoteLineOptions): Promise<string> {
+        try {
+            // Get the full content first
+            const content = await this.readNote(path);
+            
+            // Handle frontmatter skipping if requested
+            if (options.skipFrontmatter) {
+                const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+                
+                if (frontmatterMatch) {
+                    // There is frontmatter, calculate its line count
+                    const frontmatter = frontmatterMatch[1];
+                    const frontmatterLineCount = frontmatter.split('\n').length + 2; // +2 for the --- lines
+                    
+                    // Adjust line numbers to account for skipped frontmatter
+                    const adjustedOptions = {
+                        startLine: options.startLine + frontmatterLineCount,
+                        endLine: options.endLine ? options.endLine + frontmatterLineCount : undefined
+                    };
+                    
+                    // Use LineUtils to extract the lines
+                    return LineUtils.getLines(content, adjustedOptions);
+                }
+            }
+            
+            // No frontmatter or not skipping it, use line options directly
+            return LineUtils.getLines(content, options);
+        } catch (error) {
+            throw this.handleError('readNoteLines', error);
         }
     }
     
@@ -328,5 +367,76 @@ export class NoteService implements INoteService {
     private handleError(operation: string, error: any): Error {
         const message = error instanceof Error ? error.message : String(error);
         return new Error(`NoteService.${operation}: ${message}`);
+    }
+
+    /**
+     * Gets all unique tags across all notes in the vault
+     * Uses Obsidian's metadata cache for efficiency
+     * @returns A Set of all unique tags (without # prefix)
+     */
+    async getAllUniqueTags(): Promise<Set<string>> {
+        const uniqueTags = new Set<string>();
+        const files = this.vault.getMarkdownFiles();
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getCache(file.path);
+            if (!cache) continue;
+
+            const tags = getAllTags(cache);
+            if (!tags) continue;
+
+            // Add tags without # prefix
+            tags.forEach(tag => 
+                uniqueTags.add(tag.startsWith('#') ? tag.slice(1) : tag)
+            );
+        }
+
+        return uniqueTags;
+    }
+
+    /**
+     * Gets statistics about tag usage across all notes
+     * @returns A record mapping each tag to its usage count
+     */
+    async getTagStats(): Promise<Record<string, number>> {
+        const tagStats: Record<string, number> = {};
+        const files = this.vault.getMarkdownFiles();
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getCache(file.path);
+            if (!cache) continue;
+
+            const tags = getAllTags(cache);
+            if (!tags) continue;
+
+            tags.forEach(tag => {
+                // Normalize tag (remove # prefix)
+                const normalizedTag = tag.startsWith('#') ? tag.slice(1) : tag;
+                tagStats[normalizedTag] = (tagStats[normalizedTag] || 0) + 1;
+            });
+        }
+
+        return tagStats;
+    }
+
+    /**
+     * Gets all unique metadata keys (frontmatter properties) used in any note
+     * @returns A Set of all unique metadata property keys
+     */
+    async getAllMetadataKeys(): Promise<Set<string>> {
+        const uniqueKeys = new Set<string>();
+        const files = this.vault.getMarkdownFiles();
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getCache(file.path);
+            if (!cache?.frontmatter) continue;
+
+            // Add all frontmatter keys except internal Obsidian properties
+            Object.keys(cache.frontmatter)
+                .filter(key => key !== 'position')
+                .forEach(key => uniqueKeys.add(key));
+        }
+
+        return uniqueKeys;
     }
 }

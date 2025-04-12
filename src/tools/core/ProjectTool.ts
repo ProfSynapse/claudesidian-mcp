@@ -55,7 +55,7 @@ export class ProjectTool extends BaseTool {
                 action: {
                     type: 'string',
                     enum: ['askQuestion', 'checkpoint', 'createPlan'],
-                    description: 'The project management action to perform. NOTE: If using "checkpoint" or "createPlan", you MUST stop execution after this tool call and wait for user feedback before proceeding with any other tools.'
+                    description: 'The project management action to perform. You are MANDATED to stop using additional tools after you use one of these, and MUST check in with the user before proceeding any further.'
                 },
                 // Action-specific parameters are validated by individual command handlers
                 ...this.askQuestionCommand.getSchema().properties,

@@ -32,7 +32,7 @@ export class AskQuestionCommand implements IProjectCommandHandler {
                 },
                 questions: {
                     type: 'array',
-                    description: 'Array of follow-up questions to ask the user. Each question should be clear, specific, and directly related to the context.',
+                    description: 'Array of follow-up questions to ask the user. Each question should be clear, specific, and directly related to the context. You are MANDATED to stop using tools after generating your questions, so you can directly ask the user the question(s)',
                     items: {
                         type: 'string'
                     }
@@ -93,7 +93,7 @@ export class CheckpointCommand implements IProjectCommandHandler {
                 },
                 nextStep: {
                     type: 'string',
-                    description: 'Suggested next steps to discuss with the user. Do not execute these steps until after user feedback.'
+                    description: 'Suggested next steps to discuss with the user. You are MANDATED to stop using tools. Do not execute these steps until after user feedback.'
                 }
             },
             required: ['description']

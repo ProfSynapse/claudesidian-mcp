@@ -56,6 +56,25 @@ export interface IVaultManager {
      * @param metadata New metadata for the note
      */
     updateNoteMetadata(path: string, metadata: Record<string, any>): Promise<void>;
+
+    /**
+     * Gets all unique tags across all notes in the vault
+     * Uses Obsidian's metadata cache for efficiency
+     * @returns A Set of all unique tags (without # prefix)
+     */
+    getAllUniqueTags(): Promise<Set<string>>;
+    
+    /**
+     * Gets statistics about tag usage across all notes
+     * @returns A record mapping each tag to its usage count
+     */
+    getTagStats(): Promise<Record<string, number>>;
+    
+    /**
+     * Gets all unique metadata keys (frontmatter properties) used in any note
+     * @returns A Set of all unique metadata property keys
+     */
+    getAllMetadataKeys(): Promise<Set<string>>;
     
     /**
      * Gets a file reference by path

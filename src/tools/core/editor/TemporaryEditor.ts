@@ -1,4 +1,5 @@
 import { EditorPosition, EditorRange } from './EditorInterfaces';
+import { LineUtils } from '../../../utils/LineUtils';
 
 /**
  * A lightweight implementation of Obsidian's Editor API for text manipulation
@@ -6,7 +7,7 @@ import { EditorPosition, EditorRange } from './EditorInterfaces';
  */
 export class TemporaryEditor {
     private content: string;
-    private lines: string[];
+    private lineUtils: LineUtils;
     
     /**
      * Creates a new TemporaryEditor
@@ -14,7 +15,7 @@ export class TemporaryEditor {
      */
     constructor(content: string) {
         this.content = content;
-        this.lines = content.split('\n');
+        this.lineUtils = new LineUtils(content);
     }
     
     /**
@@ -31,7 +32,7 @@ export class TemporaryEditor {
      */
     setValue(content: string): void {
         this.content = content;
-        this.lines = content.split('\n');
+        this.lineUtils = new LineUtils(content);
     }
     
     /**
@@ -40,10 +41,7 @@ export class TemporaryEditor {
      * @returns The line text
      */
     getLine(line: number): string {
-        if (line < 0 || line >= this.lines.length) {
-            throw new Error(`Invalid line number: ${line}`);
-        }
-        return this.lines[line];
+        return this.lineUtils.getLine(line);
     }
     
     /**
@@ -51,7 +49,7 @@ export class TemporaryEditor {
      * @returns Line count
      */
     lineCount(): number {
-        return this.lines.length;
+        return this.lineUtils.getLineCount();
     }
     
     /**
@@ -59,7 +57,7 @@ export class TemporaryEditor {
      * @returns Last line number
      */
     lastLine(): number {
-        return this.lines.length - 1;
+        return this.lineUtils.getLineCount() - 1;
     }
     
     /**
@@ -71,9 +69,10 @@ export class TemporaryEditor {
         let line = 0;
         let ch = 0;
         let currentOffset = 0;
+        const lineCount = this.lineUtils.getLineCount();
         
-        while (line < this.lines.length) {
-            const lineLength = this.lines[line].length;
+        while (line < lineCount) {
+            const lineLength = this.getLine(line).length;
             
             if (currentOffset + lineLength >= offset) {
                 ch = offset - currentOffset;
@@ -96,7 +95,7 @@ export class TemporaryEditor {
         let offset = 0;
         
         for (let i = 0; i < pos.line; i++) {
-            offset += this.lines[i].length + 1; // +1 for the newline
+            offset += this.getLine(i).length + 1; // +1 for the newline
         }
         
         offset += pos.ch;
@@ -121,11 +120,11 @@ export class TemporaryEditor {
      * @returns Range of the word, or null if not found
      */
     wordAt(pos: EditorPosition): EditorRange | null {
-        if (pos.line < 0 || pos.line >= this.lines.length) {
+        if (pos.line < 0 || pos.line >= this.lineUtils.getLineCount()) {
             return null;
         }
         
-        const line = this.lines[pos.line];
+        const line = this.getLine(pos.line);
         if (pos.ch < 0 || pos.ch > line.length) {
             return null;
         }

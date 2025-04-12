@@ -47,30 +47,94 @@ export class VaultLibrarianTool extends BaseTool {
     }
 
     async execute(args: any): Promise<any> {
-        if (!args?.action) {
+        if (!args?.mode) {
             throw new McpError(
                 ErrorCode.InvalidParams,
-                'Action parameter is required'
+                'Mode parameter is required (search, list, or analyze)'
             );
         }
 
-        switch (args.action) {
+        switch (args.mode) {
             case 'search':
-                return await this.search(args);
+                return await this.handleSearch(args);
             case 'list':
-                return await this.list(args);
-            case 'getTags':
-                return await this.getTags(args);
-            case 'getProperties':
-                return await this.getProperties(args);
-            case 'searchByTag':
-                return await this.searchByTag(args);
-            case 'searchByProperty':
-                return await this.searchByProperty(args);
+                return await this.handleList(args);
+            case 'analyze':
+                return await this.handleAnalyze(args);
             default:
                 throw new McpError(
                     ErrorCode.InvalidParams,
-                    `Unsupported action: ${args.action}`
+                    `Unsupported mode: ${args.mode}`
+                );
+        }
+    }
+
+    /**
+     * Handles search mode operations
+     * Unified search across content, tags, and properties
+     */
+    private async handleSearch(args: any): Promise<any> {
+        const { type = 'content', query, options = {} } = args;
+
+        switch (type) {
+            case 'content':
+                return await this.search({ query, searchOptions: options });
+            case 'tag':
+                return await this.searchByTag({ tag: query });
+            case 'property':
+                const { key, value } = options;
+                return await this.searchByProperty({ key, value });
+            default:
+                throw new McpError(
+                    ErrorCode.InvalidParams,
+                    `Unsupported search type: ${type}`
+                );
+        }
+    }
+
+    /**
+     * Handles list mode operations
+     * Lists vault structure, tags, and metadata
+     */
+    private async handleList(args: any): Promise<any> {
+        const { type = 'structure', options = {} } = args;
+
+        switch (type) {
+            case 'structure':
+                return await this.list(options);
+            case 'tags':
+                return await this.getTags(options);
+            case 'properties':
+                return await this.getProperties(options);
+            default:
+                throw new McpError(
+                    ErrorCode.InvalidParams,
+                    `Unsupported list type: ${type}`
+                );
+        }
+    }
+
+    /**
+     * Handles analyze mode operations
+     * Deep analysis of tags and metadata usage
+     */
+    private async handleAnalyze(args: any): Promise<any> {
+        const { type = 'all', options = {} } = args;
+
+        switch (type) {
+            case 'all':
+                return {
+                    tags: await this.getTagStats(options),
+                    properties: await this.getPropertyStats(options)
+                };
+            case 'tags':
+                return await this.getTagStats(options);
+            case 'properties':
+                return await this.getPropertyStats(options);
+            default:
+                throw new McpError(
+                    ErrorCode.InvalidParams,
+                    `Unsupported analysis type: ${type}`
                 );
         }
     }
@@ -226,26 +290,56 @@ export class VaultLibrarianTool extends BaseTool {
      * Get all property keys used in vault's frontmatter using Obsidian's metadata cache
      */
     private async getProperties(args: any): Promise<string[]> {
+        return Array.from(await this.context.vault.getAllMetadataKeys());
+    }
+
+    /**
+     * Get tag usage statistics across the vault
+     */
+    private async getTagStats(args: any): Promise<Record<string, number>> {
+        return await this.context.vault.getTagStats();
+    }
+
+    /**
+     * Get metadata property statistics and values across the vault
+     */
+    private async getPropertyStats(args: any): Promise<{
+        allKeys: string[];
+        keysWithStats: Record<string, {
+            count: number;
+            values: Set<string>;
+        }>;
+    }> {
+        const allKeys = Array.from(await this.context.vault.getAllMetadataKeys());
         const files = this.context.app.vault.getMarkdownFiles();
-        const propertySet = new Set<string>();
+        const keysWithStats: Record<string, { count: number; values: Set<string> }> = {};
 
+        // Initialize stats for each key
+        allKeys.forEach(key => {
+            keysWithStats[key] = {
+                count: 0,
+                values: new Set()
+            };
+        });
+
+        // Collect stats
         for (const file of files) {
-            try {
-                const cache = this.context.app.metadataCache.getCache(file.path);
-                if (!cache?.frontmatter) continue;
+            const cache = this.context.app.metadataCache.getCache(file.path);
+            if (!cache?.frontmatter) continue;
 
-                // Add all frontmatter keys except 'position' which is internal to Obsidian
-                Object.keys(cache.frontmatter)
-                    .filter(key => key !== 'position')
-                    .forEach(key => propertySet.add(key));
-
-            } catch (error) {
-                console.error(`Error getting properties from file ${file.path}:`, error);
-                // Continue with next file instead of failing entire operation
-            }
+            Object.entries(cache.frontmatter)
+                .filter(([key]) => key !== 'position')
+                .forEach(([key, value]) => {
+                    if (keysWithStats[key]) {
+                        keysWithStats[key].count++;
+                        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                            keysWithStats[key].values.add(String(value));
+                        }
+                    }
+                });
         }
 
-        return Array.from(propertySet).sort();
+        return { allKeys, keysWithStats };
     }
 
     /**
@@ -348,10 +442,31 @@ export class VaultLibrarianTool extends BaseTool {
         return {
             type: "object",
             properties: {
-                action: {
+                mode: {
                     type: "string",
-                    enum: ["search", "list", "getTags", "getProperties", "searchByTag", "searchByProperty"],
-                    description: "The navigation action to perform"
+                    enum: ["search", "list", "analyze"],
+                    description: "The mode to operate in",
+                    examples: [
+                        {
+                            mode: "search",
+                            description: "Search across content, tags, and metadata",
+                            types: ["content", "tag", "property"]
+                        },
+                        {
+                            mode: "list",
+                            description: "List vault contents including structure, tags, and metadata",
+                            types: ["structure", "tags", "properties"]
+                        },
+                        {
+                            mode: "analyze",
+                            description: "Deep analysis of tags and metadata usage",
+                            types: ["all", "tags", "properties"]
+                        }
+                    ]
+                },
+                type: {
+                    type: "string",
+                    description: "The specific type of operation within the chosen mode"
                 },
                 path: {
                     type: "string",
@@ -409,7 +524,7 @@ export class VaultLibrarianTool extends BaseTool {
                     description: "Optional property value to match"
                 }
             },
-            required: ["action"]
+            required: ["mode"]
         };
     }
 }

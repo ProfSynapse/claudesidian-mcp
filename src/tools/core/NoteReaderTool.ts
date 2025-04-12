@@ -1,19 +1,40 @@
 import { BaseTool } from '../BaseTool';
 import { IToolContext } from '../interfaces/ToolInterfaces';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { TFile } from 'obsidian';
+import { LineUtils } from '../../utils/LineUtils';
 
+/**
+ * Interface for note content with metadata
+ */
 export interface NoteContent {
     path: string;
     content: string;
     metadata?: Record<string, any>;
 }
 
+/**
+ * Interface for line read results
+ */
+export interface LineReadResult {
+    path: string;
+    content: string;
+    lineRange: {
+        startLine: number;
+        endLine: number;
+    };
+}
+
+/**
+ * NoteReaderTool provides three main operations:
+ * 1. read - Read a single note with metadata
+ * 2. batchRead - Read multiple notes at once
+ * 3. lineRead - Read specific lines from a note
+ */
 export class NoteReaderTool extends BaseTool {
     constructor(context: IToolContext) {
         super(context, {
             name: 'noteReader',
-            description: 'Read note content and metadata, supporting both single and batch operations.',
+            description: 'Read note content and metadata, with support for full reads, batch reads, and line-specific reads.',
             version: '1.0.0',
             author: 'Claudesidian MCP'
         });
@@ -32,10 +53,8 @@ export class NoteReaderTool extends BaseTool {
                 return await this.readNote(args);
             case 'batchRead':
                 return await this.batchReadNotes(args);
-            case 'readWithMetadata':
-                return await this.readNoteWithMetadata(args);
-            case 'readAllInFolder':
-                return await this.readAllInFolder(args);
+            case 'lineRead':
+                return await this.readNoteLines(args);
             default:
                 throw new McpError(
                     ErrorCode.InvalidParams,
@@ -44,20 +63,7 @@ export class NoteReaderTool extends BaseTool {
         }
     }
 
-    private async readNote(args: any): Promise<string> {
-        const { path } = args;
-
-        if (!path) {
-            throw new McpError(
-                ErrorCode.InvalidParams,
-                'Path parameter is required'
-            );
-        }
-
-        return await this.context.vault.readNote(path);
-    }
-
-    private async readNoteWithMetadata(args: any): Promise<NoteContent> {
+    private async readNote(args: any): Promise<NoteContent> {
         const { path } = args;
 
         if (!path) {
@@ -78,7 +84,7 @@ export class NoteReaderTool extends BaseTool {
     }
 
     private async batchReadNotes(args: any): Promise<NoteContent[]> {
-        const { paths, includeMetadata = true } = args;
+        const { paths } = args;
 
         if (!Array.isArray(paths)) {
             throw new McpError(
@@ -91,9 +97,7 @@ export class NoteReaderTool extends BaseTool {
             paths.map(async (path): Promise<NoteContent> => {
                 try {
                     const content = await this.context.vault.readNote(path);
-                    const metadata = includeMetadata ? 
-                        await this.context.vault.getNoteMetadata(path) : 
-                        undefined;
+                    const metadata = await this.context.vault.getNoteMetadata(path);
 
                     return {
                         path,
@@ -114,28 +118,27 @@ export class NoteReaderTool extends BaseTool {
         return results.filter(result => result.content !== '');
     }
 
-    private async readAllInFolder(args: any): Promise<NoteContent[]> {
-        const { folderPath, includeMetadata = true, recursive = false } = args;
+    private async readNoteLines(args: any): Promise<LineReadResult> {
+        const { path, startLine, endLine } = args;
 
-        if (!folderPath) {
+        if (!path || !startLine) {
             throw new McpError(
                 ErrorCode.InvalidParams,
-                'folderPath parameter is required'
+                'path and startLine parameters are required'
             );
         }
 
-        const files = this.context.app.vault.getMarkdownFiles()
-            .filter(file => {
-                if (recursive) {
-                    return file.path.startsWith(folderPath);
-                }
-                return file.parent?.path === folderPath;
-            });
+        const content = await this.context.vault.readNote(path);
+        const extractedContent = LineUtils.getLines(content, { startLine, endLine });
 
-        return this.batchReadNotes({
-            paths: files.map(f => f.path),
-            includeMetadata
-        });
+        return {
+            path,
+            content: extractedContent,
+            lineRange: {
+                startLine,
+                endLine: endLine || startLine
+            }
+        };
     }
 
     getSchema(): any {
@@ -144,7 +147,7 @@ export class NoteReaderTool extends BaseTool {
             properties: {
                 action: {
                     type: "string",
-                    enum: ["read", "batchRead", "readWithMetadata", "readAllInFolder"],
+                    enum: ["read", "batchRead", "lineRead"],
                     description: "The read operation to perform"
                 },
                 path: {
@@ -156,32 +159,20 @@ export class NoteReaderTool extends BaseTool {
                     items: { type: "string" },
                     description: "Array of note paths for batch operations"
                 },
-                folderPath: {
-                    type: "string",
-                    description: "Path to folder for reading all notes"
+                startLine: {
+                    type: "number",
+                    description: "First line to read (1-based)"
                 },
-                includeMetadata: {
-                    type: "boolean",
-                    description: "Include note metadata in results",
-                    default: true
-                },
-                recursive: {
-                    type: "boolean",
-                    description: "Include notes in subfolders when reading folder",
-                    default: false
+                endLine: {
+                    type: "number",
+                    description: "Last line to read (1-based, optional)"
                 }
             },
             required: ["action"],
             oneOf: [
                 {
-                    properties: {
+                    properties: { 
                         action: { const: "read" }
-                    },
-                    required: ["action", "path"]
-                },
-                {
-                    properties: {
-                        action: { const: "readWithMetadata" }
                     },
                     required: ["action", "path"]
                 },
@@ -193,9 +184,9 @@ export class NoteReaderTool extends BaseTool {
                 },
                 {
                     properties: {
-                        action: { const: "readAllInFolder" }
+                        action: { const: "lineRead" }
                     },
-                    required: ["action", "folderPath"]
+                    required: ["action", "path", "startLine"]
                 }
             ]
         };
