@@ -1,48 +1,53 @@
-import { EventType } from '../types/event-types';
-
-export type { EventType };
-
-export type EventPayload = {
-    type: string;
-    title: string;
-    path: string;
-    timestamp: number;
-};
-
+/**
+ * Event management service
+ * Provides a simple event system for communication between components
+ */
 export class EventManager {
-    private listeners: Map<EventType, Array<(event: EventPayload) => void>> = new Map();
-
-    on(eventType: EventType, callback: (event: EventPayload) => void): void {
-        if (!this.listeners.has(eventType)) {
-            this.listeners.set(eventType, []);
-        }
-        this.listeners.get(eventType)?.push(callback);
+  private eventListeners: Map<string, Array<(data: any) => void>> = new Map();
+  
+  /**
+   * Register an event listener
+   * @param event Event name
+   * @param callback Callback function to execute when event is emitted
+   */
+  on(event: string, callback: (data: any) => void): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
     }
-
-    off(eventType: EventType, callback: (event: EventPayload) => void): void {
-        const callbacks = this.listeners.get(eventType);
-        if (callbacks) {
-            const index = callbacks.indexOf(callback);
-            if (index !== -1) {
-                callbacks.splice(index, 1);
-            }
-        }
+    
+    this.eventListeners.get(event)?.push(callback);
+  }
+  
+  /**
+   * Remove an event listener
+   * @param event Event name
+   * @param callback Callback function to remove
+   */
+  off(event: string, callback: (data: any) => void): void {
+    if (!this.eventListeners.has(event)) {
+      return;
     }
-
-    emit(eventType: EventType, event: EventPayload): void {
-        const callbacks = this.listeners.get(eventType);
-        if (callbacks) {
-            callbacks.forEach(callback => {
-                try {
-                    callback(event);
-                } catch (error) {
-                    console.error(`Error in event listener for ${eventType}:`, error);
-                }
-            });
-        }
+    
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      if (index !== -1) {
+        listeners.splice(index, 1);
+      }
     }
-
-    clear(): void {
-        this.listeners.clear();
+  }
+  
+  /**
+   * Emit an event
+   * @param event Event name
+   * @param data Data to pass to listeners
+   */
+  emit(event: string, data: any): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      for (const listener of listeners) {
+        listener(data);
+      }
     }
+  }
 }
