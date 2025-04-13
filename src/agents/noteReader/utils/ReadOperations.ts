@@ -33,11 +33,33 @@ export class ReadOperations {
     const notes: Record<string, string> = {};
     const errors: Record<string, string> = {};
     
-    for (const path of paths) {
+    // Validate paths array
+    if (!Array.isArray(paths)) {
+      throw new Error('Invalid paths parameter: must be an array');
+    }
+    
+    console.log(`ReadOperations: Processing ${paths.length} paths in batch read`);
+    
+    for (let i = 0; i < paths.length; i++) {
+      const path = paths[i];
+      
+      // Skip invalid paths
+      if (typeof path !== 'string') {
+        errors[`index_${i}`] = `Invalid path at index ${i}: path must be a string`;
+        continue;
+      }
+      
+      if (!path.trim()) {
+        errors[`index_${i}`] = `Invalid path at index ${i}: path cannot be empty`;
+        continue;
+      }
+      
       try {
+        console.log(`ReadOperations: Reading file at path: ${path}`);
         notes[path] = await ReadOperations.readNote(app, path);
       } catch (error) {
-        errors[path] = error.message;
+        console.error(`ReadOperations: Error reading file at path ${path}:`, error);
+        errors[path] = error.message || `Failed to read file at path: ${path}`;
       }
     }
     
@@ -55,7 +77,19 @@ export class ReadOperations {
    */
   static async readLines(app: App, path: string, startLine: number, endLine: number): Promise<string[]> {
     const content = await ReadOperations.readNote(app, path);
-    const lines = content.split('\n');
+    
+    // Normalize line endings to \n and split
+    const normalizedContent = content.replace(/\r\n/g, '\n');
+    const lines = normalizedContent.split('\n');
+    
+    // Validate line numbers
+    if (startLine < 1) {
+      throw new Error(`Invalid start line: ${startLine}. Line numbers are 1-based.`);
+    }
+    
+    if (endLine < startLine) {
+      throw new Error(`Invalid end line: ${endLine}. End line must be greater than or equal to start line ${startLine}.`);
+    }
     
     // Adjust for 1-based indexing
     const start = Math.max(0, startLine - 1);

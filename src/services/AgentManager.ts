@@ -58,16 +58,17 @@ export class AgentManager {
   }
   
   /**
-   * Execute a tool on an agent
+   * Execute a mode on an agent
    * @param agentName Name of the agent
-   * @param toolName Name of the tool
-   * @param args Arguments to pass to the tool
-   * @returns Promise that resolves with the tool's result
+   * @param mode Mode to execute
+   * @param params Parameters to pass to the mode
+   * @returns Promise that resolves with the mode's result
    */
-  async executeAgentTool(agentName: string, toolName: string, args: any): Promise<any> {
+  async executeAgentMode(agentName: string, mode: string, params: any): Promise<any> {
     const agent = this.getAgent(agentName);
-    return await agent.executeTool(toolName, args);
+    return await agent.executeMode(mode, params);
   }
+  
   
   /**
    * Initialize all registered agents

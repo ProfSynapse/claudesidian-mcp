@@ -1,7 +1,11 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { NoteReaderConfig } from './config';
-import { ReadNoteTool, BatchReadTool, ReadLineTool } from './tools';
+import {
+  ReadNoteMode,
+  BatchReadMode,
+  ReadLineMode
+} from './modes';
 
 /**
  * Agent for reading notes from the vault
@@ -18,9 +22,9 @@ export class NoteReaderAgent extends BaseAgent {
       NoteReaderConfig.version
     );
     
-    // Register tools
-    this.registerTool(new ReadNoteTool(app));
-    this.registerTool(new BatchReadTool(app));
-    this.registerTool(new ReadLineTool(app));
+    // Register modes
+    this.registerMode(new ReadNoteMode(app));
+    this.registerMode(new BatchReadMode(app));
+    this.registerMode(new ReadLineMode(app));
   }
 }

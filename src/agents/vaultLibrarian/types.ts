@@ -325,3 +325,48 @@ export interface ListPropertiesResult {
    */
   total: number;
 }
+
+/**
+ * List recursive arguments
+ */
+export interface ListRecursiveArgs {
+  /**
+   * Path to the folder
+   */
+  path: string;
+  
+  /**
+   * Whether to include files (default: true)
+   */
+  includeFiles?: boolean;
+  
+  /**
+   * Whether to include folders (default: true)
+   */
+  includeFolders?: boolean;
+  
+  /**
+   * Whether to include hidden files (default: false)
+   */
+  includeHidden?: boolean;
+}
+
+/**
+ * List recursive result
+ */
+export interface ListRecursiveResult {
+  /**
+   * Path to the folder
+   */
+  path: string;
+  
+  /**
+   * List of files in the folder and subfolders
+   */
+  files: string[];
+  
+  /**
+   * List of folders in the folder and subfolders
+   */
+  folders: string[];
+}

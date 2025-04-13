@@ -2,13 +2,13 @@ import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { VaultManagerConfig } from './config';
 import {
-  CreateNoteTool,
-  CreateFolderTool,
-  DeleteNoteTool,
-  DeleteFolderTool,
-  MoveNoteTool,
-  MoveFolderTool
-} from './tools';
+  CreateNoteMode,
+  CreateFolderMode,
+  DeleteNoteMode,
+  DeleteFolderMode,
+  MoveNoteMode,
+  MoveFolderMode
+} from './modes';
 
 /**
  * Agent for managing files and folders in the vault
@@ -25,12 +25,12 @@ export class VaultManagerAgent extends BaseAgent {
       VaultManagerConfig.version
     );
     
-    // Register tools
-    this.registerTool(new CreateNoteTool(app));
-    this.registerTool(new CreateFolderTool(app));
-    this.registerTool(new DeleteNoteTool(app));
-    this.registerTool(new DeleteFolderTool(app));
-    this.registerTool(new MoveNoteTool(app));
-    this.registerTool(new MoveFolderTool(app));
+    // Register modes
+    this.registerMode(new CreateNoteMode(app));
+    this.registerMode(new CreateFolderMode(app));
+    this.registerMode(new DeleteNoteMode(app));
+    this.registerMode(new DeleteFolderMode(app));
+    this.registerMode(new MoveNoteMode(app));
+    this.registerMode(new MoveFolderMode(app));
   }
 }

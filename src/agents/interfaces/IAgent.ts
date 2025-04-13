@@ -1,8 +1,9 @@
-import { ITool } from './ITool';
+// Import IMode from separate file
+import { IMode } from './IMode';
 
 /**
  * Interface for agents in the MCP plugin
- * Each agent is responsible for a specific domain and provides a set of tools
+ * Each agent is responsible for a specific domain and provides a set of modes
  */
 export interface IAgent {
   /**
@@ -21,10 +22,17 @@ export interface IAgent {
   version: string;
   
   /**
-   * Get all tools provided by this agent
-   * @returns Array of tools
+   * Get all modes provided by this agent
+   * @returns Array of modes
    */
-  getTools(): ITool[];
+  getModes(): IMode[];
+  
+  /**
+   * Get a specific mode by slug
+   * @param modeSlug Slug of the mode to get
+   * @returns Mode with the specified slug or undefined if not found
+   */
+  getMode(modeSlug: string): IMode | undefined;
   
   /**
    * Initialize the agent
@@ -33,10 +41,11 @@ export interface IAgent {
   initialize(): Promise<void>;
   
   /**
-   * Execute a tool by name
-   * @param toolName Name of the tool to execute
-   * @param args Arguments to pass to the tool
-   * @returns Promise that resolves with the tool's result
+   * Execute a mode with parameters
+   * @param modeSlug Slug of the mode to execute
+   * @param params Parameters to pass to the mode
+   * @returns Promise that resolves with the mode's result
    */
-  executeTool(toolName: string, args: any): Promise<any>;
+  executeMode(modeSlug: string, params: any): Promise<any>;
+  
 }

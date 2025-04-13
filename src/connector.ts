@@ -13,6 +13,15 @@ import {
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 
 /**
+ * Interface for agent-mode tool call parameters
+ */
+export interface AgentModeParams {
+    agent: string;
+    mode: string;
+    params: Record<string, any>;
+}
+
+/**
  * MCP Connector
  * Connects the plugin to the MCP server and initializes all agents
  */
@@ -92,6 +101,88 @@ export class MCPConnector {
             );
         }
     }
+    
+    /**
+     * Call a tool using the new agent-mode architecture
+     *
+     * @param params The agent, mode, and parameters for the tool call
+     * @returns Promise that resolves with the result of the tool call
+     *
+     * @example
+     * // Call the noteEditor agent in replace mode
+     * connector.callTool({
+     *   agent: "noteEditor",
+     *   mode: "replace",
+     *   params: {
+     *     path: "file/root",
+     *     search: "old text",
+     *     replace: "new text"
+     *   }
+     * });
+     */
+    async callTool(params: AgentModeParams): Promise<any> {
+        try {
+            const { agent, mode, params: modeParams } = params;
+            
+            // Validate batch operations if they exist
+            if (modeParams && modeParams.operations && Array.isArray(modeParams.operations)) {
+                // Validate each operation in the batch
+                modeParams.operations.forEach((operation: any, index: number) => {
+                    if (!operation || typeof operation !== 'object') {
+                        throw new McpError(
+                            ErrorCode.InvalidParams,
+                            `Invalid operation at index ${index} in batch operations: operation must be an object`
+                        );
+                    }
+                    
+                    if (!operation.type) {
+                        throw new McpError(
+                            ErrorCode.InvalidParams,
+                            `Invalid operation at index ${index} in batch operations: missing 'type' property`
+                        );
+                    }
+                    
+                    if (!operation.path) {
+                        throw new McpError(
+                            ErrorCode.InvalidParams,
+                            `Invalid operation at index ${index} in batch operations: missing 'path' property`
+                        );
+                    }
+                });
+                
+                console.log(`MCPConnector: Validated ${modeParams.operations.length} batch operations`);
+            }
+            
+            // Validate batch read paths if they exist
+            if (modeParams && modeParams.paths && Array.isArray(modeParams.paths)) {
+                // Validate each path in the batch
+                modeParams.paths.forEach((path: any, index: number) => {
+                    if (typeof path !== 'string') {
+                        throw new McpError(
+                            ErrorCode.InvalidParams,
+                            `Invalid path at index ${index} in batch paths: path must be a string`
+                        );
+                    }
+                });
+                
+                console.log(`MCPConnector: Validated ${modeParams.paths.length} batch paths`);
+            }
+            
+            // Execute the mode using the server's executeAgentMode method
+            return await this.server.executeAgentMode(agent, mode, modeParams);
+        } catch (error) {
+            console.error('Error calling tool:', error);
+            if (error instanceof McpError) {
+                throw error;
+            }
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                error.message || 'Failed to call tool',
+                error
+            );
+        }
+    }
+    
     
     /**
      * Start the MCP server

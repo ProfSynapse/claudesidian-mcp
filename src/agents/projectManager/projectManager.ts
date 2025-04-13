@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { ProjectManagerConfig } from './config';
-import { ProjectPlanTool, AskQuestionTool, CheckpointTool } from './tools';
+import { ProjectPlanMode, AskQuestionMode, CheckpointMode } from './modes';
 
 /**
  * Agent for managing projects in the vault
@@ -18,9 +18,9 @@ export class ProjectManagerAgent extends BaseAgent {
       ProjectManagerConfig.version
     );
     
-    // Register tools
-    this.registerTool(new ProjectPlanTool(app));
-    this.registerTool(new AskQuestionTool(app));
-    this.registerTool(new CheckpointTool(app));
+    // Register modes
+    this.registerMode(new ProjectPlanMode(app));
+    this.registerMode(new AskQuestionMode(app));
+    this.registerMode(new CheckpointMode(app));
   }
 }

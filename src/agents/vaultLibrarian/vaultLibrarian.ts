@@ -2,14 +2,15 @@ import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { VaultLibrarianConfig } from './config';
 import {
-  SearchContentTool,
-  SearchTagTool,
-  SearchPropertyTool,
-  ListFolderTool,
-  ListNoteTool,
-  ListTagTool,
-  ListPropertiesTool
-} from './tools';
+  SearchContentMode,
+  SearchTagMode,
+  SearchPropertyMode,
+  ListFolderMode,
+  ListNoteMode,
+  ListTagMode,
+  ListPropertiesMode,
+  ListRecursiveMode
+} from './modes';
 
 /**
  * Agent for searching and navigating the vault
@@ -26,13 +27,14 @@ export class VaultLibrarianAgent extends BaseAgent {
       VaultLibrarianConfig.version
     );
     
-    // Register tools
-    this.registerTool(new SearchContentTool(app));
-    this.registerTool(new SearchTagTool(app));
-    this.registerTool(new SearchPropertyTool(app));
-    this.registerTool(new ListFolderTool(app));
-    this.registerTool(new ListNoteTool(app));
-    this.registerTool(new ListTagTool(app));
-    this.registerTool(new ListPropertiesTool(app));
+    // Register modes
+    this.registerMode(new SearchContentMode(app));
+    this.registerMode(new SearchTagMode(app));
+    this.registerMode(new SearchPropertyMode(app));
+    this.registerMode(new ListFolderMode(app));
+    this.registerMode(new ListNoteMode(app));
+    this.registerMode(new ListTagMode(app));
+    this.registerMode(new ListPropertiesMode(app));
+    this.registerMode(new ListRecursiveMode(app));
   }
 }

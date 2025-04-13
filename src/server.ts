@@ -22,6 +22,16 @@ import { platform } from 'os';
 
 /**
  * MCP Server implementation
+ *
+ * This server supports an agent-mode architecture where:
+ * 1. Agents are the primary tools (e.g., noteEditor)
+ * 2. Each agent supports different "modes" (e.g., replace, insert)
+ * 3. The client calls with parameters like:
+ *    - agent: noteEditor
+ *    - mode: replace
+ *    - path: file/root
+ *    - old: (content to replace)
+ *    - new: (replacement content)
  */
 export class MCPServer implements IMCPServer {
     private status: ServerStatus = 'stopped';
@@ -126,6 +136,7 @@ export class MCPServer implements IMCPServer {
         });
 
         // Handle tool listing
+        // Returns agents as tools, with their modes as part of the schema
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             try {
                 const tools = [];
@@ -137,22 +148,72 @@ export class MCPServer implements IMCPServer {
                 // Always return tools regardless of vault access setting (for testing)
                 // This is a temporary fix to diagnose the issue
                 
-                // Collect tools from all agents
+                // Collect agents as tools with their modes
                 console.log('MCP Server: Number of registered agents:', this.agents.size);
                 
                 for (const agent of this.agents.values()) {
                     console.log(`MCP Server: Processing agent: ${agent.name}`);
-                    const agentTools = agent.getTools();
-                    console.log(`MCP Server: Agent ${agent.name} has ${agentTools.length} tools`);
                     
-                    for (const tool of agentTools) {
-                        console.log(`MCP Server: Adding tool: ${agent.name}_${tool.name}`);
-                        tools.push({
-                            name: `${agent.name}_${tool.name}`,
-                            description: tool.description,
-                            inputSchema: tool.getSchema()
+                    // Create a schema that includes the mode parameter and combines all tool schemas
+                    const agentSchema: {
+                        type: string;
+                        properties: {
+                            mode: {
+                                type: string;
+                                enum: string[];
+                                description: string;
+                            };
+                            [key: string]: any;
+                        };
+                        required: string[];
+                        allOf: any[];
+                    } = {
+                        type: 'object',
+                        properties: {
+                            mode: {
+                                type: 'string',
+                                enum: [] as string[],
+                                description: 'The operation mode for this agent'
+                            }
+                        },
+                        required: ['mode'],
+                        // Additional properties will be added based on the mode
+                        allOf: []
+                    };
+                    
+                    // Get all modes for this agent
+                    const agentModes = agent.getModes();
+                    console.log(`MCP Server: Agent ${agent.name} has ${agentModes.length} modes`);
+                    
+                    // Add each mode
+                    for (const mode of agentModes) {
+                        // Add the mode to the enum
+                        agentSchema.properties.mode.enum.push(mode.slug);
+                        
+                        // Get the mode's parameter schema
+                        const modeSchema = mode.getParameterSchema();
+                        
+                        // Add a conditional schema for this mode
+                        agentSchema.allOf.push({
+                            if: {
+                                properties: { mode: { enum: [mode.slug] } },
+                                required: ['mode']
+                            },
+                            then: {
+                                // Merge the mode's schema properties with the agent schema
+                                properties: modeSchema.properties || {},
+                                required: modeSchema.required || []
+                            }
                         });
                     }
+                    
+                    // Add the agent as a tool
+                    console.log(`MCP Server: Adding agent as tool: ${agent.name}`);
+                    tools.push({
+                        name: agent.name,
+                        description: agent.description,
+                        inputSchema: agentSchema
+                    });
                 }
                 
                 console.log(`MCP Server: Total tools to return: ${tools.length}`);
@@ -168,17 +229,73 @@ export class MCPServer implements IMCPServer {
             try {
                 const { name, arguments: args } = request.params;
                 
-                // Parse agent and tool name
-                const [agentName, toolName] = name.split('_');
-                if (!agentName || !toolName) {
+                // The name is now just the agent name
+                const agentName = name;
+                
+                // Extract the mode from the arguments
+                if (!args) {
                     throw new McpError(
                         ErrorCode.InvalidParams,
-                        `Invalid tool name: ${name}. Expected format: agentName_toolName`
+                        `Missing arguments for agent ${agentName}`
                     );
                 }
                 
-                // Execute the tool
-                const result = await this.executeAgentTool(agentName, toolName, args);
+                // Ensure proper parsing of JSON arrays in the arguments
+                let parsedArgs = args;
+                
+                // Extract the mode from the arguments
+                const { mode, ...params } = parsedArgs as { mode: string; [key: string]: any };
+                if (!mode) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: mode for agent ${agentName}`
+                    );
+                }
+                
+                // Validate batch operations if they exist
+                if (params.operations && Array.isArray(params.operations)) {
+                    // Validate each operation in the batch
+                    params.operations.forEach((operation: any, index: number) => {
+                        if (!operation || typeof operation !== 'object') {
+                            throw new McpError(
+                                ErrorCode.InvalidParams,
+                                `Invalid operation at index ${index} in batch operations: operation must be an object`
+                            );
+                        }
+                        
+                        if (!operation.type) {
+                            throw new McpError(
+                                ErrorCode.InvalidParams,
+                                `Invalid operation at index ${index} in batch operations: missing 'type' property`
+                            );
+                        }
+                        
+                        if (!operation.path) {
+                            throw new McpError(
+                                ErrorCode.InvalidParams,
+                                `Invalid operation at index ${index} in batch operations: missing 'path' property`
+                            );
+                        }
+                    });
+                }
+                
+                // Validate batch read paths if they exist
+                if (params.paths && Array.isArray(params.paths)) {
+                    // Validate each path in the batch
+                    params.paths.forEach((path: any, index: number) => {
+                        if (typeof path !== 'string') {
+                            throw new McpError(
+                                ErrorCode.InvalidParams,
+                                `Invalid path at index ${index} in batch paths: path must be a string`
+                            );
+                        }
+                    });
+                }
+                
+                console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with validated params:`, this.safeStringify(params));
+                
+                // Execute the agent with the specified mode
+                const result = await this.executeAgentMode(agentName, mode, params);
                 
                 return {
                     content: [{
@@ -244,7 +361,7 @@ export class MCPServer implements IMCPServer {
             for (const agent of this.agents.values()) {
                 console.log(`MCP Server: Initializing agent: ${agent.name}`);
                 await agent.initialize();
-                console.log(`MCP Server: Agent ${agent.name} initialized with ${agent.getTools().length} tools`);
+                console.log(`MCP Server: Agent ${agent.name} initialized with ${agent.getModes().length} modes`);
             }
             
             // Start transports
@@ -465,15 +582,21 @@ export class MCPServer implements IMCPServer {
     }
     
     /**
-     * Execute a tool on an agent
-     * @param agentName Name of the agent
-     * @param toolName Name of the tool
-     * @param args Tool arguments
-     * @returns Result of the tool execution
+     * Execute a mode on an agent using the agent-mode architecture
+     *
+     * In this architecture:
+     * - The agent is the primary entity (e.g., noteEditor)
+     * - The mode specifies the operation (e.g., replace, insert)
+     * - The params contain the specific parameters for that mode
+     *
+     * @param agentName Name of the agent to execute
+     * @param mode Operation mode for the agent
+     * @param params Parameters for the operation
+     * @returns Result of the mode execution
      */
-    async executeAgentTool(agentName: string, toolName: string, args: any): Promise<any> {
+    async executeAgentMode(agentName: string, mode: string, params: any): Promise<any> {
         try {
-            console.log(`MCP Server: Executing tool ${agentName}_${toolName} with args:`, this.safeStringify(args));
+            console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with params:`, this.safeStringify(params));
             
             // Check if vault access is enabled
             const isVaultEnabled = this.settings.settings.enabledVault;
@@ -493,15 +616,15 @@ export class MCPServer implements IMCPServer {
             // Get the agent
             const agent = this.getAgent(agentName);
             
-            // Execute the tool
-            return await agent.executeTool(toolName, args);
+            // Execute the mode on the agent
+            return await agent.executeMode(mode, params);
         } catch (error) {
             if (error instanceof McpError) {
                 throw error;
             }
             throw new McpError(
                 ErrorCode.InternalError,
-                `Failed to execute tool ${agentName}_${toolName}`,
+                `Failed to execute agent ${agentName} in mode ${mode}`,
                 error
             );
         }

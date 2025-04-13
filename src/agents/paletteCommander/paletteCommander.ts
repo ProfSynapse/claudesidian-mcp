@@ -1,7 +1,10 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { PaletteCommanderConfig } from './config';
-import { ListCommandsTool, ExecuteCommandTool } from './tools';
+import {
+  ListCommandsMode,
+  ExecuteCommandMode
+} from './modes';
 
 /**
  * Agent for executing commands from the command palette
@@ -18,8 +21,8 @@ export class PaletteCommanderAgent extends BaseAgent {
       PaletteCommanderConfig.version
     );
     
-    // Register tools
-    this.registerTool(new ListCommandsTool(app));
-    this.registerTool(new ExecuteCommandTool(app));
+    // Register modes
+    this.registerMode(new ListCommandsMode(app));
+    this.registerMode(new ExecuteCommandMode(app));
   }
 }

@@ -235,23 +235,33 @@ export class EditOperations {
     
     // Validate position
     if (position < 1) {
-      throw new Error(`Invalid position: ${position}. Position must be at least 1.`);
+      throw new Error(`Invalid position: ${position}. Position must be at least 1 (1-based indexing).`);
     }
     
     // Adjust for 1-based indexing
     const adjustedLine = position - 1;
     
-    // Ensure the line exists in the document
+    // Get the document line count
     const lineCount = editor.lineCount();
+    
+    // Allow insertion at one past the end of the document (to append a new line)
     if (adjustedLine > lineCount) {
-      throw new Error(`Invalid position: ${position}. Document has only ${lineCount} lines.`);
+      throw new Error(`Invalid position: ${position}. Document has only ${lineCount} lines. Valid positions are 1-${lineCount + 1}.`);
     }
     
-    // Get the position at the start of the line
-    const pos = { line: adjustedLine, ch: 0 };
-    
-    // Insert the content at the specified position
-    editor.replaceRange(insertContent, pos, pos);
+    // Handle special case: inserting at one past the end of the document
+    if (adjustedLine === lineCount) {
+      // Get the position at the end of the last line
+      const lastLineContent = editor.getLine(lineCount - 1) || '';
+      const endPos = { line: lineCount - 1, ch: lastLineContent.length };
+      
+      // Insert with a newline prefix
+      editor.replaceRange('\n' + insertContent, endPos, endPos);
+    } else {
+      // Normal case: insert at the beginning of the specified line
+      const pos = { line: adjustedLine, ch: 0 };
+      editor.replaceRange(insertContent, pos, pos);
+    }
   }
   
   /**
@@ -389,28 +399,32 @@ export class EditOperations {
    */
   private static executeInsert(content: string, operation: InsertOperation): string {
     const { position, content: insertContent } = operation;
-    const lines = content.split('\n');
+    
+    // Normalize line endings to \n
+    const normalizedContent = content.replace(/\r\n/g, '\n');
+    const lines = normalizedContent.split('\n');
     
     // Validate position
     if (position < 1) {
-      throw new Error(`Invalid position: ${position}. Position must be at least 1.`);
+      throw new Error(`Invalid position: ${position}. Position must be at least 1 (1-based indexing).`);
     }
     
     // Adjust for 1-based indexing
     const insertPosition = position - 1;
     
-    // Ensure the position is valid
+    // Allow insertion at one past the end of the document (to append a new line)
     if (insertPosition > lines.length) {
-      throw new Error(`Invalid position: ${position}. Document has only ${lines.length} lines.`);
+      throw new Error(`Invalid position: ${position}. Document has only ${lines.length} lines. Valid positions are 1-${lines.length + 1}.`);
     }
     
-    // If inserting at the end of the document, add a new line
+    // Handle special case: inserting at one past the end of the document
     if (insertPosition === lines.length) {
-      lines.push('');
+      // Add a new line at the end
+      lines.push(insertContent);
+    } else {
+      // Normal case: insert at the beginning of the specified line
+      lines[insertPosition] = insertContent + lines[insertPosition];
     }
-    
-    // Insert the content at the beginning of the line
-    lines[insertPosition] = insertContent + lines[insertPosition];
     
     return lines.join('\n');
   }

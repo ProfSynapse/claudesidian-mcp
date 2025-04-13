@@ -1,5 +1,5 @@
 import { IAgent } from './interfaces/IAgent';
-import { ITool } from './interfaces/ITool';
+import { IMode } from './interfaces/IMode';
 
 /**
  * Base class for all agents in the MCP plugin
@@ -9,7 +9,7 @@ export abstract class BaseAgent implements IAgent {
   name: string;
   description: string;
   version: string;
-  protected tools: Map<string, ITool> = new Map();
+  protected modes: Map<string, IMode> = new Map();
   
   /**
    * Create a new agent
@@ -24,19 +24,28 @@ export abstract class BaseAgent implements IAgent {
   }
   
   /**
-   * Get all tools provided by this agent
-   * @returns Array of tools
+   * Get all modes provided by this agent
+   * @returns Array of modes
    */
-  getTools(): ITool[] {
-    return Array.from(this.tools.values());
+  getModes(): IMode[] {
+    return Array.from(this.modes.values());
   }
   
   /**
-   * Register a tool with this agent
-   * @param tool Tool to register
+   * Get a specific mode by slug
+   * @param modeSlug Slug of the mode to get
+   * @returns Mode with the specified slug or undefined if not found
    */
-  registerTool(tool: ITool): void {
-    this.tools.set(tool.name, tool);
+  getMode(modeSlug: string): IMode | undefined {
+    return this.modes.get(modeSlug);
+  }
+  
+  /**
+   * Register a mode with this agent
+   * @param mode Mode to register
+   */
+  registerMode(mode: IMode): void {
+    this.modes.set(mode.slug, mode);
   }
   
   /**
@@ -49,18 +58,19 @@ export abstract class BaseAgent implements IAgent {
   }
   
   /**
-   * Execute a tool by name
-   * @param toolName Name of the tool to execute
-   * @param args Arguments to pass to the tool
-   * @returns Promise that resolves with the tool's result
-   * @throws Error if tool not found
+   * Execute a mode by slug
+   * @param modeSlug Slug of the mode to execute
+   * @param params Parameters to pass to the mode
+   * @returns Promise that resolves with the mode's result
+   * @throws Error if mode not found
    */
-  async executeTool(toolName: string, args: any): Promise<any> {
-    const tool = this.tools.get(toolName);
-    if (!tool) {
-      throw new Error(`Tool ${toolName} not found in agent ${this.name}`);
+  async executeMode(modeSlug: string, params: any): Promise<any> {
+    const mode = this.modes.get(modeSlug);
+    if (!mode) {
+      throw new Error(`Mode ${modeSlug} not found in agent ${this.name}`);
     }
     
-    return await tool.execute(args);
+    return await mode.execute(params);
   }
+  
 }
