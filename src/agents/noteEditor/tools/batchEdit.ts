@@ -78,9 +78,79 @@ export class BatchEditTool extends BaseTool<BatchEditArgs, BatchEditResult> {
               path: {
                 type: 'string',
                 description: 'Path to the note'
+              },
+              // Replace operation properties
+              search: {
+                type: 'string',
+                description: 'Text to search for in the note'
+              },
+              replace: {
+                type: 'string',
+                description: 'Text to replace the search text with'
+              },
+              replaceAll: {
+                type: 'boolean',
+                description: 'Whether to replace all occurrences of the search text'
+              },
+              // Insert operation properties
+              content: {
+                type: 'string',
+                description: 'Content to insert, append, or prepend to the note'
+              },
+              position: {
+                type: 'number',
+                description: 'Line position to insert content at (1-based)'
+              },
+              // Delete operation properties
+              startPosition: {
+                type: 'number',
+                description: 'Starting line position for deletion (1-based)'
+              },
+              endPosition: {
+                type: 'number',
+                description: 'Ending line position for deletion (1-based, inclusive)'
               }
             },
-            required: ['type', 'path']
+            required: ['type', 'path'],
+            allOf: [
+              {
+                if: {
+                  properties: { type: { enum: ['replace'] } },
+                  required: ['type']
+                },
+                then: {
+                  required: ['search', 'replace']
+                }
+              },
+              {
+                if: {
+                  properties: { type: { enum: ['insert'] } },
+                  required: ['type']
+                },
+                then: {
+                  required: ['content', 'position']
+                }
+              },
+              {
+                if: {
+                  properties: { type: { enum: ['delete'] } },
+                  required: ['type']
+                },
+                then: {
+                  required: ['startPosition', 'endPosition']
+                }
+              },
+              {
+                if: {
+                  properties: { type: { enum: ['append', 'prepend'] } },
+                  required: ['type']
+                },
+                then: {
+                  required: ['content']
+                }
+              }
+            ],
+            description: 'Edit operation to perform'
           },
           description: 'Edit operations to perform'
         }
