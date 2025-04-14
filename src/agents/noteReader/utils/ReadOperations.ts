@@ -38,8 +38,6 @@ export class ReadOperations {
       throw new Error('Invalid paths parameter: must be an array');
     }
     
-    console.log(`ReadOperations: Processing ${paths.length} paths in batch read`);
-    
     for (let i = 0; i < paths.length; i++) {
       const path = paths[i];
       
@@ -55,7 +53,6 @@ export class ReadOperations {
       }
       
       try {
-        console.log(`ReadOperations: Reading file at path: ${path}`);
         notes[path] = await ReadOperations.readNote(app, path);
       } catch (error) {
         console.error(`ReadOperations: Error reading file at path ${path}:`, error);

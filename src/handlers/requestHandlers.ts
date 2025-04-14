@@ -84,8 +84,6 @@ export async function handleResourceRead(app: App, request: any) {
  */
 export async function handlePromptsList() {
     try {
-        console.log('MCP Server: Prompts listing requested');
-        console.log('MCP Server: Returning empty prompts list');
         return { prompts: [] };
     } catch (error) {
         console.error('Error listing prompts:', error);
@@ -110,17 +108,11 @@ interface AgentSchema {
 /**
  * Handle tool listing request
  */
-export async function handleToolList(agents: Map<string, IAgent>, isVaultEnabled: boolean) {
+export async function handleToolList(agents: Map<string, IAgent>, isVaultEnabled: boolean): Promise<{ tools: any[] }> {
     try {
-        const tools = [];
-        
-        console.log('MCP Server: Tool listing requested');
-        console.log('MCP Server: Vault access enabled:', isVaultEnabled);
-        
-        console.log('MCP Server: Number of registered agents:', agents.size);
+        const tools: any[] = [];
         
         for (const agent of agents.values()) {
-            console.log(`MCP Server: Processing agent: ${agent.name}`);
             
             // Create a schema that includes the mode parameter and combines all tool schemas
             const agentSchema: AgentSchema = {
@@ -138,7 +130,6 @@ export async function handleToolList(agents: Map<string, IAgent>, isVaultEnabled
             
             // Get all modes for this agent
             const agentModes = agent.getModes();
-            console.log(`MCP Server: Agent ${agent.name} has ${agentModes.length} modes`);
             
             // Add each mode
             for (const mode of agentModes) {
@@ -156,16 +147,12 @@ export async function handleToolList(agents: Map<string, IAgent>, isVaultEnabled
                     }
                 });
             }
-            
-            console.log(`MCP Server: Adding agent as tool: ${agent.name}`);
             tools.push({
                 name: agent.name,
                 description: agent.description,
                 inputSchema: agentSchema
             });
         }
-        
-        console.log(`MCP Server: Total tools to return: ${tools.length}`);
         return { tools };
     } catch (error) {
         console.error('Error listing tools:', error);
@@ -205,9 +192,7 @@ function validateToolParams(params: any) {
 
     // Validate batch read paths if they exist
     if (params.paths) {
-        // Log the paths parameter for debugging
-        console.log(`MCP Server: Paths parameter type: ${typeof params.paths}`);
-        console.log(`MCP Server: Paths parameter value:`, safeStringify(params.paths));
+        // Validate paths parameter
         
         // Ensure paths is an array
         if (!Array.isArray(params.paths)) {
@@ -217,9 +202,8 @@ function validateToolParams(params: any) {
                 params.paths.trim().endsWith(']')) {
                 try {
                     params.paths = JSON.parse(params.paths);
-                    console.log(`MCP Server: Successfully parsed paths string as array`);
                 } catch (error) {
-                    console.error(`MCP Server: Failed to parse paths string as array:`, error);
+                    console.error('Error parsing paths string:', error);
                     throw new McpError(
                         ErrorCode.InvalidParams,
                         `Invalid paths parameter: must be an array, got ${typeof params.paths}`
@@ -243,8 +227,6 @@ function validateToolParams(params: any) {
             }
         });
         
-        // Log the validated paths
-        console.log(`MCP Server: Validated ${params.paths.length} paths for batch read`);
     }
 }
 
@@ -275,11 +257,9 @@ export async function handleToolExecution(
                 `Missing required parameter: mode for agent ${agentName}`
             );
         }
-        
         // Validate parameters
         validateToolParams(params);
         
-        console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with validated params:`, safeStringify(params));
         
         // Execute the agent with the specified mode
         // Get the agent

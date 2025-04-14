@@ -43,9 +43,6 @@ export class BatchSearchMode extends BaseMode<BatchSearchArgs, BatchSearchResult
     
     const { queries } = params;
     
-    // Log the queries for debugging
-    console.log(`BatchSearchMode: Processing ${queries.length} queries`);
-    
     // Validate each query
     const validatedQueries: SearchContentArgs[] = [];
     const errors: Record<string, string> = {};
@@ -76,7 +73,6 @@ export class BatchSearchMode extends BaseMode<BatchSearchArgs, BatchSearchResult
     }
     
     // Execute the batch search operation with validated queries
-    console.log(`BatchSearchMode: Searching ${validatedQueries.length} valid queries`);
     
     const results: SearchContentResult[] = [];
     

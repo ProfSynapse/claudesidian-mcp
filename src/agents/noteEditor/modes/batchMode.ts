@@ -52,9 +52,6 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchEditResult> {
     const { operations } = params;
     const results: EditResult[] = [];
     
-    // Log the operations for debugging
-    console.log(`BatchMode: Processing ${operations.length} operations`);
-    
     for (let i = 0; i < operations.length; i++) {
       const operation = operations[i] as any; // Use any type to avoid TypeScript errors during validation
       
@@ -87,8 +84,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchEditResult> {
       }
       
       try {
-        console.log(`BatchMode: Executing operation ${i+1}/${operations.length} of type ${operation.type} on path ${operation.path}`);
-        // Now that we've validated the operation, we can safely cast it to EditOperation
+        // Execute the operation
         await EditOperations.executeOperation(this.app, operation as EditOperation);
         
         results.push({

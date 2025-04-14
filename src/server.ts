@@ -57,8 +57,7 @@ export class MCPServer implements IMCPServer {
         // Get settings from plugin
         this.settings = (plugin as any).settings;
         
-        // Log the settings
-        console.log('MCP Server: Initializing server with settings:', safeStringify(this.settings.settings));
+        // Initialize server with settings
         
         // Create capabilities object with prompts
         const capabilities = {
@@ -74,8 +73,7 @@ export class MCPServer implements IMCPServer {
             prompts: {}
         };
         
-        // Log the capabilities
-        console.log('MCP Server: Setting capabilities:', JSON.stringify(capabilities, null, 2));
+        // Set server capabilities
         
         // Initialize the MCP SDK server
         this.server = new MCPSDKServer(
@@ -96,8 +94,7 @@ export class MCPServer implements IMCPServer {
      * Initialize request handlers for resources and tools
      */
     private initializeHandlers(): void {
-        // Check if ListPromptsRequestSchema is defined
-        console.log('MCP Server: ListPromptsRequestSchema defined:', !!ListPromptsRequestSchema);
+        // Set up request handlers
         
         // Handle resource listing
         this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
@@ -122,7 +119,7 @@ export class MCPServer implements IMCPServer {
         // Handle tool execution
         this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const parsedArgs = parseJsonArrays(request.params.arguments);
-            return await handleToolExecution((name) => this.getAgent(name), request, parsedArgs);
+            return await handleToolExecution((agentName: string) => this.getAgent(agentName), request, parsedArgs);
         });
     }
     
@@ -132,17 +129,10 @@ export class MCPServer implements IMCPServer {
     async start(): Promise<void> {
         try {
             this.status = 'starting';
-            console.log('MCP Server: Starting server with settings:', safeStringify({
-                enabledVault: this.settings.settings.enabledVault,
-                // Only include specific properties we need, avoiding circular references
-            }));
-            console.log(`MCP Server: Number of registered agents before initialization: ${this.agents.size}`);
             
             // Initialize all registered agents
             for (const agent of this.agents.values()) {
-                console.log(`MCP Server: Initializing agent: ${agent.name}`);
                 await agent.initialize();
-                console.log(`MCP Server: Agent ${agent.name} initialized with ${agent.getModes().length} modes`);
             }
             
             // Start transports
@@ -169,21 +159,13 @@ export class MCPServer implements IMCPServer {
      */
     private async startStdioTransport(): Promise<StdioServerTransport> {
         if (this.stdioTransport) {
-            console.log('MCP Server: Stdio transport already running');
             return this.stdioTransport;
         }
 
         try {
             const transport = new StdioServerTransport();
             
-            // Log before connecting
-            console.log('MCP Server: About to connect stdio transport');
-            
             await this.server.connect(transport);
-            console.log('MCP Server: Stdio transport started successfully');
-            
-            // Log after connecting
-            console.log('MCP Server: Stdio transport connected');
             
             return transport;
         } catch (error) {
@@ -236,13 +218,11 @@ export class MCPServer implements IMCPServer {
             try {
                 const server = createServer((socket) => {
                     try {
-                        console.log('MCP Server: New IPC connection received');
                         const transport = new StdioServerTransport(socket, socket);
                         
-                        console.log('MCP Server: About to connect IPC transport');
                         this.server.connect(transport)
                             .then(() => {
-                                console.log('MCP Server: IPC transport connected successfully');
+                                // Connection successful
                             })
                             .catch(err => {
                                 console.error('Error connecting transport:', err);
@@ -377,19 +357,8 @@ export class MCPServer implements IMCPServer {
      */
     async executeAgentMode(agentName: string, mode: string, params: any): Promise<any> {
         try {
-            console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with params:`, safeStringify(params));
-            
-            // Log specific details about array parameters for debugging
-            for (const [key, value] of Object.entries(params)) {
-                if (Array.isArray(value)) {
-                    console.log(`MCP Server: Parameter '${key}' is an array with ${value.length} items`);
-                    console.log(`MCP Server: First few items:`, value.slice(0, 3));
-                }
-            }
-            
             // Check if vault access is enabled
             const isVaultEnabled = this.settings.settings.enabledVault;
-            console.log(`MCP Server: Vault access enabled: ${isVaultEnabled}`);
             
             // For testing purposes, allow tool execution regardless of vault access setting
             // This is a temporary fix to diagnose the issue

@@ -22,18 +22,14 @@ export class Settings {
      * Load settings from plugin data
      */
     async loadSettings() {
-        console.log('Settings: Loading settings');
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.plugin.loadData());
-        console.log('Settings: Settings loaded', this.settings);
     }
 
     /**
      * Save settings to plugin data
      */
     async saveSettings() {
-        console.log('Settings: Saving settings', this.settings);
         await this.plugin.saveData(this.settings);
-        console.log('Settings: Settings saved');
     }
 }
 
