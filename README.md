@@ -23,6 +23,7 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
 
 ## Installation
 
+0. Make sure you have the latest version of [node.js installed](https://nodejs.org/en/download)
 1. Install the plugin by downloading the latest release, specifically these files:
   - manifest.json
   - styles.css
