@@ -1,12 +1,12 @@
 # Claudesidian MCP Plugin for Obsidian
 
-Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system.
+Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system. The plugin uses an Agent-Mode Architecture that organizes functionality into logical domains (agents) with specific operations (modes) within each domain.
 
 ## Features
 
 - 🔌 MCP Server Integration
   - Seamlessly connects your vault to Claude Desktop via MCP
-  - Exposes vault operations as MCP tools
+  - Exposes vault operations as MCP agents and modes
   - Implements secure access controls
 
 - 📝 Vault Operations
@@ -20,6 +20,12 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
   - Structured knowledge organization
   - Automatic memory indexing
   - Memory retrieval and search
+
+- 🏗️ Agent-Mode Architecture
+  - Domain-driven design with specialized agents
+  - Consistent interfaces across all operations
+  - Type-safe parameters and results
+  - Built-in schema validation
 
 ## Installation
 
@@ -50,86 +56,268 @@ claudesidian/
 - Memory storage is contained within your vault
 - No data is sent externally without consent
 
+## Agent-Mode Architecture
+
+The Agent-Mode architecture represents a significant evolution in the plugin's design, moving from individual tools to a more structured approach where agents provide multiple modes of operation. This architecture organizes functionality into logical domains (agents) with specific operations (modes) within each domain.
+
+```mermaid
+flowchart TD
+    Client[Client] --> |Uses| Agent[Agent]
+    Agent --> |Provides| Mode1[Mode 1]
+    Agent --> |Provides| Mode2[Mode 2]
+    Agent --> |Provides| Mode3[Mode 3]
+    Mode1 --> |Executes| Op1[Operation]
+    Mode2 --> |Executes| Op2[Operation]
+    Mode3 --> |Executes| Op3[Operation]
+```
+
+### Benefits of the Agent-Mode Architecture
+
+- **Domain-Driven Design**: Functionality is organized by domain (agents), making the codebase more intuitive
+- **Consistent Interfaces**: All agents and modes follow the same interface patterns
+- **Improved Maintainability**: Common functionality is shared through base classes
+- **Better Discoverability**: Modes are grouped by agent, making it easier to find related functionality
+- **Type Safety**: Generic types for parameters and results provide better type checking
+- **Schema Validation**: Built-in schema definitions for parameters and results
+
+### Available Agents and Their Modes
+
+The plugin features six specialized agents, each handling a specific domain of functionality:
+
+#### 1. NoteEditor Agent
+The NoteEditor agent provides operations for editing notes in the vault.
+
+| Mode     | Description                    | Parameters                                      |
+|----------|--------------------------------|-------------------------------------------------|
+| replace  | Replace text in a note         | path, search, replace, replaceAll               |
+| insert   | Insert text at a position      | path, content, position                         |
+| delete   | Delete lines from a note       | path, startPosition, endPosition                |
+| append   | Append text to a note          | path, content                                   |
+| prepend  | Prepend text to a note         | path, content                                   |
+| batch    | Perform multiple operations    | operations[]                                    |
+
+#### 2. NoteReader Agent
+The NoteReader agent provides operations for reading notes from the vault.
+
+| Mode      | Description                     | Parameters                                      |
+|-----------|---------------------------------|-------------------------------------------------|
+| readNote  | Read the content of a note      | path                                            |
+| batchRead | Read multiple notes at once     | paths[]                                         |
+| readLine  | Read specific lines from a note | path, startLine, endLine                        |
+
+#### 3. ProjectManager Agent
+The ProjectManager agent provides operations for managing projects.
+
+| Mode         | Description                    | Parameters                                      |
+|--------------|--------------------------------|-------------------------------------------------|
+| projectPlan  | Generate a project plan        | primaryGoal, subgoals, path                     |
+| askQuestion  | Ask a question about a project | context, questions                              |
+| checkpoint   | Create a project checkpoint    | description, progressSummary, checkpointReason, nextStep, projectPath |
+
+#### 4. PaletteCommander Agent
+The PaletteCommander agent provides operations for executing commands from the command palette.
+
+| Mode           | Description                       | Parameters                                      |
+|----------------|-----------------------------------|-------------------------------------------------|
+| listCommands   | List available commands           | filter (optional)                               |
+| executeCommand | Execute a command by ID           | id                                              |
+
+#### 5. VaultLibrarian Agent
+The VaultLibrarian agent provides operations for searching and navigating the vault.
+
+| Mode             | Description                       | Parameters                                      |
+|------------------|-----------------------------------|-------------------------------------------------|
+| searchContent    | Search note content               | query, paths, limit, includeMetadata            |
+| searchTag        | Find notes with specific tag      | tag, paths, limit                               |
+| searchProperty   | Find notes with specific property | key, value, paths, limit                        |
+| listFolder       | List contents of a folder         | path, includeFiles, includeFolders              |
+| listNote         | List notes in the vault           | path, extension, limit                          |
+| listTag          | List all tags in the vault        | prefix, limit                                   |
+| listProperties   | List all properties in the vault  | key, limit                                      |
+
+#### 6. VaultManager Agent
+The VaultManager agent provides operations for managing files and folders in the vault.
+
+| Mode          | Description                       | Parameters                                      |
+|---------------|-----------------------------------|-------------------------------------------------|
+| createNote    | Create a new note                 | path, content, overwrite                        |
+| createFolder  | Create a new folder               | path                                            |
+| deleteNote    | Delete a note                     | path                                            |
+| deleteFolder  | Delete a folder                   | path, recursive                                 |
+| moveNote      | Move a note to a new location     | path, newPath, overwrite                        |
+| moveFolder    | Move a folder to a new location   | path, newPath, overwrite                        |
+
+```mermaid
+flowchart LR
+    subgraph "Client Application"
+        Client[Client Code]
+    end
+    
+    subgraph "Server"
+        MCPServer[MCP Server]
+        subgraph "Agent Registry"
+            NoteEditor[NoteEditor Agent]
+            NoteReader[NoteReader Agent]
+            ProjectManager[ProjectManager Agent]
+            VaultManager[VaultManager Agent]
+        end
+        
+        subgraph "NoteEditor Modes"
+            Replace[Replace Mode]
+            Insert[Insert Mode]
+            Append[Append Mode]
+            Prepend[Prepend Mode]
+            Batch[Batch Mode]
+        end
+    end
+    
+    Client -->|executeMode| MCPServer
+    MCPServer -->|routes request| NoteEditor
+    NoteEditor -->|executes| Replace
+    NoteEditor -->|executes| Insert
+    NoteEditor -->|executes| Append
+    NoteEditor -->|executes| Prepend
+    NoteEditor -->|executes| Batch
+```
+
 ## Key Extensibility Features:
 
-1. **Tool Interface & Base Class**
+1. **Agent Interface & Base Class**
 ```typescript
-// src/mcp/interfaces/ITool.ts
-export interface ITool {
+// src/agents/interfaces/IAgent.ts
+export interface IAgent {
     name: string;
     description: string;
-    schema: JsonSchema;
-    execute(args: any, context: IToolContext): Promise<any>;
+    version: string;
+    
+    getModes(): IMode[];
+    getMode(modeSlug: string): IMode | undefined;
+    initialize(): Promise<void>;
+    executeMode(modeSlug: string, params: any): Promise<any>;
 }
 
-// src/tools/base/BaseTool.ts
-export abstract class BaseTool implements ITool {
-    // Common tool functionality
-}
-```
-
-2. **Tool Decorators**
-```typescript
-// src/tools/base/decorators.ts
-export function Tool(config: ToolConfig) {
-    return function(target: any) {
-        // Tool registration logic
-    }
-}
-
-// Usage
-@Tool({
-    name: 'custom_tool',
-    description: 'A custom tool'
-})
-export class CustomTool extends BaseTool {
-    // Tool implementation
-}
-```
-
-3. **Tool Registry System**
-```typescript
-// src/tools/registry.ts
-export class ToolRegistry {
-    private tools = new Map<string, ITool>();
-
-    registerTool(tool: ITool) {
-        // Registration logic
-    }
-
-    loadExternalTool(provider: IToolProvider) {
-        // External tool loading
+// src/agents/base/BaseAgent.ts
+export abstract class BaseAgent implements IAgent {
+    // Common agent functionality
+    protected modes = new Map<string, IMode>();
+    
+    registerMode(mode: IMode): void {
+        // Mode registration logic
     }
 }
 ```
 
-4. **Public API**
+2. **Mode Interface & Base Class**
 ```typescript
-// src/api/toolKit.ts
-export class ToolKit {
-    static createTool(config: ToolConfig): ITool {
-        // Tool creation helper
-    }
+// src/agents/interfaces/IMode.ts
+export interface IMode<T = any, R = any> {
+    slug: string;
+    name: string;
+    description: string;
+    version: string;
+    
+    execute(params: T): Promise<R>;
+    getParameterSchema(): any;
+    getResultSchema(): any;
+}
 
-    static validateSchema(schema: JsonSchema) {
-        // Schema validation
+// src/agents/base/BaseMode.ts
+export abstract class BaseMode<T = any, R = any> implements IMode<T, R> {
+    // Common mode functionality
+}
+```
+
+3. **Example Agent Implementation**
+```typescript
+// src/agents/myAgent/myAgent.ts
+import { BaseAgent } from '../base/BaseAgent';
+import { OperationOneMode } from './modes/operationOneMode';
+import { OperationTwoMode } from './modes/operationTwoMode';
+
+export class MyAgent extends BaseAgent {
+    constructor() {
+        super(
+            'myAgent',
+            'My Agent',
+            'Provides operations for my domain',
+            '1.0.0'
+        );
+        
+        // Register modes
+        this.registerMode(new OperationOneMode());
+        this.registerMode(new OperationTwoMode());
+    }
+    
+    async initialize(): Promise<void> {
+        // Initialize resources needed by modes
     }
 }
 ```
 
-5. **Example Custom Tool**
+4. **Example Mode Implementation**
 ```typescript
-// tools/WeatherTool/src/index.ts
-import { BaseTool, Tool, ToolKit } from 'obsidian-mcp';
+// src/agents/myAgent/modes/operationOneMode.ts
+import { BaseMode } from '../../base/BaseMode';
 
-@Tool({
-    name: 'weather',
-    description: 'Get weather information'
-})
-export class WeatherTool extends BaseTool {
-    async execute(args: any, context: IToolContext) {
-        // Weather API implementation
+export class OperationOneMode extends BaseMode<OperationOneParams, OperationOneResult> {
+    constructor() {
+        super(
+            'operationOne',
+            'Operation One',
+            'Performs operation one',
+            '1.0.0'
+        );
     }
+    
+    async execute(params: OperationOneParams): Promise<OperationOneResult> {
+        try {
+            // Implement operation logic
+            return {
+                success: true,
+                data: { /* result data */ }
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    
+    getParameterSchema(): any {
+        return {
+            type: 'object',
+            properties: {
+                param1: {
+                    type: 'string',
+                    description: 'First parameter'
+                },
+                param2: {
+                    type: 'number',
+                    description: 'Second parameter'
+                }
+            },
+            required: ['param1', 'param2']
+        };
+    }
+}
+```
+
+5. **Client Usage Example**
+```typescript
+// Execute a mode
+const result = await server.executeMode('noteEditor', 'replace', {
+    path: 'path/to/note.md',
+    search: 'old text',
+    replace: 'new text',
+    replaceAll: true
+});
+
+// Check result
+if (result.success) {
+    console.log('Text replaced successfully');
+} else {
+    console.error('Error:', result.error);
 }
 ```
 
