@@ -241,7 +241,7 @@ export class MCPServer implements IMCPServer {
                 }
                 
                 // Ensure proper parsing of JSON arrays in the arguments
-                let parsedArgs = args;
+                let parsedArgs = this.parseJsonArrays(args);
                 
                 // Extract the mode from the arguments
                 const { mode, ...params } = parsedArgs as { mode: string; [key: string]: any };
@@ -280,7 +280,35 @@ export class MCPServer implements IMCPServer {
                 }
                 
                 // Validate batch read paths if they exist
-                if (params.paths && Array.isArray(params.paths)) {
+                if (params.paths) {
+                    // Log the paths parameter for debugging
+                    console.log(`MCP Server: Paths parameter type: ${typeof params.paths}`);
+                    console.log(`MCP Server: Paths parameter value:`, this.safeStringify(params.paths));
+                    
+                    // Ensure paths is an array
+                    if (!Array.isArray(params.paths)) {
+                        // If paths is a string that looks like an array, try to parse it
+                        if (typeof params.paths === 'string' &&
+                            params.paths.trim().startsWith('[') &&
+                            params.paths.trim().endsWith(']')) {
+                            try {
+                                params.paths = JSON.parse(params.paths);
+                                console.log(`MCP Server: Successfully parsed paths string as array`);
+                            } catch (error) {
+                                console.error(`MCP Server: Failed to parse paths string as array:`, error);
+                                throw new McpError(
+                                    ErrorCode.InvalidParams,
+                                    `Invalid paths parameter: must be an array, got ${typeof params.paths}`
+                                );
+                            }
+                        } else {
+                            throw new McpError(
+                                ErrorCode.InvalidParams,
+                                `Invalid paths parameter: must be an array, got ${typeof params.paths}`
+                            );
+                        }
+                    }
+                    
                     // Validate each path in the batch
                     params.paths.forEach((path: any, index: number) => {
                         if (typeof path !== 'string') {
@@ -290,6 +318,9 @@ export class MCPServer implements IMCPServer {
                             );
                         }
                     });
+                    
+                    // Log the validated paths
+                    console.log(`MCP Server: Validated ${params.paths.length} paths for batch read`);
                 }
                 
                 console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with validated params:`, this.safeStringify(params));
@@ -598,6 +629,14 @@ export class MCPServer implements IMCPServer {
         try {
             console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with params:`, this.safeStringify(params));
             
+            // Log specific details about array parameters for debugging
+            for (const [key, value] of Object.entries(params)) {
+                if (Array.isArray(value)) {
+                    console.log(`MCP Server: Parameter '${key}' is an array with ${value.length} items`);
+                    console.log(`MCP Server: First few items:`, value.slice(0, 3));
+                }
+            }
+            
             // Check if vault access is enabled
             const isVaultEnabled = this.settings.settings.enabledVault;
             console.log(`MCP Server: Vault access enabled: ${isVaultEnabled}`);
@@ -654,5 +693,41 @@ export class MCPServer implements IMCPServer {
             }
             return value;
         }, 2);
+    }
+
+    /**
+     * Parse string representations of JSON arrays in arguments
+     * @param args Arguments object to parse
+     * @returns Parsed arguments object with proper arrays
+     */
+    private parseJsonArrays(args: any): any {
+        if (!args || typeof args !== 'object') {
+            return args;
+        }
+
+        const result: any = {};
+        
+        // Process each property in the arguments object
+        for (const [key, value] of Object.entries(args)) {
+            // Check if the value is a string that looks like a JSON array
+            if (typeof value === 'string' &&
+                value.trim().startsWith('[') &&
+                value.trim().endsWith(']')) {
+                try {
+                    // Attempt to parse the string as JSON
+                    result[key] = JSON.parse(value);
+                    console.log(`MCP Server: Successfully parsed string array in parameter '${key}'`);
+                } catch (error) {
+                    // If parsing fails, keep the original string value
+                    console.warn(`MCP Server: Failed to parse string as array for parameter '${key}':`, error);
+                    result[key] = value;
+                }
+            } else {
+                // For non-array strings or other types, keep the original value
+                result[key] = value;
+            }
+        }
+        
+        return result;
     }
 }
