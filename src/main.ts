@@ -24,10 +24,7 @@ export default class ClaudesidianPlugin extends Plugin {
         this.settingsTab = new SettingsTab(this.app, this, this.settings);
         this.addSettingTab(this.settingsTab);
         
-        // Add ribbon icon
-        this.addRibbonIcon('bot', 'Claudesidian MCP', () => {
-            new ConfigModal(this.app, this.settings).open();
-        });
+        // Ribbon icon removed as requested
         
         // Register commands
         this.addCommand({
