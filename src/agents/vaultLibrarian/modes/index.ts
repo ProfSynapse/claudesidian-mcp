@@ -6,3 +6,4 @@ export * from './listNoteMode';
 export * from './listTagMode';
 export * from './listPropertiesMode';
 export * from './listRecursiveMode';
+export * from './batchSearchMode';

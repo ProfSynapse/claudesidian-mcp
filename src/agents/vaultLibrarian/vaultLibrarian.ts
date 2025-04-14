@@ -9,7 +9,8 @@ import {
   ListNoteMode,
   ListTagMode,
   ListPropertiesMode,
-  ListRecursiveMode
+  ListRecursiveMode,
+  BatchSearchMode
 } from './modes';
 
 /**
@@ -36,5 +37,6 @@ export class VaultLibrarianAgent extends BaseAgent {
     this.registerMode(new ListTagMode(app));
     this.registerMode(new ListPropertiesMode(app));
     this.registerMode(new ListRecursiveMode(app));
+    this.registerMode(new BatchSearchMode(app));
   }
 }

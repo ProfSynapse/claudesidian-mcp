@@ -352,6 +352,36 @@ export interface ListRecursiveArgs {
 }
 
 /**
+ * Batch search arguments
+ */
+export interface BatchSearchArgs {
+  /**
+   * Array of search queries
+   */
+  queries: SearchContentArgs[];
+}
+
+/**
+ * Batch search result
+ */
+export interface BatchSearchResult {
+  /**
+   * Array of search results
+   */
+  results: SearchContentResult[];
+  
+  /**
+   * Total number of queries processed
+   */
+  total: number;
+  
+  /**
+   * Any errors that occurred during processing
+   */
+  errors?: Record<string, string>;
+}
+
+/**
  * List recursive result
  */
 export interface ListRecursiveResult {

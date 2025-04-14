@@ -19,6 +19,14 @@ import {
 import { Server as NetServer, createServer } from 'net';
 import { promises as fs } from 'fs';
 import { platform } from 'os';
+import { safeStringify, parseJsonArrays } from './utils/jsonUtils';
+import {
+    handleResourceList,
+    handleResourceRead,
+    handlePromptsList,
+    handleToolList,
+    handleToolExecution
+} from './handlers/requestHandlers';
 
 /**
  * MCP Server implementation
@@ -50,7 +58,7 @@ export class MCPServer implements IMCPServer {
         this.settings = (plugin as any).settings;
         
         // Log the settings
-        console.log('MCP Server: Initializing server with settings:', this.safeStringify(this.settings.settings));
+        console.log('MCP Server: Initializing server with settings:', safeStringify(this.settings.settings));
         
         // Create capabilities object with prompts
         const capabilities = {
@@ -90,290 +98,32 @@ export class MCPServer implements IMCPServer {
     private initializeHandlers(): void {
         // Check if ListPromptsRequestSchema is defined
         console.log('MCP Server: ListPromptsRequestSchema defined:', !!ListPromptsRequestSchema);
+        
         // Handle resource listing
         this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-            try {
-                const resources = await this.getVaultResources();
-                return { resources };
-            } catch (error) {
-                console.error('Error listing resources:', error);
-                throw new McpError(ErrorCode.InternalError, 'Failed to list resources', error);
-            }
+            return await handleResourceList(this.app);
         });
 
         // Handle resource reading
         this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-            try {
-                const { uri } = request.params;
-                const content = await this.readResource(uri);
-                return {
-                    contents: [{
-                        uri,
-                        text: content,
-                        mimeType: "text/markdown"
-                    }]
-                };
-            } catch (error) {
-                console.error('Error reading resource:', error);
-                if (error instanceof McpError) {
-                    throw error;
-                }
-                throw new McpError(ErrorCode.InternalError, 'Failed to read resource', error);
-            }
+            return await handleResourceRead(this.app, request);
         });
 
         // Handle prompts listing
         this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
-            try {
-                console.log('MCP Server: Prompts listing requested');
-                console.log('MCP Server: Returning empty prompts list');
-                // Return an empty list of prompts
-                return { prompts: [] };
-            } catch (error) {
-                console.error('Error listing prompts:', error);
-                throw new McpError(ErrorCode.InternalError, 'Failed to list prompts', error);
-            }
+            return await handlePromptsList();
         });
 
         // Handle tool listing
-        // Returns agents as tools, with their modes as part of the schema
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-            try {
-                const tools = [];
-                const isVaultEnabled = this.settings.settings.enabledVault;
-                
-                console.log('MCP Server: Tool listing requested');
-                console.log('MCP Server: Vault access enabled:', isVaultEnabled);
-                
-                // Always return tools regardless of vault access setting (for testing)
-                // This is a temporary fix to diagnose the issue
-                
-                // Collect agents as tools with their modes
-                console.log('MCP Server: Number of registered agents:', this.agents.size);
-                
-                for (const agent of this.agents.values()) {
-                    console.log(`MCP Server: Processing agent: ${agent.name}`);
-                    
-                    // Create a schema that includes the mode parameter and combines all tool schemas
-                    const agentSchema: {
-                        type: string;
-                        properties: {
-                            mode: {
-                                type: string;
-                                enum: string[];
-                                description: string;
-                            };
-                            [key: string]: any;
-                        };
-                        required: string[];
-                        allOf: any[];
-                    } = {
-                        type: 'object',
-                        properties: {
-                            mode: {
-                                type: 'string',
-                                enum: [] as string[],
-                                description: 'The operation mode for this agent'
-                            }
-                        },
-                        required: ['mode'],
-                        // Additional properties will be added based on the mode
-                        allOf: []
-                    };
-                    
-                    // Get all modes for this agent
-                    const agentModes = agent.getModes();
-                    console.log(`MCP Server: Agent ${agent.name} has ${agentModes.length} modes`);
-                    
-                    // Add each mode
-                    for (const mode of agentModes) {
-                        // Add the mode to the enum
-                        agentSchema.properties.mode.enum.push(mode.slug);
-                        
-                        // Get the mode's parameter schema
-                        const modeSchema = mode.getParameterSchema();
-                        
-                        // Add a conditional schema for this mode
-                        agentSchema.allOf.push({
-                            if: {
-                                properties: { mode: { enum: [mode.slug] } },
-                                required: ['mode']
-                            },
-                            then: {
-                                // Merge the mode's schema properties with the agent schema
-                                properties: modeSchema.properties || {},
-                                required: modeSchema.required || []
-                            }
-                        });
-                    }
-                    
-                    // Add the agent as a tool
-                    console.log(`MCP Server: Adding agent as tool: ${agent.name}`);
-                    tools.push({
-                        name: agent.name,
-                        description: agent.description,
-                        inputSchema: agentSchema
-                    });
-                }
-                
-                console.log(`MCP Server: Total tools to return: ${tools.length}`);
-                return { tools };
-            } catch (error) {
-                console.error('Error listing tools:', error);
-                throw new McpError(ErrorCode.InternalError, 'Failed to list tools', error);
-            }
+            return await handleToolList(this.agents, this.settings.settings.enabledVault);
         });
 
         // Handle tool execution
         this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-            try {
-                const { name, arguments: args } = request.params;
-                
-                // The name is now just the agent name
-                const agentName = name;
-                
-                // Extract the mode from the arguments
-                if (!args) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing arguments for agent ${agentName}`
-                    );
-                }
-                
-                // Ensure proper parsing of JSON arrays in the arguments
-                let parsedArgs = this.parseJsonArrays(args);
-                
-                // Extract the mode from the arguments
-                const { mode, ...params } = parsedArgs as { mode: string; [key: string]: any };
-                if (!mode) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: mode for agent ${agentName}`
-                    );
-                }
-                
-                // Validate batch operations if they exist
-                if (params.operations && Array.isArray(params.operations)) {
-                    // Validate each operation in the batch
-                    params.operations.forEach((operation: any, index: number) => {
-                        if (!operation || typeof operation !== 'object') {
-                            throw new McpError(
-                                ErrorCode.InvalidParams,
-                                `Invalid operation at index ${index} in batch operations: operation must be an object`
-                            );
-                        }
-                        
-                        if (!operation.type) {
-                            throw new McpError(
-                                ErrorCode.InvalidParams,
-                                `Invalid operation at index ${index} in batch operations: missing 'type' property`
-                            );
-                        }
-                        
-                        if (!operation.path) {
-                            throw new McpError(
-                                ErrorCode.InvalidParams,
-                                `Invalid operation at index ${index} in batch operations: missing 'path' property`
-                            );
-                        }
-                    });
-                }
-                
-                // Validate batch read paths if they exist
-                if (params.paths) {
-                    // Log the paths parameter for debugging
-                    console.log(`MCP Server: Paths parameter type: ${typeof params.paths}`);
-                    console.log(`MCP Server: Paths parameter value:`, this.safeStringify(params.paths));
-                    
-                    // Ensure paths is an array
-                    if (!Array.isArray(params.paths)) {
-                        // If paths is a string that looks like an array, try to parse it
-                        if (typeof params.paths === 'string' &&
-                            params.paths.trim().startsWith('[') &&
-                            params.paths.trim().endsWith(']')) {
-                            try {
-                                params.paths = JSON.parse(params.paths);
-                                console.log(`MCP Server: Successfully parsed paths string as array`);
-                            } catch (error) {
-                                console.error(`MCP Server: Failed to parse paths string as array:`, error);
-                                throw new McpError(
-                                    ErrorCode.InvalidParams,
-                                    `Invalid paths parameter: must be an array, got ${typeof params.paths}`
-                                );
-                            }
-                        } else {
-                            throw new McpError(
-                                ErrorCode.InvalidParams,
-                                `Invalid paths parameter: must be an array, got ${typeof params.paths}`
-                            );
-                        }
-                    }
-                    
-                    // Validate each path in the batch
-                    params.paths.forEach((path: any, index: number) => {
-                        if (typeof path !== 'string') {
-                            throw new McpError(
-                                ErrorCode.InvalidParams,
-                                `Invalid path at index ${index} in batch paths: path must be a string`
-                            );
-                        }
-                    });
-                    
-                    // Log the validated paths
-                    console.log(`MCP Server: Validated ${params.paths.length} paths for batch read`);
-                }
-                
-                console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with validated params:`, this.safeStringify(params));
-                
-                // Execute the agent with the specified mode
-                const result = await this.executeAgentMode(agentName, mode, params);
-                
-                return {
-                    content: [{
-                        type: "text",
-                        text: this.safeStringify(result)
-                    }]
-                };
-            } catch (error) {
-                console.error('Error executing tool:', error);
-                if (error instanceof McpError) {
-                    throw error;
-                }
-                throw new McpError(ErrorCode.InternalError, 'Failed to execute tool', error);
-            }
+            const parsedArgs = parseJsonArrays(request.params.arguments);
+            return await handleToolExecution((name) => this.getAgent(name), request, parsedArgs);
         });
-    }
-    
-    /**
-     * Get resources from the vault
-     */
-    private async getVaultResources() {
-        const resources = [];
-        const files = this.app.vault.getMarkdownFiles();
-        
-        for (const file of files) {
-            resources.push({
-                uri: `obsidian://${file.path}`,
-                name: file.basename,
-                mimeType: "text/markdown"
-            });
-        }
-        
-        return resources;
-    }
-
-    /**
-     * Read a resource from the vault
-     */
-    private async readResource(uri: string) {
-        const path = uri.replace('obsidian://', '');
-        const file = this.app.vault.getAbstractFileByPath(path);
-        
-        if (file instanceof TFile) {
-            return await this.app.vault.read(file);
-        }
-        
-        throw new McpError(ErrorCode.InvalidParams, `Resource not found: ${uri}`);
     }
     
     /**
@@ -382,7 +132,7 @@ export class MCPServer implements IMCPServer {
     async start(): Promise<void> {
         try {
             this.status = 'starting';
-            console.log('MCP Server: Starting server with settings:', this.safeStringify({
+            console.log('MCP Server: Starting server with settings:', safeStringify({
                 enabledVault: this.settings.settings.enabledVault,
                 // Only include specific properties we need, avoiding circular references
             }));
@@ -627,7 +377,7 @@ export class MCPServer implements IMCPServer {
      */
     async executeAgentMode(agentName: string, mode: string, params: any): Promise<any> {
         try {
-            console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with params:`, this.safeStringify(params));
+            console.log(`MCP Server: Executing agent ${agentName} in mode ${mode} with params:`, safeStringify(params));
             
             // Log specific details about array parameters for debugging
             for (const [key, value] of Object.entries(params)) {
@@ -677,57 +427,4 @@ export class MCPServer implements IMCPServer {
         return this.agents;
     }
     
-    /**
-     * Safely stringify an object, handling circular references
-     * @param obj Object to stringify
-     * @returns JSON string representation of the object
-     */
-    private safeStringify(obj: any): string {
-        const seen = new WeakSet();
-        return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'object' && value !== null) {
-                if (seen.has(value)) {
-                    return '[Circular Reference]';
-                }
-                seen.add(value);
-            }
-            return value;
-        }, 2);
-    }
-
-    /**
-     * Parse string representations of JSON arrays in arguments
-     * @param args Arguments object to parse
-     * @returns Parsed arguments object with proper arrays
-     */
-    private parseJsonArrays(args: any): any {
-        if (!args || typeof args !== 'object') {
-            return args;
-        }
-
-        const result: any = {};
-        
-        // Process each property in the arguments object
-        for (const [key, value] of Object.entries(args)) {
-            // Check if the value is a string that looks like a JSON array
-            if (typeof value === 'string' &&
-                value.trim().startsWith('[') &&
-                value.trim().endsWith(']')) {
-                try {
-                    // Attempt to parse the string as JSON
-                    result[key] = JSON.parse(value);
-                    console.log(`MCP Server: Successfully parsed string array in parameter '${key}'`);
-                } catch (error) {
-                    // If parsing fails, keep the original string value
-                    console.warn(`MCP Server: Failed to parse string as array for parameter '${key}':`, error);
-                    result[key] = value;
-                }
-            } else {
-                // For non-array strings or other types, keep the original value
-                result[key] = value;
-            }
-        }
-        
-        return result;
-    }
 }
