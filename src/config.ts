@@ -1,10 +1,34 @@
+/**
+ * Plugin configuration
+ */
 export const CONFIG = {
-    APP_NAME: 'Claudesidian MCP',
-    REFERRER: 'obsidian.md',
-    PROMPTS: {
-        SYSTEM: 'You are a helpful assistant integrated with Obsidian via Claudesidian MCP.',
-        formatUserPrompt: (prompt: string, selectedText: string = '', fullNote: string = '') => {
-            return `${prompt}\n\nContext:\n${selectedText}\n\nFull note:\n${fullNote}`;
-        }
-    }
+    /**
+     * Plugin name
+     */
+    PLUGIN_NAME: 'Claudesidian MCP',
+    
+    /**
+     * Plugin version
+     */
+    VERSION: '2.0.0',
+    
+    /**
+     * Default port for the MCP server
+     */
+    DEFAULT_PORT: 3000,
+    
+    /**
+     * Default host for the MCP server
+     */
+    DEFAULT_HOST: 'localhost',
+    
+    /**
+     * Default timeout for requests (in milliseconds)
+     */
+    DEFAULT_TIMEOUT: 30000,
+    
+    /**
+     * Maximum number of concurrent requests
+     */
+    MAX_CONCURRENT_REQUESTS: 5
 };
