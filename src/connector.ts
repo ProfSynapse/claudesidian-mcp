@@ -65,8 +65,6 @@ export class MCPConnector {
             
             // Register all agents from the agent manager with the server
             this.registerAgentsWithServer();
-            
-            console.log('All agents initialized successfully');
         } catch (error) {
             console.error('Error initializing agents:', error);
             if (error instanceof McpError) {
@@ -149,8 +147,6 @@ export class MCPConnector {
                         );
                     }
                 });
-                
-                console.log(`MCPConnector: Validated ${modeParams.operations.length} batch operations`);
             }
             
             // Validate batch read paths if they exist
@@ -164,8 +160,6 @@ export class MCPConnector {
                         );
                     }
                 });
-                
-                console.log(`MCPConnector: Validated ${modeParams.paths.length} batch paths`);
             }
             
             // Execute the mode using the server's executeAgentMode method

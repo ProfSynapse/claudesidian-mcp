@@ -59,7 +59,6 @@ export function parseJsonArrays(args: any): any {
             try {
                 // Attempt to parse the string as JSON
                 result[key] = JSON.parse(value);
-                console.log(`Successfully parsed string array in parameter '${key}'`);
             } catch (error) {
                 // If parsing fails, keep the original string value
                 console.warn(`Failed to parse string as array for parameter '${key}':`, error);

@@ -41,9 +41,6 @@ export class BatchReadMode extends BaseMode<BatchReadArgs, BatchReadResult> {
     
     const { paths } = params;
     
-    // Log the paths for debugging
-    console.log(`BatchReadMode: Processing ${paths.length} paths`);
-    
     // Validate each path
     const validatedPaths: string[] = [];
     const errors: Record<string, string> = {};
@@ -73,7 +70,6 @@ export class BatchReadMode extends BaseMode<BatchReadArgs, BatchReadResult> {
     }
     
     // Execute the batch read operation with validated paths
-    console.log(`BatchReadMode: Reading ${validatedPaths.length} valid paths`);
     const result = await ReadOperations.batchRead(this.app, validatedPaths);
     
     // Merge any validation errors with read errors
