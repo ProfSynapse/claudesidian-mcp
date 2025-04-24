@@ -162,9 +162,10 @@ export interface ProjectPlanArgs {
   subgoals?: ProjectSubgoal[];
   
   /**
-   * Path to save the project plan
+   * Optional path for internal reference only (not used for vault interaction)
+   * This is only for internal planning purposes and doesn't interact with the vault
    */
-  path: string;
+  path?: string;
 }
 
 /**
@@ -320,9 +321,10 @@ export interface CheckpointArgs {
   nextStep?: string;
   
   /**
-   * Path to the project file
+   * Optional path for internal reference only (not used for vault interaction)
+   * This is only for internal planning purposes and doesn't interact with the vault
    */
-  projectPath: string;
+  projectPath?: string;
 }
 
 /**

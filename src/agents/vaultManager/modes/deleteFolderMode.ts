@@ -40,8 +40,6 @@ export class DeleteFolderMode extends BaseMode<DeleteFolderArgs, DeleteFolderRes
         success: true
       };
     } catch (error) {
-      console.error('Failed to delete folder:', error);
-      
       return {
         path,
         success: false,

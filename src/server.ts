@@ -20,6 +20,7 @@ import { Server as NetServer, createServer } from 'net';
 import { promises as fs } from 'fs';
 import { platform } from 'os';
 import { safeStringify, parseJsonArrays } from './utils/jsonUtils';
+import { logger } from './utils/logger';
 import {
     handleResourceList,
     handleResourceRead,
@@ -146,10 +147,9 @@ export class MCPServer implements IMCPServer {
             
             this.status = 'running';
             this.eventManager.emit('server:started', null);
-            console.log('MCP Server started');
         } catch (error) {
             this.status = 'error';
-            console.error('Failed to start MCP server:', error);
+            logger.systemError(error as Error, 'Server Start');
             throw error;
         }
     }
@@ -169,7 +169,6 @@ export class MCPServer implements IMCPServer {
             
             return transport;
         } catch (error) {
-            console.error('MCP Server: Error starting stdio transport', error);
             throw new McpError(ErrorCode.InternalError, 'Failed to start stdio transport', error);
         }
     }
@@ -192,8 +191,9 @@ export class MCPServer implements IMCPServer {
                 await fs.unlink(this.getIPCPath());
             } catch (error) {
                 // Ignore if file doesn't exist
+                // Ignore if file doesn't exist
                 if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-                    console.error(`Error cleaning up socket file: ${error}`);
+                    logger.systemError(error as Error, 'Socket Cleanup');
                 }
             }
         }
@@ -225,25 +225,25 @@ export class MCPServer implements IMCPServer {
                                 // Connection successful
                             })
                             .catch(err => {
-                                console.error('Error connecting transport:', err);
+                                logger.systemError(err as Error, 'Transport Connection');
                             });
                     } catch (error) {
-                        console.error('Error creating transport:', error);
+                        logger.systemError(error as Error, 'Transport Creation');
                     }
                 });
 
                 server.on('error', (error) => {
-                    console.error(`IPC server error: ${error}`);
+                    logger.systemError(error as Error, 'IPC Server');
                     if (!isWindows && (error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
                         this.cleanupSocket().then(() => {
                             try {
                                 server.listen(ipcPath);
                             } catch (listenError) {
-                                console.error('Error listening after cleanup:', listenError);
+                                logger.systemError(listenError as Error, 'Server Listen');
                                 reject(listenError);
                             }
                         }).catch(cleanupError => {
-                            console.error('Error cleaning up socket:', cleanupError);
+                            logger.systemError(cleanupError as Error, 'Socket Cleanup');
                             reject(cleanupError);
                         });
                     } else {
@@ -252,16 +252,15 @@ export class MCPServer implements IMCPServer {
                 });
 
                 server.listen(ipcPath, () => {
-                    console.log(`IPC server listening on ${ipcPath}`);
                     if (!isWindows) {
                         fs.chmod(ipcPath, 0o666).catch(error => {
-                            console.error(`Error setting socket permissions: ${error}`);
+                            logger.systemError(error as Error, 'Socket Permissions');
                         });
                     }
                     resolve(server);
                 });
             } catch (error) {
-                console.error('Error creating IPC server:', error);
+                logger.systemError(error as Error, 'IPC Server Creation');
                 reject(error);
             }
         });
@@ -288,10 +287,9 @@ export class MCPServer implements IMCPServer {
             
             this.status = 'stopped';
             this.eventManager.emit('server:stopped', null);
-            console.log('MCP Server stopped');
         } catch (error) {
             this.status = 'error';
-            console.error('Failed to stop MCP server:', error);
+            logger.systemError(error as Error, 'Server Stop');
             throw error;
         }
     }

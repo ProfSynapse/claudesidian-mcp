@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { EditOperations } from '../utils/EditOperations';
 import { EditOperation, EditResult, BatchEditResult } from '../types';
+import { logger } from '../../../utils/logger';
 
 /**
  * Parameters for the batch mode
@@ -92,7 +93,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchEditResult> {
           success: true
         });
       } catch (error) {
-        console.error(`BatchMode: Error executing operation ${i+1}/${operations.length}:`, error);
+        logger.operationError(error as Error, 'BatchMode', `Operation ${i+1}/${operations.length}`);
         results.push({
           path: operation.path,
           success: false,

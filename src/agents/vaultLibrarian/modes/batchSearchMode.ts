@@ -1,5 +1,6 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
+import { logger } from '../../../utils/logger';
 import { BatchSearchArgs, BatchSearchResult, SearchContentArgs, SearchContentResult } from '../types';
 import { SearchOperations } from '../utils/SearchOperations';
 
@@ -163,7 +164,7 @@ export class BatchSearchMode extends BaseMode<BatchSearchArgs, BatchSearchResult
         
         results.push(searchResult);
       } catch (error) {
-        console.error(`BatchSearchMode: Error processing query at index ${i}:`, error);
+        logger.operationError(error as Error, 'BatchSearchMode', `Query ${i+1}/${validatedQueries.length}`);
         errors[`index_${i}`] = error.message || `Failed to process query at index ${i}`;
       }
     }

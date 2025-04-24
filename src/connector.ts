@@ -11,6 +11,7 @@ import {
     VaultLibrarianAgent
 } from './agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { logger } from './utils/logger';
 
 /**
  * Interface for agent-mode tool call parameters
@@ -66,10 +67,10 @@ export class MCPConnector {
             // Register all agents from the agent manager with the server
             this.registerAgentsWithServer();
         } catch (error) {
-            console.error('Error initializing agents:', error);
             if (error instanceof McpError) {
                 throw error;
             }
+            logger.systemError(error as Error, 'Agent Initialization');
             throw new McpError(
                 ErrorCode.InternalError,
                 'Failed to initialize agents',
@@ -88,10 +89,10 @@ export class MCPConnector {
                 this.server.registerAgent(agent);
             }
         } catch (error) {
-            console.error('Error registering agents with server:', error);
             if (error instanceof McpError) {
                 throw error;
             }
+            logger.systemError(error as Error, 'Agent Registration');
             throw new McpError(
                 ErrorCode.InternalError,
                 'Failed to register agents with server',
@@ -165,10 +166,10 @@ export class MCPConnector {
             // Execute the mode using the server's executeAgentMode method
             return await this.server.executeAgentMode(agent, mode, modeParams);
         } catch (error) {
-            console.error('Error calling tool:', error);
             if (error instanceof McpError) {
                 throw error;
             }
+            logger.systemError(error as Error, 'Tool Execution');
             throw new McpError(
                 ErrorCode.InvalidParams,
                 error.message || 'Failed to call tool',
@@ -185,10 +186,10 @@ export class MCPConnector {
         try {
             await this.server.start();
         } catch (error) {
-            console.error('Error starting MCP server:', error);
             if (error instanceof McpError) {
                 throw error;
             }
+            logger.systemError(error as Error, 'Server Start');
             throw new McpError(
                 ErrorCode.InternalError,
                 'Failed to start MCP server',
@@ -204,10 +205,10 @@ export class MCPConnector {
         try {
             await this.server.stop();
         } catch (error) {
-            console.error('Error stopping MCP server:', error);
             if (error instanceof McpError) {
                 throw error;
             }
+            logger.systemError(error as Error, 'Server Stop');
             throw new McpError(
                 ErrorCode.InternalError,
                 'Failed to stop MCP server',

@@ -1,4 +1,5 @@
-import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { UpdateManager } from './utils/UpdateManager';
 import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { SettingsTab } from './components/SettingsTab';
@@ -10,8 +11,6 @@ export default class ClaudesidianPlugin extends Plugin {
     private settingsTab: SettingsTab;
     
     async onload() {
-        console.log('Loading Claudesidian MCP plugin');
-        
         // Initialize settings
         this.settings = new Settings(this);
         await this.settings.loadSettings();
@@ -24,37 +23,32 @@ export default class ClaudesidianPlugin extends Plugin {
         this.settingsTab = new SettingsTab(this.app, this, this.settings);
         this.addSettingTab(this.settingsTab);
         
-        // Add ribbon icon
-        this.addRibbonIcon('bot', 'Claudesidian MCP', () => {
+        // Add ribbon icons
+        this.addRibbonIcon('bot', 'Open Claudesidian MCP', () => {
             new ConfigModal(this.app, this.settings).open();
         });
-        
-        // Register commands
-        this.addCommand({
-            id: 'open-claudesidian-settings',
-            name: 'Open Claudesidian Settings',
-            callback: () => {
-                // Open settings tab
-                this.settingsTab.display();
+
+        this.addRibbonIcon('refresh-cw', 'Check for Updates', async () => {
+            try {
+                const updateManager = new UpdateManager(this);
+                const hasUpdate = await updateManager.checkForUpdate();
+                
+                if (!hasUpdate) {
+                    new Notice('You are already on the latest version!');
+                    return;
+                }
+
+                await updateManager.updatePlugin();
+            } catch (error) {
+                new Notice(`Update failed: ${(error as Error).message}`);
             }
         });
-        // Register command to open config modal
-        this.addCommand({
-            id: 'open-claudesidian-config',
-            name: 'Open Claudesidian Configuration',
-            callback: () => {
-                new ConfigModal(this.app, this.settings).open();
-            }
-        });
         
-        // No need to register agent commands as clients use MCP to interact with tools directly
+        // No need to register commands as clients use MCP to interact with tools directly
         
-        console.log('Claudesidian MCP plugin loaded');
     }
     
     async onunload() {
-        console.log('Unloading Claudesidian MCP plugin');
-        
         // Stop the MCP server
         await this.connector.stop();
     }

@@ -41,8 +41,6 @@ export class CreateNoteMode extends BaseMode<CreateNoteArgs, CreateNoteResult> {
         existed: result.existed
       };
     } catch (error) {
-      console.error('Failed to create note:', error);
-      
       return {
         path,
         success: false,

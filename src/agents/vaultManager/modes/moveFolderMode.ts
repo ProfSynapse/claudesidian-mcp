@@ -41,8 +41,6 @@ export class MoveFolderMode extends BaseMode<MoveFolderArgs, MoveFolderResult> {
         success: true
       };
     } catch (error) {
-      console.error('Failed to move folder:', error);
-      
       return {
         path,
         newPath,

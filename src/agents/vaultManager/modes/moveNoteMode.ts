@@ -41,8 +41,6 @@ export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
         success: true
       };
     } catch (error) {
-      console.error('Failed to move note:', error);
-      
       return {
         path,
         newPath,

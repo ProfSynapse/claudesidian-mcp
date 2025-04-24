@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { TFile } from 'obsidian';
 import { IMCPServer } from '../types';
 import { safeStringify } from '../utils/jsonUtils';
+import { logger } from '../utils/logger';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IAgent } from '../agents/interfaces/IAgent';
 
@@ -51,7 +52,6 @@ export async function handleResourceList(app: App) {
         const resources = await getVaultResources(app);
         return { resources };
     } catch (error) {
-        console.error('Error listing resources:', error);
         throw new McpError(ErrorCode.InternalError, 'Failed to list resources', error);
     }
 }
@@ -71,7 +71,6 @@ export async function handleResourceRead(app: App, request: any) {
             }]
         };
     } catch (error) {
-        console.error('Error reading resource:', error);
         if (error instanceof McpError) {
             throw error;
         }
@@ -86,7 +85,6 @@ export async function handlePromptsList() {
     try {
         return { prompts: [] };
     } catch (error) {
-        console.error('Error listing prompts:', error);
         throw new McpError(ErrorCode.InternalError, 'Failed to list prompts', error);
     }
 }
@@ -155,7 +153,6 @@ export async function handleToolList(agents: Map<string, IAgent>, isVaultEnabled
         }
         return { tools };
     } catch (error) {
-        console.error('Error listing tools:', error);
         throw new McpError(ErrorCode.InternalError, 'Failed to list tools', error);
     }
 }
@@ -203,7 +200,6 @@ function validateToolParams(params: any) {
                 try {
                     params.paths = JSON.parse(params.paths);
                 } catch (error) {
-                    console.error('Error parsing paths string:', error);
                     throw new McpError(
                         ErrorCode.InvalidParams,
                         `Invalid paths parameter: must be an array, got ${typeof params.paths}`
@@ -275,10 +271,10 @@ export async function handleToolExecution(
             }]
         };
     } catch (error) {
-        console.error('Error executing tool:', error);
         if (error instanceof McpError) {
             throw error;
         }
+        logger.systemError(error as Error, 'Tool Execution');
         throw new McpError(ErrorCode.InternalError, 'Failed to execute tool', error);
     }
 }

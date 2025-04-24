@@ -16,7 +16,7 @@ export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult
     super(
       'askQuestion',
       'Ask Question',
-      'Ask a question about a project. IMPORTANT: When using this mode, you MUST stop execution immediately after and wait for user response before continuing with any other modes or actions.',
+      'Ask a question about a project for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: When using this mode, you MUST stop execution immediately after, report directly back to the user, and wait for user response before continuing with any other modes or actions. No other tools should be used after this one.',
       '1.0.0'
     );
 
@@ -37,7 +37,7 @@ export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult
       context,
       requiresUserInput: true, // Signal that user input is required
       pauseExecution: true, // Explicit signal to pause execution
-      message: "QUESTION: Please review the answer and provide feedback before continuing." // Clear message about expected behavior
+      message: "QUESTION: This is an internal planning tool only. STOP HERE and report directly to the user. Please review the questions and provide feedback before continuing. No further tools should be used after this one." // Clear message about expected behavior
     };
   }
 
@@ -55,14 +55,14 @@ export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult
         },
         questions: {
           type: 'array',
-          description: 'Array of follow-up questions to ask the user. Each question should be clear, specific, and directly related to the context. You are MANDATED to stop using modes after generating your questions, so you can directly ask the user the question(s)',
+          description: 'Array of follow-up questions to ask the user. Each question should be clear, specific, and directly related to the context. You are MANDATED to stop using modes after generating your questions and report directly back to the user with these questions.',
           items: {
             type: 'string'
           }
         }
       },
       required: ['context'],
-      description: 'Ask questions to clarify user intent or gather more information. IMPORTANT: When using this mode, you MUST stop execution immediately after and wait for user response before continuing with any other modes or actions.'
+      description: 'Ask questions to clarify user intent or gather more information for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: When using this mode, you MUST stop execution immediately after, report directly back to the user, and wait for user response before continuing with any other modes or actions. No other tools should be used after this one.'
     };
   }
 

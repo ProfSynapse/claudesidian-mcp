@@ -11,6 +11,7 @@ export class ConfigModal extends Modal {
     private tabButtons: Record<string, HTMLElement> = {};
     private tabContents: Record<string, HTMLElement> = {};
     private settings?: Settings;
+    private isFirstTimeSetup: boolean = true;
     
     /**
      * Create a new configuration modal
@@ -30,7 +31,20 @@ export class ConfigModal extends Modal {
         contentEl.empty();
         
         contentEl.createEl('h2', { text: 'MCP Configuration' });
-        
+
+        // Add configuration type toggle
+        const toggleContainer = contentEl.createDiv({ cls: 'mcp-config-toggle' });
+        toggleContainer.createEl('span', { text: 'Configuration Type:', cls: 'mcp-config-label' });
+        const toggleComponent = new Setting(toggleContainer)
+            .setName('First Time Setup')
+            .setDesc('Toggle between first-time setup and adding to existing configuration')
+            .addToggle(toggle => toggle
+                .setValue(this.isFirstTimeSetup)
+                .onChange(value => {
+                    this.isFirstTimeSetup = value;
+                    this.updateConfigDisplay();
+                }));
+
         // Create tab container
         const tabContainer = contentEl.createDiv({ cls: 'mcp-config-tabs' });
         
@@ -152,7 +166,10 @@ export class ConfigModal extends Modal {
         };
         
         // Remaining steps
-        steps.createEl('li', { text: 'Paste this into your config file, replacing any existing content' });
+        steps.createEl('li', { text: this.isFirstTimeSetup
+            ? 'Paste this into your config file, replacing any existing content'
+            : 'Add this to the mcpServers section of your existing config file'
+        });
         steps.createEl('li', { text: 'Save the file and restart Claude Desktop' });
     }
     
@@ -209,7 +226,10 @@ export class ConfigModal extends Modal {
         };
         
         // Remaining steps
-        steps.createEl('li', { text: 'Paste this into your config file, replacing any existing content' });
+        steps.createEl('li', { text: this.isFirstTimeSetup
+            ? 'Paste this into your config file, replacing any existing content'
+            : 'Add this to the mcpServers section of your existing config file'
+        });
         steps.createEl('li', { text: 'Save the file and restart Claude Desktop' });
     }
     
@@ -266,7 +286,10 @@ export class ConfigModal extends Modal {
         };
         
         // Remaining steps
-        steps.createEl('li', { text: 'Paste this into your config file, replacing any existing content' });
+        steps.createEl('li', { text: this.isFirstTimeSetup
+            ? 'Paste this into your config file, replacing any existing content'
+            : 'Add this to the mcpServers section of your existing config file'
+        });
         steps.createEl('li', { text: 'Save the file and restart Claude Desktop' });
     }
     
@@ -302,6 +325,19 @@ export class ConfigModal extends Modal {
         // Add styles to the document
         const styleEl = contentEl.createEl('style');
         styleEl.textContent = `
+            .mcp-config-toggle {
+                margin-bottom: 20px;
+                padding: 10px;
+                background-color: var(--background-secondary);
+                border-radius: 5px;
+            }
+
+            .mcp-config-label {
+                display: block;
+                margin-bottom: 8px;
+                font-weight: bold;
+            }
+
             .mcp-config-tabs {
                 margin-bottom: 20px;
             }
@@ -353,26 +389,47 @@ export class ConfigModal extends Modal {
      * @param os Operating system (windows, mac, linux)
      * @returns Configuration object
      */
+    /**
+     * Update the configuration display based on selected mode
+     */
+    private updateConfigDisplay() {
+        // Update all tab contents with new configuration
+        Object.keys(this.tabContents).forEach(tabId => {
+            const content = this.tabContents[tabId];
+            const codeBlock = content.querySelector('pre code');
+            if (codeBlock) {
+                const config = this.getConfiguration(tabId);
+                codeBlock.textContent = JSON.stringify(config, null, 2);
+            }
+        });
+    }
+
+    /**
+     * Get the configuration object for a specific OS
+     * @param os Operating system (windows, mac, linux)
+     * @returns Configuration object
+     */
     private getConfiguration(os: string) {
         const connectorPath = this.getConnectorPath(os);
         
-        // Create base configuration
-        const config = {
-            mcpServers: {
-                "claudesidian-mcp": {
-                    command: "node",
-                    args: [connectorPath]
-                }
-            }
+        // Create server configuration
+        const serverConfig = {
+            command: "node",
+            args: [connectorPath]
         };
         
-        // Add settings if available
-        if (this.settings) {
-            // Add any settings-specific configuration here if needed
-            // For example, could include enabled agents or other settings
+        // Return different configurations based on setup type
+        if (this.isFirstTimeSetup) {
+            return {
+                mcpServers: {
+                    "claudesidian-mcp": serverConfig
+                }
+            };
+        } else {
+            return {
+                "claudesidian-mcp": serverConfig
+            };
         }
-        
-        return config;
     }
     
     /**

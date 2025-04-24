@@ -41,8 +41,6 @@ export class CreateFolderMode extends BaseMode<CreateFolderArgs, CreateFolderRes
         existed
       };
     } catch (error) {
-      console.error('Failed to create folder:', error);
-      
       return {
         path,
         success: false,

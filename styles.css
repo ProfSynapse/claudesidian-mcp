@@ -1,3 +1,114 @@
+/* Accordion Styles */
+.mcp-accordion {
+    margin-bottom: 1rem;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+}
+
+.mcp-accordion-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.mcp-accordion-header {
+    order: 1; /* Header first */
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.mcp-accordion-content {
+    order: 2; /* Content second */
+}
+
+/* Handle border when accordion is open */
+.mcp-accordion-content.is-open {
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.mcp-accordion-content.is-open ~ .mcp-accordion-header {
+    border-bottom: none;
+}
+
+.mcp-accordion-toggle {
+    width: 100%;
+    padding: 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-normal);
+}
+
+.mcp-accordion-toggle:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.mcp-accordion-title {
+    font-size: 1.1em;
+    font-weight: 500;
+    flex: 1;
+    text-align: left;
+}
+
+.mcp-accordion-icon {
+    width: 24px;
+    height: 24px;
+    position: relative;
+}
+
+.mcp-accordion-icon::before,
+.mcp-accordion-icon::after {
+    content: '';
+    position: absolute;
+    background-color: var(--text-normal);
+    transition: transform 0.25s ease-out;
+}
+
+.mcp-accordion-icon::before {
+    top: 11px;
+    left: 6px;
+    width: 12px;
+    height: 2px;
+}
+
+.mcp-accordion-icon::after {
+    top: 6px;
+    left: 11px;
+    width: 2px;
+    height: 12px;
+}
+
+.mcp-accordion-icon.is-open::after {
+    transform: rotate(90deg);
+}
+
+.mcp-accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.mcp-accordion-content.is-open {
+    max-height: 2000px; /* Large enough to contain content */
+}
+
+.mcp-accordion-content > div {
+    padding: 1rem;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+    .mcp-accordion-toggle {
+        padding: 0.8rem;
+    }
+
+    .mcp-accordion-title {
+        font-size: 1em;
+    }
+}
+
 /* Settings Styles */
 .claudesidian-mcp-settings {
     padding: 12px;

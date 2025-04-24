@@ -16,7 +16,7 @@ export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
     super(
       'checkpoint',
       'Checkpoint',
-      'Create a checkpoint for a project. IMPORTANT: When using this mode, you MUST stop execution immediately after and wait for user feedback before continuing with any other modes or actions.',
+      'Create a checkpoint for a project for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: When using this mode, you MUST stop execution immediately after, report directly back to the user, and wait for user feedback before continuing with any other modes or actions. No other tools should be used after this one.',
       '1.0.0'
     );
 
@@ -29,7 +29,7 @@ export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
    * @returns Promise that resolves with the result of creating the checkpoint
    */
   async execute(params: CheckpointArgs): Promise<CheckpointResult> {
-    const { description, progressSummary = '', checkpointReason = '', nextStep = '', projectPath } = params;
+    const { description, progressSummary = '', checkpointReason = '', nextStep = '', projectPath = 'internal-planning-only' } = params;
 
     // Simply return the checkpoint with the required flags
     return {
@@ -41,7 +41,7 @@ export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
       success: true,
       requiresUserInput: true, // Signal that user input is required
       pauseExecution: true, // Explicit signal to pause execution
-      message: "CHECKPOINT: Please review progress and provide feedback before continuing." // Clear message about expected behavior
+      message: "CHECKPOINT: This is an internal planning tool only. STOP HERE and report directly to the user. Please review progress and provide feedback before continuing. No further tools should be used after this one." // Clear message about expected behavior
     };
   }
 
@@ -55,11 +55,11 @@ export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
       properties: {
         description: {
           type: 'string',
-          description: 'IMPORTANT: After sending this checkpoint, you MUST wait for user feedback before using any other modes. Describe what has been completed and why feedback is needed.'
+          description: 'IMPORTANT: After sending this checkpoint, you MUST stop immediately, report directly to the user, and wait for user feedback before using any other modes. Describe what has been completed and why feedback is needed.'
         },
         progressSummary: {
           type: 'string',
-          description: 'Summary of accomplished work. After the checkpoint, STOP and wait for user review before continuing.'
+          description: 'Summary of accomplished work. After the checkpoint, STOP and wait for user review before continuing. No further tools should be used.'
         },
         checkpointReason: {
           type: 'string',
@@ -67,15 +67,15 @@ export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
         },
         nextStep: {
           type: 'string',
-          description: 'Suggested next steps to discuss with the user. You are MANDATED to stop using modes. Do not execute these steps until after user feedback.'
+          description: 'Suggested next steps to discuss with the user. You are MANDATED to stop using modes and report directly to the user. Do not execute these steps until after user feedback.'
         },
         projectPath: {
           type: 'string',
-          description: 'Path to the project file'
+          description: 'Optional: For internal reference only. This does NOT interact with the Obsidian vault.'
         }
       },
       required: ['description'],
-      description: 'Create a checkpoint for a project. IMPORTANT: This command is designed to pause execution and require user feedback before proceeding. When this mode is used, you MUST stop execution immediately after and wait for user feedback before continuing with any other modes or actions.'
+      description: 'Create a checkpoint for a project for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: This command is designed to pause execution and require user feedback before proceeding. When this mode is used, you MUST stop execution immediately after, report directly back to the user, and wait for user feedback before continuing with any other modes or actions. No other tools should be used after this one.'
     };
   }
 
@@ -105,7 +105,7 @@ export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
         },
         projectPath: {
           type: 'string',
-          description: 'Path to the project file'
+          description: 'Internal reference only (not an actual vault path)'
         },
         success: {
           type: 'boolean',

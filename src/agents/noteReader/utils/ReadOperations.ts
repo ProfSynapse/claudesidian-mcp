@@ -1,4 +1,5 @@
 import { App, TFile } from 'obsidian';
+import { logger } from '../../../utils/logger';
 
 /**
  * Utility class for reading operations
@@ -55,7 +56,7 @@ export class ReadOperations {
       try {
         notes[path] = await ReadOperations.readNote(app, path);
       } catch (error) {
-        console.error(`ReadOperations: Error reading file at path ${path}:`, error);
+        logger.operationError(error as Error, 'BatchRead', `Path: ${path}`);
         errors[path] = error.message || `Failed to read file at path: ${path}`;
       }
     }

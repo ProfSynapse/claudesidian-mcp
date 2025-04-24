@@ -16,7 +16,7 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
     super(
       'projectPlan',
       'Project Plan',
-      'Create a project plan. IMPORTANT: When using this mode, you MUST stop execution immediately after and wait for user approval before continuing with any other modes or actions.',
+      'Create a project plan for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: When using this mode, you MUST stop execution immediately after, report directly back to the user, and wait for user approval before continuing with any other modes or actions. No other tools should be used after this one.',
       '1.0.0'
     );
     
@@ -29,7 +29,7 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
    * @returns Promise that resolves with the result of creating the project plan
    */
   async execute(params: ProjectPlanArgs): Promise<ProjectPlanResult> {
-    const { primaryGoal, subgoals = [], path } = params;
+    const { primaryGoal, subgoals = [], path = "internal-planning-only" } = params;
     
     // Create the project plan
     const plan = {
@@ -44,7 +44,7 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
       success: true,
       requiresUserInput: true, // Signal that user input is required
       pauseExecution: true, // Explicit signal to pause execution
-      message: "PLAN REVIEW: Please review and approve this plan before proceeding with implementation." // Clear message about expected behavior
+      message: "PLAN REVIEW: This is an internal planning tool only. STOP HERE and report directly to the user. Please review and approve this plan before proceeding with implementation. No further tools should be used after this one." // Clear message about expected behavior
     };
   }
   
@@ -58,7 +58,7 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
       properties: {
         primaryGoal: {
           type: 'string',
-          description: 'IMPORTANT: After creating this plan, you MUST wait for user approval before executing any modes. Describe the overall goal you want to accomplish.'
+          description: 'IMPORTANT: After creating this plan, you MUST stop immediately, report directly to the user, and wait for user approval before executing any modes. Describe the overall goal you want to accomplish.'
         },
         subgoals: {
           type: 'array',
@@ -115,11 +115,11 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
         },
         path: {
           type: 'string',
-          description: 'Path to save the project plan'
+          description: 'Optional: For internal reference only. This does NOT interact with the Obsidian vault.'
         }
       },
-      required: ['primaryGoal', 'path'],
-      description: 'Create a project plan. IMPORTANT: When using this mode, you MUST stop execution immediately after and wait for user approval before continuing with any other modes or actions. This mode is designed to pause execution and require user approval of the plan before proceeding.'
+      required: ['primaryGoal'],
+      description: 'Create a project plan for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: When using this mode, you MUST stop execution immediately after, report directly back to the user, and wait for user approval before continuing with any other modes or actions. No other tools should be used after this one.'
     };
   }
   
@@ -147,7 +147,7 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
         },
         path: {
           type: 'string',
-          description: 'Path to the saved project plan'
+          description: 'Internal reference only (not an actual vault path)'
         },
         success: {
           type: 'boolean',

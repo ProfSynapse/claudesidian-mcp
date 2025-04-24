@@ -102,8 +102,6 @@ export class SearchContentMode extends BaseMode<SearchContentArgs, SearchContent
         topResult: results.length > 0 ? results[0].path : undefined
       };
     } catch (error) {
-      console.error('Failed to search content:', error);
-      
       return {
         results: [],
         total: 0

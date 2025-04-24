@@ -52,8 +52,6 @@ export class SearchTagMode extends BaseMode<SearchTagArgs, SearchTagResult> {
         total: filePaths.length
       };
     } catch (error) {
-      console.error('Failed to search tag:', error);
-      
       return {
         files: [],
         total: 0

@@ -65,8 +65,6 @@ export class SearchPropertyMode extends BaseMode<SearchPropertyArgs, SearchPrope
         total: results.length
       };
     } catch (error) {
-      console.error('Failed to search property:', error);
-      
       return {
         files: [],
         total: 0

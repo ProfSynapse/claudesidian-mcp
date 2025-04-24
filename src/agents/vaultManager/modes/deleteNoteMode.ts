@@ -40,8 +40,6 @@ export class DeleteNoteMode extends BaseMode<DeleteNoteArgs, DeleteNoteResult> {
         success: true
       };
     } catch (error) {
-      console.error('Failed to delete note:', error);
-      
       return {
         path,
         success: false,
