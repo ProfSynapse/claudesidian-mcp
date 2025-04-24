@@ -4,8 +4,8 @@
     "version": "1.1.1",
     "minAppVersion": "0.15.0",
     "description": "MCP server integration for Obsidian",
-    "author": "Your Name",
-    "authorUrl": "https://github.com/yourusername",
+    "author": "Synaptic Labs",
+    "authorUrl": "https://github.com/ProfSynapse",
     "isDesktopOnly": true,
     "fundingUrl": {
       "GitHub": "https://github.com/sponsors/yourusername"
