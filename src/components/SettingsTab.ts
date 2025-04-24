@@ -1,7 +1,7 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, ButtonComponent } from 'obsidian';
 import { Settings } from '../settings';
 import { ConfigModal } from './ConfigModal';
-import { WhatIsClaudesidianAccordion, BestPracticesAccordion } from './accordions';
+import { WhatIsClaudesidianAccordion, BestPracticesAccordion, SetupInstructionsAccordion } from './accordions';
 import { UpdateManager } from '../utils/UpdateManager';
 import { templateFiles } from '../templates';
 import type { TemplateFile } from '../templates';
@@ -174,70 +174,6 @@ export class SettingsTab extends PluginSettingTab {
             }
         `;
     }
-
-    /**
-     * Create setup instructions section
-     */
-    private createSetupInstructions(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: 'Setup Instructions' });
-        const setupInstructions = containerEl.createEl('div', { cls: 'mcp-setup-instructions' });
-        
-        // Prerequisites
-        const prerequisites = setupInstructions.createEl('div', { cls: 'mcp-section' });
-        prerequisites.createEl('h4', { text: 'Prerequisites' });
-        const prereqList = prerequisites.createEl('ul');
-        
-        const nodejsItem = prereqList.createEl('li');
-        const nodejsLink = nodejsItem.createEl('a', {
-            text: 'Node.js',
-            href: 'https://nodejs.org/en/download'
-        });
-        nodejsLink.setAttr('target', '_blank');
-        nodejsItem.appendChild(document.createTextNode(' installed on your system'));
-
-        const claudeItem = prereqList.createEl('li');
-        const claudeLink = claudeItem.createEl('a', {
-            text: 'Claude Desktop App',
-            href: 'https://claude.ai/download'
-        });
-        claudeLink.setAttr('target', '_blank');
-        claudeItem.appendChild(document.createTextNode(' installed'));
-
-        // Setup steps
-        setupInstructions.createEl('h4', { text: 'Installation Steps' });
-        const setupSteps = setupInstructions.createEl('ol');
-        setupSteps.createEl('li', {
-            text: 'Close Claude completely (ensure it\'s not running in background)'
-        });
-        setupSteps.createEl('li', {
-            text: 'Click the "Open Configuration" button below'
-        });
-        setupSteps.createEl('li', {
-            text: 'Copy the appropriate configuration based on your setup'
-        });
-        setupSteps.createEl('li', {
-            text: 'Open the configuration file using the provided link'
-        });
-        setupSteps.createEl('li', {
-            text: 'Paste the copied text (replacing everything if no existing MCPs, or adding to the servers array if you have them)'
-        });
-        setupSteps.createEl('li', {
-            text: 'Open Claude Desktop App'
-        });
-        setupSteps.createEl('li', {
-            text: 'Look for the hammer icon with a number at the bottom of the chatbox'
-        });
-
-        // Configuration button
-        new Setting(setupInstructions)
-            .setName('MCP Configuration')
-            .setDesc('Configure MCP agents and tools')
-            .addButton(button => button
-                .setButtonText('Open Configuration')
-                .onClick(() => {
-                    new ConfigModal(this.app).open();
-                }));
-    }
     
     /**
      * Display the settings tab
@@ -246,14 +182,14 @@ export class SettingsTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
+        // Update section first
+        this.createUpdateSection(containerEl);
+
+        // Setup Instructions accordion
+        new SetupInstructionsAccordion(containerEl);
+
         // What is Claudesidian? accordion
         new WhatIsClaudesidianAccordion(containerEl);
-
-        // Setup Instructions (not in accordion)
-        this.createSetupInstructions(containerEl);
-
-        // Update section
-        this.createUpdateSection(containerEl);
 
         // Best Practices accordion
         new BestPracticesAccordion(containerEl, () => this.createTemplatePack());

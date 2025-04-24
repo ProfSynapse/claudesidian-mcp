@@ -30,15 +30,35 @@ export class BestPracticesAccordion {
 └── Projects/      # Active project files`
         });
 
+        // Auto-setup section
+        vaultSection.createEl('h4', { text: 'Automatic Setup' });
         vaultSection.createEl('p', {
-            text: 'Add to Claude\'s system prompt:'
+            text: 'Click the button below to copy a setup prompt. Paste it into Claude Desktop to automatically create your workspace structure:'
         });
-        const promptCode = vaultSection.createEl('pre');
-        promptCode.createEl('code', {
-            text: 
-`Your working directory is [vault path]/Claudesidian
-Start by reading VaultMOC.md for orientation`
+
+        // Copy button
+        const copyButton = vaultSection.createEl('button', {
+            text: 'Copy Setup Prompt',
+            cls: 'mod-cta'
         });
+        
+        copyButton.onclick = () => {
+            const setupPrompt = 
+`I'd like you to help set up my Claudesidian vault structure. Please create a folder structure with:
+/Claudesidian
+├── VaultMOC.md     # Master index
+├── Inbox/          # WIP storage
+├── Templates/      # Template library
+├── Memories/       # Conversation records
+├── MOCs/          # Topic/project maps
+└── Projects/      # Active projects
+
+Please work through this systematically, creating the structure and initializing VaultMOC.md as a central navigation hub.`;
+
+            navigator.clipboard.writeText(setupPrompt);
+            copyButton.setText('Copied!');
+            setTimeout(() => copyButton.setText('Copy Setup Prompt'), 2000);
+        };
 
         // Template System section
         const templateSection = content.createEl('div', { cls: 'mcp-section' });
@@ -75,7 +95,7 @@ Start by reading VaultMOC.md for orientation`
         // Template Pack Installation
         new Setting(templateSection)
             .setName('Install Template Pack')
-            .setDesc('Create a set of pre-filled templates in your vault\'s Templates folder.')
+            .setDesc('Create pre-filled templates. After installation, move them to your Claudesidian/Templates folder (you can ask Claude to help with this).')
             .addButton(button => button
                 .setButtonText('Install Templates')
                 .onClick(createTemplatePack)

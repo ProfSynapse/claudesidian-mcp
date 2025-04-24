@@ -15,7 +15,7 @@ export class WhatIsClaudesidianAccordion {
 
     private createContent(content: HTMLElement): void {
         content.createEl('p', {
-            text: 'Claudesidian MCP transforms your Obsidian vault into a natural language programming environment that enables powerful AI-assisted note-taking and knowledge management.'
+            text: 'Claudesidian MCP transforms your Obsidian vault into a natural language programming environment that enables powerful AI-assisted note-taking and knowledge management by connecting the Claude Desktop App to your vault, and giving it tools to take actions.'
         });
 
         // Natural Language Programming explanation
@@ -30,13 +30,16 @@ export class WhatIsClaudesidianAccordion {
             text: 'Create and organize notes using consistent patterns'
         });
         nlpList.createEl('li', {
-            text: 'Maintain maps of content (MOCs) for better knowledge navigation'
+            text: 'Search and retrieve information from your vault using natural language queries'
         });
         nlpList.createEl('li', {
             text: 'Track projects and research progress'
         });
         nlpList.createEl('li', {
             text: 'Build connections between your notes'
+        });
+        nlpList.createEl('li', {
+            text: 'And anything else you can dream up by leveraging the below agents!'
         });
 
         // Agents section within intro
@@ -90,7 +93,7 @@ export class WhatIsClaudesidianAccordion {
             text: '"Create a literature note for this paper using our template" - Claude follows template structure and updates MOCs'
         });
         examplesList.createEl('li', { 
-            text: '"Analyze these research notes and update our knowledge map" - Claude identifies connections and updates maps'
+            text: '"Analyze these research notes and update our map of contents" - Claude identifies connections and updates maps'
         });
         examplesList.createEl('li', { 
             text: '"Start new project: Research Database" - Claude sets up project structure and tracking'
