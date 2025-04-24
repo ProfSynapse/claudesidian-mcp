@@ -40,15 +40,6 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
 4. Configure your claude desktop config file (instructions in the plugin settings)
 5. Restart obsidian (if it's open) and fully restart claude (you might have to go to your task manager and end the task, as it runs in the background if you just `x` out).
 
-## Configuration
-
-The plugin creates the following folder structure in your vault:
-
-```
-claudesidian/
-└── inbox          # Search indices
-```
-
 ## Security
 
 - The plugin runs an MCP server that only accepts local connections
@@ -320,49 +311,3 @@ if (result.success) {
     console.error('Error:', result.error);
 }
 ```
-
-## Roadmap
-
-### Calendar Functionality
-
-Calendar Provider Configuration:
-User first selects provider (Google or Microsoft)
-Each provider needs its own OAuth setup
-Store tokens securely in plugin settings
-Calendar Management UI:
-Settings Tab Flow:
-
-Calendar List:
-[ ] Default | Personal Calendar (Google) | Edit | Remove
-[✓] Default | Work Calendar (Microsoft) | Edit | Remove
-[ ] Default | Side Project (Google) | Edit | Remove
-[+] Add New Calendar
-
-Each calendar entry stores:
-- Display name (e.g. "Personal Calendar")
-- Provider type (Google/Microsoft)
-- OAuth credentials
-- Calendar ID from provider
-- Default status (boolean)
-
-Settings Tab Flow:
-A. Provider Section:
-   - Google Calendar Setup
-     - OAuth Configuration
-     - Test Connection button
-   - Microsoft Calendar Setup  
-     - OAuth Configuration
-     - Test Connection button
-
-B. Calendars Section:
-   - List of configured calendars
-   - Default calendar radio selection
-   - Add/Edit/Remove calendar buttons
-   
-C. Add/Edit Calendar Modal:
-   1. Select provider (Google/Microsoft)
-   2. Enter display name
-   3. If not authenticated for provider:
-      - Complete OAuth flow
-   4. Select specific calendar from provider's available calendars
-   5. Set as default option
