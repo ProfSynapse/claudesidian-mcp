@@ -5,6 +5,7 @@ import { safeStringify } from '../utils/jsonUtils';
 import { logger } from '../utils/logger';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IAgent } from '../agents/interfaces/IAgent';
+import { sanitizeVaultName } from '../utils/vaultUtils';
 
 /**
  * Request handler implementations for the MCP server
@@ -106,9 +107,30 @@ interface AgentSchema {
 /**
  * Handle tool listing request
  */
-export async function handleToolList(agents: Map<string, IAgent>, isVaultEnabled: boolean): Promise<{ tools: any[] }> {
+/**
+ * Handle tool listing request
+ *
+ * This function returns a list of available tools, with each tool name
+ * including the vault identifier to ensure uniqueness across vaults.
+ *
+ * @param agents Map of agent names to agent instances
+ * @param isVaultEnabled Boolean indicating if vault access is enabled
+ * @param app Obsidian App instance to get vault information
+ * @returns Promise resolving to an object containing the tools list
+ */
+export async function handleToolList(
+    agents: Map<string, IAgent>,
+    isVaultEnabled: boolean,
+    app: App
+): Promise<{ tools: any[] }> {
     try {
         const tools: any[] = [];
+        
+        // Get the vault name for appending to tool names
+        const vaultName = app.vault.getName();
+        
+        // Sanitize the vault name using the centralized utility function
+        const sanitizedVaultName = sanitizeVaultName(vaultName);
         
         for (const agent of agents.values()) {
             
@@ -145,8 +167,12 @@ export async function handleToolList(agents: Map<string, IAgent>, isVaultEnabled
                     }
                 });
             }
+            
+            // Append vault ID to the tool name to ensure uniqueness
+            const toolName = `${agent.name}_${sanitizedVaultName}`;
+            
             tools.push({
-                name: agent.name,
+                name: toolName,
                 description: agent.description,
                 inputSchema: agentSchema
             });
@@ -229,13 +255,32 @@ function validateToolParams(params: any) {
 /**
  * Handle tool execution request
  */
+/**
+ * Handle tool execution request
+ *
+ * This function executes a tool with the specified parameters. It handles
+ * tool names that include vault identifiers by extracting the base agent name.
+ *
+ * @param getAgent Function to get an agent by name
+ * @param request The original request object
+ * @param parsedArgs The parsed arguments for the tool
+ * @returns Promise resolving to the result of the tool execution
+ */
 export async function handleToolExecution(
     getAgent: (name: string) => IAgent,
     request: any,
     parsedArgs: any
 ) {
     try {
-        const { name: agentName } = request.params;
+        const { name: fullToolName } = request.params;
+        
+        // Extract the actual agent name by removing the vault ID suffix
+        // The format is expected to be {agentName}_{vaultID}
+        const agentName = fullToolName.split('_')[0];
+        
+        // Log the tool execution with both the full name and extracted agent name
+        // Log the tool execution with both the full name and extracted agent name
+        logger.operationError(new Error(`Executing tool`), 'Tool Execution', `${fullToolName} (agent: ${agentName})`);
         
         // Extract the mode from the arguments
         if (!parsedArgs) {
@@ -253,12 +298,12 @@ export async function handleToolExecution(
                 `Missing required parameter: mode for agent ${agentName}`
             );
         }
+        
         // Validate parameters
         validateToolParams(params);
         
-        
         // Execute the agent with the specified mode
-        // Get the agent
+        // Get the agent using the base agent name (without vault ID)
         const agent = getAgent(agentName);
         
         // Execute the mode on the agent

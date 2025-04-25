@@ -37,6 +37,7 @@ export class MCPConnector {
     ) {
         this.eventManager = new EventManager();
         this.agentManager = new AgentManager(app, plugin, this.eventManager);
+        // Create server with vault-specific identifier
         this.server = new MCPServer(app, plugin, this.eventManager);
         
         // Initialize agents

@@ -40,6 +40,58 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
 4. Configure your claude desktop config file (instructions in the plugin settings)
 5. Restart obsidian (if it's open) and fully restart claude (you might have to go to your task manager and end the task, as it runs in the background if you just `x` out).
 
+## Multi-Vault Support
+
+Claudesidian MCP supports running across multiple Obsidian vaults simultaneously, with each vault having its own isolated MCP server instance.
+
+### Setting Up Multiple Vaults
+
+1. **Install the plugin in each vault** following the standard installation steps above.
+
+2. **Configure each vault in your Claude Desktop configuration file** (`claude_desktop_config.json`):
+   - Each vault needs its own unique entry in the `mcpServers` section
+   - The server identifier follows the pattern: `claudesidian-mcp-[sanitized-vault-name]`
+   - Each entry points to the connector.js file in that specific vault's plugin directory
+
+   Example configuration for multiple vaults:
+
+   ```json
+   {
+     "mcpServers": {
+       "claudesidian-mcp-personal-vault": {
+         "command": "node",
+         "args": [
+           "C:\\Users\\username\\Documents\\Personal Vault\\.obsidian\\plugins\\claudesidian-mcp\\connector.js"
+         ]
+       },
+       "claudesidian-mcp-work-vault": {
+         "command": "node",
+         "args": [
+           "C:\\Users\\username\\Documents\\Work Vault\\.obsidian\\plugins\\claudesidian-mcp\\connector.js"
+         ]
+       }
+     }
+   }
+   ```
+
+3. **Restart Claude Desktop** completely to apply the configuration changes.
+
+4. **Enable the plugin in each vault's Obsidian settings**.
+
+### Important Considerations
+
+- Each vault runs its own server process, which uses system resources
+- Each vault maintains isolated settings and configurations
+- Tools can only access files within their respective vault
+- The vault name is sanitized by converting to lowercase and replacing spaces/special characters with hyphens
+
+### Troubleshooting Multi-Vault Setup
+
+- Verify each vault has a unique server identifier in the configuration
+- Check that the paths to connector.js are correct for each vault
+- Ensure IPC paths don't conflict
+- If experiencing issues, check the plugin logs for each vault
+
 ## Security
 
 - The plugin runs an MCP server that only accepts local connections

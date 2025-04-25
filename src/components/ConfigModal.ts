@@ -1,6 +1,7 @@
 import { App, Modal, Platform, Setting } from 'obsidian';
 import * as path from 'path';
 import { Settings } from '../settings';
+import { sanitizeVaultName } from '../utils/vaultUtils';
 
 /**
  * Configuration modal for the plugin
@@ -409,8 +410,32 @@ export class ConfigModal extends Modal {
      * @param os Operating system (windows, mac, linux)
      * @returns Configuration object
      */
+    /**
+     * Gets a sanitized version of the vault name suitable for use in a configuration key
+     * Uses the centralized sanitizeVaultName utility function
+     * @returns Sanitized vault name
+     */
+    private getSanitizedVaultName(): string {
+        // Get the vault name from the app
+        const vaultName = this.app.vault.getName();
+        
+        // Use the centralized utility function to sanitize the vault name
+        return sanitizeVaultName(vaultName);
+    }
+    
+    /**
+     * Get the configuration object for a specific OS
+     * @param os Operating system (windows, mac, linux)
+     * @returns Configuration object
+     */
     private getConfiguration(os: string) {
         const connectorPath = this.getConnectorPath(os);
+        
+        // Get the sanitized vault name for the server key
+        const sanitizedVaultName = this.getSanitizedVaultName();
+        
+        // Create the server key with vault name
+        const serverKey = `claudesidian-mcp-${sanitizedVaultName}`;
         
         // Create server configuration
         const serverConfig = {
@@ -422,12 +447,12 @@ export class ConfigModal extends Modal {
         if (this.isFirstTimeSetup) {
             return {
                 mcpServers: {
-                    "claudesidian-mcp": serverConfig
+                    [serverKey]: serverConfig
                 }
             };
         } else {
             return {
-                "claudesidian-mcp": serverConfig
+                [serverKey]: serverConfig
             };
         }
     }

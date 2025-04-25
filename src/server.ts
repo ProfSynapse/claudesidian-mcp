@@ -21,6 +21,7 @@ import { promises as fs } from 'fs';
 import { platform } from 'os';
 import { safeStringify, parseJsonArrays } from './utils/jsonUtils';
 import { logger } from './utils/logger';
+import { sanitizeVaultName } from './utils/vaultUtils';
 import {
     handleResourceList,
     handleResourceRead,
@@ -53,7 +54,8 @@ export class MCPServer implements IMCPServer {
     constructor(
         private app: App,
         private plugin: Plugin,
-        private eventManager: EventManager
+        private eventManager: EventManager,
+        private serverName?: string
     ) {
         // Get settings from plugin
         this.settings = (plugin as any).settings;
@@ -76,10 +78,13 @@ export class MCPServer implements IMCPServer {
         
         // Set server capabilities
         
-        // Initialize the MCP SDK server
+        // Get vault-specific server identifier
+        const serverIdentifier = this.getServerIdentifier();
+        
+        // Initialize the MCP SDK server with vault-specific identifier
         this.server = new MCPSDKServer(
             {
-                name: "claudesidian-mcp",
+                name: serverIdentifier,
                 version: "1.0.0"
             },
             {
@@ -89,6 +94,37 @@ export class MCPServer implements IMCPServer {
 
         // Initialize request handlers
         this.initializeHandlers();
+    }
+    
+    /**
+     * Get a vault-specific server identifier
+     * 
+     * This creates a unique identifier for the MCP server based on the vault name.
+     * The identifier follows the same pattern used in ConfigModal.ts for the server key.
+     * 
+     * @returns The server identifier string
+     */
+    private getServerIdentifier(): string {
+        // If a server name was explicitly provided, use it
+        if (this.serverName) {
+            return this.serverName;
+        }
+        
+        // Otherwise, generate one based on the vault name
+        try {
+            // Get the vault name from the app
+            const vaultName = this.app.vault.getName();
+            
+            // Sanitize the vault name using the centralized utility function
+            const sanitizedVaultName = sanitizeVaultName(vaultName);
+            
+            // Create the server identifier with vault name
+            return `claudesidian-mcp-${sanitizedVaultName}`;
+        } catch (error) {
+            // If there's any error getting the vault name, fall back to the default
+            logger.systemError(error as Error, 'Server Identifier');
+            return "claudesidian-mcp";
+        }
     }
     
     /**
@@ -114,7 +150,7 @@ export class MCPServer implements IMCPServer {
 
         // Handle tool listing
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-            return await handleToolList(this.agents, this.settings.settings.enabledVault);
+            return await handleToolList(this.agents, this.settings.settings.enabledVault, this.app);
         });
 
         // Handle tool execution
@@ -174,12 +210,33 @@ export class MCPServer implements IMCPServer {
     }
     
     /**
-     * Get the IPC path
+     * Get the IPC path with vault name
+     *
+     * This creates a unique IPC path for each vault to prevent conflicts
+     * between different vault instances. It uses the same sanitization logic
+     * as getServerIdentifier() for consistency.
+     *
+     * @returns The IPC path string with vault name included
      */
     private getIPCPath(): string {
+        // Get sanitized vault name or fallback to default
+        let sanitizedVaultName = "";
+        
+        try {
+            // Get the vault name from the app
+            const vaultName = this.app.vault.getName();
+            
+            // Apply the same sanitization logic using the centralized utility function
+            sanitizedVaultName = sanitizeVaultName(vaultName);
+        } catch (error) {
+            // If there's any error getting the vault name, log it and use empty string
+            logger.systemError(error as Error, 'IPC Path Generation');
+        }
+        
+        // Format the path based on platform with vault name included
         return platform() === 'win32'
-            ? '\\\\.\\pipe\\claudesidian_mcp'
-            : '/tmp/claudesidian_mcp.sock';
+            ? `\\\\.\\pipe\\claudesidian_mcp_${sanitizedVaultName}`
+            : `/tmp/claudesidian_mcp_${sanitizedVaultName}.sock`;
     }
 
     /**
@@ -190,7 +247,6 @@ export class MCPServer implements IMCPServer {
             try {
                 await fs.unlink(this.getIPCPath());
             } catch (error) {
-                // Ignore if file doesn't exist
                 // Ignore if file doesn't exist
                 if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
                     logger.systemError(error as Error, 'Socket Cleanup');
