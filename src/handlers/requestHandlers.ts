@@ -278,9 +278,7 @@ export async function handleToolExecution(
         // The format is expected to be {agentName}_{vaultID}
         const agentName = fullToolName.split('_')[0];
         
-        // Log the tool execution with both the full name and extracted agent name
-        // Log the tool execution with both the full name and extracted agent name
-        logger.operationError(new Error(`Executing tool`), 'Tool Execution', `${fullToolName} (agent: ${agentName})`);
+        // Tool execution logging removed to eliminate unnecessary console logs
         
         // Extract the mode from the arguments
         if (!parsedArgs) {

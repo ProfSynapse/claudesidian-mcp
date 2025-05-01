@@ -56,7 +56,7 @@ export class ReadOperations {
       try {
         notes[path] = await ReadOperations.readNote(app, path);
       } catch (error) {
-        logger.operationError(error as Error, 'BatchRead', `Path: ${path}`);
+        // Error logging removed to eliminate unnecessary console logs
         errors[path] = error.message || `Failed to read file at path: ${path}`;
       }
     }

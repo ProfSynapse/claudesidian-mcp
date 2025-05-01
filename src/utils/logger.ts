@@ -11,18 +11,7 @@ export const logger = {
         console.error(
             `SYSTEM ERROR${context ? ` [${context}]` : ''}: ${error.message}`
         );
-    },
-
-    /**
-     * Log operation errors but only in batches or critical operations
-     * This is more selective than systemError and used for important operations
-     * that should be logged but don't necessarily indicate system failure
-     */
-    operationError(error: Error, operation: string, detail?: string) {
-        if (detail) {
-            console.error(`Operation Error [${operation}] ${detail}: ${error.message}`);
-        } else {
-            console.error(`Operation Error [${operation}]: ${error.message}`);
-        }
     }
+    
+    // operationError function removed to eliminate unnecessary console logs
 };

@@ -164,7 +164,7 @@ export class BatchSearchMode extends BaseMode<BatchSearchArgs, BatchSearchResult
         
         results.push(searchResult);
       } catch (error) {
-        logger.operationError(error as Error, 'BatchSearchMode', `Query ${i+1}/${validatedQueries.length}`);
+        // Error logging removed to eliminate unnecessary console logs
         errors[`index_${i}`] = error.message || `Failed to process query at index ${i}`;
       }
     }

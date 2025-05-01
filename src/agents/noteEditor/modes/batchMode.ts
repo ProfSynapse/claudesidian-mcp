@@ -93,7 +93,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchEditResult> {
           success: true
         });
       } catch (error) {
-        logger.operationError(error as Error, 'BatchMode', `Operation ${i+1}/${operations.length}`);
+        // Error logging removed to eliminate unnecessary console logs
         results.push({
           path: operation.path,
           success: false,

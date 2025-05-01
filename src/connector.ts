@@ -170,7 +170,7 @@ export class MCPConnector {
             if (error instanceof McpError) {
                 throw error;
             }
-            logger.systemError(error as Error, 'Tool Execution');
+            // Remove operational logging to avoid console noise
             throw new McpError(
                 ErrorCode.InvalidParams,
                 error.message || 'Failed to call tool',
