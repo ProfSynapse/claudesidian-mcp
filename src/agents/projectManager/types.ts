@@ -376,3 +376,84 @@ export interface CheckpointResult {
    */
   message: string;
 }
+
+/**
+ * Arguments for indicating task completion
+ */
+export interface CompletionArgs {
+  /**
+   * Name of the completed task
+   */
+  taskName: string;
+  
+  /**
+   * Comprehensive summary of what was accomplished and how
+   */
+  completionSummary: string;
+  
+  /**
+   * List of specific changes that were implemented
+   */
+  changesImplemented?: string[];
+  
+  /**
+   * Any challenges encountered and how they were resolved
+   */
+  challenges?: string[];
+  
+  /**
+   * Optional path for internal reference only (not used for vault interaction)
+   * This is only for internal planning purposes and doesn't interact with the vault
+   */
+  projectPath?: string;
+}
+
+/**
+ * Result of indicating task completion
+ */
+export interface CompletionResult {
+  /**
+   * Name of the completed task
+   */
+  taskName: string;
+  
+  /**
+   * Comprehensive summary of what was accomplished and how
+   */
+  completionSummary: string;
+  
+  /**
+   * List of specific changes that were implemented
+   */
+  changesImplemented: string[];
+  
+  /**
+   * Any challenges encountered and how they were resolved
+   */
+  challenges: string[];
+  
+  /**
+   * Path to the project (for internal reference only)
+   */
+  projectPath: string;
+  
+  /**
+   * Whether the completion report was created successfully
+   */
+  success: boolean;
+  
+  /**
+   * Signal that user input is required before continuing
+   */
+  requiresUserInput: boolean;
+  
+  /**
+   * Signal to pause execution until user provides feedback
+   */
+  pauseExecution: boolean;
+  
+  /**
+   * Message to display to the user about expected behavior
+   */
+  message: string;
+}

@@ -3,6 +3,7 @@ import {
   EditOperation,
   EditOperationType,
   ReplaceOperation,
+  ReplaceLineOperation,
   InsertOperation,
   DeleteOperation,
   AppendOperation,
@@ -39,6 +40,9 @@ export class EditOperations {
         case EditOperationType.REPLACE:
           EditOperations.executeReplaceWithEditor(editor, operation as ReplaceOperation);
           break;
+        case EditOperationType.REPLACE_LINE:
+          EditOperations.executeReplaceLineWithEditor(editor, operation as ReplaceLineOperation);
+          break;
         case EditOperationType.INSERT:
           EditOperations.executeInsertWithEditor(editor, operation as InsertOperation);
           break;
@@ -62,6 +66,9 @@ export class EditOperations {
       switch (operation.type) {
         case EditOperationType.REPLACE:
           newContent = EditOperations.executeReplace(content, operation as ReplaceOperation);
+          break;
+        case EditOperationType.REPLACE_LINE:
+          newContent = EditOperations.executeReplaceLine(content, operation as ReplaceLineOperation);
           break;
         case EditOperationType.INSERT:
           newContent = EditOperations.executeInsert(content, operation as InsertOperation);
@@ -172,11 +179,6 @@ export class EditOperations {
    * Execute a replace operation using the editor
    * @param editor Editor instance
    * @param operation Replace operation
-   */
-  /**
-   * Execute a replace operation using the editor
-   * @param editor Editor instance
-   * @param operation Replace operation
    * @throws Error if the text to replace is not found
    */
   private static executeReplaceWithEditor(editor: Editor, operation: ReplaceOperation): void {
@@ -220,10 +222,38 @@ export class EditOperations {
   }
   
   /**
-   * Execute an insert operation using the editor
+   * Execute a replace line operation using the editor
    * @param editor Editor instance
-   * @param operation Insert operation
+   * @param operation Replace line operation
+   * @throws Error if the line to replace is out of bounds
    */
+  private static executeReplaceLineWithEditor(editor: Editor, operation: ReplaceLineOperation): void {
+    const { lineNumber, newContent } = operation;
+    
+    // Validate line number
+    if (lineNumber < 1) {
+      throw new Error(`Invalid line number: ${lineNumber}. Line numbers are 1-based.`);
+    }
+    
+    // Get document line count
+    const lineCount = editor.lineCount();
+    
+    // Ensure the line exists in the document
+    if (lineNumber > lineCount) {
+      throw new Error(`Invalid line number: ${lineNumber}. Document has only ${lineCount} lines.`);
+    }
+    
+    // Adjust for 0-based indexing
+    const adjustedLine = lineNumber - 1;
+    
+    // Get positions for the start and end of the line
+    const from = { line: adjustedLine, ch: 0 };
+    const to = { line: adjustedLine, ch: editor.getLine(adjustedLine).length };
+    
+    // Replace the line
+    editor.replaceRange(newContent, from, to);
+  }
+  
   /**
    * Execute an insert operation using the editor
    * @param editor Editor instance
@@ -264,11 +294,6 @@ export class EditOperations {
     }
   }
   
-  /**
-   * Execute a delete operation using the editor
-   * @param editor Editor instance
-   * @param operation Delete operation
-   */
   /**
    * Execute a delete operation using the editor
    * @param editor Editor instance
@@ -352,12 +377,6 @@ export class EditOperations {
    * @param content Current content
    * @param operation Replace operation
    * @returns New content
-   */
-  /**
-   * Execute a replace operation (fallback implementation)
-   * @param content Current content
-   * @param operation Replace operation
-   * @returns New content
    * @throws Error if the text to replace is not found
    */
   private static executeReplace(content: string, operation: ReplaceOperation): string {
@@ -385,11 +404,38 @@ export class EditOperations {
   }
   
   /**
-   * Execute an insert operation (fallback implementation)
+   * Execute a replace line operation (fallback implementation)
    * @param content Current content
-   * @param operation Insert operation
+   * @param operation Replace line operation
    * @returns New content
+   * @throws Error if the line to replace is out of bounds
    */
+  private static executeReplaceLine(content: string, operation: ReplaceLineOperation): string {
+    const { lineNumber, newContent } = operation;
+    
+    // Normalize line endings to \n
+    const normalizedContent = content.replace(/\r\n/g, '\n');
+    const lines = normalizedContent.split('\n');
+    
+    // Validate line number
+    if (lineNumber < 1) {
+      throw new Error(`Invalid line number: ${lineNumber}. Line numbers are 1-based.`);
+    }
+    
+    // Ensure the line exists in the document
+    if (lineNumber > lines.length) {
+      throw new Error(`Invalid line number: ${lineNumber}. Document has only ${lines.length} lines.`);
+    }
+    
+    // Adjust for 0-based indexing
+    const adjustedLine = lineNumber - 1;
+    
+    // Replace the line
+    lines[adjustedLine] = newContent;
+    
+    return lines.join('\n');
+  }
+  
   /**
    * Execute an insert operation (fallback implementation)
    * @param content Current content
@@ -429,12 +475,6 @@ export class EditOperations {
     return lines.join('\n');
   }
   
-  /**
-   * Execute a delete operation (fallback implementation)
-   * @param content Current content
-   * @param operation Delete operation
-   * @returns New content
-   */
   /**
    * Execute a delete operation (fallback implementation)
    * @param content Current content

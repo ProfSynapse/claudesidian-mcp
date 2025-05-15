@@ -11,7 +11,7 @@ export interface SearchContentArgs {
   query: string;
   
   /**
-   * Paths to search in (optional)
+   * Paths to search in (optional). Use an empty string "" or "/" to access the root folder. Do not use "."
    */
   paths?: string[];
   
@@ -106,7 +106,7 @@ export interface SearchTagArgs {
   tag: string;
   
   /**
-   * Paths to search in (optional)
+   * Paths to search in (optional). Use an empty string "" or "/" to access the root folder. Do not use "."
    */
   paths?: string[];
   
@@ -146,7 +146,7 @@ export interface SearchPropertyArgs {
   value?: string;
   
   /**
-   * Paths to search in (optional)
+   * Paths to search in (optional). Use an empty string "" or "/" to access the root folder. Do not use "."
    */
   paths?: string[];
   
@@ -191,7 +191,7 @@ export interface PropertyMatch {
  */
 export interface ListFolderArgs {
   /**
-   * Path to the folder
+   * Path to the folder. Use an empty string "" or "/" to access the root folder. Do not use "."
    */
   path: string;
   
@@ -236,7 +236,7 @@ export interface ListFolderResult {
  */
 export interface ListNoteArgs {
   /**
-   * Path to search in (optional)
+   * Path to search in (optional). Use an empty string "" or "/" to access the root folder. Do not use "."
    */
   path?: string;
   
@@ -331,7 +331,7 @@ export interface ListPropertiesResult {
  */
 export interface ListRecursiveArgs {
   /**
-   * Path to the folder
+   * Path to the folder. Use an empty string "" or "/" to access the root folder. Do not use "."
    */
   path: string;
   

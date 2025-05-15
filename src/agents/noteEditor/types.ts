@@ -8,6 +8,11 @@ export enum EditOperationType {
   REPLACE = 'replace',
   
   /**
+   * Replace a specific line in a note
+   */
+  REPLACE_LINE = 'replaceLine',
+  
+  /**
    * Insert content into a note
    */
   INSERT = 'insert',
@@ -124,10 +129,28 @@ export interface PrependOperation extends BaseEditOperation {
 }
 
 /**
+ * Replace line operation
+ */
+export interface ReplaceLineOperation extends BaseEditOperation {
+  type: EditOperationType.REPLACE_LINE;
+  
+  /**
+   * Line number to replace (1-based)
+   */
+  lineNumber: number;
+  
+  /**
+   * New content for the line
+   */
+  newContent: string;
+}
+
+/**
  * Edit operation
  */
 export type EditOperation = 
   | ReplaceOperation
+  | ReplaceLineOperation
   | InsertOperation
   | DeleteOperation
   | AppendOperation

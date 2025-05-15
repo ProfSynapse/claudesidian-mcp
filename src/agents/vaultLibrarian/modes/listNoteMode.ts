@@ -59,7 +59,7 @@ export class ListNoteMode extends BaseMode<ListNoteArgs, ListNoteResult> {
       properties: {
         path: {
           type: 'string',
-          description: 'Path to search in (optional)'
+          description: 'Path to search in (optional). Use an empty string "" or "/" to access the root folder. Do not use "."'
         },
         extension: {
           type: 'string',

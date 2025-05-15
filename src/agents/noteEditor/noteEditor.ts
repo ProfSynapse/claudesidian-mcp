@@ -3,6 +3,7 @@ import { BaseAgent } from '../baseAgent';
 import { NoteEditorConfig } from './config';
 import {
   ReplaceMode,
+  ReplaceLineMode,
   InsertMode,
   DeleteMode,
   AppendMode,
@@ -27,6 +28,7 @@ export class NoteEditorAgent extends BaseAgent {
     
     // Register modes
     this.registerMode(new ReplaceMode(app));
+    this.registerMode(new ReplaceLineMode(app));
     this.registerMode(new InsertMode(app));
     this.registerMode(new DeleteMode(app));
     this.registerMode(new AppendMode(app));

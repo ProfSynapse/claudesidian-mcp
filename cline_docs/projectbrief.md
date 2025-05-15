@@ -1,70 +1,39 @@
-# Project Brief: Claudesidian MCP
+# Project Brief: Chatsidian MCP Refactor
 
-## Overview
+## 1. Project Goal
 
-Claudesidian MCP (formerly Bridge-MCP) is an Obsidian plugin that implements the Model Context Protocol (MCP) to enable AI assistants like Claude to interact with Obsidian vaults. It serves as a bridge between AI assistants and the knowledge stored in Obsidian, allowing for seamless integration and powerful knowledge management capabilities.
+Refactor the existing Chatsidian Obsidian plugin to utilize a modular architecture based on Bounded Context Packs (BCPs) and the Model Context Protocol (MCP). The primary aim is to improve maintainability, extensibility, and separation of concerns within the plugin's codebase.
 
-## Core Requirements
+## 2. Core Requirements
 
-1. **MCP Server Implementation**
-   - Implement a fully compliant Model Context Protocol server
-   - Expose Obsidian vault operations as MCP tools and resources
-   - Support secure local connections from MCP clients like Claude Desktop
+*   **BCP Architecture:** Decompose the plugin's functionality into distinct Bounded Context Packs (BCPs), each responsible for a specific domain (e.g., Notes, Vault, Palette, Project).
+*   **MCP Integration:** Implement an MCP layer (`MCPClient`) responsible for dynamically discovering, loading, and managing BCPs and their associated tools.
+*   **Dynamic Tool Execution:** Enable the execution of tools defined within BCPs, providing necessary context (Obsidian `App`, `StorageManager`, `EventEmitter`, etc.) to the tool handlers via an injection mechanism.
+*   **Event-Driven Communication:** Utilize an `EventEmitter` for decoupled communication between core services and BCPs.
+*   **Abstracted Storage:** Employ a `StorageManager` with adapters (initially `ObsidianStorageAdapter`) for persistent storage needs.
+*   **Phased Implementation:** Execute the refactoring in distinct phases:
+    1.  Core Infrastructure (Complete)
+    2.  Chat Interface (Partially Stubbed)
+    3.  MCP Integration & BCP Loading (Current Focus)
+    4.  Settings & Configuration
+    5.  BCP Implementation (Tool Handlers)
 
-2. **Vault Operations**
-   - Provide tools for creating, reading, updating, and deleting notes
-   - Enable searching and querying vault content
-   - Support folder management and organization
-   - Handle metadata and frontmatter operations
+## 3. Scope
 
-3. **AI Integration**
-   - Connect to AI providers like OpenRouter for completions
-   - Support configurable AI models and parameters
-   - Enable AI-assisted note creation and editing
+*   Refactor existing functionality into the new BCP/MCP architecture.
+*   Implement the core infrastructure (`EventEmitter`, `StorageManager`, `Plugin` lifecycle).
+*   Implement the `MCPClient` for BCP management and tool execution.
+*   Define placeholder BCP structures.
+*   Update the Chat interface to interact with the `MCPClient`.
+*   Implement settings management.
+*   (Future) Implement the actual logic within BCP tool handlers.
 
-4. **Security & Privacy**
-   - Implement secure access controls for vault content
-   - Keep all data local within the user's vault
-   - Provide configurable path restrictions
+## 4. Success Criteria
 
-5. **User Experience**
-   - Offer simple setup and configuration
-   - Provide status indicators and feedback
-   - Support seamless integration with Claude Desktop
-
-## Goals
-
-1. **Enhance Knowledge Management**
-   - Enable AI assistants to help organize and retrieve knowledge
-   - Facilitate natural language interactions with vault content
-   - Support complex queries and information retrieval
-
-2. **Streamline Workflow**
-   - Reduce friction in capturing and organizing information
-   - Enable AI-assisted note creation and editing
-   - Support automated organization and linking
-
-3. **Extensibility**
-   - Provide a plugin architecture for adding new tools
-   - Support custom tool development
-   - Enable integration with other Obsidian plugins
-
-4. **Performance & Reliability**
-   - Ensure responsive performance even with large vaults
-   - Implement robust error handling
-   - Support graceful degradation
-
-## Success Criteria
-
-1. Successful integration with Claude Desktop and other MCP clients
-2. Reliable performance with vaults of various sizes
-3. Positive user feedback on workflow improvements
-4. Growing community of users and contributors
-5. Expanding set of tools and capabilities
-
-## Constraints
-
-1. Must work within Obsidian's plugin architecture
-2. Must maintain compatibility with MCP specification
-3. Must respect user privacy and security
-4. Must work across multiple platforms (Windows, macOS, Linux)
+*   Core infrastructure is stable and functional.
+*   BCPs can be dynamically loaded and unloaded.
+*   Tools defined in BCPs can be discovered and executed via the `MCPClient`.
+*   Necessary context is successfully injected into BCP tool handlers.
+*   The chat interface correctly utilizes the `MCPClient` to execute tools.
+*   The plugin remains functional throughout and after the refactoring process.
+*   The codebase is significantly more modular and easier to maintain.

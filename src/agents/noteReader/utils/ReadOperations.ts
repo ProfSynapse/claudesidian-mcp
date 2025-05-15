@@ -22,6 +22,26 @@ export class ReadOperations {
   }
   
   /**
+   * Read the content of a note with line numbers
+   * @param app Obsidian app instance
+   * @param path Path to the note
+   * @returns Promise that resolves with the note content with line numbers
+   * @throws Error if the note doesn't exist or can't be read
+   */
+  static async readNoteWithLineNumbers(app: App, path: string): Promise<{ number: number; text: string }[]> {
+    const content = await ReadOperations.readNote(app, path);
+    
+    // Normalize line endings to \n and split
+    const normalizedContent = content.replace(/\r\n/g, '\n');
+    const lines = normalizedContent.split('\n');
+    
+    return lines.map((line, index) => ({
+      number: index + 1, // 1-based line numbers
+      text: line
+    }));
+  }
+  
+  /**
    * Read multiple notes at once
    * @param app Obsidian app instance
    * @param paths Paths to the notes
@@ -56,7 +76,7 @@ export class ReadOperations {
       try {
         notes[path] = await ReadOperations.readNote(app, path);
       } catch (error) {
-        // Error logging removed to eliminate unnecessary console logs
+        // Capture error message
         errors[path] = error.message || `Failed to read file at path: ${path}`;
       }
     }
@@ -94,5 +114,24 @@ export class ReadOperations {
     const end = Math.min(lines.length, endLine);
     
     return lines.slice(start, end);
+  }
+
+  /**
+   * Read specific lines from a note with line numbers
+   * @param app Obsidian app instance
+   * @param path Path to the note
+   * @param startLine Start line (1-based)
+   * @param endLine End line (1-based, inclusive)
+   * @returns Promise that resolves with the specified lines with line numbers
+   * @throws Error if the note doesn't exist or can't be read
+   */
+  static async readLinesWithNumbers(app: App, path: string, startLine: number, endLine: number): 
+    Promise<{ number: number; text: string }[]> {
+    const lines = await ReadOperations.readLines(app, path, startLine, endLine);
+    
+    return lines.map((line, index) => ({
+      number: startLine + index, // Adjust for the starting line
+      text: line
+    }));
   }
 }

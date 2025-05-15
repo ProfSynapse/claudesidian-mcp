@@ -4,7 +4,8 @@ import { NoteReaderConfig } from './config';
 import {
   ReadNoteMode,
   BatchReadMode,
-  ReadLineMode
+  ReadLineMode,
+  ReadLineNumberedMode
 } from './modes';
 
 /**
@@ -26,5 +27,6 @@ export class NoteReaderAgent extends BaseAgent {
     this.registerMode(new ReadNoteMode(app));
     this.registerMode(new BatchReadMode(app));
     this.registerMode(new ReadLineMode(app));
+    this.registerMode(new ReadLineNumberedMode(app));
   }
 }

@@ -76,7 +76,7 @@ export class SearchTagMode extends BaseMode<SearchTagArgs, SearchTagResult> {
           items: {
             type: 'string'
           },
-          description: 'Paths to search in (optional)'
+          description: 'Paths to search in (optional). Use an empty string "" or "/" to access the root folder. Do not use "."'
         },
         limit: {
           type: 'number',

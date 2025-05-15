@@ -67,7 +67,7 @@ export class ListFolderMode extends BaseMode<ListFolderArgs, ListFolderResult> {
       properties: {
         path: {
           type: 'string',
-          description: 'Path to the folder'
+          description: 'Path to the folder. Use an empty string "" or "/" to access the root folder. Do not use "."'
         },
         includeFiles: {
           type: 'boolean',

@@ -15,7 +15,12 @@ export enum ReadMode {
   /**
    * Read specific lines from a note
    */
-  LINE = 'lineRead'
+  LINE = 'lineRead',
+  
+  /**
+   * Read the entire note with line numbers
+   */
+  NUMBERED = 'readNumbered'
 }
 
 /**
@@ -74,6 +79,26 @@ export interface ReadNoteResult {
 }
 
 /**
+ * Result of reading a note with line numbers
+ */
+export interface ReadNoteLineNumberedResult {
+  /**
+   * Content of the note
+   */
+  content: string;
+  
+  /**
+   * Content of the note with line numbers
+   */
+  numberedContent: { number: number; text: string }[];
+  
+  /**
+   * Path to the note
+   */
+  path: string;
+}
+
+/**
  * Result of batch reading notes
  */
 export interface BatchReadResult {
@@ -96,6 +121,11 @@ export interface ReadLineResult {
    * Lines from the note
    */
   lines: string[];
+  
+  /**
+   * Lines with line numbers
+   */
+  numberedLines?: { number: number; text: string }[];
   
   /**
    * Path to the note

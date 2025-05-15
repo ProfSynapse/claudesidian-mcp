@@ -33,9 +33,11 @@ export class ReadLineMode extends BaseMode<ReadLineArgs, ReadLineResult> {
     const { path, startLine, endLine } = params;
     
     const lines = await ReadOperations.readLines(this.app, path, startLine, endLine);
+    const numberedLines = await ReadOperations.readLinesWithNumbers(this.app, path, startLine, endLine);
     
     return {
       lines,
+      numberedLines,
       path,
       startLine,
       endLine
