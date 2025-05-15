@@ -70,10 +70,37 @@ export class UsageStatsOperations {
      * 
      * @param usageStats The usage stats object to update
      * @param tokens Number of tokens to add to the counter
+     * @param maxTokensPerMonth Maximum token limit per month
+     * @returns Boolean indicating if the limit has been exceeded
      */
-    static updateTokenUsage(usageStats: MemoryUsageStats, tokens: number): void {
+    static updateTokenUsage(
+        usageStats: MemoryUsageStats, 
+        tokens: number, 
+        maxTokensPerMonth?: number
+    ): boolean {
         usageStats.tokensThisMonth += tokens;
         UsageStatsOperations.saveUsageStats(usageStats);
+        
+        // Check if limit is exceeded (if a limit is provided)
+        if (maxTokensPerMonth && usageStats.tokensThisMonth > maxTokensPerMonth) {
+            return true; // Limit exceeded
+        }
+        
+        return false; // Limit not exceeded or no limit provided
+    }
+    
+    /**
+     * Check if token usage has exceeded the limit
+     * 
+     * @param usageStats The usage stats object to check
+     * @param maxTokensPerMonth Maximum token limit per month
+     * @returns Boolean indicating if the limit has been exceeded
+     */
+    static isTokenLimitExceeded(
+        usageStats: MemoryUsageStats, 
+        maxTokensPerMonth: number
+    ): boolean {
+        return usageStats.tokensThisMonth >= maxTokensPerMonth;
     }
     
     /**

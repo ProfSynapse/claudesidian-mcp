@@ -1,7 +1,8 @@
-import { Setting, TextComponent, ToggleComponent, SliderComponent, DropdownComponent, ButtonComponent } from 'obsidian';
+import { Setting, TextComponent, ToggleComponent, SliderComponent, DropdownComponent, ButtonComponent, Events } from 'obsidian';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../types';
 import { Settings } from '../settings';
 import { MemoryManager } from '../agents/memoryManager';
+import { ProgressBar } from './ProgressBar';
 
 /**
  * Memory Manager settings tab component
@@ -340,6 +341,19 @@ export class MemorySettingsTab {
                     await this.saveSettings();
                 })
             );
+            
+        new Setting(containerEl)
+            .setName('Processing Delay')
+            .setDesc('Milliseconds to wait between batches (larger values reduce freezing but slow down indexing)')
+            .addSlider(slider => slider
+                .setLimits(0, 5000, 100)
+                .setValue(this.settings.processingDelay || 1000)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                    this.settings.processingDelay = value;
+                    await this.saveSettings();
+                })
+            );
     }
 
     /**
@@ -509,7 +523,7 @@ export class MemorySettingsTab {
             text: `Tokens used this month: ${usageStats.tokensThisMonth.toLocaleString()} / ${this.settings.maxTokensPerMonth.toLocaleString()}`
         });
         
-        // Progress bar
+        // Token usage progress bar
         const percentUsed = Math.min(100, (usageStats.tokensThisMonth / this.settings.maxTokensPerMonth) * 100);
         const progressContainer = section.createDiv({ cls: 'memory-usage-progress' });
         const progressBar = progressContainer.createDiv({ cls: 'memory-usage-bar' });
@@ -538,6 +552,12 @@ export class MemorySettingsTab {
             });
         }
         
+        // Create indexing progress bar container
+        const indexingProgressContainer = section.createDiv({ cls: 'memory-indexing-progress' });
+        
+        // Initialize progress bar
+        new ProgressBar(indexingProgressContainer, this.memoryManager.app);
+        
         // Action buttons
         const actionsContainer = section.createDiv({ cls: 'memory-actions' });
         
@@ -555,32 +575,63 @@ export class MemorySettingsTab {
             }
         });
         
+        // Check if there's an incomplete indexing operation
+        const currentOperationId = this.memoryManager.getCurrentIndexingOperationId();
+        const hasIncompleteOperation = currentOperationId !== null && !usageStats.indexingInProgress;
+        
         const reindexButton = actionsContainer.createEl('button', {
-            text: 'Reindex All Content',
+            text: usageStats.indexingInProgress ? 'Indexing in progress...' : 
+                  hasIncompleteOperation ? 'Resume Indexing' : 'Reindex All Content',
             cls: 'mod-cta'
         });
         reindexButton.disabled = usageStats.indexingInProgress;
+        
+        // Create cancel button if indexing is in progress
+        let cancelButton: HTMLElement | null = null;
         if (usageStats.indexingInProgress) {
-            reindexButton.setText('Indexing in progress...');
+            cancelButton = actionsContainer.createEl('button', {
+                text: 'Cancel Indexing',
+                cls: 'mod-warning'
+            });
+            
+            cancelButton.addEventListener('click', () => {
+                if (this.memoryManager && confirm('Are you sure you want to cancel the indexing operation? You can resume it later.')) {
+                    this.memoryManager.cancelIndexing();
+                    this.display();
+                }
+            });
         }
         
         reindexButton.addEventListener('click', async () => {
-            if (
-                !usageStats.indexingInProgress && 
-                this.memoryManager && 
-                confirm('This will reindex all your vault content. It may take a while and use API tokens. Continue?')
-            ) {
-                reindexButton.disabled = true;
-                reindexButton.setText('Indexing in progress...');
-                
-                try {
-                    await this.memoryManager.reindexAll();
-                } catch (error) {
-                    console.error('Error reindexing:', error);
-                } finally {
-                    reindexButton.disabled = false;
-                    reindexButton.setText('Reindex All Content');
-                    this.display();
+            if (!usageStats.indexingInProgress && this.memoryManager) {
+                // If we have an incomplete operation, ask to resume
+                if (hasIncompleteOperation) {
+                    if (confirm('Resume your previous indexing operation?')) {
+                        reindexButton.disabled = true;
+                        reindexButton.setText('Indexing in progress...');
+                        
+                        try {
+                            await this.memoryManager.reindexAll(currentOperationId);
+                        } catch (error) {
+                            console.error('Error resuming indexing:', error);
+                        } finally {
+                            this.display();
+                        }
+                    }
+                } else {
+                    // Otherwise start a new indexing operation
+                    if (confirm('This will reindex all your vault content. It may take a while and use API tokens. Continue?')) {
+                        reindexButton.disabled = true;
+                        reindexButton.setText('Indexing in progress...');
+                        
+                        try {
+                            await this.memoryManager.reindexAll();
+                        } catch (error) {
+                            console.error('Error reindexing:', error);
+                        } finally {
+                            this.display();
+                        }
+                    }
                 }
             }
         });
