@@ -1,7 +1,7 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, ButtonComponent } from 'obsidian';
 import { Settings } from '../settings';
 import { ConfigModal } from './ConfigModal';
-import { WhatIsClaudesidianAccordion, BestPracticesAccordion, SetupInstructionsAccordion } from './accordions';
+import { WhatIsClaudesidianAccordion, BestPracticesAccordion, SetupInstructionsAccordion, MemoryManagementAccordion } from './accordions';
 import { UpdateManager } from '../utils/UpdateManager';
 import { templateFiles } from '../templates';
 import type { TemplateFile } from '../templates';
@@ -193,6 +193,9 @@ export class SettingsTab extends PluginSettingTab {
 
         // Best Practices accordion
         new BestPracticesAccordion(containerEl, () => this.createTemplatePack());
+
+        // Memory Management accordion
+        new MemoryManagementAccordion(containerEl, () => this.settings.saveSettings(), this.settings.settings);
 
         // Add CSS styles
         this.addStyles(containerEl);

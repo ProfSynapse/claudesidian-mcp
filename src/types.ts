@@ -20,13 +20,17 @@ declare module 'obsidian' {
 }
 
 
+import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from './agents/memoryManager/types';
+
 /**
  * Plugin settings interface
- * Simplified to only include vault access toggle
+ * Includes vault access toggle and memory management settings
  */
 export interface MCPSettings {
     enabledVault: boolean;
     configFilePath?: string;
+    memoryEnabled: boolean;
+    memorySettings?: MemorySettings;
 }
 
 
@@ -35,7 +39,9 @@ export interface MCPSettings {
  */
 export const DEFAULT_SETTINGS: MCPSettings = {
     enabledVault: true,
-    configFilePath: undefined
+    configFilePath: undefined,
+    memoryEnabled: false,
+    memorySettings: DEFAULT_MEMORY_SETTINGS
 };
 
 /**

@@ -8,7 +8,8 @@ import {
     PaletteCommanderAgent,
     ProjectManagerAgent,
     VaultManagerAgent,
-    VaultLibrarianAgent
+    VaultLibrarianAgent,
+    MemoryManagerAgent
 } from './agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
@@ -56,6 +57,16 @@ export class MCPConnector {
             const projectManagerAgent = new ProjectManagerAgent(this.app);
             const vaultManagerAgent = new VaultManagerAgent(this.app);
             const vaultLibrarianAgent = new VaultLibrarianAgent(this.app);
+            const memoryManagerAgent = new MemoryManagerAgent(this.app);
+            
+            // Initialize memory manager with settings
+            if (this.plugin.getSettings) {
+                const settings = this.plugin.getSettings().settings;
+                memoryManagerAgent.initializeWithSettings(
+                    settings.memorySettings,
+                    settings.memoryEnabled
+                );
+            }
             
             // Register with agent manager
             this.agentManager.registerAgent(noteReaderAgent);
@@ -64,6 +75,7 @@ export class MCPConnector {
             this.agentManager.registerAgent(projectManagerAgent);
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
+            this.agentManager.registerAgent(memoryManagerAgent);
             
             // Register all agents from the agent manager with the server
             this.registerAgentsWithServer();

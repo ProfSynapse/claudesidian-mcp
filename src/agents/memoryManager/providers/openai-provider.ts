@@ -1,4 +1,4 @@
-import { MemorySettings } from '../../../types';
+import { MemorySettings } from '../types';
 import { approximateTokenCount } from '../utils/tokenCounter';
 import { BaseEmbeddingProvider } from './embeddings-provider';
 
