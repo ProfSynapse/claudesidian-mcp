@@ -37,6 +37,27 @@ export class MemoryManagementAccordion extends Accordion {
             text: 'Embedding-based semantic search for your vault. This feature lets you search your notes by meaning, not just keywords.'
         });
         
+        // Add more detailed explanation
+        const details = contentEl.createEl('div', { cls: 'memory-notice' });
+        details.createEl('h4', { text: 'What is the Memory Manager?' });
+        details.createEl('p', { text: 'The Memory Manager creates and manages vector embeddings of your vault content, enabling powerful semantic search capabilities.' });
+        
+        details.createEl('h4', { text: 'Key Features:' });
+        const featureList = details.createEl('ul');
+        featureList.createEl('li', { text: 'Semantic search across your vault based on meaning, not just keywords' });
+        featureList.createEl('li', { text: 'Automatic indexing of new and modified content' });
+        featureList.createEl('li', { text: 'Filtering by tags, paths, and frontmatter properties' });
+        featureList.createEl('li', { text: 'Graph-aware search that utilizes your note connections' });
+        
+        details.createEl('h4', { text: 'How to Use:' });
+        details.createEl('p', { text: 'Once enabled and configured, Claude can search your vault using the queryMemory mode of the MemoryManager agent. This allows Claude to find relevant content in your notes even without exact keyword matches.' });
+        
+        details.createEl('h4', { text: 'API Requirements:' });
+        details.createEl('p', { text: 'The Memory Manager requires an embedding provider API. Currently supported: OpenAI (recommended) and local embedding (experimental).' });
+        
+        const apiNote = details.createEl('div', { cls: 'memory-notice' });
+        apiNote.createEl('p', { text: 'Note: Using the Memory Manager with OpenAI will generate API costs based on your usage. You can set monthly token limits to control costs.' });
+        
         // Container for memory settings
         this.memorySettingsContainer = contentEl.createEl('div', {
             cls: 'memory-settings-container'

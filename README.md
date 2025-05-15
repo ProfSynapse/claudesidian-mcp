@@ -97,7 +97,7 @@ Claudesidian MCP supports running across multiple Obsidian vaults simultaneously
 - The plugin runs an MCP server that only accepts local connections
 - All vault operations require explicit user permission
 - Memory storage is contained within your vault
-- No data is sent externally without consent
+- No data is sent externally without consent, except for embedding API calls if you enable the Memory Manager feature
 
 ## Agent-Mode Architecture
 
@@ -190,6 +190,15 @@ The VaultManager agent provides operations for managing files and folders in the
 | moveNote      | Move a note to a new location     | path, newPath, overwrite                        |
 | moveFolder    | Move a folder to a new location   | path, newPath, overwrite                        |
 
+#### 7. MemoryManager Agent
+The MemoryManager agent provides semantic search and embedding operations for vault content.
+
+| Mode            | Description                            | Parameters                                      |
+|-----------------|----------------------------------------|-------------------------------------------------|
+| queryMemory     | Semantic search across your vault      | query, limit, threshold, filters                |
+| indexFile       | Index a specific file for search       | filePath, force                                 |
+| getStatus       | Get memory system status and stats     | (none)                                          |
+
 ```mermaid
 flowchart LR
     subgraph "Client Application"
@@ -203,6 +212,7 @@ flowchart LR
             NoteReader[NoteReader Agent]
             ProjectManager[ProjectManager Agent]
             VaultManager[VaultManager Agent]
+            MemoryManager[MemoryManager Agent]
         end
         
         subgraph "NoteEditor Modes"
