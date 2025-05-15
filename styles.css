@@ -267,6 +267,7 @@
     display: flex;
     gap: 8px;
     margin-top: 16px;
+    align-items: center;
 }
 
 .memory-settings-desc {

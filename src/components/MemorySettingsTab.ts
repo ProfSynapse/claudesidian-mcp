@@ -365,28 +365,7 @@ export class MemorySettingsTab {
      * Create filter settings section
      */
     private createFilterSettings(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: 'Include/Exclude Patterns' });
-        
-        const includePatternsSetting = new Setting(containerEl)
-            .setName('Include Patterns')
-            .setDesc('Only include files matching these patterns (glob format, one per line)');
-            
-        const includeTextarea = includePatternsSetting.controlEl.createEl('textarea', {
-            cls: 'memory-settings-textarea',
-            attr: {
-                rows: '4'
-            }
-        });
-        
-        includeTextarea.value = this.settings.includePaths.join('\n');
-        includeTextarea.addEventListener('change', async () => {
-            const patterns = includeTextarea.value.split('\n')
-                .map(p => p.trim())
-                .filter(p => p.length > 0);
-            
-            this.settings.includePaths = patterns;
-            await this.saveSettings();
-        });
+        containerEl.createEl('h3', { text: 'Exclude Patterns' });
         
         const excludePatternsSetting = new Setting(containerEl)
             .setName('Exclude Patterns')

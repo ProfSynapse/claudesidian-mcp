@@ -83,7 +83,7 @@ export class FileEventOperations {
         }
         
         // Skip if file is excluded
-        if (FilePathOperations.isFileExcluded(file.path, settings.excludePaths, settings.includePaths)) {
+        if (FilePathOperations.isFileExcluded(file.path, settings.excludePaths)) {
             return;
         }
         
@@ -138,7 +138,7 @@ export class FileEventOperations {
         await DatabaseOperations.deleteEmbeddingsForFile(db, oldPath);
         
         // Skip if file is now excluded
-        if (FilePathOperations.isFileExcluded(file.path, settings.excludePaths, settings.includePaths)) {
+        if (FilePathOperations.isFileExcluded(file.path, settings.excludePaths)) {
             return;
         }
         

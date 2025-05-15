@@ -55,7 +55,6 @@ export interface MemorySettings {
     includeFrontmatter: boolean;
     
     // Path filters
-    includePaths: string[];
     excludePaths: string[];
     
     // Content filters
@@ -104,7 +103,6 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     chunkSize: 512,
     chunkOverlap: 50,
     includeFrontmatter: true,
-    includePaths: ['**/*.md'],
     excludePaths: ['.obsidian/**/*', 'node_modules/**/*'],
     minContentLength: 50,
     indexingSchedule: 'on-save',

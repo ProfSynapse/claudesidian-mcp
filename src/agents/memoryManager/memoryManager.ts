@@ -85,7 +85,6 @@ export class MemoryManager extends BaseAgent {
             chunkSize: 512,
             chunkOverlap: 50,
             includeFrontmatter: true,
-            includePaths: ['**/*.md'],
             excludePaths: ['.obsidian/**/*', 'node_modules/**/*'],
             minContentLength: 50,
             indexingSchedule: 'on-save',
@@ -135,6 +134,9 @@ export class MemoryManager extends BaseAgent {
                 version: 1
             });
             
+            // Explicitly initialize the database before using it
+            await this.db.initialize();
+            
             // Get database stats
             await DatabaseOperations.updateDatabaseStats(this.db, this.usageStats);
             
@@ -156,9 +158,16 @@ export class MemoryManager extends BaseAgent {
             // Load usage statistics from localStorage
             UsageStatsOperations.loadUsageStats(this.usageStats);
             
-            // Schedule cleanup if needed
+            // Schedule cleanup if needed, with error handling
             if (this.settings.autoCleanOrphaned) {
-                setTimeout(() => this.cleanOrphanedEmbeddings(), 5000);
+                setTimeout(async () => {
+                    try {
+                        await this.cleanOrphanedEmbeddings();
+                    } catch (cleanupError) {
+                        console.error('Error during scheduled orphaned embeddings cleanup:', cleanupError);
+                        // Don't allow this error to affect plugin operation
+                    }
+                }, 5000);
             }
         } catch (error) {
             console.error('Failed to initialize Memory Manager:', error);
