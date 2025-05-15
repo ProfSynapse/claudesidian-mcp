@@ -2,6 +2,7 @@ export * from './DatabaseOperations';
 export * from './FileEventOperations';
 export * from './FilePathOperations';
 export * from './IndexingOperations';
+export * from './LinkOperations';
 export * from './QueryOperations';
 export * from './UsageStatsOperations';
 export * from './text-chunker';

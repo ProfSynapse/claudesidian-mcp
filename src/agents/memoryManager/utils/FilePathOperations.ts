@@ -10,26 +10,17 @@ export class FilePathOperations {
      * 
      * @param filePath File path to check
      * @param excludePaths Array of exclusion glob patterns
-     * @param includePaths Array of inclusion glob patterns (if empty, all non-excluded files are included)
      * @returns Whether the file is excluded
      */
     static isFileExcluded(
         filePath: string,
-        excludePaths: string[],
-        includePaths: string[]
+        excludePaths: string[]
     ): boolean {
         // Check exclude patterns
         for (const pattern of excludePaths) {
             if (FilePathOperations.matchGlobPattern(filePath, pattern)) {
                 return true;
             }
-        }
-        
-        // Check include patterns (if any included path is specified, it must match one)
-        if (includePaths.length > 0) {
-            return !includePaths.some(pattern => 
-                FilePathOperations.matchGlobPattern(filePath, pattern)
-            );
         }
         
         return false;
@@ -66,22 +57,20 @@ export class FilePathOperations {
     }
     
     /**
-     * Get all markdown files from the vault that meet inclusion/exclusion criteria
+     * Get all markdown files from the vault that meet exclusion criteria
      * 
      * @param app Obsidian app instance
-     * @param includePaths Array of inclusion glob patterns
      * @param excludePaths Array of exclusion glob patterns
      * @returns Array of markdown files that match the criteria
      */
     static getEligibleMarkdownFiles(
         app: App,
-        includePaths: string[],
         excludePaths: string[]
     ): TFile[] {
         const allMarkdownFiles = app.vault.getMarkdownFiles();
         
         return allMarkdownFiles.filter(file => 
-            !FilePathOperations.isFileExcluded(file.path, excludePaths, includePaths)
+            !FilePathOperations.isFileExcluded(file.path, excludePaths)
         );
     }
 }

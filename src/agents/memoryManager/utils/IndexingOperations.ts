@@ -6,6 +6,7 @@ import { EmbeddingRecord, MemorySettings, MemoryUsageStats } from '../../../type
 import { DatabaseOperations } from './DatabaseOperations';
 import { FilePathOperations } from './FilePathOperations';
 import { UsageStatsOperations } from './UsageStatsOperations';
+import { LinkOperations } from './LinkOperations';
 
 /**
  * Utility class for indexing operations related to memory management
@@ -48,7 +49,7 @@ export class IndexingOperations {
         
         try {
             // Skip if file is excluded
-            if (FilePathOperations.isFileExcluded(filePath, settings.excludePaths, settings.includePaths)) {
+            if (FilePathOperations.isFileExcluded(filePath, settings.excludePaths)) {
                 return { 
                     success: false, 
                     error: 'File is excluded by settings',
@@ -136,6 +137,10 @@ export class IndexingOperations {
                     // Generate embedding
                     const embedding = await provider.getEmbedding(chunk.content);
                     
+                    // Extract links and backlinks from the file
+                    const outgoingLinks = LinkOperations.extractOutgoingLinks(app, file);
+                    const incomingLinks = LinkOperations.extractIncomingLinks(app, file);
+                    
                     // Create record
                     const now = Date.now();
                     const record: EmbeddingRecord = {
@@ -153,8 +158,8 @@ export class IndexingOperations {
                             createdDate: file.stat.ctime.toString(),
                             modifiedDate: file.stat.mtime.toString(),
                             links: {
-                                outgoing: [], // Would be populated with link data
-                                incoming: []  // Would be populated with backlinks
+                                outgoing: outgoingLinks, 
+                                incoming: incomingLinks
                             }
                         }
                     };
@@ -230,10 +235,9 @@ export class IndexingOperations {
             // First, clean up orphaned embeddings
             await DatabaseOperations.cleanOrphanedEmbeddings(app, db, usageStats);
             
-            // Get all markdown files that match the inclusion/exclusion criteria
+            // Get all markdown files that match the exclusion criteria
             const files = FilePathOperations.getEligibleMarkdownFiles(
                 app,
-                settings.includePaths,
                 settings.excludePaths
             );
             

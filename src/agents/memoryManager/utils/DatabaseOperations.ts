@@ -48,69 +48,58 @@ export class DatabaseOperations {
         }
         
         try {
-            // Get database stats before cleaning
-            const statsBefore = await db.getStats();
+            // Get all files from vault
+            const existingFiles = app.vault.getAllLoadedFiles();
+            const existingFilePaths = existingFiles
+                .filter(file => file instanceof TFile)
+                .map(file => file.path);
             
-            if (!db) {
-                return;
+            // Delete orphaned embeddings with a timeout and retry mechanism
+            let deletedCount = 0;
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            while (retryCount < maxRetries) {
+                try {
+                    // Set a reasonable timeout to prevent indefinite hanging
+                    const timeoutPromise = new Promise<number>((_, reject) => {
+                        setTimeout(() => reject(new Error('Operation timed out')), 10000);
+                    });
+                    
+                    // Try to delete orphaned embeddings with a timeout
+                    deletedCount = await Promise.race([
+                        db.deleteOrphanedEmbeddings(existingFilePaths),
+                        timeoutPromise
+                    ]);
+                    
+                    // If we get here, the operation succeeded
+                    break;
+                } catch (retryError) {
+                    retryCount++;
+                    console.log(`Retry ${retryCount}/${maxRetries} for cleaning orphaned embeddings`);
+                    
+                    if (retryCount >= maxRetries) {
+                        // Log but don't rethrow on final attempt
+                        console.error('Failed to clean orphaned embeddings after retries:', retryError);
+                    } else {
+                        // Wait before retrying
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
             }
             
-            // Get all embeddings from the database
-            const transaction = db.getTransaction(db.getStoreName(), 'readonly');
-            const store = transaction.objectStore(db.getStoreName());
-            const request = store.getAll();
+            // Update usage stats - even if cleanup failed
+            try {
+                await DatabaseOperations.updateDatabaseStats(db, usageStats);
+            } catch (statsError) {
+                console.error('Error updating database stats:', statsError);
+                // Don't rethrow - stats update failure shouldn't affect the plugin's operation
+            }
             
-            // Process all embeddings when the request completes
-            return new Promise<void>((resolve, reject) => {
-                request.onsuccess = async () => {
-                    try {
-                        const allEmbeddings = request.result as EmbeddingRecord[];
-                        
-                        // Group by file path
-                        const filePathMap = new Map<string, EmbeddingRecord[]>();
-                        allEmbeddings.forEach((record) => {
-                            const filePath = record.filePath;
-                            if (!filePathMap.has(filePath)) {
-                                filePathMap.set(filePath, []);
-                            }
-                            filePathMap.get(filePath)?.push(record);
-                        });
-                        
-                        // Check each file
-                        for (const [filePath, _] of filePathMap) {
-                            const file = app.vault.getAbstractFileByPath(filePath);
-                            if (!file) {
-                                // File doesn't exist anymore, delete embeddings
-                                await db.deleteEmbeddingsForFile(filePath);
-                            }
-                        }
-                        
-                        // Get database stats after cleaning - check if db is still available
-                        if (db) {
-                            const statsAfter = await db.getStats();
-                            
-                            // Update usage stats
-                            usageStats.totalEmbeddings = statsAfter.totalEmbeddings;
-                            usageStats.dbSizeMB = statsAfter.dbSizeMB;
-                        }
-                        
-                        console.log(`Cleaned orphaned embeddings`);
-                        resolve();
-                    } catch (error) {
-                        console.error('Error cleaning orphaned embeddings:', error);
-                        reject(error);
-                    }
-                };
-                
-                request.onerror = (event) => {
-                    console.error('Error getting all embeddings:', event);
-                    reject(new Error('Failed to get all embeddings'));
-                };
-            });
-            
+            console.log(`Cleaned ${deletedCount} orphaned embeddings`);
         } catch (error) {
             console.error('Error cleaning orphaned embeddings:', error);
-            throw error;
+            // Log but don't throw the error to prevent plugin initialization failure
         }
     }
     
@@ -130,9 +119,23 @@ export class DatabaseOperations {
         }
         
         try {
-            const stats = await db.getStats();
-            usageStats.totalEmbeddings = stats.totalEmbeddings;
-            usageStats.dbSizeMB = stats.dbSizeMB;
+            // Ensure database is initialized first (if it's not already)
+            try {
+                await db.initialize();
+            } catch (initError) {
+                console.warn('Database initialization warning during stats update:', initError);
+                // Continue anyway - the initialize() method is idempotent and returns early if 
+                // already initialized, so this is just a safety check
+            }
+            
+            // Update total embeddings
+            const totalEmbeddings = await db.countEmbeddings();
+            usageStats.totalEmbeddings = totalEmbeddings;
+            
+            // Estimate database size
+            // This is a rough approximation based on typical embedding size
+            // In a real implementation, we would use a more accurate size calculation
+            usageStats.dbSizeMB = totalEmbeddings * 0.02; // Assuming average 20KB per embedding
         } catch (error) {
             console.error('Error updating database stats:', error);
             throw error;
