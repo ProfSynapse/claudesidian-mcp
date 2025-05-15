@@ -9,20 +9,27 @@
 .mcp-accordion-container {
     display: flex;
     flex-direction: column;
+    width: 100%;
 }
 
 .mcp-accordion-header {
     order: 1; /* Header first */
     border-bottom: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
 }
 
 .mcp-accordion-content {
     order: 2; /* Content second */
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
 }
 
 /* Handle border when accordion is open */
 .mcp-accordion-content.is-open {
     border-top: 1px solid var(--background-modifier-border);
+    max-height: 2000px; /* Large enough to contain content */
+    padding: 15px;
 }
 
 .mcp-accordion-content.is-open ~ .mcp-accordion-header {
@@ -39,6 +46,7 @@
     align-items: center;
     justify-content: space-between;
     color: var(--text-normal);
+    text-align: left;
 }
 
 .mcp-accordion-toggle:hover {
@@ -84,16 +92,6 @@
     transform: rotate(90deg);
 }
 
-.mcp-accordion-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
-}
-
-.mcp-accordion-content.is-open {
-    max-height: 2000px; /* Large enough to contain content */
-}
-
 .mcp-accordion-content > div {
     padding: 1rem;
 }
@@ -110,6 +108,10 @@
 }
 
 /* Setup Prompt Styles */
+.mcp-section {
+    margin-bottom: 1.5rem;
+}
+
 .mcp-section pre {
     background-color: var(--background-secondary);
     padding: 12px;
@@ -150,6 +152,225 @@
     min-height: 100px;
     width: 100%;
     font-family: var(--font-monospace);
+}
+
+/* Setup instructions */
+.mcp-setup-instructions {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: var(--background-secondary);
+    border-radius: 5px;
+}
+
+/* Agents grid */
+.mcp-agents-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.mcp-agent {
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 5px;
+    transition: transform 0.2s ease;
+}
+
+.mcp-agent:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.mcp-agent-name {
+    margin: 0 0 5px 0;
+    color: var(--text-accent);
+}
+
+.mcp-agent-description {
+    margin: 0;
+    font-size: 0.9em;
+}
+
+/* Template info */
+.template-pack-info {
+    margin-top: 8px;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.template-pack-info ul {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.mcp-config-section {
+    margin-bottom: 1.5rem;
+}
+
+.mcp-config-section pre {
+    background-color: var(--background-primary);
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+/* Memory settings styles */
+.memory-settings-container {
+    margin-top: 10px;
+    display: block;
+}
+
+.memory-settings-container h3 {
+    margin-top: 24px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: 8px;
+}
+
+.memory-settings-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 15px;
+}
+
+.memory-tab {
+    padding: 8px 15px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-right: 5px;
+    user-select: none;
+    border-radius: 4px 4px 0 0;
+}
+
+.memory-tab.active {
+    border-bottom: 2px solid var(--text-accent);
+    color: var(--text-accent);
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-bottom: none;
+}
+
+.memory-tab-content {
+    display: block;
+}
+
+.memory-tab-pane {
+    display: none;
+    padding: 10px 0;
+}
+
+.memory-tab-pane.active {
+    display: block;
+}
+
+.memory-settings-textarea {
+    width: 100%;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+    font-family: var(--font-monospace);
+    resize: vertical;
+}
+
+.memory-usage-stats {
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    padding: 16px;
+    margin: 16px 0;
+    display: block;
+}
+
+.memory-usage-progress {
+    width: 100%;
+    height: 8px;
+    background-color: var(--background-modifier-border);
+    border-radius: 4px;
+    margin: 8px 0 16px 0;
+    overflow: hidden;
+}
+
+.memory-usage-bar {
+    height: 100%;
+    background-color: var(--interactive-accent);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.memory-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    align-items: center;
+}
+
+.memory-actions button {
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.memory-settings-desc {
+    margin-bottom: 8px;
+    opacity: 0.8;
+}
+
+.memory-advanced-toggle {
+    text-align: right;
+    margin-top: 16px;
+    cursor: pointer;
+    color: var(--text-accent);
+}
+
+.memory-advanced-settings {
+    display: none;
+}
+
+.memory-advanced-settings.show {
+    display: block;
+}
+
+.memory-notice {
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-left: 3px solid var(--text-accent);
+    margin-bottom: 15px;
+}
+
+/* Memory info notice */
+.memory-info-notice {
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 16px;
+    border-left: 4px solid var(--interactive-accent);
+}
+
+/* Progress indicator for indexing */
+.memory-indexing-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.memory-progress-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(var(--interactive-accent-rgb), 0.3);
+    border-radius: 50%;
+    border-top-color: var(--interactive-accent);
+    animation: memory-spin 1s linear infinite;
+}
+
+@keyframes memory-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Modal Styles */
@@ -207,111 +428,14 @@
     flex: 1;
 }
 
-/* Memory Manager Settings */
-.memory-settings-container h3 {
-    margin-top: 24px;
-    border-bottom: 1px solid var(--background-modifier-border);
-    padding-bottom: 8px;
-}
-
-.memory-settings-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--background-modifier-border);
-    margin-bottom: 16px;
-}
-
-.memory-tab {
-    padding: 8px 16px;
-    cursor: pointer;
-    border-radius: 4px 4px 0 0;
-    margin-right: 4px;
-}
-
-.memory-tab.active {
-    background-color: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    border-bottom: none;
-}
-
-.memory-tab-pane {
-    display: none;
-}
-
-.memory-tab-pane.active {
-    display: block;
-}
-
-.memory-usage-stats {
-    background-color: var(--background-secondary);
-    border-radius: 4px;
-    padding: 16px;
-    margin: 16px 0;
-}
-
-.memory-usage-progress {
-    width: 100%;
-    height: 8px;
-    background-color: var(--background-modifier-border);
-    border-radius: 4px;
-    margin: 8px 0 16px 0;
-}
-
-.memory-usage-bar {
-    height: 100%;
-    background-color: var(--interactive-accent);
-    border-radius: 4px;
-    transition: width 0.3s ease;
-}
-
-.memory-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 16px;
-    align-items: center;
-}
-
-.memory-settings-desc {
-    margin-bottom: 8px;
-    opacity: 0.8;
-}
-
-.memory-advanced-toggle {
-    text-align: right;
-    margin-top: 16px;
-    cursor: pointer;
+/* Links */
+a {
     color: var(--text-accent);
+    text-decoration: underline;
 }
 
-.memory-advanced-settings {
-    display: none;
-}
-
-.memory-advanced-settings.show {
-    display: block;
-}
-
-/* Progress indicator for indexing */
-.memory-indexing-progress {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-}
-
-.memory-progress-spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(var(--interactive-accent-rgb), 0.3);
-    border-radius: 50%;
-    border-top-color: var(--interactive-accent);
-    animation: memory-spin 1s linear infinite;
-}
-
-@keyframes memory-spin {
-    to {
-        transform: rotate(360deg);
-    }
+a:hover {
+    color: var(--text-accent-hover);
 }
 
 /* MCP Connection Status */
@@ -339,4 +463,58 @@
 
 .mcp-connector-status .status-indicator.starting {
     background-color: var(--text-warning);
+}
+
+/* Config Modal Styles */
+.mcp-config-toggle {
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 5px;
+}
+
+.mcp-config-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.mcp-config-tabs {
+    margin-bottom: 20px;
+}
+
+.mcp-tab-buttons {
+    display: flex;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 10px;
+}
+
+.mcp-tab-button {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-right: 10px;
+}
+
+.mcp-tab-button:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.mcp-tab-active {
+    border-bottom: 2px solid var(--interactive-accent);
+    font-weight: bold;
+}
+
+.mcp-tab-content {
+    margin-bottom: 20px;
+}
+
+.mcp-tab-content.active {
+    display: block;
+}
+
+.mcp-tab-content.hidden {
+    display: none;
 }

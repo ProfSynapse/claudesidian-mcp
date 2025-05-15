@@ -43,31 +43,13 @@ export class MemorySettingsTab {
         const memorySection = this.containerEl.createEl('div', { cls: 'mcp-section memory-settings-container' });
         memorySection.createEl('h2', { text: 'Memory Manager Settings' });
 
-        // Master toggle
-        new Setting(memorySection)
-            .setName('Enable Memory Manager')
-            .setDesc('Enable embedding-based semantic search for your vault')
-            .addToggle(toggle => toggle
-                .setValue(this.settings.enabled)
-                .onChange(async (value) => {
-                    this.settings.enabled = value;
-                    // Update visibility of other settings
-                    if (value) {
-                        this.tabContainer.style.display = 'flex';
-                        this.contentContainer.style.display = 'block';
-                    } else {
-                        this.tabContainer.style.display = 'none';
-                        this.contentContainer.style.display = 'none';
-                    }
-                    
-                    // Save settings
-                    await this.saveSettings();
-                })
-            );
+        // Note about embedding creation
+        const infoEl = memorySection.createEl('div', { cls: 'memory-info-notice' });
+        infoEl.createEl('p', { text: 'Memory Manager is always enabled. You can control when embeddings are created in the Embedding tab under "Indexing Schedule".' });
+        infoEl.createEl('p', { text: 'Set to "Only Manually" if you want to control exactly when embeddings are created.' });
 
         // Create tabs for organization
         this.tabContainer = memorySection.createDiv({ cls: 'memory-settings-tabs' });
-        this.tabContainer.style.display = this.settings.enabled ? 'flex' : 'none';
         
         this.tabs = {
             api: this.tabContainer.createDiv({ cls: 'memory-tab active', text: 'API' }),
@@ -78,7 +60,6 @@ export class MemorySettingsTab {
 
         // Content containers for each tab
         this.contentContainer = memorySection.createDiv({ cls: 'memory-tab-content' });
-        this.contentContainer.style.display = this.settings.enabled ? 'block' : 'none';
         
         this.contents = {
             api: this.contentContainer.createDiv({ cls: 'memory-tab-pane active' }),
@@ -503,7 +484,6 @@ export class MemorySettingsTab {
      */
     private createUsageStats(containerEl: HTMLElement): void {
         const section = containerEl.createEl('div', { cls: 'memory-usage-stats' });
-        section.style.display = this.settings.enabled ? 'block' : 'none';
         
         section.createEl('h3', { text: 'Usage Statistics' });
         
