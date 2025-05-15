@@ -53,7 +53,7 @@ export class MemoryManager extends BaseAgent {
     private settings: MemorySettings;
     
     // App instance
-    private app: App;
+    app: App;
     
     // Events instance
     private events: Events;
@@ -90,6 +90,7 @@ export class MemoryManager extends BaseAgent {
             indexingSchedule: 'on-save',
             batchSize: 10,
             concurrentRequests: 3,
+            processingDelay: 1000, // 1 second delay between processing batches
             dbStoragePath: '',
             autoCleanOrphaned: true,
             maxDbSize: 500,
@@ -260,19 +261,57 @@ export class MemoryManager extends BaseAgent {
     
     /**
      * Reindex all files in the vault
+     * 
+     * @param operationId Optional ID to resume a specific operation
      */
-    async reindexAll(): Promise<{
+    async reindexAll(operationId?: string): Promise<{
         success: boolean;
         processed: number;
         failed: number;
         error?: string;
+        operationId: string;
+        completed: boolean;
     }> {
-        if (this.indexingInProgress) {
+        // If no operationId provided, check if there's an uncompleted operation
+        if (!operationId) {
+            // Look for any saved operations in localStorage that aren't completed
+            const savedOperationKeys = Object.keys(localStorage)
+                .filter(key => key.startsWith('indexing-progress-'));
+            
+            // If there are saved operations, offer to resume
+            if (savedOperationKeys.length > 0) {
+                // Try to load the most recent one
+                const mostRecentKey = savedOperationKeys
+                    .map(key => {
+                        try {
+                            const state = JSON.parse(localStorage.getItem(key) || '{}');
+                            return { key, time: state.startTime || 0 };
+                        } catch {
+                            return { key, time: 0 };
+                        }
+                    })
+                    .sort((a, b) => b.time - a.time)[0];
+                
+                if (mostRecentKey) {
+                    const opId = mostRecentKey.key.replace('indexing-progress-', '');
+                    // Load the state to check if it was cancelled
+                    const state = IndexingOperations.loadProgressState(opId);
+                    
+                    if (state && !state.isCancelled) {
+                        operationId = opId;
+                    }
+                }
+            }
+        }
+        
+        if (this.indexingInProgress && !operationId) {
             return {
                 success: false,
                 processed: 0,
                 failed: 0,
-                error: 'Indexing is already in progress'
+                error: 'Indexing is already in progress',
+                operationId: '',
+                completed: true
             };
         }
         
@@ -286,9 +325,59 @@ export class MemoryManager extends BaseAgent {
                 this.provider,
                 this.settings,
                 this.usageStats,
-                this.events
+                this.events,
+                operationId
             );
         } finally {
+            this.indexingInProgress = false;
+            this.usageStats.indexingInProgress = false;
+        }
+    }
+    
+    /**
+     * Get the current indexing operation ID, if any
+     */
+    getCurrentIndexingOperationId(): string | null {
+        // Look for any active operations
+        const savedOperationKeys = Object.keys(localStorage)
+            .filter(key => key.startsWith('indexing-progress-'));
+        
+        if (savedOperationKeys.length === 0) {
+            return null;
+        }
+        
+        // Get the most recent one
+        const mostRecentKey = savedOperationKeys
+            .map(key => {
+                try {
+                    const state = JSON.parse(localStorage.getItem(key) || '{}');
+                    return { key, time: state.startTime || 0 };
+                } catch {
+                    return { key, time: 0 };
+                }
+            })
+            .sort((a, b) => b.time - a.time)[0];
+        
+        if (mostRecentKey) {
+            const opId = mostRecentKey.key.replace('indexing-progress-', '');
+            // Load the state to check if it was cancelled
+            const state = IndexingOperations.loadProgressState(opId);
+            
+            if (state && !state.isCancelled) {
+                return opId;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Cancel the current indexing operation
+     */
+    cancelIndexing(): void {
+        const operationId = this.getCurrentIndexingOperationId();
+        if (operationId) {
+            IndexingOperations.cancelOperation(operationId);
             this.indexingInProgress = false;
             this.usageStats.indexingInProgress = false;
         }

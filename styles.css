@@ -352,9 +352,10 @@
 /* Progress indicator for indexing */
 .memory-indexing-progress {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 12px;
+    margin-bottom: 12px;
 }
 
 .memory-progress-spinner {
@@ -371,6 +372,55 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+/* Indexing Progress Bar */
+.mcp-progress-container {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 5px;
+    padding: 10px;
+    margin: 8px 0;
+}
+
+.mcp-progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.mcp-progress-text {
+    font-size: 0.9em;
+    color: var(--text-normal);
+}
+
+.mcp-progress-bar-container {
+    height: 10px;
+    background-color: var(--background-modifier-border);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.mcp-progress-bar {
+    height: 100%;
+    background-color: var(--interactive-accent);
+    width: 0%;
+    transition: width 0.5s ease;
+}
+
+.mcp-progress-cancel {
+    align-self: flex-end;
+    cursor: pointer;
+    font-size: 0.8em;
+    color: var(--text-error);
+    margin-top: 5px;
+}
+
+.mcp-progress-cancel:hover {
+    text-decoration: underline;
 }
 
 /* Modal Styles */

@@ -67,6 +67,7 @@ export interface MemorySettings {
     // Performance settings
     batchSize: number;
     concurrentRequests: number;
+    processingDelay: number; // Milliseconds to wait between batches
     
     // Database settings
     dbStoragePath: string;
@@ -108,6 +109,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     indexingSchedule: 'on-save',
     batchSize: 10,
     concurrentRequests: 3,
+    processingDelay: 1000, // 1 second delay between batches
     dbStoragePath: '',
     autoCleanOrphaned: true,
     maxDbSize: 500,
