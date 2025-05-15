@@ -30,15 +30,22 @@ export class ReadLineMode extends BaseMode<ReadLineArgs, ReadLineResult> {
    * @returns Promise that resolves with the specified lines
    */
   async execute(params: ReadLineArgs): Promise<ReadLineResult> {
-    const { path, startLine, endLine } = params;
+    const { path, startLine, endLine, includeLineNumbers } = params;
     
-    const lines = await ReadOperations.readLines(this.app, path, startLine, endLine);
+    let lines: string[];
+    
+    if (includeLineNumbers) {
+      lines = await ReadOperations.readLinesWithLineNumbers(this.app, path, startLine, endLine);
+    } else {
+      lines = await ReadOperations.readLines(this.app, path, startLine, endLine);
+    }
     
     return {
       lines,
       path,
       startLine,
-      endLine
+      endLine,
+      lineNumbersIncluded: includeLineNumbers
     };
   }
   
@@ -61,6 +68,11 @@ export class ReadLineMode extends BaseMode<ReadLineArgs, ReadLineResult> {
         endLine: {
           type: 'number',
           description: 'End line (1-based, inclusive)'
+        },
+        includeLineNumbers: {
+          type: 'boolean',
+          description: 'Whether to include line numbers in the output',
+          default: false
         }
       },
       required: ['path', 'startLine', 'endLine']

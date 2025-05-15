@@ -7,7 +7,8 @@ import {
   DeleteMode,
   AppendMode,
   PrependMode,
-  BatchMode
+  BatchMode,
+  ReplaceByLineMode
 } from './modes';
 
 /**
@@ -32,5 +33,6 @@ export class NoteEditorAgent extends BaseAgent {
     this.registerMode(new AppendMode(app));
     this.registerMode(new PrependMode(app));
     this.registerMode(new BatchMode(app));
+    this.registerMode(new ReplaceByLineMode(app));
   }
 }

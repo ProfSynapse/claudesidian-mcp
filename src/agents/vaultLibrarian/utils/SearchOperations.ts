@@ -69,7 +69,9 @@ export class SearchOperations {
         includeFolders: boolean = true,
         includeHidden: boolean = false
     ): { files: string[]; folders: string[] } {
-        return new SearchOperations(app).listFolder(path, includeFiles, includeFolders, includeHidden);
+        // Normalize the path before passing to instance method
+        const normalizedPath = path === '.' ? '/' : path;
+        return new SearchOperations(app).listFolder(normalizedPath, includeFiles, includeFolders, includeHidden);
     }
 
     /**
@@ -531,8 +533,11 @@ export class SearchOperations {
         const files: string[] = [];
         const folders: string[] = [];
         
+        // Normalize the path - handle special cases for root
+        const normalizedPath = path === '.' ? '/' : path;
+        
         // Get the folder
-        const folder = this.app.vault.getAbstractFileByPath(path);
+        const folder = this.app.vault.getAbstractFileByPath(normalizedPath);
         if (!folder || !(folder instanceof TFolder)) {
             return { files, folders };
         }

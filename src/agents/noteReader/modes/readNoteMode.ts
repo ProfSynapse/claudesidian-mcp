@@ -30,13 +30,20 @@ export class ReadNoteMode extends BaseMode<ReadNoteArgs, ReadNoteResult> {
    * @returns Promise that resolves with the note content
    */
   async execute(params: ReadNoteArgs): Promise<ReadNoteResult> {
-    const { path } = params;
+    const { path, includeLineNumbers } = params;
     
-    const content = await ReadOperations.readNote(this.app, path);
+    let content: string;
+    
+    if (includeLineNumbers) {
+      content = await ReadOperations.readNoteWithLineNumbers(this.app, path);
+    } else {
+      content = await ReadOperations.readNote(this.app, path);
+    }
     
     return {
       content,
-      path
+      path,
+      lineNumbersIncluded: includeLineNumbers
     };
   }
   
@@ -51,6 +58,11 @@ export class ReadNoteMode extends BaseMode<ReadNoteArgs, ReadNoteResult> {
         path: {
           type: 'string',
           description: 'Path to the note'
+        },
+        includeLineNumbers: {
+          type: 'boolean',
+          description: 'Whether to include line numbers in the output',
+          default: false
         }
       },
       required: ['path']

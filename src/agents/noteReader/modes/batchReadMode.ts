@@ -39,7 +39,7 @@ export class BatchReadMode extends BaseMode<BatchReadArgs, BatchReadResult> {
       throw new Error('Invalid paths parameter: must be an array');
     }
     
-    const { paths } = params;
+    const { paths, includeLineNumbers } = params;
     
     // Validate each path
     const validatedPaths: string[] = [];
@@ -70,14 +70,22 @@ export class BatchReadMode extends BaseMode<BatchReadArgs, BatchReadResult> {
     }
     
     // Execute the batch read operation with validated paths
-    const result = await ReadOperations.batchRead(this.app, validatedPaths);
+    let result;
+    if (includeLineNumbers) {
+      result = await ReadOperations.batchReadWithLineNumbers(this.app, validatedPaths);
+    } else {
+      result = await ReadOperations.batchRead(this.app, validatedPaths);
+    }
     
     // Merge any validation errors with read errors
     if (Object.keys(errors).length > 0) {
       result.errors = { ...errors, ...result.errors };
     }
     
-    return result;
+    return {
+      ...result,
+      lineNumbersIncluded: includeLineNumbers
+    };
   }
   
   /**
@@ -94,6 +102,11 @@ export class BatchReadMode extends BaseMode<BatchReadArgs, BatchReadResult> {
             type: 'string'
           },
           description: 'Paths to the notes'
+        },
+        includeLineNumbers: {
+          type: 'boolean',
+          description: 'Whether to include line numbers in the output',
+          default: false
         }
       },
       required: ['paths']

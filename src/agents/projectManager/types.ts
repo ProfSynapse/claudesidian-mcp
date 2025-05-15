@@ -376,3 +376,94 @@ export interface CheckpointResult {
    */
   message: string;
 }
+
+/**
+ * Arguments for project completion
+ */
+export interface CompletionArgs {
+  /**
+   * High-level summary of the completed project
+   */
+  summary: string;
+  
+  /**
+   * List of specific accomplishments achieved during the project
+   */
+  accomplishments?: string[];
+  
+  /**
+   * List of challenges encountered and how they were addressed
+   */
+  challenges?: string[];
+  
+  /**
+   * Key insights, learnings, or discoveries from the project
+   */
+  learnings?: string[];
+  
+  /**
+   * Suggestions for future work, improvements, or next steps
+   */
+  futureWork?: string[];
+  
+  /**
+   * Optional path for internal reference only (not used for vault interaction)
+   * This is only for internal planning purposes and doesn't interact with the vault
+   */
+  projectPath?: string;
+}
+
+/**
+ * Result of project completion
+ */
+export interface CompletionResult {
+  /**
+   * High-level summary of the completed project
+   */
+  summary: string;
+  
+  /**
+   * List of specific accomplishments achieved during the project
+   */
+  accomplishments: string[];
+  
+  /**
+   * List of challenges encountered and how they were addressed
+   */
+  challenges: string[];
+  
+  /**
+   * Key insights, learnings, or discoveries from the project
+   */
+  learnings: string[];
+  
+  /**
+   * Suggestions for future work, improvements, or next steps
+   */
+  futureWork: string[];
+  
+  /**
+   * Path to the project file
+   */
+  projectPath: string;
+  
+  /**
+   * Whether the completion was created successfully
+   */
+  success: boolean;
+  
+  /**
+   * Signal that user input is required before continuing
+   */
+  requiresUserInput: boolean;
+  
+  /**
+   * Signal to pause execution until user provides feedback
+   */
+  pauseExecution: boolean;
+  
+  /**
+   * Message to display to the user about expected behavior
+   */
+  message: string;
+}
