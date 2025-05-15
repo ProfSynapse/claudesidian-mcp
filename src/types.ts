@@ -92,7 +92,7 @@ export interface MemorySettings {
 
 // Default settings for Memory Manager
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
-    enabled: false,
+    enabled: true,
     apiProvider: 'openai',
     openaiApiKey: '',
     embeddingModel: 'text-embedding-3-small',

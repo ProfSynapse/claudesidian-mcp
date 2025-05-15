@@ -59,11 +59,11 @@ export class MCPConnector {
             const vaultManagerAgent = new VaultManagerAgent(this.app);
             const vaultLibrarianAgent = new VaultLibrarianAgent(this.app);
             
-            // Create the memory manager if enabled in settings
+            // Create the memory manager (always enabled)
             const settings = (this.plugin as any)['settings']?.settings;
-            if (settings?.memory?.enabled) {
-                this.memoryManager = new MemoryManager(this.app, this.eventManager as any);
-                // Initialize with settings
+            this.memoryManager = new MemoryManager(this.app, this.eventManager as any);
+            // Initialize with settings
+            if (settings?.memory) {
                 this.memoryManager.initializeWithSettings(settings.memory);
             }
             
@@ -75,10 +75,8 @@ export class MCPConnector {
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
             
-            // Register memory manager if initialized
-            if (this.memoryManager) {
-                this.agentManager.registerAgent(this.memoryManager);
-            }
+            // Register memory manager (always available)
+            this.agentManager.registerAgent(this.memoryManager);
             
             // Register all agents from the agent manager with the server
             this.registerAgentsWithServer();

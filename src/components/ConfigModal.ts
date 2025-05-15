@@ -119,8 +119,7 @@ export class ConfigModal extends Modal {
      * @param container Container element
      */
     private createWindowsTab(container: HTMLElement) {
-        const windowsContent = container.createDiv({ cls: 'mcp-tab-content' });
-        windowsContent.style.display = 'none';
+        const windowsContent = container.createDiv({ cls: 'mcp-tab-content hidden' });
         this.tabContents['windows'] = windowsContent;
         
         const instructions = windowsContent.createEl('div');
@@ -179,8 +178,7 @@ export class ConfigModal extends Modal {
      * @param container Container element
      */
     private createMacTab(container: HTMLElement) {
-        const macContent = container.createDiv({ cls: 'mcp-tab-content' });
-        macContent.style.display = 'none';
+        const macContent = container.createDiv({ cls: 'mcp-tab-content hidden' });
         this.tabContents['mac'] = macContent;
         
         const instructions = macContent.createEl('div');
@@ -239,8 +237,7 @@ export class ConfigModal extends Modal {
      * @param container Container element
      */
     private createLinuxTab(container: HTMLElement) {
-        const linuxContent = container.createDiv({ cls: 'mcp-tab-content' });
-        linuxContent.style.display = 'none';
+        const linuxContent = container.createDiv({ cls: 'mcp-tab-content hidden' });
         this.tabContents['linux'] = linuxContent;
         
         const instructions = linuxContent.createEl('div');
@@ -313,76 +310,21 @@ export class ConfigModal extends Modal {
         
         // Show/hide content
         for (const [id, content] of Object.entries(this.tabContents)) {
-            content.style.display = id === tabId ? 'block' : 'none';
+            if (id === tabId) {
+                content.removeClass('hidden');
+                content.addClass('active');
+            } else {
+                content.addClass('hidden');
+                content.removeClass('active');
+            }
         }
     }
     
     /**
-     * Add CSS styles for the modal
+     * Add CSS styles for the modal (now implemented in styles.css)
      */
     private addStyles() {
-        const { contentEl } = this;
-        
-        // Add styles to the document
-        const styleEl = contentEl.createEl('style');
-        styleEl.textContent = `
-            .mcp-config-toggle {
-                margin-bottom: 20px;
-                padding: 10px;
-                background-color: var(--background-secondary);
-                border-radius: 5px;
-            }
-
-            .mcp-config-label {
-                display: block;
-                margin-bottom: 8px;
-                font-weight: bold;
-            }
-
-            .mcp-config-tabs {
-                margin-bottom: 20px;
-            }
-            
-            .mcp-tab-buttons {
-                display: flex;
-                border-bottom: 1px solid var(--background-modifier-border);
-                margin-bottom: 10px;
-            }
-            
-            .mcp-tab-button {
-                padding: 8px 16px;
-                background: transparent;
-                border: none;
-                cursor: pointer;
-                border-bottom: 2px solid transparent;
-                margin-right: 10px;
-            }
-            
-            .mcp-tab-button:hover {
-                background-color: var(--background-modifier-hover);
-            }
-            
-            .mcp-tab-active {
-                border-bottom: 2px solid var(--interactive-accent);
-                font-weight: bold;
-            }
-            
-            .mcp-tab-content {
-                margin-bottom: 20px;
-            }
-            
-            pre {
-                background-color: var(--background-secondary);
-                padding: 10px;
-                border-radius: 5px;
-                overflow-x: auto;
-                margin-bottom: 10px;
-            }
-            
-            code {
-                font-family: monospace;
-            }
-        `;
+        // All styles are now in the global styles.css file
     }
     
     /**

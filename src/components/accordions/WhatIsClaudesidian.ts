@@ -68,6 +68,12 @@ export class WhatIsClaudesidianAccordion {
         
         this.createAgentDescription(
             agentsContainer,
+            'Memory Manager',
+            'Creates and manages vector embeddings of your vault content, enabling powerful semantic search capabilities. Allows searching your notes by meaning, not just keywords, with automatic indexing of new and modified content.'
+        );
+        
+        this.createAgentDescription(
+            agentsContainer,
             'Palette Commander',
             'Executes Obsidian commands on your behalf using the command palette (Control+P/Cmd+P). Can access any functionality available in the command palette, automate repetitive tasks, apply formatting, manage workspaces, and trigger plugins without manual intervention.'
         );

@@ -121,10 +121,7 @@ export class MemoryManager extends BaseAgent {
      * Sets up the database and embedding provider
      */
     async initialize(): Promise<void> {
-        // Skip initialization if not enabled
-        if (!this.settings.enabled) {
-            return;
-        }
+        // Always initialize the memory manager
         
         try {
             // Initialize the database
@@ -301,49 +298,34 @@ export class MemoryManager extends BaseAgent {
      * Update settings
      */
     updateSettings(settings: MemorySettings): void {
-        const wasEnabled = this.settings.enabled;
-        const newEnabled = settings.enabled;
+        // Always consider the Memory Manager as enabled
+        settings.enabled = true;
         
         // Update settings
         this.settings = settings;
         
-        // Handle enable/disable state changes
-        if (!wasEnabled && newEnabled) {
-            // Was disabled, now enabled - initialize
-            this.initializeWithSettings(settings);
-        } else if (wasEnabled && !newEnabled) {
-            // Was enabled, now disabled - clean up
-            if (this.db) {
-                this.db.close();
-                this.db = null;
-            }
-            this.provider = null;
-        } else if (wasEnabled && newEnabled) {
-            // Still enabled, but settings might have changed
-            
-            // Update provider if API settings changed
-            if (
-                this.settings.apiProvider !== settings.apiProvider ||
-                this.settings.openaiApiKey !== settings.openaiApiKey ||
-                this.settings.embeddingModel !== settings.embeddingModel ||
-                this.settings.dimensions !== settings.dimensions
-            ) {
-                this.initializeProvider();
-            }
-            
-            // Update event listeners if indexing schedule changed
-            if (this.settings.indexingSchedule !== settings.indexingSchedule) {
-                // Register new listeners if needed
-                if (settings.indexingSchedule === 'on-save') {
-                    FileEventOperations.registerFileEvents(
-                        this.app, 
-                        this.settings, 
-                        this.db, 
-                        this.provider, 
-                        this.usageStats, 
-                        this.indexingInProgress
-                    );
-                }
+        // Update provider if API settings changed
+        if (
+            this.settings.apiProvider !== settings.apiProvider ||
+            this.settings.openaiApiKey !== settings.openaiApiKey ||
+            this.settings.embeddingModel !== settings.embeddingModel ||
+            this.settings.dimensions !== settings.dimensions
+        ) {
+            this.initializeProvider();
+        }
+        
+        // Update event listeners if indexing schedule changed
+        if (this.settings.indexingSchedule !== settings.indexingSchedule) {
+            // Register new listeners if needed
+            if (settings.indexingSchedule === 'on-save') {
+                FileEventOperations.registerFileEvents(
+                    this.app, 
+                    this.settings, 
+                    this.db, 
+                    this.provider, 
+                    this.usageStats, 
+                    this.indexingInProgress
+                );
             }
         }
     }
