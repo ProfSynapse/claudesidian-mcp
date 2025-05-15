@@ -143,26 +143,30 @@ export class MemorySettingsTab {
             new Setting(containerEl)
                 .setName('OpenAI API Key')
                 .setDesc('Your OpenAI API key for embeddings (securely stored in your vault)')
-                .addText(text => text
-                    .setPlaceholder('sk-...')
-                    .setValue(this.settings.openaiApiKey)
-                    .onChange(async (value) => {
-                        this.settings.openaiApiKey = value;
-                        await this.saveSettings();
-                    })
-                );
+                .addText(text => {
+                    text.inputEl.type = 'password';
+                    return text
+                        .setPlaceholder('sk-...')
+                        .setValue(this.settings.openaiApiKey)
+                        .onChange(async (value) => {
+                            this.settings.openaiApiKey = value;
+                            await this.saveSettings();
+                        });
+                });
             
             new Setting(containerEl)
                 .setName('Organization ID (Optional)')
                 .setDesc('Your OpenAI organization ID if applicable')
-                .addText(text => text
-                    .setPlaceholder('org-...')
-                    .setValue(this.settings.openaiOrganization || '')
-                    .onChange(async (value) => {
-                        this.settings.openaiOrganization = value || undefined;
-                        await this.saveSettings();
-                    })
-                );
+                .addText(text => {
+                    text.inputEl.type = 'password';
+                    return text
+                        .setPlaceholder('org-...')
+                        .setValue(this.settings.openaiOrganization || '')
+                        .onChange(async (value) => {
+                            this.settings.openaiOrganization = value || undefined;
+                            await this.saveSettings();
+                        });
+                });
         }
         
         // Model settings

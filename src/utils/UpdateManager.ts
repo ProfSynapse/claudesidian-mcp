@@ -1,4 +1,5 @@
 import { Notice, Plugin, requestUrl } from 'obsidian';
+import { MCPSettings } from '../types';
 
 interface ReleaseAsset {
     name: string;
@@ -47,6 +48,7 @@ export class UpdateManager {
     async updatePlugin(): Promise<void> {
         try {
             const release = await this.fetchLatestRelease();
+            const latestVersion = release.tag_name.replace('v', '');
             
             // Verify all required files exist in release
             const assets = release.assets;
@@ -72,11 +74,41 @@ export class UpdateManager {
                 );
             }
 
-            new Notice('Plugin updated successfully! Please refresh Obsidian to apply changes.');
+            // Update the manifest in memory with the latest version
+            this.plugin.manifest.version = latestVersion;
+            
+            // Update settings to reflect the latest version
+            await this.updateVersionInSettings(latestVersion);
+
+            new Notice(`Plugin updated successfully to version ${latestVersion}! Please refresh Obsidian to apply changes.`);
         } catch (error) {
             console.error('Failed to update plugin:', error);
             new Notice('Failed to update plugin: ' + (error as Error).message);
             throw error;
+        }
+    }
+
+    /**
+     * Update the version in the plugin settings
+     * @param version The version to set
+     */
+    private async updateVersionInSettings(version: string): Promise<void> {
+        try {
+            // Load current settings
+            const currentData = await this.plugin.loadData() as MCPSettings;
+            
+            // Create updated settings with version info
+            const updatedData = {
+                ...currentData,
+                lastUpdateVersion: version,
+                lastUpdateDate: new Date().toISOString()
+            };
+            
+            // Save the updated settings
+            await this.plugin.saveData(updatedData);
+        } catch (error) {
+            console.error('Failed to update version in settings:', error);
+            // Don't throw here to prevent blocking the update process
         }
     }
 

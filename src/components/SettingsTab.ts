@@ -42,7 +42,7 @@ export class SettingsTab extends PluginSettingTab {
 
     /**
      * Creates the update section in settings
-     * Displays current version and update button
+     * Displays current version, last update info, and update button
      */
     private async createUpdateSection(containerEl: HTMLElement): Promise<void> {
         const updateSection = containerEl.createEl('div', { cls: 'mcp-section' });
@@ -52,6 +52,17 @@ export class SettingsTab extends PluginSettingTab {
         updateSection.createEl('p', { 
             text: `Current version: ${this.plugin.manifest.version}` 
         });
+        
+        // Display last update info if available
+        if (this.settings.settings.lastUpdateVersion && this.settings.settings.lastUpdateDate) {
+            const lastUpdateDate = new Date(this.settings.settings.lastUpdateDate);
+            const formattedDate = lastUpdateDate.toLocaleDateString() + ' ' + 
+                                  lastUpdateDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            updateSection.createEl('p', {
+                text: `Last updated: ${this.settings.settings.lastUpdateVersion} (${formattedDate})`
+            });
+        }
         
         // Add update button
         new Setting(updateSection)
@@ -71,6 +82,9 @@ export class SettingsTab extends PluginSettingTab {
                             }
 
                             await updateManager.updatePlugin();
+                            
+                            // Refresh the settings display to show the updated version
+                            this.display();
                         } catch (error) {
                             new Notice(`Update failed: ${(error as Error).message}`);
                         } finally {

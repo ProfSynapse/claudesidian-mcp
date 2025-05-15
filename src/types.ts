@@ -22,12 +22,14 @@ declare module 'obsidian' {
 
 /**
  * Plugin settings interface
- * Simplified to only include vault access toggle
+ * Includes vault access toggle and version tracking
  */
 export interface MCPSettings {
     enabledVault: boolean;
     configFilePath?: string;
     memory?: MemorySettings;
+    lastUpdateVersion?: string;
+    lastUpdateDate?: string;
 }
 
 // Memory Manager Settings
