@@ -10,7 +10,7 @@ export const VaultLibrarianConfig = {
   /**
    * Description of the agent
    */
-  description: 'Search and navigate the vault',
+  description: 'Search and embeddings operations for Obsidian vault',
   
   /**
    * Version of the agent

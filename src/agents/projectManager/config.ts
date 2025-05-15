@@ -10,10 +10,10 @@ export const ProjectManagerConfig = {
   /**
    * Description of the agent
    */
-  description: 'Manage projects in the vault',
+  description: 'Manage projects and workspaces in the vault with support for hierarchical organization',
   
   /**
    * Version of the agent
    */
-  version: '1.0.0'
+  version: '2.0.0'
 };

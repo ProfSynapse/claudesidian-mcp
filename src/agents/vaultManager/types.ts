@@ -1,9 +1,10 @@
 import { TFile } from 'obsidian';
+import { CommonParameters } from '../../types';
 
 /**
  * Arguments for creating a note
  */
-export interface CreateNoteArgs {
+export interface CreateNoteArgs extends CommonParameters {
   /**
    * Path to the note
    */
@@ -48,7 +49,7 @@ export interface CreateNoteResult {
 /**
  * Arguments for creating a folder
  */
-export interface CreateFolderArgs {
+export interface CreateFolderArgs extends CommonParameters {
   /**
    * Path to the folder
    */
@@ -83,7 +84,7 @@ export interface CreateFolderResult {
 /**
  * Arguments for deleting a note
  */
-export interface DeleteNoteArgs {
+export interface DeleteNoteArgs extends CommonParameters {
   /**
    * Path to the note
    */
@@ -113,7 +114,7 @@ export interface DeleteNoteResult {
 /**
  * Arguments for deleting a folder
  */
-export interface DeleteFolderArgs {
+export interface DeleteFolderArgs extends CommonParameters {
   /**
    * Path to the folder
    */
@@ -148,7 +149,7 @@ export interface DeleteFolderResult {
 /**
  * Arguments for moving a note
  */
-export interface MoveNoteArgs {
+export interface MoveNoteArgs extends CommonParameters {
   /**
    * Path to the note
    */
@@ -193,7 +194,7 @@ export interface MoveNoteResult {
 /**
  * Arguments for moving a folder
  */
-export interface MoveFolderArgs {
+export interface MoveFolderArgs extends CommonParameters {
   /**
    * Path to the folder
    */

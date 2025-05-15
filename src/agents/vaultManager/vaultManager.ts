@@ -1,17 +1,18 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { VaultManagerConfig } from './config';
-import {
-  CreateNoteMode,
-  CreateFolderMode,
-  DeleteNoteMode,
+import { 
+  ListFilesMode, 
+  ListFoldersMode, 
+  CreateFolderMode, 
+  EditFolderMode,
   DeleteFolderMode,
-  MoveNoteMode,
+  MoveFileMode,
   MoveFolderMode
 } from './modes';
 
 /**
- * Agent for managing files and folders in the vault
+ * Agent for file system operations in the Obsidian vault
  */
 export class VaultManagerAgent extends BaseAgent {
   /**
@@ -26,11 +27,12 @@ export class VaultManagerAgent extends BaseAgent {
     );
     
     // Register modes
-    this.registerMode(new CreateNoteMode(app));
+    this.registerMode(new ListFilesMode(app));
+    this.registerMode(new ListFoldersMode(app));
     this.registerMode(new CreateFolderMode(app));
-    this.registerMode(new DeleteNoteMode(app));
+    this.registerMode(new EditFolderMode(app));
     this.registerMode(new DeleteFolderMode(app));
-    this.registerMode(new MoveNoteMode(app));
+    this.registerMode(new MoveFileMode(app));
     this.registerMode(new MoveFolderMode(app));
   }
 }

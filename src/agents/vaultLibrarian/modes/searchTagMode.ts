@@ -48,11 +48,13 @@ export class SearchTagMode extends BaseMode<SearchTagArgs, SearchTagResult> {
       const filePaths = files.map(file => file.path);
       
       return {
+        success: true,
         files: filePaths,
         total: filePaths.length
       };
     } catch (error) {
       return {
+        success: false,
         files: [],
         total: 0
       };

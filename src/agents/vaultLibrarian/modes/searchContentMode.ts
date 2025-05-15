@@ -95,6 +95,7 @@ export class SearchContentMode extends BaseMode<SearchContentArgs, SearchContent
       
       // Enhanced result with more metadata
       return {
+        success: true,
         results,
         total: results.length,
         // Add additional metadata
@@ -103,6 +104,7 @@ export class SearchContentMode extends BaseMode<SearchContentArgs, SearchContent
       };
     } catch (error) {
       return {
+        success: false,
         results: [],
         total: 0
       };

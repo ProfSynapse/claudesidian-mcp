@@ -260,6 +260,7 @@ function validateToolParams(params: any) {
  *
  * This function executes a tool with the specified parameters. It handles
  * tool names that include vault identifiers by extracting the base agent name.
+ * It also handles workspace context and handoff parameters.
  *
  * @param getAgent Function to get an agent by name
  * @param request The original request object
@@ -277,8 +278,6 @@ export async function handleToolExecution(
         // Extract the actual agent name by removing the vault ID suffix
         // The format is expected to be {agentName}_{vaultID}
         const agentName = fullToolName.split('_')[0];
-        
-        // Tool execution logging removed to eliminate unnecessary console logs
         
         // Extract the mode from the arguments
         if (!parsedArgs) {
@@ -307,6 +306,58 @@ export async function handleToolExecution(
         // Execute the mode on the agent
         const result = await agent.executeMode(mode, params);
         
+        // Handle handoff if specified in the result
+        if (result.handoff && result.success) {
+            // Get the handoff details
+            const { tool, mode: handoffMode, parameters, returnHere } = result.handoff;
+            
+            try {
+                // Get the agent to hand off to
+                const handoffAgent = getAgent(tool);
+                
+                // Include the workspace context in the handoff parameters if it exists in the original result
+                if (result.workspaceContext) {
+                    parameters.workspaceContext = result.workspaceContext;
+                }
+                
+                // Execute the handoff
+                const handoffResult = await handoffAgent.executeMode(handoffMode, parameters);
+                
+                // If returnHere is true, return combined results
+                if (returnHere) {
+                    result.handoffResult = handoffResult;
+                    return {
+                        content: [{
+                            type: "text",
+                            text: safeStringify(result)
+                        }]
+                    };
+                } else {
+                    // Otherwise, return just the handoff result
+                    return {
+                        content: [{
+                            type: "text",
+                            text: safeStringify(handoffResult)
+                        }]
+                    };
+                }
+            } catch (handoffError) {
+                // If handoff fails, include the error in the original result
+                result.handoffResult = {
+                    success: false,
+                    error: handoffError.message || "Handoff failed"
+                };
+                
+                return {
+                    content: [{
+                        type: "text",
+                        text: safeStringify(result)
+                    }]
+                };
+            }
+        }
+        
+        // Regular result with no handoff
         return {
             content: [{
                 type: "text",

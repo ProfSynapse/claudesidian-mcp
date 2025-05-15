@@ -42,6 +42,7 @@ export class ListFolderMode extends BaseMode<ListFolderArgs, ListFolderResult> {
       );
       
       return {
+        success: true,
         path,
         files: result.files,
         folders: result.folders
@@ -50,6 +51,7 @@ export class ListFolderMode extends BaseMode<ListFolderArgs, ListFolderResult> {
       console.error('Failed to list folder:', error);
       
       return {
+        success: false,
         path,
         files: [],
         folders: []

@@ -3,13 +3,11 @@ import { MCPServer } from './server';
 import { EventManager } from './services/EventManager';
 import { AgentManager } from './services/AgentManager';
 import {
-    NoteReaderAgent,
-    NoteEditorAgent,
-    PaletteCommanderAgent,
+    ContentManagerAgent,
+    CommandManagerAgent,
     ProjectManagerAgent,
     VaultManagerAgent,
-    VaultLibrarianAgent,
-    MemoryManager
+    VaultLibrarianAgent
 } from './agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
@@ -31,7 +29,6 @@ export class MCPConnector {
     private server: MCPServer;
     private agentManager: AgentManager;
     private eventManager: EventManager;
-    private memoryManager: MemoryManager;
     
     constructor(
         private app: App,
@@ -51,32 +48,25 @@ export class MCPConnector {
      */
     private initializeAgents(): void {
         try {
-            // Create and register all agents with the agent manager only
-            const noteReaderAgent = new NoteReaderAgent(this.app);
-            const noteEditorAgent = new NoteEditorAgent(this.app);
-            const paletteCommanderAgent = new PaletteCommanderAgent(this.app);
+            // Create all agents using the new agent structure
+            const contentManagerAgent = new ContentManagerAgent(this.app, this.agentManager);
+            const commandManagerAgent = new CommandManagerAgent(this.app, this.agentManager);
             const projectManagerAgent = new ProjectManagerAgent(this.app);
             const vaultManagerAgent = new VaultManagerAgent(this.app);
             const vaultLibrarianAgent = new VaultLibrarianAgent(this.app);
             
-            // Create the memory manager (always enabled)
-            const settings = (this.plugin as any)['settings']?.settings;
-            this.memoryManager = new MemoryManager(this.app, this.eventManager as any);
-            // Initialize with settings
-            if (settings?.memory) {
-                this.memoryManager.initializeWithSettings(settings.memory);
-            }
-            
             // Register with agent manager
-            this.agentManager.registerAgent(noteReaderAgent);
-            this.agentManager.registerAgent(noteEditorAgent);
-            this.agentManager.registerAgent(paletteCommanderAgent);
+            this.agentManager.registerAgent(contentManagerAgent);
+            this.agentManager.registerAgent(commandManagerAgent);
             this.agentManager.registerAgent(projectManagerAgent);
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
             
-            // Register memory manager (always available)
-            this.agentManager.registerAgent(this.memoryManager);
+            // Initialize VaultLibrarian with current settings if available
+            const memorySettings = (this.plugin as any).settings?.settings?.memory;
+            if (memorySettings) {
+                vaultLibrarianAgent.updateSettings(memorySettings);
+            }
             
             // Register all agents from the agent manager with the server
             this.registerAgentsWithServer();
@@ -122,12 +112,12 @@ export class MCPConnector {
      * @returns Promise that resolves with the result of the tool call
      *
      * @example
-     * // Call the noteEditor agent in replace mode
+     * // Call the contentManager agent in replaceContent mode
      * connector.callTool({
-     *   agent: "noteEditor",
-     *   mode: "replace",
+     *   agent: "contentManager",
+     *   mode: "replaceContent",
      *   params: {
-     *     path: "file/root",
+     *     filePath: "file/root",
      *     search: "old text",
      *     replace: "new text"
      *   }
@@ -253,9 +243,17 @@ export class MCPConnector {
     }
     
     /**
-     * Get the memory manager instance
+     * Get the vault librarian instance (replaces memory manager)
+     * @deprecated Use getVaultLibrarian instead
      */
-    getMemoryManager(): MemoryManager | null {
-        return this.memoryManager || null;
+    getMemoryManager(): VaultLibrarianAgent | null {
+        return this.getVaultLibrarian();
+    }
+    
+    /**
+     * Get the vault librarian instance
+     */
+    getVaultLibrarian(): VaultLibrarianAgent | null {
+        return this.agentManager.getAgent('vaultLibrarian') as VaultLibrarianAgent;
     }
 }

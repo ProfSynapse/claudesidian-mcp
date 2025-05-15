@@ -36,6 +36,7 @@ export class ListPropertiesMode extends BaseMode<ListPropertiesArgs, ListPropert
       const properties = await SearchOperations.listProperties(this.app, key, limit);
       
       return {
+        success: true,
         properties,
         total: Object.keys(properties).length
       };
@@ -43,6 +44,7 @@ export class ListPropertiesMode extends BaseMode<ListPropertiesArgs, ListPropert
       console.error('Failed to list properties:', error);
       
       return {
+        success: false,
         properties: {},
         total: 0
       };

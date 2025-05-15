@@ -10,7 +10,7 @@ export const VaultManagerConfig = {
   /**
    * Description of the agent
    */
-  description: 'Manage files and folders in the vault',
+  description: 'File system operations for Obsidian vault',
   
   /**
    * Version of the agent

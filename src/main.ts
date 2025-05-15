@@ -19,14 +19,14 @@ export default class ClaudesidianPlugin extends Plugin {
         this.connector = new MCPConnector(this.app, this);
         await this.connector.start();
         
-        // Add settings tab with memory manager if available
-        // Convert null to undefined when getting the memory manager
-        const memoryManager = this.connector.getMemoryManager();
+        // Add settings tab with vault librarian if available
+        // Convert null to undefined when getting the vault librarian
+        const vaultLibrarian = this.connector.getVaultLibrarian();
         this.settingsTab = new SettingsTab(
             this.app, 
             this, 
             this.settings,
-            memoryManager || undefined
+            vaultLibrarian || undefined
         );
         this.addSettingTab(this.settingsTab);
         
@@ -56,10 +56,10 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     async onunload() {
-        // Clean up memory manager if it exists
-        const memoryManager = this.connector.getMemoryManager();
-        if (memoryManager) {
-            memoryManager.onunload();
+        // Clean up the vault librarian if necessary
+        const vaultLibrarian = this.connector.getVaultLibrarian();
+        if (vaultLibrarian && typeof vaultLibrarian.onunload === 'function') {
+            vaultLibrarian.onunload();
         }
         
         // Stop the MCP server

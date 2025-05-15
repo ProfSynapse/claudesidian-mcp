@@ -1,7 +1,7 @@
 import { Setting, TextComponent, ToggleComponent, SliderComponent, DropdownComponent, ButtonComponent, Events } from 'obsidian';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../types';
 import { Settings } from '../settings';
-import { MemoryManager } from '../agents/memoryManager';
+import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { ProgressBar } from './ProgressBar';
 
 /**
@@ -15,22 +15,22 @@ export class MemorySettingsTab {
     private contents: Record<string, HTMLElement> = {};
     private settings: MemorySettings;
     private settingsManager: Settings;
-    private memoryManager: MemoryManager;
+    private vaultLibrarian: VaultLibrarianAgent;
 
     /**
      * Create a new Memory Settings Tab
      * 
      * @param containerEl Container element to append to
      * @param settingsManager Settings manager instance
-     * @param memoryManager Memory Manager instance
+     * @param vaultLibrarian VaultLibrarian agent instance
      */
     constructor(
         private containerEl: HTMLElement,
         settingsManager: Settings,
-        memoryManager: MemoryManager
+        vaultLibrarian: VaultLibrarianAgent
     ) {
         this.settingsManager = settingsManager;
-        this.memoryManager = memoryManager;
+        this.vaultLibrarian = vaultLibrarian;
         this.settings = this.settingsManager.settings.memory || { ...DEFAULT_MEMORY_SETTINGS };
     }
 
@@ -511,8 +511,9 @@ export class MemorySettingsTab {
         };
         
         try {
-            if (this.memoryManager) {
-                usageStats = this.memoryManager.getUsageStats();
+            if (this.vaultLibrarian) {
+                // Adapt VaultLibrarian method
+                usageStats = this.vaultLibrarian.getUsageStats?.() || usageStats;
             }
         } catch (error) {
             console.error('Error getting usage stats:', error);
@@ -556,7 +557,7 @@ export class MemorySettingsTab {
         const indexingProgressContainer = section.createDiv({ cls: 'memory-indexing-progress' });
         
         // Initialize progress bar
-        new ProgressBar(indexingProgressContainer, this.memoryManager.app);
+        new ProgressBar(indexingProgressContainer, this.vaultLibrarian.app);
         
         // Action buttons
         const actionsContainer = section.createDiv({ cls: 'memory-actions' });
@@ -567,16 +568,16 @@ export class MemorySettingsTab {
         });
         resetButton.addEventListener('click', async () => {
             if (
-                this.memoryManager && 
+                this.vaultLibrarian && 
                 confirm('Are you sure you want to reset the usage counter?')
             ) {
-                await this.memoryManager.resetUsageStats();
+                await this.vaultLibrarian.resetUsageStats?.();
                 this.display();
             }
         });
         
         // Check if there's an incomplete indexing operation
-        const currentOperationId = this.memoryManager.getCurrentIndexingOperationId();
+        const currentOperationId = this.vaultLibrarian.getCurrentIndexingOperationId?.() || null;
         const hasIncompleteOperation = currentOperationId !== null && !usageStats.indexingInProgress;
         
         const reindexButton = actionsContainer.createEl('button', {
@@ -595,15 +596,15 @@ export class MemorySettingsTab {
             });
             
             cancelButton.addEventListener('click', () => {
-                if (this.memoryManager && confirm('Are you sure you want to cancel the indexing operation? You can resume it later.')) {
-                    this.memoryManager.cancelIndexing();
+                if (this.vaultLibrarian && confirm('Are you sure you want to cancel the indexing operation? You can resume it later.')) {
+                    this.vaultLibrarian.cancelIndexing?.();
                     this.display();
                 }
             });
         }
         
         reindexButton.addEventListener('click', async () => {
-            if (!usageStats.indexingInProgress && this.memoryManager) {
+            if (!usageStats.indexingInProgress && this.vaultLibrarian) {
                 // If we have an incomplete operation, ask to resume
                 if (hasIncompleteOperation) {
                     if (confirm('Resume your previous indexing operation?')) {
@@ -611,7 +612,7 @@ export class MemorySettingsTab {
                         reindexButton.setText('Indexing in progress...');
                         
                         try {
-                            await this.memoryManager.reindexAll(currentOperationId);
+                            await this.vaultLibrarian.reindexAll?.(currentOperationId);
                         } catch (error) {
                             console.error('Error resuming indexing:', error);
                         } finally {
@@ -625,7 +626,7 @@ export class MemorySettingsTab {
                         reindexButton.setText('Indexing in progress...');
                         
                         try {
-                            await this.memoryManager.reindexAll();
+                            await this.vaultLibrarian.reindexAll?.();
                         } catch (error) {
                             console.error('Error reindexing:', error);
                         } finally {
@@ -643,8 +644,8 @@ export class MemorySettingsTab {
     private async saveSettings(): Promise<void> {
         this.settingsManager.settings.memory = this.settings;
         await this.settingsManager.saveSettings();
-        if (this.memoryManager) {
-            this.memoryManager.updateSettings(this.settings);
+        if (this.vaultLibrarian) {
+            this.vaultLibrarian.updateSettings?.(this.settings);
         }
     }
 }
