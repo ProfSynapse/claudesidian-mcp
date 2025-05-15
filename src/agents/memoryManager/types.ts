@@ -45,6 +45,55 @@ export interface IndexFileResult {
 }
 
 /**
+ * Parameters for batch indexing multiple files
+ */
+export interface BatchIndexParams {
+    filePaths: string[];
+    force?: boolean;
+}
+
+/**
+ * Result of batch indexing multiple files
+ */
+export interface BatchIndexResult {
+    success: boolean;
+    totalProcessed: number;
+    successCount: number;
+    failedCount: number;
+    error?: string;
+    results: Array<{
+        filePath: string;
+        success: boolean;
+        chunks?: number;
+        error?: string;
+    }>;
+}
+
+/**
+ * Parameters for batch querying multiple queries
+ */
+export interface BatchQueryParams {
+    queries: MemoryQueryParams[];
+}
+
+/**
+ * Result of batch querying
+ */
+export interface BatchQueryResult {
+    success: boolean;
+    totalProcessed: number;
+    successCount: number;
+    failedCount: number;
+    error?: string;
+    results: Array<{
+        query: string;
+        success: boolean;
+        matches?: any[];
+        error?: string;
+    }>;
+}
+
+/**
  * Parameters for getting status
  */
 export interface StatusParams {
@@ -76,6 +125,8 @@ export interface StatusResult {
 export type MemoryManagerParameterSchema = 
     | { mode: 'queryMemory', schema: JSONSchema7 }
     | { mode: 'indexFile', schema: JSONSchema7 }
+    | { mode: 'batchIndex', schema: JSONSchema7 }
+    | { mode: 'batchQuery', schema: JSONSchema7 }
     | { mode: 'getStatus', schema: JSONSchema7 };
 
 /**
@@ -84,4 +135,6 @@ export type MemoryManagerParameterSchema =
 export type MemoryManagerResultSchema = 
     | { mode: 'queryMemory', schema: JSONSchema7 }
     | { mode: 'indexFile', schema: JSONSchema7 }
+    | { mode: 'batchIndex', schema: JSONSchema7 }
+    | { mode: 'batchQuery', schema: JSONSchema7 }
     | { mode: 'getStatus', schema: JSONSchema7 };

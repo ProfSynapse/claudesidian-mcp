@@ -11,7 +11,13 @@ import {
     QueryOperations,
     UsageStatsOperations
 } from './utils';
-import { QueryMemoryMode, IndexFileMode, GetStatusMode } from './modes';
+import { 
+    QueryMemoryMode, 
+    IndexFileMode, 
+    GetStatusMode, 
+    BatchIndexMode, 
+    BatchQueryMode 
+} from './modes';
 import { 
     MemorySettings, 
     MemoryQueryParams, 
@@ -107,6 +113,8 @@ export class MemoryManager extends BaseAgent {
         this.registerMode(new QueryMemoryMode(this));
         this.registerMode(new IndexFileMode(this));
         this.registerMode(new GetStatusMode(this));
+        this.registerMode(new BatchIndexMode(this));
+        this.registerMode(new BatchQueryMode(this));
     }
     
     /**
