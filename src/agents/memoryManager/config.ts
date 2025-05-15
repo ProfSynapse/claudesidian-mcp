@@ -224,6 +224,174 @@ export const schema = {
         required: ['success']
     } as JSONSchema7,
     
+    // Schema for batch index params
+    batchIndexParams: {
+        type: 'object',
+        properties: {
+            filePaths: {
+                type: 'array',
+                items: {
+                    type: 'string'
+                },
+                description: 'Paths to the files to index'
+            },
+            force: {
+                type: 'boolean',
+                description: 'Force re-indexing even if files are already indexed',
+                default: false
+            }
+        },
+        required: ['filePaths']
+    } as JSONSchema7,
+    
+    // Schema for batch index results
+    batchIndexResults: {
+        type: 'object',
+        properties: {
+            success: {
+                type: 'boolean',
+                description: 'Whether the batch indexing was completely successful'
+            },
+            totalProcessed: {
+                type: 'number',
+                description: 'Total number of files processed'
+            },
+            successCount: {
+                type: 'number',
+                description: 'Number of files successfully indexed'
+            },
+            failedCount: {
+                type: 'number',
+                description: 'Number of files that failed to index'
+            },
+            error: {
+                type: 'string',
+                description: 'Error message if the overall operation failed'
+            },
+            results: {
+                type: 'array',
+                description: 'Results for each file in the batch',
+                items: {
+                    type: 'object',
+                    properties: {
+                        filePath: {
+                            type: 'string',
+                            description: 'Path to the indexed file'
+                        },
+                        success: {
+                            type: 'boolean',
+                            description: 'Whether indexing was successful for this file'
+                        },
+                        chunks: {
+                            type: 'number',
+                            description: 'Number of chunks created from the file'
+                        },
+                        error: {
+                            type: 'string',
+                            description: 'Error message if indexing failed for this file'
+                        }
+                    },
+                    required: ['filePath', 'success']
+                }
+            }
+        },
+        required: ['success', 'totalProcessed', 'successCount', 'failedCount', 'results']
+    } as JSONSchema7,
+    
+    // Schema for batch query params
+    batchQueryParams: {
+        type: 'object',
+        properties: {
+            queries: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        query: {
+                            type: 'string',
+                            description: 'The text query to search for semantically similar content'
+                        },
+                        limit: {
+                            type: 'number',
+                            description: 'Maximum number of results to return',
+                            default: 10
+                        },
+                        threshold: {
+                            type: 'number',
+                            description: 'Minimum similarity score (0-1) for results',
+                            default: 0.7
+                        },
+                        filters: {
+                            type: 'object',
+                            description: 'Optional filters to apply to search results'
+                        },
+                        graphOptions: {
+                            type: 'object',
+                            description: 'Options for graph-based result boosting'
+                        }
+                    },
+                    required: ['query']
+                },
+                description: 'List of queries to execute in batch'
+            }
+        },
+        required: ['queries']
+    } as JSONSchema7,
+    
+    // Schema for batch query results
+    batchQueryResults: {
+        type: 'object',
+        properties: {
+            success: {
+                type: 'boolean',
+                description: 'Whether the batch querying was completely successful'
+            },
+            totalProcessed: {
+                type: 'number',
+                description: 'Total number of queries processed'
+            },
+            successCount: {
+                type: 'number',
+                description: 'Number of queries successfully executed'
+            },
+            failedCount: {
+                type: 'number',
+                description: 'Number of queries that failed'
+            },
+            error: {
+                type: 'string',
+                description: 'Error message if the overall operation failed'
+            },
+            results: {
+                type: 'array',
+                description: 'Results for each query in the batch',
+                items: {
+                    type: 'object',
+                    properties: {
+                        query: {
+                            type: 'string',
+                            description: 'The query text'
+                        },
+                        success: {
+                            type: 'boolean',
+                            description: 'Whether the query was successful'
+                        },
+                        matches: {
+                            type: 'array',
+                            description: 'Matches for this query'
+                        },
+                        error: {
+                            type: 'string',
+                            description: 'Error message if the query failed'
+                        }
+                    },
+                    required: ['query', 'success']
+                }
+            }
+        },
+        required: ['success', 'totalProcessed', 'successCount', 'failedCount', 'results']
+    } as JSONSchema7,
+    
     // Schema for status params
     statusParams: {
         type: 'object',
