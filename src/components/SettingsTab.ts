@@ -11,7 +11,7 @@ import { UpdateManager } from '../utils/UpdateManager';
 import { templateFiles } from '../templates';
 import type { TemplateFile } from '../templates';
 import { MemorySettingsTab } from './MemorySettingsTab';
-import { MemoryManager } from '../agents/memoryManager';
+import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 
 /**
  * Settings tab for the Claudesidian MCP plugin
@@ -27,13 +27,13 @@ export class SettingsTab extends PluginSettingTab {
      * @param app Obsidian app instance
      * @param plugin Plugin instance
      * @param settings Settings manager
-     * @param memoryManager Memory Manager instance
+     * @param vaultLibrarian VaultLibrarian agent instance
      */
     constructor(
         app: App, 
         plugin: Plugin, 
         private settingsManager: Settings,
-        private memoryManager?: MemoryManager
+        private vaultLibrarian?: VaultLibrarianAgent
     ) {
         super(app, plugin);
         this.settings = settingsManager;
@@ -139,8 +139,8 @@ export class SettingsTab extends PluginSettingTab {
         // Update section first
         this.createUpdateSection(containerEl);
 
-        // Memory Management accordion (always show this even if memory manager isn't initialized)
-        new MemoryManagementAccordion(containerEl, this.settingsManager, this.memoryManager);
+        // Memory Management accordion (always show this even if vaultLibrarian isn't initialized)
+        new MemoryManagementAccordion(containerEl, this.settingsManager, this.vaultLibrarian);
 
         // Setup Instructions accordion
         new SetupInstructionsAccordion(containerEl);

@@ -61,11 +61,13 @@ export class SearchPropertyMode extends BaseMode<SearchPropertyArgs, SearchPrope
       }
       
       return {
+        success: true,
         files: results,
         total: results.length
       };
     } catch (error) {
       return {
+        success: false,
         files: [],
         total: 0
       };

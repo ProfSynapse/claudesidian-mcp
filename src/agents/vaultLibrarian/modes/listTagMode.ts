@@ -36,6 +36,7 @@ export class ListTagMode extends BaseMode<ListTagArgs, ListTagResult> {
       const tags = SearchOperations.listTags(this.app, prefix, limit);
       
       return {
+        success: true,
         tags,
         total: tags.length
       };
@@ -43,6 +44,7 @@ export class ListTagMode extends BaseMode<ListTagArgs, ListTagResult> {
       console.error('Failed to list tags:', error);
       
       return {
+        success: false,
         tags: [],
         total: 0
       };

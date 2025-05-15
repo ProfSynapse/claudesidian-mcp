@@ -1,0 +1,369 @@
+import { App } from 'obsidian';
+import { BaseMode } from '../../baseMode';
+import { BatchContentParams, BatchContentResult, ContentOperation } from '../types';
+import { ContentOperations } from '../utils/ContentOperations';
+
+/**
+ * Mode for executing multiple content operations in a batch
+ */
+export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentResult> {
+  private app: App;
+  
+  /**
+   * Create a new BatchContentMode
+   * @param app Obsidian app instance
+   */
+  constructor(app: App) {
+    super(
+      'batchContent',
+      'Batch Content Operations',
+      'Execute multiple content operations in a batch',
+      '1.0.0'
+    );
+    
+    this.app = app;
+  }
+  
+  /**
+   * Execute the mode
+   * @param params Mode parameters
+   * @returns Promise that resolves with the batch operation results
+   */
+  async execute(params: BatchContentParams): Promise<BatchContentResult> {
+    try {
+      const { operations, workspaceContext, handoff } = params;
+      
+      // Execute operations sequentially to avoid conflicts
+      const results = [];
+      
+      for (const operation of operations) {
+        try {
+          let result: any;
+          
+          switch (operation.type) {
+            case 'read':
+              result = await this.executeReadOperation(operation);
+              break;
+            case 'create':
+              result = await this.executeCreateOperation(operation);
+              break;
+            case 'append':
+              result = await this.executeAppendOperation(operation);
+              break;
+            case 'prepend':
+              result = await this.executePrependOperation(operation);
+              break;
+            case 'replace':
+              result = await this.executeReplaceOperation(operation);
+              break;
+            case 'replaceByLine':
+              result = await this.executeReplaceByLineOperation(operation);
+              break;
+            case 'delete':
+              result = await this.executeDeleteOperation(operation);
+              break;
+            default:
+              throw new Error(`Unknown operation type: ${(operation as any).type}`);
+          }
+          
+          results.push({
+            success: true,
+            data: result,
+            type: operation.type,
+            filePath: this.getFilePathFromOperation(operation)
+          });
+        } catch (error) {
+          results.push({
+            success: false,
+            error: error.message,
+            type: operation.type,
+            filePath: this.getFilePathFromOperation(operation)
+          });
+        }
+      }
+      
+      const response = this.prepareResult(
+        true,
+        { results },
+        undefined,
+        workspaceContext
+      );
+      
+      // Handle handoff if specified
+      if (handoff) {
+        return this.handleHandoff(handoff, response);
+      }
+      
+      return response;
+    } catch (error) {
+      return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+    }
+  }
+  
+  /**
+   * Execute a read operation
+   * @param operation The read operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executeReadOperation(operation: Extract<ContentOperation, { type: 'read' }>): Promise<any> {
+    const { filePath, limit, offset, includeLineNumbers } = operation.params;
+    
+    if (typeof limit === 'number' && typeof offset === 'number') {
+      const lines = await ContentOperations.readLines(
+        this.app,
+        filePath,
+        offset,
+        offset + limit - 1,
+        includeLineNumbers
+      );
+      
+      return {
+        content: lines.join('\n'),
+        filePath,
+        lineNumbersIncluded: includeLineNumbers,
+        startLine: offset,
+        endLine: offset + limit - 1
+      };
+    } else if (includeLineNumbers) {
+      const content = await ContentOperations.readContentWithLineNumbers(this.app, filePath);
+      
+      return {
+        content,
+        filePath,
+        lineNumbersIncluded: true
+      };
+    } else {
+      const content = await ContentOperations.readContent(this.app, filePath);
+      
+      return {
+        content,
+        filePath,
+        lineNumbersIncluded: false
+      };
+    }
+  }
+  
+  /**
+   * Execute a create operation
+   * @param operation The create operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executeCreateOperation(operation: Extract<ContentOperation, { type: 'create' }>): Promise<any> {
+    const { filePath, content } = operation.params;
+    
+    const file = await ContentOperations.createContent(this.app, filePath, content);
+    
+    return {
+      filePath,
+      created: file.stat.ctime
+    };
+  }
+  
+  /**
+   * Execute an append operation
+   * @param operation The append operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executeAppendOperation(operation: Extract<ContentOperation, { type: 'append' }>): Promise<any> {
+    const { filePath, content } = operation.params;
+    
+    return await ContentOperations.appendContent(this.app, filePath, content);
+  }
+  
+  /**
+   * Execute a prepend operation
+   * @param operation The prepend operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executePrependOperation(operation: Extract<ContentOperation, { type: 'prepend' }>): Promise<any> {
+    const { filePath, content } = operation.params;
+    
+    return await ContentOperations.prependContent(this.app, filePath, content);
+  }
+  
+  /**
+   * Execute a replace operation
+   * @param operation The replace operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executeReplaceOperation(operation: Extract<ContentOperation, { type: 'replace' }>): Promise<any> {
+    const { filePath, oldContent, newContent } = operation.params;
+    
+    const replacements = await ContentOperations.replaceContent(
+      this.app,
+      filePath,
+      oldContent,
+      newContent
+    );
+    
+    return {
+      filePath,
+      replacements
+    };
+  }
+  
+  /**
+   * Execute a replace by line operation
+   * @param operation The replace by line operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executeReplaceByLineOperation(operation: Extract<ContentOperation, { type: 'replaceByLine' }>): Promise<any> {
+    const { filePath, startLine, endLine, newContent } = operation.params;
+    
+    const linesReplaced = await ContentOperations.replaceByLine(
+      this.app,
+      filePath,
+      startLine,
+      endLine,
+      newContent
+    );
+    
+    return {
+      filePath,
+      linesReplaced
+    };
+  }
+  
+  /**
+   * Execute a delete operation
+   * @param operation The delete operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executeDeleteOperation(operation: Extract<ContentOperation, { type: 'delete' }>): Promise<any> {
+    const { filePath, content } = operation.params;
+    
+    const deletions = await ContentOperations.deleteContent(
+      this.app,
+      filePath,
+      content
+    );
+    
+    return {
+      filePath,
+      deletions
+    };
+  }
+  
+  /**
+   * Get the file path from an operation
+   * @param operation The operation
+   * @returns The file path
+   */
+  private getFilePathFromOperation(operation: ContentOperation): string {
+    return operation.params.filePath;
+  }
+  
+  /**
+   * Get the JSON schema for the mode's parameters
+   * @returns JSON schema object
+   */
+  getParameterSchema(): any {
+    return {
+      type: 'object',
+      properties: {
+        operations: {
+          type: 'array',
+          description: 'Array of operations to perform',
+          items: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['read', 'create', 'append', 'prepend', 'replace', 'replaceByLine', 'delete'],
+                description: 'Type of operation'
+              },
+              params: {
+                type: 'object',
+                description: 'Operation-specific parameters'
+              }
+            },
+            required: ['type', 'params']
+          }
+        },
+        ...this.getCommonParameterSchema()
+      },
+      required: ['operations']
+    };
+  }
+  
+  /**
+   * Get the JSON schema for the mode's result
+   * @returns JSON schema object
+   */
+  getResultSchema(): any {
+    return {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          description: 'Whether the operation succeeded'
+        },
+        error: {
+          type: 'string',
+          description: 'Error message if success is false'
+        },
+        data: {
+          type: 'object',
+          properties: {
+            results: {
+              type: 'array',
+              description: 'Array of operation results',
+              items: {
+                type: 'object',
+                properties: {
+                  success: {
+                    type: 'boolean',
+                    description: 'Whether the operation succeeded'
+                  },
+                  error: {
+                    type: 'string',
+                    description: 'Error message if success is false'
+                  },
+                  data: {
+                    type: 'object',
+                    description: 'Operation-specific result data'
+                  },
+                  type: {
+                    type: 'string',
+                    description: 'Type of operation'
+                  },
+                  filePath: {
+                    type: 'string',
+                    description: 'File path for the operation'
+                  }
+                },
+                required: ['success', 'type', 'filePath']
+              }
+            }
+          },
+          required: ['results']
+        },
+        workspaceContext: {
+          type: 'object',
+          properties: {
+            workspaceId: {
+              type: 'string',
+              description: 'ID of the workspace'
+            },
+            workspacePath: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              description: 'Path of the workspace'
+            },
+            activeWorkspace: {
+              type: 'boolean',
+              description: 'Whether this is the active workspace'
+            }
+          }
+        },
+        handoffResult: {
+          type: 'object',
+          description: 'Result of handoff operation if handoff was specified'
+        }
+      },
+      required: ['success']
+    };
+  }
+}

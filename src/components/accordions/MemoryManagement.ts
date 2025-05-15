@@ -1,7 +1,7 @@
 import { Setting, Notice } from 'obsidian';
 import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
-import { MemoryManager } from '../../agents/memoryManager';
+import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { DEFAULT_MEMORY_SETTINGS } from '../../types';
 
@@ -12,23 +12,23 @@ import { DEFAULT_MEMORY_SETTINGS } from '../../types';
 export class MemoryManagementAccordion extends Accordion {
     private settings: Settings;
     private memorySettingsContainer: HTMLElement;
-    private memoryManager: MemoryManager | undefined;
+    private vaultLibrarian: VaultLibrarianAgent | undefined;
     private memorySettingsTab: MemorySettingsTab | null = null;
     
     /**
      * Create a new Memory Management accordion
      * @param containerEl Parent container element
      * @param settings Plugin settings
-     * @param memoryManager Memory manager instance (optional)
+     * @param vaultLibrarian VaultLibrarian agent instance (optional)
      */
     constructor(
         containerEl: HTMLElement, 
         settings: Settings,
-        memoryManager?: MemoryManager
+        vaultLibrarian?: VaultLibrarianAgent
     ) {
         super(containerEl, 'Memory Management', false);
         this.settings = settings;
-        this.memoryManager = memoryManager;
+        this.vaultLibrarian = vaultLibrarian;
         
         const contentEl = this.getContentEl();
         
@@ -44,8 +44,8 @@ export class MemoryManagementAccordion extends Accordion {
         
         // Memory settings are now visible by default via CSS
         
-        // Initialize memory settings tab if manager exists
-        if (this.memoryManager) {
+        // Initialize memory settings tab if vaultLibrarian exists
+        if (this.vaultLibrarian) {
             this.initializeMemorySettingsTab();
         } else if (this.settings.settings.memory?.enabled) {
             // Show message if enabled but manager not initialized
@@ -66,7 +66,7 @@ export class MemoryManagementAccordion extends Accordion {
      * Initialize the memory settings tab
      */
     private initializeMemorySettingsTab(): void {
-        if (!this.memoryManager) return;
+        if (!this.vaultLibrarian) return;
         
         // Clear existing content
         this.memorySettingsContainer.empty();
@@ -75,7 +75,7 @@ export class MemoryManagementAccordion extends Accordion {
         this.memorySettingsTab = new MemorySettingsTab(
             this.memorySettingsContainer,
             this.settings,
-            this.memoryManager
+            this.vaultLibrarian
         );
         
         // Display settings

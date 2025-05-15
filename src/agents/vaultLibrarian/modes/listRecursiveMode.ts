@@ -40,6 +40,7 @@ export class ListRecursiveMode extends BaseMode<ListRecursiveArgs, ListRecursive
       );
       
       return {
+        success: true,
         path,
         files: result.files,
         folders: result.folders
@@ -48,6 +49,7 @@ export class ListRecursiveMode extends BaseMode<ListRecursiveArgs, ListRecursive
       console.error('Failed to list folder recursively:', error);
       
       return {
+        success: false,
         path,
         files: [],
         folders: []

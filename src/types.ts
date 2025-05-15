@@ -248,6 +248,11 @@ export interface EmbeddingProvider {
     getDimensions(): number;
     getName(): string;
     getTokenCount(text: string): number;
+    
+    /**
+     * Close the provider and free resources (optional)
+     */
+    close?(): void;
 }
 
 // MCP Server Types
@@ -293,4 +298,62 @@ export interface EventData<T = any> {
 
 export interface EventSubscriber<T = any> {
     (data: T): void;
+}
+
+/**
+ * Common parameters structure for standardized agent modes
+ * Provides workspace context and handoff mechanism
+ */
+export interface CommonParameters {
+  /**
+   * Optional workspace context for scoping operations
+   */
+  workspaceContext?: {
+    workspaceId: string;
+    workspacePath?: string[]; // For hierarchical workspaces (workspace→phase→task)
+  };
+  
+  /**
+   * Optional handoff to another agent/mode for workflow chaining
+   */
+  handoff?: {
+    tool: string;        // Agent name to hand off to
+    mode: string;        // Mode to execute
+    parameters: any;     // Parameters to pass
+    returnHere?: boolean; // Whether to return results to original agent
+  };
+}
+
+/**
+ * Common result structure for standardized agent responses
+ */
+export interface CommonResult {
+  /**
+   * Whether the operation succeeded
+   */
+  success: boolean;
+  
+  /**
+   * Error message if success is false
+   */
+  error?: string;
+  
+  /**
+   * Operation-specific result data
+   */
+  data?: any;
+  
+  /**
+   * Workspace context that was used (for continuity)
+   */
+  workspaceContext?: {
+    workspaceId: string;
+    workspacePath?: string[];
+    activeWorkspace?: boolean;
+  };
+  
+  /**
+   * Handoff result if a handoff was processed
+   */
+  handoffResult?: any;
 }

@@ -33,6 +33,7 @@ export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult
 
     // Simply return the input parameters with the required flags
     return {
+      success: true,
       questions,
       context,
       requiresUserInput: true, // Signal that user input is required

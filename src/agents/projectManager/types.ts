@@ -1,3 +1,5 @@
+import { CommonParameters, CommonResult } from '../../types';
+
 /**
  * Project plan type
  */
@@ -150,7 +152,7 @@ export enum CheckpointStatus {
 /**
  * Arguments for project plan
  */
-export interface ProjectPlanArgs {
+export interface ProjectPlanArgs extends CommonParameters {
   /**
    * Primary goal of the project
    */
@@ -254,7 +256,7 @@ export interface ProjectPlanResult {
 /**
  * Arguments for asking a question
  */
-export interface AskQuestionArgs {
+export interface AskQuestionArgs extends CommonParameters {
   /**
    * The current context or topic that needs clarification
    */
@@ -269,7 +271,7 @@ export interface AskQuestionArgs {
 /**
  * Result of asking a question
  */
-export interface AskQuestionResult {
+export interface AskQuestionResult extends CommonResult {
   /**
    * The questions that were asked
    */
@@ -299,7 +301,7 @@ export interface AskQuestionResult {
 /**
  * Arguments for creating a checkpoint
  */
-export interface CheckpointArgs {
+export interface CheckpointArgs extends CommonParameters {
   /**
    * Description of what has been completed and why feedback is needed
    */
@@ -380,7 +382,7 @@ export interface CheckpointResult {
 /**
  * Arguments for project completion
  */
-export interface CompletionArgs {
+export interface CompletionArgs extends CommonParameters {
   /**
    * High-level summary of the completed project
    */

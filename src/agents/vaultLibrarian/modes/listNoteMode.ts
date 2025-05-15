@@ -36,6 +36,7 @@ export class ListNoteMode extends BaseMode<ListNoteArgs, ListNoteResult> {
       const notes = await SearchOperations.listNotes(this.app, path, extension, limit);
       
       return {
+        success: true,
         notes,
         total: notes.length
       };
@@ -43,6 +44,7 @@ export class ListNoteMode extends BaseMode<ListNoteArgs, ListNoteResult> {
       console.error('Failed to list notes:', error);
       
       return {
+        success: false,
         notes: [],
         total: 0
       };

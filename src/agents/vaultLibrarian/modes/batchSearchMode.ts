@@ -67,6 +67,7 @@ export class BatchSearchMode extends BaseMode<BatchSearchArgs, BatchSearchResult
     // If there are validation errors and no valid queries, return the errors
     if (Object.keys(errors).length > 0 && validatedQueries.length === 0) {
       return {
+        success: false,
         results: [],
         total: 0,
         errors
@@ -156,6 +157,7 @@ export class BatchSearchMode extends BaseMode<BatchSearchArgs, BatchSearchResult
         
         // Create the search result
         const searchResult: SearchContentResult = {
+          success: true,
           results: searchResults,
           total: searchResults.length,
           averageScore: calculateAverageScore(searchResults),
@@ -171,6 +173,7 @@ export class BatchSearchMode extends BaseMode<BatchSearchArgs, BatchSearchResult
     
     // Return the batch search results
     return {
+      success: true,
       results,
       total: results.length,
       errors: Object.keys(errors).length > 0 ? errors : undefined

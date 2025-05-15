@@ -1,10 +1,17 @@
 import { IMode } from './interfaces/IMode';
+import { CommonParameters, CommonResult } from '../types';
+import { 
+  getCommonParameterSchema, 
+  getCommonResultSchema, 
+  createResult,
+  mergeWithCommonSchema
+} from '../utils/schemaUtils';
 
 /**
  * Base class for all modes in the MCP plugin
  * Provides common functionality for mode implementation
  */
-export abstract class BaseMode<T = any, R = any> implements IMode<T, R> {
+export abstract class BaseMode<T extends CommonParameters = CommonParameters, R extends CommonResult = CommonResult> implements IMode<T, R> {
   slug: string;
   name: string;
   description: string;
@@ -38,23 +45,86 @@ export abstract class BaseMode<T = any, R = any> implements IMode<T, R> {
   abstract getParameterSchema(): any;
   
   /**
+   * Get common parameter schema elements for workspace context and handoff
+   * This is now a proxy to the central utility for DRY implementation
+   * @returns JSON schema for common parameters
+   */
+  protected getCommonParameterSchema(): any {
+    return getCommonParameterSchema();
+  }
+  
+  /**
    * Get the JSON schema for the mode's result
    * @returns JSON schema object
    */
   getResultSchema(): any {
-    // Default implementation returns a simple success schema
-    return {
-      type: 'object',
-      properties: {
-        success: {
-          type: 'boolean',
-          description: 'Whether the operation was successful'
-        },
-        error: {
-          type: 'string',
-          description: 'Error message if operation failed'
+    // Default implementation returns the common result schema
+    return getCommonResultSchema();
+  }
+  
+  /**
+   * Helper method to merge mode-specific schema with common schema
+   * @param customSchema The mode-specific schema
+   * @returns Merged schema with common parameters
+   */
+  protected getMergedSchema(customSchema: any): any {
+    return mergeWithCommonSchema(customSchema);
+  }
+  
+  /**
+   * Prepare a standardized result object
+   * @param success Whether the operation was successful
+   * @param data Operation-specific data
+   * @param error Error message if operation failed
+   * @param workspaceContext Workspace context used
+   * @param handoffResult Result from handoff operation
+   * @returns Standardized result object
+   */
+  protected prepareResult(
+    success: boolean,
+    data?: any,
+    error?: string,
+    workspaceContext?: CommonResult['workspaceContext'],
+    handoffResult?: any
+  ): R {
+    return createResult<R>(success, data, error, workspaceContext, handoffResult);
+  }
+  
+  /**
+   * Handle handoff to another agent/mode
+   * @param handoff Handoff parameters
+   * @param currentResult Current result to include in handoff
+   * @returns Promise resolving to result with handoff result
+   */
+  protected async handleHandoff(
+    handoff: CommonParameters['handoff'],
+    currentResult: R
+  ): Promise<R> {
+    if (!handoff) {
+      return currentResult;
+    }
+    
+    try {
+      // This is a placeholder - actual implementation requires agent manager
+      // which should be injected into each agent during initialization
+      // The actual implementation will be in BaseAgent
+      console.log('Warning: Base handleHandoff called - not implemented in BaseMode');
+      
+      return {
+        ...currentResult,
+        handoffResult: {
+          success: false,
+          error: 'Handoff not implemented in BaseMode'
         }
-      }
-    };
+      } as R;
+    } catch (error) {
+      return {
+        ...currentResult,
+        handoffResult: {
+          success: false,
+          error: error.message || 'Failed to handle handoff'
+        }
+      } as R;
+    }
   }
 }
