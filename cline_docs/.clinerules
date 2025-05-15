@@ -1,0 +1,192 @@
+# Claudesidian MCP Project Intelligence
+
+This file captures important patterns, preferences, and project intelligence for the Claudesidian MCP Obsidian plugin.
+
+## Critical Implementation Paths
+
+1. **Plugin Initialization Sequence**
+   - The plugin follows a phased initialization approach:
+     1. Core initialization: Essential components like settings and service provider
+     2. Feature initialization: Tools, services, and managers
+     3. Server initialization: MCP server and UI components
+   - This sequence is important to ensure dependencies are properly initialized
+
+2. **Service Provider Pattern**
+   - All services are registered and accessed through the ServiceProvider
+   - Services should be retrieved using the `get<T>()` method with the appropriate interface type
+   - New services should be registered in the `registerServices()` method
+
+3. **Tool Registration**
+   - Tools are registered in the ToolRegistry
+   - Each tool should extend BaseTool and implement required methods
+   - Tools receive a ToolContext with access to services
+   - Tool schemas define the expected arguments
+
+4. **MCP Server Communication**
+   - The MCP server handles client connections and requests
+   - Tool execution is delegated to the ToolRegistry
+   - Resource access is handled through the VaultManager
+   - Error handling follows the MCP protocol specification
+
+## User Preferences and Workflow
+
+1. **Code Organization**
+   - Interfaces should be defined in separate files in the interfaces directory
+   - Implementation classes should be in their own files
+   - Related functionality should be grouped in directories
+   - File names should match class names
+
+2. **Naming Conventions**
+   - Interfaces should be prefixed with 'I' (e.g., IVaultManager)
+   - Service classes should have descriptive names ending with 'Service'
+   - Tool classes should end with 'Tool'
+   - Manager classes should end with 'Manager'
+
+3. **Documentation Style**
+   - Use JSDoc comments for classes, methods, and properties
+   - Include parameter descriptions and return types
+   - Document exceptions and edge cases
+   - Add examples for complex functionality
+
+4. **Error Handling**
+   - Use try-catch blocks for operations that might fail
+   - Log errors with appropriate context
+   - Return meaningful error messages to clients
+   - Handle edge cases gracefully
+
+## Project-Specific Patterns
+
+1. **Dependency Injection**
+   - Services should receive dependencies through constructors
+   - Avoid creating dependencies directly in classes
+   - Use interfaces for dependencies when possible
+   - Register services in the ServiceProvider
+
+2. **Interface-Based Design**
+   - Define interfaces for all services
+   - Implement interfaces in concrete classes
+   - Use interfaces for method parameters and return types
+   - Avoid depending on concrete implementations
+
+3. **Facade Pattern**
+   - The VaultManagerFacade provides a simplified interface to vault operations
+   - It coordinates between NoteService, FolderService, and PathService
+   - It maintains backward compatibility with code expecting VaultManager
+   - It handles path normalization and validation
+
+4. **Command Pattern in Tools**
+   - Tools use a command pattern with an 'action' parameter
+   - Each action corresponds to a specific operation
+   - Arguments are validated before execution
+   - Results are formatted according to the MCP protocol
+
+## Known Challenges
+
+1. **Type Casting Issues**
+   - Some code uses type casting (`as any`) as a temporary solution
+   - This is being addressed in the refactoring
+   - Be cautious when working with these areas
+   - Prefer proper typing when possible
+
+2. **Circular Dependencies**
+   - Some circular dependencies exist between interface files
+   - These are being resolved by consolidating interfaces
+   - Be careful when adding new dependencies
+   - Consider using forward declarations if needed
+
+3. **Path Handling**
+   - Path handling can be tricky across different platforms
+   - Use the PathService for path operations
+   - Be careful with absolute vs. relative paths
+   - Consider platform-specific differences
+
+4. **Obsidian API Limitations**
+   - Obsidian's API has some limitations
+   - File operations are asynchronous
+   - Some internal functionality is not accessible
+   - Mobile support has additional constraints
+
+## Evolution of Project Decisions
+
+1. **Architectural Refactoring**
+   - The project has undergone significant architectural changes
+   - Moving from monolithic classes to specialized services
+   - Implementing dependency injection
+   - Creating clear interfaces
+
+2. **Memory System Removal**
+   - The complex memory system has been removed
+   - Focusing on core functionality
+   - Simplifying conversation state tracking
+   - Streamlining tool descriptions
+
+3. **Tool Consolidation**
+   - Consolidating related tool functionality
+   - Creating more powerful, multi-action tools
+   - Improving argument validation
+   - Adding undo capabilities
+
+4. **AI Integration**
+   - Moving to adapter pattern for AI providers
+   - Supporting different models and parameters
+   - Improving error handling
+   - Enhancing response formatting
+
+## Tool Usage Patterns
+
+1. **ServiceProvider Usage**
+   ```typescript
+   // Get a service by interface type
+   const noteService = serviceProvider.get<INoteService>('noteService');
+   
+   // Register a new service
+   serviceProvider.register('customService', new CustomService());
+   ```
+
+2. **Tool Registration**
+   ```typescript
+   // Register a tool class
+   toolRegistry.registerTool(CustomTool);
+   
+   // Get available tools
+   const tools = toolRegistry.getAvailableTools();
+   
+   // Execute a tool
+   const result = await toolRegistry.executeTool('toolName', args);
+   ```
+
+3. **Vault Operations**
+   ```typescript
+   // Create a note
+   const file = await vaultManager.createNote('path/to/note.md', content, options);
+   
+   // Read a note
+   const content = await vaultManager.readNote('path/to/note.md');
+   
+   // Update a note
+   await vaultManager.updateNote('path/to/note.md', newContent, options);
+   
+   // Delete a note
+   await vaultManager.deleteNote('path/to/note.md');
+   ```
+
+4. **Error Handling**
+   ```typescript
+   try {
+     // Operation that might fail
+     const result = await someOperation();
+     return result;
+   } catch (error) {
+     // Log the error
+     console.error('Operation failed:', error);
+     
+     // Return error to client
+     return {
+       isError: true,
+       content: [{
+         type: 'text',
+         text: error instanceof Error ? error.message : String(error)
+       }]
+     };
+   }
+   ```
