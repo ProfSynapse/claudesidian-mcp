@@ -135,7 +135,7 @@ export class VaultLibrarianAgent extends BaseAgent {
       const queryEmbedding = await this.embeddingProvider.getEmbedding(query.trim());
       
       // 2. Use workspace-db to search for similar content
-      const workspaceDb = this.app.plugins.getPlugin('claudesidian-mcp')?.workspaceDb;
+      const workspaceDb = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.workspaceDb;
       if (!workspaceDb) {
         throw new Error('Workspace database not available');
       }
@@ -149,7 +149,7 @@ export class VaultLibrarianAgent extends BaseAgent {
       });
       
       // 3. Format the results
-      let matches = searchResults.map(result => ({
+      let matches = searchResults.map((result: any) => ({
         similarity: result.similarity,
         content: result.content,
         filePath: result.filePath,
@@ -173,7 +173,7 @@ export class VaultLibrarianAgent extends BaseAgent {
           const graphOps = new GraphOperations();
           
           // Convert to format expected by GraphOperations
-          const recordsWithSimilarity = matches.map(match => ({
+          const recordsWithSimilarity = matches.map((match: any) => ({
             record: {
               id: match.filePath,
               filePath: match.filePath,
@@ -213,7 +213,7 @@ export class VaultLibrarianAgent extends BaseAgent {
           
           // Re-sort by similarity and limit results
           matches = matches
-            .sort((a, b) => b.similarity - a.similarity)
+            .sort((a: any, b: any) => b.similarity - a.similarity)
             .slice(0, limit);
         } catch (boostError) {
           console.error('Error applying graph boost:', boostError);

@@ -856,7 +856,7 @@ export class SearchOperations {
                 }
             }
 
-            record.record.metadata.links = links;
+            record.record.metadata.links = links as any;
         }
 
         // Apply graph boosting

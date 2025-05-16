@@ -101,7 +101,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                 
                 // Track token usage (if vaultLibrarian is available)
                 try {
-                    const app = window.app;
+                    const app = (window as any).app;
                     if (app) {
                         const plugin = app.plugins.getPlugin('claudesidian-mcp');
                         if (plugin) {
