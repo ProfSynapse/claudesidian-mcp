@@ -1,3 +1,4 @@
+import { TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CreateEmbeddingsParams, CreateEmbeddingsResult } from '../types';
 import { VaultLibrarianAgent } from '../vaultLibrarian';
@@ -40,8 +41,23 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
         return this.prepareResult(false, undefined, 'File path is required');
       }
       
+      // Get file from vault
+      const file = this.agent.app.vault.getAbstractFileByPath(filePath);
+      
+      // Check if it's a file (not a folder) and has .md extension
+      if (!file || file instanceof TFolder || !filePath.endsWith('.md')) {
+        return this.prepareResult(false, undefined, `File not found or not a markdown file: ${filePath}`);
+      }
+      
+      // Trigger single-file progress update
+      this.updateProgress(0, 1, params.workspaceContext?.workspaceId);
+      
       // Index the file
       const result = await this.agent.indexFile(filePath, force);
+      
+      // Trigger progress completion
+      this.updateProgress(1, 1, params.workspaceContext?.workspaceId);
+      this.completeProgress(result.success, params.workspaceContext?.workspaceId);
       
       // Record this activity if in a workspace context
       await this.recordActivity(params, result);
@@ -64,7 +80,51 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
       
       return response;
     } catch (error) {
+      // Ensure progress is completed even on error
+      this.completeProgress(false, params.workspaceContext?.workspaceId, error.message);
+      
       return this.prepareResult(false, undefined, `Error creating embeddings: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Update the progress UI
+   * @param processed Number of files processed
+   * @param total Total number of files
+   * @param operationId Optional operation ID
+   */
+  private updateProgress(processed: number, total: number, operationId?: string): void {
+    // Use the global progress handler if available
+    // @ts-ignore - Using global methods for inter-component communication
+    if (window.mcpProgressHandlers && window.mcpProgressHandlers.updateProgress) {
+      // @ts-ignore
+      window.mcpProgressHandlers.updateProgress({
+        processed,
+        total,
+        remaining: total - processed,
+        operationId: operationId || `create-embeddings-${Date.now()}`
+      });
+    }
+  }
+  
+  /**
+   * Complete the progress UI
+   * @param success Whether processing was successful
+   * @param operationId Optional operation ID
+   * @param error Optional error message
+   */
+  private completeProgress(success: boolean, operationId?: string, error?: string): void {
+    // Use the global completion handler if available
+    // @ts-ignore - Using global methods for inter-component communication
+    if (window.mcpProgressHandlers && window.mcpProgressHandlers.completeProgress) {
+      // @ts-ignore
+      window.mcpProgressHandlers.completeProgress({
+        success,
+        processed: 1,
+        failed: success ? 0 : 1,
+        error,
+        operationId: operationId || `create-embeddings-${Date.now()}`
+      });
     }
   }
   

@@ -33,6 +33,61 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
     try {
       const { operations, workspaceContext, handoff } = params;
       
+      // Validate operations before execution
+      if (!operations || !Array.isArray(operations) || operations.length === 0) {
+        throw new Error('Operations array is empty or not provided');
+      }
+      
+      // Pre-validate all operations to provide better error messages
+      operations.forEach((operation, index) => {
+        if (!operation.type) {
+          throw new Error(`Missing 'type' property in operation at index ${index}`);
+        }
+        
+        if (!operation.params) {
+          throw new Error(`Missing 'params' property in operation at index ${index}`);
+        }
+        
+        if (!operation.params.filePath) {
+          throw new Error(`Missing 'filePath' property in operation at index ${index}`);
+        }
+        
+        // Validate required parameters based on operation type
+        switch (operation.type) {
+          case 'create':
+          case 'append':
+          case 'prepend':
+            if (!operation.params.content) {
+              throw new Error(`Missing 'content' property in ${operation.type} operation at index ${index}`);
+            }
+            break;
+          case 'replace':
+            if (!operation.params.oldContent) {
+              throw new Error(`Missing 'oldContent' property in replace operation at index ${index}`);
+            }
+            if (!operation.params.newContent) {
+              throw new Error(`Missing 'newContent' property in replace operation at index ${index}`);
+            }
+            break;
+          case 'replaceByLine':
+            if (typeof operation.params.startLine !== 'number') {
+              throw new Error(`Missing or invalid 'startLine' property in replaceByLine operation at index ${index}`);
+            }
+            if (typeof operation.params.endLine !== 'number') {
+              throw new Error(`Missing or invalid 'endLine' property in replaceByLine operation at index ${index}`);
+            }
+            if (!operation.params.newContent) {
+              throw new Error(`Missing 'newContent' property in replaceByLine operation at index ${index}`);
+            }
+            break;
+          case 'delete':
+            if (!operation.params.content) {
+              throw new Error(`Missing 'content' property in delete operation at index ${index}`);
+            }
+            break;
+        }
+      });
+      
       // Execute operations sequentially to avoid conflicts
       const results = [];
       
@@ -70,14 +125,14 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
             success: true,
             data: result,
             type: operation.type,
-            filePath: this.getFilePathFromOperation(operation)
+            filePath: operation.params.filePath
           });
         } catch (error) {
           results.push({
             success: false,
             error: error.message,
             type: operation.type,
-            filePath: this.getFilePathFromOperation(operation)
+            filePath: operation.params.filePath || 'unknown'
           });
         }
       }
@@ -250,6 +305,10 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
    * @returns The file path
    */
   private getFilePathFromOperation(operation: ContentOperation): string {
+    // Make sure the path property exists
+    if (!operation.params.filePath) {
+      throw new Error(`Missing 'filePath' property in operation params: ${JSON.stringify(operation)}`);
+    }
     return operation.params.filePath;
   }
   
@@ -274,7 +333,98 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
               },
               params: {
                 type: 'object',
-                description: 'Operation-specific parameters'
+                description: 'Operation-specific parameters',
+                allOf: [
+                  {
+                    if: {
+                      properties: { 
+                        "type": { "enum": ["read"] } 
+                      }
+                    },
+                    then: {
+                      properties: {
+                        filePath: { type: 'string', description: 'Path to the file to read' },
+                        limit: { type: 'number', description: 'Optional number of lines to read' },
+                        offset: { type: 'number', description: 'Optional line number to start reading from (1-based)' },
+                        includeLineNumbers: { type: 'boolean', description: 'Whether to include line numbers in the output' }
+                      },
+                      required: ['filePath']
+                    }
+                  },
+                  {
+                    if: {
+                      properties: { 
+                        "type": { "enum": ["create"] }
+                      }
+                    },
+                    then: {
+                      properties: {
+                        filePath: { type: 'string', description: 'Path to the file to create' },
+                        content: { type: 'string', description: 'Content to write to the file' }
+                      },
+                      required: ['filePath', 'content']
+                    }
+                  },
+                  {
+                    if: {
+                      properties: { 
+                        "type": { "enum": ["append", "prepend"] }
+                      }
+                    },
+                    then: {
+                      properties: {
+                        filePath: { type: 'string', description: 'Path to the file to modify' },
+                        content: { type: 'string', description: 'Content to append/prepend to the file' }
+                      },
+                      required: ['filePath', 'content']
+                    }
+                  },
+                  {
+                    if: {
+                      properties: { 
+                        "type": { "enum": ["replace"] }
+                      }
+                    },
+                    then: {
+                      properties: {
+                        filePath: { type: 'string', description: 'Path to the file to modify' },
+                        oldContent: { type: 'string', description: 'Content to replace' },
+                        newContent: { type: 'string', description: 'Content to replace with' }
+                      },
+                      required: ['filePath', 'oldContent', 'newContent']
+                    }
+                  },
+                  {
+                    if: {
+                      properties: { 
+                        "type": { "enum": ["replaceByLine"] }
+                      }
+                    },
+                    then: {
+                      properties: {
+                        filePath: { type: 'string', description: 'Path to the file to modify' },
+                        startLine: { type: 'number', description: 'Start line number (1-based)' },
+                        endLine: { type: 'number', description: 'End line number (1-based, inclusive)' },
+                        newContent: { type: 'string', description: 'Content to replace with' }
+                      },
+                      required: ['filePath', 'startLine', 'endLine', 'newContent']
+                    }
+                  },
+                  {
+                    if: {
+                      properties: { 
+                        "type": { "enum": ["delete"] }
+                      }
+                    },
+                    then: {
+                      properties: {
+                        filePath: { type: 'string', description: 'Path to the file to modify' },
+                        content: { type: 'string', description: 'Content to delete' }
+                      },
+                      required: ['filePath', 'content']
+                    }
+                  }
+                ]
               }
             },
             required: ['type', 'params']

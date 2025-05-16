@@ -91,6 +91,8 @@ export class ProgressBar {
     private setupEventHandlers(): void {
         // Create progress update handler
         this.onProgressHandler = (data: ProgressUpdateData) => {
+            console.log('Progress update received:', data);
+            
             // Update progress
             this.total = data.total;
             this.progress = data.processed;
@@ -108,18 +110,43 @@ export class ProgressBar {
         };
         
         // Create completion handler
-        this.onCompleteHandler = () => {
+        this.onCompleteHandler = (data: ProgressCompleteData) => {
+            console.log('Progress completion received:', data);
+            
+            // Update the progress bar one last time to show completion
+            if (data.processed > 0 && this.total > 0) {
+                this.progress = data.processed;
+                this.updateProgressBar();
+            }
+            
             // Hide the progress bar
             setTimeout(() => {
                 this.hide();
-            }, 1000);
+            }, 2000); // Give user time to see completion
+        };
+        
+        // Create cancellation handler
+        const onCancelHandler = (data: ProgressCancelData) => {
+            console.log('Progress cancellation received:', data);
+            
+            // Only process if this is for our current operation
+            if (data.operationId === this.operationId) {
+                // Update text to show cancellation
+                this.progressText.setText(`Indexing cancelled: ${this.progress} / ${this.total}`);
+                
+                // Hide the progress bar after a delay
+                setTimeout(() => {
+                    this.hide();
+                }, 1000);
+            }
         };
         
         // Expose handlers as global methods to be called from other components
         // @ts-ignore - Adding methods to window for inter-component communication
         window.mcpProgressHandlers = {
             updateProgress: this.onProgressHandler,
-            completeProgress: this.onCompleteHandler
+            completeProgress: this.onCompleteHandler,
+            cancelProgress: onCancelHandler
         };
     }
     

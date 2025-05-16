@@ -1,4 +1,4 @@
-import { Setting, TextComponent, ToggleComponent, SliderComponent, DropdownComponent, ButtonComponent, Events } from 'obsidian';
+import { Setting, TextComponent, ToggleComponent, SliderComponent, DropdownComponent, ButtonComponent, Events, Notice } from 'obsidian';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../types';
 import { Settings } from '../settings';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
@@ -562,6 +562,29 @@ export class MemorySettingsTab {
         // Action buttons
         const actionsContainer = section.createDiv({ cls: 'memory-actions' });
         
+        // Update Token Usage button
+        const updateButton = actionsContainer.createEl('button', {
+            text: 'Update Usage Counter',
+            cls: 'mod-cta'
+        });
+        updateButton.addEventListener('click', async () => {
+            if (this.vaultLibrarian) {
+                const currentCount = usageStats.tokensThisMonth;
+                const newCount = prompt('Enter new token count:', currentCount.toString());
+                
+                if (newCount !== null) {
+                    const numValue = Number(newCount);
+                    if (!isNaN(numValue) && numValue >= 0) {
+                        await this.vaultLibrarian.updateUsageStats?.(numValue);
+                        this.display();
+                    } else {
+                        new Notice('Please enter a valid number for token count');
+                    }
+                }
+            }
+        });
+        
+        // Reset Token Usage button
         const resetButton = actionsContainer.createEl('button', {
             text: 'Reset Usage Counter',
             cls: 'mod-warning'
