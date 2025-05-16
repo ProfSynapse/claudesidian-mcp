@@ -21,6 +21,11 @@ export function getWorkspaceContextSchema(): any {
           type: 'array', 
           items: { type: 'string' },
           description: 'Path from root workspace to specific phase/task'
+        },
+        contextDepth: {
+          type: 'string',
+          enum: ['minimal', 'standard', 'comprehensive'],
+          description: 'Level of context to include in results'
         }
       },
       required: ['workspaceId'],
@@ -62,11 +67,25 @@ export function getHandoffSchema(): any {
 }
 
 /**
+ * Get schema for session parameters
+ * @returns JSON schema for session parameters
+ */
+export function getSessionSchema(): any {
+  return {
+    sessionId: {
+      type: 'string',
+      description: 'Session identifier to track related tool calls'
+    }
+  };
+}
+
+/**
  * Get complete common parameter schema
  * @returns JSON schema object for common parameters
  */
 export function getCommonParameterSchema(): any {
   return {
+    ...getSessionSchema(),
     ...getWorkspaceContextSchema(),
     ...getHandoffSchema()
   };
@@ -104,11 +123,21 @@ export function getCommonResultSchema(): any {
             items: { type: 'string' },
             description: 'Path from root workspace to specific phase/task'
           },
+          sessionId: {
+            type: 'string',
+            description: 'Session identifier used for this operation (required)'
+          },
           activeWorkspace: { 
             type: 'boolean',
             description: 'Whether this workspace is currently active'
+          },
+          contextDepth: {
+            type: 'string',
+            enum: ['minimal', 'standard', 'comprehensive'],
+            description: 'Level of context included in results'
           }
         },
+        required: ['workspaceId', 'sessionId'],
         description: 'Workspace context that was used'
       },
       handoffResult: {
@@ -134,7 +163,7 @@ export function mergeWithCommonSchema(customSchema: any): any {
       ...customSchema.properties,
       ...commonSchema
     },
-    required: customSchema.required || []
+    required: [...(customSchema.required || []), 'sessionId']
   };
 }
 
@@ -145,6 +174,7 @@ export function mergeWithCommonSchema(customSchema: any): any {
  * @param error Error message if operation failed
  * @param workspaceContext Workspace context used
  * @param handoffResult Result from handoff operation
+ * @param sessionId Session identifier
  * @returns Standardized result object
  */
 export function createResult<T extends CommonResult>(
@@ -152,13 +182,15 @@ export function createResult<T extends CommonResult>(
   data?: any,
   error?: string,
   workspaceContext?: CommonResult['workspaceContext'],
-  handoffResult?: any
+  handoffResult?: any,
+  sessionId?: string
 ): T {
   return {
     success,
     data,
     error,
     workspaceContext,
-    handoffResult
+    handoffResult,
+    sessionId
   } as T;
 }

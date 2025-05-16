@@ -3,9 +3,9 @@ import { BaseMode } from '../../baseMode';
 import { 
   LoadWorkspaceParameters, 
   LoadWorkspaceResult
-} from '../../vaultLibrarian/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../vaultLibrarian/db/workspace-db';
-import { WorkspaceCacheManager } from '../../vaultLibrarian/workspace-cache';
+} from '../../../database/workspace-types';
+import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
+import { WorkspaceCacheManager } from '../../../database/workspace-cache';
 
 /**
  * Mode to load a workspace as the active context
@@ -115,10 +115,17 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       const keyFiles = await this.getKeyFiles(workspace);
       const relatedConcepts = await this.getRelatedConcepts(workspace);
       
+      // Create workspace context
+      const workspaceContext = {
+        workspaceId: workspace.id,
+        workspacePath: [...workspace.path, workspace.id],
+        activeWorkspace: true
+      };
+
       // Prepare result
-      return {
-        success: true,
-        data: {
+      return this.prepareResult(
+        true,
+        {
           workspace: {
             id: workspace.id,
             name: workspace.name,
@@ -135,26 +142,23 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             relatedConcepts
           }
         },
-        workspaceContext: {
-          workspaceId: workspace.id,
-          workspacePath: [...workspace.path, workspace.id],
-          activeWorkspace: true
-        }
-      };
+        undefined,
+        workspaceContext
+      );
       
     } catch (error) {
-      return {
-        success: false,
-        error: `Failed to load workspace: ${error.message}`,
-        data: {
+      return this.prepareResult(
+        false,
+        {
           workspace: undefined,
           context: {
             recentFiles: [],
             keyFiles: [],
             relatedConcepts: []
           }
-        }
-      };
+        },
+        `Failed to load workspace: ${error.message}`
+      );
     }
   }
   

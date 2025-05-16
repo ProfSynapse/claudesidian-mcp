@@ -6,8 +6,8 @@ import {
   ExecuteCommandMode
 } from './modes';
 import { AgentManager } from '../../services/AgentManager';
-import { ToolActivityEmbedder } from '../vaultLibrarian/tool-activity-embedder';
-import { BaseEmbeddingProvider } from '../vaultLibrarian/providers/embeddings-provider';
+import { ToolActivityEmbedder } from '../../database/tool-activity-embedder';
+import { BaseEmbeddingProvider } from '../../database/providers/embeddings-provider';
 
 /**
  * CommandManager Agent for command palette operations

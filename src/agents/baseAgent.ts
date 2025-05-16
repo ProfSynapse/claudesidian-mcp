@@ -84,6 +84,24 @@ export abstract class BaseAgent implements IAgent {
       throw new Error(`Mode ${modeSlug} not found in agent ${this.name}`);
     }
     
+    // Session ID is now required for all tool calls
+    if (!params.sessionId) {
+      // Return error if sessionId is missing - it's now a required parameter
+      return {
+        success: false,
+        error: `Session ID is required for all tool calls. Mode ${modeSlug} cannot execute without a sessionId.`,
+        data: null
+      };
+    }
+    
+    // Store the sessionId on the mode instance for use in prepareResult
+    (mode as any).sessionId = params.sessionId;
+    
+    // If the mode has setParentContext method, use it to propagate workspace context
+    if (typeof (mode as any).setParentContext === 'function' && params.workspaceContext) {
+      (mode as any).setParentContext(params.workspaceContext);
+    }
+    
     // Execute the requested mode
     const result = await mode.execute(params);
     
@@ -124,10 +142,25 @@ export abstract class BaseAgent implements IAgent {
     
     try {
       // Prepare parameters for handoff
-      // If the original result has workspace context, pass it through
+      // Get the workspace context from the original result or handoff parameters
+      let handoffWorkspaceContext = originalResult.workspaceContext || handoff.parameters.workspaceContext;
+      
+      // If both have workspace context, merge them (prioritizing original result)
+      if (originalResult.workspaceContext && handoff.parameters.workspaceContext) {
+        handoffWorkspaceContext = {
+          ...handoff.parameters.workspaceContext,
+          ...originalResult.workspaceContext
+        };
+      }
+      
+      // Ensure sessionId is passed to the handoff
+      const sessionId = originalResult.sessionId || handoff.parameters.sessionId;
+      
+      // Create the handoff parameters
       const handoffParams = {
         ...handoff.parameters,
-        workspaceContext: originalResult.workspaceContext || handoff.parameters.workspaceContext
+        workspaceContext: handoffWorkspaceContext,
+        sessionId: sessionId
       };
       
       // Execute the target mode
@@ -148,7 +181,8 @@ export abstract class BaseAgent implements IAgent {
       return {
         success: false,
         error: `Handoff error: ${error.message || 'Unknown error'}`,
-        workspaceContext: originalResult.workspaceContext
+        workspaceContext: originalResult.workspaceContext,
+        sessionId: originalResult.sessionId
       };
     }
   }

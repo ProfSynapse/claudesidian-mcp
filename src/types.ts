@@ -7,7 +7,7 @@ import { IAgent } from './agents/interfaces/IAgent';
 export type ServerStatus = 'initializing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
 
 /**
- * Extend App type to include commands
+ * Extend App type to include commands and plugins
  */
 declare module 'obsidian' {
     interface App {
@@ -15,6 +15,12 @@ declare module 'obsidian' {
             listCommands(): Command[];
             executeCommandById(id: string): Promise<void>;
             commands: { [id: string]: Command };
+        };
+        plugins: {
+            getPlugin(id: string): any;
+            enablePlugin(id: string): Promise<void>;
+            disablePlugin(id: string): Promise<void>;
+            plugins: { [id: string]: any };
         };
     }
 }
@@ -36,6 +42,7 @@ export interface MCPSettings {
 export interface MemorySettings {
     // Core settings
     enabled: boolean;
+    embeddingsEnabled: boolean; // Toggle for enabling/disabling embeddings functionality
     apiProvider: 'openai' | 'local';
     openaiApiKey: string;
     openaiOrganization?: string;
@@ -59,6 +66,8 @@ export interface MemorySettings {
     
     // Content filters
     minContentLength: number;
+    maxTokensPerChunk?: number;  // Maximum tokens per chunk
+    ignorePatterns?: string[];   // Patterns to ignore when indexing
     
     // Processing schedule
     indexingSchedule: 'manual' | 'on-save' | 'daily' | 'weekly';
@@ -76,6 +85,7 @@ export interface MemorySettings {
     autoCleanOrphaned: boolean;
     maxDbSize: number;
     pruningStrategy: 'oldest' | 'least-used' | 'manual';
+    reindexThreshold?: number;  // Days before reindexing files
     
     // Search settings
     defaultResultLimit: number;
@@ -89,11 +99,28 @@ export interface MemorySettings {
     // Advanced query settings
     useFilters: boolean;
     defaultThreshold: number;
+    
+    // Memory Manager session settings
+    autoCreateSessions?: boolean;
+    sessionNaming?: 'timestamp' | 'workspace' | 'content';
+    
+    // Memory Manager state settings
+    autoCheckpoint?: boolean;
+    checkpointInterval?: number;
+    maxStates?: number;
+    statePruningStrategy?: 'oldest' | 'least-important' | 'manual';
+
+    // Embedding cost tracking
+    costPerThousandTokens?: {
+        'text-embedding-3-small': number;
+        'text-embedding-3-large': number;
+    };
 }
 
 // Default settings for Memory Manager
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     enabled: true,
+    embeddingsEnabled: true, // Embeddings enabled by default
     apiProvider: 'openai',
     openaiApiKey: '',
     embeddingModel: 'text-embedding-3-small',
@@ -120,7 +147,23 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     backlinksEnabled: true,
     backlinksWeight: 0.5,
     useFilters: true,
-    defaultThreshold: 0.7
+    defaultThreshold: 0.7,
+    
+    // Memory Manager session settings
+    autoCreateSessions: true,
+    sessionNaming: 'workspace',
+    
+    // Memory Manager state settings
+    autoCheckpoint: false,
+    checkpointInterval: 30,
+    maxStates: 10,
+    statePruningStrategy: 'oldest',
+    
+    // Cost tracking
+    costPerThousandTokens: {
+        'text-embedding-3-small': 0.00013,
+        'text-embedding-3-large': 0.00087
+    }
 };
 
 /**
@@ -240,6 +283,11 @@ export interface MemoryUsageStats {
     dbSizeMB: number;
     lastIndexedDate: string;
     indexingInProgress: boolean;
+    estimatedCost?: number;
+    modelUsage?: {
+        'text-embedding-3-small': number;
+        'text-embedding-3-large': number;
+    };
 }
 
 // Provider interface for extensibility
@@ -300,11 +348,44 @@ export interface EventSubscriber<T = any> {
     (data: T): void;
 }
 
+// Memory Manager Types
+export interface WorkspaceSessionInfo {
+    id: string;
+    name: string;
+    workspaceId: string;
+    startTime: number;
+    endTime?: number;
+    isActive: boolean;
+    description?: string;
+    toolCalls: number;
+    tags?: string[];
+}
+
+export interface WorkspaceStateInfo {
+    id: string;
+    name: string;
+    workspaceId: string;
+    sessionId: string;
+    timestamp: number;
+    description?: string;
+    context?: {
+        files: string[];
+        traceCount: number;
+        tags: string[];
+        summary?: string;
+    };
+}
+
 /**
  * Common parameters structure for standardized agent modes
- * Provides workspace context and handoff mechanism
+ * Provides session tracking, workspace context and handoff mechanism
  */
 export interface CommonParameters {
+  /**
+   * Session identifier to track related tool calls
+   */
+  sessionId: string;
+  
   /**
    * Optional workspace context for scoping operations
    */
@@ -342,6 +423,11 @@ export interface CommonResult {
    * Operation-specific result data
    */
   data?: any;
+  
+  /**
+   * Session identifier used for tracking related operations
+   */
+  sessionId?: string;
   
   /**
    * Workspace context that was used (for continuity)

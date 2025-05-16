@@ -2,8 +2,9 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ReadContentParams, ReadContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { ToolActivityEmbedder } from '../../vaultLibrarian/tool-activity-embedder';
-import { DummyEmbeddingProvider } from '../../vaultLibrarian/providers/embeddings-provider';
+import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
+import { OpenAIProvider } from '../../../database/providers/openai-provider';
+import { DEFAULT_MEMORY_SETTINGS } from '../../../types';
 
 /**
  * Mode for reading content from a file
@@ -35,9 +36,25 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
    */
   private async initializeActivityEmbedder() {
     try {
-      // Create an instance with a dummy provider
-      const dummyProvider = new DummyEmbeddingProvider();
-      this.activityEmbedder = new ToolActivityEmbedder(dummyProvider);
+      // Try to get settings from the plugin
+      let memorySettings = { ...DEFAULT_MEMORY_SETTINGS };
+      
+      if (this.app.plugins) {
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.settings?.settings?.memory) {
+          memorySettings = plugin.settings.settings.memory;
+        }
+      }
+      
+      // Only create provider if embeddings are enabled and API key is available
+      if (memorySettings.embeddingsEnabled && memorySettings.openaiApiKey) {
+        const provider = new OpenAIProvider(memorySettings);
+        this.activityEmbedder = new ToolActivityEmbedder(provider);
+      } else {
+        // Don't attempt to create a provider without an API key
+        console.log('Activity embedder disabled: embeddings not enabled or API key missing');
+        this.activityEmbedder = null;
+      }
     } catch (error) {
       console.error('Failed to initialize activity embedder:', error);
       this.activityEmbedder = null;
@@ -155,13 +172,19 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       endLine?: number;
     }
   ): Promise<void> {
+    // Skip if no workspace context or embedder is not available
     if (!params.workspaceContext?.workspaceId || !this.activityEmbedder) {
-      return; // Skip if no workspace context or embedder
+      return;
     }
     
     try {
-      // Initialize the activity embedder
-      await this.activityEmbedder.initialize();
+      // Initialize the activity embedder - wrapped in try/catch to handle initialization failures gracefully
+      try {
+        await this.activityEmbedder.initialize();
+      } catch (initError) {
+        console.log('Activity embedder initialization failed, skipping activity recording:', initError);
+        return;
+      }
       
       // Get workspace path (or use just the ID if no path provided)
       const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];

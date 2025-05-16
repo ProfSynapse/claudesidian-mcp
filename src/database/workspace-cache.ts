@@ -1,4 +1,4 @@
-import { IndexedDBWorkspaceDatabase } from './db/workspace-db';
+import { IndexedDBWorkspaceDatabase } from './workspace-db';
 
 /**
  * Class to manage workspace caching for improved performance

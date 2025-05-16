@@ -1,4 +1,4 @@
-import { ProjectWorkspace, WorkspaceMemoryTrace, HierarchyType, WorkspaceStatus } from '../workspace-types';
+import { ProjectWorkspace, WorkspaceMemoryTrace, HierarchyType, WorkspaceStatus, WorkspaceSession, WorkspaceStateSnapshot } from './workspace-types';
 
 /**
  * Workspace database interface
@@ -114,6 +114,7 @@ export interface WorkspaceDatabase {
     workspacePath?: string[];
     limit?: number;
     threshold?: number;
+    sessionId?: string;
   }): Promise<Array<{
     trace: WorkspaceMemoryTrace;
     similarity: number;
@@ -130,13 +131,78 @@ export interface WorkspaceDatabase {
    * @param id Workspace ID
    */
   updateLastAccessed(id: string): Promise<void>;
+  
+  /**
+   * Create a new session
+   * @param session Session data
+   */
+  createSession(session: WorkspaceSession): Promise<string>;
+  
+  /**
+   * Update an existing session
+   * @param id Session ID
+   * @param updates Partial session data to update
+   */
+  updateSession(id: string, updates: Partial<WorkspaceSession>): Promise<void>;
+  
+  /**
+   * Get a session by ID
+   * @param id Session ID
+   */
+  getSession(id: string): Promise<WorkspaceSession | undefined>;
+  
+  /**
+   * Get all sessions for a workspace
+   * @param workspaceId Workspace ID
+   * @param activeOnly Whether to only return active sessions
+   */
+  getSessions(workspaceId: string, activeOnly?: boolean): Promise<WorkspaceSession[]>;
+  
+  /**
+   * End an active session
+   * @param id Session ID
+   * @param summary Optional summary of the session
+   */
+  endSession(id: string, summary?: string): Promise<void>;
+  
+  /**
+   * Get memory traces for a specific session
+   * @param sessionId Session ID
+   * @param limit Maximum number of traces to return
+   */
+  getSessionTraces(sessionId: string, limit?: number): Promise<WorkspaceMemoryTrace[]>;
+  
+  /**
+   * Create a workspace state snapshot
+   * @param snapshot Snapshot data
+   */
+  createSnapshot(snapshot: WorkspaceStateSnapshot): Promise<string>;
+  
+  /**
+   * Get a snapshot by ID
+   * @param id Snapshot ID
+   */
+  getSnapshot(id: string): Promise<WorkspaceStateSnapshot | undefined>;
+  
+  /**
+   * Get all snapshots for a workspace
+   * @param workspaceId Workspace ID
+   * @param sessionId Optional session ID to filter by
+   */
+  getSnapshots(workspaceId: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]>;
+  
+  /**
+   * Delete a snapshot
+   * @param id Snapshot ID
+   */
+  deleteSnapshot(id: string): Promise<void>;
 }
 
 /**
  * IndexedDB implementation of workspace database
  */
 export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
-  private db: IDBDatabase | null = null;
+  public db: IDBDatabase | null = null;
   private dbName: string;
   private dbVersion: number;
   
@@ -185,6 +251,24 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
           tracesStore.createIndex('timestamp', 'timestamp', { unique: false });
           tracesStore.createIndex('activityType', 'activityType', { unique: false });
           tracesStore.createIndex('importance', 'importance', { unique: false });
+          tracesStore.createIndex('sessionId', 'sessionId', { unique: false });
+          tracesStore.createIndex('sequenceNumber', 'sequenceNumber', { unique: false });
+        }
+        
+        // Create sessions store
+        if (!db.objectStoreNames.contains('sessions')) {
+          const sessionsStore = db.createObjectStore('sessions', { keyPath: 'id' });
+          sessionsStore.createIndex('workspaceId', 'workspaceId', { unique: false });
+          sessionsStore.createIndex('startTime', 'startTime', { unique: false });
+          sessionsStore.createIndex('isActive', 'isActive', { unique: false });
+        }
+        
+        // Create snapshots store
+        if (!db.objectStoreNames.contains('snapshots')) {
+          const snapshotsStore = db.createObjectStore('snapshots', { keyPath: 'id' });
+          snapshotsStore.createIndex('workspaceId', 'workspaceId', { unique: false });
+          snapshotsStore.createIndex('sessionId', 'sessionId', { unique: false });
+          snapshotsStore.createIndex('timestamp', 'timestamp', { unique: false });
         }
       };
     });
@@ -605,6 +689,7 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
     workspacePath?: string[];
     limit?: number;
     threshold?: number;
+    sessionId?: string;
   }): Promise<Array<{
     trace: WorkspaceMemoryTrace;
     similarity: number;
@@ -721,5 +806,291 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
     }
     
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+  
+  /**
+   * Create a new session
+   * @param session Session data to save
+   */
+  async createSession(session: WorkspaceSession): Promise<string> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['sessions'], 'readwrite');
+      const store = transaction.objectStore('sessions');
+      const request = store.add(session);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to create session: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = () => {
+        resolve(session.id);
+      };
+    });
+  }
+  
+  /**
+   * Update an existing session
+   * @param id Session ID
+   * @param updates Partial session data to update
+   */
+  async updateSession(id: string, updates: Partial<WorkspaceSession>): Promise<void> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    const session = await this.getSession(id);
+    if (!session) {
+      throw new Error(`Session with ID ${id} not found`);
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['sessions'], 'readwrite');
+      const store = transaction.objectStore('sessions');
+      
+      // Apply updates to the session object
+      const updatedSession = { ...session, ...updates };
+      
+      const request = store.put(updatedSession);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to update session: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = () => {
+        resolve();
+      };
+    });
+  }
+  
+  /**
+   * Get a session by ID
+   * @param id Session ID
+   */
+  async getSession(id: string): Promise<WorkspaceSession | undefined> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['sessions'], 'readonly');
+      const store = transaction.objectStore('sessions');
+      const request = store.get(id);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to retrieve session: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        resolve((event.target as any).result as WorkspaceSession | undefined);
+      };
+    });
+  }
+  
+  /**
+   * Get all sessions for a workspace
+   * @param workspaceId Workspace ID
+   * @param activeOnly Whether to only return active sessions
+   */
+  async getSessions(workspaceId: string, activeOnly: boolean = false): Promise<WorkspaceSession[]> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['sessions'], 'readonly');
+      const store = transaction.objectStore('sessions');
+      const index = store.index('workspaceId');
+      const request = index.getAll(workspaceId);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to retrieve sessions: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        let sessions = (event.target as any).result as WorkspaceSession[];
+        
+        // Filter by active status if requested
+        if (activeOnly) {
+          sessions = sessions.filter(session => session.isActive);
+        }
+        
+        // Sort by start time (newest first)
+        sessions.sort((a, b) => b.startTime - a.startTime);
+        
+        resolve(sessions);
+      };
+    });
+  }
+  
+  /**
+   * End an active session
+   * @param id Session ID
+   * @param summary Optional summary of the session
+   */
+  async endSession(id: string, summary?: string): Promise<void> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    const session = await this.getSession(id);
+    if (!session) {
+      throw new Error(`Session with ID ${id} not found`);
+    }
+    
+    return this.updateSession(id, {
+      isActive: false,
+      endTime: Date.now(),
+      activitySummary: summary
+    });
+  }
+  
+  /**
+   * Get memory traces for a specific session
+   * @param sessionId Session ID
+   * @param limit Maximum number of traces to return
+   */
+  async getSessionTraces(sessionId: string, limit: number = 100): Promise<WorkspaceMemoryTrace[]> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['memoryTraces'], 'readonly');
+      const store = transaction.objectStore('memoryTraces');
+      const index = store.index('sessionId');
+      const request = index.getAll(sessionId);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to retrieve session traces: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        let traces = (event.target as any).result as WorkspaceMemoryTrace[];
+        
+        // Sort by sequence number if available, otherwise by timestamp
+        traces.sort((a, b) => {
+          if (a.sequenceNumber !== undefined && b.sequenceNumber !== undefined) {
+            return a.sequenceNumber - b.sequenceNumber;
+          }
+          return a.timestamp - b.timestamp;
+        });
+        
+        traces = traces.slice(0, limit);
+        
+        resolve(traces);
+      };
+    });
+  }
+  
+  /**
+   * Create a workspace state snapshot
+   * @param snapshot Snapshot data
+   */
+  async createSnapshot(snapshot: WorkspaceStateSnapshot): Promise<string> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['snapshots'], 'readwrite');
+      const store = transaction.objectStore('snapshots');
+      const request = store.add(snapshot);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to create snapshot: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = () => {
+        resolve(snapshot.id);
+      };
+    });
+  }
+  
+  /**
+   * Get a snapshot by ID
+   * @param id Snapshot ID
+   */
+  async getSnapshot(id: string): Promise<WorkspaceStateSnapshot | undefined> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['snapshots'], 'readonly');
+      const store = transaction.objectStore('snapshots');
+      const request = store.get(id);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to retrieve snapshot: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        resolve((event.target as any).result as WorkspaceStateSnapshot | undefined);
+      };
+    });
+  }
+  
+  /**
+   * Get all snapshots for a workspace
+   * @param workspaceId Workspace ID
+   * @param sessionId Optional session ID to filter by
+   */
+  async getSnapshots(workspaceId: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['snapshots'], 'readonly');
+      const store = transaction.objectStore('snapshots');
+      const index = store.index('workspaceId');
+      const request = index.getAll(workspaceId);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to retrieve snapshots: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        let snapshots = (event.target as any).result as WorkspaceStateSnapshot[];
+        
+        // Filter by session ID if requested
+        if (sessionId) {
+          snapshots = snapshots.filter(snapshot => snapshot.sessionId === sessionId);
+        }
+        
+        // Sort by timestamp (newest first)
+        snapshots.sort((a, b) => b.timestamp - a.timestamp);
+        
+        resolve(snapshots);
+      };
+    });
+  }
+  
+  /**
+   * Delete a snapshot
+   * @param id Snapshot ID
+   */
+  async deleteSnapshot(id: string): Promise<void> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['snapshots'], 'readwrite');
+      const store = transaction.objectStore('snapshots');
+      const request = store.delete(id);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to delete snapshot: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = () => {
+        resolve();
+      };
+    });
   }
 }

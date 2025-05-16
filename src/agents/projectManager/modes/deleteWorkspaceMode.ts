@@ -3,8 +3,8 @@ import { BaseMode } from '../../baseMode';
 import { 
   DeleteWorkspaceParameters, 
   WorkspaceResult
-} from '../../vaultLibrarian/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../vaultLibrarian/db/workspace-db';
+} from '../../../database/workspace-types';
+import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
 
 /**
  * Mode to delete a workspace
@@ -56,7 +56,7 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
       // Store the workspace context for the response
       const workspaceContext = {
         workspaceId: params.id,
-        workspacePath: [...workspace.path, workspace.id],
+        workspacePath: [...workspace.path, workspace.id]
       };
       
       // If the workspace has children and deleteChildren is false, check if it's safe to delete
@@ -86,19 +86,21 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
         }
       }
       
-      return {
-        success: true,
-        data: {
+      return this.prepareResult(
+        true,
+        {
           summary: `Workspace "${workspace.name}" deleted successfully`
         },
+        undefined,
         workspaceContext
-      };
+      );
       
     } catch (error) {
-      return {
-        success: false,
-        error: `Failed to delete workspace: ${error.message}`
-      };
+      return this.prepareResult(
+        false,
+        undefined,
+        `Failed to delete workspace: ${error.message}`
+      );
     }
   }
   

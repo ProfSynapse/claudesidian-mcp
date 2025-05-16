@@ -1,7 +1,7 @@
 import { TFile } from 'obsidian';
-import { SearchWeights } from './utils/SearchOperations';
+import { SearchWeights } from '../../database/utils/SearchOperations';
 import { CommonParameters, CommonResult } from '../../types';
-import { WorkspaceParameters, WorkspaceResult } from './workspace-types';
+import { WorkspaceParameters, WorkspaceResult } from '../../database/workspace-types';
 
 /**
  * Search content arguments
@@ -188,170 +188,6 @@ export interface PropertyMatch {
   value: string;
 }
 
-/**
- * List folder arguments
- */
-export interface ListFolderArgs extends CommonParameters {
-  /**
-   * Path to the folder
-   */
-  path: string;
-  
-  /**
-   * Whether to include files (default: true)
-   */
-  includeFiles?: boolean;
-  
-  /**
-   * Whether to include folders (default: true)
-   */
-  includeFolders?: boolean;
-  
-  /**
-   * Whether to include hidden files (default: false)
-   */
-  includeHidden?: boolean;
-}
-
-/**
- * List folder result
- */
-export interface ListFolderResult extends CommonResult {
-  /**
-   * Path to the folder
-   */
-  path: string;
-  
-  /**
-   * List of files in the folder
-   */
-  files: string[];
-  
-  /**
-   * List of folders in the folder
-   */
-  folders: string[];
-}
-
-/**
- * List note arguments
- */
-export interface ListNoteArgs extends CommonParameters {
-  /**
-   * Path to search in (optional)
-   */
-  path?: string;
-  
-  /**
-   * Filter by extension (optional)
-   */
-  extension?: string;
-  
-  /**
-   * Maximum number of results to return (optional)
-   */
-  limit?: number;
-}
-
-/**
- * List note result
- */
-export interface ListNoteResult extends CommonResult {
-  /**
-   * List of notes
-   */
-  notes: string[];
-  
-  /**
-   * Total number of notes
-   */
-  total: number;
-}
-
-/**
- * List tag arguments
- */
-export interface ListTagArgs extends CommonParameters {
-  /**
-   * Filter by prefix (optional)
-   */
-  prefix?: string;
-  
-  /**
-   * Maximum number of results to return (optional)
-   */
-  limit?: number;
-}
-
-/**
- * List tag result
- */
-export interface ListTagResult extends CommonResult {
-  /**
-   * List of tags
-   */
-  tags: string[];
-  
-  /**
-   * Total number of tags
-   */
-  total: number;
-}
-
-/**
- * List properties arguments
- */
-export interface ListPropertiesArgs extends CommonParameters {
-  /**
-   * Filter by key (optional)
-   */
-  key?: string;
-  
-  /**
-   * Maximum number of results to return (optional)
-   */
-  limit?: number;
-}
-
-/**
- * List properties result
- */
-export interface ListPropertiesResult extends CommonResult {
-  /**
-   * Map of property keys to values
-   */
-  properties: Record<string, string[]>;
-  
-  /**
-   * Total number of properties
-   */
-  total: number;
-}
-
-/**
- * List recursive arguments
- */
-export interface ListRecursiveArgs extends CommonParameters {
-  /**
-   * Path to the folder
-   */
-  path: string;
-  
-  /**
-   * Whether to include files (default: true)
-   */
-  includeFiles?: boolean;
-  
-  /**
-   * Whether to include folders (default: true)
-   */
-  includeFolders?: boolean;
-  
-  /**
-   * Whether to include hidden files (default: false)
-   */
-  includeHidden?: boolean;
-}
 
 /**
  * Batch search arguments
@@ -383,30 +219,11 @@ export interface BatchSearchResult extends CommonResult {
   errors?: Record<string, string>;
 }
 
-/**
- * List recursive result
- */
-export interface ListRecursiveResult extends CommonResult {
-  /**
-   * Path to the folder
-   */
-  path: string;
-  
-  /**
-   * List of files in the folder and subfolders
-   */
-  files: string[];
-  
-  /**
-   * List of folders in the folder and subfolders
-   */
-  folders: string[];
-}
 
 /**
  * Semantic search parameters
  */
-export interface SemanticSearchParams extends WorkspaceParameters {
+export interface SemanticSearchParams extends CommonParameters {
   /**
    * The query to search for
    */
@@ -520,7 +337,7 @@ export interface SemanticSearchResult extends CommonResult {
 /**
  * Create embeddings parameters
  */
-export interface CreateEmbeddingsParams extends WorkspaceParameters {
+export interface CreateEmbeddingsParams extends CommonParameters {
   /**
    * Path to the file to index
    */
@@ -545,7 +362,7 @@ export interface CreateEmbeddingsResult extends CommonResult {
 /**
  * Batch create embeddings parameters
  */
-export interface BatchCreateEmbeddingsParams extends WorkspaceParameters {
+export interface BatchCreateEmbeddingsParams extends CommonParameters {
   /**
    * Paths to the files to index
    */

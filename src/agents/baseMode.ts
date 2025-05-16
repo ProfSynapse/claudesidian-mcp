@@ -64,11 +64,65 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
   
   /**
    * Helper method to merge mode-specific schema with common schema
+   * This ensures that every mode has workspace context and handoff parameters
    * @param customSchema The mode-specific schema
    * @returns Merged schema with common parameters
    */
   protected getMergedSchema(customSchema: any): any {
-    return mergeWithCommonSchema(customSchema);
+    // Get the merged schema with common parameters
+    const mergedSchema = mergeWithCommonSchema(customSchema);
+    
+    // Ensure the schema has a type and properties
+    mergedSchema.type = mergedSchema.type || 'object';
+    mergedSchema.properties = mergedSchema.properties || {};
+    
+    // Make sure workspaceContext and handoff are defined as optional properties
+    // This is a safety check in case they're not included in the common schema for some reason
+    if (!mergedSchema.properties.workspaceContext) {
+      mergedSchema.properties.workspaceContext = {
+        type: 'object',
+        properties: {
+          workspaceId: { 
+            type: 'string',
+            description: 'Workspace identifier' 
+          },
+          workspacePath: { 
+            type: 'array', 
+            items: { type: 'string' },
+            description: 'Path from root workspace to specific phase/task'
+          },
+          sessionId: {
+            type: 'string',
+            description: 'Session identifier to track related tool calls (required)'
+          }
+        },
+        description: 'Optional workspace context'
+      };
+    }
+    
+    if (!mergedSchema.properties.handoff) {
+      mergedSchema.properties.handoff = {
+        type: 'object',
+        properties: {
+          tool: { 
+            type: 'string',
+            description: 'Agent name to hand off to' 
+          },
+          mode: { 
+            type: 'string',
+            description: 'Mode to execute' 
+          },
+          parameters: { 
+            type: 'object',
+            description: 'Parameters to pass to the next mode'
+          }
+        },
+        required: ['tool', 'mode', 'parameters'],
+        description: 'Optional handoff to another tool'
+      };
+    }
+    
+    return mergedSchema;
   }
   
   /**
@@ -87,7 +141,31 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
     workspaceContext?: CommonResult['workspaceContext'],
     handoffResult?: any
   ): R {
-    return createResult<R>(success, data, error, workspaceContext, handoffResult);
+    // Get the sessionId from the execution context if available
+    const sessionId = (this as any).sessionId;
+    
+    if (!sessionId) {
+      // Session ID is required, so we should report an error
+      return createResult<R>(
+        false, 
+        null, 
+        'Session ID is required but not provided',
+        workspaceContext, 
+        null,
+        undefined
+      );
+    }
+    
+    return createResult<R>(success, data, error, workspaceContext, handoffResult, sessionId);
+  }
+  
+  /**
+   * Set parent workspace context for session tracking
+   * This allows session IDs to be propagated between modes
+   * @param context Parent workspace context
+   */
+  setParentContext(context: CommonResult['workspaceContext']): void {
+    (this as any).parentContext = context;
   }
   
   /**

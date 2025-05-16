@@ -6,8 +6,8 @@ import {
   ProjectWorkspace,
   HierarchyType,
   WorkspaceStatus
-} from '../../vaultLibrarian/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../vaultLibrarian/db/workspace-db';
+} from '../../../database/workspace-types';
+import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
 import { v4 as uuidv4 } from 'uuid';
 
 /**

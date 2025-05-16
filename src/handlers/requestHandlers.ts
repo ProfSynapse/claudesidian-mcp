@@ -187,6 +187,14 @@ export async function handleToolList(
  * Validate tool execution parameters
  */
 function validateToolParams(params: any) {
+    // Validate sessionId is present as a top-level parameter
+    if (!params.sessionId) {
+        throw new McpError(
+            ErrorCode.InvalidParams,
+            `Missing required parameter: sessionId`
+        );
+    }
+    
     // Validate batch operations if they exist
     if (params.operations && Array.isArray(params.operations)) {
         params.operations.forEach((operation: any, index: number) => {
@@ -248,7 +256,6 @@ function validateToolParams(params: any) {
                 );
             }
         });
-        
     }
 }
 

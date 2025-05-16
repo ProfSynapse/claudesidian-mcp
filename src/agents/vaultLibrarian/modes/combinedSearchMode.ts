@@ -1,7 +1,8 @@
+import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CombinedSearchParams, SemanticSearchResult } from '../types';
 import { VaultLibrarianAgent } from '../vaultLibrarian';
-import { ToolActivityEmbedder } from '../tool-activity-embedder';
+import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 
 /**
  * Mode for combined search with filters and semantic search
@@ -11,9 +12,9 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
   
   /**
    * Create a new CombinedSearchMode
-   * @param agent VaultLibrarian agent instance
+   * @param app Obsidian app instance 
    */
-  constructor(private agent: VaultLibrarianAgent) {
+  constructor(private app: App) {
     super(
       'combinedSearch',
       'Combined Search',
@@ -21,9 +22,22 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
       '1.0.0'
     );
     
-    // Initialize the activity embedder if we have a provider
-    if (agent.getProvider()) {
-      this.activityEmbedder = new ToolActivityEmbedder(agent.getProvider());
+    // Initialize the activity embedder if possible
+    // Since we don't have direct access to VaultLibrarian, this needs to be set up differently
+    // We'll rely on getting the provider through the plugin if needed
+    try {
+      const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
+      if (plugin?.connector?.getVaultLibrarian) {
+        const vaultLibrarian = plugin.connector.getVaultLibrarian();
+        if (vaultLibrarian?.getProvider) {
+          const provider = vaultLibrarian.getProvider();
+          if (provider) {
+            this.activityEmbedder = new ToolActivityEmbedder(provider);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to initialize activity embedder for combined search:", error);
     }
   }
   
@@ -40,13 +54,29 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
         return this.prepareResult(false, undefined, 'Query is required');
       }
       
-      // Execute combined search
-      const result = await this.agent.combinedSearch(
-        query,
-        filters || {},
-        limit || 10,
-        threshold || 0.7
-      );
+      // Execute combined search by getting access to the VaultLibrarian
+      let result = { success: false, matches: [], error: "VaultLibrarian not found" };
+      
+      try {
+        const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
+        if (plugin?.connector?.getVaultLibrarian) {
+          const vaultLibrarian = plugin.connector.getVaultLibrarian();
+          if (vaultLibrarian?.combinedSearch) {
+            result = await vaultLibrarian.combinedSearch(
+              query,
+              filters || {},
+              limit || 10,
+              threshold || 0.7
+            );
+          } else {
+            return this.prepareResult(false, undefined, "VaultLibrarian combinedSearch method not available");
+          }
+        } else {
+          return this.prepareResult(false, undefined, "VaultLibrarian not available through connector");
+        }
+      } catch (error) {
+        return this.prepareResult(false, undefined, `Error performing combined search: ${error.message}`);
+      }
       
       // Record this activity if in a workspace context
       await this.recordActivity(params, result);

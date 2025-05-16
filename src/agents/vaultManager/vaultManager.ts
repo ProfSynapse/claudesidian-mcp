@@ -7,9 +7,9 @@ import {
   CreateFolderMode, 
   EditFolderMode,
   DeleteFolderMode,
-  MoveFileMode,
   MoveFolderMode
 } from './modes';
+import { MoveNoteMode } from './modes/moveNoteMode';
 
 /**
  * Agent for file system operations in the Obsidian vault
@@ -32,7 +32,7 @@ export class VaultManagerAgent extends BaseAgent {
     this.registerMode(new CreateFolderMode(app));
     this.registerMode(new EditFolderMode(app));
     this.registerMode(new DeleteFolderMode(app));
-    this.registerMode(new MoveFileMode(app));
+    this.registerMode(new MoveNoteMode(app));
     this.registerMode(new MoveFolderMode(app));
   }
 }

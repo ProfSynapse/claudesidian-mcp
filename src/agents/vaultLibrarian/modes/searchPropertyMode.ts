@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { SearchPropertyArgs, SearchPropertyResult } from '../types';
-import { SearchOperations } from '../utils/SearchOperations';
+import { SearchOperations } from '../../../database/utils/SearchOperations';
 
 /**
  * Mode for searching properties in the vault

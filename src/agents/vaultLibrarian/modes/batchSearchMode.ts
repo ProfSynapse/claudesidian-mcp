@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { logger } from '../../../utils/logger';
 import { BatchSearchArgs, BatchSearchResult, SearchContentArgs, SearchContentResult } from '../types';
-import { SearchOperations } from '../utils/SearchOperations';
+import { SearchOperations } from '../../../database/utils/SearchOperations';
 
 /**
  * Mode for batch searching content in the vault

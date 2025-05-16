@@ -1,4 +1,4 @@
-import { CommonParameters, CommonResult } from '../../types';
+import { CommonParameters, CommonResult } from '../types';
 
 /**
  * Hierarchical project workspace types
@@ -144,6 +144,56 @@ export interface ProjectWorkspace {
 }
 
 /**
+ * Session tracking for workspace activities
+ */
+export interface WorkspaceSession {
+  /**
+   * Unique session identifier
+   */
+  id: string;
+  
+  /**
+   * Associated workspace ID
+   */
+  workspaceId: string;
+  
+  /**
+   * Session start time
+   */
+  startTime: number;
+  
+  /**
+   * Session end time (if session is complete)
+   */
+  endTime?: number;
+  
+  /**
+   * Whether the session is currently active
+   */
+  isActive: boolean;
+  
+  /**
+   * Optional session name
+   */
+  name?: string;
+  
+  /**
+   * Optional session description
+   */
+  description?: string;
+  
+  /**
+   * Number of tool calls in this session
+   */
+  toolCalls: number;
+  
+  /**
+   * Auto-generated summary of session activity
+   */
+  activitySummary?: string;
+}
+
+/**
  * Memory trace for workspace activity
  * Records tool interactions with embedding for similarity search
  */
@@ -207,6 +257,76 @@ export interface WorkspaceMemoryTrace {
    * Automatically generated descriptive tags
    */
   tags: string[];
+  
+  /**
+   * Associated session ID (if created during a session)
+   */
+  sessionId?: string;
+  
+  /**
+   * Sequence number within the session (for ordering)
+   */
+  sequenceNumber?: number;
+}
+
+/**
+ * Workspace state snapshot for persistence
+ */
+export interface WorkspaceStateSnapshot {
+  /**
+   * Unique snapshot identifier
+   */
+  id: string;
+  
+  /**
+   * Associated workspace ID
+   */
+  workspaceId: string;
+  
+  /**
+   * Associated session ID
+   */
+  sessionId: string;
+  
+  /**
+   * Snapshot creation timestamp
+   */
+  timestamp: number;
+  
+  /**
+   * User-friendly snapshot name
+   */
+  name: string;
+  
+  /**
+   * Optional snapshot description
+   */
+  description?: string;
+  
+  /**
+   * Snapshot state data
+   */
+  state: {
+    /**
+     * Workspace data at snapshot time
+     */
+    workspace: ProjectWorkspace;
+    
+    /**
+     * IDs of recent memory traces
+     */
+    recentTraces: string[];
+    
+    /**
+     * Key files at snapshot time
+     */
+    contextFiles: string[];
+    
+    /**
+     * Custom metadata for the snapshot
+     */
+    metadata: Record<string, any>;
+  };
 }
 
 /**

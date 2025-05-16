@@ -1,4 +1,4 @@
-import { EmbeddingProvider } from '../../../types';
+import { EmbeddingProvider } from '../../types';
 
 /**
  * Abstract base class for embedding providers
@@ -51,24 +51,59 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
 }
 
 /**
- * Dummy embedding provider for testing or when API is not available
- * Returns random vectors of the specified dimension
+ * Fallback embedding provider for testing or when API is not available
+ * Returns default vectors for testing purposes - suitable for development environments
  */
-export class DummyEmbeddingProvider extends BaseEmbeddingProvider {
+export class TestEmbeddingProvider extends BaseEmbeddingProvider {
     private dimensions: number;
+    private deterministicMode: boolean;
     
-    constructor(dimensions: number = 1536) {
+    constructor(dimensions: number = 1536, deterministicMode: boolean = false) {
         super();
         this.dimensions = dimensions;
+        this.deterministicMode = deterministicMode;
     }
     
     getName(): string {
-        return 'dummy';
+        return 'test';
     }
     
     async getEmbedding(text: string): Promise<number[]> {
+        if (this.deterministicMode) {
+            // In deterministic mode, generate a pseudo-random vector based on the text hash
+            // This ensures the same text always gets the same embedding
+            return this.deterministicEmbedding(text);
+        }
+        
         // Generate random vector of specified dimension
         return Array.from({ length: this.dimensions }, () => Math.random() * 2 - 1);
+    }
+    
+    /**
+     * Generate a deterministic embedding based on the text
+     * @param text The text to generate an embedding for
+     * @returns A deterministic embedding vector
+     */
+    private deterministicEmbedding(text: string): number[] {
+        // Simple hash function to generate a seed from the text
+        const hash = text.split('').reduce((acc, char) => {
+            return ((acc << 5) - acc) + char.charCodeAt(0);
+        }, 0);
+        
+        // Use the hash as a seed to generate a deterministic vector
+        const vector: number[] = [];
+        let seed = Math.abs(hash);
+        
+        for (let i = 0; i < this.dimensions; i++) {
+            // Generate a pseudo-random number based on the seed
+            seed = (seed * 9301 + 49297) % 233280;
+            const value = (seed / 233280) * 2 - 1;
+            vector.push(value);
+        }
+        
+        // Normalize the vector
+        const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+        return vector.map(val => val / magnitude);
     }
     
     getDimensions(): number {

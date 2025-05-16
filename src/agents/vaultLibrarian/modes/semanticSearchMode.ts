@@ -1,19 +1,21 @@
+import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { SemanticSearchParams, SemanticSearchResult } from '../types';
-import { VaultLibrarianAgent } from '../vaultLibrarian';
-import { ToolActivityEmbedder } from '../tool-activity-embedder';
+import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
+import { SearchService } from '../../../database/services/searchService';
 
 /**
  * Mode for semantic search using vector embeddings
  */
 export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticSearchResult> {
   private activityEmbedder: ToolActivityEmbedder | null = null;
+  private app: App;
   
   /**
    * Create a new SemanticSearchMode
-   * @param agent VaultLibrarian agent instance
+   * @param app Obsidian app instance
    */
-  constructor(private agent: VaultLibrarianAgent) {
+  constructor(app: App) {
     super(
       'semanticSearch',
       'Semantic Search',
@@ -21,10 +23,10 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
       '1.0.0'
     );
     
-    // Initialize the activity embedder if we have a provider
-    if (agent.getProvider()) {
-      this.activityEmbedder = new ToolActivityEmbedder(agent.getProvider());
-    }
+    this.app = app;
+    
+    // Activity embedder will be initialized on first use
+    this.activityEmbedder = null;
   }
   
   /**
@@ -50,16 +52,43 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
         return this.prepareResult(false, undefined, 'Query is required');
       }
       
+      // Get services from plugin
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      const searchService = plugin.services?.searchService;
+      const embeddingManager = plugin.services?.embeddingManager;
+      
+      if (!searchService || !embeddingManager) {
+        return this.prepareResult(false, undefined, 'Search service is not available');
+      }
+      
+      // Check if embeddings are enabled
+      if (!embeddingManager.areEmbeddingsEnabled()) {
+        return this.prepareResult(false, undefined, 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to use semantic search.');
+      }
+      
       // Execute semantic search
-      const result = await this.agent.semanticSearch(
+      const result = await searchService.semanticSearch(
         query,
         limit || 10,
         threshold || 0.7,
         useGraphBoost || false,
         graphBoostFactor || 0.3,
         graphMaxDistance || 1,
-        seedNotes || []
+        seedNotes || [],
+        { workspaceContext } // Pass workspace context for session-aware search
       );
+      
+      // Initialize activity embedder if needed
+      if (workspaceContext?.workspaceId && !this.activityEmbedder) {
+        const provider = embeddingManager.getProvider();
+        if (provider) {
+          try {
+            this.activityEmbedder = new ToolActivityEmbedder(provider);
+          } catch (error) {
+            console.error("Failed to initialize activity embedder:", error);
+          }
+        }
+      }
       
       // Record this activity if in a workspace context
       await this.recordActivity(params, result);
@@ -132,7 +161,8 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
             topMatches
           }
         },
-        topMatches // Related files
+        topMatches, // Related files
+        params.sessionId // Pass session ID from top level
       );
     } catch (error) {
       // Log but don't fail the main operation

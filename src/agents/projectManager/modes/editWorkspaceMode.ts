@@ -4,8 +4,8 @@ import {
   EditWorkspaceParameters, 
   WorkspaceResult,
   WorkspaceStatus
-} from '../../vaultLibrarian/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../vaultLibrarian/db/workspace-db';
+} from '../../../database/workspace-types';
+import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
 
 /**
  * Mode to edit an existing workspace
@@ -161,22 +161,26 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       // Get the updated workspace
       const updatedWorkspace = await this.workspaceDb.getWorkspace(params.id);
       
-      return {
-        success: true,
-        data: {
+      const workspaceContext = {
+        workspaceId: params.id,
+        workspacePath: updatedWorkspace?.path ? [...updatedWorkspace.path, updatedWorkspace.id] : []
+      };
+
+      return this.prepareResult(
+        true,
+        {
           workspace: updatedWorkspace
         },
-        workspaceContext: {
-          workspaceId: params.id,
-          workspacePath: updatedWorkspace?.path ? [...updatedWorkspace.path, updatedWorkspace.id] : undefined
-        }
-      };
+        undefined,
+        workspaceContext
+      );
       
     } catch (error) {
-      return {
-        success: false,
-        error: `Failed to edit workspace: ${error.message}`
-      };
+      return this.prepareResult(
+        false,
+        undefined,
+        `Failed to edit workspace: ${error.message}`
+      );
     }
   }
   

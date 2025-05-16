@@ -7,19 +7,19 @@ export class ContentOperations {
   /**
    * Read the content of a note
    * @param app Obsidian app instance
-   * @param path Path to the note
+   * @param filePath Path to the note
    * @returns Promise that resolves with the note content
    */
-  static async readContent(app: App, path: string): Promise<string> {
+  static async readContent(app: App, filePath: string): Promise<string> {
     try {
-      const file = app.vault.getAbstractFileByPath(path);
+      const file = app.vault.getAbstractFileByPath(filePath);
       
       if (!file) {
-        throw new Error(`File not found: ${path}`);
+        throw new Error(`File not found: ${filePath}`);
       }
       
       if (!(file instanceof TFile)) {
-        throw new Error(`Not a file: ${path}`);
+        throw new Error(`Not a file: ${filePath}`);
       }
       
       return await app.vault.read(file);
@@ -31,12 +31,12 @@ export class ContentOperations {
   /**
    * Read the content of a note with line numbers
    * @param app Obsidian app instance
-   * @param path Path to the note
+   * @param filePath Path to the note
    * @returns Promise that resolves with the note content including line numbers
    */
-  static async readContentWithLineNumbers(app: App, path: string): Promise<string> {
+  static async readContentWithLineNumbers(app: App, filePath: string): Promise<string> {
     try {
-      const content = await this.readContent(app, path);
+      const content = await this.readContent(app, filePath);
       const lines = content.split('\n');
       
       return lines.map((line, index) => `${index + 1}: ${line}`).join('\n');
@@ -48,7 +48,7 @@ export class ContentOperations {
   /**
    * Read specific lines from a note
    * @param app Obsidian app instance
-   * @param path Path to the note
+   * @param filePath Path to the note
    * @param startLine Start line (1-based)
    * @param endLine End line (1-based, inclusive)
    * @param includeLineNumbers Whether to include line numbers in output
@@ -56,13 +56,13 @@ export class ContentOperations {
    */
   static async readLines(
     app: App, 
-    path: string, 
+    filePath: string, 
     startLine: number, 
     endLine: number,
     includeLineNumbers = false
   ): Promise<string[]> {
     try {
-      const content = await this.readContent(app, path);
+      const content = await this.readContent(app, filePath);
       const lines = content.split('\n');
       
       // Adjust for 1-based line numbers
@@ -88,27 +88,27 @@ export class ContentOperations {
   /**
    * Create a new file with content
    * @param app Obsidian app instance
-   * @param path Path to the new file
+   * @param filePath Path to the new file
    * @param content Content for the new file
    * @returns Promise that resolves with the created file
    */
-  static async createContent(app: App, path: string, content: string): Promise<TFile> {
+  static async createContent(app: App, filePath: string, content: string): Promise<TFile> {
     try {
-      const file = app.vault.getAbstractFileByPath(path);
+      const file = app.vault.getAbstractFileByPath(filePath);
       
       if (file) {
-        throw new Error(`File already exists: ${path}`);
+        throw new Error(`File already exists: ${filePath}`);
       }
       
       // Ensure parent folders exist
-      const folderPath = path.substring(0, path.lastIndexOf('/'));
+      const folderPath = filePath.substring(0, filePath.lastIndexOf('/'));
       if (folderPath) {
         await app.vault.createFolder(folderPath).catch(() => {
           // Folder might already exist, ignore error
         });
       }
       
-      return await app.vault.create(path, content);
+      return await app.vault.create(filePath, content);
     } catch (error) {
       throw new Error(`Error creating file: ${error.message}`);
     }
@@ -117,23 +117,23 @@ export class ContentOperations {
   /**
    * Append content to a file
    * @param app Obsidian app instance
-   * @param path Path to the file
+   * @param filePath Path to the file
    * @param content Content to append
    * @returns Promise that resolves when the content is appended
    */
-  static async appendContent(app: App, path: string, content: string): Promise<{
+  static async appendContent(app: App, filePath: string, content: string): Promise<{
     appendedLength: number;
     totalLength: number;
   }> {
     try {
-      const file = app.vault.getAbstractFileByPath(path);
+      const file = app.vault.getAbstractFileByPath(filePath);
       
       if (!file) {
-        throw new Error(`File not found: ${path}`);
+        throw new Error(`File not found: ${filePath}`);
       }
       
       if (!(file instanceof TFile)) {
-        throw new Error(`Not a file: ${path}`);
+        throw new Error(`Not a file: ${filePath}`);
       }
       
       const existingContent = await app.vault.read(file);
@@ -153,23 +153,23 @@ export class ContentOperations {
   /**
    * Prepend content to a file
    * @param app Obsidian app instance
-   * @param path Path to the file
+   * @param filePath Path to the file
    * @param content Content to prepend
    * @returns Promise that resolves when the content is prepended
    */
-  static async prependContent(app: App, path: string, content: string): Promise<{
+  static async prependContent(app: App, filePath: string, content: string): Promise<{
     prependedLength: number;
     totalLength: number;
   }> {
     try {
-      const file = app.vault.getAbstractFileByPath(path);
+      const file = app.vault.getAbstractFileByPath(filePath);
       
       if (!file) {
-        throw new Error(`File not found: ${path}`);
+        throw new Error(`File not found: ${filePath}`);
       }
       
       if (!(file instanceof TFile)) {
-        throw new Error(`Not a file: ${path}`);
+        throw new Error(`Not a file: ${filePath}`);
       }
       
       const existingContent = await app.vault.read(file);
@@ -189,26 +189,26 @@ export class ContentOperations {
   /**
    * Replace content in a file
    * @param app Obsidian app instance
-   * @param path Path to the file
+   * @param filePath Path to the file
    * @param oldContent Content to replace
    * @param newContent Content to replace with
    * @returns Promise that resolves with the number of replacements made
    */
   static async replaceContent(
     app: App,
-    path: string,
+    filePath: string,
     oldContent: string,
     newContent: string
   ): Promise<number> {
     try {
-      const file = app.vault.getAbstractFileByPath(path);
+      const file = app.vault.getAbstractFileByPath(filePath);
       
       if (!file) {
-        throw new Error(`File not found: ${path}`);
+        throw new Error(`File not found: ${filePath}`);
       }
       
       if (!(file instanceof TFile)) {
-        throw new Error(`Not a file: ${path}`);
+        throw new Error(`Not a file: ${filePath}`);
       }
       
       const existingContent = await app.vault.read(file);
@@ -235,7 +235,7 @@ export class ContentOperations {
   /**
    * Replace specific lines in a file
    * @param app Obsidian app instance
-   * @param path Path to the file
+   * @param filePath Path to the file
    * @param startLine Start line (1-based)
    * @param endLine End line (1-based, inclusive)
    * @param newContent Content to replace with
@@ -243,20 +243,20 @@ export class ContentOperations {
    */
   static async replaceByLine(
     app: App,
-    path: string,
+    filePath: string,
     startLine: number,
     endLine: number,
     newContent: string
   ): Promise<number> {
     try {
-      const file = app.vault.getAbstractFileByPath(path);
+      const file = app.vault.getAbstractFileByPath(filePath);
       
       if (!file) {
-        throw new Error(`File not found: ${path}`);
+        throw new Error(`File not found: ${filePath}`);
       }
       
       if (!(file instanceof TFile)) {
-        throw new Error(`Not a file: ${path}`);
+        throw new Error(`Not a file: ${filePath}`);
       }
       
       const existingContent = await app.vault.read(file);
@@ -295,24 +295,24 @@ export class ContentOperations {
   /**
    * Delete content from a file
    * @param app Obsidian app instance
-   * @param path Path to the file
+   * @param filePath Path to the file
    * @param content Content to delete
    * @returns Promise that resolves with the number of deletions made
    */
   static async deleteContent(
     app: App,
-    path: string,
+    filePath: string,
     content: string
   ): Promise<number> {
     try {
-      const file = app.vault.getAbstractFileByPath(path);
+      const file = app.vault.getAbstractFileByPath(filePath);
       
       if (!file) {
-        throw new Error(`File not found: ${path}`);
+        throw new Error(`File not found: ${filePath}`);
       }
       
       if (!(file instanceof TFile)) {
-        throw new Error(`Not a file: ${path}`);
+        throw new Error(`Not a file: ${filePath}`);
       }
       
       const existingContent = await app.vault.read(file);

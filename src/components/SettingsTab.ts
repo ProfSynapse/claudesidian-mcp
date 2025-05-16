@@ -12,6 +12,10 @@ import { templateFiles } from '../templates';
 import type { TemplateFile } from '../templates';
 import { MemorySettingsTab } from './MemorySettingsTab';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
+import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
+import { IndexingService } from '../database/services/indexingService';
+import { EmbeddingManager } from '../database/services/embeddingManager';
+import { SearchService } from '../database/services/searchService';
 
 /**
  * Settings tab for the Claudesidian MCP plugin
@@ -22,22 +26,48 @@ export class SettingsTab extends PluginSettingTab {
     private plugin: Plugin;
     private memorySettingsTab: MemorySettingsTab;
     
+    // Services
+    private indexingService: IndexingService | undefined;
+    private embeddingManager: EmbeddingManager | undefined;
+    private searchService: SearchService | undefined;
+    
+    // Agents (for backward compatibility)
+    private vaultLibrarian: VaultLibrarianAgent | undefined;
+    private memoryManager: MemoryManagerAgent | undefined;
+    
     /**
      * Create a new settings tab
      * @param app Obsidian app instance
      * @param plugin Plugin instance
      * @param settings Settings manager
-     * @param vaultLibrarian VaultLibrarian agent instance
+     * @param indexingService IndexingService instance
+     * @param embeddingManager EmbeddingManager instance
+     * @param searchService SearchService instance
+     * @param vaultLibrarian VaultLibrarian agent instance (for backward compatibility)
+     * @param memoryManager Memory Manager agent instance
      */
     constructor(
         app: App, 
         plugin: Plugin, 
         private settingsManager: Settings,
-        private vaultLibrarian?: VaultLibrarianAgent
+        indexingService?: IndexingService,
+        embeddingManager?: EmbeddingManager,
+        searchService?: SearchService,
+        vaultLibrarian?: VaultLibrarianAgent,
+        memoryManager?: MemoryManagerAgent
     ) {
         super(app, plugin);
         this.settings = settingsManager;
         this.plugin = plugin;
+        
+        // Services
+        this.indexingService = indexingService;
+        this.embeddingManager = embeddingManager;
+        this.searchService = searchService;
+        
+        // Agents
+        this.vaultLibrarian = vaultLibrarian;
+        this.memoryManager = memoryManager;
     }
 
     /**
@@ -139,8 +169,16 @@ export class SettingsTab extends PluginSettingTab {
         // Update section first
         this.createUpdateSection(containerEl);
 
-        // Memory Management accordion (always show this even if vaultLibrarian isn't initialized)
-        new MemoryManagementAccordion(containerEl, this.settingsManager, this.vaultLibrarian);
+        // Memory Management accordion with services and agents (for compatibility)
+        new MemoryManagementAccordion(
+            containerEl, 
+            this.settingsManager,
+            this.indexingService,
+            this.embeddingManager,
+            this.searchService, 
+            this.vaultLibrarian,
+            this.memoryManager
+        );
 
         // Setup Instructions accordion
         new SetupInstructionsAccordion(containerEl);

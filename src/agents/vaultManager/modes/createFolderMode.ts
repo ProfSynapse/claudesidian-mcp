@@ -1,8 +1,9 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParameters, CommonResult } from '../../../types';
+import { CommonParameters, CommonResult, DEFAULT_MEMORY_SETTINGS } from '../../../types';
 import { FileOperations } from '../utils/FileOperations';
-import { ToolActivityEmbedder } from '../../vaultLibrarian/tool-activity-embedder';
+import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
+import { OpenAIProvider } from '../../../database/providers/openai-provider';
 
 /**
  * Parameters for create folder mode
@@ -53,16 +54,25 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
    */
   private async initializeActivityEmbedder() {
     try {
-      // Create a dummy embedding provider for demonstration purposes
-      const dummyProvider = {
-        getEmbedding: async (text: string) => [0.1, 0.2, 0.3],
-        getDimensions: () => 3,
-        getName: () => 'DummyProvider',
-        getTokenCount: (text: string) => text.length / 4
-      };
+      // Try to get settings from the plugin
+      let memorySettings = { ...DEFAULT_MEMORY_SETTINGS };
       
-      // Create an instance but don't initialize until needed
-      this.activityEmbedder = new ToolActivityEmbedder(dummyProvider);
+      if (this.app.plugins) {
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.settings?.settings?.memory) {
+          memorySettings = plugin.settings.settings.memory;
+        }
+      }
+      
+      // Only create provider if embeddings are enabled and API key is available
+      if (memorySettings.embeddingsEnabled && memorySettings.openaiApiKey) {
+        const provider = new OpenAIProvider(memorySettings);
+        this.activityEmbedder = new ToolActivityEmbedder(provider);
+      } else {
+        // Don't attempt to create a provider without an API key
+        console.log('Activity embedder disabled: embeddings not enabled or API key missing');
+        this.activityEmbedder = null;
+      }
     } catch (error) {
       console.error('Failed to initialize activity embedder:', error);
       this.activityEmbedder = null;
@@ -151,8 +161,13 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
     }
     
     try {
-      // Initialize the activity embedder
-      await this.activityEmbedder.initialize();
+      // Initialize the activity embedder - wrapped in try/catch to handle initialization failures gracefully
+      try {
+        await this.activityEmbedder.initialize();
+      } catch (initError) {
+        console.log('Activity embedder initialization failed, skipping activity recording:', initError);
+        return;
+      }
       
       // Get workspace path (or use just the ID if no path provided)
       const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];

@@ -7,7 +7,8 @@ import {
     CommandManagerAgent,
     ProjectManagerAgent,
     VaultManagerAgent,
-    VaultLibrarianAgent
+    VaultLibrarianAgent,
+    MemoryManagerAgent
 } from './agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
@@ -51,9 +52,12 @@ export class MCPConnector {
             // Create all agents using the new agent structure
             const contentManagerAgent = new ContentManagerAgent(this.app, this.agentManager);
             const commandManagerAgent = new CommandManagerAgent(this.app, this.agentManager);
-            const projectManagerAgent = new ProjectManagerAgent(this.app);
-            const vaultManagerAgent = new VaultManagerAgent(this.app);
             const vaultLibrarianAgent = new VaultLibrarianAgent(this.app);
+            
+            // Create project manager with plugin instance for shared access to embedder
+            const projectManagerAgent = new ProjectManagerAgent(this.app, this.plugin);
+            const vaultManagerAgent = new VaultManagerAgent(this.app);
+            const memoryManagerAgent = new MemoryManagerAgent(this.plugin);
             
             // Register with agent manager
             this.agentManager.registerAgent(contentManagerAgent);
@@ -61,11 +65,18 @@ export class MCPConnector {
             this.agentManager.registerAgent(projectManagerAgent);
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
+            this.agentManager.registerAgent(memoryManagerAgent);
             
             // Initialize VaultLibrarian with current settings if available
             const memorySettings = (this.plugin as any).settings?.settings?.memory;
             if (memorySettings) {
                 vaultLibrarianAgent.updateSettings(memorySettings);
+            }
+            
+            // Set the indexing service on the VaultLibrarian
+            if ((this.plugin as any).services?.indexingService) {
+                console.log("Setting indexingService on VaultLibrarianAgent");
+                vaultLibrarianAgent.setIndexingService((this.plugin as any).services.indexingService);
             }
             
             // Register all agents from the agent manager with the server
@@ -243,10 +254,10 @@ export class MCPConnector {
     }
     
     /**
-     * Get the vault librarian instance (replaces memory manager)
+     * Get the vault librarian instance (replaces legacy memory manager)
      * @deprecated Use getVaultLibrarian instead
      */
-    getMemoryManager(): VaultLibrarianAgent | null {
+    getLegacyMemoryManager(): VaultLibrarianAgent | null {
         return this.getVaultLibrarian();
     }
     
@@ -255,5 +266,16 @@ export class MCPConnector {
      */
     getVaultLibrarian(): VaultLibrarianAgent | null {
         return this.agentManager.getAgent('vaultLibrarian') as VaultLibrarianAgent;
+    }
+    
+    /**
+     * Get the memory manager instance
+     */
+    getMemoryManager(): MemoryManagerAgent | null {
+        try {
+            return this.agentManager.getAgent('memoryManager') as MemoryManagerAgent;
+        } catch (error) {
+            return null;
+        }
     }
 }

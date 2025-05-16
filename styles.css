@@ -306,6 +306,14 @@
     align-items: center;
 }
 
+.memory-model-usage {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: var(--background-primary);
+    border-radius: 5px;
+    border: 1px solid var(--background-modifier-border);
+}
+
 .memory-actions button {
     height: 30px;
     display: flex;
@@ -347,6 +355,37 @@
     padding: 12px;
     margin-bottom: 16px;
     border-left: 4px solid var(--interactive-accent);
+}
+
+/* Embeddings disabled notice */
+.embeddings-disabled-notice {
+    color: var(--text-error);
+    font-weight: bold;
+}
+
+/* When embeddings are disabled, add a visual indicator */
+.memory-tab-content.embeddings-disabled .memory-tab-pane {
+    position: relative;
+    opacity: 0.7;
+}
+
+.memory-tab-content.embeddings-disabled::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(var(--text-error-rgb), 0.05),
+        rgba(var(--text-error-rgb), 0.05) 10px,
+        rgba(var(--text-error-rgb), 0.1) 10px,
+        rgba(var(--text-error-rgb), 0.1) 20px
+    );
+    pointer-events: none;
+    z-index: 10;
+    border-radius: 4px;
 }
 
 /* Progress indicator for indexing */

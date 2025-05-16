@@ -4,8 +4,8 @@ import {
   ListWorkspacesParameters, 
   ListWorkspacesResult, 
   HierarchyType 
-} from '../../vaultLibrarian/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../vaultLibrarian/db/workspace-db';
+} from '../../../database/workspace-types';
+import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
 
 /**
  * Mode to list available workspaces

@@ -1,20 +1,22 @@
-import { TFolder } from 'obsidian';
+import { App, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CreateEmbeddingsParams, CreateEmbeddingsResult } from '../types';
-import { VaultLibrarianAgent } from '../vaultLibrarian';
-import { ToolActivityEmbedder } from '../tool-activity-embedder';
+import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
+import { ProgressTracker } from '../../../database/utils/progressTracker';
 
 /**
  * Mode for creating embeddings for a file
  */
 export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, CreateEmbeddingsResult> {
   private activityEmbedder: ToolActivityEmbedder | null = null;
+  private app: App;
+  private progressTracker: ProgressTracker;
   
   /**
    * Create a new CreateEmbeddingsMode
-   * @param agent VaultLibrarian agent instance
+   * @param app Obsidian app instance
    */
-  constructor(private agent: VaultLibrarianAgent) {
+  constructor(app: App) {
     super(
       'createEmbeddings',
       'Create Embeddings',
@@ -22,10 +24,11 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
       '1.0.0'
     );
     
-    // Initialize the activity embedder if we have a provider
-    if (agent.getProvider()) {
-      this.activityEmbedder = new ToolActivityEmbedder(agent.getProvider());
-    }
+    this.app = app;
+    this.progressTracker = new ProgressTracker();
+    
+    // Activity embedder will be initialized on first use
+    this.activityEmbedder = null;
   }
   
   /**
@@ -41,19 +44,45 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
         return this.prepareResult(false, undefined, 'File path is required');
       }
       
+      // Get services from plugin
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      const indexingService = plugin.services?.indexingService;
+      const embeddingManager = plugin.services?.embeddingManager;
+      
+      if (!indexingService || !embeddingManager) {
+        return this.prepareResult(false, undefined, 'Indexing service is not available');
+      }
+      
+      // Check if embeddings are enabled
+      if (!embeddingManager.areEmbeddingsEnabled()) {
+        return this.prepareResult(false, undefined, 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to create embeddings.');
+      }
+      
       // Get file from vault
-      const file = this.agent.app.vault.getAbstractFileByPath(filePath);
+      const file = this.app.vault.getAbstractFileByPath(filePath);
       
       // Check if it's a file (not a folder) and has .md extension
       if (!file || file instanceof TFolder || !filePath.endsWith('.md')) {
         return this.prepareResult(false, undefined, `File not found or not a markdown file: ${filePath}`);
       }
       
+      // Initialize activity embedder if needed
+      if (workspaceContext?.workspaceId && !this.activityEmbedder) {
+        const provider = embeddingManager.getProvider();
+        if (provider) {
+          try {
+            this.activityEmbedder = new ToolActivityEmbedder(provider);
+          } catch (error) {
+            console.error("Failed to initialize activity embedder:", error);
+          }
+        }
+      }
+      
       // Trigger single-file progress update
       this.updateProgress(0, 1, params.workspaceContext?.workspaceId);
       
       // Index the file
-      const result = await this.agent.indexFile(filePath, force);
+      const result = await indexingService.indexFile(filePath, force);
       
       // Trigger progress completion
       this.updateProgress(1, 1, params.workspaceContext?.workspaceId);
@@ -94,17 +123,12 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
    * @param operationId Optional operation ID
    */
   private updateProgress(processed: number, total: number, operationId?: string): void {
-    // Use the global progress handler if available
-    // @ts-ignore - Using global methods for inter-component communication
-    if (window.mcpProgressHandlers && window.mcpProgressHandlers.updateProgress) {
-      // @ts-ignore
-      window.mcpProgressHandlers.updateProgress({
-        processed,
-        total,
-        remaining: total - processed,
-        operationId: operationId || `create-embeddings-${Date.now()}`
-      });
-    }
+    this.progressTracker.updateProgress({
+      processed,
+      total,
+      remaining: total - processed,
+      operationId: operationId || `create-embeddings-${Date.now()}`
+    });
   }
   
   /**
@@ -114,18 +138,13 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
    * @param error Optional error message
    */
   private completeProgress(success: boolean, operationId?: string, error?: string): void {
-    // Use the global completion handler if available
-    // @ts-ignore - Using global methods for inter-component communication
-    if (window.mcpProgressHandlers && window.mcpProgressHandlers.completeProgress) {
-      // @ts-ignore
-      window.mcpProgressHandlers.completeProgress({
-        success,
-        processed: 1,
-        failed: success ? 0 : 1,
-        error,
-        operationId: operationId || `create-embeddings-${Date.now()}`
-      });
-    }
+    this.progressTracker.completeProgress({
+      success,
+      processed: 1,
+      failed: success ? 0 : 1,
+      error,
+      operationId: operationId || `create-embeddings-${Date.now()}`
+    });
   }
   
   /**

@@ -1,8 +1,8 @@
-import { TFolder } from 'obsidian';
+import { TFolder, App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { BatchCreateEmbeddingsParams, BatchCreateEmbeddingsResult } from '../types';
 import { VaultLibrarianAgent } from '../vaultLibrarian';
-import { ToolActivityEmbedder } from '../tool-activity-embedder';
+import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 
 /**
  * Mode for batch creating embeddings for multiple files
@@ -12,9 +12,9 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
   
   /**
    * Create a new BatchCreateEmbeddingsMode
-   * @param agent VaultLibrarian agent instance
+   * @param app Obsidian app instance
    */
-  constructor(private agent: VaultLibrarianAgent) {
+  constructor(private app: App) {
     super(
       'batchCreateEmbeddings',
       'Batch Create Embeddings',
@@ -22,9 +22,22 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       '1.0.0'
     );
     
-    // Initialize the activity embedder if we have a provider
-    if (agent.getProvider()) {
-      this.activityEmbedder = new ToolActivityEmbedder(agent.getProvider());
+    // Initialize the activity embedder if possible
+    // Since we don't have direct access to VaultLibrarian, this needs to be set up differently
+    // We'll rely on getting the provider through the plugin if needed
+    try {
+      const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
+      if (plugin?.connector?.getVaultLibrarian) {
+        const vaultLibrarian = plugin.connector.getVaultLibrarian();
+        if (vaultLibrarian?.getProvider) {
+          const provider = vaultLibrarian.getProvider();
+          if (provider) {
+            this.activityEmbedder = new ToolActivityEmbedder(provider);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to initialize activity embedder:", error);
     }
   }
   
@@ -44,10 +57,29 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
         return this.prepareResult(false, undefined, 'File paths array is required and must not be empty');
       }
       
+      // Get vault librarian to check if embeddings are enabled
+      let vaultLibrarian;
+      try {
+        const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
+        if (plugin?.connector?.getVaultLibrarian) {
+          vaultLibrarian = plugin.connector.getVaultLibrarian();
+        }
+      } catch (error) {
+        console.error("Failed to get VaultLibrarian:", error);
+      }
+      
+      // Check if embeddings are enabled and provider exists
+      const provider = vaultLibrarian?.getProvider?.();
+      const agentSettings = vaultLibrarian?.settings;
+      
+      if (!provider || (agentSettings && agentSettings.embeddingsEnabled === false)) {
+        return this.prepareResult(false, undefined, 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to create embeddings.');
+      }
+      
       // Validate files exist
       const validFilePaths = [];
       for (const path of filePaths) {
-        const file = this.agent.app.vault.getAbstractFileByPath(path);
+        const file = this.app.vault.getAbstractFileByPath(path);
         // Check if it's a file and has .md extension
         if (file && !(file instanceof TFolder) && path.endsWith('.md')) {
           validFilePaths.push(path);
@@ -62,7 +94,12 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       this.updateProgress(0, validFilePaths.length, operationId);
       
       // Batch index the files with force defaulting to false if undefined
-      const result = await this.processFilesWithProgress(validFilePaths, force || false, operationId);
+      // Check if VaultLibrarian is available
+      if (!vaultLibrarian?.indexFile) {
+        return this.prepareResult(false, undefined, 'VaultLibrarian indexFile method is not available');
+      }
+      
+      const result = await this.processFilesWithProgress(validFilePaths, force || false, operationId, vaultLibrarian);
       
       // Final progress update and completion
       this.updateProgress(result.processed, validFilePaths.length, operationId);
@@ -107,7 +144,8 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
   private async processFilesWithProgress(
     filePaths: string[], 
     force: boolean, 
-    operationId: string
+    operationId: string,
+    vaultLibrarian: any
   ): Promise<{
     success: boolean;
     results: Array<{
@@ -122,8 +160,8 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
     const results = [];
     let processed = 0;
     let failed = 0;
-    // Get settings safely using "as any" to bypass TypeScript errors
-    const memorySettings = ((this.agent as any).settings) || {};
+    // Get settings from VaultLibrarian or use defaults
+    const memorySettings = vaultLibrarian?.settings || {};
     const batchSize = memorySettings.batchSize || 10;
     const delay = memorySettings.processingDelay || 1000;
     
@@ -135,7 +173,7 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       const batchResults = await Promise.all(
         batch.map(async filePath => {
           try {
-            const result = await this.agent.indexFile(filePath, force);
+            const result = await vaultLibrarian.indexFile(filePath, force);
             processed++;
             if (!result.success) failed++;
             

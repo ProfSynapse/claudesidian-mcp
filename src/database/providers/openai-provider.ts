@@ -1,6 +1,7 @@
 import { Notice, requestUrl } from 'obsidian';
-import { MemorySettings } from '../../../types';
+import { MemorySettings } from '../../types';
 import { BaseEmbeddingProvider } from './embeddings-provider';
+import * as gptTokenizer from 'gpt-tokenizer';
 
 /**
  * OpenAI provider for generating embeddings
@@ -15,6 +16,11 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
     private requestsThisMinute: number = 0;
     private lastRequestMinute: number = 0;
     private apiUrl: string = 'https://api.openai.com/v1/embeddings';
+    private costPerThousandTokens: {[key: string]: number};
+    private modelUsage: {[key: string]: number} = {
+        'text-embedding-3-small': 0,
+        'text-embedding-3-large': 0
+    };
     
     /**
      * Create a new OpenAI provider
@@ -27,6 +33,10 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
         this.model = settings.embeddingModel;
         this.dimensions = settings.dimensions;
         this.rateLimitPerMinute = settings.apiRateLimitPerMinute;
+        this.costPerThousandTokens = settings.costPerThousandTokens || {
+            'text-embedding-3-small': 0.00013,
+            'text-embedding-3-large': 0.00087
+        };
         
         // Validate API key
         if (!this.apiKey) {
@@ -49,16 +59,20 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
     }
     
     /**
-     * Get a more accurate token count for OpenAI models
-     * This is a simple approximation - for production, consider using tiktoken
+     * Get a precise token count for OpenAI models using gpt-tokenizer
      * @param text The text to count tokens for
      */
     getTokenCount(text: string): number {
-        // This is a more accurate approximation for GPT models than the base class
-        // For production use, you'd want to use the tiktoken library
-        const tokenRegex = /(['"].*?['"]|\S+)/g;
-        const matches = text.match(tokenRegex);
-        return matches ? matches.length : 0;
+        try {
+            // Use cl100k_base encoding which is used by text-embedding-3 models
+            return gptTokenizer.encode(text, { allowedSpecial: 'all' }).length;
+        } catch (error) {
+            console.warn('Error using gpt-tokenizer, falling back to regex approximation', error);
+            // Fall back to regex approximation if tokenizer fails
+            const tokenRegex = /(['"].*?['"]|\S+)/g;
+            const matches = text.match(tokenRegex);
+            return matches ? matches.length : 0;
+        }
     }
     
     /**
@@ -75,7 +89,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
         await this.checkRateLimit();
         
         try {
-            // Count tokens for usage tracking
+            // Count tokens for usage tracking - get precise count with gpt-tokenizer
             const tokenCount = this.getTokenCount(text);
             
             const response = await requestUrl({
@@ -101,15 +115,27 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                 
                 // Track token usage (if vaultLibrarian is available)
                 try {
+                    // Get actual token usage from response if available
+                    const actualTokenCount = data.usage?.prompt_tokens || tokenCount;
+                    
+                    // Track model-specific usage
+                    this.modelUsage[this.model] = (this.modelUsage[this.model] || 0) + actualTokenCount;
+                    
+                    // Calculate cost
+                    const cost = (actualTokenCount / 1000) * (this.costPerThousandTokens[this.model] || 0);
+                    
                     const app = (window as any).app;
                     if (app) {
                         const plugin = app.plugins.getPlugin('claudesidian-mcp');
                         if (plugin) {
                             const vaultLibrarian = plugin.connector.getVaultLibrarian();
                             if (vaultLibrarian && vaultLibrarian.trackTokenUsage) {
-                                // Get actual token usage from response if available
-                                const actualTokenCount = data.usage?.prompt_tokens || tokenCount;
-                                vaultLibrarian.trackTokenUsage(actualTokenCount);
+                                // Track token usage with detailed info
+                                vaultLibrarian.trackTokenUsage(actualTokenCount, {
+                                    model: this.model,
+                                    cost: cost,
+                                    modelUsage: this.modelUsage
+                                });
                             }
                         }
                     }
@@ -132,6 +158,33 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
             new Notice('Error generating embeddings: ' + (error.message || error));
             throw error;
         }
+    }
+    
+    /**
+     * Get the cost per token for the current model
+     */
+    getCostPerToken(): number {
+        return (this.costPerThousandTokens[this.model] || 0) / 1000;
+    }
+    
+    /**
+     * Get the total cost incurred for this provider instance
+     */
+    getTotalCost(): number {
+        let totalCost = 0;
+        for (const model in this.modelUsage) {
+            const tokens = this.modelUsage[model];
+            const costPerThousand = this.costPerThousandTokens[model] || 0;
+            totalCost += (tokens / 1000) * costPerThousand;
+        }
+        return totalCost;
+    }
+    
+    /**
+     * Get model usage stats
+     */
+    getModelUsage(): {[key: string]: number} {
+        return { ...this.modelUsage };
     }
     
     /**
