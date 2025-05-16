@@ -421,6 +421,26 @@ export interface SemanticSearchParams extends WorkspaceParameters {
    * Similarity threshold (0-1)
    */
   threshold?: number;
+
+  /**
+   * Whether to use graph-based relevance boosting
+   */
+  useGraphBoost?: boolean;
+
+  /**
+   * Graph boost factor (0-1)
+   */
+  graphBoostFactor?: number;
+
+  /**
+   * Maximum distance for graph connections
+   */
+  graphMaxDistance?: number;
+
+  /**
+   * List of seed note paths to prioritize in results
+   */
+  seedNotes?: string[];
 }
 
 /**
@@ -452,6 +472,31 @@ export interface CombinedSearchParams extends SemanticSearchParams {
     dateRange?: {
       start?: string;
       end?: string;
+    };
+    
+    /**
+     * Graph boosting options
+     */
+    graphOptions?: {
+      /**
+       * Whether to use graph-based relevance boosting
+       */
+      useGraphBoost?: boolean;
+      
+      /**
+       * Graph boost factor (0-1)
+       */
+      boostFactor?: number;
+      
+      /**
+       * Maximum distance for graph connections
+       */
+      maxDistance?: number;
+      
+      /**
+       * List of seed note paths to prioritize in results
+       */
+      seedNotes?: string[];
     };
   };
 }
