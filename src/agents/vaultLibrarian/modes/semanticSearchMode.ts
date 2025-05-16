@@ -34,7 +34,17 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
    */
   async execute(params: SemanticSearchParams): Promise<SemanticSearchResult> {
     try {
-      const { query, limit, threshold, workspaceContext, handoff } = params;
+      const { 
+        query, 
+        limit, 
+        threshold, 
+        workspaceContext, 
+        handoff,
+        useGraphBoost,
+        graphBoostFactor,
+        graphMaxDistance,
+        seedNotes
+      } = params;
       
       if (!query || query.trim() === '') {
         return this.prepareResult(false, undefined, 'Query is required');
@@ -44,7 +54,11 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
       const result = await this.agent.semanticSearch(
         query,
         limit || 10,
-        threshold || 0.7
+        threshold || 0.7,
+        useGraphBoost || false,
+        graphBoostFactor || 0.3,
+        graphMaxDistance || 1,
+        seedNotes || []
       );
       
       // Record this activity if in a workspace context
@@ -108,7 +122,10 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
           params: {
             query: params.query,
             limit: params.limit,
-            threshold: params.threshold
+            threshold: params.threshold,
+            useGraphBoost: params.useGraphBoost,
+            graphBoostFactor: params.graphBoostFactor,
+            graphMaxDistance: params.graphMaxDistance
           },
           result: {
             matchCount,
@@ -145,6 +162,28 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
           type: 'number',
           description: 'Similarity threshold (0-1)',
           default: 0.7
+        },
+        useGraphBoost: {
+          type: 'boolean',
+          description: 'Whether to use graph-based relevance boosting',
+          default: false
+        },
+        graphBoostFactor: {
+          type: 'number',
+          description: 'Graph boost factor (0-1)',
+          default: 0.3
+        },
+        graphMaxDistance: {
+          type: 'number',
+          description: 'Maximum distance for graph connections',
+          default: 1
+        },
+        seedNotes: {
+          type: 'array',
+          items: {
+            type: 'string'
+          },
+          description: 'List of seed note paths to prioritize in results'
         }
       },
       required: ['query']

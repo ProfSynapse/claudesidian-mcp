@@ -82,8 +82,20 @@ export class VaultLibrarianAgent extends BaseAgent {
    * @param query Query text to search for
    * @param limit Maximum number of results to return
    * @param threshold Minimum similarity threshold (0-1)
+   * @param useGraphBoost Whether to use graph boosting (default: false)
+   * @param graphBoostFactor Graph boost factor between 0-1 (default: 0.3)
+   * @param graphMaxDistance Maximum distance for graph connections (default: 1)
+   * @param seedNotes Optional list of seed note paths to prioritize
    */
-  async semanticSearch(query: string, limit: number = 10, threshold: number = 0.7): Promise<{
+  async semanticSearch(
+    query: string, 
+    limit: number = 10, 
+    threshold: number = 0.7,
+    useGraphBoost: boolean = false,
+    graphBoostFactor: number = 0.3,
+    graphMaxDistance: number = 1,
+    seedNotes: string[] = []
+  ): Promise<{
     success: boolean;
     matches?: Array<{
       similarity: number;
@@ -131,29 +143,88 @@ export class VaultLibrarianAgent extends BaseAgent {
       // Get search results from the database
       const searchResults = await workspaceDb.searchMemoryTraces({
         embedding: queryEmbedding,
-        limit: limit,
+        limit: limit * (useGraphBoost ? 2 : 1), // Get more results when using graph boost
         threshold: threshold,
         includeMetadata: true
       });
       
-      // 3. Format and return the results
+      // 3. Format the results
+      let matches = searchResults.map(result => ({
+        similarity: result.similarity,
+        content: result.content,
+        filePath: result.filePath,
+        lineStart: result.metadata?.lineStart || 0,
+        lineEnd: result.metadata?.lineEnd || 0,
+        metadata: {
+          frontmatter: result.metadata?.frontmatter || {},
+          tags: result.metadata?.tags || [],
+          links: {
+            outgoing: result.metadata?.links?.outgoing || [],
+            incoming: result.metadata?.links?.incoming || []
+          }
+        }
+      }));
+      
+      // 4. Apply graph boosting if enabled
+      if (useGraphBoost && matches.length > 0) {
+        try {
+          // Import dynamically to avoid circular dependencies
+          const { GraphOperations } = await import('./utils/graph/GraphOperations');
+          const graphOps = new GraphOperations();
+          
+          // Convert to format expected by GraphOperations
+          const recordsWithSimilarity = matches.map(match => ({
+            record: {
+              id: match.filePath,
+              filePath: match.filePath,
+              content: match.content,
+              metadata: match.metadata || {}
+            },
+            similarity: match.similarity
+          }));
+          
+          // Apply graph boost
+          const boostedRecords = graphOps.applyGraphBoost(
+            recordsWithSimilarity,
+            {
+              useGraphBoost,
+              boostFactor: graphBoostFactor,
+              maxDistance: graphMaxDistance,
+              seedNotes
+            }
+          );
+          
+          // Convert back to original format
+          matches = boostedRecords.map(item => ({
+            similarity: item.similarity,
+            content: item.record.content,
+            filePath: item.record.filePath,
+            lineStart: item.record.metadata?.lineStart || 0,
+            lineEnd: item.record.metadata?.lineEnd || 0,
+            metadata: {
+              frontmatter: item.record.metadata?.frontmatter || {},
+              tags: item.record.metadata?.tags || [],
+              links: item.record.metadata?.links || {
+                outgoing: [],
+                incoming: []
+              }
+            }
+          }));
+          
+          // Re-sort by similarity and limit results
+          matches = matches
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, limit);
+        } catch (boostError) {
+          console.error('Error applying graph boost:', boostError);
+          // Continue with unboosted results
+        }
+      }
+      
+      // Return the results
       return {
         success: true,
-        matches: searchResults.map(result => ({
-          similarity: result.similarity,
-          content: result.content,
-          filePath: result.filePath,
-          lineStart: result.metadata?.lineStart || 0,
-          lineEnd: result.metadata?.lineEnd || 0,
-          metadata: {
-            frontmatter: result.metadata?.frontmatter || {},
-            tags: result.metadata?.tags || [],
-            links: {
-              outgoing: result.metadata?.links?.outgoing || [],
-              incoming: result.metadata?.links?.incoming || []
-            }
-          }
-        }))
+        matches
       };
     } catch (error) {
       console.error('Error in semantic search:', error);
@@ -215,6 +286,12 @@ export class VaultLibrarianAgent extends BaseAgent {
         start?: string;
         end?: string;
       };
+      graphOptions?: {
+        useGraphBoost?: boolean;
+        boostFactor?: number;
+        maxDistance?: number;
+        seedNotes?: string[];
+      };
     } = {},
     limit: number = 10,
     threshold: number = 0.7
@@ -231,8 +308,20 @@ export class VaultLibrarianAgent extends BaseAgent {
     error?: string;
   }> {
     try {
+      // Extract graph options
+      const graphOptions = filters.graphOptions || {};
+      
       // Perform semantic search first
-      const semanticResults = await this.semanticSearch(query, limit * 2, threshold);
+      const semanticResults = await this.semanticSearch(
+        query, 
+        limit * 2, 
+        threshold,
+        graphOptions.useGraphBoost || false,
+        graphOptions.boostFactor || 0.3,
+        graphOptions.maxDistance || 1,
+        graphOptions.seedNotes || []
+      );
+      
       if (!semanticResults.success || !semanticResults.matches) {
         return semanticResults;
       }

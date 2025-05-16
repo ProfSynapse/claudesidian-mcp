@@ -1,4 +1,5 @@
 import { TFile, TFolder, prepareFuzzySearch, App, getAllTags } from 'obsidian';
+import { GraphOperations } from './graph/GraphOperations';
 
 /**
  * Weights for different search factors
@@ -53,6 +54,7 @@ export interface SearchResult {
  * Leverages Obsidian's API for improved search capabilities
  */
 export class SearchOperations {
+    private static graphOperations = new GraphOperations();
     /**
      * List files and folders in a folder (static version)
      * @param app Obsidian app instance
@@ -161,6 +163,10 @@ export class SearchOperations {
         searchFields?: string[];
         weights?: Partial<SearchWeights>;
         includeContent?: boolean;
+        useGraphBoost?: boolean;
+        graphBoostFactor?: number;
+        graphMaxDistance?: number;
+        seedNotes?: string[];
     } = {}): Promise<SearchResult[]> {
         const {
             path,
@@ -169,7 +175,11 @@ export class SearchOperations {
             includeMetadata = true,
             searchFields = ['title', 'content', 'tags'],
             weights,
-            includeContent = false
+            includeContent = false,
+            useGraphBoost = false,
+            graphBoostFactor = 0.3,
+            graphMaxDistance = 1,
+            seedNotes = []
         } = options;
 
         // Apply custom weights if provided, otherwise use defaults
@@ -288,9 +298,24 @@ export class SearchOperations {
         }
 
         // Sort by score and limit results
-        return results
+        let sortedResults = results
             .sort((a, b) => b.score - a.score)
             .slice(0, limit);
+            
+        // Apply graph boost if enabled
+        if (useGraphBoost) {
+            sortedResults = SearchOperations.applyGraphBoost(sortedResults, {
+                useGraphBoost,
+                boostFactor: graphBoostFactor,
+                maxDistance: graphMaxDistance,
+                seedNotes
+            });
+            
+            // Re-sort after boosting
+            sortedResults.sort((a, b) => b.score - a.score);
+        }
+        
+        return sortedResults;
     }
 
     /**
@@ -756,5 +781,105 @@ export class SearchOperations {
                 this.addFilesInFolder(child, files);
             }
         }
+    }
+
+    /**
+     * Apply graph boosting to search results
+     * @param results Search results to boost
+     * @param options Graph boosting options
+     * @returns Boosted search results
+     */
+    static applyGraphBoost(
+        results: SearchResult[],
+        options: {
+            useGraphBoost: boolean;
+            boostFactor?: number;
+            maxDistance?: number;
+            seedNotes?: string[];
+        }
+    ): SearchResult[] {
+        if (!options.useGraphBoost || results.length === 0) {
+            return results;
+        }
+
+        // Convert search results to format expected by GraphOperations
+        const recordsWithSimilarity = results.map(result => ({
+            record: {
+                id: result.file.path,
+                filePath: result.file.path,
+                content: result.content || '',
+                metadata: {
+                    ...result.metadata,
+                    links: {
+                        outgoing: [],
+                        incoming: []
+                    }
+                }
+            },
+            similarity: result.score
+        }));
+
+        // If we have actual link data, extract it
+        for (const record of recordsWithSimilarity) {
+            // Extract links from metadata if available
+            if (record.record.metadata && record.record.metadata.links) {
+                continue; // Already has links
+            }
+
+            // Extract links from matches
+            const links = {
+                outgoing: [] as Array<{displayText: string; targetPath: string}>,
+                incoming: [] as Array<{sourcePath: string; displayText: string}>
+            };
+
+            // Look for links in matches
+            for (const match of results.find(r => r.file.path === record.record.filePath)?.matches || []) {
+                if (match.type === 'link' && match.location) {
+                    links.outgoing.push({
+                        displayText: match.term,
+                        targetPath: match.location
+                    });
+                }
+            }
+
+            // Find incoming links (any result that links to this file)
+            for (const otherResult of results) {
+                if (otherResult.file.path === record.record.filePath) continue;
+                
+                for (const match of otherResult.matches || []) {
+                    if (match.type === 'link' && match.location === record.record.filePath) {
+                        links.incoming.push({
+                            sourcePath: otherResult.file.path,
+                            displayText: match.term
+                        });
+                    }
+                }
+            }
+
+            record.record.metadata.links = links;
+        }
+
+        // Apply graph boosting
+        const boostedRecords = SearchOperations.graphOperations.applyGraphBoost(
+            recordsWithSimilarity,
+            {
+                useGraphBoost: true,
+                boostFactor: options.boostFactor,
+                maxDistance: options.maxDistance,
+                seedNotes: options.seedNotes
+            }
+        );
+
+        // Convert back to SearchResult format
+        return results.map(result => {
+            const boostedRecord = boostedRecords.find(r => r.record.filePath === result.file.path);
+            if (boostedRecord) {
+                return {
+                    ...result,
+                    score: boostedRecord.similarity
+                };
+            }
+            return result;
+        });
     }
 }
