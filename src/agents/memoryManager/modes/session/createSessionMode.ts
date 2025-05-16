@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace } from '../../../../database/workspace-types';
 import { CreateSessionParams, SessionResult } from '../../types';
+import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**
  * Mode for creating a new session with rich context
@@ -27,12 +28,51 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
    */
   async execute(params: CreateSessionParams): Promise<SessionResult> {
     try {
-      // Validate workspace context
-      if (!params.workspaceContext?.workspaceId) {
-        return this.prepareResult(false, undefined, 'Workspace ID is required');
+      // First get the inherited workspace context using the base class method
+      // This handles string parsing and ensures a consistent structure
+      const inheritedContext = this.getInheritedWorkspaceContext(params);
+      
+      // Set workspaceId either from context or generate a default one
+      let workspaceId = inheritedContext?.workspaceId;
+      let workspaceDb = this.agent.getWorkspaceDb();
+      
+      // If no valid workspaceId was found, use default
+      if (!workspaceId) {
+        // Check if there's a default workspace to use
+        if (!workspaceDb) {
+          return this.prepareResult(false, undefined, 'Workspace database not available');
+        }
+        
+        // Initialize workspace database if needed
+        if (typeof workspaceDb.initialize === 'function') {
+          await workspaceDb.initialize();
+        }
+        
+        try {
+          // Try to find the default workspace (using getWorkspaces instead of listWorkspaces)
+          const workspaces = await workspaceDb.getWorkspaces({ limit: 1 });
+          if (workspaces && workspaces.length > 0) {
+            workspaceId = workspaces[0].id;
+          } else {
+            // Create a default workspace if none exists
+            const defaultWorkspace = await workspaceDb.createWorkspace({
+              name: 'Default Workspace',
+              description: 'Automatically created default workspace',
+              rootFolder: '/',
+              hierarchyType: 'workspace'
+            });
+            workspaceId = defaultWorkspace.id;
+          }
+        } catch (error) {
+          return this.prepareResult(false, undefined, `Failed to determine workspace: ${error.message}`);
+        }
       }
       
-      const workspaceId = params.workspaceContext.workspaceId;
+      // At this point workspaceId should be defined
+      if (!workspaceId) {
+        return this.prepareResult(false, undefined, 'Failed to determine workspace ID');
+      }
+      
       const name = params.name;
       const description = params.description;
       const sessionGoal = params.sessionGoal;
@@ -40,6 +80,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       const tags = params.tags || [];
       const contextDepth = params.contextDepth || 'standard';
       const generateContextTrace = params.generateContextTrace !== false; // Default to true
+      const sessionId = params.sessionId; // Use provided session ID if available
       
       // Get the activity embedder
       const activityEmbedder = this.agent.getActivityEmbedder();
@@ -47,28 +88,33 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
         return this.prepareResult(false, undefined, 'Activity embedder not available');
       }
       
-      // Get workspace details for context
-      const workspaceDb = this.agent.getWorkspaceDb();
+      // Make sure workspaceDb is initialized
       if (!workspaceDb) {
         return this.prepareResult(false, undefined, 'Workspace database not available');
       }
       
-      // Initialize workspace database if needed
-      if (typeof workspaceDb.initialize === 'function') {
+      if (typeof workspaceDb.initialize === 'function' && !workspaceDb.db) {
         await workspaceDb.initialize();
       }
       
       // Get the workspace data
       const workspace = await workspaceDb.getWorkspace(workspaceId);
       if (!workspace) {
-        return this.prepareResult(false, undefined, `Workspace with ID ${workspaceId} not found`);
+        return this.prepareResult(
+          false, 
+          undefined, 
+          `Workspace with ID ${workspaceId} not found`, 
+          { workspaceContext: params.workspaceContext, sessionId: params.sessionId }
+        );
       }
       
       // Create the session
-      const sessionId = await activityEmbedder.createSession(
+      // Use the specific session ID for this session if provided (which overrides the tracking sessionId)
+      const finalSessionId = await activityEmbedder.createSession(
         workspaceId, 
         name || `Session ${new Date().toLocaleString()}`, 
-        description || (sessionGoal ? `Goal: ${sessionGoal}` : undefined)
+        description || (sessionGoal ? `Goal: ${sessionGoal}` : undefined),
+        params.sessionId // Use the provided session ID from parameters
       );
       
       // Prepare context data for the result
@@ -231,12 +277,12 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
                 workspaceId
               },
               result: {
-                sessionId,
+                sessionId: finalSessionId,
                 workspaceId
               }
             },
             contextData.relevantFiles || [],
-            sessionId
+            finalSessionId
           );
         } catch (error) {
           console.warn(`Failed to create initial memory trace: ${error.message}`);
@@ -245,12 +291,12 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
       
       // Return result with context
       return this.prepareResult(true, {
-        sessionId,
+        sessionId: finalSessionId,
         name: name || `Session ${new Date().toLocaleString()}`,
         workspaceId,
         startTime: Date.now(),
         previousSessionId,
-        context: contextData
+        memoryContext: contextData
       });
     } catch (error) {
       return this.prepareResult(false, undefined, `Error creating session: ${error.message}`);
@@ -327,11 +373,35 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
           enum: ['minimal', 'standard', 'comprehensive'],
           description: 'How much context to include in the initial memory trace',
           default: 'standard'
+        },
+        workspaceContext: {
+          oneOf: [
+            {
+              type: 'object',
+              properties: {
+                workspaceId: { 
+                  type: 'string',
+                  description: 'Workspace identifier (optional - uses default workspace if not provided)' 
+                },
+                workspacePath: { 
+                  type: 'array', 
+                  items: { type: 'string' },
+                  description: 'Path from root workspace to specific phase/task'
+                }
+              },
+              description: 'Optional workspace context object - if not provided, uses a default workspace'
+            },
+            {
+              type: 'string',
+              description: 'Optional workspace context as JSON string - must contain workspaceId field'
+            }
+          ],
+          description: 'Optional workspace context - if not provided, uses a default workspace'
         }
       }
     };
     
-    // Merge with common schema (workspace context and handoff)
+    // Merge with common schema (session id and handoff)
     return this.getMergedSchema(modeSchema);
   }
   
@@ -368,8 +438,12 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
           description: 'ID of the previous session (if continuing)'
         },
         context: {
+          type: 'string',
+          description: 'Contextual information about the operation (from CommonResult)'
+        },
+        memoryContext: {
           type: 'object',
-          description: 'Context information about the session',
+          description: 'Detailed contextual information about the session',
           properties: {
             summary: {
               type: 'string',

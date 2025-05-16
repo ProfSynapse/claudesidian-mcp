@@ -1,5 +1,6 @@
 import { App, TFile, Command, PluginManifest } from 'obsidian';
 import { IAgent } from './agents/interfaces/IAgent';
+import { WorkspaceContext } from './utils/contextUtils';
 
 /**
  * Server status enum
@@ -387,12 +388,15 @@ export interface CommonParameters {
   sessionId: string;
   
   /**
-   * Optional workspace context for scoping operations
+   * Background information and purpose for running this tool
    */
-  workspaceContext?: {
-    workspaceId: string;
-    workspacePath?: string[]; // For hierarchical workspaces (workspace→phase→task)
-  };
+  context: string;
+  
+  /**
+   * Optional workspace context for scoping operations
+   * Can be either an object with workspaceId or a JSON string representation
+   */
+  workspaceContext?: WorkspaceContext | string;
   
   /**
    * Optional handoff to another agent/mode for workflow chaining
@@ -430,13 +434,14 @@ export interface CommonResult {
   sessionId?: string;
   
   /**
+   * Background information and purpose for running this tool
+   */
+  context?: string;
+  
+  /**
    * Workspace context that was used (for continuity)
    */
-  workspaceContext?: {
-    workspaceId: string;
-    workspacePath?: string[];
-    activeWorkspace?: boolean;
-  };
+  workspaceContext?: WorkspaceContext;
   
   /**
    * Handoff result if a handoff was processed

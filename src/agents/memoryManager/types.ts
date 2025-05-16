@@ -6,6 +6,7 @@ import {
   WorkspaceStateSnapshot,
   WorkspaceSession
 } from '../../database/workspace-types';
+import { WorkspaceContext } from '../../utils/contextUtils';
 
 /**
  * Base parameters for memory management operations
@@ -18,6 +19,12 @@ export interface MemoryParameters extends WorkspaceParameters {
    * - comprehensive: Maximum detail and context
    */
   contextDepth?: 'minimal' | 'standard' | 'comprehensive';
+  
+  /**
+   * Session ID for tracking operations
+   * Required by CommonParameters
+   */
+  sessionId: string;
 }
 
 /**
@@ -25,9 +32,15 @@ export interface MemoryParameters extends WorkspaceParameters {
  */
 export interface MemoryResult extends CommonResult {
   /**
+   * Overrides the context string from CommonResult
+   * @deprecated Use memoryContext instead for structured memory context data
+   */
+  context?: string;
+  
+  /**
    * Optional contextual information about the memory operation
    */
-  context?: {
+  memoryContext?: {
     /**
      * When the operation occurred
      */
@@ -75,6 +88,20 @@ export interface CreateSessionParams extends MemoryParameters {
    * Tags to associate with this session
    */
   tags?: string[];
+  
+  /**
+   * Override for the session ID from MemoryParameters.
+   * This allows creating a session with a specific session ID rather than using the tracking ID.
+   * Note: This is distinct from the required sessionId in MemoryParameters which tracks the tool call itself.
+   */
+  sessionId: string;
+  
+  /**
+   * Workspace context (optional)
+   * If provided, should contain a workspaceId; if not provided, defaults to the first workspace or creates a default workspace
+   * This can also be a JSON string with the same structure
+   */
+  workspaceContext?: WorkspaceContext | string;
 }
 
 // Parameters for listing sessions

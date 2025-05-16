@@ -6,6 +6,7 @@ import {
   createResult,
   mergeWithCommonSchema
 } from '../utils/schemaUtils';
+import { parseWorkspaceContext, WorkspaceContext } from '../utils/contextUtils';
 
 /**
  * Base class for all modes in the MCP plugin
@@ -130,6 +131,7 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
    * @param success Whether the operation was successful
    * @param data Operation-specific data
    * @param error Error message if operation failed
+   * @param context Either a string with contextual information or a record of additional properties to include
    * @param workspaceContext Workspace context used
    * @param handoffResult Result from handoff operation
    * @returns Standardized result object
@@ -138,6 +140,7 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
     success: boolean,
     data?: any,
     error?: string,
+    context?: string | Record<string, any>,
     workspaceContext?: CommonResult['workspaceContext'],
     handoffResult?: any
   ): R {
@@ -156,7 +159,34 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
       );
     }
     
-    return createResult<R>(success, data, error, workspaceContext, handoffResult, sessionId);
+    // If no workspace context was explicitly provided, but there's a parent context,
+    // inherit the workspace context from the parent
+    if (!workspaceContext && (this as any).parentContext) {
+      workspaceContext = (this as any).parentContext;
+    }
+    
+    let contextString: string | undefined;
+    let additionalProps: Record<string, any> | undefined;
+    
+    // Handle context parameter which can be either a string or an object with additional properties
+    if (context) {
+      if (typeof context === 'string') {
+        contextString = context;
+      } else {
+        additionalProps = context;
+      }
+    }
+    
+    return createResult<R>(
+      success, 
+      data, 
+      error, 
+      workspaceContext, 
+      handoffResult, 
+      sessionId, 
+      contextString, 
+      additionalProps
+    );
   }
   
   /**
@@ -166,6 +196,38 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
    */
   setParentContext(context: CommonResult['workspaceContext']): void {
     (this as any).parentContext = context;
+  }
+  
+  /**
+   * Get the inherited workspace context
+   * This method handles workspace context inheritance, where a child operation
+   * can inherit context from its parent if not explicitly specified.
+   * 
+   * Order of precedence:
+   * 1. Current params.workspaceContext if explicitly provided
+   * 2. Parent context from setParentContext if available
+   * 3. Context from default session context
+   * 
+   * @param params Parameters that may include workspaceContext
+   * @returns The effective workspace context to use, or null if none available
+   */
+  protected getInheritedWorkspaceContext(params: CommonParameters): WorkspaceContext | null {
+    // 1. Use explicitly provided context if available
+    if (params.workspaceContext) {
+      // Get the parent context workspaceId as a fallback
+      const parentFallbackId = ((this as any).parentContext?.workspaceId) || 'default-workspace';
+      
+      // Parse the workspace context using the utility function
+      return parseWorkspaceContext(params.workspaceContext, parentFallbackId);
+    }
+    
+    // 2. Fall back to parent context
+    if ((this as any).parentContext?.workspaceId) {
+      return (this as any).parentContext as WorkspaceContext;
+    }
+    
+    // 3. No context available
+    return null;
   }
   
   /**

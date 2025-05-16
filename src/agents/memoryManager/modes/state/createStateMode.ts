@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace } from '../../../../database/workspace-types';
 import { CreateStateParams, StateResult } from '../../types';
+import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**
  * Mode for creating a workspace state with rich context
@@ -28,15 +29,55 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
   async execute(params: CreateStateParams): Promise<StateResult> {
     try {
       // Validate parameters
-      if (!params.workspaceContext?.workspaceId) {
-        return this.prepareResult(false, undefined, 'Workspace ID is required');
-      }
-      
       if (!params.name) {
         return this.prepareResult(false, undefined, 'State name is required');
       }
       
-      const workspaceId = params.workspaceContext.workspaceId;
+      // Get workspace database early so we can find an active workspace
+      const workspaceDb = this.agent.getWorkspaceDb();
+      if (!workspaceDb) {
+        return this.prepareResult(false, undefined, 'Workspace database not available');
+      }
+      
+      // Initialize workspace database if needed
+      if (typeof workspaceDb.initialize === 'function') {
+        await workspaceDb.initialize();
+      }
+      
+      // Parse the workspace context using the utility function
+      const workspaceCtx = parseWorkspaceContext(params.workspaceContext);
+      
+      // Get a workspaceId, either from context or by finding a default
+      let workspaceId: string;
+      
+      // First check if it's in the parsed context
+      if (workspaceCtx && workspaceCtx.workspaceId) {
+        workspaceId = workspaceCtx.workspaceId;
+      } else {
+        // Try to find the first available workspace
+        try {
+          const workspaces = await workspaceDb.getWorkspaces({ limit: 1 });
+          if (workspaces && workspaces.length > 0) {
+            workspaceId = workspaces[0].id;
+          } else {
+            // Create a default workspace if none exists
+            const defaultWorkspace = await workspaceDb.createWorkspace({
+              name: 'Default Workspace',
+              description: 'Automatically created default workspace',
+              rootFolder: '/',
+              hierarchyType: 'workspace'
+            });
+            workspaceId = defaultWorkspace.id;
+          }
+        } catch (error) {
+          return this.prepareResult(
+            false, 
+            undefined, 
+            `Failed to determine workspace: ${error.message}`,
+            { sessionId: params.sessionId } // Pass session ID back in error
+          );
+        }
+      }
       const name = params.name;
       const description = params.description || '';
       const targetSessionId = params.targetSessionId;
@@ -53,21 +94,17 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         return this.prepareResult(false, undefined, 'Activity embedder not available');
       }
       
-      // Get workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize workspace database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
-      }
+      // We've already initialized the workspaceDb above
       
       // Get the workspace data
       const workspace = await workspaceDb.getWorkspace(workspaceId);
       if (!workspace) {
-        return this.prepareResult(false, undefined, `Workspace with ID ${workspaceId} not found`);
+        return this.prepareResult(
+          false, 
+          undefined, 
+          `Workspace with ID ${workspaceId} not found`,
+          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+        );
       }
       
       // Get the active session ID (either the one provided or the active one)
@@ -77,14 +114,27 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         
         // If still no active session, fail more gracefully
         if (!usedSessionId) {
-          return this.prepareResult(false, undefined, 'No active session found and no target session ID provided');
+          return this.prepareResult(
+            false, 
+            undefined, 
+            'No active session found and no target session ID provided',
+            { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+          );
         }
       }
       
       // Check if the session exists
       const session = await workspaceDb.getSession(usedSessionId);
       if (!session) {
-        return this.prepareResult(false, undefined, `Session with ID ${usedSessionId} not found`);
+        return this.prepareResult(
+          false, 
+          undefined, 
+          `Session with ID ${usedSessionId} not found`,
+          { 
+            sessionId: params.sessionId, 
+            workspaceContext: params.workspaceContext 
+          }
+        );
       }
       
       // Enhance the state description with context if not provided
@@ -372,6 +422,34 @@ ${contextSummary}`;
         reason: {
           type: 'string',
           description: 'Optional reason for creating this state'
+        },
+        workspaceContext: {
+          oneOf: [
+            {
+              type: 'object',
+              properties: {
+                workspaceId: { 
+                  type: 'string',
+                  description: 'Workspace identifier (optional - uses first available workspace if not provided)' 
+                },
+                workspacePath: { 
+                  type: 'array', 
+                  items: { type: 'string' },
+                  description: 'Path from root workspace to specific phase/task'
+                }
+              },
+              description: 'Optional workspace context object'
+            },
+            {
+              type: 'string',
+              description: 'Optional workspace context as JSON string - should contain workspaceId field'
+            }
+          ],
+          description: 'Optional workspace context - if not provided, uses the first available workspace'
+        },
+        sessionId: {
+          type: 'string',
+          description: 'Session ID for tracking this tool call (distinct from targetSessionId which is the session to create the state from)'
         }
       },
       required: ['name']
