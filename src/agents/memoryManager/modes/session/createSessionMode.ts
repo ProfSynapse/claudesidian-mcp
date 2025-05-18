@@ -34,32 +34,46 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       
       // Set workspaceId either from context or generate a default one
       let workspaceId = inheritedContext?.workspaceId;
-      let workspaceDb = this.agent.getWorkspaceDb();
+      
+      // Get the services
+      const memoryService = this.agent.getMemoryService();
+      const workspaceService = this.agent.getWorkspaceService();
+      
+      if (!memoryService || !workspaceService) {
+        return this.prepareResult(false, undefined, 'Memory or workspace service not available');
+      }
       
       // If no valid workspaceId was found, use default
       if (!workspaceId) {
-        // Check if there's a default workspace to use
-        if (!workspaceDb) {
-          return this.prepareResult(false, undefined, 'Workspace database not available');
-        }
-        
-        // Initialize workspace database if needed
-        if (typeof workspaceDb.initialize === 'function') {
-          await workspaceDb.initialize();
-        }
-        
         try {
-          // Try to find the default workspace (using getWorkspaces instead of listWorkspaces)
-          const workspaces = await workspaceDb.getWorkspaces({ limit: 1 });
+          // Try to find the default workspace
+          const workspaces = await workspaceService.getWorkspaces({ 
+            sortBy: 'lastAccessed', 
+            sortOrder: 'desc', 
+          });
+          
           if (workspaces && workspaces.length > 0) {
             workspaceId = workspaces[0].id;
           } else {
             // Create a default workspace if none exists
-            const defaultWorkspace = await workspaceDb.createWorkspace({
+            const defaultWorkspace = await workspaceService.createWorkspace({
               name: 'Default Workspace',
               description: 'Automatically created default workspace',
               rootFolder: '/',
-              hierarchyType: 'workspace'
+              hierarchyType: 'workspace',
+              created: Date.now(),
+              lastAccessed: Date.now(),
+              childWorkspaces: [],
+              path: [],
+              relatedFolders: [],
+              relevanceSettings: {
+                folderProximityWeight: 0.5,
+                recencyWeight: 0.7,
+                frequencyWeight: 0.3
+              },
+              activityHistory: [],
+              completionStatus: {},
+              status: 'active'
             });
             workspaceId = defaultWorkspace.id;
           }
@@ -80,25 +94,13 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       const tags = params.tags || [];
       const contextDepth = params.contextDepth || 'standard';
       const generateContextTrace = params.generateContextTrace !== false; // Default to true
-      const sessionId = params.sessionId; // Use provided session ID if available
       
-      // Get the activity embedder
-      const activityEmbedder = this.agent.getActivityEmbedder();
-      if (!activityEmbedder) {
-        return this.prepareResult(false, undefined, 'Activity embedder not available');
-      }
-      
-      // Make sure workspaceDb is initialized
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      if (typeof workspaceDb.initialize === 'function' && !workspaceDb.db) {
-        await workspaceDb.initialize();
-      }
+      // Get the activity embedder for backward compatibility
+      // Note: This is a transitional approach during Chroma integration
+      const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
       
       // Get the workspace data
-      const workspace = await workspaceDb.getWorkspace(workspaceId);
+      const workspace = await workspaceService.getWorkspace(workspaceId);
       if (!workspace) {
         return this.prepareResult(
           false, 
@@ -109,13 +111,20 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       }
       
       // Create the session
-      // Use the specific session ID for this session if provided (which overrides the tracking sessionId)
-      const finalSessionId = await activityEmbedder.createSession(
-        workspaceId, 
-        name || `Session ${new Date().toLocaleString()}`, 
-        description || (sessionGoal ? `Goal: ${sessionGoal}` : undefined),
-        params.sessionId // Use the provided session ID from parameters
-      );
+      const sessionToCreate = {
+        workspaceId,
+        name: name || `Session ${new Date().toLocaleString()}`,
+        description: description || (sessionGoal ? `Goal: ${sessionGoal}` : undefined),
+        startTime: Date.now(),
+        isActive: true,
+        toolCalls: 0,
+        previousSessionId,
+        id: params.sessionId // Use provided ID if available
+      };
+      
+      // Create session using memory service
+      const session = await memoryService.createSession(sessionToCreate);
+      const finalSessionId = session.id;
       
       // Prepare context data for the result
       let contextData: {
@@ -141,7 +150,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       let previousSessionInfo = '';
       if (previousSessionId) {
         try {
-          const previousSession = await workspaceDb.getSession(previousSessionId);
+          const previousSession = await memoryService.getSession(previousSessionId);
           if (previousSession) {
             // Add previous session information to context
             previousSessionInfo = `Continues from previous session "${previousSession.name}" `;
@@ -154,7 +163,14 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             
             // Add most relevant previous traces to context
             if (contextDepth !== 'minimal') {
-              const previousTraces = await workspaceDb.getSessionTraces(previousSessionId, contextDepth === 'comprehensive' ? 20 : 10);
+              // Check if the method exists
+              let previousTraces: WorkspaceMemoryTrace[] = [];
+              if (typeof memoryService.getSessionTraces === 'function') {
+                previousTraces = await memoryService.getSessionTraces(previousSessionId, contextDepth === 'comprehensive' ? 20 : 10);
+              } else {
+                // Fall back to getting traces for the workspace
+                previousTraces = await memoryService.getMemoryTraces(workspaceId, contextDepth === 'comprehensive' ? 20 : 10);
+              }
               
               // Get files referenced in previous session
               const relevantFiles = new Set<string>();
@@ -200,7 +216,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       contextSummary += `Type: ${workspace.hierarchyType} level`;
       if (workspace.parentId) {
         try {
-          const parent = await workspaceDb.getWorkspace(workspace.parentId);
+          const parent = await workspaceService.getWorkspace(workspace.parentId);
           if (parent) {
             contextSummary += ` within "${parent.name}"`;
           }
@@ -261,13 +277,14 @@ ${contextSummary}
 ${sessionGoal ? `This session's goal is to: ${sessionGoal}` : ''}
 ${previousSessionId ? 'This session continues work from a previous session.' : 'This is a new session starting from scratch.'}`;
 
-          // Record the context activity
-          await activityEmbedder.recordActivity(
-            workspaceId,
-            workspace.path,
-            'project_plan', // Using project_plan as the type for session initialization
-            contextTraceContent,
-            {
+          // Create a memory trace
+          await memoryService.storeMemoryTrace({
+            sessionId: finalSessionId,
+            workspaceId: workspaceId,
+            timestamp: Date.now(),
+            content: contextTraceContent,
+            activityType: 'project_plan', // Using project_plan as the type for session initialization
+            metadata: {
               tool: 'memoryManager.createSession',
               params: {
                 name,
@@ -279,11 +296,40 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
               result: {
                 sessionId: finalSessionId,
                 workspaceId
-              }
+              },
+              relatedFiles: contextData.relevantFiles || []
             },
-            contextData.relevantFiles || [],
-            finalSessionId
-          );
+            workspacePath: workspace.path || [],
+            contextLevel: workspace.hierarchyType || 'workspace',
+            importance: 0.7,
+            tags: contextData.tags || []
+          });
+          
+          // For backward compatibility, also use the activity embedder if available
+          if (activityEmbedder && typeof activityEmbedder.recordActivity === 'function') {
+            await activityEmbedder.recordActivity(
+              workspaceId,
+              workspace.path,
+              'project_plan',
+              contextTraceContent,
+              {
+                tool: 'memoryManager.createSession',
+                params: {
+                  name,
+                  description,
+                  sessionGoal,
+                  previousSessionId,
+                  workspaceId
+                },
+                result: {
+                  sessionId: finalSessionId,
+                  workspaceId
+                }
+              },
+              contextData.relevantFiles || [],
+              finalSessionId
+            );
+          }
         } catch (error) {
           console.warn(`Failed to create initial memory trace: ${error.message}`);
         }

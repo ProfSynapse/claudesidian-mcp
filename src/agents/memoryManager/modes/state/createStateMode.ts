@@ -3,6 +3,8 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace } from '../../../../database/workspace-types';
 import { CreateStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { MemoryService } from '../../../../database/services/MemoryService';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 
 /**
  * Mode for creating a workspace state with rich context
@@ -33,26 +35,17 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         return this.prepareResult(false, undefined, 'State name is required');
       }
       
-      // Get workspace database early so we can find an active workspace
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
+      // Get services
+      const memoryService = this.agent.getMemoryService();
+      const workspaceService = this.agent.getWorkspaceService();
+      
+      if (!memoryService || !workspaceService) {
+        return this.prepareResult(false, undefined, 'Memory or workspace services not available');
       }
       
-      // Initialize workspace database if needed
-      try {
-        if (typeof workspaceDb.initialize === 'function') {
-          await workspaceDb.initialize();
-        }
-      } catch (dbError) {
-        console.error('Database initialization error:', dbError);
-        return this.prepareResult(
-          false, 
-          undefined, 
-          `Database initialization failed: ${dbError.message}`,
-          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
-        );
-      }
+      // For backward compatibility
+      // Note: This is a transitional approach during Chroma integration
+      const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
       
       // Parse the workspace context using the utility function
       const workspaceCtx = parseWorkspaceContext(params.workspaceContext);
@@ -66,17 +59,34 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       } else {
         // Try to find the first available workspace
         try {
-          const workspaces = await workspaceDb.getWorkspaces({ limit: 1 });
+          const workspaces = await workspaceService.getWorkspaces({ 
+            sortBy: 'lastAccessed', 
+            sortOrder: 'desc'
+          });
+          
           if (workspaces && workspaces.length > 0) {
             workspaceId = workspaces[0].id;
           } else {
             console.log('No workspaces found, creating default workspace');
             // Create a default workspace if none exists
-            const defaultWorkspace = await workspaceDb.createWorkspace({
+            const defaultWorkspace = await workspaceService.createWorkspace({
               name: 'Default Workspace',
               description: 'Automatically created default workspace',
               rootFolder: '/',
-              hierarchyType: 'workspace'
+              hierarchyType: 'workspace',
+              created: Date.now(),
+              lastAccessed: Date.now(),
+              childWorkspaces: [],
+              path: [],
+              relatedFolders: [],
+              relevanceSettings: {
+                folderProximityWeight: 0.5,
+                recencyWeight: 0.7,
+                frequencyWeight: 0.3
+              },
+              activityHistory: [],
+              completionStatus: {},
+              status: 'active'
             });
             workspaceId = defaultWorkspace.id;
           }
@@ -86,7 +96,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             false, 
             undefined, 
             `Failed to determine workspace: ${error.message}`,
-            { sessionId: params.sessionId, workspaceContext: params.workspaceContext } // Pass session ID back in error
+            { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
           );
         }
       }
@@ -103,29 +113,10 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       const tags = params.tags || [];
       const reason = params.reason;
       
-      // Get the activity embedder
-      const activityEmbedder = this.agent.getActivityEmbedder();
-      if (!activityEmbedder) {
-        return this.prepareResult(false, undefined, 'Activity embedder not available. Make sure embeddings are enabled in settings.');
-      }
-      
-      // Make sure activity embedder is initialized
-      if (typeof activityEmbedder.initialize === 'function') {
-        try {
-          await activityEmbedder.initialize();
-          console.log("Activity embedder initialized successfully");
-        } catch (embeddingError) {
-          console.error("Failed to initialize activity embedder:", embeddingError);
-          return this.prepareResult(false, undefined, `Failed to initialize activity embedder: ${embeddingError.message}`);
-        }
-      }
-      
-      // We've already initialized the workspaceDb above
-      
       // Get the workspace data
       let workspace;
       try {
-        workspace = await workspaceDb.getWorkspace(workspaceId);
+        workspace = await workspaceService.getWorkspace(workspaceId);
         if (!workspace) {
           console.warn(`Workspace with ID ${workspaceId} not found`);
           return this.prepareResult(
@@ -147,19 +138,49 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       
       // Get the active session ID (either the one provided or the active one)
       let usedSessionId = targetSessionId;
+      
       if (!usedSessionId) {
-        usedSessionId = activityEmbedder.getActiveSession(workspaceId);
+        // Try to find an active session for this workspace
+        try {
+          const activeSessions = await memoryService.getSessions(workspaceId, true);
+          if (activeSessions && activeSessions.length > 0) {
+            usedSessionId = activeSessions[0].id;
+            console.log(`Using existing active session ${usedSessionId} for workspace ${workspaceId}`);
+          }
+          // For backward compatibility
+          else if (activityEmbedder) {
+            usedSessionId = activityEmbedder.getActiveSession(workspaceId);
+          }
+        } catch (error) {
+          console.warn(`Failed to get active sessions: ${error.message}`);
+        }
         
         // If still no active session, create one automatically
         if (!usedSessionId) {
           try {
             console.log('No active session found, creating a new one');
-            usedSessionId = await activityEmbedder.createSession(
+            
+            // Create a new session using memory service
+            const session = await memoryService.createSession({
               workspaceId,
-              `Session for state: ${name}`,
-              `Auto-created session for creating state "${name}"`
-            );
+              name: `Session for state: ${name}`,
+              description: `Auto-created session for creating state "${name}"`,
+              startTime: Date.now(),
+              isActive: true,
+              toolCalls: 0
+            });
+            
+            usedSessionId = session.id;
             console.log(`Created new session: ${usedSessionId}`);
+            
+            // For backward compatibility
+            if (activityEmbedder && typeof activityEmbedder.createSession === 'function') {
+              await activityEmbedder.createSession(
+                workspaceId,
+                `Session for state: ${name}`,
+                `Auto-created session for creating state "${name}"`
+              );
+            }
           } catch (error) {
             console.error('Failed to create new session:', error);
             return this.prepareResult(
@@ -175,7 +196,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       // Check if the session exists and validate it
       let session;
       try {
-        session = await workspaceDb.getSession(usedSessionId);
+        session = await memoryService.getSession(usedSessionId);
+        
         if (!session) {
           console.warn(`Session with ID ${usedSessionId} not found`);
           return this.prepareResult(
@@ -195,7 +217,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           
           // Try to find or create a valid session for this workspace
           try {
-            const validSessions = await workspaceDb.getSessions(workspaceId, true);
+            const validSessions = await memoryService.getSessions(workspaceId, true);
+            
             if (validSessions.length > 0) {
               // Use the most recent active session
               usedSessionId = validSessions[0].id;
@@ -203,13 +226,27 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
               console.log(`Using existing active session ${usedSessionId} for workspace ${workspaceId}`);
             } else {
               // Create a new session for this workspace
-              usedSessionId = await activityEmbedder.createSession(
+              const newSession = await memoryService.createSession({
                 workspaceId,
-                `Session for state: ${name}`,
-                `Auto-created session for creating state "${name}"`
-              );
-              session = await workspaceDb.getSession(usedSessionId);
+                name: `Session for state: ${name}`,
+                description: `Auto-created session for creating state "${name}"`,
+                startTime: Date.now(),
+                isActive: true,
+                toolCalls: 0
+              });
+              
+              usedSessionId = newSession.id;
+              session = newSession;
               console.log(`Created new session ${usedSessionId} for workspace ${workspaceId}`);
+              
+              // For backward compatibility
+              if (activityEmbedder && typeof activityEmbedder.createSession === 'function') {
+                await activityEmbedder.createSession(
+                  workspaceId,
+                  `Session for state: ${name}`,
+                  `Auto-created session for creating state "${name}"`
+                );
+              }
             }
           } catch (sessionError) {
             console.error('Failed to find or create a valid session:', sessionError);
@@ -228,13 +265,27 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           
           // Create a new active session based on the inactive one
           try {
-            usedSessionId = await activityEmbedder.createSession(
+            const newSession = await memoryService.createSession({
               workspaceId,
-              `Continued session for state: ${name}`,
-              `Auto-created continuation of session "${session.name}"`
-            );
-            session = await workspaceDb.getSession(usedSessionId);
+              name: `Continued session for state: ${name}`,
+              description: `Auto-created continuation of session "${session.name}"`,
+              startTime: Date.now(),
+              isActive: true,
+              toolCalls: 0
+            });
+            
+            usedSessionId = newSession.id;
+            session = newSession;
             console.log(`Created new session ${usedSessionId} to replace inactive session`);
+            
+            // For backward compatibility
+            if (activityEmbedder && typeof activityEmbedder.createSession === 'function') {
+              await activityEmbedder.createSession(
+                workspaceId,
+                `Continued session for state: ${name}`,
+                `Auto-created continuation of session "${session.name}"`
+              );
+            }
           } catch (sessionError) {
             console.error('Failed to create a replacement session:', sessionError);
             return this.prepareResult(
@@ -268,9 +319,15 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       }
       
       // Get recent traces for enhanced context
-      let recentTraces = [];
+      let recentTraces: WorkspaceMemoryTrace[] = [];
       try {
-        recentTraces = await workspaceDb.getSessionTraces(usedSessionId, maxTraces);
+        // Check if the method exists
+        if (typeof memoryService.getSessionTraces === 'function') {
+          recentTraces = await memoryService.getSessionTraces(usedSessionId, maxTraces);
+        } else {
+          // Fall back to getting traces for the workspace
+          recentTraces = await memoryService.getMemoryTraces(workspaceId, maxTraces);
+        }
         console.log(`Retrieved ${recentTraces.length} traces for session ${usedSessionId}`);
       } catch (error) {
         console.warn(`Error retrieving session traces: ${error.message}. Continuing with empty traces.`);
@@ -342,13 +399,29 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           throw new Error(`Invalid state name: ${name}`);
         }
         
-        // Create the enhanced state - primarily using the session ID
-        stateId = await activityEmbedder.createStateSnapshot(
-          usedSessionId, // Use the session ID as the primary identifier
+        // Create the context snapshot using memory service
+        stateId = await memoryService.createContextSnapshot(
+          workspaceId,
+          usedSessionId,
           name,
-          enhancedDescription
+          enhancedDescription,
+          {
+            workspace,
+            contextFiles: includedFiles,
+            metadata: enhancedMetadata
+          }
         );
+        
         console.log(`Created state snapshot with ID: ${stateId}`);
+        
+        // For backward compatibility
+        if (activityEmbedder && typeof activityEmbedder.createStateSnapshot === 'function') {
+          await activityEmbedder.createStateSnapshot(
+            usedSessionId,
+            name,
+            enhancedDescription
+          );
+        }
       } catch (error) {
         console.error('Error creating state snapshot:', error);
         
@@ -376,12 +449,14 @@ and includes ${includedFiles.length} relevant files.
 ${contextSummary}`;
 
       try {
-        await activityEmbedder.recordActivity(
-          workspaceId,
-          workspace.path || [],
-          'checkpoint', // Using checkpoint type for states
-          stateTraceContent,
-          {
+        // Create memory trace using memoryService
+        await memoryService.storeMemoryTrace({
+          sessionId: usedSessionId,
+          workspaceId: workspaceId,
+          timestamp: Date.now(),
+          content: stateTraceContent,
+          activityType: 'checkpoint', // Using checkpoint type for states
+          metadata: {
             tool: 'memoryManager.createState',
             params: {
               name,
@@ -394,12 +469,43 @@ ${contextSummary}`;
               stateId,
               includedFiles,
               traceCount: recentTraces.length
-            }
+            },
+            relatedFiles: includedFiles
           },
-          includedFiles,
-          usedSessionId
-        );
-        console.log('Recorded activity trace for state creation');
+          workspacePath: workspace.path || [],
+          contextLevel: workspace.hierarchyType || 'workspace',
+          importance: 0.8, // High importance for state creation activities
+          tags: enhancedMetadata.tags || []
+        });
+        
+        console.log('Recorded memory trace for state creation');
+        
+        // For backward compatibility
+        if (activityEmbedder && typeof activityEmbedder.recordActivity === 'function') {
+          await activityEmbedder.recordActivity(
+            workspaceId,
+            workspace.path || [],
+            'checkpoint',
+            stateTraceContent,
+            {
+              tool: 'memoryManager.createState',
+              params: {
+                name,
+                description: enhancedDescription,
+                sessionId: usedSessionId,
+                workspaceId,
+                reason
+              },
+              result: {
+                stateId,
+                includedFiles,
+                traceCount: recentTraces.length
+              }
+            },
+            includedFiles,
+            usedSessionId
+          );
+        }
       } catch (error) {
         console.warn(`Failed to create memory trace for state: ${error.message}`);
         // Non-critical error, we can continue

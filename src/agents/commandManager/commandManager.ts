@@ -6,8 +6,7 @@ import {
   ExecuteCommandMode
 } from './modes';
 import { AgentManager } from '../../services/AgentManager';
-import { ToolActivityEmbedder } from '../../database/tool-activity-embedder';
-import { BaseEmbeddingProvider } from '../../database/providers/embeddings-provider';
+import { MemoryService } from '../../database/services/MemoryService';
 
 /**
  * CommandManager Agent for command palette operations
@@ -24,22 +23,17 @@ export class CommandManagerAgent extends BaseAgent {
   protected agentManager: AgentManager;
   
   /**
-   * Embedding provider for activity recording (optional)
+   * Memory service for activity recording
    */
-  private provider: BaseEmbeddingProvider | null = null;
-  
-  /**
-   * Activity embedder for recording command executions in workspace memory
-   */
-  private activityEmbedder: ToolActivityEmbedder | null = null;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new CommandManagerAgent
    * @param app Obsidian app instance
    * @param agentManager Agent manager for cross-agent operations
-   * @param provider Optional embedding provider for activity recording
+   * @param memoryService Optional memory service for activity recording
    */
-  constructor(app: App, agentManager: AgentManager, provider?: BaseEmbeddingProvider) {
+  constructor(app: App, agentManager: AgentManager, memoryService?: MemoryService) {
     super(
       CommandManagerConfig.name,
       CommandManagerConfig.description,
@@ -48,7 +42,7 @@ export class CommandManagerAgent extends BaseAgent {
     
     this.app = app;
     this.agentManager = agentManager;
-    this.provider = provider || null;
+    this.memoryService = memoryService || null;
     
     // Set agent manager reference for handoff capability
     this.setAgentManager(agentManager);
@@ -57,9 +51,16 @@ export class CommandManagerAgent extends BaseAgent {
     this.registerMode(new ListCommandsMode(app));
     this.registerMode(new ExecuteCommandMode(app, this));
     
-    // Initialize activity embedder if provider is available
-    if (this.provider) {
-      this.activityEmbedder = new ToolActivityEmbedder(this.provider);
+    // Try to get memory service from plugin if not provided in constructor
+    if (!this.memoryService) {
+      try {
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        }
+      } catch (error) {
+        console.error('Error accessing memory service for command manager:', error);
+      }
     }
   }
   
@@ -140,14 +141,12 @@ export class CommandManagerAgent extends BaseAgent {
     workspaceId: string,
     workspacePath?: string[]
   ): Promise<void> {
-    if (!this.activityEmbedder) {
-      return; // Skip if no activity embedder
+    // Skip if no memory service
+    if (!this.memoryService) {
+      return;
     }
     
     try {
-      // Initialize the activity embedder
-      await this.activityEmbedder.initialize();
-      
       // Get workspace path (or use just the ID if no path provided)
       const path = workspacePath || [workspaceId];
       
@@ -155,25 +154,41 @@ export class CommandManagerAgent extends BaseAgent {
       const content = `Executed command: ${commandName}\n` +
                       `Command ID: ${commandId}\n`;
       
-      // Record the activity in workspace memory
-      await this.activityEmbedder.recordActivity(
+      // Record the activity using memory service
+      await this.memoryService.recordActivityTrace(
         workspaceId,
-        path,
-        'project_plan', // Changed from 'command' to use supported types
-        content,
         {
-          tool: 'ExecuteCommandMode',
-          params: {
-            commandId
-          },
-          result: {
-            success: true
+          type: 'research', // Using supported activity type
+          content,
+          metadata: {
+            tool: 'ExecuteCommandMode',
+            params: {
+              commandId
+            },
+            result: {
+              success: true
+            },
+            relatedFiles: []
           }
         }
       );
     } catch (error) {
       // Log but don't fail the main operation
       console.error('Failed to record command activity:', error);
+      
+      // Try to get memory service from plugin if not available
+      if (!this.memoryService) {
+        try {
+          const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+          if (plugin?.services?.memoryService) {
+            this.memoryService = plugin.services.memoryService;
+            // Try again with the newly found service
+            await this.recordCommandActivity(commandId, commandName, workspaceId, workspacePath);
+          }
+        } catch (retryError) {
+          console.error('Error accessing memory service for retry:', retryError);
+        }
+      }
     }
   }
   

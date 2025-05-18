@@ -2,18 +2,29 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { DeleteContentParams, DeleteContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
+import { EmbeddingService } from '../../../database/services/EmbeddingService';
+import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for deleting content from a file
  */
 export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteContentResult> {
   private app: App;
+  private embeddingService: EmbeddingService | null = null;
+  private searchService: ChromaSearchService | null = null;
   
   /**
    * Create a new DeleteContentMode
    * @param app Obsidian app instance
+   * @param embeddingService Optional EmbeddingService for updating embeddings
+   * @param searchService Optional SearchService for updating embeddings
    */
-  constructor(app: App) {
+  constructor(
+    app: App,
+    embeddingService?: EmbeddingService | null,
+    searchService?: ChromaSearchService | null
+  ) {
     super(
       'deleteContent',
       'Delete Content',
@@ -22,6 +33,8 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
     );
     
     this.app = app;
+    this.embeddingService = embeddingService || null;
+    this.searchService = searchService || null;
   }
   
   /**
@@ -31,13 +44,16 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
    */
   async execute(params: DeleteContentParams): Promise<DeleteContentResult> {
     try {
-      const { filePath, content, workspaceContext, handoff } = params;
+      const { filePath, content, workspaceContext, handoff, sessionId } = params;
       
       const deletions = await ContentOperations.deleteContent(
         this.app,
         filePath,
         content
       );
+      
+      // Update embeddings for the file if available
+      await this.updateEmbeddingsWithChromaDB(filePath, workspaceContext, sessionId);
       
       const response = this.prepareResult(
         true,
@@ -57,6 +73,61 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       return response;
     } catch (error) {
       return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+    }
+  }
+  
+  /**
+   * Update the file embeddings using ChromaDB if available
+   * @param filePath Path to the file
+   * @param workspaceContext Workspace context
+   * @param sessionId Session ID for activity recording
+   */
+  private async updateEmbeddingsWithChromaDB(
+    filePath: string,
+    workspaceContext?: any,
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      // Skip if no ChromaDB services available
+      if (!this.searchService && !this.embeddingService) {
+        return;
+      }
+      
+      // Parse workspace context for workspace ID
+      const parsedContext = parseWorkspaceContext(workspaceContext);
+      const workspaceId = parsedContext?.workspaceId;
+      
+      // Update file index with ChromaDB if searchService is available
+      if (this.searchService) {
+        await this.searchService.indexFile(
+          filePath,
+          workspaceId,
+          { 
+            force: true, // Force reindexing since content changed
+            sessionId: sessionId
+          }
+        );
+      } 
+      // Fallback to using EmbeddingService directly
+      else if (this.embeddingService) {
+        // First, get the updated file content
+        const updatedContent = await ContentOperations.readContent(this.app, filePath);
+        
+        // Generate embedding for updated file content
+        const embedding = await this.embeddingService.getEmbedding(updatedContent);
+        
+        if (embedding) {
+          // Store embedding directly in ChromaDB via FileEmbeddingCollection
+          // Skip direct storage as this should be handled by searchService
+          console.log('Embedding generated for updated content in deleteContentMode, but not stored directly.');
+          // The searchService handles this via indexFile method
+          // No action needed here as the architecture uses services
+        }
+      }
+    } catch (error) {
+      console.error('Error updating embeddings with ChromaDB:', error);
+      // Don't throw error - embedding update is a secondary operation
+      // and should not prevent the primary operation from succeeding
     }
   }
   

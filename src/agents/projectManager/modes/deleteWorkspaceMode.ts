@@ -1,17 +1,19 @@
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   DeleteWorkspaceParameters, 
   WorkspaceResult
 } from '../../../database/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
+import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**
  * Mode to delete a workspace
  */
 export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, WorkspaceResult> {
   private app: App;
-  private workspaceDb: IndexedDBWorkspaceDatabase;
+  private plugin: Plugin;
+  private workspaceService: WorkspaceService | null = null;
   
   /**
    * Create a new DeleteWorkspaceMode
@@ -25,7 +27,15 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
       '1.0.0'
     );
     this.app = app;
-    this.workspaceDb = new IndexedDBWorkspaceDatabase();
+    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    
+    // Safely access the workspace service
+    if (this.plugin) {
+      const pluginWithServices = this.plugin as ClaudesidianPlugin;
+      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
+        this.workspaceService = pluginWithServices.services.workspaceService;
+      }
+    }
   }
   
   /**
@@ -35,16 +45,18 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
    */
   async execute(params: DeleteWorkspaceParameters): Promise<WorkspaceResult> {
     try {
-      // Initialize database connection if needed
-      await this.workspaceDb.initialize();
-      
       // Validate parameters
       if (!params.id) {
         return this.prepareResult(false, undefined, 'Workspace ID is required');
       }
       
       // Get the workspace
-      const workspace = await this.workspaceDb.getWorkspace(params.id);
+      const workspaceService = this.workspaceService;
+      if (!workspaceService) {
+        return this.prepareResult(false, undefined, 'Workspace service not available');
+      }
+      
+      const workspace = await workspaceService.getWorkspace(params.id);
       if (!workspace) {
         return this.prepareResult(
           false, 
@@ -69,22 +81,11 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
         );
       }
       
-      // Delete the workspace
-      await this.workspaceDb.deleteWorkspace(params.id, {
+      // Delete the workspace (WorkspaceService will handle parent-child relationships)
+      await workspaceService.deleteWorkspace(params.id, {
         deleteChildren: params.deleteChildren,
         preserveSettings: params.preserveSettings
       });
-      
-      // If this workspace has a parent, update its children list
-      if (workspace.parentId) {
-        const parent = await this.workspaceDb.getWorkspace(workspace.parentId);
-        if (parent) {
-          await this.workspaceDb.updateWorkspace(parent.id, {
-            childWorkspaces: parent.childWorkspaces.filter((id: string) => id !== params.id),
-            lastAccessed: Date.now()
-          });
-        }
-      }
       
       return this.prepareResult(
         true,

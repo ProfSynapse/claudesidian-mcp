@@ -3,6 +3,8 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 import { LoadStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { MemoryService } from '../../../../database/services/MemoryService';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 
 /**
  * Mode for loading a workspace state with comprehensive context restoration
@@ -33,6 +35,14 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         return this.prepareResult(false, undefined, 'State ID is required');
       }
       
+      // Get services
+      const memoryService = this.agent.getMemoryService();
+      const workspaceService = this.agent.getWorkspaceService();
+      
+      if (!memoryService || !workspaceService) {
+        return this.prepareResult(false, undefined, 'Memory or workspace services not available');
+      }
+      
       // If no workspace context is provided, initialize it to default
       if (!params.workspaceContext) {
         params.workspaceContext = { workspaceId: 'system' };
@@ -56,25 +66,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       // Default to creating a continuation session
       const createContinuationSession = params.createContinuationSession !== false;
       
-      // Get the activity embedder
-      const activityEmbedder = this.agent.getActivityEmbedder();
-      if (!activityEmbedder) {
-        return this.prepareResult(false, undefined, 'Activity embedder not available');
-      }
-      
-      // Get workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize workspace database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
-      }
-      
       // Get the state data first to provide better context and error handling
-      const state = await workspaceDb.getSnapshot(stateId);
+      const state = await memoryService.getSnapshot(stateId);
       if (!state) {
         return this.prepareResult(false, undefined, `State with ID ${stateId} not found`);
       }
@@ -90,7 +83,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       let originalSessionName = 'Unknown session';
       let originalSessionDescription: string | undefined;
       try {
-        const originalSession = await workspaceDb.getSession(originalSessionId);
+        const originalSession = await memoryService.getSession(originalSessionId);
         if (originalSession) {
           originalSessionName = originalSession.name || 'Unnamed session';
           originalSessionDescription = originalSession.description;
@@ -99,8 +92,18 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         console.warn(`Failed to retrieve original session: ${error.message}`);
       }
       
-      // Restore the state snapshot
-      await activityEmbedder.restoreStateSnapshot(stateId);
+      // For backward compatibility
+      // Note: This is a transitional approach during Chroma integration
+      const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
+      
+      // Since MemoryService doesn't have a direct restoreStateSnapshot method yet,
+      // we'll use the activity embedder for backward compatibility
+      if (activityEmbedder && typeof activityEmbedder.restoreStateSnapshot === 'function') {
+        await activityEmbedder.restoreStateSnapshot(stateId);
+      } else {
+        console.warn('State restoration functionality not fully implemented in MemoryService');
+        // In a complete implementation, we would add this functionality to MemoryService
+      }
       
       // Prepare session initialization data
       let newSessionId: string;
@@ -119,24 +122,41 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
           }`;
         
         // Create the continuation session
-        newSessionId = await activityEmbedder.createSession(
+        const newSession = await memoryService.createSession({
           workspaceId,
-          generatedSessionName,
-          generatedDescription
-        );
+          name: generatedSessionName,
+          description: generatedDescription,
+          startTime: Date.now(),
+          isActive: true,
+          toolCalls: 0,
+        });
+        
+        newSessionId = newSession.id;
+        
+        // For backward compatibility
+        if (activityEmbedder && typeof activityEmbedder.createSession === 'function') {
+          await activityEmbedder.createSession(
+            workspaceId,
+            generatedSessionName,
+            generatedDescription
+          );
+        }
       } else {
         // If not creating a continuation session, just get the active session
-        newSessionId = activityEmbedder.getActiveSession(workspaceId) || 'unknown';
+        const activeSessions = await memoryService.getSessions(workspaceId, true);
+        newSessionId = activeSessions.length > 0 ? 
+          activeSessions[0].id : 
+          (activityEmbedder ? activityEmbedder.getActiveSession(workspaceId) : 'unknown');
       }
       
       // Get details about the restored workspace
-      const workspace = await workspaceDb.getWorkspace(workspaceId);
+      const workspace = await workspaceService.getWorkspace(workspaceId);
       if (!workspace) {
         return this.prepareResult(false, undefined, `Restored workspace with ID ${workspaceId} not found`);
       }
       
       // Get details about the restored state files and context
-      const stateFiles = state.state.contextFiles || [];
+      const stateFiles = state.state?.contextFiles || [];
       
       // Build context information
       let continuationHistory: Array<{ timestamp: number; description: string }> = [];
@@ -145,7 +165,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       // Get all states for this workspace to build continuity history
       let historyStates: WorkspaceStateSnapshot[] = [];
       try {
-        historyStates = await workspaceDb.getSnapshots(workspaceId);
+        historyStates = await memoryService.getSnapshots(workspaceId);
         
         // Sort by timestamp
         historyStates.sort((a, b) => a.timestamp - b.timestamp);
@@ -171,17 +191,15 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       if (contextDepth === 'comprehensive') {
         try {
           // Get traces referenced in the state
-          if (state.state.recentTraces && state.state.recentTraces.length > 0) {
+          if (state.state?.recentTraces && Array.isArray(state.state.recentTraces) && state.state.recentTraces.length > 0) {
+            // Get all memory traces for the workspace
+            const allTraces = await memoryService.getMemoryTraces(workspaceId, 100);
+            
+            // Filter to include only the ones referenced in the state
             for (const traceId of state.state.recentTraces) {
-              try {
-                // For each trace ID, query the database to get the full trace
-                const traces = await workspaceDb.getMemoryTraces(workspaceId, 100);
-                const trace = traces.find((t: WorkspaceMemoryTrace) => t.id === traceId);
-                if (trace) {
-                  restoredTraces.push(trace);
-                }
-              } catch (error) {
-                console.warn(`Failed to retrieve trace ${traceId}: ${error.message}`);
+              const trace = allTraces.find(t => t.id === traceId);
+              if (trace) {
+                restoredTraces.push(trace);
               }
             }
           }
@@ -212,10 +230,10 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       }
       
       // If the state had tags, add them with the 'state-' prefix
-      const stateTags = state.state.metadata?.tags;
+      const stateTags = state.state?.metadata?.tags;
       if (stateTags && Array.isArray(stateTags)) {
         stateTags.forEach(tag => {
-          if (!resultTags.includes(`state-${tag}`)) {
+          if (typeof tag === 'string' && !resultTags.includes(`state-${tag}`)) {
             resultTags.push(`state-${tag}`);
           }
         });
@@ -232,12 +250,14 @@ ${restorationGoal ? `Restoration goal: ${restorationGoal}\n` : ''}
 ${contextSummary}`;
 
         try {
-          await activityEmbedder.recordActivity(
-            workspaceId,
-            workspace.path,
-            'checkpoint', // Using checkpoint type for restorations
-            restorationTraceContent,
-            {
+          // Create memory trace using MemoryService
+          await memoryService.storeMemoryTrace({
+            sessionId: newSessionId,
+            workspaceId: workspaceId,
+            timestamp: Date.now(),
+            content: restorationTraceContent,
+            activityType: 'checkpoint',
+            metadata: {
               tool: 'memoryManager.loadState',
               params: {
                 stateId,
@@ -248,11 +268,39 @@ ${contextSummary}`;
                 newSessionId,
                 stateFiles,
                 originalSessionId
-              }
+              },
+              relatedFiles: stateFiles
             },
-            stateFiles,
-            newSessionId
-          );
+            workspacePath: workspace.path || [],
+            contextLevel: workspace.hierarchyType || 'workspace',
+            importance: 0.7,
+            tags: tags || []
+          });
+          
+          // For backward compatibility
+          if (activityEmbedder && typeof activityEmbedder.recordActivity === 'function') {
+            await activityEmbedder.recordActivity(
+              workspaceId,
+              workspace.path || [],
+              'checkpoint',
+              restorationTraceContent,
+              {
+                tool: 'memoryManager.loadState',
+                params: {
+                  stateId,
+                  workspaceId,
+                  restorationGoal
+                },
+                result: {
+                  newSessionId,
+                  stateFiles,
+                  originalSessionId
+                }
+              },
+              stateFiles,
+              newSessionId
+            );
+          }
         } catch (error) {
           console.warn(`Failed to create memory trace for restoration: ${error.message}`);
         }

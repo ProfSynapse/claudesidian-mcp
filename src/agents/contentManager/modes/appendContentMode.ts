@@ -2,18 +2,29 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { AppendContentParams, AppendContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
+import { EmbeddingService } from '../../../database/services/EmbeddingService';
+import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for appending content to a file
  */
 export class AppendContentMode extends BaseMode<AppendContentParams, AppendContentResult> {
   private app: App;
+  private embeddingService: EmbeddingService | null = null;
+  private searchService: ChromaSearchService | null = null;
   
   /**
    * Create a new AppendContentMode
    * @param app Obsidian app instance
+   * @param embeddingService Optional EmbeddingService for updating embeddings
+   * @param searchService Optional SearchService for updating embeddings
    */
-  constructor(app: App) {
+  constructor(
+    app: App,
+    embeddingService?: EmbeddingService | null,
+    searchService?: ChromaSearchService | null
+  ) {
     super(
       'appendContent',
       'Append Content',
@@ -22,6 +33,8 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
     );
     
     this.app = app;
+    this.embeddingService = embeddingService || null;
+    this.searchService = searchService || null;
   }
   
   /**
@@ -31,9 +44,12 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
    */
   async execute(params: AppendContentParams): Promise<AppendContentResult> {
     try {
-      const { filePath, content, workspaceContext, handoff } = params;
+      const { filePath, content, workspaceContext, handoff, sessionId } = params;
       
       const result = await ContentOperations.appendContent(this.app, filePath, content);
+      
+      // Update embeddings for the file if available
+      await this.updateEmbeddingsWithChromaDB(filePath, workspaceContext, sessionId);
       
       const response = this.prepareResult(
         true,
@@ -54,6 +70,61 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
       return response;
     } catch (error) {
       return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+    }
+  }
+  
+  /**
+   * Update the file embeddings using ChromaDB if available
+   * @param filePath Path to the file
+   * @param workspaceContext Workspace context
+   * @param sessionId Session ID for activity recording
+   */
+  private async updateEmbeddingsWithChromaDB(
+    filePath: string,
+    workspaceContext?: any,
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      // Skip if no ChromaDB services available
+      if (!this.searchService && !this.embeddingService) {
+        return;
+      }
+      
+      // Parse workspace context for workspace ID
+      const parsedContext = parseWorkspaceContext(workspaceContext);
+      const workspaceId = parsedContext?.workspaceId;
+      
+      // Update file index with ChromaDB if searchService is available
+      if (this.searchService) {
+        await this.searchService.indexFile(
+          filePath,
+          workspaceId,
+          { 
+            force: true, // Force reindexing since content changed
+            sessionId: sessionId
+          }
+        );
+      } 
+      // Fallback to using EmbeddingService directly
+      else if (this.embeddingService) {
+        // First, get the updated file content
+        const updatedContent = await ContentOperations.readContent(this.app, filePath);
+        
+        // Generate embedding for updated file content
+        const embedding = await this.embeddingService.getEmbedding(updatedContent);
+        
+        if (embedding) {
+          // Store embedding directly in ChromaDB via FileEmbeddingCollection
+          // Skip direct storage as this should be handled by searchService
+          console.log('Embedding generated for updated content in appendContentMode, but not stored directly.');
+          // The searchService handles this via indexFile method
+          // No action needed here as the architecture uses services
+        }
+      }
+    } catch (error) {
+      console.error('Error updating embeddings with ChromaDB:', error);
+      // Don't throw error - embedding update is a secondary operation
+      // and should not prevent the primary operation from succeeding
     }
   }
   

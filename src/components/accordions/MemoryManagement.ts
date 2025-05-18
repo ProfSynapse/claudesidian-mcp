@@ -5,8 +5,10 @@ import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian'
 import { MemoryManagerAgent } from '../../agents/memoryManager/memoryManager';
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { DEFAULT_MEMORY_SETTINGS } from '../../types';
-import { IndexingService } from '../../database/services/indexingService';
-import { EmbeddingManager } from '../../database/services/embeddingManager';
+import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { ChromaSearchService } from '../../database/services/ChromaSearchService';
+import { MemoryService } from '../../database/services/MemoryService';
+import { EmbeddingServiceAdapter } from '../../database/services/EmbeddingServiceAdapter';
 import { SearchService } from '../../database/services/searchService';
 
 /**
@@ -17,10 +19,10 @@ export class MemoryManagementAccordion extends Accordion {
     private settings: Settings;
     private memorySettingsContainer: HTMLElement;
     
-    // Direct services
-    private indexingService: IndexingService | undefined;
-    private embeddingManager: EmbeddingManager | undefined;
-    private searchService: SearchService | undefined;
+    // ChromaDB Services
+    private embeddingService: EmbeddingService | undefined;
+    private chromaSearchService: ChromaSearchService | undefined;
+    private memoryService: MemoryService | undefined;
     
     // Agents (for backward compatibility)
     private vaultLibrarian: VaultLibrarianAgent | undefined;
@@ -32,26 +34,26 @@ export class MemoryManagementAccordion extends Accordion {
      * Create a new Memory Management accordion
      * @param containerEl Parent container element
      * @param settings Plugin settings
-     * @param indexingService IndexingService for file indexing operations
-     * @param embeddingManager EmbeddingManager for embedding provider management
-     * @param searchService SearchService for search operations
+     * @param embeddingService EmbeddingService for generating and managing embeddings
+     * @param chromaSearchService ChromaSearchService for search operations
+     * @param memoryService MemoryService for memory traces and sessions
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
      * @param memoryManager MemoryManager agent instance (optional)
      */
     constructor(
         containerEl: HTMLElement, 
         settings: Settings,
-        indexingService?: IndexingService,
-        embeddingManager?: EmbeddingManager,
-        searchService?: SearchService,
+        embeddingService?: EmbeddingService,
+        chromaSearchService?: ChromaSearchService,
+        memoryService?: MemoryService,
         vaultLibrarian?: VaultLibrarianAgent,
         memoryManager?: MemoryManagerAgent
     ) {
         super(containerEl, 'Memory Management', false);
         this.settings = settings;
-        this.indexingService = indexingService;
-        this.embeddingManager = embeddingManager;
-        this.searchService = searchService;
+        this.embeddingService = embeddingService;
+        this.chromaSearchService = chromaSearchService;
+        this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
         this.memoryManager = memoryManager;
         
@@ -70,7 +72,7 @@ export class MemoryManagementAccordion extends Accordion {
         // Memory settings are now visible by default via CSS
         
         // Initialize memory settings tab if services or agent exists
-        const hasServices = this.indexingService && this.embeddingManager;
+        const hasServices = this.embeddingService && this.chromaSearchService && this.memoryService;
         const hasAgent = this.vaultLibrarian;
         
         if (hasServices || hasAgent) {
@@ -98,7 +100,7 @@ export class MemoryManagementAccordion extends Accordion {
         this.memorySettingsContainer.empty();
         
         // Check if we have services available (preferred) or need to fall back to agents
-        const hasServices = this.indexingService && this.embeddingManager;
+        const hasServices = this.embeddingService && this.chromaSearchService && this.memoryService;
         const hasAgent = this.vaultLibrarian;
         
         if (!hasServices && !hasAgent) {
@@ -111,13 +113,30 @@ export class MemoryManagementAccordion extends Accordion {
         }
         
         // Create memory settings tab with services (preferred) or agents (fallback)
+        // Use an adapter for EmbeddingService to make it compatible with IndexingService interface
+        const indexingAdapter = this.embeddingService 
+            ? new EmbeddingServiceAdapter(this.embeddingService, window.app)
+            : undefined;
+        
+        // Create a proper SearchService instance if we have a ChromaSearchService
+        const searchService = this.chromaSearchService && this.embeddingService && this.memoryService
+            ? new SearchService(window.app, {
+                app: window.app,
+                services: {
+                    searchService: this.chromaSearchService,
+                    embeddingService: this.embeddingService,
+                    memoryService: this.memoryService
+                }
+              } as any)
+            : undefined;
+            
         this.memorySettingsTab = new MemorySettingsTab(
             this.memorySettingsContainer,
             this.settings,
             window.app,
-            this.indexingService,
-            this.embeddingManager,
-            this.searchService,
+            indexingAdapter,
+            undefined, // No direct equivalent for EmbeddingManager
+            searchService,
             this.vaultLibrarian,
             this.memoryManager
         );

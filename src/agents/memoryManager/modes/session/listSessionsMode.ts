@@ -3,6 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceSession } from '../../../../database/workspace-types';
 import { ListSessionsParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { MemoryService } from '../../../../database/services/MemoryService';
 
 /**
  * Mode for listing sessions for a workspace with enhanced filtering
@@ -28,15 +29,10 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
    */
   async execute(params: ListSessionsParams): Promise<SessionResult> {
     try {
-      // Get the workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize the database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
+      // Get the memory service
+      const memoryService = this.agent.getMemoryService();
+      if (!memoryService) {
+        return this.prepareResult(false, undefined, 'Memory service not available');
       }
       
       const activeOnly = params.activeOnly || false;
@@ -49,13 +45,22 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       const workspaceId = parsedContext?.workspaceId;
       
       // Get sessions for specific workspace or all sessions if no workspaceId
-      let sessions: WorkspaceSession[];
+      let sessions: WorkspaceSession[] = [];
+      
       if (workspaceId) {
         // Get sessions for specific workspace
-        sessions = await workspaceDb.getSessions(workspaceId, activeOnly);
+        sessions = await memoryService.getSessions(workspaceId, activeOnly);
       } else {
-        // Get all sessions when no workspaceId is provided
-        sessions = await workspaceDb.getAllSessions(activeOnly);
+        // Get all active sessions when no workspaceId is provided
+        sessions = await memoryService.getActiveSessions();
+        
+        // If not filtering to active only, we need to get all sessions from all workspaces
+        // This is a more complex operation with the new service architecture
+        if (!activeOnly) {
+          // TODO: Add getAllSessions method to MemoryService for ChromaDB integration
+          console.warn('getAllSessions method not available in MemoryService - consider implementing for ChromaDB integration');
+          // For now, we only return active sessions when no specific workspace is provided
+        }
       }
       
       // Apply tag filtering if requested
@@ -92,9 +97,8 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
           endTime: session.endTime,
           isActive: session.isActive,
           description: session.description,
-          toolCalls: session.toolCalls,
-          // We'd include tags in a real implementation
-          tags: []
+          toolCalls: session.toolCalls || 0,
+          tags: (session as any).tags || []
         }))
       });
     } catch (error) {

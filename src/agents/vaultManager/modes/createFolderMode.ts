@@ -1,9 +1,8 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParameters, CommonResult, DEFAULT_MEMORY_SETTINGS } from '../../../types';
+import { CommonParameters, CommonResult } from '../../../types';
 import { FileOperations } from '../utils/FileOperations';
-import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
-import { OpenAIProvider } from '../../../database/providers/openai-provider';
+import { MemoryService } from '../../../database/services/MemoryService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
@@ -31,13 +30,14 @@ interface CreateFolderResult extends CommonResult {
  */
 export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFolderResult> {
   private app: App;
-  private activityEmbedder: ToolActivityEmbedder | null = null;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new CreateFolderMode
    * @param app Obsidian app instance
+   * @param memoryService Optional memory service for activity recording
    */
-  constructor(app: App) {
+  constructor(app: App, memoryService?: MemoryService | null) {
     super(
       'createFolder',
       'Create Folder',
@@ -45,38 +45,18 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
       '1.0.0'
     );
     this.app = app;
+    this.memoryService = memoryService || null;
     
-    // Initialize activity embedder for workspace memory
-    this.initializeActivityEmbedder();
-  }
-  
-  /**
-   * Initialize activity embedder if needed
-   */
-  private async initializeActivityEmbedder() {
-    try {
-      // Try to get settings from the plugin
-      let memorySettings = { ...DEFAULT_MEMORY_SETTINGS };
-      
-      if (this.app.plugins) {
+    // Try to get memory service from plugin if not provided
+    if (!this.memoryService) {
+      try {
         const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-        if (plugin?.settings?.settings?.memory) {
-          memorySettings = plugin.settings.settings.memory;
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
         }
+      } catch (error) {
+        console.error('Failed to get memory service:', error);
       }
-      
-      // Only create provider if embeddings are enabled and API key is available
-      if (memorySettings.embeddingsEnabled && memorySettings.openaiApiKey) {
-        const provider = new OpenAIProvider(memorySettings);
-        this.activityEmbedder = new ToolActivityEmbedder(provider);
-      } else {
-        // Don't attempt to create a provider without an API key
-        console.log('Activity embedder disabled: embeddings not enabled or API key missing');
-        this.activityEmbedder = null;
-      }
-    } catch (error) {
-      console.error('Failed to initialize activity embedder:', error);
-      this.activityEmbedder = null;
     }
   }
   
@@ -161,44 +141,50 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
     // Parse workspace context
     const parsedContext = parseWorkspaceContext(params.workspaceContext);
     
-    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
-      return; // Skip if no workspace context or embedder
+    if (!parsedContext?.workspaceId || !this.memoryService) {
+      return; // Skip if no workspace context or memory service
     }
     
     try {
-      // Initialize the activity embedder - wrapped in try/catch to handle initialization failures gracefully
-      try {
-        await this.activityEmbedder.initialize();
-      } catch (initError) {
-        console.log('Activity embedder initialization failed, skipping activity recording:', initError);
-        return;
-      }
-      
-      // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
-      
       // Create a descriptive content about this operation
       const content = `${result.existed ? 'Found existing' : 'Created new'} folder: ${params.path}`;
       
-      // Record the activity in workspace memory
-      await this.activityEmbedder.recordActivity(
+      // Record the activity using memory service
+      await this.memoryService.recordActivityTrace(
         parsedContext.workspaceId,
-        workspacePath,
-        'research', // Most appropriate available type for folder operations
-        content,
         {
-          tool: 'CreateFolderMode',
-          params: {
-            path: params.path
+          type: 'research', // Using supported activity type
+          content,
+          metadata: {
+            tool: 'CreateFolderMode',
+            params: {
+              path: params.path
+            },
+            result: {
+              existed: result.existed
+            },
+            relatedFiles: []
           },
-          result: {
-            existed: result.existed
-          }
+          sessionId: params.sessionId
         }
       );
     } catch (error) {
       // Log but don't fail the main operation
       console.error('Failed to record folder creation activity:', error);
+      
+      // Try to get memory service from plugin if not available
+      if (!this.memoryService) {
+        try {
+          const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+          if (plugin?.services?.memoryService) {
+            this.memoryService = plugin.services.memoryService;
+            // Try again with the newly found service
+            await this.recordActivity(params, result);
+          }
+        } catch (retryError) {
+          console.error('Error accessing memory service for retry:', retryError);
+        }
+      }
     }
   }
 

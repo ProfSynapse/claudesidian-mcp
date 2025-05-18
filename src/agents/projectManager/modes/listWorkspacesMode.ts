@@ -1,19 +1,21 @@
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   ListWorkspacesParameters, 
   ListWorkspacesResult, 
   HierarchyType 
 } from '../../../database/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
+import { WorkspaceService } from '../../../database/services/WorkspaceService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**
  * Mode to list available workspaces
  */
 export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListWorkspacesResult> {
   private app: App;
-  private workspaceDb: IndexedDBWorkspaceDatabase;
+  private plugin: Plugin;
+  private workspaceService: WorkspaceService | null = null;
   
   /**
    * Create a new ListWorkspacesMode
@@ -27,7 +29,15 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       '1.0.0'
     );
     this.app = app;
-    this.workspaceDb = new IndexedDBWorkspaceDatabase();
+    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    
+    // Safely access the workspace service
+    if (this.plugin) {
+      const pluginWithServices = this.plugin as ClaudesidianPlugin;
+      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
+        this.workspaceService = pluginWithServices.services.workspaceService;
+      }
+    }
   }
   
   /**
@@ -37,19 +47,26 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
    */
   async execute(params: ListWorkspacesParameters): Promise<ListWorkspacesResult> {
     try {
-      // Initialize database connection if needed
-      await this.workspaceDb.initialize();
+      // Get workspace service
+      const workspaceService = this.workspaceService;
+      if (!workspaceService) {
+        return {
+          success: false,
+          error: 'Workspace service not available',
+          data: { workspaces: [] }
+        };
+      }
       
       // Get workspaces with optional filtering and sorting
-      const workspaces = await this.workspaceDb.getWorkspaces({
+      const workspaces = await workspaceService.getWorkspaces({
         parentId: params.parentId,
-        hierarchyType: params.hierarchyType,
-        sortBy: params.sortBy,
-        sortOrder: params.order
+        hierarchyType: params.hierarchyType as HierarchyType,
+        sortBy: params.sortBy as 'name' | 'created' | 'lastAccessed',
+        sortOrder: params.order as 'asc' | 'desc'
       });
       
       // Format the results
-      const formattedWorkspaces = workspaces.map((ws: any) => ({
+      const formattedWorkspaces = workspaces.map(ws => ({
         id: ws.id,
         name: ws.name,
         description: ws.description,

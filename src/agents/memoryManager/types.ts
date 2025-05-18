@@ -33,7 +33,7 @@ export interface MemoryParameters extends WorkspaceParameters {
 export interface MemoryResult extends CommonResult {
   /**
    * Overrides the context string from CommonResult
-   * @deprecated Use memoryContext instead for structured memory context data
+   * Note: prefer memoryContext for structured memory context data
    */
   context?: string;
   

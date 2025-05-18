@@ -2,11 +2,23 @@ import { BaseAgent } from '../baseAgent';
 import { MemoryManagerConfig } from './config';
 import * as Modes from './modes';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
+import { MemoryService } from '../../database/services/MemoryService';
+import { WorkspaceService } from '../../database/services/WorkspaceService';
 
 /**
  * Agent for managing workspace memory, sessions, and state snapshots
  */
 export class MemoryManagerAgent extends BaseAgent {
+  /**
+   * Memory service instance
+   */
+  private memoryService: MemoryService;
+
+  /**
+   * Workspace service instance
+   */
+  private workspaceService: WorkspaceService;
+
   /**
    * Create a new MemoryManagerAgent
    * @param plugin Plugin instance for accessing shared services
@@ -17,6 +29,10 @@ export class MemoryManagerAgent extends BaseAgent {
       MemoryManagerConfig.description,
       MemoryManagerConfig.version
     );
+    
+    // Get services
+    this.memoryService = plugin.services.memoryService;
+    this.workspaceService = plugin.services.workspaceService;
     
     // Register session modes
     this.registerMode(new Modes.CreateSessionMode(this));
@@ -37,33 +53,23 @@ export class MemoryManagerAgent extends BaseAgent {
    */
   async initialize(): Promise<void> {
     await super.initialize();
-    
-    // Initialize the workspace database
-    const workspaceDb = this.getWorkspaceDb();
-    if (workspaceDb && typeof workspaceDb.initialize === 'function') {
-      await workspaceDb.initialize();
-    }
-    
-    // Initialize the activity embedder
-    const activityEmbedder = this.getActivityEmbedder();
-    if (activityEmbedder && typeof activityEmbedder.initialize === 'function') {
-      await activityEmbedder.initialize();
-    }
+    // No additional initialization needed
   }
   
   /**
-   * Get the activity embedder instance
+   * Get the memory service instance
    */
-  getActivityEmbedder() {
-    return this.plugin?.getActivityEmbedder();
+  getMemoryService(): MemoryService {
+    return this.memoryService;
   }
   
   /**
-   * Get the workspace database instance
+   * Get the workspace service instance
    */
-  getWorkspaceDb() {
-    return this.plugin?.workspaceDb;
+  getWorkspaceService(): WorkspaceService {
+    return this.workspaceService;
   }
+  
   
   /**
    * Execute a mode with automatic session context tracking
@@ -75,20 +81,31 @@ export class MemoryManagerAgent extends BaseAgent {
     // If there's a workspace context but no session ID, try to get or create a session
     if (params.workspaceContext?.workspaceId && !params.workspaceContext.sessionId) {
       try {
-        // Get the activity embedder
-        const activityEmbedder = this.getActivityEmbedder();
-        if (activityEmbedder) {
-          // Try to get an active session ID
-          let sessionId = activityEmbedder.getActiveSession(parseWorkspaceContext(params.workspaceContext)?.workspaceId);
+        const workspaceId = parseWorkspaceContext(params.workspaceContext)?.workspaceId;
+        if (workspaceId) {
+          // Try to get an active session
+          let sessionId = null;
+          
+          // Get the most recent active session for this workspace
+          const activeSessions = await this.memoryService.getSessions(workspaceId, true);
+          
+          if (activeSessions && activeSessions.length > 0) {
+            sessionId = activeSessions[0].id;
+          }
           
           // If no active session, create one automatically for non-session modes
           // (for session creation, we don't want to create a session automatically)
           if (!sessionId && !modeSlug.startsWith('createSession')) {
-            sessionId = await activityEmbedder.createSession(
-              parseWorkspaceContext(params.workspaceContext)?.workspaceId,
-              `Auto-created session for ${modeSlug}`
-            );
-            console.log(`Created new session ${sessionId} for workspace ${parseWorkspaceContext(params.workspaceContext)?.workspaceId}`);
+            const newSession = await this.memoryService.createSession({
+              workspaceId: workspaceId,
+              name: `Auto-created session for ${modeSlug}`,
+              isActive: true,
+              toolCalls: 0,
+              startTime: Date.now()
+            });
+            
+            sessionId = newSession.id;
+            console.log(`Created new session ${sessionId} for workspace ${workspaceId}`);
           }
           
           if (sessionId) {

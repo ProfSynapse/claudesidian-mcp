@@ -1,21 +1,33 @@
-import { App } from 'obsidian';
-import { EmbeddingManager } from './embeddingManager';
+import { App, Plugin } from 'obsidian';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
+import { EmbeddingService } from './EmbeddingService';
+import { ChromaSearchService } from './ChromaSearchService';
+import { MemoryService } from './MemoryService';
+import ClaudesidianPlugin from '../../main';
+import { WorkspaceContext as SessionWorkspaceContext } from '../../services/SessionContextManager';
 
 /**
- * Handles semantic and combined search operations
+ * Handles semantic and combined search operations using ChromaDB
  */
 export class SearchService {
   private app: App;
-  private embeddingManager: EmbeddingManager;
+  private plugin: Plugin;
+  private embeddingService: EmbeddingService;
+  private chromaSearch: ChromaSearchService;
+  private memoryService: MemoryService;
 
-  constructor(app: App, embeddingManager: EmbeddingManager) {
+  constructor(app: App, plugin: Plugin) {
     this.app = app;
-    this.embeddingManager = embeddingManager;
+    this.plugin = plugin;
+    
+    // Get the new services from the plugin
+    this.embeddingService = (plugin as ClaudesidianPlugin).services?.embeddingService;
+    this.chromaSearch = (plugin as ClaudesidianPlugin).services?.searchService;
+    this.memoryService = (plugin as ClaudesidianPlugin).services?.memoryService;
   }
 
   /**
-   * Perform semantic search across the vault
+   * Perform semantic search across the vault using ChromaDB
    * @param query Query text to search for
    * @param limit Maximum number of results to return
    * @param threshold Minimum similarity threshold (0-1)
@@ -54,11 +66,29 @@ export class SearchService {
     error?: string;
   }> {
     try {
-      // Check if embeddings are enabled and provider exists
-      if (!this.embeddingManager.areEmbeddingsEnabled()) {
+      // Ensure ChromaDB services are available
+      if (!this.chromaSearch || !this.embeddingService) {
+        // Try to get services from the plugin if not available
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services) {
+          this.chromaSearch = plugin.services.searchService;
+          this.embeddingService = plugin.services.embeddingService;
+          this.memoryService = plugin.services.memoryService;
+        }
+      }
+      
+      if (!this.chromaSearch || !this.embeddingService) {
         return {
           success: false,
-          error: 'Embeddings functionality is currently disabled or no provider is available. Please enable embeddings and provide a valid API key in settings to use semantic search.'
+          error: 'ChromaDB search services are not available. Please restart Obsidian.'
+        };
+      }
+      
+      // Check if embeddings are enabled
+      if (!this.embeddingService.areEmbeddingsEnabled()) {
+        return {
+          success: false,
+          error: 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to use semantic search.'
         };
       }
       
@@ -73,58 +103,47 @@ export class SearchService {
       // Ensure threshold is between 0 and 1
       threshold = Math.max(0, Math.min(1, threshold));
       
-      // Check if we have a valid OpenAI API key
-      if (!this.embeddingManager.getSettings()?.openaiApiKey) {
-        console.warn('No OpenAI API key available for semantic search. Results may not be accurate.');
-      }
+      // Parse workspace context
+      const workspaceContext = parseWorkspaceContext(params?.workspaceContext);
+      const workspaceId = workspaceContext?.workspaceId;
       
-      // 1. Convert the query to an embedding vector
-      const queryEmbedding = await this.embeddingManager.getEmbedding(query.trim());
-      if (!queryEmbedding) {
-        throw new Error('Failed to generate embedding for query');
-      }
+      // SessionId might be passed through params directly or through workspaceContext
+      const sessionId = params?.sessionId || (params?.workspaceContext as any)?.sessionId;
       
-      // 2. Use workspace-db to search for similar content
-      const plugin = (this.app as any).plugins?.getPlugin('claudesidian-mcp');
-      const workspaceDb = plugin?.workspaceDb || plugin?.services?.workspaceDb;
-      if (!workspaceDb) {
-        console.error('Workspace database not found on plugin or services');
-        throw new Error('Workspace database not available');
-      }
-      
-      // Initialize database if needed
-      if (!workspaceDb.db && typeof workspaceDb.initialize === 'function') {
-        try {
-          await workspaceDb.initialize();
-          console.log("Initialized workspace database on demand");
-        } catch (initError) {
-          console.error("Failed to initialize workspace database on demand:", initError);
-          throw new Error('Failed to initialize workspace database: ' + initError.message);
-        }
-      }
-      
-      // Get search results from the database
-      const searchResults = await workspaceDb.searchMemoryTraces(queryEmbedding, {
-        workspaceId: params?.workspaceContext?.workspaceId,
-        workspacePath: params?.workspaceContext?.workspacePath,
-        sessionId: params?.workspaceContext?.sessionId,
+      // Use ChromaDB search service directly
+      const searchParams = {
+        query: query.trim(),
+        workspaceId: workspaceId,
+        sessionId: sessionId,
         limit: limit * (useGraphBoost ? 2 : 1), // Get more results when using graph boost
         threshold: threshold
+      };
+      
+      // Perform search
+      const searchResult = await this.chromaSearch.semanticSearch(searchParams.query, {
+        workspaceId: searchParams.workspaceId,
+        sessionId: searchParams.sessionId,
+        limit: searchParams.limit,
+        threshold: searchParams.threshold
       });
       
-      // 3. Format the results
-      let matches = searchResults.map((result: any) => ({
-        similarity: result.similarity,
-        content: result.content,
-        filePath: result.filePath,
-        lineStart: result.metadata?.lineStart || 0,
-        lineEnd: result.metadata?.lineEnd || 0,
+      if (!searchResult.success || !searchResult.matches) {
+        return searchResult;
+      }
+      
+      // Format the results to match the expected return format
+      let matches = searchResult.matches.map(match => ({
+        similarity: match.similarity,
+        content: match.content,
+        filePath: match.filePath,
+        lineStart: match.metadata?.lineStart || 0,
+        lineEnd: match.metadata?.lineEnd || 0,
         metadata: {
-          frontmatter: result.metadata?.frontmatter || {},
-          tags: result.metadata?.tags || [],
+          frontmatter: match.metadata?.frontmatter || {},
+          tags: match.metadata?.tags || [],
           links: {
-            outgoing: result.metadata?.links?.outgoing || [],
-            incoming: result.metadata?.links?.incoming || []
+            outgoing: match.metadata?.links?.outgoing || [],
+            incoming: match.metadata?.links?.incoming || []
           }
         }
       }));
@@ -137,7 +156,7 @@ export class SearchService {
           const graphOps = new GraphOperations();
           
           // Convert to format expected by GraphOperations
-          const recordsWithSimilarity = matches.map((match: any) => ({
+          const recordsWithSimilarity = matches.map(match => ({
             record: {
               id: match.filePath,
               filePath: match.filePath,
@@ -177,11 +196,40 @@ export class SearchService {
           
           // Re-sort by similarity and limit results
           matches = matches
-            .sort((a: any, b: any) => b.similarity - a.similarity)
+            .sort((a, b) => b.similarity - a.similarity)
             .slice(0, limit);
         } catch (boostError) {
           console.error('Error applying graph boost:', boostError);
           // Continue with unboosted results
+        }
+      }
+      
+      // Record this activity if in a workspace context
+      if (workspaceId && this.memoryService) {
+        try {
+          await this.memoryService.recordActivityTrace(
+            workspaceId,
+            {
+              type: 'research',
+              content: `Semantic search for "${query.trim()}" found ${matches.length} results`,
+              metadata: {
+                tool: 'SemanticSearchMode',
+                params: {
+                  query: query.trim(),
+                  limit,
+                  threshold
+                },
+                result: {
+                  success: true,
+                  matchCount: matches.length
+                },
+                relatedFiles: matches.map(m => m.filePath)
+              },
+              sessionId: params?.sessionId || (params?.workspaceContext as any)?.sessionId
+            }
+          );
+        } catch (error) {
+          console.error('Error recording search activity:', error);
         }
       }
       
@@ -200,7 +248,7 @@ export class SearchService {
   }
 
   /**
-   * Combine semantic search with metadata filtering
+   * Combine semantic search with metadata filtering using ChromaDB
    * @param query Query text to search for
    * @param filters Optional filters to apply to results
    * @param limit Maximum number of results to return
@@ -238,14 +286,6 @@ export class SearchService {
     error?: string;
   }> {
     try {
-      // Check if embeddings are enabled and provider exists
-      if (!this.embeddingManager.areEmbeddingsEnabled()) {
-        return {
-          success: false,
-          error: 'Embeddings functionality is currently disabled or no provider is available. Please enable embeddings and provide a valid API key in settings to use semantic search.'
-        };
-      }
-      
       // Extract graph options
       const graphOptions = filters.graphOptions || {};
       

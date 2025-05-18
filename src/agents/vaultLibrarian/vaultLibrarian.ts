@@ -14,6 +14,10 @@ import {
 import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { OpenAIProvider } from '../../database/providers/openai-provider';
 import { IndexingService } from '../../database/services/indexingService';
+import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { WorkspaceService } from '../../database/services/WorkspaceService';
+import { MemoryService } from '../../database/services/MemoryService';
+import { ChromaSearchService } from '../../database/services/ChromaSearchService';
 
 /**
  * Agent for searching and navigating the vault
@@ -22,10 +26,13 @@ export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
   private embeddingProvider: EmbeddingProvider | null = null;
   private indexingService: IndexingService | null = null;
+  private embeddingService: EmbeddingService | null = null;
+  private workspaceService: WorkspaceService | null = null;
+  private memoryService: MemoryService | null = null;
+  private searchService: ChromaSearchService | null = null;
   private settings: MemorySettings;
   private currentIndexingOperationId: string | null = null;
   private indexingInProgress: boolean = false;
-  public activityEmbedder: any = null; // Add this property to store the ToolActivityEmbedder
   private usageStats = {
     tokensUsed: 0,
     lastReset: new Date().getTime(),
@@ -66,33 +73,39 @@ export class VaultLibrarianAgent extends BaseAgent {
         if (plugin?.settings?.settings?.memory?.embeddingsEnabled && plugin.settings.settings.memory.openaiApiKey) {
           this.settings = plugin.settings.settings.memory;
           this.embeddingProvider = new OpenAIProvider(this.settings);
-          
-          // Initialize ToolActivityEmbedder with the provider
-          if (this.embeddingProvider) {
-            // Import required classes
-            const { ToolActivityEmbedder } = require('../../database/tool-activity-embedder');
-            this.activityEmbedder = new ToolActivityEmbedder(this.embeddingProvider);
-            console.log("Activity embedder initialized in VaultLibrarianAgent constructor");
-          }
         }
         
-        // Try to get the services from the plugin
+        // Get services from the plugin
         if (plugin?.services) {
+          // Get indexing service
           if (plugin.services.indexingService) {
             this.indexingService = plugin.services.indexingService;
           }
           
-          // Make sure the workspaceDb is initialized and accessible
-          if (!plugin.workspaceDb && plugin.services.workspaceDb) {
-            plugin.workspaceDb = plugin.services.workspaceDb;
-            console.log("Attached workspaceDb from services to plugin instance");
+          // Get ChromaDB services
+          if (plugin.services.embeddingService) {
+            this.embeddingService = plugin.services.embeddingService;
           }
+          
+          if (plugin.services.workspaceService) {
+            this.workspaceService = plugin.services.workspaceService;
+          }
+          
+          if (plugin.services.memoryService) {
+            this.memoryService = plugin.services.memoryService;
+          }
+          
+          if (plugin.services.searchService) {
+            this.searchService = plugin.services.searchService;
+          }
+          
+          // No longer need to handle workspaceDb compatibility
+          // ChromaDB services are now used directly
         }
       }
     } catch (error) {
-      console.error("Error initializing embedding provider and activity embedder:", error);
+      console.error("Error initializing services:", error);
       this.embeddingProvider = null;
-      this.activityEmbedder = null;
     }
     
     // Register traditional search modes - these are always available
@@ -101,11 +114,11 @@ export class VaultLibrarianAgent extends BaseAgent {
     this.registerMode(new SearchPropertyMode(app));
     this.registerMode(new BatchSearchMode(app));
     
-    // Register embedding-based modes
-    this.registerMode(new SemanticSearchMode(app));
-    this.registerMode(new CombinedSearchMode(app));
-    this.registerMode(new CreateEmbeddingsMode(app));
-    this.registerMode(new BatchCreateEmbeddingsMode(app));
+    // Register embedding-based modes with ChromaDB services
+    this.registerMode(new SemanticSearchMode(app, this.memoryService, this.searchService));
+    this.registerMode(new CombinedSearchMode(app, this.memoryService, this.searchService));
+    this.registerMode(new CreateEmbeddingsMode(app, this.memoryService, this.embeddingService));
+    this.registerMode(new BatchCreateEmbeddingsMode(app, this.memoryService, this.embeddingService));
   }
   
   /**
@@ -123,29 +136,19 @@ export class VaultLibrarianAgent extends BaseAgent {
   updateSettings(settings: MemorySettings): void {
     this.settings = settings;
     
-    // Clean up existing provider and activity embedder
+    // Clean up existing provider
     if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
       (this.embeddingProvider as any).close();
       this.embeddingProvider = null;
-      this.activityEmbedder = null;
     }
     
     // Create new provider if enabled
     if (settings.embeddingsEnabled && settings.openaiApiKey) {
       try {
         this.embeddingProvider = new OpenAIProvider(settings);
-        
-        // Initialize ToolActivityEmbedder with the new provider
-        if (this.embeddingProvider) {
-          // Import dynamically to avoid circular dependencies
-          const { ToolActivityEmbedder } = require('../../database/tool-activity-embedder');
-          this.activityEmbedder = new ToolActivityEmbedder(this.embeddingProvider);
-          console.log("Activity embedder initialized in VaultLibrarianAgent");
-        }
       } catch (error) {
-        console.error('Error initializing embedding provider or activity embedder:', error);
+        console.error('Error initializing embedding provider:', error);
         this.embeddingProvider = null;
-        this.activityEmbedder = null;
       }
     }
   }
@@ -164,23 +167,7 @@ export class VaultLibrarianAgent extends BaseAgent {
    */
   async initialize(): Promise<void> {
     await super.initialize();
-    
-    // Initialize activity embedder if needed
-    if (this.embeddingProvider && !this.activityEmbedder) {
-      try {
-        const { ToolActivityEmbedder } = require('../../database/tool-activity-embedder');
-        this.activityEmbedder = new ToolActivityEmbedder(this.embeddingProvider);
-        
-        if (typeof this.activityEmbedder.initialize === 'function') {
-          await this.activityEmbedder.initialize();
-        }
-        
-        console.log("Activity embedder initialized in VaultLibrarianAgent.initialize()");
-      } catch (error) {
-        console.error("Failed to initialize activity embedder:", error);
-        this.activityEmbedder = null;
-      }
-    }
+    // No additional initialization needed - all ChromaDB services are initialized elsewhere
   }
   
   /**
@@ -477,12 +464,6 @@ export class VaultLibrarianAgent extends BaseAgent {
    */
   onunload(): void {
     try {
-      // Clean up activity embedder if it exists
-      if (this.activityEmbedder && typeof this.activityEmbedder.initialize === 'function') {
-        console.log('Cleaning up activity embedder');
-        this.activityEmbedder = null;
-      }
-      
       // Clean up embedding provider
       if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
         (this.embeddingProvider as any).close();

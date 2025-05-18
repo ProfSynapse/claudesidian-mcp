@@ -1,6 +1,7 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { DeleteSessionParams, SessionResult } from '../../types';
+import { MemoryService } from '../../../../database/services/MemoryService';
 
 /**
  * Mode for deleting a session and optionally its associated data
@@ -31,86 +32,64 @@ export class DeleteSessionMode extends BaseMode<DeleteSessionParams, SessionResu
         return this.prepareResult(false, undefined, 'Session ID is required');
       }
       
+      // Get services
+      const memoryService = this.agent.getMemoryService();
+      if (!memoryService) {
+        return this.prepareResult(false, undefined, 'Memory service not available');
+      }
+      
       // Extract parameters
       const sessionId = params.sessionId;
       const deleteMemoryTraces = params.deleteMemoryTraces || false;
       const deleteAssociatedStates = params.deleteAssociatedStates || false;
       
-      // Get the workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize the database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
-      }
-      
       // Get the session to verify it exists and capture metadata for response
-      const session = await workspaceDb.getSession(sessionId);
+      const session = await memoryService.getSession(sessionId);
       if (!session) {
         return this.prepareResult(false, undefined, `Session with ID ${sessionId} not found`);
       }
       
       // Capture session details before deletion for the response
-      const sessionData = {
+      const sessionData: {
+        sessionId: string;
+        name: string | undefined;
+        workspaceId: string;
+        startTime: number;
+        endTime: number | undefined;
+        isActive: boolean;
+        description: string | undefined;
+        tags: any;
+        deletionStats?: {
+          tracesDeleted?: number;
+          snapshotsDeleted?: number;
+        };
+      } = {
         sessionId: session.id,
         name: session.name,
         workspaceId: session.workspaceId,
         startTime: session.startTime,
         endTime: session.endTime,
         isActive: session.isActive,
-        description: session.description
+        description: session.description,
+        tags: (session as any).tags || []
       };
       
-      // If requested, delete associated memory traces
-      if (deleteMemoryTraces) {
-        try {
-          // Implementation would depend on database structure
-          // For now, we'll assume the workspaceDb has a method to delete traces by session
-          if (typeof workspaceDb.deleteMemoryTracesBySession === 'function') {
-            await workspaceDb.deleteMemoryTracesBySession(sessionId);
-          } else {
-            console.warn('deleteMemoryTracesBySession method not available');
-          }
-        } catch (error) {
-          console.error(`Failed to delete memory traces: ${error.message}`);
-          // Continue with session deletion even if trace deletion fails
-        }
-      }
-      
-      // If requested, delete associated state snapshots
-      if (deleteAssociatedStates) {
-        try {
-          // Get snapshots associated with this session
-          const snapshots = await workspaceDb.getSnapshots(session.workspaceId, sessionId);
-          
-          // Delete each snapshot
-          for (const snapshot of snapshots) {
-            await workspaceDb.deleteSnapshot(snapshot.id);
-          }
-        } catch (error) {
-          console.error(`Failed to delete associated states: ${error.message}`);
-          // Continue with session deletion even if state deletion fails
-        }
-      }
-      
-      // Delete the session
-      // First, we need to ensure the session is inactive
-      if (session.isActive) {
-        await workspaceDb.endSession(sessionId);
-      }
-      
-      // Now, delete the session
-      // Note: We're assuming the workspaceDb has a deleteSession method
-      // If it doesn't, we'd need to implement one
-      if (typeof workspaceDb.deleteSession === 'function') {
-        await workspaceDb.deleteSession(sessionId);
-      } else {
-        // Fall back to just marking as inactive if delete isn't available
-        console.warn('deleteSession method not available, marking as inactive instead');
-        await workspaceDb.endSession(sessionId);
+      // Delete the session and optionally its associated data
+      // The deleteSession method handles traces and snapshots based on options
+      try {
+        const deleteResult = await memoryService.deleteSession(sessionId, {
+          deleteMemoryTraces: deleteMemoryTraces,
+          deleteSnapshots: deleteAssociatedStates
+        });
+        
+        // Add deletion stats to sessionData for response
+        sessionData.deletionStats = {
+          tracesDeleted: deleteResult.tracesDeleted,
+          snapshotsDeleted: deleteResult.snapshotsDeleted
+        };
+      } catch (error) {
+        console.error(`Failed to delete session: ${error.message}`);
+        return this.prepareResult(false, undefined, `Failed to delete session: ${error.message}`);
       }
       
       // Return result with the deleted session info
@@ -190,6 +169,20 @@ export class DeleteSessionMode extends BaseMode<DeleteSessionParams, SessionResu
         description: {
           type: 'string',
           description: 'Session description'
+        },
+        deletionStats: {
+          type: 'object',
+          description: 'Statistics about deletion of associated data',
+          properties: {
+            tracesDeleted: {
+              type: 'number',
+              description: 'Number of memory traces deleted'
+            },
+            snapshotsDeleted: {
+              type: 'number', 
+              description: 'Number of snapshots deleted'
+            }
+          }
         }
       },
       required: ['sessionId', 'workspaceId']

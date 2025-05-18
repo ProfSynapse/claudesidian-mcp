@@ -1,121 +1,134 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { SemanticSearchParams, SemanticSearchResult } from '../types';
-import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
-import { SearchService } from '../../../database/services/searchService';
+import { SemanticSearchParams, SearchResult } from '../types';
+import { MemoryService } from '../../../database/services/MemoryService';
+import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
- * Mode for semantic search using vector embeddings
+ * Mode for searching notes using an embedding-based semantic search
  */
-export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticSearchResult> {
-  private activityEmbedder: ToolActivityEmbedder | null = null;
+export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SearchResult> {
   private app: App;
+  private memoryService: MemoryService | null = null;
+  private searchService: ChromaSearchService | null = null;
   
   /**
    * Create a new SemanticSearchMode
    * @param app Obsidian app instance
+   * @param memoryService Optional memory service for recording activity
+   * @param searchService Optional search service for performing search
    */
-  constructor(app: App) {
+  constructor(
+    app: App, 
+    memoryService?: MemoryService | null,
+    searchService?: ChromaSearchService | null
+  ) {
     super(
       'semanticSearch',
       'Semantic Search',
-      'Search using vector embeddings',
+      'Search notes by semantic meaning using embeddings',
       '1.0.0'
     );
     
     this.app = app;
-    
-    // Activity embedder will be initialized on first use
-    this.activityEmbedder = null;
+    this.memoryService = memoryService || null;
+    this.searchService = searchService || null;
   }
   
   /**
    * Execute the mode
    * @param params Mode parameters
-   * @returns Promise that resolves with result
+   * @returns Promise that resolves with search results
    */
-  async execute(params: SemanticSearchParams): Promise<SemanticSearchResult> {
+  async execute(params: SemanticSearchParams): Promise<SearchResult> {
+    // Try to use ChromaDB implementation first if available
+    if (this.searchService) {
+      try {
+        const result = await this.executeWithChromaDB(params);
+        return result;
+      } catch (error) {
+        console.error('Error executing with ChromaDB:', error);
+        // Fall back to other methods
+      }
+    }
+    
+    // Try to get services from plugin if not passed in constructor
     try {
-      const { 
-        query, 
-        limit, 
-        threshold, 
-        workspaceContext, 
-        handoff,
-        useGraphBoost,
-        graphBoostFactor,
-        graphMaxDistance,
-        seedNotes
-      } = params;
-      
-      if (!query || query.trim() === '') {
-        return this.prepareResult(false, undefined, 'Query is required');
-      }
-      
-      // Get services from plugin
       const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-      const searchService = plugin.services?.searchService;
-      const embeddingManager = plugin.services?.embeddingManager;
-      
-      if (!searchService || !embeddingManager) {
-        return this.prepareResult(false, undefined, 'Search service is not available');
-      }
-      
-      // Check if embeddings are enabled
-      if (!embeddingManager.areEmbeddingsEnabled()) {
-        return this.prepareResult(false, undefined, 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to use semantic search.');
-      }
-      
-      // Execute semantic search
-      const result = await searchService.semanticSearch(
-        query,
-        limit || 10,
-        threshold || 0.7,
-        useGraphBoost || false,
-        graphBoostFactor || 0.3,
-        graphMaxDistance || 1,
-        seedNotes || [],
-        { workspaceContext } // Pass workspace context for session-aware search
-      );
-      
-      // Parse workspace context
-      const parsedContext = parseWorkspaceContext(workspaceContext);
-      
-      // Initialize activity embedder if needed
-      if (parsedContext?.workspaceId && !this.activityEmbedder) {
-        const provider = embeddingManager.getProvider();
-        if (provider) {
-          try {
-            this.activityEmbedder = new ToolActivityEmbedder(provider);
-          } catch (error) {
-            console.error("Failed to initialize activity embedder:", error);
+      if (plugin?.services) {
+        if (!this.searchService && plugin.services.searchService) {
+          this.searchService = plugin.services.searchService;
+          
+          // Try again with the newly found service
+          const result = await this.executeWithChromaDB(params);
+          if (result) {
+            return result;
           }
         }
+        
+        if (!this.memoryService && plugin.services.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        }
       }
-      
-      // Record this activity if in a workspace context
-      await this.recordActivity(params, result);
-      
-      // Prepare result with workspace context
-      const response = this.prepareResult(
-        result.success !== false, // Handle case where success is not explicitly set
-        {
-          matches: result.matches || []
-        },
-        result.error,
-        workspaceContext
-      );
-      
-      // Handle handoff if requested
-      if (handoff) {
-        return this.handleHandoff(handoff, response);
-      }
-      
-      return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error performing semantic search: ${error.message}`);
+      console.error('Error accessing plugin services:', error);
     }
+    
+    // Fallback message if nothing else worked
+    return this.prepareResult(
+      false,
+      undefined,
+      'Semantic search is not available - ChromaDB services not found',
+      params.workspaceContext
+    );
+  }
+  
+  /**
+   * Execute the search using ChromaDB services
+   * @param params Mode parameters
+   * @returns Promise that resolves with search results
+   */
+  private async executeWithChromaDB(params: SemanticSearchParams): Promise<SearchResult> {
+    if (!this.searchService) {
+      throw new Error('ChromaDB search service not available');
+    }
+    
+    // Create filter options
+    const searchOptions = {
+      limit: params.limit,
+      threshold: params.threshold,
+      useGraphBoost: params.useGraphBoost,
+      graphBoostFactor: params.graphBoostFactor,
+      graphMaxDistance: params.graphMaxDistance,
+      seedNotes: params.seedNotes
+    };
+    
+    // Perform the search using the ChromaDB search service
+    const result = await this.searchService.semanticSearch(
+      params.query,
+      searchOptions
+    );
+    
+    // Record this activity if in a workspace context
+    await this.recordActivity(params, result);
+    
+    // Prepare result with workspace context
+    const response = this.prepareResult(
+      result.success !== false, // Handle case where success is not explicitly set
+      {
+        matches: result.matches || []
+      },
+      result.error,
+      params.workspaceContext
+    );
+    
+    // Handle handoff if requested
+    if (params.handoff) {
+      return await super.handleHandoff(params.handoff, response);
+    }
+    
+    return response;
   }
   
   /**
@@ -127,54 +140,72 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
     // Parse workspace context
     const parsedContext = parseWorkspaceContext(params.workspaceContext);
     
-    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
-      return; // Skip if no workspace context or embedder
+    if (!parsedContext?.workspaceId) {
+      return; // Skip if no workspace context
     }
     
-    try {
-      // Initialize the activity embedder
-      await this.activityEmbedder.initialize();
-      
-      // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
-      
-      // Create a descriptive content about this search operation
-      const matchCount = result.matches?.length || 0;
-      const topMatches = result.matches?.slice(0, 3).map((m: any) => m.filePath) || [];
-      
-      const content = `Semantic search: "${params.query}"\n` +
-                      `Matches found: ${matchCount}\n` +
-                      (topMatches.length > 0 ? `Top matches: ${topMatches.join(', ')}\n` : '') +
-                      (result.error ? `Error: ${result.error}\n` : '');
-      
-      // Record the activity in workspace memory
-      await this.activityEmbedder.recordActivity(
-        parsedContext.workspaceId,
-        workspacePath,
-        'research', // Most appropriate type for searches
-        content,
-        {
-          tool: 'SemanticSearchMode',
-          params: {
-            query: params.query,
-            limit: params.limit,
-            threshold: params.threshold,
-            useGraphBoost: params.useGraphBoost,
-            graphBoostFactor: params.graphBoostFactor,
-            graphMaxDistance: params.graphMaxDistance
-          },
-          result: {
-            matchCount,
-            topMatches
+    // Try using memory service directly if available
+    if (this.memoryService) {
+      try {
+        const matchCount = result.matches?.length || 0;
+        const topMatches = result.matches?.slice(0, 3).map((m: any) => m.filePath) || [];
+        
+        const content = `Semantic search: "${params.query}"\n` +
+                        `Matches found: ${matchCount}\n` +
+                        (topMatches.length > 0 ? `Top matches: ${topMatches.join(', ')}\n` : '') +
+                        (result.error ? `Error: ${result.error}\n` : '');
+        
+        // Use memory service to record activity trace
+        await this.memoryService.recordActivityTrace(
+          parsedContext.workspaceId,
+          {
+            type: 'research',
+            content,
+            metadata: {
+              tool: 'SemanticSearchMode',
+              params: {
+                query: params.query,
+                limit: params.limit,
+                threshold: params.threshold,
+                useGraphBoost: params.useGraphBoost,
+                graphBoostFactor: params.graphBoostFactor,
+                graphMaxDistance: params.graphMaxDistance
+              },
+              result: {
+                matchCount,
+                topMatches: topMatches
+              },
+              relatedFiles: topMatches
+            },
+            sessionId: params.sessionId
           }
-        },
-        topMatches, // Related files
-        params.sessionId // Pass session ID from top level
-      );
-    } catch (error) {
-      // Log but don't fail the main operation
-      console.error('Failed to record search activity:', error);
+        );
+        
+        return;
+      } catch (error) {
+        console.error('Error recording activity with memory service:', error);
+      }
     }
+    
+    // Try to get the memory service from the plugin directly if it wasn't passed to the constructor
+    // This is a fallback in case the constructor isn't updated yet 
+    if (!this.memoryService) {
+      try {
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+          
+          // Try again with the newly obtained memory service
+          await this.recordActivity(params, result);
+          return;
+        }
+      } catch (error) {
+        console.error('Error accessing memory service from plugin:', error);
+      }
+    }
+    
+    // Log that we couldn't record the activity
+    console.warn('Unable to record search activity - memory service unavailable');
   }
   
   /**
@@ -227,7 +258,7 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
     };
     
     // Merge with common schema (workspace context and handoff)
-    return this.getMergedSchema(modeSchema);
+    return super.getMergedSchema(modeSchema);
   }
   
   /**
@@ -280,54 +311,12 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
                       type: 'string'
                     },
                     description: 'Tags in the document'
-                  },
-                  links: {
-                    type: 'object',
-                    properties: {
-                      outgoing: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            displayText: {
-                              type: 'string',
-                              description: 'Displayed text of the link'
-                            },
-                            targetPath: {
-                              type: 'string',
-                              description: 'Target path of the link'
-                            }
-                          }
-                        },
-                        description: 'Outgoing links'
-                      },
-                      incoming: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            sourcePath: {
-                              type: 'string',
-                              description: 'Source path of the link'
-                            },
-                            displayText: {
-                              type: 'string',
-                              description: 'Displayed text of the link'
-                            }
-                          }
-                        },
-                        description: 'Incoming links'
-                      }
-                    },
-                    description: 'Links in the document'
                   }
-                },
-                description: 'Additional metadata'
+                }
               }
             },
             required: ['similarity', 'content', 'filePath']
-          },
-          description: 'Matching results'
+          }
         }
       },
       required: ['matches']

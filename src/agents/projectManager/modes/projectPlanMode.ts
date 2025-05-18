@@ -53,7 +53,8 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    // Create the mode-specific schema
+    const modeSchema = {
       type: "object",
       properties: {
         primaryGoal: {
@@ -121,6 +122,9 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
       required: ['primaryGoal'],
       description: 'Create a project plan for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: When using this mode, you MUST stop execution immediately after, report directly back to the user, and wait for user approval before continuing with any other modes or actions. No other tools should be used after this one.'
     };
+    
+    // Merge with common schema (workspace context and handoff)
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

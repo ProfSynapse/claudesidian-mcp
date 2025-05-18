@@ -50,7 +50,7 @@ export interface SearchContentResult extends CommonResult {
   /**
    * List of search results
    */
-  results: SearchResult[];
+  results: SearchResultItem[];
   
   /**
    * Total number of results
@@ -69,9 +69,9 @@ export interface SearchContentResult extends CommonResult {
 }
 
 /**
- * Search result
+ * Search result item (individual search match)
  */
-export interface SearchResult {
+export interface SearchResultItem {
   /**
    * Path to the file
    */
@@ -96,6 +96,16 @@ export interface SearchResult {
    * Result score (optional)
    */
   score?: number;
+}
+
+/**
+ * Search result (collection of search results with status)
+ */
+export interface SearchResult extends CommonResult {
+  /**
+   * List of search result items
+   */
+  results?: SearchResultItem[];
 }
 
 /**

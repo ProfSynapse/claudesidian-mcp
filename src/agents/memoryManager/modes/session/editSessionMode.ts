@@ -1,6 +1,8 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { EditSessionParams, SessionResult } from '../../types';
+import { MemoryService } from '../../../../database/services/MemoryService';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 
 /**
  * Mode for editing an existing session's metadata
@@ -31,6 +33,12 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
         return this.prepareResult(false, undefined, 'Session ID is required');
       }
       
+      // Get services
+      const memoryService = this.agent.getMemoryService();
+      if (!memoryService) {
+        return this.prepareResult(false, undefined, 'Memory service not available');
+      }
+      
       // Extract parameters
       const sessionId = params.sessionId;
       const name = params.name;
@@ -40,19 +48,8 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
       const addTags = params.addTags || [];
       const removeTags = params.removeTags || [];
       
-      // Get the workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize the database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
-      }
-      
       // Get the session
-      const session = await workspaceDb.getSession(sessionId);
+      const session = await memoryService.getSession(sessionId);
       if (!session) {
         return this.prepareResult(false, undefined, `Session with ID ${sessionId} not found`);
       }
@@ -64,7 +61,7 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
       if (isActive !== undefined) {
-        updates.isActive = isActive;
+        updates.status = isActive ? 'active' : 'completed';
         
         // If we're marking as inactive, also set the end time
         if (!isActive) {
@@ -75,13 +72,32 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
         }
       }
       
+      // Handle tags
+      if (addTags.length > 0 || removeTags.length > 0) {
+        // Get current tags from session or use empty array
+        // Handle tags - they may not exist in the interface but we need to support them
+        const currentTags = (session as any).tags || [];
+        
+        // Add new tags (don't add duplicates)
+        const newTags = [...currentTags];
+        addTags.forEach(tag => {
+          if (!newTags.includes(tag)) {
+            newTags.push(tag);
+          }
+        });
+        
+        // Remove tags
+        const finalTags = newTags.filter(tag => !removeTags.includes(tag));
+        
+        // Only update if there's a change
+        if (JSON.stringify(currentTags) !== JSON.stringify(finalTags)) {
+          updates.tags = finalTags;
+        }
+      }
+      
       // Apply session goal update if provided
-      // Note: In a real implementation, we might want to:
-      // 1. Store session goal in the session object itself
-      // 2. Create a memory trace about the goal change
       if (sessionGoal !== undefined) {
-        // Currently, session goal is typically stored in the description
-        // If there's no description update, update it to include the goal
+        // If no description update already, update it to include the goal
         if (description === undefined) {
           let newDescription = session.description || '';
           
@@ -98,62 +114,62 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
           updates.description = newDescription;
         }
         
-        // Get the activity embedder to potentially record the goal change
-        const activityEmbedder = this.agent.getActivityEmbedder();
-        if (activityEmbedder) {
-          try {
-            await activityEmbedder.recordActivity(
-              session.workspaceId,
-              [], // We don't have the workspace path here - would need to fetch it
-              'project_plan',
-              `Session goal updated to: ${sessionGoal}`,
-              {
-                tool: 'memoryManager.editSession',
-                params: {
-                  sessionId,
-                  sessionGoal
-                },
-                result: {
-                  sessionId,
-                  updated: true
-                }
+        // Create a memory trace about the goal change
+        try {
+          await memoryService.storeMemoryTrace({
+            sessionId: sessionId,
+            workspaceId: session.workspaceId,
+            timestamp: Date.now(),
+            content: `Session goal updated to: ${sessionGoal}`,
+            activityType: 'project_plan',
+            metadata: {
+              tool: 'memoryManager.editSession',
+              params: {
+                sessionId,
+                sessionGoal
               },
-              [],
-              sessionId
-            );
-          } catch (error) {
-            console.warn(`Failed to record session goal update: ${error.message}`);
-          }
+              result: {
+                sessionId,
+                updated: true
+              },
+              relatedFiles: []
+            },
+            workspacePath: [],
+            contextLevel: 'workspace',
+            importance: 0.6,
+            tags: []
+          });
+          
+        } catch (error) {
+          console.warn(`Failed to record session goal update: ${error.message}`);
+          // This is non-critical, so we continue
         }
-      }
-      
-      // Apply tag updates
-      // Note: In a real implementation, we'd need to extend the session store
-      // to support tags directly. For now, we'll just log what we would do.
-      if (addTags.length > 0 || removeTags.length > 0) {
-        console.log('Would update tags:', { 
-          sessionId, 
-          addTags, 
-          removeTags,
-          // In a real implementation, we'd merge these with existing tags
-        });
       }
       
       // Only update if there are changes to make
       if (Object.keys(updates).length > 0) {
-        await workspaceDb.updateSession(sessionId, updates);
+        await memoryService.updateSession(sessionId, updates);
         
         // Get the updated session
-        const updatedSession = await workspaceDb.getSession(sessionId);
+        const updatedSession = await memoryService.getSession(sessionId);
+        
+        
+        // Get the updated session to ensure we have the latest state
+        const finalSession = await memoryService.getSession(sessionId);
+        
+        if (!finalSession) {
+          return this.prepareResult(false, undefined, `Session with ID ${sessionId} not found after update`);
+        }
         
         return this.prepareResult(true, {
-          sessionId: updatedSession.id,
-          name: updatedSession.name,
-          description: updatedSession.description,
-          workspaceId: updatedSession.workspaceId,
-          startTime: updatedSession.startTime,
-          endTime: updatedSession.endTime,
-          isActive: updatedSession.isActive
+          sessionId: finalSession.id,
+          name: finalSession.name,
+          description: finalSession.description,
+          workspaceId: finalSession.workspaceId,
+          startTime: finalSession.startTime,
+          endTime: finalSession.endTime,
+          isActive: finalSession.isActive,
+          tags: (finalSession as any).tags || []
         });
       } else {
         return this.prepareResult(true, {
@@ -163,7 +179,8 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
           workspaceId: session.workspaceId,
           startTime: session.startTime,
           endTime: session.endTime,
-          isActive: session.isActive
+          isActive: session.isActive,
+          tags: (session as any).tags || []
         }, 'No changes were made');
       }
     } catch (error) {

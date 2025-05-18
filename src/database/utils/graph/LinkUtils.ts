@@ -77,12 +77,13 @@ export class LinkUtils {
         const normalizedText = this.normalizeLinkText(text);
         
         // For each key in the map, check if either contains the other
-        for (const [key, paths] of linkMap.entries()) {
+        // Convert to array for compatibility
+        Array.from(linkMap.entries()).forEach(([key, paths]) => {
             // If the key contains our text or our text contains the key
             if (key.includes(normalizedText) || normalizedText.includes(key)) {
                 paths.forEach(path => matches.add(path));
             }
-        }
+        });
         
         return Array.from(matches);
     }

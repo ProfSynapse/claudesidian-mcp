@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   CreateWorkspaceParameters, 
@@ -7,15 +7,24 @@ import {
   HierarchyType,
   WorkspaceStatus
 } from '../../../database/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
+import { WorkspaceService } from '../../../database/services/WorkspaceService';
 import { v4 as uuidv4 } from 'uuid';
+
+// Define a custom interface for the Claudesidian plugin
+interface ClaudesidianPlugin extends Plugin {
+  services: {
+    workspaceService: WorkspaceService;
+    [key: string]: any;
+  };
+}
 
 /**
  * Mode to create a new workspace
  */
 export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, CreateWorkspaceResult> {
   private app: App;
-  private workspaceDb: IndexedDBWorkspaceDatabase;
+  private plugin: Plugin;
+  private workspaceService: WorkspaceService | null = null;
   
   /**
    * Create a new CreateWorkspaceMode
@@ -29,7 +38,15 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       '1.0.0'
     );
     this.app = app;
-    this.workspaceDb = new IndexedDBWorkspaceDatabase();
+    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    
+    // Safely access the workspace service
+    if (this.plugin) {
+      const pluginWithServices = this.plugin as ClaudesidianPlugin;
+      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
+        this.workspaceService = pluginWithServices.services.workspaceService;
+      }
+    }
   }
   
   /**
@@ -39,8 +56,10 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
    */
   async execute(params: CreateWorkspaceParameters): Promise<CreateWorkspaceResult> {
     try {
-      // Initialize database connection if needed
-      await this.workspaceDb.initialize();
+      // Check if workspace service is available
+      if (!this.workspaceService) {
+        return this.prepareResult(false, undefined, 'Workspace service not available');
+      }
       
       // Validate parameters
       if (!params.name) {
@@ -58,7 +77,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       
       // If this is a child workspace, get the parent and validate
       if (params.parentId && hierarchyType !== 'workspace') {
-        parentWorkspace = await this.workspaceDb.getWorkspace(params.parentId);
+        parentWorkspace = await this.workspaceService.getWorkspace(params.parentId);
         
         if (!parentWorkspace) {
           return this.prepareResult(
@@ -90,13 +109,9 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         path = [...parentWorkspace.path, params.parentId];
       }
       
-      // Generate a unique ID
-      const workspaceId = uuidv4();
-      
       // Create the workspace object
       const now = Date.now();
-      const newWorkspace: ProjectWorkspace = {
-        id: workspaceId,
+      const workspaceData: Omit<ProjectWorkspace, 'id'> = {
         name: params.name,
         description: params.description,
         created: now,
@@ -136,29 +151,18 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         status: 'active' as WorkspaceStatus
       };
       
-      // Save the workspace to the database
-      await this.workspaceDb.createWorkspace(newWorkspace);
-      
-      // If this is a child workspace, update the parent
-      if (parentWorkspace) {
-        await this.workspaceDb.updateWorkspace(
-          parentWorkspace.id, 
-          { 
-            childWorkspaces: [...parentWorkspace.childWorkspaces, workspaceId],
-            lastAccessed: now
-          }
-        );
-      }
+      // Save the workspace using the workspace service
+      const newWorkspace = await this.workspaceService.createWorkspace(workspaceData);
       
       const workspaceContext = {
-        workspaceId,
-        workspacePath: [...path, workspaceId]
+        workspaceId: newWorkspace.id,
+        workspacePath: [...path, newWorkspace.id]
       };
 
       return this.prepareResult(
         true,
         {
-          workspaceId,
+          workspaceId: newWorkspace.id,
           workspace: newWorkspace
         },
         undefined,

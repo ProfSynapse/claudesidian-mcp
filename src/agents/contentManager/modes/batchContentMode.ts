@@ -2,18 +2,33 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { BatchContentParams, BatchContentResult, ContentOperation } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
+import { EmbeddingService } from '../../../database/services/EmbeddingService';
+import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
+import { MemoryService } from '../../../database/services/MemoryService';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for executing multiple content operations in a batch
  */
 export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentResult> {
   private app: App;
+  private embeddingService: EmbeddingService | null = null;
+  private searchService: ChromaSearchService | null = null;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new BatchContentMode
    * @param app Obsidian app instance
+   * @param embeddingService Optional EmbeddingService for updating embeddings
+   * @param searchService Optional SearchService for updating embeddings
+   * @param memoryService Optional MemoryService for activity recording
    */
-  constructor(app: App) {
+  constructor(
+    app: App,
+    embeddingService?: EmbeddingService | null,
+    searchService?: ChromaSearchService | null,
+    memoryService?: MemoryService | null
+  ) {
     super(
       'batchContent',
       'Batch Content Operations',
@@ -22,6 +37,9 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
     );
     
     this.app = app;
+    this.embeddingService = embeddingService || null;
+    this.searchService = searchService || null;
+    this.memoryService = memoryService || null;
   }
   
   /**
@@ -31,7 +49,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
    */
   async execute(params: BatchContentParams): Promise<BatchContentResult> {
     try {
-      const { operations, workspaceContext, handoff } = params;
+      const { operations, workspaceContext, handoff, sessionId } = params;
       
       // Validate operations before execution
       if (!operations || !Array.isArray(operations) || operations.length === 0) {
@@ -89,7 +107,13 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       });
       
       // Execute operations sequentially to avoid conflicts
-      const results = [];
+      const results: Array<{
+        success: boolean;
+        error?: string;
+        data?: any;
+        type: "read" | "create" | "append" | "prepend" | "replace" | "replaceByLine" | "delete";
+        filePath: string;
+      }> = [];
       
       for (const operation of operations) {
         try {
@@ -129,6 +153,15 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
             type: operation.type,
             filePath: operation.params.filePath
           });
+          
+          // For operations that modify content, update embeddings if available
+          if (['create', 'append', 'prepend', 'replace', 'replaceByLine', 'delete'].includes(operation.type)) {
+            await this.updateEmbeddingsWithChromaDB(
+              operation.params.filePath,
+              workspaceContext,
+              sessionId
+            );
+          }
         } catch (error) {
           results.push({
             success: false,
@@ -139,9 +172,12 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
         }
       }
       
+      // Record batch activity in workspace memory
+      await this.recordBatchActivityWithChromaDB(params, results);
+      
       const response = this.prepareResult(
         true,
-        { results },
+        { results: results },
         undefined,
         workspaceContext
       );
@@ -312,6 +348,121 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       throw new Error(`Missing 'filePath' property in operation params: ${JSON.stringify(operation)}`);
     }
     return operation.params.filePath;
+  }
+  
+  /**
+   * Update the file embeddings using ChromaDB if available
+   * @param filePath Path to the file
+   * @param workspaceContext Workspace context
+   * @param sessionId Session ID for activity recording
+   */
+  private async updateEmbeddingsWithChromaDB(
+    filePath: string,
+    workspaceContext?: any,
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      // Skip if no ChromaDB services available
+      if (!this.searchService && !this.embeddingService) {
+        return;
+      }
+      
+      // Parse workspace context for workspace ID
+      const parsedContext = parseWorkspaceContext(workspaceContext);
+      const workspaceId = parsedContext?.workspaceId;
+      
+      // Update file index with ChromaDB if searchService is available
+      if (this.searchService) {
+        await this.searchService.indexFile(
+          filePath,
+          workspaceId,
+          { 
+            force: true, // Force reindexing since content changed
+            sessionId: sessionId
+          }
+        );
+      } 
+      // Fallback to using EmbeddingService directly
+      else if (this.embeddingService) {
+        // First, get the updated file content
+        const updatedContent = await ContentOperations.readContent(this.app, filePath);
+        
+        // Generate embedding for updated file content
+        const embedding = await this.embeddingService.getEmbedding(updatedContent);
+        
+        if (embedding && workspaceId) {
+          // Since we're in the else if branch, we know searchService isn't available
+          console.log(`Generated embedding for ${filePath}, but searchService not available to store it`);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating embeddings with ChromaDB:', error);
+      // Don't throw error - embedding update is a secondary operation
+      // and should not prevent the primary operation from succeeding
+    }
+  }
+  
+  /**
+   * Record batch operation activity in workspace memory
+   * @param params Batch parameters
+   * @param results Batch operation results
+   */
+  private async recordBatchActivityWithChromaDB(
+    params: BatchContentParams,
+    results: any[]
+  ): Promise<void> {
+    try {
+      // Skip if no memory service is available
+      if (!this.memoryService) {
+        return;
+      }
+      
+      // Parse workspace context
+      const parsedContext = parseWorkspaceContext(params.workspaceContext);
+      
+      // Skip if no workspace context is available
+      if (!parsedContext?.workspaceId) {
+        return;
+      }
+      
+      // Get successful operations and their file paths
+      const successfulOps = results.filter(result => result.success);
+      const relatedFiles = successfulOps.map(result => result.filePath);
+      
+      // Create a descriptive content about this batch operation
+      const opTypes = successfulOps.map(result => result.type);
+      const uniqueOpTypes = [...new Set(opTypes)];
+      
+      const content = `Performed batch operation with ${successfulOps.length} operations ` +
+        `(${uniqueOpTypes.join(', ')}) on ${relatedFiles.length} files.`;
+      
+      // Record activity using MemoryService
+      await this.memoryService.storeMemoryTrace({
+        workspaceId: parsedContext.workspaceId,
+        workspacePath: parsedContext.workspacePath || [parsedContext.workspaceId],
+        activityType: 'research', // Changed from 'edit' to a valid type
+        content: content,
+        metadata: {
+          tool: 'BatchContentMode',
+          params: {
+            operations: opTypes
+          },
+          result: {
+            files: relatedFiles,
+            count: successfulOps.length
+          },
+          relatedFiles: relatedFiles
+        },
+        sessionId: params.sessionId || '',
+        timestamp: Date.now(),
+        importance: 0.7,
+        contextLevel: 'workspace', // Changed from 'content' to valid HierarchyType
+        tags: ['batch', 'edit', 'content']
+      });
+    } catch (error) {
+      console.error('Error recording batch activity with ChromaDB:', error);
+      // Don't throw - activity recording is a secondary operation
+    }
   }
   
   /**

@@ -1,18 +1,21 @@
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   EditWorkspaceParameters, 
   WorkspaceResult,
-  WorkspaceStatus
+  WorkspaceStatus,
+  ProjectWorkspace
 } from '../../../database/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
+import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**
  * Mode to edit an existing workspace
  */
 export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, WorkspaceResult> {
   private app: App;
-  private workspaceDb: IndexedDBWorkspaceDatabase;
+  private plugin: Plugin;
+  private workspaceService: WorkspaceService | null = null;
   
   /**
    * Create a new EditWorkspaceMode
@@ -26,7 +29,15 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       '1.0.0'
     );
     this.app = app;
-    this.workspaceDb = new IndexedDBWorkspaceDatabase();
+    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    
+    // Safely access the workspace service
+    if (this.plugin) {
+      const pluginWithServices = this.plugin as ClaudesidianPlugin;
+      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
+        this.workspaceService = pluginWithServices.services.workspaceService;
+      }
+    }
   }
   
   /**
@@ -36,16 +47,19 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
    */
   async execute(params: EditWorkspaceParameters): Promise<WorkspaceResult> {
     try {
-      // Initialize database connection if needed
-      await this.workspaceDb.initialize();
-      
       // Validate parameters
       if (!params.id) {
         return this.prepareResult(false, undefined, 'Workspace ID is required');
       }
       
+      // Get the workspace service
+      const workspaceService = this.workspaceService;
+      if (!workspaceService) {
+        return this.prepareResult(false, undefined, 'Workspace service not available');
+      }
+      
       // Get the workspace
-      const workspace = await this.workspaceDb.getWorkspace(params.id);
+      const workspace = await workspaceService.getWorkspace(params.id);
       if (!workspace) {
         return this.prepareResult(
           false, 
@@ -55,14 +69,14 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       }
       
       // Prepare updates
-      const updates: Record<string, any> = {};
+      const updates: Partial<ProjectWorkspace> = {};
       
       // Apply basic property updates
       if (params.name !== undefined) updates.name = params.name;
       if (params.description !== undefined) updates.description = params.description;
       if (params.rootFolder !== undefined) updates.rootFolder = params.rootFolder;
       if (params.relatedFolders !== undefined) updates.relatedFolders = params.relatedFolders;
-      if (params.status !== undefined) updates.status = params.status;
+      if (params.status !== undefined) updates.status = params.status as WorkspaceStatus;
       
       // Merge preferences if provided
       if (params.preferences) {
@@ -73,7 +87,7 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       if (params.parentId !== undefined && params.parentId !== workspace.parentId) {
         // If changing parent, we need additional validation
         if (params.parentId) {
-          const newParent = await this.workspaceDb.getWorkspace(params.parentId);
+          const newParent = await workspaceService.getWorkspace(params.parentId);
           
           if (!newParent) {
             return this.prepareResult(
@@ -100,23 +114,8 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
             );
           }
           
-          // Update the path
+          // Update the path - WorkspaceService will handle parent-child relationships
           updates.path = [...newParent.path, newParent.id];
-          
-          // Add to new parent's children
-          await this.workspaceDb.updateWorkspace(newParent.id, {
-            childWorkspaces: [...newParent.childWorkspaces, workspace.id]
-          });
-          
-          // Remove from old parent's children if applicable
-          if (workspace.parentId) {
-            const oldParent = await this.workspaceDb.getWorkspace(workspace.parentId);
-            if (oldParent) {
-              await this.workspaceDb.updateWorkspace(oldParent.id, {
-                childWorkspaces: oldParent.childWorkspaces.filter((id: string) => id !== workspace.id)
-              });
-            }
-          }
         } else {
           // Removing parent (making it a root workspace)
           // This is only allowed for workspaces, not phases or tasks
@@ -129,16 +128,6 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
           }
           
           updates.path = [];
-          
-          // Remove from old parent's children
-          if (workspace.parentId) {
-            const oldParent = await this.workspaceDb.getWorkspace(workspace.parentId);
-            if (oldParent) {
-              await this.workspaceDb.updateWorkspace(oldParent.id, {
-                childWorkspaces: oldParent.childWorkspaces.filter((id: string) => id !== workspace.id)
-              });
-            }
-          }
         }
         
         updates.parentId = params.parentId;
@@ -146,20 +135,25 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       
       // Add activity entry
       const now = Date.now();
-      const activityHistory = [...workspace.activityHistory, {
+      const activity: {
+        timestamp: number,
+        action: 'edit' | 'create' | 'view' | 'tool',
+        toolName?: string,
+        duration?: number,
+        hierarchyPath?: string[]
+      } = {
         timestamp: now,
         action: 'edit',
         toolName: 'EditWorkspaceMode'
-      }];
+      };
       
-      updates.activityHistory = activityHistory;
-      updates.lastAccessed = now;
+      await workspaceService.addActivity(params.id, activity);
       
       // Update the workspace
-      await this.workspaceDb.updateWorkspace(params.id, updates);
+      await workspaceService.updateWorkspace(params.id, updates);
       
       // Get the updated workspace
-      const updatedWorkspace = await this.workspaceDb.getWorkspace(params.id);
+      const updatedWorkspace = await workspaceService.getWorkspace(params.id);
       
       const workspaceContext = {
         workspaceId: params.id,

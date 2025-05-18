@@ -2,6 +2,8 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { ListStatesParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { MemoryService } from '../../../../database/services/MemoryService';
+import { WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 
 /**
  * Mode for listing workspace states with filtering options
@@ -27,6 +29,12 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
    */
   async execute(params: ListStatesParams): Promise<StateResult> {
     try {
+      // Get the memory service
+      const memoryService = this.agent.getMemoryService();
+      if (!memoryService) {
+        return this.prepareResult(false, undefined, 'Memory service not available');
+      }
+      
       // If no workspace ID is provided, set it to a default value for system-wide states
       let parsedContext = parseWorkspaceContext(params.workspaceContext);
       if (!parsedContext?.workspaceId) {
@@ -44,22 +52,11 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       const order = params.order || 'desc';
       const filterTags = params.tags || [];
       
-      // Get the workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize the database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
-      }
-      
       // Get states (snapshots) for the workspace
-      let states = [];
+      let states: WorkspaceStateSnapshot[] = [];
       try {
-        console.log(`Trying to get snapshots for workspace: ${workspaceId}, session: ${targetSessionId || 'any'}`);
-        states = await workspaceDb.getSnapshots(workspaceId, targetSessionId);
+        console.log(`Trying to get snapshots for workspace: ${workspaceId || 'unknown'}, session: ${targetSessionId || 'any'}`);
+        states = await memoryService.getSnapshots(workspaceId || '', targetSessionId || undefined);
         console.log(`Retrieved ${states.length} snapshots`);
       } catch (error) {
         console.error(`Error retrieving snapshots: ${error.message}`);
@@ -68,7 +65,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
 
       // Apply tags filtering if provided
       if (filterTags.length > 0 && states.length > 0) {
-        states = states.filter((state: any) => {
+        states = states.filter((state: WorkspaceStateSnapshot) => {
           // Get tags from state metadata
           const stateTags = state.state?.metadata?.tags;
           if (!stateTags || !Array.isArray(stateTags)) {
@@ -78,14 +75,14 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
           // Check if the state has all the required tags
           return filterTags.every(tag => 
             stateTags.some(stateTag => 
-              stateTag.toLowerCase().includes(tag.toLowerCase())
+              typeof stateTag === 'string' && stateTag.toLowerCase().includes(tag.toLowerCase())
             )
           );
         });
       }
       
       // Sort states by timestamp
-      states.sort((a: any, b: any) => {
+      states.sort((a: WorkspaceStateSnapshot, b: WorkspaceStateSnapshot) => {
         return order === 'desc' 
           ? b.timestamp - a.timestamp 
           : a.timestamp - b.timestamp;
@@ -96,7 +93,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       states = states.slice(0, limit);
       
       // Map to result format
-      const mappedStates = states.map((state: any) => {
+      const mappedStates = states.map((state: WorkspaceStateSnapshot) => {
         // Base state info
         const result: {
           id: string;
@@ -122,9 +119,9 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         
         // Add context if requested
         if (includeContext) {
-          const contextFiles = state.state.contextFiles || [];
-          const traceCount = state.state.recentTraces?.length || 0;
-          const stateTags = state.state.metadata?.tags || [];
+          const contextFiles = state.state?.contextFiles || [];
+          const traceCount = Array.isArray(state.state?.recentTraces) ? state.state.recentTraces.length : 0;
+          const stateTags = state.state?.metadata?.tags || [];
           
           result.context = {
             files: contextFiles,
@@ -133,7 +130,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
           };
           
           // Add summary if available
-          if (state.state.metadata?.summary) {
+          if (state.state?.metadata?.summary) {
             result.context.summary = state.state.metadata.summary;
           }
         }

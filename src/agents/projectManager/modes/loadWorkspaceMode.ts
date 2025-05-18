@@ -1,19 +1,19 @@
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   LoadWorkspaceParameters, 
   LoadWorkspaceResult
 } from '../../../database/workspace-types';
-import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
-import { WorkspaceCacheManager } from '../../../database/workspace-cache';
+import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**
  * Mode to load a workspace as the active context
  */
 export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWorkspaceResult> {
   private app: App;
-  private workspaceDb: IndexedDBWorkspaceDatabase;
-  private cacheManager: WorkspaceCacheManager;
+  private plugin: Plugin;
+  private workspaceService: WorkspaceService | null = null;
   
   /**
    * Create a new LoadWorkspaceMode
@@ -27,8 +27,15 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       '1.0.0'
     );
     this.app = app;
-    this.workspaceDb = new IndexedDBWorkspaceDatabase();
-    this.cacheManager = new WorkspaceCacheManager();
+    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    
+    // Safely access the workspace service
+    if (this.plugin) {
+      const pluginWithServices = this.plugin as ClaudesidianPlugin;
+      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
+        this.workspaceService = pluginWithServices.services.workspaceService;
+      }
+    }
   }
   
   /**
@@ -38,9 +45,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    */
   async execute(params: LoadWorkspaceParameters): Promise<LoadWorkspaceResult> {
     try {
-      // Initialize database and cache
-      await this.workspaceDb.initialize();
-      await this.cacheManager.initialize();
+      // Check if workspace service is available
+      if (!this.workspaceService) {
+        return this.prepareResult(false, undefined, 'Workspace service not available');
+      }
       
       // Validate parameters
       if (!params.id) {
@@ -48,7 +56,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       }
       
       // Get the target workspace
-      let workspace = await this.workspaceDb.getWorkspace(params.id);
+      let workspace = await this.workspaceService.getWorkspace(params.id);
       if (!workspace) {
         return this.prepareResult(
           false, 
@@ -59,7 +67,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       
       // If specificPhaseId is provided, navigate to that node
       if (params.specificPhaseId) {
-        const specificPhase = await this.workspaceDb.getWorkspace(params.specificPhaseId);
+        const specificPhase = await this.workspaceService.getWorkspace(params.specificPhaseId);
         if (!specificPhase) {
           return this.prepareResult(
             false, 
@@ -82,28 +90,29 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       }
       
       // Update the last accessed timestamp
-      await this.workspaceDb.updateLastAccessed(workspace.id);
+      await this.workspaceService.updateLastAccessed(workspace.id);
       
-      // Preload cache based on context depth
+      // Define context depth for content loading
       const contextDepth = params.contextDepth || 'standard';
       const maxItems = contextDepth === 'minimal' ? 10 : 
                       contextDepth === 'standard' ? 50 : 100;
-      
-      const cache = await this.cacheManager.getWorkspaceCache(workspace.id, maxItems);
       
       // Get immediate children if requested
       let children = undefined;
       if (params.includeChildren) {
         children = [];
-        for (const childId of workspace.childWorkspaces) {
-          const child = await this.workspaceDb.getWorkspace(childId);
-          if (child) {
-            children.push({
-              id: child.id,
-              name: child.name,
-              hierarchyType: child.hierarchyType
-            });
-          }
+        
+        // Get all child workspaces in one call
+        const childWorkspaces = await this.workspaceService.getWorkspaces({
+          parentId: workspace.id
+        });
+        
+        for (const child of childWorkspaces) {
+          children.push({
+            id: child.id,
+            name: child.name,
+            hierarchyType: child.hierarchyType
+          });
         }
       }
       

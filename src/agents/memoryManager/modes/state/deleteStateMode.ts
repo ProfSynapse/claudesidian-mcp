@@ -1,6 +1,8 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { DeleteStateParams, StateResult } from '../../types';
+import { MemoryService } from '../../../../database/services/MemoryService';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 
 /**
  * Mode for deleting a workspace state/snapshot
@@ -31,22 +33,19 @@ export class DeleteStateMode extends BaseMode<DeleteStateParams, StateResult> {
         return this.prepareResult(false, undefined, 'State ID is required');
       }
       
+      // Get services
+      const memoryService = this.agent.getMemoryService();
+      const workspaceService = this.agent.getWorkspaceService();
+      
+      if (!memoryService || !workspaceService) {
+        return this.prepareResult(false, undefined, 'Memory or workspace services not available');
+      }
+      
       // Extract parameters
       const stateId = params.stateId;
       
-      // Get the workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize the database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
-      }
-      
       // Get the state to verify it exists and capture metadata for response
-      const state = await workspaceDb.getSnapshot(stateId);
+      const state = await memoryService.getSnapshot(stateId);
       if (!state) {
         return this.prepareResult(false, undefined, `State with ID ${stateId} not found`);
       }
@@ -61,29 +60,34 @@ export class DeleteStateMode extends BaseMode<DeleteStateParams, StateResult> {
         description: state.description
       };
       
-      // Get the activity embedder
-      const activityEmbedder = this.agent.getActivityEmbedder();
-      if (!activityEmbedder) {
-        return this.prepareResult(false, undefined, 'Activity embedder not available');
-      }
-      
       // Delete the state snapshot
-      await workspaceDb.deleteSnapshot(stateId);
+      await memoryService.deleteSnapshot(stateId);
       
-      // Record a memory trace about the state deletion
+      
+      // Get the workspace data for activity recording
+      const workspace = await workspaceService.getWorkspace(state.workspaceId);
+      
+      // Create a memory trace about the deletion
       try {
-        const workspace = await workspaceDb.getWorkspace(state.workspaceId);
         if (workspace) {
           const traceContent = `Deleted state "${state.name}" from workspace "${workspace.name}"
 State was created on ${new Date(state.timestamp).toLocaleString()}
 ${state.description ? `Description: ${state.description}` : ''}`;
           
-          await activityEmbedder.recordActivity(
-            state.workspaceId,
-            workspace.path,
-            'checkpoint',
-            traceContent,
-            {
+          // Get an active session for the workspace
+          const activeSessions = await memoryService.getSessions(state.workspaceId, true);
+          const sessionId = activeSessions.length > 0 ? 
+            activeSessions[0].id : 
+            state.sessionId; // Fallback to the state's session ID
+          
+          // Create a memory trace using MemoryService
+          await memoryService.storeMemoryTrace({
+            sessionId,
+            workspaceId: state.workspaceId,
+            timestamp: Date.now(),
+            content: traceContent,
+            activityType: 'checkpoint',
+            metadata: {
               tool: 'memoryManager.deleteState',
               params: {
                 stateId
@@ -92,11 +96,15 @@ ${state.description ? `Description: ${state.description}` : ''}`;
                 success: true,
                 stateId,
                 name: state.name
-              }
+              },
+              relatedFiles: []
             },
-            [], // No related files for deletion operation
-            activityEmbedder.getActiveSession(state.workspaceId)
-          );
+            workspacePath: workspace.path || [],
+            contextLevel: workspace.hierarchyType || 'workspace',
+            importance: 0.5,
+            tags: []
+          });
+          
         }
       } catch (error) {
         console.warn(`Failed to create memory trace for state deletion: ${error.message}`);

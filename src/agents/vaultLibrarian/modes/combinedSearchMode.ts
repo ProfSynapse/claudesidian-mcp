@@ -2,20 +2,32 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CombinedSearchParams, SemanticSearchResult } from '../types';
 import { VaultLibrarianAgent } from '../vaultLibrarian';
-import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { EmbeddingService } from '../../../database/services/EmbeddingService';
+import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
+import { MemoryService } from '../../../database/services/MemoryService';
 
 /**
  * Mode for combined search with filters and semantic search
  */
 export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticSearchResult> {
-  private activityEmbedder: ToolActivityEmbedder | null = null;
+  private embeddingService: EmbeddingService | null = null;
+  private searchService: ChromaSearchService | null = null;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new CombinedSearchMode
-   * @param app Obsidian app instance 
+   * @param app Obsidian app instance
+   * @param memoryService Optional memory service for recording activity
+   * @param searchService Optional search service for performing search
+   * @param embeddingService Optional embedding service
    */
-  constructor(private app: App) {
+  constructor(
+    private app: App,
+    memoryService?: MemoryService | null,
+    searchService?: ChromaSearchService | null,
+    embeddingService?: EmbeddingService | null
+  ) {
     super(
       'combinedSearch',
       'Combined Search',
@@ -23,22 +35,32 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
       '1.0.0'
     );
     
-    // Initialize the activity embedder if possible
-    // Since we don't have direct access to VaultLibrarian, this needs to be set up differently
-    // We'll rely on getting the provider through the plugin if needed
-    try {
-      const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
-      if (plugin?.connector?.getVaultLibrarian) {
-        const vaultLibrarian = plugin.connector.getVaultLibrarian();
-        if (vaultLibrarian?.getProvider) {
-          const provider = vaultLibrarian.getProvider();
-          if (provider) {
-            this.activityEmbedder = new ToolActivityEmbedder(provider);
+    // Store services passed from constructor
+    this.memoryService = memoryService || null;
+    this.searchService = searchService || null;
+    this.embeddingService = embeddingService || null;
+    
+    // Try to get services from plugin if not provided in constructor
+    if (!this.memoryService || !this.searchService || !this.embeddingService) {
+      try {
+        const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
+        
+        if (plugin?.services) {
+          if (!this.embeddingService && plugin.services.embeddingService) {
+            this.embeddingService = plugin.services.embeddingService;
+          }
+          
+          if (!this.searchService && plugin.services.searchService) {
+            this.searchService = plugin.services.searchService;
+          }
+          
+          if (!this.memoryService && plugin.services.memoryService) {
+            this.memoryService = plugin.services.memoryService;
           }
         }
+      } catch (error) {
+        console.error("Failed to initialize services for combined search:", error);
       }
-    } catch (error) {
-      console.error("Failed to initialize activity embedder for combined search:", error);
     }
   }
   
@@ -55,29 +77,67 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
         return this.prepareResult(false, undefined, 'Query is required');
       }
       
-      // Execute combined search by getting access to the VaultLibrarian
-      let result = { success: false, matches: [], error: "VaultLibrarian not found" };
+      // Parse workspace context early for use throughout the method
+      const parsedContext = parseWorkspaceContext(workspaceContext);
       
-      try {
-        const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
-        if (plugin?.connector?.getVaultLibrarian) {
-          const vaultLibrarian = plugin.connector.getVaultLibrarian();
-          if (vaultLibrarian?.combinedSearch) {
-            result = await vaultLibrarian.combinedSearch(
-              query,
-              filters || {},
-              limit || 10,
-              threshold || 0.7
-            );
-          } else {
-            return this.prepareResult(false, undefined, "VaultLibrarian combinedSearch method not available");
+      // Try to get ChromaDB services if not already available
+      if (!this.searchService || !this.embeddingService) {
+        try {
+          const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
+          if (plugin?.services) {
+            this.searchService = plugin.services.searchService || null;
+            this.embeddingService = plugin.services.embeddingService || null;
           }
-        } else {
-          return this.prepareResult(false, undefined, "VaultLibrarian not available through connector");
+        } catch (error) {
+          console.error("Failed to get services from plugin:", error);
         }
-      } catch (error) {
-        return this.prepareResult(false, undefined, `Error performing combined search: ${error.message}`);
       }
+      
+      // Check if services are available after attempt to get them
+      if (!this.searchService || !this.embeddingService) {
+        return this.prepareResult(false, undefined, 'Required services not available. Please ensure ChromaDB is properly configured.');
+      }
+      
+      // Execute search
+      return await this.executeSearch(params);
+    } catch (error) {
+      return this.prepareResult(false, undefined, `Error performing combined search: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Execute the search using ChromaDB services
+   * @param params Mode parameters
+   * @returns Promise that resolves with result
+   */
+  private async executeSearch(params: CombinedSearchParams): Promise<SemanticSearchResult> {
+    const { query, filters, limit, threshold, workspaceContext, handoff } = params;
+    
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(workspaceContext);
+    
+    // Check if services are available
+    if (!this.searchService) {
+      return this.prepareResult(false, undefined, 'Search service is not available');
+    }
+    
+    if (!this.embeddingService) {
+      return this.prepareResult(false, undefined, 'Embedding service is not available');
+    }
+    
+    // Check if embeddings are enabled
+    if (!this.embeddingService.areEmbeddingsEnabled()) {
+      return this.prepareResult(false, undefined, 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to use semantic search.');
+    }
+    
+    try {
+      // Execute combined search using ChromaDB search service
+      const result = await this.searchService.combinedSearch(
+        query,
+        filters || {},
+        limit || 10,
+        threshold || 0.7
+      );
       
       // Record this activity if in a workspace context
       await this.recordActivity(params, result);
@@ -94,14 +154,16 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
       
       // Handle handoff if requested
       if (handoff) {
-        return this.handleHandoff(handoff, response);
+        // Access protected method using proper inheritance
+        return await super.handleHandoff(handoff, response);
       }
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error performing combined search: ${error.message}`);
+      return this.prepareResult(false, undefined, `Error performing combined search with ChromaDB: ${error.message}`);
     }
   }
+  
   
   /**
    * Record search activity in workspace memory
@@ -112,80 +174,107 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
     params: CombinedSearchParams, 
     result: {
       success?: boolean;
-      matches?: Array<{filePath: string}>;
+      matches?: Array<{
+        similarity: number;
+        content: string;
+        filePath: string;
+        lineStart?: number;
+        lineEnd?: number;
+        metadata?: any;
+      }>;
       error?: string;
     }
   ): Promise<void> {
     // Parse workspace context
     const parsedContext = parseWorkspaceContext(params.workspaceContext);
     
-    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
-      return; // Skip if no workspace context or embedder
+    if (!parsedContext?.workspaceId) {
+      return; // Skip if no workspace context
     }
     
-    try {
-      // Initialize the activity embedder
-      await this.activityEmbedder.initialize();
-      
-      // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
-      
-      // Create a descriptive content about this search operation
-      const matchCount = result.matches?.length || 0;
-      const topMatches = result.matches?.slice(0, 3).map(m => m.filePath) || [];
-      
-      let filtersDesc = '';
-      if (params.filters) {
-        const parts = [];
-        if (params.filters.tags && params.filters.tags.length > 0) {
-          parts.push(`tags: ${params.filters.tags.join(', ')}`);
-        }
-        if (params.filters.paths && params.filters.paths.length > 0) {
-          parts.push(`paths: ${params.filters.paths.join(', ')}`);
-        }
-        if (params.filters.properties && Object.keys(params.filters.properties).length > 0) {
-          parts.push(`properties: ${JSON.stringify(params.filters.properties)}`);
-        }
-        if (params.filters.dateRange) {
-          parts.push(`dateRange: ${JSON.stringify(params.filters.dateRange)}`);
+    // Use memory service directly if available
+    if (this.memoryService) {
+      try {
+        // Create activity content
+        const matchCount = result.matches?.length || 0;
+        const topMatches = result.matches?.slice(0, 3).map(m => m.filePath) || [];
+        
+        let filtersDesc = '';
+        if (params.filters) {
+          const parts: string[] = [];
+          if (params.filters.tags && params.filters.tags.length > 0) {
+            parts.push(`tags: ${params.filters.tags.join(', ')}`);
+          }
+          if (params.filters.paths && params.filters.paths.length > 0) {
+            parts.push(`paths: ${params.filters.paths.join(', ')}`);
+          }
+          if (params.filters.properties && Object.keys(params.filters.properties).length > 0) {
+            parts.push(`properties: ${JSON.stringify(params.filters.properties)}`);
+          }
+          if (params.filters.dateRange) {
+            parts.push(`dateRange: ${JSON.stringify(params.filters.dateRange)}`);
+          }
+          
+          if (parts.length > 0) {
+            filtersDesc = `Filters: ${parts.join('; ')}\n`;
+          }
         }
         
-        if (parts.length > 0) {
-          filtersDesc = `Filters: ${parts.join('; ')}\n`;
-        }
-      }
-      
-      const content = `Combined search: "${params.query}"\n` +
-                      filtersDesc +
-                      `Matches found: ${matchCount}\n` +
-                      (topMatches.length > 0 ? `Top matches: ${topMatches.join(', ')}\n` : '') +
-                      (result.error ? `Error: ${result.error}\n` : '');
-      
-      // Record the activity in workspace memory
-      await this.activityEmbedder.recordActivity(
-        parsedContext.workspaceId,
-        workspacePath,
-        'research', // Most appropriate type for searches
-        content,
-        {
-          tool: 'CombinedSearchMode',
-          params: {
-            query: params.query,
-            filters: params.filters,
-            limit: params.limit,
-            threshold: params.threshold
-          },
-          result: {
-            matchCount,
-            topMatches
+        const content = `Combined search: "${params.query}"\n` +
+                        filtersDesc +
+                        `Matches found: ${matchCount}\n` +
+                        (topMatches.length > 0 ? `Top matches: ${topMatches.join(', ')}\n` : '') +
+                        (result.error ? `Error: ${result.error}\n` : '');
+        
+        // Record activity trace using memory service
+        await this.memoryService.recordActivityTrace(
+          parsedContext.workspaceId,
+          {
+            type: 'research',
+            content,
+            metadata: {
+              tool: 'CombinedSearchMode',
+              params: {
+                query: params.query,
+                filters: params.filters,
+                limit: params.limit,
+                threshold: params.threshold
+              },
+              result: {
+                matchCount,
+                topMatches: topMatches
+              },
+              relatedFiles: topMatches
+            },
+            sessionId: params.sessionId
           }
-        },
-        topMatches // Related files
-      );
-    } catch (error) {
-      // Log but don't fail the main operation
-      console.error('Failed to record search activity:', error);
+        );
+        
+        return;
+      } catch (error) {
+        console.error('Error recording activity with memory service:', error);
+      }
     }
+    
+    // Try to get the memory service from the plugin directly if it wasn't passed to the constructor
+    // This is a fallback in case the constructor isn't updated yet 
+    if (!this.memoryService) {
+      try {
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+          
+          // Try again with the newly obtained memory service
+          await this.recordActivity(params, result);
+          return;
+        }
+      } catch (error) {
+        console.error('Error accessing memory service from plugin:', error);
+      }
+    }
+    
+    // Log that we couldn't record the activity
+    console.warn('Unable to record search activity - memory service unavailable');
   }
   
   /**
@@ -248,7 +337,7 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
           description: 'Similarity threshold (0-1)',
           default: 0.7
         },
-        ...this.getCommonParameterSchema()
+        ...super.getCommonParameterSchema()
       },
       required: ['query']
     };
@@ -311,81 +400,21 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
                           type: 'string'
                         },
                         description: 'Tags in the document'
-                      },
-                      links: {
-                        type: 'object',
-                        properties: {
-                          outgoing: {
-                            type: 'array',
-                            items: {
-                              type: 'object',
-                              properties: {
-                                displayText: {
-                                  type: 'string',
-                                  description: 'Displayed text of the link'
-                                },
-                                targetPath: {
-                                  type: 'string',
-                                  description: 'Target path of the link'
-                                }
-                              }
-                            },
-                            description: 'Outgoing links'
-                          },
-                          incoming: {
-                            type: 'array',
-                            items: {
-                              type: 'object',
-                              properties: {
-                                sourcePath: {
-                                  type: 'string',
-                                  description: 'Source path of the link'
-                                },
-                                displayText: {
-                                  type: 'string',
-                                  description: 'Displayed text of the link'
-                                }
-                              }
-                            },
-                            description: 'Incoming links'
-                          }
-                        },
-                        description: 'Links in the document'
                       }
-                    },
-                    description: 'Additional metadata'
+                    }
                   }
                 },
                 required: ['similarity', 'content', 'filePath']
-              },
-              description: 'Matching results'
+              }
             }
           },
           required: ['matches']
         },
         workspaceContext: {
-          type: 'object',
-          properties: {
-            workspaceId: {
-              type: 'string',
-              description: 'ID of the workspace'
-            },
-            workspacePath: {
-              type: 'array',
-              items: {
-                type: 'string'
-              },
-              description: 'Path of the workspace'
-            },
-            activeWorkspace: {
-              type: 'boolean',
-              description: 'Whether this is the active workspace'
-            }
-          }
+          type: 'object'
         },
         handoffResult: {
-          type: 'object',
-          description: 'Result of the handoff operation'
+          type: 'object'
         }
       },
       required: ['success']

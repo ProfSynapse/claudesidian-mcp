@@ -1,4 +1,5 @@
 import { App, Plugin } from 'obsidian';
+import ClaudesidianPlugin from './main';
 import { MCPServer } from './server';
 import { EventManager } from './services/EventManager';
 import { AgentManager } from './services/AgentManager';
@@ -35,7 +36,7 @@ export class MCPConnector {
     
     constructor(
         private app: App,
-        private plugin: Plugin
+        private plugin: Plugin | ClaudesidianPlugin
     ) {
         this.eventManager = new EventManager();
         this.sessionContextManager = new SessionContextManager();
@@ -52,15 +53,43 @@ export class MCPConnector {
      */
     private initializeAgents(): void {
         try {
-            // Create all agents using the new agent structure
-            const contentManagerAgent = new ContentManagerAgent(this.app, this.agentManager);
-            const commandManagerAgent = new CommandManagerAgent(this.app, this.agentManager);
-            const vaultLibrarianAgent = new VaultLibrarianAgent(this.app);
+            // Get services from the plugin
+            const services = (this.plugin as any).services || {};
+            const memoryService = services.memoryService;
+            const embeddingService = services.embeddingService;
+            const searchService = services.searchService;
+            const workspaceService = services.workspaceService;
             
-            // Create project manager with plugin instance for shared access to embedder
-            const projectManagerAgent = new ProjectManagerAgent(this.app, this.plugin);
-            const vaultManagerAgent = new VaultManagerAgent(this.app);
-            const memoryManagerAgent = new MemoryManagerAgent(this.plugin);
+            // Create all agents with services
+            const contentManagerAgent = new ContentManagerAgent(
+                this.app, 
+                this.agentManager,
+                this.plugin as ClaudesidianPlugin
+            );
+            
+            const commandManagerAgent = new CommandManagerAgent(
+                this.app, 
+                this.agentManager,
+                memoryService
+            );
+            
+            const vaultLibrarianAgent = new VaultLibrarianAgent(
+                this.app
+            );
+            
+            // Create project manager with services
+            const projectManagerAgent = new ProjectManagerAgent(
+                this.app, 
+                this.plugin
+            );
+            
+            const vaultManagerAgent = new VaultManagerAgent(
+                this.app
+            );
+            
+            const memoryManagerAgent = new MemoryManagerAgent(
+                this.plugin
+            );
             
             // Register with agent manager
             this.agentManager.registerAgent(contentManagerAgent);
@@ -74,12 +103,6 @@ export class MCPConnector {
             const memorySettings = (this.plugin as any).settings?.settings?.memory;
             if (memorySettings) {
                 vaultLibrarianAgent.updateSettings(memorySettings);
-            }
-            
-            // Set the indexing service on the VaultLibrarian
-            if ((this.plugin as any).services?.indexingService) {
-                console.log("Setting indexingService on VaultLibrarianAgent");
-                vaultLibrarianAgent.setIndexingService((this.plugin as any).services.indexingService);
             }
             
             // Register all agents from the agent manager with the server
@@ -257,13 +280,6 @@ export class MCPConnector {
         return this.eventManager;
     }
     
-    /**
-     * Get the vault librarian instance (replaces legacy memory manager)
-     * @deprecated Use getVaultLibrarian instead
-     */
-    getLegacyMemoryManager(): VaultLibrarianAgent | null {
-        return this.getVaultLibrarian();
-    }
     
     /**
      * Get the vault librarian instance

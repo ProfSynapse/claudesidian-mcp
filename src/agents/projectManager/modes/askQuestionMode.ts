@@ -47,7 +47,8 @@ export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    // Create the mode-specific schema
+    const modeSchema = {
       type: "object",
       properties: {
         context: {
@@ -65,6 +66,9 @@ export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult
       required: ['context'],
       description: 'Ask questions to clarify user intent or gather more information for internal planning purposes only. This tool does NOT interact with the Obsidian vault. IMPORTANT: When using this mode, you MUST stop execution immediately after, report directly back to the user, and wait for user response before continuing with any other modes or actions. No other tools should be used after this one.'
     };
+    
+    // Merge with common schema (workspace context and handoff)
+    return this.getMergedSchema(modeSchema);
   }
 
   /**

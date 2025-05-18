@@ -75,7 +75,7 @@ export class GraphOperations {
         
         // Apply multi-level graph boosting
         // Start with initial scores
-        let currentScores = new Map<string, number>();
+        const currentScores = new Map<string, number>();
         resultEmbeddings.forEach(item => {
             currentScores.set(item.record.filePath, item.similarity);
         });
@@ -84,13 +84,13 @@ export class GraphOperations {
         for (let distance = 1; distance <= maxDistance; distance++) {
             const nextScores = new Map<string, number>();
             
-            // Start with current scores
-            for (const [filePath, score] of currentScores.entries()) {
+            // Start with current scores - convert to array for compatibility
+            Array.from(currentScores.entries()).forEach(([filePath, score]) => {
                 nextScores.set(filePath, score);
-            }
+            });
             
-            // Apply boost for this distance level
-            for (const [filePath, score] of currentScores.entries()) {
+            // Apply boost for this distance level - convert to array for compatibility
+            Array.from(currentScores.entries()).forEach(([filePath, score]) => {
                 const connections = graph.get(filePath) || new Set<string>();
                 const levelBoostFactor = boostFactor / distance; // Reduce boost for higher distances
                 
@@ -103,17 +103,27 @@ export class GraphOperations {
                         nextScores.set(connectedPath, currentScore + boost);
                     }
                 });
-            }
+            });
             
             // Update current scores for next iteration
-            currentScores = nextScores;
+            currentScores.clear();
+            // We need to manually copy the values to avoid TypeScript errors
+            const entries = Array.from(nextScores.entries());
+            for (let i = 0; i < entries.length; i++) {
+                const [key, value] = entries[i];
+                currentScores.set(key, value);
+            }
         }
         
         // Apply final boosted scores
-        return resultEmbeddings.map(item => ({
-            record: item.record,
-            similarity: currentScores.get(item.record.filePath) || item.similarity
-        }));
+        return resultEmbeddings.map(item => {
+            const filePath = item.record.filePath;
+            const boostedScore = currentScores.get(filePath) || item.similarity;
+            return {
+                record: item.record,
+                similarity: boostedScore
+            };
+        });
     }
     
     /**
@@ -195,71 +205,119 @@ export class GraphOperations {
             
             // Also store the path components
             const pathParts = filePath.split('/');
-            if (pathParts.length > 1) {
-                // Store combinations of folder+filename
-                for (let i = 0; i < pathParts.length - 1; i++) {
-                    const folderName = pathParts[i];
-                    this.linkUtils.addToLinkMap(normalizedLinkMap, `${folderName}_${baseName}`, filePath);
-                    this.linkUtils.addToLinkMap(normalizedLinkMap, `${folderName}/${baseName}`, filePath);
+            pathParts.forEach(part => {
+                if (part && part !== baseName && part !== fileName) {
+                    this.linkUtils.addToLinkMap(normalizedLinkMap, part, filePath);
                 }
-            }
+            });
             
-            // Store mapping from filename to full path for exact matches
-            fullPathMap.set(baseName.toLowerCase(), filePath);
-            fullPathMap.set(fileName.toLowerCase(), filePath);
+            // Add to full path map
+            fullPathMap.set(fileName, filePath);
+            fullPathMap.set(baseName, filePath);
+            
+            // Initialize graph
+            if (!graph.has(filePath)) {
+                graph.set(filePath, new Set<string>());
+            }
         });
         
-        // Second pass: create graph connections
+        // Second pass: process links from metadata
         records.forEach(item => {
             const filePath = item.record.filePath;
-            const connections = new Set<string>();
+            const links = item.record.metadata.links;
             
-            // Skip items without links metadata
-            if (!item.record.metadata.links) {
-                graph.set(filePath, connections);
+            if (!links) {
                 return;
             }
             
-            // Add outgoing links
-            item.record.metadata.links.outgoing.forEach(link => {
-                if (link.targetPath.startsWith('unresolved:')) {
-                    // Try to match unresolved link to a file
-                    const unresolvedText = link.targetPath.replace('unresolved:', '');
+            // Process outgoing links
+            if (links.outgoing && links.outgoing.length > 0) {
+                links.outgoing.forEach(link => {
+                    const targetPath = link.targetPath;
                     
-                    // Try exact match first
-                    const exactPath = fullPathMap.get(unresolvedText.toLowerCase());
-                    if (exactPath) {
-                        connections.add(exactPath);
+                    // Ensure source node exists in graph
+                    if (!graph.has(filePath)) {
+                        graph.set(filePath, new Set<string>());
+                    }
+                    
+                    // Add direct link
+                    const connections = graph.get(filePath);
+                    connections?.add(targetPath);
+                    
+                    // Ensure target node exists in graph (bidirectional connection)
+                    if (!graph.has(targetPath)) {
+                        graph.set(targetPath, new Set<string>());
+                    }
+                    
+                    // Add reverse link
+                    const targetConnections = graph.get(targetPath);
+                    targetConnections?.add(filePath);
+                });
+            }
+            
+            // Process incoming links
+            if (links.incoming && links.incoming.length > 0) {
+                links.incoming.forEach(link => {
+                    const sourcePath = link.sourcePath;
+                    
+                    // Ensure target node exists in graph
+                    if (!graph.has(filePath)) {
+                        graph.set(filePath, new Set<string>());
+                    }
+                    
+                    // Add reverse link
+                    const connections = graph.get(filePath);
+                    connections?.add(sourcePath);
+                    
+                    // Ensure source node exists in graph (bidirectional connection)
+                    if (!graph.has(sourcePath)) {
+                        graph.set(sourcePath, new Set<string>());
+                    }
+                    
+                    // Add direct link
+                    const sourceConnections = graph.get(sourcePath);
+                    sourceConnections?.add(filePath);
+                });
+            }
+        });
+        
+        // Third pass: process unresolved links and content links
+        records.forEach(item => {
+            const filePath = item.record.filePath;
+            const content = item.record.content || '';
+            
+            // Extract potential link mentions from content (using a mock implementation)
+            const potentialLinks: string[] = [];
+            // This is a simple regex to find potential links in markdown/wikilinks syntax
+            const linkRegex = /\[\[([^\]]+)\]\]|\[([^\]]+)\]\([^\)]+\)/g;
+            let match;
+            while ((match = linkRegex.exec(content)) !== null) {
+                potentialLinks.push(match[1] || match[2]);
+            }
+            
+            potentialLinks.forEach((linkText: string) => {
+                const normalizedLink = this.linkUtils.normalizeLinkText(linkText);
+                
+                // Try to resolve link from our normalized link map
+                const matchingPaths = normalizedLinkMap.get(normalizedLink) || [];
+                
+                matchingPaths.forEach(targetPath => {
+                    // Skip self-links
+                    if (targetPath === filePath) {
                         return;
                     }
                     
-                    // Try all normalizations
-                    const normalizedVariants = this.linkUtils.getNormalizedVariants(unresolvedText);
+                    // Add to graph
+                    const connections = graph.get(filePath) || new Set<string>();
+                    connections.add(targetPath);
+                    graph.set(filePath, connections);
                     
-                    for (const normalizedVariant of normalizedVariants) {
-                        const possibleMatches = normalizedLinkMap.get(normalizedVariant) || [];
-                        possibleMatches.forEach(match => {
-                            connections.add(match);
-                        });
-                    }
-                    
-                    // If still no matches, try fuzzy matching
-                    if (connections.size === 0) {
-                        this.linkUtils.findFuzzyMatches(normalizedLinkMap, unresolvedText).forEach(match => {
-                            connections.add(match);
-                        });
-                    }
-                } else {
-                    connections.add(link.targetPath);
-                }
+                    // Add reverse connection
+                    const targetConnections = graph.get(targetPath) || new Set<string>();
+                    targetConnections.add(filePath);
+                    graph.set(targetPath, targetConnections);
+                });
             });
-            
-            // Add incoming links
-            item.record.metadata.links.incoming.forEach(link => {
-                connections.add(link.sourcePath);
-            });
-            
-            graph.set(filePath, connections);
         });
         
         return graph;

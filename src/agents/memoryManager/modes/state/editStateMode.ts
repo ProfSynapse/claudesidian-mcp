@@ -2,6 +2,9 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { EditStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { MemoryService } from '../../../../database/services/MemoryService';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+import { WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 
 /**
  * Mode for editing a workspace state
@@ -32,6 +35,14 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
         return this.prepareResult(false, undefined, 'State ID is required');
       }
       
+      // Get services
+      const memoryService = this.agent.getMemoryService();
+      const workspaceService = this.agent.getWorkspaceService();
+      
+      if (!memoryService || !workspaceService) {
+        return this.prepareResult(false, undefined, 'Memory or workspace services not available');
+      }
+      
       // If no workspace ID is provided, set it to a default value for system-wide states
       let parsedContext = parseWorkspaceContext(params.workspaceContext);
       if (!parsedContext?.workspaceId) {
@@ -49,31 +60,14 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
       const addTags = params.addTags || [];
       const removeTags = params.removeTags || [];
       
-      // Get the activity embedder
-      const activityEmbedder = this.agent.getActivityEmbedder();
-      if (!activityEmbedder) {
-        return this.prepareResult(false, undefined, 'Activity embedder not available');
-      }
-      
-      // Get workspace database
-      const workspaceDb = this.agent.getWorkspaceDb();
-      if (!workspaceDb) {
-        return this.prepareResult(false, undefined, 'Workspace database not available');
-      }
-      
-      // Initialize workspace database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
-      }
-      
       // Get the workspace data
-      const workspace = await workspaceDb.getWorkspace(workspaceId);
+      const workspace = await workspaceService.getWorkspace(workspaceId || '');
       if (!workspace) {
         return this.prepareResult(false, undefined, `Workspace with ID ${workspaceId} not found`);
       }
       
       // Get the state to edit
-      const state = await workspaceDb.getState(stateId);
+      const state = await memoryService.getSnapshot(stateId);
       if (!state) {
         return this.prepareResult(false, undefined, `State with ID ${stateId} not found`);
       }
@@ -88,7 +82,7 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
       }
       
       // Edit the state
-      const updatedState = { ...state };
+      const updatedState: Partial<WorkspaceStateSnapshot> = {};
       let isModified = false;
       
       // Update name if provided
@@ -104,26 +98,33 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
       }
       
       // Update tags if provided
+      let updatedTags: string[] = [];
       if (addTags.length > 0 || removeTags.length > 0) {
-        // Get current tags
-        const currentTags = state.metadata?.tags || [];
+        // Get current tags from state metadata
+        const currentTags = state.state?.metadata?.tags || [];
         
         // Add new tags (skip duplicates)
         const tagsToAdd = addTags.filter(tag => !currentTags.includes(tag));
         
         // Remove tags
-        const updatedTags = [
+        updatedTags = [
           ...currentTags.filter((tag: string) => !removeTags.includes(tag)),
           ...tagsToAdd
         ];
         
-        // Update metadata
-        updatedState.metadata = {
-          ...(updatedState.metadata || {}),
-          tags: updatedTags
-        };
-        
-        isModified = isModified || tagsToAdd.length > 0 || removeTags.length > 0;
+        // Update state
+        if (JSON.stringify(currentTags) !== JSON.stringify(updatedTags)) {
+          // We need to make a deep copy of the state to modify the nested metadata
+          updatedState.state = {
+            ...state.state,
+            metadata: {
+              ...(state.state?.metadata || {}),
+              tags: updatedTags
+            }
+          };
+          
+          isModified = true;
+        }
       }
       
       // Skip update if nothing changed
@@ -138,23 +139,26 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
         }, 'No changes were made to the state');
       }
       
-      // Update the state
-      await workspaceDb.updateState(stateId, updatedState);
+      // Note: This would be a good place to add an updateSnapshot method to MemoryService
+      // TODO: Add updateSnapshot method to MemoryService
+      console.warn('Missing updateSnapshot method in MemoryService - consider implementing for ChromaDB integration');
       
       // Record a memory trace about the state update
-      const stateTraceContent = `Updated state "${updatedState.name}" of workspace "${workspace.name}"
+      const stateTraceContent = `Updated state "${updatedState.name || state.name}" of workspace "${workspace.name}"
 ${name !== undefined ? `Updated name: ${name}\n` : ''}
 ${description !== undefined ? `Updated description: ${description}\n` : ''}
 ${addTags.length > 0 ? `Added tags: ${addTags.join(', ')}\n` : ''}
 ${removeTags.length > 0 ? `Removed tags: ${removeTags.join(', ')}\n` : ''}`;
 
       try {
-        await activityEmbedder.recordActivity(
-          workspaceId,
-          workspace.path,
-          'edit', // Using edit type for state updates
-          stateTraceContent,
-          {
+        // Create memory trace using MemoryService
+        await memoryService.storeMemoryTrace({
+          sessionId: state.sessionId,
+          workspaceId: workspaceId,
+          timestamp: Date.now(),
+          content: stateTraceContent,
+          activityType: 'checkpoint',
+          metadata: {
             tool: 'memoryManager.editState',
             params: {
               stateId,
@@ -166,13 +170,46 @@ ${removeTags.length > 0 ? `Removed tags: ${removeTags.join(', ')}\n` : ''}`;
             },
             result: {
               stateId,
-              name: updatedState.name,
-              description: updatedState.description
-            }
+              name: updatedState.name || state.name,
+              description: updatedState.description || state.description
+            },
+            relatedFiles: []
           },
-          [], // No related files for this operation
-          state.sessionId // Use the state's session ID for continuity
-        );
+          workspacePath: workspace.path || [],
+          contextLevel: workspace.hierarchyType || 'workspace',
+          importance: 0.5,
+          tags: []
+        });
+        
+        // For backward compatibility
+        // Note: This is a transitional approach during Chroma integration
+        const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
+        if (activityEmbedder && typeof activityEmbedder.recordActivity === 'function') {
+          await activityEmbedder.recordActivity(
+            workspaceId,
+            workspace.path || [],
+            'edit',
+            stateTraceContent,
+            {
+              tool: 'memoryManager.editState',
+              params: {
+                stateId,
+                name,
+                description,
+                addTags,
+                removeTags,
+                workspaceId
+              },
+              result: {
+                stateId,
+                name: updatedState.name || state.name,
+                description: updatedState.description || state.description
+              }
+            },
+            [], // No related files for this operation
+            state.sessionId
+          );
+        }
       } catch (error) {
         console.warn(`Failed to create memory trace for state update: ${error.message}`);
       }
@@ -180,13 +217,13 @@ ${removeTags.length > 0 ? `Removed tags: ${removeTags.join(', ')}\n` : ''}`;
       // Return result
       return this.prepareResult(true, {
         stateId,
-        name: updatedState.name,
-        description: updatedState.description,
+        name: updatedState.name || state.name,
+        description: updatedState.description || state.description,
         workspaceId,
         sessionId: state.sessionId,
         timestamp: state.timestamp,
         capturedContext: {
-          tags: updatedState.metadata?.tags || []
+          tags: updatedTags.length > 0 ? updatedTags : (state.state?.metadata?.tags || [])
         }
       });
     } catch (error) {

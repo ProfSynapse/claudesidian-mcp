@@ -2,20 +2,32 @@ import { TFolder, App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { BatchCreateEmbeddingsParams, BatchCreateEmbeddingsResult } from '../types';
 import { VaultLibrarianAgent } from '../vaultLibrarian';
-import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { EmbeddingService } from '../../../database/services/EmbeddingService';
+import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
+import { MemoryService } from '../../../database/services/MemoryService';
+import { ProgressTracker } from '../../../database/utils/progressTracker';
 
 /**
  * Mode for batch creating embeddings for multiple files
  */
 export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsParams, BatchCreateEmbeddingsResult> {
-  private activityEmbedder: ToolActivityEmbedder | null = null;
+  private embeddingService: EmbeddingService | null = null;
+  private searchService: ChromaSearchService | null = null;
+  private memoryService: MemoryService | null = null;
+  private progressTracker: ProgressTracker;
   
   /**
    * Create a new BatchCreateEmbeddingsMode
    * @param app Obsidian app instance
+   * @param memoryService Optional memory service
+   * @param embeddingService Optional embedding service
    */
-  constructor(private app: App) {
+  constructor(
+    private app: App,
+    memoryService?: MemoryService | null,
+    embeddingService?: EmbeddingService | null
+  ) {
     super(
       'batchCreateEmbeddings',
       'Batch Create Embeddings',
@@ -23,22 +35,35 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       '1.0.0'
     );
     
-    // Initialize the activity embedder if possible
-    // Since we don't have direct access to VaultLibrarian, this needs to be set up differently
-    // We'll rely on getting the provider through the plugin if needed
+    // Initialize progress tracker
+    this.progressTracker = new ProgressTracker();
+    
+    // Set services from constructor parameters
+    this.memoryService = memoryService || null;
+    this.embeddingService = embeddingService || null;
+    
+    // Initialize additional ChromaDB services if available
     try {
       const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
-      if (plugin?.connector?.getVaultLibrarian) {
-        const vaultLibrarian = plugin.connector.getVaultLibrarian();
-        if (vaultLibrarian?.getProvider) {
-          const provider = vaultLibrarian.getProvider();
-          if (provider) {
-            this.activityEmbedder = new ToolActivityEmbedder(provider);
-          }
+      
+      if (plugin?.services) {
+        // Only set these if not already provided via constructor
+        if (!this.embeddingService && plugin.services.embeddingService) {
+          this.embeddingService = plugin.services.embeddingService;
+        }
+        
+        if (plugin.services.searchService) {
+          this.searchService = plugin.services.searchService;
+        }
+        
+        if (!this.memoryService && plugin.services.memoryService) {
+          this.memoryService = plugin.services.memoryService;
         }
       }
+      
+      // Get services from the plugin if possible
     } catch (error) {
-      console.error("Failed to initialize activity embedder:", error);
+      console.error("Failed to initialize services:", error);
     }
   }
   
@@ -58,53 +83,96 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
         return this.prepareResult(false, undefined, 'File paths array is required and must not be empty');
       }
       
-      // Get vault librarian to check if embeddings are enabled
-      let vaultLibrarian;
-      try {
-        const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
-        if (plugin?.connector?.getVaultLibrarian) {
-          vaultLibrarian = plugin.connector.getVaultLibrarian();
-        }
-      } catch (error) {
-        console.error("Failed to get VaultLibrarian:", error);
-      }
+      // Parse workspace context early for use throughout the method
+      const parsedContext = parseWorkspaceContext(workspaceContext);
       
-      // Check if embeddings are enabled and provider exists
-      const provider = vaultLibrarian?.getProvider?.();
-      const agentSettings = vaultLibrarian?.settings;
-      
-      if (!provider || (agentSettings && agentSettings.embeddingsEnabled === false)) {
-        return this.prepareResult(false, undefined, 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to create embeddings.');
-      }
-      
-      // Validate files exist
-      const validFilePaths = [];
-      for (const path of filePaths) {
-        const file = this.app.vault.getAbstractFileByPath(path);
-        // Check if it's a file and has .md extension
-        if (file && !(file instanceof TFolder) && path.endsWith('.md')) {
-          validFilePaths.push(path);
+      // Try to get ChromaDB services if not already available
+      if (!this.searchService || !this.embeddingService) {
+        try {
+          const plugin = this.app.plugins?.getPlugin('claudesidian-mcp');
+          if (plugin?.services) {
+            this.searchService = plugin.services.searchService || null;
+            this.embeddingService = plugin.services.embeddingService || null;
+            this.memoryService = plugin.services.memoryService || null;
+          }
+        } catch (error) {
+          console.error("Failed to get services from plugin:", error);
         }
       }
       
-      if (validFilePaths.length === 0) {
-        return this.prepareResult(false, undefined, 'No valid markdown files found in the provided paths');
+      // Check if services are available after attempt to get them
+      if (!this.searchService || !this.embeddingService) {
+        return this.prepareResult(false, undefined, 'Required services not available. Please ensure ChromaDB is properly configured.');
       }
       
-      // Initial progress update
-      this.updateProgress(0, validFilePaths.length, operationId);
+      // Execute batch embedding
+      return await this.executeBatchEmbedding(params, operationId);
+    } catch (error) {
+      // Ensure progress is completed even on error
+      this.completeProgress(false, operationId, error.message);
       
-      // Batch index the files with force defaulting to false if undefined
-      // Check if VaultLibrarian is available
-      if (!vaultLibrarian?.indexFile) {
-        return this.prepareResult(false, undefined, 'VaultLibrarian indexFile method is not available');
+      return this.prepareResult(false, undefined, `Error batch creating embeddings: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Execute batch embedding operation
+   * @param params Mode parameters
+   * @param operationId Operation ID for progress tracking
+   * @returns Promise that resolves with result
+   */
+  private async executeBatchEmbedding(
+    params: BatchCreateEmbeddingsParams, 
+    operationId: string
+  ): Promise<BatchCreateEmbeddingsResult> {
+    const { filePaths, force, workspaceContext, handoff } = params;
+    
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(workspaceContext);
+    
+    // Check if embedding service is available
+    if (!this.embeddingService) {
+      return this.prepareResult(false, undefined, 'Embedding service is not available');
+    }
+    
+    if (!this.searchService) {
+      return this.prepareResult(false, undefined, 'Search service is not available');
+    }
+    
+    // Check if embeddings are enabled
+    if (!this.embeddingService.areEmbeddingsEnabled()) {
+      return this.prepareResult(false, undefined, 'Embeddings functionality is currently disabled. Please enable embeddings and provide a valid API key in settings to create embeddings.');
+    }
+    
+    // Validate files exist
+    const validFilePaths: string[] = [];
+    for (const path of filePaths) {
+      const file = this.app.vault.getAbstractFileByPath(path);
+      // Check if it's a file and has .md extension
+      if (file && !(file instanceof TFolder) && path.endsWith('.md')) {
+        validFilePaths.push(path);
       }
-      
-      const result = await this.processFilesWithProgress(validFilePaths, force || false, operationId, vaultLibrarian);
+    }
+    
+    if (validFilePaths.length === 0) {
+      return this.prepareResult(false, undefined, 'No valid markdown files found in the provided paths');
+    }
+    
+    // Initial progress update
+    this.updateProgress(0, validFilePaths.length, operationId);
+    
+    try {
+      // Process files with progress updates
+      const result = await this.processFilesWithProgress(
+        validFilePaths, 
+        force || false, 
+        operationId, 
+        parsedContext?.workspaceId
+      );
       
       // Final progress update and completion
       this.updateProgress(result.processed, validFilePaths.length, operationId);
-      this.completeProgress(result.failed === 0, operationId, 
+      this.completeProgress(result.failed === 0, operationId,
                            result.failed > 0 ? `Failed to index ${result.failed} files` : undefined);
       
       // Record this activity if in a workspace context
@@ -129,10 +197,10 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       
       return response;
     } catch (error) {
-      // Ensure progress is completed even on error
+      // Ensure progress is completed on error
       this.completeProgress(false, operationId, error.message);
       
-      return this.prepareResult(false, undefined, `Error batch creating embeddings: ${error.message}`);
+      return this.prepareResult(false, undefined, `Error creating embeddings with ChromaDB: ${error.message}`);
     }
   }
   
@@ -141,12 +209,13 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
    * @param filePaths Paths to process
    * @param force Whether to force processing
    * @param operationId Operation ID for progress tracking
+   * @param workspaceIdOrVaultLibrarian Optional workspace ID or VaultLibrarian instance
    */
   private async processFilesWithProgress(
     filePaths: string[], 
     force: boolean, 
     operationId: string,
-    vaultLibrarian: any
+    workspaceIdOrVaultLibrarian?: string | any
   ): Promise<{
     success: boolean;
     results: Array<{
@@ -158,13 +227,36 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
     processed: number;
     failed: number;
   }> {
-    const results = [];
+    const results: Array<{
+      success: boolean;
+      filePath: string;
+      chunks?: number;
+      error?: string;
+    }> = [];
     let processed = 0;
     let failed = 0;
-    // Get settings from VaultLibrarian or use defaults
-    const memorySettings = vaultLibrarian?.settings || {};
-    const batchSize = memorySettings.batchSize || 10;
-    const delay = memorySettings.processingDelay || 1000;
+    
+    // Determine if the fourth parameter is a VaultLibrarian instance or a workspace ID string
+    const isVaultLibrarian = typeof workspaceIdOrVaultLibrarian === 'object';
+    const workspaceId = typeof workspaceIdOrVaultLibrarian === 'string' ? workspaceIdOrVaultLibrarian : undefined;
+    
+    // Get settings from VaultLibrarian or plugin settings
+    let batchSize = 10;
+    let delay = 1000;
+    
+    if (isVaultLibrarian) {
+      // Get settings from VaultLibrarian
+      const vaultLibrarian = workspaceIdOrVaultLibrarian;
+      const memorySettings = vaultLibrarian?.settings || {};
+      batchSize = memorySettings.batchSize || 10;
+      delay = memorySettings.processingDelay || 1000;
+    } else {
+      // Get settings from plugin
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      const settings = plugin?.settings?.settings?.memory || {};
+      batchSize = settings.batchSize || 10;
+      delay = settings.processingDelay || 1000;
+    }
     
     // Process in smaller batches
     for (let i = 0; i < filePaths.length; i += batchSize) {
@@ -174,14 +266,38 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       const batchResults = await Promise.all(
         batch.map(async filePath => {
           try {
-            const result = await vaultLibrarian.indexFile(filePath, force);
-            processed++;
-            if (!result.success) failed++;
-            
-            // Update progress after each file
-            this.updateProgress(processed, filePaths.length, operationId);
-            
-            return result;
+            if (isVaultLibrarian) {
+              // Use VaultLibrarian instance for indexing
+              const vaultLibrarian = workspaceIdOrVaultLibrarian;
+              const result = await vaultLibrarian.indexFile(filePath, force);
+              processed++;
+              if (!result.success) failed++;
+              
+              // Update progress after each file
+              this.updateProgress(processed, filePaths.length, operationId);
+              
+              return result;
+            } else {
+              // Use ChromaDB search service to index file
+              const fileId = await this.searchService!.indexFile(
+                filePath,
+                workspaceId,
+                { force } // Pass metadata with force flag
+              );
+              
+              processed++;
+              if (!fileId) failed++;
+              
+              // Update progress after each file
+              this.updateProgress(processed, filePaths.length, operationId);
+              
+              return {
+                success: !!fileId,
+                filePath,
+                chunks: 1, // Default to 1 chunk for ChromaDB
+                error: fileId ? undefined : 'Failed to index file'
+              };
+            }
           } catch (error) {
             processed++;
             failed++;
@@ -216,50 +332,7 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
   }
   
   /**
-   * Update the progress UI
-   * @param processed Number of files processed
-   * @param total Total number of files
-   * @param operationId Operation ID for progress tracking
-   */
-  private updateProgress(processed: number, total: number, operationId: string): void {
-    // Use the global progress handler if available
-    // @ts-ignore - Using global methods for inter-component communication
-    if (window.mcpProgressHandlers && window.mcpProgressHandlers.updateProgress) {
-      // @ts-ignore
-      window.mcpProgressHandlers.updateProgress({
-        processed,
-        total,
-        remaining: total - processed,
-        operationId
-      });
-    }
-  }
-  
-  /**
-   * Complete the progress UI
-   * @param success Whether processing was successful
-   * @param operationId Operation ID for progress tracking
-   * @param error Optional error message
-   */
-  private completeProgress(success: boolean, operationId: string, error?: string): void {
-    // Use the global completion handler if available
-    // @ts-ignore - Using global methods for inter-component communication
-    if (window.mcpProgressHandlers && window.mcpProgressHandlers.completeProgress) {
-      // @ts-ignore
-      window.mcpProgressHandlers.completeProgress({
-        success,
-        processed: 0, // We don't know the exact count here
-        failed: 0,
-        error,
-        operationId
-      });
-    }
-  }
-  
-  /**
    * Record batch embedding activity in workspace memory
-   * @param params Parameters used for batch indexing
-   * @param result Result of batch indexing operation
    */
   private async recordActivity(
     params: BatchCreateEmbeddingsParams,
@@ -275,55 +348,86 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       failed: number;
     }
   ): Promise<void> {
-    // Parse the workspace context
+    // Parse workspace context
     const parsedContext = parseWorkspaceContext(params.workspaceContext);
     
-    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
-      return; // Skip if no workspace context or embedder
+    if (!parsedContext?.workspaceId) {
+      return; // Skip if no workspace context
     }
     
-    try {
-      // Initialize the activity embedder
-      await this.activityEmbedder.initialize();
-      
-      // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
-      
-      // Create a descriptive content about this batch indexing operation
-      const successfulFiles = result.results.filter(r => r.success).map(r => r.filePath);
-      const failedFiles = result.results.filter(r => !r.success).map(r => r.filePath);
-      
-      const content = `Batch indexed ${result.processed} files\n` +
-                      `Success: ${result.success}\n` +
-                      `Files processed: ${result.processed}\n` +
-                      `Files failed: ${result.failed}\n` +
-                      (successfulFiles.length > 0 ? `Successful files: ${successfulFiles.join(', ')}\n` : '') +
-                      (failedFiles.length > 0 ? `Failed files: ${failedFiles.join(', ')}\n` : '');
-      
-      // Record the activity in workspace memory
-      await this.activityEmbedder.recordActivity(
-        parsedContext.workspaceId,
-        workspacePath,
-        'project_plan', // Most appropriate type for indexing
-        content,
-        {
-          tool: 'BatchCreateEmbeddingsMode',
-          params: {
-            filePaths: params.filePaths,
-            force: params.force
-          },
-          result: {
-            success: result.success,
-            processed: result.processed,
-            failed: result.failed
+    // Use memory service directly if available
+    if (this.memoryService) {
+      try {
+        // Create descriptive content
+        const successfulFiles = result.results.filter(r => r.success).map(r => r.filePath);
+        const failedFiles = result.results.filter(r => !r.success).map(r => r.filePath);
+        
+        const content = `Batch indexed ${result.processed} files\n` +
+                        `Success: ${result.success}\n` +
+                        `Files processed: ${result.processed}\n` +
+                        `Files failed: ${result.failed}\n` +
+                        (successfulFiles.length > 0 ? `Successful files: ${successfulFiles.join(', ')}\n` : '') +
+                        (failedFiles.length > 0 ? `Failed files: ${failedFiles.join(', ')}\n` : '');
+        
+        // Record activity trace using memory service
+        await this.memoryService.recordActivityTrace(
+          parsedContext.workspaceId,
+          {
+            type: 'research',
+            content,
+            metadata: {
+              tool: 'BatchCreateEmbeddingsMode',
+              params: {
+                filePaths: params.filePaths,
+                force: params.force
+              },
+              result: {
+                success: result.success,
+                processed: result.processed,
+                failed: result.failed
+              },
+              relatedFiles: successfulFiles
+            },
+            sessionId: params.sessionId
           }
-        },
-        params.filePaths // Related files
-      );
-    } catch (error) {
-      // Log but don't fail the main operation
-      console.error('Failed to record batch indexing activity:', error);
+        );
+      } catch (error) {
+        console.error('Error recording activity with memory service:', error);
+      }
     }
+  }
+  
+  /**
+   * Update the progress UI
+   * @param processed Number of files processed
+   * @param total Total number of files
+   * @param operationId Operation ID for progress tracking
+   */
+  private updateProgress(processed: number, total: number, operationId: string): void {
+    // Use our progress tracker
+    this.progressTracker.updateProgress({
+      processed,
+      total,
+      remaining: total - processed,
+      operationId
+    });
+  }
+  
+  /**
+   * Complete the progress UI
+   * @param success Whether processing was successful
+   * @param operationId Operation ID for progress tracking
+   * @param error Optional error message
+   */
+  private completeProgress(success: boolean, operationId: string, error?: string): void {
+    // Use our progress tracker
+    this.progressTracker.completeProgress({
+      success,
+      processed: 0, // We don't know the exact count here
+      failed: 0,
+      error,
+      operationId
+    });
   }
   
   /**

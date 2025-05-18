@@ -58,7 +58,8 @@ export class CompletionMode extends BaseMode<CompletionArgs, CompletionResult> {
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    // Create the mode-specific schema
+    const modeSchema = {
       type: "object",
       properties: {
         summary: {
@@ -101,6 +102,9 @@ export class CompletionMode extends BaseMode<CompletionArgs, CompletionResult> {
       required: ['summary'],
       description: 'Mark a project as complete and provide a summary of everything that was accomplished. This tool does NOT interact with the Obsidian vault. IMPORTANT: This command is designed to finalize project execution. When this mode is used, you MUST stop execution immediately after, report directly back to the user, and wait for user feedback. No other tools should be used after this one.'
     };
+    
+    // Merge with common schema (workspace context and handoff)
+    return this.getMergedSchema(modeSchema);
   }
 
   /**

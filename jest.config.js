@@ -8,7 +8,8 @@ module.exports = {
     }],
   },
   moduleNameMapper: {
-    '^obsidian$': '<rootDir>/__mocks__/obsidian.ts'
+    '^obsidian$': '<rootDir>/__mocks__/obsidian.ts',
+    '^chromadb$': '<rootDir>/__mocks__/chromadb.ts'
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],

@@ -2,23 +2,29 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ReadContentParams, ReadContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
-import { OpenAIProvider } from '../../../database/providers/openai-provider';
-import { DEFAULT_MEMORY_SETTINGS } from '../../../types';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { MemoryService } from '../../../database/services/MemoryService';
+import { EmbeddingService } from '../../../database/services/EmbeddingService';
 
 /**
  * Mode for reading content from a file
  */
 export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResult> {
   private app: App;
-  private activityEmbedder: ToolActivityEmbedder | null = null;
+  private memoryService: MemoryService | null = null;
+  private embeddingService: EmbeddingService | null = null;
   
   /**
    * Create a new ReadContentMode
    * @param app Obsidian app instance
+   * @param memoryService Optional MemoryService for activity recording
+   * @param embeddingService Optional EmbeddingService for embedding generation
    */
-  constructor(app: App) {
+  constructor(
+    app: App, 
+    memoryService?: MemoryService | null,
+    embeddingService?: EmbeddingService | null
+  ) {
     super(
       'readContent',
       'Read Content',
@@ -27,39 +33,8 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     );
     
     this.app = app;
-    
-    // Initialize activity embedder for workspace memory
-    this.initializeActivityEmbedder();
-  }
-  
-  /**
-   * Initialize activity embedder if needed
-   */
-  private async initializeActivityEmbedder() {
-    try {
-      // Try to get settings from the plugin
-      let memorySettings = { ...DEFAULT_MEMORY_SETTINGS };
-      
-      if (this.app.plugins) {
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-        if (plugin?.settings?.settings?.memory) {
-          memorySettings = plugin.settings.settings.memory;
-        }
-      }
-      
-      // Only create provider if embeddings are enabled and API key is available
-      if (memorySettings.embeddingsEnabled && memorySettings.openaiApiKey) {
-        const provider = new OpenAIProvider(memorySettings);
-        this.activityEmbedder = new ToolActivityEmbedder(provider);
-      } else {
-        // Don't attempt to create a provider without an API key
-        console.log('Activity embedder disabled: embeddings not enabled or API key missing');
-        this.activityEmbedder = null;
-      }
-    } catch (error) {
-      console.error('Failed to initialize activity embedder:', error);
-      this.activityEmbedder = null;
-    }
+    this.memoryService = memoryService || null;
+    this.embeddingService = embeddingService || null;
   }
   
   /**
@@ -176,42 +151,48 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     // Parse workspace context
     const parsedContext = parseWorkspaceContext(params.workspaceContext);
     
-    // Skip if no workspace context or embedder is not available
-    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
+    // Skip if no workspace context
+    if (!parsedContext?.workspaceId) {
       return;
     }
     
-    try {
-      // Initialize the activity embedder - wrapped in try/catch to handle initialization failures gracefully
+    // Skip if no memory service
+    if (!this.memoryService) {
       try {
-        await this.activityEmbedder.initialize();
-      } catch (initError) {
-        console.log('Activity embedder initialization failed, skipping activity recording:', initError);
+        // Try to get the memory service from the plugin
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        } else {
+          // No memory service available, skip activity recording
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to get memory service from plugin:', error);
         return;
       }
-      
-      // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
-      
-      // Create a descriptive content about this operation
-      let contentSnippet = resultData.content.substring(0, 100);
-      if (resultData.content.length > 100) {
-        contentSnippet += '...';
-      }
-      
-      const readDescription = params.limit && params.offset 
-        ? `Read lines ${params.offset}-${params.offset + params.limit - 1}` 
-        : 'Read full content';
-      
-      const content = `${readDescription} from ${params.filePath}\nSnippet: ${contentSnippet}`;
-      
-      // Record the activity in workspace memory
-      await this.activityEmbedder.recordActivity(
-        parsedContext.workspaceId,
-        workspacePath,
-        'research', // Most appropriate type for content reading
-        content,
-        {
+    }
+    
+    // Create a descriptive content about this operation
+    let contentSnippet = resultData.content.substring(0, 100);
+    if (resultData.content.length > 100) {
+      contentSnippet += '...';
+    }
+    
+    const readDescription = params.limit && params.offset 
+      ? `Read lines ${params.offset}-${params.offset + params.limit - 1}` 
+      : 'Read full content';
+    
+    const content = `${readDescription} from ${params.filePath}\nSnippet: ${contentSnippet}`;
+    
+    try {
+      // Record activity using MemoryService - we've already checked it's not null
+      await this.memoryService!.storeMemoryTrace({
+        workspaceId: parsedContext.workspaceId,
+        workspacePath: parsedContext.workspacePath || [parsedContext.workspaceId],
+        activityType: 'research', // Most appropriate type for content reading
+        content: content,
+        metadata: {
           tool: 'ReadContentMode',
           params: {
             filePath: params.filePath,
@@ -220,16 +201,21 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
             includeLineNumbers: params.includeLineNumbers
           },
           result: {
-            contentLength: resultData.content.length,
-            startLine: resultData.startLine,
-            endLine: resultData.endLine
-          }
+            contentLength: content.length,
+            startLine: params.offset || 0,
+            endLine: params.limit && params.offset !== undefined ? params.offset + params.limit : undefined
+          },
+          relatedFiles: [params.filePath]
         },
-        [resultData.filePath] // Related files
-      );
+        sessionId: params.sessionId || '',
+        timestamp: Date.now(),
+        importance: 0.5,
+        contextLevel: 'workspace',
+        tags: ['read', 'content']
+      });
     } catch (error) {
       // Log but don't fail the main operation
-      console.error('Failed to record content reading activity:', error);
+      console.error('Failed to record content reading activity with memory service:', error);
     }
   }
 
