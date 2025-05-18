@@ -3,6 +3,7 @@ import { IMCPServer, ServerStatus, MCPSettings } from './types';
 import { Settings } from './settings';
 import { IAgent } from './agents/interfaces/IAgent';
 import { EventManager } from './services/EventManager';
+import { SessionContextManager } from './services/SessionContextManager';
 import {
     Server as MCPSDKServer
 } from '@modelcontextprotocol/sdk/server/index.js';
@@ -55,6 +56,7 @@ export class MCPServer implements IMCPServer {
         private app: App,
         private plugin: Plugin,
         private eventManager: EventManager,
+        private sessionContextManager?: SessionContextManager,
         private serverName?: string
     ) {
         // Get settings from plugin
@@ -156,7 +158,12 @@ export class MCPServer implements IMCPServer {
         // Handle tool execution
         this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const parsedArgs = parseJsonArrays(request.params.arguments);
-            return await handleToolExecution((agentName: string) => this.getAgent(agentName), request, parsedArgs);
+            return await handleToolExecution(
+                (agentName: string) => this.getAgent(agentName), 
+                request, 
+                parsedArgs,
+                this.sessionContextManager
+            );
         });
     }
     
@@ -428,8 +435,20 @@ export class MCPServer implements IMCPServer {
             // Get the agent
             const agent = this.getAgent(agentName);
             
+            // Apply workspace context from SessionContextManager if available
+            if (this.sessionContextManager && params.sessionId) {
+                params = this.sessionContextManager.applyWorkspaceContext(params.sessionId, params);
+            }
+            
             // Execute the mode on the agent
-            return await agent.executeMode(mode, params);
+            const result = await agent.executeMode(mode, params);
+            
+            // Update the SessionContextManager with the result's workspace context
+            if (this.sessionContextManager && params.sessionId && result.workspaceContext) {
+                this.sessionContextManager.updateFromResult(params.sessionId, result);
+            }
+            
+            return result;
         } catch (error) {
             if (error instanceof McpError) {
                 throw error;

@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { SemanticSearchParams, SemanticSearchResult } from '../types';
 import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 import { SearchService } from '../../../database/services/searchService';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for semantic search using vector embeddings
@@ -78,8 +79,11 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
         { workspaceContext } // Pass workspace context for session-aware search
       );
       
+      // Parse workspace context
+      const parsedContext = parseWorkspaceContext(workspaceContext);
+      
       // Initialize activity embedder if needed
-      if (workspaceContext?.workspaceId && !this.activityEmbedder) {
+      if (parsedContext?.workspaceId && !this.activityEmbedder) {
         const provider = embeddingManager.getProvider();
         if (provider) {
           try {
@@ -120,7 +124,10 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
    * @param result Result of search operation
    */
   private async recordActivity(params: SemanticSearchParams, result: any): Promise<void> {
-    if (!params.workspaceContext?.workspaceId || !this.activityEmbedder) {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    
+    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
       return; // Skip if no workspace context or embedder
     }
     
@@ -129,7 +136,7 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
       await this.activityEmbedder.initialize();
       
       // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];
+      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
       
       // Create a descriptive content about this search operation
       const matchCount = result.matches?.length || 0;
@@ -142,7 +149,7 @@ export class SemanticSearchMode extends BaseMode<SemanticSearchParams, SemanticS
       
       // Record the activity in workspace memory
       await this.activityEmbedder.recordActivity(
-        params.workspaceContext.workspaceId,
+        parsedContext.workspaceId,
         workspacePath,
         'research', // Most appropriate type for searches
         content,

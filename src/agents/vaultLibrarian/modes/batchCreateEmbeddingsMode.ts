@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { BatchCreateEmbeddingsParams, BatchCreateEmbeddingsResult } from '../types';
 import { VaultLibrarianAgent } from '../vaultLibrarian';
 import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for batch creating embeddings for multiple files
@@ -274,7 +275,10 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       failed: number;
     }
   ): Promise<void> {
-    if (!params.workspaceContext?.workspaceId || !this.activityEmbedder) {
+    // Parse the workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    
+    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
       return; // Skip if no workspace context or embedder
     }
     
@@ -283,7 +287,7 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       await this.activityEmbedder.initialize();
       
       // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];
+      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
       
       // Create a descriptive content about this batch indexing operation
       const successfulFiles = result.results.filter(r => r.success).map(r => r.filePath);
@@ -298,7 +302,7 @@ export class BatchCreateEmbeddingsMode extends BaseMode<BatchCreateEmbeddingsPar
       
       // Record the activity in workspace memory
       await this.activityEmbedder.recordActivity(
-        params.workspaceContext.workspaceId,
+        parsedContext.workspaceId,
         workspacePath,
         'project_plan', // Most appropriate type for indexing
         content,

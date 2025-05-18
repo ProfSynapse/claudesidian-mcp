@@ -5,6 +5,16 @@ import { App, Notice, TFile } from 'obsidian';
  */
 export class ContentOperations {
   /**
+   * Normalize file path by removing any leading slash
+   * @param filePath Path to normalize
+   * @returns Normalized path
+   */
+  private static normalizePath(filePath: string): string {
+    // Remove leading slash if present
+    return filePath.startsWith('/') ? filePath.slice(1) : filePath;
+  }
+
+  /**
    * Read the content of a note
    * @param app Obsidian app instance
    * @param filePath Path to the note
@@ -12,7 +22,9 @@ export class ContentOperations {
    */
   static async readContent(app: App, filePath: string): Promise<string> {
     try {
-      const file = app.vault.getAbstractFileByPath(filePath);
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
       
       if (!file) {
         throw new Error(`File not found: ${filePath}`);
@@ -36,6 +48,7 @@ export class ContentOperations {
    */
   static async readContentWithLineNumbers(app: App, filePath: string): Promise<string> {
     try {
+      // Normalize path is handled by readContent internally
       const content = await this.readContent(app, filePath);
       const lines = content.split('\n');
       
@@ -62,6 +75,7 @@ export class ContentOperations {
     includeLineNumbers = false
   ): Promise<string[]> {
     try {
+      // Normalize path is handled by readContent internally
       const content = await this.readContent(app, filePath);
       const lines = content.split('\n');
       
@@ -94,21 +108,24 @@ export class ContentOperations {
    */
   static async createContent(app: App, filePath: string, content: string): Promise<TFile> {
     try {
-      const file = app.vault.getAbstractFileByPath(filePath);
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
       
       if (file) {
         throw new Error(`File already exists: ${filePath}`);
       }
       
       // Ensure parent folders exist
-      const folderPath = filePath.substring(0, filePath.lastIndexOf('/'));
+      const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
       if (folderPath) {
+        // Normalize the folder path as well
         await app.vault.createFolder(folderPath).catch(() => {
           // Folder might already exist, ignore error
         });
       }
       
-      return await app.vault.create(filePath, content);
+      return await app.vault.create(normalizedPath, content);
     } catch (error) {
       throw new Error(`Error creating file: ${error.message}`);
     }
@@ -126,7 +143,9 @@ export class ContentOperations {
     totalLength: number;
   }> {
     try {
-      const file = app.vault.getAbstractFileByPath(filePath);
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
       
       if (!file) {
         throw new Error(`File not found: ${filePath}`);
@@ -162,7 +181,9 @@ export class ContentOperations {
     totalLength: number;
   }> {
     try {
-      const file = app.vault.getAbstractFileByPath(filePath);
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
       
       if (!file) {
         throw new Error(`File not found: ${filePath}`);
@@ -201,7 +222,9 @@ export class ContentOperations {
     newContent: string
   ): Promise<number> {
     try {
-      const file = app.vault.getAbstractFileByPath(filePath);
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
       
       if (!file) {
         throw new Error(`File not found: ${filePath}`);
@@ -249,7 +272,9 @@ export class ContentOperations {
     newContent: string
   ): Promise<number> {
     try {
-      const file = app.vault.getAbstractFileByPath(filePath);
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
       
       if (!file) {
         throw new Error(`File not found: ${filePath}`);
@@ -305,7 +330,9 @@ export class ContentOperations {
     content: string
   ): Promise<number> {
     try {
-      const file = app.vault.getAbstractFileByPath(filePath);
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
       
       if (!file) {
         throw new Error(`File not found: ${filePath}`);

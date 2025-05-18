@@ -1,6 +1,7 @@
 import { BaseAgent } from '../baseAgent';
 import { MemoryManagerConfig } from './config';
 import * as Modes from './modes';
+import { parseWorkspaceContext } from '../../utils/contextUtils';
 
 /**
  * Agent for managing workspace memory, sessions, and state snapshots
@@ -78,16 +79,16 @@ export class MemoryManagerAgent extends BaseAgent {
         const activityEmbedder = this.getActivityEmbedder();
         if (activityEmbedder) {
           // Try to get an active session ID
-          let sessionId = activityEmbedder.getActiveSession(params.workspaceContext.workspaceId);
+          let sessionId = activityEmbedder.getActiveSession(parseWorkspaceContext(params.workspaceContext)?.workspaceId);
           
           // If no active session, create one automatically for non-session modes
           // (for session creation, we don't want to create a session automatically)
           if (!sessionId && !modeSlug.startsWith('createSession')) {
             sessionId = await activityEmbedder.createSession(
-              params.workspaceContext.workspaceId,
+              parseWorkspaceContext(params.workspaceContext)?.workspaceId,
               `Auto-created session for ${modeSlug}`
             );
-            console.log(`Created new session ${sessionId} for workspace ${params.workspaceContext.workspaceId}`);
+            console.log(`Created new session ${sessionId} for workspace ${parseWorkspaceContext(params.workspaceContext)?.workspaceId}`);
           }
           
           if (sessionId) {

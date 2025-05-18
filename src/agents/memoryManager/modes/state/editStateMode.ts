@@ -1,6 +1,7 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { EditStateParams, StateResult } from '../../types';
+import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**
  * Mode for editing a workspace state
@@ -27,15 +28,21 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
   async execute(params: EditStateParams): Promise<StateResult> {
     try {
       // Validate parameters
-      if (!params.workspaceContext?.workspaceId) {
-        return this.prepareResult(false, undefined, 'Workspace ID is required');
-      }
-      
       if (!params.stateId) {
         return this.prepareResult(false, undefined, 'State ID is required');
       }
       
-      const workspaceId = params.workspaceContext.workspaceId;
+      // If no workspace ID is provided, set it to a default value for system-wide states
+      let parsedContext = parseWorkspaceContext(params.workspaceContext);
+      if (!parsedContext?.workspaceId) {
+        params.workspaceContext = {
+          ...(typeof params.workspaceContext === 'object' ? params.workspaceContext : {}),
+          workspaceId: 'system'
+        };
+        parsedContext = parseWorkspaceContext(params.workspaceContext);
+      }
+      
+      const workspaceId = parsedContext?.workspaceId;
       const stateId = params.stateId;
       const name = params.name;
       const description = params.description;

@@ -211,19 +211,17 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
    * @param params Parameters that may include workspaceContext
    * @returns The effective workspace context to use, or null if none available
    */
-  protected getInheritedWorkspaceContext(params: CommonParameters): WorkspaceContext | null {
+  protected getInheritedWorkspaceContext(params: CommonParameters): CommonResult['workspaceContext'] | null {
     // 1. Use explicitly provided context if available
     if (params.workspaceContext) {
-      // Get the parent context workspaceId as a fallback
-      const parentFallbackId = ((this as any).parentContext?.workspaceId) || 'default-workspace';
-      
-      // Parse the workspace context using the utility function
-      return parseWorkspaceContext(params.workspaceContext, parentFallbackId);
+      // Use the utility function to safely parse context
+      const fallbackId = ((this as any).parentContext?.workspaceId) || 'default-workspace';
+      return parseWorkspaceContext(params.workspaceContext, fallbackId);
     }
     
     // 2. Fall back to parent context
     if ((this as any).parentContext?.workspaceId) {
-      return (this as any).parentContext as WorkspaceContext;
+      return (this as any).parentContext;
     }
     
     // 3. No context available

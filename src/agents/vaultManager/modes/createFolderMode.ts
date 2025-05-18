@@ -4,6 +4,7 @@ import { CommonParameters, CommonResult, DEFAULT_MEMORY_SETTINGS } from '../../.
 import { FileOperations } from '../utils/FileOperations';
 import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 import { OpenAIProvider } from '../../../database/providers/openai-provider';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Parameters for create folder mode
@@ -112,7 +113,8 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
       }
       
       // Record this activity in workspace memory if applicable
-      if (params.workspaceContext?.workspaceId) {
+      const parsedContext = parseWorkspaceContext(params.workspaceContext);
+  if (parsedContext?.workspaceId) {
         await this.recordActivity(params, result);
       }
       
@@ -156,7 +158,10 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
     params: CreateFolderParameters, 
     result: { path: string; existed: boolean }
   ): Promise<void> {
-    if (!params.workspaceContext?.workspaceId || !this.activityEmbedder) {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    
+    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
       return; // Skip if no workspace context or embedder
     }
     
@@ -170,14 +175,14 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
       }
       
       // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];
+      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
       
       // Create a descriptive content about this operation
       const content = `${result.existed ? 'Found existing' : 'Created new'} folder: ${params.path}`;
       
       // Record the activity in workspace memory
       await this.activityEmbedder.recordActivity(
-        params.workspaceContext.workspaceId,
+        parsedContext.workspaceId,
         workspacePath,
         'research', // Most appropriate available type for folder operations
         content,

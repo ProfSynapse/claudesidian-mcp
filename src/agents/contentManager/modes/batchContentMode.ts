@@ -49,7 +49,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
         }
         
         if (!operation.params.filePath) {
-          throw new Error(`Missing 'filePath' property in operation at index ${index}`);
+          throw new Error(`Missing 'filePath' property in operation at index ${index}. Each operation must include a 'filePath' parameter.`);
         }
         
         // Validate required parameters based on operation type
@@ -94,6 +94,8 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       for (const operation of operations) {
         try {
           let result: any;
+          
+          // No normalization needed, we're enforcing filePath usage
           
           switch (operation.type) {
             case 'read':
@@ -333,7 +335,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
               },
               params: {
                 type: 'object',
-                description: 'Operation-specific parameters',
+                description: 'Operation-specific parameters. IMPORTANT: All operations require a "filePath" parameter.',
                 allOf: [
                   {
                     if: {

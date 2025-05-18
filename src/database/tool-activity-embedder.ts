@@ -400,45 +400,102 @@ export class ToolActivityEmbedder {
   }
   
   /**
-   * Create a workspace state snapshot
-   * @param workspaceId Workspace ID to snapshot
+   * Create a session state snapshot
    * @param name User-friendly name for the snapshot
    * @param description Optional description of the snapshot
-   * @param sessionId Optional session ID (defaults to the active session)
+   * @param sessionId Session ID to snapshot (required)
    * @returns The ID of the created snapshot
    */
   async createStateSnapshot(
-    workspaceId: string,
+    sessionIdOrWorkspaceId: string,
     name: string,
     description?: string,
-    sessionId?: string
+    optionalSessionId?: string
   ): Promise<string> {
     try {
-      // Get the workspace
-      const workspace = await this.workspaceDb.getWorkspace(workspaceId);
+      let targetSessionId: string;
+      let workspaceId: string;
+      let workspace: any;
+      
+      // Handle different ways this method could be called
+      if (optionalSessionId) {
+        // If both are provided, use them directly
+        targetSessionId = optionalSessionId;
+        workspaceId = sessionIdOrWorkspaceId;
+        
+        // Get the workspace
+        workspace = await this.workspaceDb.getWorkspace(workspaceId);
+        if (!workspace) {
+          console.warn(`Workspace ${workspaceId} not found, trying to get it from session`);
+          const session = await this.workspaceDb.getSession(targetSessionId);
+          if (session) {
+            workspaceId = session.workspaceId;
+            workspace = await this.workspaceDb.getWorkspace(workspaceId);
+          }
+        }
+      } else {
+        // Only one ID provided - determine if it's a session or workspace ID
+        try {
+          // First try to get it as a session ID
+          const session = await this.workspaceDb.getSession(sessionIdOrWorkspaceId);
+          if (session) {
+            targetSessionId = sessionIdOrWorkspaceId;
+            workspaceId = session.workspaceId;
+            workspace = await this.workspaceDb.getWorkspace(workspaceId);
+          } else {
+            // If not a session, try as a workspace
+            workspace = await this.workspaceDb.getWorkspace(sessionIdOrWorkspaceId);
+            if (workspace) {
+              workspaceId = sessionIdOrWorkspaceId;
+              // Get the active session for this workspace
+              targetSessionId = this.activeSessions.get(workspaceId) || "";
+              if (!targetSessionId) {
+                // Create a new session if none exists
+                console.log(`No active session found for workspace ${workspaceId}, creating one`);
+                targetSessionId = await this.createSession(
+                  workspaceId,
+                  `Session for state: ${name}`,
+                  `Auto-created session for state "${name}"`
+                );
+              }
+            } else {
+              throw new Error(`Could not determine if ${sessionIdOrWorkspaceId} is a session or workspace ID`);
+            }
+          }
+        } catch (error) {
+          throw new Error(`Could not find session or workspace: ${error.message}`);
+        }
+      }
+      
+      // At this point we should have both a valid session ID and workspace
+      if (!targetSessionId) {
+        throw new Error('No session ID found or created');
+      }
+      
       if (!workspace) {
-        throw new Error(`Workspace with ID ${workspaceId} not found`);
+        throw new Error('Could not determine workspace for the session');
       }
       
-      // Get session ID (either provided or active)
-      let targetSessionId = sessionId;
-      if (!targetSessionId) {
-        targetSessionId = this.activeSessions.get(workspaceId);
-      }
-      
-      if (!targetSessionId) {
-        throw new Error('No active session found for this workspace');
-      }
+      console.log(`Creating state snapshot for session ${targetSessionId} in workspace ${workspaceId}`);
       
       // Get recent traces for context
-      const recentTraces = await this.workspaceDb.getSessionTraces(targetSessionId, 20);
+      let recentTraces: WorkspaceMemoryTrace[] = [];
+      try {
+        recentTraces = await this.workspaceDb.getSessionTraces(targetSessionId, 20);
+        console.log(`Retrieved ${recentTraces.length} traces for session ${targetSessionId}`);
+      } catch (traceError: any) {
+        console.warn(`Failed to get session traces: ${traceError.message}`);
+        console.warn('Continuing with empty traces');
+        // Continue with empty traces rather than failing the whole operation
+      }
+      
       const recentTraceIds = recentTraces.map(trace => trace.id);
       
       // Extract key files from recent traces
       const contextFiles = new Set<string>();
       recentTraces.forEach(trace => {
         if (trace.metadata?.relatedFiles && Array.isArray(trace.metadata.relatedFiles)) {
-          trace.metadata.relatedFiles.forEach(file => contextFiles.add(file));
+          trace.metadata.relatedFiles.forEach((file: string) => contextFiles.add(file));
         }
       });
       

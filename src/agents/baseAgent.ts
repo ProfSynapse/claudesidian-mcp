@@ -1,6 +1,7 @@
 import { IAgent } from './interfaces/IAgent';
 import { IMode } from './interfaces/IMode';
 import { CommonParameters, CommonResult } from '../types';
+import { parseWorkspaceContext } from '../utils/contextUtils';
 
 /**
  * Base class for all agents in the MCP plugin
@@ -98,8 +99,23 @@ export abstract class BaseAgent implements IAgent {
     (mode as any).sessionId = params.sessionId;
     
     // If the mode has setParentContext method, use it to propagate workspace context
-    if (typeof (mode as any).setParentContext === 'function' && params.workspaceContext) {
+    // Pass the workspace context even if undefined, as the mode's setParentContext
+    // method can handle the default context inheritance logic
+    if (typeof (mode as any).setParentContext === 'function') {
       (mode as any).setParentContext(params.workspaceContext);
+    }
+    
+    // If the mode supports getInheritedWorkspaceContext and there's no explicit workspace context,
+    // try to retrieve the inherited context and apply it to the params
+    if (typeof (mode as any).getInheritedWorkspaceContext === 'function' && 
+        (!params.workspaceContext || !parseWorkspaceContext(params.workspaceContext)?.workspaceId)) {
+      const inheritedContext = (mode as any).getInheritedWorkspaceContext(params);
+      if (inheritedContext) {
+        params = {
+          ...params,
+          workspaceContext: inheritedContext
+        };
+      }
     }
     
     // Execute the requested mode
@@ -147,10 +163,19 @@ export abstract class BaseAgent implements IAgent {
       
       // If both have workspace context, merge them (prioritizing original result)
       if (originalResult.workspaceContext && handoff.parameters.workspaceContext) {
-        handoffWorkspaceContext = {
-          ...handoff.parameters.workspaceContext,
-          ...originalResult.workspaceContext
-        };
+        // If they have the same workspace ID, merge them
+        if (originalResult.workspaceContext.workspaceId === handoff.parameters.workspaceContext.workspaceId) {
+          handoffWorkspaceContext = {
+            ...handoff.parameters.workspaceContext,
+            ...originalResult.workspaceContext,
+            // Combine paths if both have workspace paths (using original's if only one has a path)
+            workspacePath: originalResult.workspaceContext.workspacePath || 
+                          handoff.parameters.workspaceContext.workspacePath
+          };
+        } else {
+          // If workspace IDs differ, prefer the original result's context
+          handoffWorkspaceContext = originalResult.workspaceContext;
+        }
       }
       
       // Ensure sessionId is passed to the handoff
@@ -166,15 +191,26 @@ export abstract class BaseAgent implements IAgent {
       // Execute the target mode
       const handoffResult = await targetAgent.executeMode(handoff.mode, handoffParams);
       
-      // If returnHere is true, return original result with handoff result attached
+      // If returning here, pass any updated workspace context from the handoff result
+      // back to the original result
       if (handoff.returnHere) {
-        return {
+        let resultWithHandoff = {
           ...originalResult,
           handoffResult
         };
+        
+        // If the handoff result has a workspace context that's different from the original,
+        // and is from the same workspace, update the workspace context in the returned result
+        if (handoffResult.workspaceContext && 
+            handoffResult.workspaceContext.workspaceId === originalResult.workspaceContext?.workspaceId &&
+            JSON.stringify(handoffResult.workspaceContext) !== JSON.stringify(originalResult.workspaceContext)) {
+          resultWithHandoff.workspaceContext = handoffResult.workspaceContext;
+        }
+        
+        return resultWithHandoff;
       }
       
-      // Otherwise, just return the handoff result
+      // Otherwise, just return the handoff result with potentially updated context
       return handoffResult;
     } catch (error) {
       // Handle errors in handoff

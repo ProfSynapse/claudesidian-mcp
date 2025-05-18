@@ -5,6 +5,7 @@ import { ContentOperations } from '../utils/ContentOperations';
 import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 import { OpenAIProvider } from '../../../database/providers/openai-provider';
 import { DEFAULT_MEMORY_SETTINGS } from '../../../types';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for reading content from a file
@@ -172,8 +173,11 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       endLine?: number;
     }
   ): Promise<void> {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    
     // Skip if no workspace context or embedder is not available
-    if (!params.workspaceContext?.workspaceId || !this.activityEmbedder) {
+    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
       return;
     }
     
@@ -187,7 +191,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       }
       
       // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];
+      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
       
       // Create a descriptive content about this operation
       let contentSnippet = resultData.content.substring(0, 100);
@@ -203,7 +207,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       
       // Record the activity in workspace memory
       await this.activityEmbedder.recordActivity(
-        params.workspaceContext.workspaceId,
+        parsedContext.workspaceId,
         workspacePath,
         'research', // Most appropriate type for content reading
         content,

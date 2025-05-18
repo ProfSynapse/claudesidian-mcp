@@ -1,6 +1,7 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { ListStatesParams, StateResult } from '../../types';
+import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**
  * Mode for listing workspace states with filtering options
@@ -26,12 +27,17 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
    */
   async execute(params: ListStatesParams): Promise<StateResult> {
     try {
-      // Validate workspace context
-      if (!params.workspaceContext?.workspaceId) {
-        return this.prepareResult(false, undefined, 'Workspace ID is required');
+      // If no workspace ID is provided, set it to a default value for system-wide states
+      let parsedContext = parseWorkspaceContext(params.workspaceContext);
+      if (!parsedContext?.workspaceId) {
+        params.workspaceContext = {
+          ...(typeof params.workspaceContext === 'object' ? params.workspaceContext : {}),
+          workspaceId: 'system'
+        };
+        parsedContext = parseWorkspaceContext(params.workspaceContext);
       }
       
-      const workspaceId = params.workspaceContext.workspaceId;
+      const workspaceId = parsedContext?.workspaceId;
       const includeContext = params.includeContext || false;
       const limit = params.limit || 20;
       const targetSessionId = params.targetSessionId;
@@ -50,13 +56,21 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       }
       
       // Get states (snapshots) for the workspace
-      let states = await workspaceDb.getSnapshots(workspaceId, targetSessionId);
-      
+      let states = [];
+      try {
+        console.log(`Trying to get snapshots for workspace: ${workspaceId}, session: ${targetSessionId || 'any'}`);
+        states = await workspaceDb.getSnapshots(workspaceId, targetSessionId);
+        console.log(`Retrieved ${states.length} snapshots`);
+      } catch (error) {
+        console.error(`Error retrieving snapshots: ${error.message}`);
+        return this.prepareResult(false, undefined, `Error retrieving snapshots: ${error.message}`);
+      }
+
       // Apply tags filtering if provided
-      if (filterTags.length > 0) {
+      if (filterTags.length > 0 && states.length > 0) {
         states = states.filter((state: any) => {
           // Get tags from state metadata
-          const stateTags = state.state.metadata?.tags;
+          const stateTags = state.state?.metadata?.tags;
           if (!stateTags || !Array.isArray(stateTags)) {
             return false;
           }

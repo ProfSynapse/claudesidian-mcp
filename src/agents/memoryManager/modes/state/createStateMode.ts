@@ -40,8 +40,18 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       }
       
       // Initialize workspace database if needed
-      if (typeof workspaceDb.initialize === 'function') {
-        await workspaceDb.initialize();
+      try {
+        if (typeof workspaceDb.initialize === 'function') {
+          await workspaceDb.initialize();
+        }
+      } catch (dbError) {
+        console.error('Database initialization error:', dbError);
+        return this.prepareResult(
+          false, 
+          undefined, 
+          `Database initialization failed: ${dbError.message}`,
+          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+        );
       }
       
       // Parse the workspace context using the utility function
@@ -60,6 +70,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           if (workspaces && workspaces.length > 0) {
             workspaceId = workspaces[0].id;
           } else {
+            console.log('No workspaces found, creating default workspace');
             // Create a default workspace if none exists
             const defaultWorkspace = await workspaceDb.createWorkspace({
               name: 'Default Workspace',
@@ -70,14 +81,18 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             workspaceId = defaultWorkspace.id;
           }
         } catch (error) {
+          console.error('Error determining workspace:', error);
           return this.prepareResult(
             false, 
             undefined, 
             `Failed to determine workspace: ${error.message}`,
-            { sessionId: params.sessionId } // Pass session ID back in error
+            { sessionId: params.sessionId, workspaceContext: params.workspaceContext } // Pass session ID back in error
           );
         }
       }
+      
+      console.log(`Using workspace with ID: ${workspaceId}`);
+      
       const name = params.name;
       const description = params.description || '';
       const targetSessionId = params.targetSessionId;
@@ -91,18 +106,41 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       // Get the activity embedder
       const activityEmbedder = this.agent.getActivityEmbedder();
       if (!activityEmbedder) {
-        return this.prepareResult(false, undefined, 'Activity embedder not available');
+        return this.prepareResult(false, undefined, 'Activity embedder not available. Make sure embeddings are enabled in settings.');
+      }
+      
+      // Make sure activity embedder is initialized
+      if (typeof activityEmbedder.initialize === 'function') {
+        try {
+          await activityEmbedder.initialize();
+          console.log("Activity embedder initialized successfully");
+        } catch (embeddingError) {
+          console.error("Failed to initialize activity embedder:", embeddingError);
+          return this.prepareResult(false, undefined, `Failed to initialize activity embedder: ${embeddingError.message}`);
+        }
       }
       
       // We've already initialized the workspaceDb above
       
       // Get the workspace data
-      const workspace = await workspaceDb.getWorkspace(workspaceId);
-      if (!workspace) {
+      let workspace;
+      try {
+        workspace = await workspaceDb.getWorkspace(workspaceId);
+        if (!workspace) {
+          console.warn(`Workspace with ID ${workspaceId} not found`);
+          return this.prepareResult(
+            false, 
+            undefined, 
+            `Workspace with ID ${workspaceId} not found`,
+            { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+          );
+        }
+      } catch (error) {
+        console.error(`Error retrieving workspace ${workspaceId}:`, error);
         return this.prepareResult(
           false, 
           undefined, 
-          `Workspace with ID ${workspaceId} not found`,
+          `Error retrieving workspace: ${error.message}`,
           { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
         );
       }
@@ -112,28 +150,108 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       if (!usedSessionId) {
         usedSessionId = activityEmbedder.getActiveSession(workspaceId);
         
-        // If still no active session, fail more gracefully
+        // If still no active session, create one automatically
         if (!usedSessionId) {
-          return this.prepareResult(
-            false, 
-            undefined, 
-            'No active session found and no target session ID provided',
-            { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
-          );
+          try {
+            console.log('No active session found, creating a new one');
+            usedSessionId = await activityEmbedder.createSession(
+              workspaceId,
+              `Session for state: ${name}`,
+              `Auto-created session for creating state "${name}"`
+            );
+            console.log(`Created new session: ${usedSessionId}`);
+          } catch (error) {
+            console.error('Failed to create new session:', error);
+            return this.prepareResult(
+              false, 
+              undefined, 
+              `Failed to create session: ${error.message}`,
+              { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+            );
+          }
         }
       }
       
-      // Check if the session exists
-      const session = await workspaceDb.getSession(usedSessionId);
-      if (!session) {
+      // Check if the session exists and validate it
+      let session;
+      try {
+        session = await workspaceDb.getSession(usedSessionId);
+        if (!session) {
+          console.warn(`Session with ID ${usedSessionId} not found`);
+          return this.prepareResult(
+            false, 
+            undefined, 
+            `Session with ID ${usedSessionId} not found`,
+            { 
+              sessionId: params.sessionId, 
+              workspaceContext: params.workspaceContext 
+            }
+          );
+        }
+        
+        // Validate that the session belongs to the correct workspace
+        if (session.workspaceId !== workspaceId) {
+          console.warn(`Session ${usedSessionId} belongs to workspace ${session.workspaceId}, not ${workspaceId}`);
+          
+          // Try to find or create a valid session for this workspace
+          try {
+            const validSessions = await workspaceDb.getSessions(workspaceId, true);
+            if (validSessions.length > 0) {
+              // Use the most recent active session
+              usedSessionId = validSessions[0].id;
+              session = validSessions[0];
+              console.log(`Using existing active session ${usedSessionId} for workspace ${workspaceId}`);
+            } else {
+              // Create a new session for this workspace
+              usedSessionId = await activityEmbedder.createSession(
+                workspaceId,
+                `Session for state: ${name}`,
+                `Auto-created session for creating state "${name}"`
+              );
+              session = await workspaceDb.getSession(usedSessionId);
+              console.log(`Created new session ${usedSessionId} for workspace ${workspaceId}`);
+            }
+          } catch (sessionError) {
+            console.error('Failed to find or create a valid session:', sessionError);
+            return this.prepareResult(
+              false,
+              undefined,
+              `Session validation failed: ${sessionError.message}`,
+              { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+            );
+          }
+        }
+        
+        // Additional validation - ensure session is active
+        if (!session.isActive) {
+          console.warn(`Session ${usedSessionId} is not active. Creating a new active session.`);
+          
+          // Create a new active session based on the inactive one
+          try {
+            usedSessionId = await activityEmbedder.createSession(
+              workspaceId,
+              `Continued session for state: ${name}`,
+              `Auto-created continuation of session "${session.name}"`
+            );
+            session = await workspaceDb.getSession(usedSessionId);
+            console.log(`Created new session ${usedSessionId} to replace inactive session`);
+          } catch (sessionError) {
+            console.error('Failed to create a replacement session:', sessionError);
+            return this.prepareResult(
+              false,
+              undefined,
+              `Failed to create an active session: ${sessionError.message}`,
+              { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+            );
+          }
+        }
+      } catch (error) {
+        console.error(`Error retrieving session ${usedSessionId}:`, error);
         return this.prepareResult(
           false, 
           undefined, 
-          `Session with ID ${usedSessionId} not found`,
-          { 
-            sessionId: params.sessionId, 
-            workspaceContext: params.workspaceContext 
-          }
+          `Error retrieving session: ${error.message}`,
+          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
         );
       }
       
@@ -150,7 +268,14 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       }
       
       // Get recent traces for enhanced context
-      const recentTraces = await workspaceDb.getSessionTraces(usedSessionId, maxTraces);
+      let recentTraces = [];
+      try {
+        recentTraces = await workspaceDb.getSessionTraces(usedSessionId, maxTraces);
+        console.log(`Retrieved ${recentTraces.length} traces for session ${usedSessionId}`);
+      } catch (error) {
+        console.warn(`Error retrieving session traces: ${error.message}. Continuing with empty traces.`);
+        // Continue with empty traces rather than failing completely
+      }
       
       // Extract key files
       const keyFiles = new Set<string>();
@@ -166,13 +291,18 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       // Generate a context summary if requested
       let contextSummary = '';
       if (includeSummary) {
-        contextSummary = this.generateContextSummary(
-          workspace,
-          session,
-          recentTraces,
-          includedFiles,
-          reason
-        );
+        try {
+          contextSummary = this.generateContextSummary(
+            workspace,
+            session,
+            recentTraces,
+            includedFiles,
+            reason
+          );
+        } catch (error) {
+          console.warn(`Error generating context summary: ${error.message}. Continuing with empty summary.`);
+          contextSummary = `Failed to generate complete summary: ${error.message}`;
+        }
       }
       
       // Prepare enhanced metadata for the state
@@ -188,21 +318,53 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         includesFileContents: includeFileContents,
         traceCount: recentTraces.length,
         tags: [...tags],
-        contextPath: workspace.path
+        contextPath: workspace.path || []
       };
       
       // Add the root folder as a tag if it exists
       if (workspace.rootFolder) {
-        enhancedMetadata.tags.push(`folder:${workspace.rootFolder.split('/').pop()}`);
+        try {
+          enhancedMetadata.tags.push(`folder:${workspace.rootFolder.split('/').pop()}`);
+        } catch (error) {
+          console.warn(`Error adding folder tag: ${error.message}`);
+        }
       }
       
       // Create the enhanced state (using the snapshot functionality)
-      const stateId = await activityEmbedder.createStateSnapshot(
-        workspaceId, 
-        name, 
-        enhancedDescription, 
-        usedSessionId
-      );
+      let stateId;
+      try {
+        // Primary validation for sessionId since states should be tied to sessions
+        if (!usedSessionId || typeof usedSessionId !== 'string') {
+          throw new Error(`Invalid sessionId: ${usedSessionId}`);
+        }
+        
+        if (!name || typeof name !== 'string') {
+          throw new Error(`Invalid state name: ${name}`);
+        }
+        
+        // Create the enhanced state - primarily using the session ID
+        stateId = await activityEmbedder.createStateSnapshot(
+          usedSessionId, // Use the session ID as the primary identifier
+          name,
+          enhancedDescription
+        );
+        console.log(`Created state snapshot with ID: ${stateId}`);
+      } catch (error) {
+        console.error('Error creating state snapshot:', error);
+        
+        // Try to provide a more helpful error message
+        let errorMessage = `Error creating state snapshot: ${error.message}`;
+        if (error.message.includes('index') && error.message.includes('not found')) {
+          errorMessage = "Database schema is missing required indexes. Try manually deleting the database from your browser's developer tools and try again.";
+        }
+        
+        return this.prepareResult(
+          false, 
+          undefined, 
+          errorMessage,
+          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+        );
+      }
       
       // Record a memory trace about the state creation
       const stateTraceContent = `Created state "${name}" of workspace "${workspace.name}" at ${stateDate}
@@ -216,7 +378,7 @@ ${contextSummary}`;
       try {
         await activityEmbedder.recordActivity(
           workspaceId,
-          workspace.path,
+          workspace.path || [],
           'checkpoint', // Using checkpoint type for states
           stateTraceContent,
           {
@@ -237,8 +399,10 @@ ${contextSummary}`;
           includedFiles,
           usedSessionId
         );
+        console.log('Recorded activity trace for state creation');
       } catch (error) {
         console.warn(`Failed to create memory trace for state: ${error.message}`);
+        // Non-critical error, we can continue
       }
       
       // Return result with enhanced context
@@ -257,7 +421,17 @@ ${contextSummary}`;
         }
       });
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error creating state: ${error.message}`);
+      console.error('Error in create state mode:', error);
+      // Provide a detailed error response with the workspace context
+      return this.prepareResult(
+        false, 
+        undefined, 
+        `Error creating state: ${error.message}`, 
+        { 
+          sessionId: params.sessionId, 
+          workspaceContext: params.workspaceContext 
+        }
+      );
     }
   }
   

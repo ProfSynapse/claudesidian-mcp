@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 import { LoadStateParams, StateResult } from '../../types';
+import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**
  * Mode for loading a workspace state with comprehensive context restoration
@@ -30,6 +31,19 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       // Validate parameters
       if (!params.stateId) {
         return this.prepareResult(false, undefined, 'State ID is required');
+      }
+      
+      // If no workspace context is provided, initialize it to default
+      if (!params.workspaceContext) {
+        params.workspaceContext = { workspaceId: 'system' };
+      } else {
+        const parsedContext = parseWorkspaceContext(params.workspaceContext);
+        if (!parsedContext?.workspaceId) {
+          params.workspaceContext = {
+            ...(typeof params.workspaceContext === 'object' ? params.workspaceContext : {}),
+            workspaceId: 'system'
+          };
+        }
       }
       
       const stateId = params.stateId;

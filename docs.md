@@ -378,21 +378,27 @@ await server.executeMode('noteEditor', 'append', {
 });
 Example 2: Batch Operations
 // Perform multiple edits in one operation
-await server.executeMode('noteEditor', 'batch', {
+await server.executeMode('contentManager', 'batchContent', {
   operations: [
     {
       type: 'replace',
-      path: 'note.md',
-      search: 'old text',
-      replace: 'new text'
+      params: {
+        filePath: 'note.md',  // Always use filePath, not path
+        oldContent: 'old text',
+        newContent: 'new text'
+      }
     },
     {
       type: 'append',
-      path: 'note.md',
-      content: 'Appended content'
+      params: {
+        filePath: 'note.md',
+        content: 'Appended content'
+      }
     }
   ]
 });
+
+// For more details on batch operations, see the batch-operations.md documentation
 Migration Guide from Old Tool Approach to Agent-Mode Architecture
 The plugin has fully migrated to the agent-mode architecture, and all backward compatibility with the old tool approach has been removed.
 

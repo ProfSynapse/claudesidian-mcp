@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { CreateEmbeddingsParams, CreateEmbeddingsResult } from '../types';
 import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
 import { ProgressTracker } from '../../../database/utils/progressTracker';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for creating embeddings for a file
@@ -40,6 +41,9 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
     try {
       const { filePath, force, workspaceContext, handoff } = params;
       
+      // Parse workspace context early for use throughout the method
+      const parsedContext = parseWorkspaceContext(workspaceContext);
+      
       if (!filePath) {
         return this.prepareResult(false, undefined, 'File path is required');
       }
@@ -66,8 +70,10 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
         return this.prepareResult(false, undefined, `File not found or not a markdown file: ${filePath}`);
       }
       
+      // Use the already parsed context from above
+      
       // Initialize activity embedder if needed
-      if (workspaceContext?.workspaceId && !this.activityEmbedder) {
+      if (parsedContext?.workspaceId && !this.activityEmbedder) {
         const provider = embeddingManager.getProvider();
         if (provider) {
           try {
@@ -79,14 +85,14 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
       }
       
       // Trigger single-file progress update
-      this.updateProgress(0, 1, params.workspaceContext?.workspaceId);
+      this.updateProgress(0, 1, parsedContext?.workspaceId);
       
       // Index the file
       const result = await indexingService.indexFile(filePath, force);
       
       // Trigger progress completion
-      this.updateProgress(1, 1, params.workspaceContext?.workspaceId);
-      this.completeProgress(result.success, params.workspaceContext?.workspaceId);
+      this.updateProgress(1, 1, parsedContext?.workspaceId);
+      this.completeProgress(result.success, parsedContext?.workspaceId);
       
       // Record this activity if in a workspace context
       await this.recordActivity(params, result);
@@ -109,8 +115,11 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
       
       return response;
     } catch (error) {
+      // Parse workspace context for error case
+      const parsedContext = parseWorkspaceContext(params.workspaceContext);
+      
       // Ensure progress is completed even on error
-      this.completeProgress(false, params.workspaceContext?.workspaceId, error.message);
+      this.completeProgress(false, parsedContext?.workspaceId, error.message);
       
       return this.prepareResult(false, undefined, `Error creating embeddings: ${error.message}`);
     }
@@ -161,7 +170,10 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
       filePath: string;
     }
   ): Promise<void> {
-    if (!params.workspaceContext?.workspaceId || !this.activityEmbedder) {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    
+    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
       return; // Skip if no workspace context or embedder
     }
     
@@ -170,7 +182,7 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
       await this.activityEmbedder.initialize();
       
       // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];
+      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
       
       // Create a descriptive content about this indexing operation
       const content = `Indexed file: ${params.filePath}\n` +
@@ -180,7 +192,7 @@ export class CreateEmbeddingsMode extends BaseMode<CreateEmbeddingsParams, Creat
       
       // Record the activity in workspace memory
       await this.activityEmbedder.recordActivity(
-        params.workspaceContext.workspaceId,
+        parsedContext.workspaceId,
         workspacePath,
         'project_plan', // Most appropriate type for indexing
         content,

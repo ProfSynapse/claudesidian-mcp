@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 
@@ -64,15 +64,17 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
         return this.prepareResult(false, undefined, 'Path is required');
       }
       
-      // Get all files in the vault
-      const allFiles = this.app.vault.getFiles();
+      // Get the folder
+      const parentFolder = this.app.vault.getAbstractFileByPath(params.path);
+      if (!parentFolder || !(parentFolder instanceof TFolder)) {
+        return this.prepareResult(false, undefined, `Folder not found at path: ${params.path}`);
+      }
       
-      // Filter files by path
-      const normalizedPath = params.path.endsWith('/') ? params.path : `${params.path}/`;
-      let files = allFiles.filter(file => 
-        file.path.startsWith(normalizedPath) &&
-        file.path.substring(normalizedPath.length).indexOf('/') === -1
-      );
+      // Get all children
+      const children = parentFolder.children || [];
+      
+      // Filter for files only
+      let files = children.filter(child => child instanceof TFile) as TFile[];
       
       // Apply additional filter if provided
       if (params.filter) {

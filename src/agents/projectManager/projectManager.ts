@@ -13,6 +13,7 @@ import {
   DeleteWorkspaceMode,
   LoadWorkspaceMode
 } from './modes';
+import { parseWorkspaceContext } from '../../utils/contextUtils';
 
 /**
  * Agent for managing projects and workspaces in the vault
@@ -68,15 +69,15 @@ export class ProjectManagerAgent extends BaseAgent {
         const activityEmbedder = this.plugin.getActivityEmbedder();
         if (activityEmbedder) {
           // Try to get an active session ID
-          let sessionId = activityEmbedder.getActiveSession(params.workspaceContext.workspaceId);
+          let sessionId = activityEmbedder.getActiveSession(parseWorkspaceContext(params.workspaceContext)?.workspaceId);
           
           // If no active session, create one automatically
           if (!sessionId) {
             sessionId = await activityEmbedder.createSession(
-              params.workspaceContext.workspaceId,
+              parseWorkspaceContext(params.workspaceContext)?.workspaceId,
               `Auto-created session for ${modeSlug}`
             );
-            console.log(`Created new session ${sessionId} for workspace ${params.workspaceContext.workspaceId}`);
+            console.log(`Created new session ${sessionId} for workspace ${parseWorkspaceContext(params.workspaceContext)?.workspaceId}`);
           }
           
           // Add the session ID to the parameters

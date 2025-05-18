@@ -1,6 +1,41 @@
 import { CommonParameters, CommonResult } from '../types';
 
 /**
+ * File embedding interface
+ */
+export interface FileEmbedding {
+  /**
+   * Unique identifier
+   */
+  id: string;
+  
+  /**
+   * Path to the file
+   */
+  filePath: string;
+  
+  /**
+   * Creation timestamp
+   */
+  timestamp: number;
+  
+  /**
+   * Associated workspace ID (optional)
+   */
+  workspaceId?: string;
+  
+  /**
+   * Embedding vector
+   */
+  vector: number[];
+  
+  /**
+   * Additional metadata
+   */
+  metadata?: any;
+}
+
+/**
  * Hierarchical project workspace types
  * Supports workspace→phase→task structure
  */
@@ -365,11 +400,13 @@ export interface WorkspaceCache {
  * Parameter interface for workspace operations
  */
 export interface WorkspaceParameters extends CommonParameters {
-  workspaceContext?: {
-    workspaceId: string;
-    workspacePath?: string[];
-    contextDepth?: 'minimal' | 'standard' | 'comprehensive';
-  };
+  /**
+   * Context depth for operations
+   * - minimal: Just basic information
+   * - standard: Regular level of detail (default)
+   * - comprehensive: Maximum detail and context
+   */
+  contextDepth?: 'minimal' | 'standard' | 'comprehensive';
 }
 
 /**

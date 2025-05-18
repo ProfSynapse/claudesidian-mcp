@@ -1,16 +1,38 @@
 /**
- * Minimal logger that only logs critical system errors.
+ * Enhanced logger that handles different types of logging.
  * Used to replace all console.log/warn/error calls with a centralized system
- * that only logs absolute essential errors.
+ * that can be configured to show only necessary logs.
  */
 export const logger = {
     /**
-     * Log only fatal system errors that prevent core functionality
+     * Log fatal system errors that prevent core functionality
      */
     systemError(error: Error, context?: string) {
         console.error(
             `SYSTEM ERROR${context ? ` [${context}]` : ''}: ${error.message}`
         );
+    },
+    
+    /**
+     * Log system warnings that don't prevent functionality but indicate issues
+     */
+    systemWarn(message: string, context?: string) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn(
+                `SYSTEM WARNING${context ? ` [${context}]` : ''}: ${message}`
+            );
+        }
+    },
+    
+    /**
+     * Log informational messages during development
+     */
+    systemLog(message: string, context?: string) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(
+                `SYSTEM INFO${context ? ` [${context}]` : ''}: ${message}`
+            );
+        }
     }
     
     // operationError function removed to eliminate unnecessary console logs

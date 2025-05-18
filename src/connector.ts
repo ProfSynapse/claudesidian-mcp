@@ -2,6 +2,7 @@ import { App, Plugin } from 'obsidian';
 import { MCPServer } from './server';
 import { EventManager } from './services/EventManager';
 import { AgentManager } from './services/AgentManager';
+import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
 import {
     ContentManagerAgent,
     CommandManagerAgent,
@@ -30,15 +31,17 @@ export class MCPConnector {
     private server: MCPServer;
     private agentManager: AgentManager;
     private eventManager: EventManager;
+    private sessionContextManager: SessionContextManager;
     
     constructor(
         private app: App,
         private plugin: Plugin
     ) {
         this.eventManager = new EventManager();
+        this.sessionContextManager = new SessionContextManager();
         this.agentManager = new AgentManager(app, plugin, this.eventManager);
         // Create server with vault-specific identifier
-        this.server = new MCPServer(app, plugin, this.eventManager);
+        this.server = new MCPServer(app, plugin, this.eventManager, this.sessionContextManager);
         
         // Initialize agents
         this.initializeAgents();
@@ -156,10 +159,11 @@ export class MCPConnector {
                         );
                     }
                     
-                    if (!operation.path) {
+                    // Check for either filePath in params or path at the operation level
+                    if ((!operation.params || !operation.params.filePath) && !operation.path) {
                         throw new McpError(
                             ErrorCode.InvalidParams,
-                            `Invalid operation at index ${index} in batch operations: missing 'path' property`
+                            `Invalid operation at index ${index} in batch operations: missing 'filePath' property in params`
                         );
                     }
                 });
@@ -277,5 +281,67 @@ export class MCPConnector {
         } catch (error) {
             return null;
         }
+    }
+    
+    /**
+     * Get the session context manager instance
+     */
+    getSessionContextManager(): SessionContextManager {
+        return this.sessionContextManager;
+    }
+    
+    /**
+     * Set default workspace context for all new sessions
+     * The default context will be used when a session doesn't have an explicit workspace context
+     * 
+     * @param workspaceId Workspace ID 
+     * @param workspacePath Optional hierarchical path within the workspace
+     * @returns True if successful
+     */
+    setDefaultWorkspaceContext(workspaceId: string, workspacePath?: string[]): boolean {
+        if (!workspaceId) {
+            logger.systemWarn('Cannot set default workspace context with empty workspaceId');
+            return false;
+        }
+        
+        const context: WorkspaceContext = {
+            workspaceId,
+            workspacePath,
+            activeWorkspace: true
+        };
+        
+        this.sessionContextManager.setDefaultWorkspaceContext(context);
+        return true;
+    }
+    
+    /**
+     * Clear the default workspace context
+     */
+    clearDefaultWorkspaceContext(): void {
+        this.sessionContextManager.setDefaultWorkspaceContext(null);
+    }
+    
+    /**
+     * Set workspace context for a specific session
+     * 
+     * @param sessionId Session ID
+     * @param workspaceId Workspace ID
+     * @param workspacePath Optional hierarchical path within the workspace
+     * @returns True if successful
+     */
+    setSessionWorkspaceContext(sessionId: string, workspaceId: string, workspacePath?: string[]): boolean {
+        if (!sessionId || !workspaceId) {
+            logger.systemWarn('Cannot set session workspace context with empty sessionId or workspaceId');
+            return false;
+        }
+        
+        const context: WorkspaceContext = {
+            workspaceId,
+            workspacePath,
+            activeWorkspace: true
+        };
+        
+        this.sessionContextManager.setWorkspaceContext(sessionId, context);
+        return true;
     }
 }

@@ -1,5 +1,6 @@
 import { App } from 'obsidian';
 import { EmbeddingManager } from './embeddingManager';
+import { parseWorkspaceContext } from '../../utils/contextUtils';
 
 /**
  * Handles semantic and combined search operations

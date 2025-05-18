@@ -5,6 +5,15 @@ import { App, TFile, TFolder } from 'obsidian';
  */
 export class FileOperations {
   /**
+   * Normalize file path by removing any leading slash
+   * @param path Path to normalize
+   * @returns Normalized path
+   */
+  private static normalizePath(path: string): string {
+    // Remove leading slash if present
+    return path.startsWith('/') ? path.slice(1) : path;
+  }
+  /**
    * Create a note
    * @param app Obsidian app instance
    * @param path Path to the note
@@ -19,8 +28,11 @@ export class FileOperations {
     content: string,
     overwrite: boolean = false
   ): Promise<{ file: TFile; existed: boolean }> {
+    // Normalize path to remove any leading slash
+    const normalizedPath = this.normalizePath(path);
+    
     // Check if the file already exists
-    const existingFile = app.vault.getAbstractFileByPath(path);
+    const existingFile = app.vault.getAbstractFileByPath(normalizedPath);
     if (existingFile) {
       if (existingFile instanceof TFile) {
         if (overwrite) {
@@ -36,13 +48,13 @@ export class FileOperations {
     }
     
     // Ensure the parent folder exists
-    const folderPath = path.substring(0, path.lastIndexOf('/'));
+    const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
     if (folderPath) {
       await FileOperations.ensureFolder(app, folderPath);
     }
     
     // Create the file
-    const file = await app.vault.create(path, content);
+    const file = await app.vault.create(normalizedPath, content);
     return { file, existed: false };
   }
   
@@ -54,8 +66,11 @@ export class FileOperations {
    * @throws Error if creation fails
    */
   static async createFolder(app: App, path: string): Promise<boolean> {
+    // Normalize path to remove any leading slash
+    const normalizedPath = this.normalizePath(path);
+    
     // Check if the folder already exists
-    const existingFolder = app.vault.getAbstractFileByPath(path);
+    const existingFolder = app.vault.getAbstractFileByPath(normalizedPath);
     if (existingFolder) {
       if (existingFolder instanceof TFolder) {
         return true;
@@ -65,7 +80,7 @@ export class FileOperations {
     }
     
     // Create the folder
-    await app.vault.createFolder(path);
+    await app.vault.createFolder(normalizedPath);
     return false;
   }
   
@@ -76,7 +91,10 @@ export class FileOperations {
    * @returns Promise that resolves when the folder exists
    */
   static async ensureFolder(app: App, path: string): Promise<void> {
-    const folders = path.split('/').filter(p => p.length > 0);
+    // Normalize path to remove any leading slash
+    const normalizedPath = this.normalizePath(path);
+    
+    const folders = normalizedPath.split('/').filter(p => p.length > 0);
     let currentPath = '';
     
     for (const folder of folders) {
@@ -100,7 +118,10 @@ export class FileOperations {
    * @throws Error if deletion fails
    */
   static async deleteNote(app: App, path: string): Promise<void> {
-    const file = app.vault.getAbstractFileByPath(path);
+    // Normalize path to remove any leading slash
+    const normalizedPath = this.normalizePath(path);
+    
+    const file = app.vault.getAbstractFileByPath(normalizedPath);
     if (!file) {
       throw new Error(`File not found: ${path}`);
     }
@@ -121,7 +142,10 @@ export class FileOperations {
    * @throws Error if deletion fails
    */
   static async deleteFolder(app: App, path: string, recursive: boolean = false): Promise<void> {
-    const folder = app.vault.getAbstractFileByPath(path);
+    // Normalize path to remove any leading slash
+    const normalizedPath = this.normalizePath(path);
+    
+    const folder = app.vault.getAbstractFileByPath(normalizedPath);
     if (!folder) {
       throw new Error(`Folder not found: ${path}`);
     }
@@ -152,7 +176,11 @@ export class FileOperations {
     newPath: string,
     overwrite: boolean = false
   ): Promise<void> {
-    const file = app.vault.getAbstractFileByPath(path);
+    // Normalize paths to remove any leading slashes
+    const normalizedPath = this.normalizePath(path);
+    const normalizedNewPath = this.normalizePath(newPath);
+    
+    const file = app.vault.getAbstractFileByPath(normalizedPath);
     if (!file) {
       throw new Error(`File not found: ${path}`);
     }
@@ -162,7 +190,7 @@ export class FileOperations {
     }
     
     // Check if the destination already exists
-    const existingFile = app.vault.getAbstractFileByPath(newPath);
+    const existingFile = app.vault.getAbstractFileByPath(normalizedNewPath);
     if (existingFile) {
       if (overwrite) {
         await app.vault.delete(existingFile);
@@ -172,12 +200,12 @@ export class FileOperations {
     }
     
     // Ensure the parent folder exists
-    const folderPath = newPath.substring(0, newPath.lastIndexOf('/'));
+    const folderPath = normalizedNewPath.substring(0, normalizedNewPath.lastIndexOf('/'));
     if (folderPath) {
       await FileOperations.ensureFolder(app, folderPath);
     }
     
-    await app.vault.rename(file, newPath);
+    await app.vault.rename(file, normalizedNewPath);
   }
   
   /**
@@ -195,7 +223,11 @@ export class FileOperations {
     newPath: string,
     overwrite: boolean = false
   ): Promise<void> {
-    const folder = app.vault.getAbstractFileByPath(path);
+    // Normalize paths to remove any leading slashes
+    const normalizedPath = this.normalizePath(path);
+    const normalizedNewPath = this.normalizePath(newPath);
+    
+    const folder = app.vault.getAbstractFileByPath(normalizedPath);
     if (!folder) {
       throw new Error(`Folder not found: ${path}`);
     }
@@ -205,7 +237,7 @@ export class FileOperations {
     }
     
     // Check if the destination already exists
-    const existingFolder = app.vault.getAbstractFileByPath(newPath);
+    const existingFolder = app.vault.getAbstractFileByPath(normalizedNewPath);
     if (existingFolder) {
       if (overwrite) {
         await app.vault.delete(existingFolder, true);
@@ -215,11 +247,11 @@ export class FileOperations {
     }
     
     // Ensure the parent folder exists
-    const parentPath = newPath.substring(0, newPath.lastIndexOf('/'));
+    const parentPath = normalizedNewPath.substring(0, normalizedNewPath.lastIndexOf('/'));
     if (parentPath) {
       await FileOperations.ensureFolder(app, parentPath);
     }
     
-    await app.vault.rename(folder, newPath);
+    await app.vault.rename(folder, normalizedNewPath);
   }
 }

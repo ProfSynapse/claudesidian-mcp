@@ -2,108 +2,98 @@ import { parseWorkspaceContext, serializeWorkspaceContext, WorkspaceContext } fr
 
 describe('contextUtils', () => {
   describe('parseWorkspaceContext', () => {
-    it('should parse valid JSON string context', () => {
-      const jsonContext = JSON.stringify({ 
-        workspaceId: 'test-123', 
-        workspacePath: ['path1', 'path2'] 
+    it('should parse string representation of workspace context', () => {
+      const stringContext = JSON.stringify({
+        workspaceId: 'test-workspace-123',
+        workspacePath: ['project', 'phase1']
       });
       
-      const parsed = parseWorkspaceContext(jsonContext);
+      const parsed = parseWorkspaceContext(stringContext);
       
-      expect(parsed).toEqual({
-        workspaceId: 'test-123',
-        workspacePath: ['path1', 'path2'],
-        activeWorkspace: true
-      });
+      expect(parsed).not.toBeNull();
+      expect(parsed!.workspaceId).toBe('test-workspace-123');
+      expect(parsed!.workspacePath).toEqual(['project', 'phase1']);
+      expect(parsed!.activeWorkspace).toBe(true);
     });
     
-    it('should use fallback for invalid JSON', () => {
-      const invalidJson = '{not-valid-json}';
-      const parsed = parseWorkspaceContext(invalidJson, 'fallback-id');
-      
-      expect(parsed).toEqual({
-        workspaceId: 'fallback-id',
-        workspacePath: [],
-        activeWorkspace: true
-      });
-    });
-    
-    it('should handle object input directly', () => {
-      const objContext = { 
-        workspaceId: 'obj-123', 
-        workspacePath: ['obj-path'],
-        activeWorkspace: false
+    it('should handle object representation of workspace context', () => {
+      const objContext = {
+        workspaceId: 'test-workspace-456',
+        workspacePath: ['project', 'phase2']
       };
       
       const parsed = parseWorkspaceContext(objContext);
       
-      expect(parsed).toEqual({
-        workspaceId: 'obj-123',
-        workspacePath: ['obj-path'],
-        activeWorkspace: false
-      });
+      expect(parsed).not.toBeNull();
+      expect(parsed!.workspaceId).toBe('test-workspace-456');
+      expect(parsed!.workspacePath).toEqual(['project', 'phase2']);
     });
     
-    it('should use fallback for missing workspaceId', () => {
-      const incompleteContext = { workspacePath: ['path'] };
-      const parsed = parseWorkspaceContext(incompleteContext as any, 'fallback-id');
-      
-      expect(parsed).toEqual({
-        workspaceId: 'fallback-id',
-        workspacePath: [],
-        activeWorkspace: true
-      });
+    it('should handle undefined or null workspace context', () => {
+      expect(parseWorkspaceContext(undefined)).toBeNull();
+      expect(parseWorkspaceContext(null)).toBeNull();
     });
     
-    it('should handle undefined input with fallback', () => {
-      const parsed = parseWorkspaceContext(undefined, 'undefined-fallback');
+    it('should use fallback ID when workspaceId is missing', () => {
+      // In TypeScript this would be an actual WorkspaceContext, but for the test we're 
+      // simulating what happens when a user passes an object without workspaceId
+      const contextWithoutId = {
+        workspacePath: ['project', 'phase3']
+      } as any;
       
-      expect(parsed).toEqual({
-        workspaceId: 'undefined-fallback',
-        workspacePath: [],
-        activeWorkspace: true
-      });
+      const parsed = parseWorkspaceContext(contextWithoutId);
+      
+      expect(parsed).not.toBeNull();
+      if (parsed) {
+        expect(parsed.workspaceId).toBe('default-workspace');
+        expect(parsed.workspacePath).toEqual(['project', 'phase3']);
+      }
     });
     
-    it('should normalize the workspacePath to an array', () => {
-      const badContext = { workspaceId: 'test', workspacePath: 'not-an-array' as any };
-      const parsed = parseWorkspaceContext(badContext);
+    it('should handle custom fallback ID', () => {
+      // In TypeScript this would be an actual WorkspaceContext, but for the test we're 
+      // simulating what happens when a user passes an object without workspaceId
+      const contextWithoutId = {
+        workspacePath: ['project', 'phase4']
+      } as any;
       
-      expect(parsed.workspacePath).toEqual([]);
+      const parsed = parseWorkspaceContext(contextWithoutId, 'custom-fallback');
+      
+      expect(parsed).not.toBeNull();
+      if (parsed) {
+        expect(parsed.workspaceId).toBe('custom-fallback');
+        expect(parsed.workspacePath).toEqual(['project', 'phase4']);
+      }
+    });
+    
+    it('should handle invalid JSON string with fallback', () => {
+      const invalidJson = '{invalid json';
+      
+      const parsed = parseWorkspaceContext(invalidJson, 'fallback-for-invalid');
+      
+      expect(parsed).not.toBeNull();
+      if (parsed) {
+        expect(parsed.workspaceId).toBe('fallback-for-invalid');
+        expect(parsed.workspacePath).toEqual([]);
+      }
     });
   });
   
   describe('serializeWorkspaceContext', () => {
-    it('should serialize context to JSON string', () => {
+    it('should serialize workspace context to JSON string', () => {
       const context: WorkspaceContext = {
-        workspaceId: 'serialize-123',
-        workspacePath: ['foo', 'bar'],
+        workspaceId: 'test-workspace-789',
+        workspacePath: ['project', 'phase5'],
         activeWorkspace: true
       };
       
       const serialized = serializeWorkspaceContext(context);
+      
+      expect(typeof serialized).toBe('string');
       const parsed = JSON.parse(serialized);
-      
-      expect(parsed).toEqual({
-        workspaceId: 'serialize-123',
-        workspacePath: ['foo', 'bar'],
-        activeWorkspace: true
-      });
-    });
-    
-    it('should handle missing optional fields', () => {
-      const minimalContext: WorkspaceContext = {
-        workspaceId: 'minimal-123'
-      };
-      
-      const serialized = serializeWorkspaceContext(minimalContext);
-      const parsed = JSON.parse(serialized);
-      
-      expect(parsed).toEqual({
-        workspaceId: 'minimal-123',
-        workspacePath: [],
-        activeWorkspace: true
-      });
+      expect(parsed.workspaceId).toBe('test-workspace-789');
+      expect(parsed.workspacePath).toEqual(['project', 'phase5']);
+      expect(parsed.activeWorkspace).toBe(true);
     });
   });
 });

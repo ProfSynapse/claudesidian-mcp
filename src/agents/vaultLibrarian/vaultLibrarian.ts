@@ -25,6 +25,7 @@ export class VaultLibrarianAgent extends BaseAgent {
   private settings: MemorySettings;
   private currentIndexingOperationId: string | null = null;
   private indexingInProgress: boolean = false;
+  public activityEmbedder: any = null; // Add this property to store the ToolActivityEmbedder
   private usageStats = {
     tokensUsed: 0,
     lastReset: new Date().getTime(),
@@ -65,6 +66,14 @@ export class VaultLibrarianAgent extends BaseAgent {
         if (plugin?.settings?.settings?.memory?.embeddingsEnabled && plugin.settings.settings.memory.openaiApiKey) {
           this.settings = plugin.settings.settings.memory;
           this.embeddingProvider = new OpenAIProvider(this.settings);
+          
+          // Initialize ToolActivityEmbedder with the provider
+          if (this.embeddingProvider) {
+            // Import required classes
+            const { ToolActivityEmbedder } = require('../../database/tool-activity-embedder');
+            this.activityEmbedder = new ToolActivityEmbedder(this.embeddingProvider);
+            console.log("Activity embedder initialized in VaultLibrarianAgent constructor");
+          }
         }
         
         // Try to get the services from the plugin
@@ -81,8 +90,9 @@ export class VaultLibrarianAgent extends BaseAgent {
         }
       }
     } catch (error) {
-      console.error("Error initializing embedding provider:", error);
+      console.error("Error initializing embedding provider and activity embedder:", error);
       this.embeddingProvider = null;
+      this.activityEmbedder = null;
     }
     
     // Register traditional search modes - these are always available
@@ -113,19 +123,29 @@ export class VaultLibrarianAgent extends BaseAgent {
   updateSettings(settings: MemorySettings): void {
     this.settings = settings;
     
-    // Clean up existing provider
+    // Clean up existing provider and activity embedder
     if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
       (this.embeddingProvider as any).close();
       this.embeddingProvider = null;
+      this.activityEmbedder = null;
     }
     
     // Create new provider if enabled
     if (settings.embeddingsEnabled && settings.openaiApiKey) {
       try {
         this.embeddingProvider = new OpenAIProvider(settings);
+        
+        // Initialize ToolActivityEmbedder with the new provider
+        if (this.embeddingProvider) {
+          // Import dynamically to avoid circular dependencies
+          const { ToolActivityEmbedder } = require('../../database/tool-activity-embedder');
+          this.activityEmbedder = new ToolActivityEmbedder(this.embeddingProvider);
+          console.log("Activity embedder initialized in VaultLibrarianAgent");
+        }
       } catch (error) {
-        console.error('Error initializing embedding provider:', error);
+        console.error('Error initializing embedding provider or activity embedder:', error);
         this.embeddingProvider = null;
+        this.activityEmbedder = null;
       }
     }
   }
@@ -136,6 +156,31 @@ export class VaultLibrarianAgent extends BaseAgent {
    */
   setIndexingService(indexingService: IndexingService): void {
     this.indexingService = indexingService;
+  }
+  
+  /**
+   * Initialize the VaultLibrarianAgent
+   * This is called after the agent is registered with the agent manager
+   */
+  async initialize(): Promise<void> {
+    await super.initialize();
+    
+    // Initialize activity embedder if needed
+    if (this.embeddingProvider && !this.activityEmbedder) {
+      try {
+        const { ToolActivityEmbedder } = require('../../database/tool-activity-embedder');
+        this.activityEmbedder = new ToolActivityEmbedder(this.embeddingProvider);
+        
+        if (typeof this.activityEmbedder.initialize === 'function') {
+          await this.activityEmbedder.initialize();
+        }
+        
+        console.log("Activity embedder initialized in VaultLibrarianAgent.initialize()");
+      } catch (error) {
+        console.error("Failed to initialize activity embedder:", error);
+        this.activityEmbedder = null;
+      }
+    }
   }
   
   /**
@@ -432,6 +477,12 @@ export class VaultLibrarianAgent extends BaseAgent {
    */
   onunload(): void {
     try {
+      // Clean up activity embedder if it exists
+      if (this.activityEmbedder && typeof this.activityEmbedder.initialize === 'function') {
+        console.log('Cleaning up activity embedder');
+        this.activityEmbedder = null;
+      }
+      
       // Clean up embedding provider
       if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
         (this.embeddingProvider as any).close();

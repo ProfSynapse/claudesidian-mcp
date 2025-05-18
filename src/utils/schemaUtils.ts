@@ -1,4 +1,5 @@
 import { CommonParameters, CommonResult } from '../types';
+import { WorkspaceContext } from './contextUtils';
 
 /**
  * Utility functions for handling JSON schemas in a DRY way
@@ -11,25 +12,33 @@ import { CommonParameters, CommonResult } from '../types';
 export function getWorkspaceContextSchema(): any {
   return {
     workspaceContext: {
-      type: 'object',
-      properties: {
-        workspaceId: { 
-          type: 'string',
-          description: 'Workspace identifier' 
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            workspaceId: { 
+              type: 'string',
+              description: 'Workspace identifier (optional - uses default workspace if not provided)' 
+            },
+            workspacePath: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: 'Path from root workspace to specific phase/task'
+            },
+            contextDepth: {
+              type: 'string',
+              enum: ['minimal', 'standard', 'comprehensive'],
+              description: 'Level of context to include in results'
+            }
+          },
+          description: 'Optional workspace context object - if not provided, uses a default workspace'
         },
-        workspacePath: { 
-          type: 'array', 
-          items: { type: 'string' },
-          description: 'Path from root workspace to specific phase/task'
-        },
-        contextDepth: {
+        {
           type: 'string',
-          enum: ['minimal', 'standard', 'comprehensive'],
-          description: 'Level of context to include in results'
+          description: 'Optional workspace context as JSON string - must contain workspaceId field'
         }
-      },
-      required: ['workspaceId'],
-      description: 'Optional workspace context'
+      ],
+      description: 'Optional workspace context - if not provided, uses a default workspace'
     }
   };
 }
@@ -80,14 +89,25 @@ export function getSessionSchema(): any {
 }
 
 /**
- * Get complete common parameter schema
- * @returns JSON schema object for common parameters
+ * Get schema for context parameter
+ * @returns JSON schema for context
  */
+export function getContextSchema(): any {
+  return {
+    context: {
+      type: 'string',
+      description: 'Background information and purpose for running this tool',
+      minLength: 1
+    }
+  };
+}
+
 export function getCommonParameterSchema(): any {
   return {
     ...getSessionSchema(),
     ...getWorkspaceContextSchema(),
-    ...getHandoffSchema()
+    ...getHandoffSchema(),
+    ...getContextSchema()
   };
 }
 
@@ -111,6 +131,10 @@ export function getCommonResultSchema(): any {
         type: 'object',
         description: 'Operation-specific result data'
       },
+      context: {
+        type: 'string',
+        description: 'Background information and purpose for running this tool'
+      },
       workspaceContext: {
         type: 'object',
         properties: {
@@ -125,7 +149,7 @@ export function getCommonResultSchema(): any {
           },
           sessionId: {
             type: 'string',
-            description: 'Session identifier used for this operation (required)'
+            description: 'Session identifier used for this operation'
           },
           activeWorkspace: { 
             type: 'boolean',
@@ -137,15 +161,18 @@ export function getCommonResultSchema(): any {
             description: 'Level of context included in results'
           }
         },
-        required: ['workspaceId', 'sessionId'],
         description: 'Workspace context that was used'
       },
       handoffResult: {
         type: 'object',
         description: 'Result from handoff operation if one was performed'
+      },
+      sessionId: {
+        type: 'string',
+        description: 'Session identifier used for tracking tool calls'
       }
     },
-    required: ['success']
+    required: ['success', 'sessionId']
   };
 }
 
@@ -163,7 +190,7 @@ export function mergeWithCommonSchema(customSchema: any): any {
       ...customSchema.properties,
       ...commonSchema
     },
-    required: [...(customSchema.required || []), 'sessionId']
+    required: [...(customSchema.required || []), 'sessionId', 'context']
   };
 }
 
@@ -175,6 +202,8 @@ export function mergeWithCommonSchema(customSchema: any): any {
  * @param workspaceContext Workspace context used
  * @param handoffResult Result from handoff operation
  * @param sessionId Session identifier
+ * @param context Contextual information
+ * @param additionalProps Additional properties to include in the result
  * @returns Standardized result object
  */
 export function createResult<T extends CommonResult>(
@@ -183,14 +212,24 @@ export function createResult<T extends CommonResult>(
   error?: string,
   workspaceContext?: CommonResult['workspaceContext'],
   handoffResult?: any,
-  sessionId?: string
+  sessionId?: string,
+  context?: string,
+  additionalProps?: Record<string, any>
 ): T {
-  return {
+  const result: any = {
     success,
-    data,
-    error,
-    workspaceContext,
-    handoffResult,
-    sessionId
-  } as T;
+    ...(data !== undefined && { data }),
+    ...(error !== undefined && { error }),
+    ...(workspaceContext !== undefined && { workspaceContext }),
+    ...(handoffResult !== undefined && { handoffResult }),
+    ...(sessionId !== undefined && { sessionId }),
+    ...(context !== undefined && { context })
+  };
+  
+  // Add any additional properties
+  if (additionalProps) {
+    Object.assign(result, additionalProps);
+  }
+  
+  return result as T;
 }

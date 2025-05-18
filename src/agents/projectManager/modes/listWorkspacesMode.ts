@@ -6,6 +6,7 @@ import {
   HierarchyType 
 } from '../../../database/workspace-types';
 import { IndexedDBWorkspaceDatabase } from '../../../database/workspace-db';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode to list available workspaces
@@ -60,19 +61,35 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
         childCount: ws.childWorkspaces.length
       }));
       
+      // Ensure workspaceContext has required workspaceId
+      const workspaceContext = params.workspaceContext 
+        ? { 
+            workspaceId: parseWorkspaceContext(params.workspaceContext)?.workspaceId || workspaces[0]?.id || '',
+            workspacePath: parseWorkspaceContext(params.workspaceContext)?.workspacePath 
+          }
+        : undefined;
+        
       return {
         success: true,
         data: {
           workspaces: formattedWorkspaces
         },
-        workspaceContext: params.workspaceContext
+        workspaceContext: workspaceContext
       };
       
     } catch (error) {
+      // For error case, ensure workspaceContext has required workspaceId if present
+      const workspaceContext = params.workspaceContext 
+        ? { 
+            workspaceId: parseWorkspaceContext(params.workspaceContext)?.workspaceId || '',
+            workspacePath: parseWorkspaceContext(params.workspaceContext)?.workspacePath 
+          }
+        : undefined;
+        
       return {
         success: false,
         error: `Failed to list workspaces: ${error.message}`,
-        workspaceContext: params.workspaceContext,
+        workspaceContext: workspaceContext,
         data: {
           workspaces: []
         }

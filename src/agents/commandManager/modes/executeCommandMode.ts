@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ExecuteCommandParams, ExecuteCommandResult } from '../types';
 import { CommandManagerAgent } from '../commandManager';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for executing a command
@@ -52,12 +53,13 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
       await this.app.commands.executeCommandById(commandId);
       
       // Record activity if in a workspace context
-      if (workspaceContext?.workspaceId) {
+      const parsedContext = parseWorkspaceContext(workspaceContext);
+      if (parsedContext) {
         await this.agent.recordCommandActivity(
           commandId,
           command.name,
-          workspaceContext.workspaceId,
-          workspaceContext.workspacePath
+          parsedContext.workspaceId,
+          parsedContext.workspacePath
         );
       }
       

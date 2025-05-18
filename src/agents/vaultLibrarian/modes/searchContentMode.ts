@@ -138,6 +138,10 @@ export class SearchContentMode extends BaseMode<SearchContentArgs, SearchContent
     return {
       type: 'object',
       properties: {
+        sessionId: {
+          type: 'string',
+          description: 'Session identifier to track related tool calls'
+        },
         query: {
           type: 'string',
           description: 'Query to search for'
@@ -170,7 +174,7 @@ export class SearchContentMode extends BaseMode<SearchContentArgs, SearchContent
           description: 'Whether to include content in the results (optional, default: false)'
         }
       },
-      required: ['query'],
+      required: ['query', 'sessionId'],
       description: 'Search for content in the vault with advanced options'
     };
   }

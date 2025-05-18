@@ -1,4 +1,6 @@
-import { ProjectWorkspace, WorkspaceMemoryTrace, HierarchyType, WorkspaceStatus, WorkspaceSession, WorkspaceStateSnapshot } from './workspace-types';
+import { ProjectWorkspace, WorkspaceMemoryTrace, HierarchyType, WorkspaceStatus, WorkspaceSession, WorkspaceStateSnapshot, FileEmbedding } from './workspace-types';
+
+// Using FileEmbedding from workspace-types.ts
 
 /**
  * Workspace database interface
@@ -159,6 +161,12 @@ export interface WorkspaceDatabase {
   getSessions(workspaceId: string, activeOnly?: boolean): Promise<WorkspaceSession[]>;
   
   /**
+   * Get all sessions across all workspaces
+   * @param activeOnly Whether to only return active sessions
+   */
+  getAllSessions(activeOnly?: boolean): Promise<WorkspaceSession[]>;
+  
+  /**
    * End an active session
    * @param id Session ID
    * @param summary Optional summary of the session
@@ -196,6 +204,29 @@ export interface WorkspaceDatabase {
    * @param id Snapshot ID
    */
   deleteSnapshot(id: string): Promise<void>;
+  
+  /**
+   * Store an embedding
+   * @param embedding Embedding data to store
+   */
+  storeEmbedding(embedding: FileEmbedding): Promise<string>;
+  
+  /**
+   * Get an embedding by file path
+   * @param filePath File path to get embedding for
+   */
+  getEmbeddingByPath(filePath: string): Promise<FileEmbedding | undefined>;
+  
+  /**
+   * Get all embeddings
+   */
+  getAllEmbeddings(): Promise<FileEmbedding[]>;
+  
+  /**
+   * Delete embedding for a file
+   * @param filePath File path to delete embedding for
+   */
+  deleteEmbeddingByPath(filePath: string): Promise<void>;
 }
 
 /**
@@ -211,9 +242,10 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
    * @param dbName Database name
    * @param dbVersion Database version
    */
-  constructor(dbName = 'workspace-memory-db', dbVersion = 1) {
+  constructor(dbName = 'workspace-memory-db', dbVersion = 7) { // Further increased version to force a fresh upgrade
     this.dbName = dbName;
     this.dbVersion = dbVersion;
+    console.log(`Initializing workspace database ${dbName} with version ${dbVersion}`);
   }
   
   /**
@@ -221,58 +253,150 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
    */
   async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, this.dbVersion);
+      console.log(`Opening database ${this.dbName} with version ${this.dbVersion}`);
       
-      request.onerror = (event) => {
-        reject(new Error(`Failed to open database: ${(event.target as any).error}`));
-      };
-      
-      request.onsuccess = (event) => {
-        this.db = (event.target as any).result;
-        resolve();
-      };
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as any).result;
+      try {
+        const request = indexedDB.open(this.dbName, this.dbVersion);
         
-        // Create workspaces store
-        if (!db.objectStoreNames.contains('workspaces')) {
-          const workspaceStore = db.createObjectStore('workspaces', { keyPath: 'id' });
-          workspaceStore.createIndex('hierarchyType', 'hierarchyType', { unique: false });
-          workspaceStore.createIndex('parentId', 'parentId', { unique: false });
-          workspaceStore.createIndex('status', 'status', { unique: false });
-          workspaceStore.createIndex('lastAccessed', 'lastAccessed', { unique: false });
-        }
+        request.onerror = (event) => {
+          console.error("Database error:", (event.target as any).error);
+          reject(new Error(`Failed to open database: ${(event.target as any).error}`));
+        };
         
-        // Create memory traces store
-        if (!db.objectStoreNames.contains('memoryTraces')) {
-          const tracesStore = db.createObjectStore('memoryTraces', { keyPath: 'id' });
-          tracesStore.createIndex('workspaceId', 'workspaceId', { unique: false });
-          tracesStore.createIndex('timestamp', 'timestamp', { unique: false });
-          tracesStore.createIndex('activityType', 'activityType', { unique: false });
-          tracesStore.createIndex('importance', 'importance', { unique: false });
-          tracesStore.createIndex('sessionId', 'sessionId', { unique: false });
-          tracesStore.createIndex('sequenceNumber', 'sequenceNumber', { unique: false });
-        }
+        request.onsuccess = (event) => {
+          this.db = (event.target as any).result;
+          console.log(`Successfully opened database ${this.dbName} version ${this.db?.version || 'unknown'}`);
+          
+          // Verify database structure, but don't fail if verification fails
+          if (!this.verifyDatabaseStructure()) {
+            console.warn(`Database structure verification failed for ${this.dbName}. Some features may not work correctly.`);
+          }
+          
+          resolve();
+        };
         
-        // Create sessions store
-        if (!db.objectStoreNames.contains('sessions')) {
-          const sessionsStore = db.createObjectStore('sessions', { keyPath: 'id' });
-          sessionsStore.createIndex('workspaceId', 'workspaceId', { unique: false });
-          sessionsStore.createIndex('startTime', 'startTime', { unique: false });
-          sessionsStore.createIndex('isActive', 'isActive', { unique: false });
-        }
+        request.onupgradeneeded = (event) => {
+          console.log(`Database upgrade needed - from version ${event.oldVersion} to ${this.dbVersion}`);
+          const db = (event.target as any).result;
+          
+          try {
+            this.setupDatabaseSchema(db, event.oldVersion);
+          } catch (error) {
+            console.error("Error during database upgrade:", error);
+            request.transaction?.abort();
+            reject(new Error(`Database upgrade failed: ${error.message}`));
+          }
+        };
         
-        // Create snapshots store
-        if (!db.objectStoreNames.contains('snapshots')) {
-          const snapshotsStore = db.createObjectStore('snapshots', { keyPath: 'id' });
-          snapshotsStore.createIndex('workspaceId', 'workspaceId', { unique: false });
-          snapshotsStore.createIndex('sessionId', 'sessionId', { unique: false });
-          snapshotsStore.createIndex('timestamp', 'timestamp', { unique: false });
-        }
-      };
+        request.onblocked = (event) => {
+          console.warn("Database upgrade was blocked. Please close other tabs using this application.");
+          // We could show a user-facing message here if needed
+        };
+      } catch (error) {
+        console.error("Error initializing database:", error);
+        reject(new Error(`Failed to initialize database: ${error.message}`));
+      }
     });
   }
+  
+  /**
+   * Verify that the database has the expected object stores
+   * This is a simplified verification that just checks store existence, not indexes
+   */
+  private verifyDatabaseStructure(): boolean {
+    if (!this.db) {
+      console.warn('Database not initialized');
+      return false;
+    }
+    
+    // List of required stores
+    const requiredStores = ['workspaces', 'memoryTraces', 'sessions', 'snapshots', 'embeddings'];
+    
+    // Check each store exists
+    for (const storeName of requiredStores) {
+      if (!this.db.objectStoreNames.contains(storeName)) {
+        console.warn(`Required object store '${storeName}' not found`);
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Set up the database schema
+   * @param db The database connection
+   * @param oldVersion The old database version
+   */
+  private setupDatabaseSchema(db: IDBDatabase, oldVersion: number): void {
+    // Note: During onupgradeneeded, a version change transaction is automatically created,
+    // so we don't need to (and shouldn't) create additional transactions
+    
+    // Setup workspaces store
+    let workspaceStore: IDBObjectStore;
+    if (!db.objectStoreNames.contains('workspaces')) {
+      workspaceStore = db.createObjectStore('workspaces', { keyPath: 'id' });
+      
+      // Create indexes for new store
+      workspaceStore.createIndex('hierarchyType', 'hierarchyType', { unique: false });
+      workspaceStore.createIndex('parentId', 'parentId', { unique: false });
+      workspaceStore.createIndex('status', 'status', { unique: false });
+      workspaceStore.createIndex('lastAccessed', 'lastAccessed', { unique: false });
+    }
+    
+    // Setup memory traces store
+    let tracesStore: IDBObjectStore;
+    if (!db.objectStoreNames.contains('memoryTraces')) {
+      tracesStore = db.createObjectStore('memoryTraces', { keyPath: 'id' });
+      
+      // Create indexes for new store
+      tracesStore.createIndex('workspaceId', 'workspaceId', { unique: false });
+      tracesStore.createIndex('timestamp', 'timestamp', { unique: false });
+      tracesStore.createIndex('activityType', 'activityType', { unique: false });
+      tracesStore.createIndex('importance', 'importance', { unique: false });
+      tracesStore.createIndex('sessionId', 'sessionId', { unique: false });
+      tracesStore.createIndex('sequenceNumber', 'sequenceNumber', { unique: false });
+    }
+    
+    // Setup sessions store
+    let sessionsStore: IDBObjectStore;
+    if (!db.objectStoreNames.contains('sessions')) {
+      sessionsStore = db.createObjectStore('sessions', { keyPath: 'id' });
+      
+      // Create indexes for new store
+      sessionsStore.createIndex('workspaceId', 'workspaceId', { unique: false });
+      sessionsStore.createIndex('startTime', 'startTime', { unique: false });
+      sessionsStore.createIndex('isActive', 'isActive', { unique: false });
+    }
+    
+    // Setup snapshots store
+    let snapshotsStore: IDBObjectStore;
+    if (!db.objectStoreNames.contains('snapshots')) {
+      snapshotsStore = db.createObjectStore('snapshots', { keyPath: 'id' });
+      
+      // Create indexes for new store
+      snapshotsStore.createIndex('workspaceId', 'workspaceId', { unique: false });
+      snapshotsStore.createIndex('sessionId', 'sessionId', { unique: false });
+      snapshotsStore.createIndex('timestamp', 'timestamp', { unique: false });
+      snapshotsStore.createIndex('name', 'name', { unique: false });
+    }
+    
+    // Setup embeddings store
+    let embeddingsStore: IDBObjectStore;
+    if (!db.objectStoreNames.contains('embeddings')) {
+      embeddingsStore = db.createObjectStore('embeddings', { keyPath: 'id' });
+      
+      // Create indexes for new store
+      embeddingsStore.createIndex('filePath', 'filePath', { unique: true });
+      embeddingsStore.createIndex('timestamp', 'timestamp', { unique: false });
+      embeddingsStore.createIndex('workspaceId', 'workspaceId', { unique: false });
+    }
+    
+    console.log(`Database schema setup complete for version ${db.version}`);
+  }
+  
+  // We no longer need the ensureIndexExists method since we're creating indexes
+  // directly during object store creation in the onupgradeneeded event handler
   
   /**
    * Close the database connection
@@ -927,6 +1051,40 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
   }
   
   /**
+   * Get all sessions across all workspaces
+   * @param activeOnly Whether to only return active sessions
+   */
+  async getAllSessions(activeOnly: boolean = false): Promise<WorkspaceSession[]> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['sessions'], 'readonly');
+      const store = transaction.objectStore('sessions');
+      const request = store.getAll();
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to retrieve all sessions: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        let sessions = (event.target as any).result as WorkspaceSession[];
+        
+        // Filter by active status if requested
+        if (activeOnly) {
+          sessions = sessions.filter(session => session.isActive);
+        }
+        
+        // Sort by start time (newest first)
+        sessions.sort((a, b) => b.startTime - a.startTime);
+        
+        resolve(sessions);
+      };
+    });
+  }
+  
+  /**
    * End an active session
    * @param id Session ID
    * @param summary Optional summary of the session
@@ -958,31 +1116,101 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
       throw new Error('Database not initialized');
     }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['memoryTraces'], 'readonly');
-      const store = transaction.objectStore('memoryTraces');
-      const index = store.index('sessionId');
-      const request = index.getAll(sessionId);
+    try {
+      return await this.getSessionTracesUsingIndex(sessionId, limit);
+    } catch (error) {
+      console.warn(`Error getting session traces using index: ${error.message}`);
+      console.warn('Falling back to filtering all traces');
       
-      request.onerror = (event) => {
-        reject(new Error(`Failed to retrieve session traces: ${(event.target as any).error}`));
-      };
-      
-      request.onsuccess = (event) => {
-        let traces = (event.target as any).result as WorkspaceMemoryTrace[];
+      // Fallback: get all traces and filter by sessionId in memory
+      try {
+        const allTraces = await this.getAllMemoryTraces();
+        const sessionTraces = allTraces.filter(trace => trace.sessionId === sessionId);
         
         // Sort by sequence number if available, otherwise by timestamp
-        traces.sort((a, b) => {
+        sessionTraces.sort((a, b) => {
           if (a.sequenceNumber !== undefined && b.sequenceNumber !== undefined) {
             return a.sequenceNumber - b.sequenceNumber;
           }
           return a.timestamp - b.timestamp;
         });
         
-        traces = traces.slice(0, limit);
+        return sessionTraces.slice(0, limit);
+      } catch (fallbackError) {
+        console.error(`Fallback also failed: ${fallbackError.message}`);
+        // Return empty array as last resort
+        return [];
+      }
+    }
+  }
+  
+  /**
+   * Internal method that uses the sessionId index to get traces
+   * @param sessionId Session ID
+   * @param limit Maximum number of traces to return
+   */
+  private async getSessionTracesUsingIndex(sessionId: string, limit: number = 100): Promise<WorkspaceMemoryTrace[]> {
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db!.transaction(['memoryTraces'], 'readonly');
+        const store = transaction.objectStore('memoryTraces');
         
-        resolve(traces);
-      };
+        // Try to get the sessionId index
+        let index;
+        try {
+          index = store.index('sessionId');
+        } catch (indexError) {
+          reject(new Error(`Index 'sessionId' not found: ${indexError.message}`));
+          return;
+        }
+        
+        const request = index.getAll(sessionId);
+        
+        request.onerror = (event) => {
+          reject(new Error(`Failed to retrieve session traces: ${(event.target as any).error}`));
+        };
+        
+        request.onsuccess = (event) => {
+          let traces = (event.target as any).result as WorkspaceMemoryTrace[];
+          
+          // Sort by sequence number if available, otherwise by timestamp
+          traces.sort((a, b) => {
+            if (a.sequenceNumber !== undefined && b.sequenceNumber !== undefined) {
+              return a.sequenceNumber - b.sequenceNumber;
+            }
+            return a.timestamp - b.timestamp;
+          });
+          
+          traces = traces.slice(0, limit);
+          
+          resolve(traces);
+        };
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+  
+  /**
+   * Get all memory traces (used as a fallback)
+   */
+  private async getAllMemoryTraces(): Promise<WorkspaceMemoryTrace[]> {
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db!.transaction(['memoryTraces'], 'readonly');
+        const store = transaction.objectStore('memoryTraces');
+        const request = store.getAll();
+        
+        request.onerror = (event) => {
+          reject(new Error(`Failed to retrieve all memory traces: ${(event.target as any).error}`));
+        };
+        
+        request.onsuccess = (event) => {
+          resolve((event.target as any).result as WorkspaceMemoryTrace[]);
+        };
+      } catch (error) {
+        reject(error);
+      }
     });
   }
   
@@ -1044,29 +1272,65 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
       throw new Error('Database not initialized');
     }
     
+    // First check if the snapshots store and workspaceId index exist
+    if (!this.db.objectStoreNames.contains('snapshots')) {
+      console.error('Snapshots object store does not exist');
+      return []; // Return empty array instead of failing
+    }
+
+    // Use a more robust approach that doesn't rely on the index
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['snapshots'], 'readonly');
-      const store = transaction.objectStore('snapshots');
-      const index = store.index('workspaceId');
-      const request = index.getAll(workspaceId);
-      
-      request.onerror = (event) => {
-        reject(new Error(`Failed to retrieve snapshots: ${(event.target as any).error}`));
-      };
-      
-      request.onsuccess = (event) => {
-        let snapshots = (event.target as any).result as WorkspaceStateSnapshot[];
+      try {
+        const transaction = this.db!.transaction(['snapshots'], 'readonly');
+        const store = transaction.objectStore('snapshots');
         
-        // Filter by session ID if requested
-        if (sessionId) {
-          snapshots = snapshots.filter(snapshot => snapshot.sessionId === sessionId);
+        // First try using the index if it exists
+        let request: IDBRequest;
+        let errorUsingIndex = false;
+
+        try {
+          const index = store.index('workspaceId');
+          request = index.getAll(workspaceId);
+        } catch (indexError) {
+          console.warn(`Error using workspaceId index: ${indexError.message}, falling back to full scan`);
+          errorUsingIndex = true;
+          request = store.getAll();
         }
         
-        // Sort by timestamp (newest first)
-        snapshots.sort((a, b) => b.timestamp - a.timestamp);
+        request.onerror = (event) => {
+          console.error(`Failed to retrieve snapshots: ${(event.target as any).error}`);
+          // Instead of rejecting, return an empty array
+          resolve([]);
+        };
         
-        resolve(snapshots);
-      };
+        request.onsuccess = (event) => {
+          try {
+            let snapshots = (event.target as any).result as WorkspaceStateSnapshot[];
+            
+            // If we did a full scan due to index error, filter by workspaceId
+            if (errorUsingIndex) {
+              snapshots = snapshots.filter(snapshot => snapshot.workspaceId === workspaceId);
+            }
+            
+            // Filter by session ID if requested
+            if (sessionId) {
+              snapshots = snapshots.filter(snapshot => snapshot.sessionId === sessionId);
+            }
+            
+            // Sort by timestamp (newest first)
+            snapshots.sort((a, b) => b.timestamp - a.timestamp);
+            
+            console.log(`Found ${snapshots.length} snapshots for workspace ${workspaceId}`);
+            resolve(snapshots);
+          } catch (processingError) {
+            console.error(`Error processing snapshots: ${processingError.message}`);
+            resolve([]);
+          }
+        };
+      } catch (transactionError) {
+        console.error(`Error creating transaction: ${transactionError.message}`);
+        resolve([]);
+      }
     });
   }
   
@@ -1086,6 +1350,129 @@ export class IndexedDBWorkspaceDatabase implements WorkspaceDatabase {
       
       request.onerror = (event) => {
         reject(new Error(`Failed to delete snapshot: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = () => {
+        resolve();
+      };
+    });
+  }
+  
+  /**
+   * Store an embedding
+   * @param embedding Embedding data to store
+   */
+  async storeEmbedding(embedding: {
+    id: string;
+    filePath: string;
+    timestamp: number;
+    workspaceId?: string;
+    vector: number[];
+    metadata?: any;
+  }): Promise<string> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['embeddings'], 'readwrite');
+      const store = transaction.objectStore('embeddings');
+      const request = store.put(embedding);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to store embedding: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = () => {
+        resolve(embedding.id);
+      };
+    });
+  }
+  
+  /**
+   * Get an embedding by file path
+   * @param filePath File path to get embedding for
+   */
+  async getEmbeddingByPath(filePath: string): Promise<{
+    id: string;
+    filePath: string;
+    timestamp: number;
+    workspaceId?: string;
+    vector: number[];
+    metadata?: any;
+  } | undefined> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['embeddings'], 'readonly');
+      const store = transaction.objectStore('embeddings');
+      const index = store.index('filePath');
+      const request = index.get(filePath);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to get embedding: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        resolve((event.target as any).result);
+      };
+    });
+  }
+  
+  /**
+   * Get all embeddings
+   */
+  async getAllEmbeddings(): Promise<Array<{
+    id: string;
+    filePath: string;
+    timestamp: number;
+    workspaceId?: string;
+    vector: number[];
+    metadata?: any;
+  }>> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['embeddings'], 'readonly');
+      const store = transaction.objectStore('embeddings');
+      const request = store.getAll();
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to get embeddings: ${(event.target as any).error}`));
+      };
+      
+      request.onsuccess = (event) => {
+        resolve((event.target as any).result);
+      };
+    });
+  }
+  
+  /**
+   * Delete embedding for a file
+   * @param filePath File path to delete embedding for
+   */
+  async deleteEmbeddingByPath(filePath: string): Promise<void> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    
+    // First get the embedding to find its ID
+    const embedding = await this.getEmbeddingByPath(filePath);
+    if (!embedding) {
+      return; // Nothing to delete
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['embeddings'], 'readwrite');
+      const store = transaction.objectStore('embeddings');
+      const request = store.delete(embedding.id);
+      
+      request.onerror = (event) => {
+        reject(new Error(`Failed to delete embedding: ${(event.target as any).error}`));
       };
       
       request.onsuccess = () => {

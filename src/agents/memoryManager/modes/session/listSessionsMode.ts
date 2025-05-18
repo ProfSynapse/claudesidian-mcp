@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceSession } from '../../../../database/workspace-types';
 import { ListSessionsParams, SessionResult } from '../../types';
+import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**
  * Mode for listing sessions for a workspace with enhanced filtering
@@ -27,17 +28,6 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
    */
   async execute(params: ListSessionsParams): Promise<SessionResult> {
     try {
-      // Validate workspace context
-      if (!params.workspaceContext?.workspaceId) {
-        return this.prepareResult(false, undefined, 'Workspace ID is required');
-      }
-      
-      const workspaceId = params.workspaceContext.workspaceId;
-      const activeOnly = params.activeOnly || false;
-      const limit = params.limit || 50;
-      const order = params.order || 'desc';
-      const filterTags = params.tags || [];
-      
       // Get the workspace database
       const workspaceDb = this.agent.getWorkspaceDb();
       if (!workspaceDb) {
@@ -49,8 +39,24 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
         await workspaceDb.initialize();
       }
       
-      // Get sessions
-      let sessions = await workspaceDb.getSessions(workspaceId, activeOnly);
+      const activeOnly = params.activeOnly || false;
+      const limit = params.limit || 50;
+      const order = params.order || 'desc';
+      const filterTags = params.tags || [];
+      
+      // Parse workspace context, but don't require workspaceId
+      const parsedContext = parseWorkspaceContext(params.workspaceContext);
+      const workspaceId = parsedContext?.workspaceId;
+      
+      // Get sessions for specific workspace or all sessions if no workspaceId
+      let sessions: WorkspaceSession[];
+      if (workspaceId) {
+        // Get sessions for specific workspace
+        sessions = await workspaceDb.getSessions(workspaceId, activeOnly);
+      } else {
+        // Get all sessions when no workspaceId is provided
+        sessions = await workspaceDb.getAllSessions(activeOnly);
+      }
       
       // Apply tag filtering if requested
       if (filterTags.length > 0) {
@@ -127,6 +133,10 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
             type: 'string'
           },
           description: 'Filter sessions by tags (partial match on name/description)'
+        },
+        workspaceContext: {
+          type: ['object', 'string', 'null'],
+          description: 'Optional workspace context. If not provided, returns sessions from all workspaces.'
         }
       }
     };

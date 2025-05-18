@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { CombinedSearchParams, SemanticSearchResult } from '../types';
 import { VaultLibrarianAgent } from '../vaultLibrarian';
 import { ToolActivityEmbedder } from '../../../database/tool-activity-embedder';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for combined search with filters and semantic search
@@ -115,7 +116,10 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
       error?: string;
     }
   ): Promise<void> {
-    if (!params.workspaceContext?.workspaceId || !this.activityEmbedder) {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    
+    if (!parsedContext?.workspaceId || !this.activityEmbedder) {
       return; // Skip if no workspace context or embedder
     }
     
@@ -124,7 +128,7 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
       await this.activityEmbedder.initialize();
       
       // Get workspace path (or use just the ID if no path provided)
-      const workspacePath = params.workspaceContext.workspacePath || [params.workspaceContext.workspaceId];
+      const workspacePath = parsedContext.workspacePath || [parsedContext.workspaceId];
       
       // Create a descriptive content about this search operation
       const matchCount = result.matches?.length || 0;
@@ -159,7 +163,7 @@ export class CombinedSearchMode extends BaseMode<CombinedSearchParams, SemanticS
       
       // Record the activity in workspace memory
       await this.activityEmbedder.recordActivity(
-        params.workspaceContext.workspaceId,
+        parsedContext.workspaceId,
         workspacePath,
         'research', // Most appropriate type for searches
         content,

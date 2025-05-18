@@ -6,6 +6,8 @@ import { logger } from '../utils/logger';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IAgent } from '../agents/interfaces/IAgent';
 import { sanitizeVaultName } from '../utils/vaultUtils';
+import { SessionContextManager } from '../services/SessionContextManager';
+import { parseWorkspaceContext } from '../utils/contextUtils';
 
 /**
  * Request handler implementations for the MCP server
@@ -272,12 +274,14 @@ function validateToolParams(params: any) {
  * @param getAgent Function to get an agent by name
  * @param request The original request object
  * @param parsedArgs The parsed arguments for the tool
+ * @param sessionContextManager Optional session context manager for workspace persistence
  * @returns Promise resolving to the result of the tool execution
  */
 export async function handleToolExecution(
     getAgent: (name: string) => IAgent,
     request: any,
-    parsedArgs: any
+    parsedArgs: any,
+    sessionContextManager?: SessionContextManager
 ) {
     try {
         const { name: fullToolName } = request.params;
@@ -310,8 +314,22 @@ export async function handleToolExecution(
         // Get the agent using the base agent name (without vault ID)
         const agent = getAgent(agentName);
         
+        // Apply workspace context from SessionContextManager if available
+        let processedParams = { ...params }; // Create a copy of params to avoid mutating the original
+        if (sessionContextManager && processedParams.sessionId) {
+            // Only apply if no workspaceContext is explicitly provided
+            if (!processedParams.workspaceContext || !processedParams.workspaceContext.workspaceId) {
+                processedParams = sessionContextManager.applyWorkspaceContext(processedParams.sessionId, processedParams);
+            }
+        }
+        
         // Execute the mode on the agent
-        const result = await agent.executeMode(mode, params);
+        const result = await agent.executeMode(mode, processedParams);
+        
+        // Update the SessionContextManager with the result's workspace context if present
+        if (sessionContextManager && processedParams.sessionId && result.workspaceContext) {
+            sessionContextManager.updateFromResult(processedParams.sessionId, result);
+        }
         
         // Handle handoff if specified in the result
         if (result.handoff && result.success) {
@@ -327,8 +345,18 @@ export async function handleToolExecution(
                     parameters.workspaceContext = result.workspaceContext;
                 }
                 
+                // Ensure sessionId is passed to the handoff operation
+                if (processedParams.sessionId && !parameters.sessionId) {
+                    parameters.sessionId = processedParams.sessionId;
+                }
+                
                 // Execute the handoff
                 const handoffResult = await handoffAgent.executeMode(handoffMode, parameters);
+                
+                // Update context manager with handoff result if it contains workspace context
+                if (sessionContextManager && parameters.sessionId && handoffResult.workspaceContext) {
+                    sessionContextManager.updateFromResult(parameters.sessionId, handoffResult);
+                }
                 
                 // If returnHere is true, return combined results
                 if (returnHere) {
