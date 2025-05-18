@@ -53,61 +53,101 @@ export class MCPConnector {
      */
     private initializeAgents(): void {
         try {
+            console.log("[DIAGNOSTIC] Starting agent initialization");
+            
             // Get services from the plugin
             const services = (this.plugin as any).services || {};
+            console.log("[DIAGNOSTIC] Plugin services:", Object.keys(services));
             const memoryService = services.memoryService;
             const embeddingService = services.embeddingService;
             const searchService = services.searchService;
             const workspaceService = services.workspaceService;
             
             // Create all agents with services
+            console.log("[DIAGNOSTIC] Creating ContentManagerAgent");
             const contentManagerAgent = new ContentManagerAgent(
                 this.app, 
                 this.agentManager,
                 this.plugin as ClaudesidianPlugin
             );
             
+            console.log("[DIAGNOSTIC] Creating CommandManagerAgent");
             const commandManagerAgent = new CommandManagerAgent(
                 this.app, 
                 this.agentManager,
                 memoryService
             );
             
+            console.log("[DIAGNOSTIC] Creating VaultLibrarianAgent");
+            console.log("[DIAGNOSTIC] Creating VaultLibrarianAgent - checking construction");
             const vaultLibrarianAgent = new VaultLibrarianAgent(
                 this.app
             );
+            console.log("[DIAGNOSTIC] VaultLibrarianAgent created successfully:", 
+                vaultLibrarianAgent.name, 
+                "modes:", vaultLibrarianAgent.getModes().length);
             
             // Create project manager with services
+            console.log("[DIAGNOSTIC] Creating ProjectManagerAgent");
             const projectManagerAgent = new ProjectManagerAgent(
                 this.app, 
                 this.plugin
             );
             
+            console.log("[DIAGNOSTIC] Creating VaultManagerAgent");
             const vaultManagerAgent = new VaultManagerAgent(
                 this.app
             );
             
-            const memoryManagerAgent = new MemoryManagerAgent(
-                this.plugin
-            );
+            console.log("[DIAGNOSTIC] Creating MemoryManagerAgent");
+            console.log("[DIAGNOSTIC] Creating MemoryManagerAgent - checking construction");
+            let memoryManagerAgent;
+            try {
+                memoryManagerAgent = new MemoryManagerAgent(
+                    this.plugin
+                );
+                console.log("[DIAGNOSTIC] MemoryManagerAgent created successfully:", 
+                    memoryManagerAgent.name, 
+                    "modes:", memoryManagerAgent.getModes()?.length || 0);
+            } catch (error) {
+                console.error("[DIAGNOSTIC] Error creating MemoryManagerAgent:", error);
+                console.warn("[DIAGNOSTIC] Will continue without memory manager");
+                memoryManagerAgent = null;
+            }
             
             // Register with agent manager
+            console.log("[DIAGNOSTIC] Registering agents with AgentManager");
             this.agentManager.registerAgent(contentManagerAgent);
             this.agentManager.registerAgent(commandManagerAgent);
             this.agentManager.registerAgent(projectManagerAgent);
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
-            this.agentManager.registerAgent(memoryManagerAgent);
+            
+            // Only register memory manager if it was created successfully
+            if (memoryManagerAgent) {
+                console.log("[DIAGNOSTIC] Registering memoryManagerAgent");
+                this.agentManager.registerAgent(memoryManagerAgent);
+            } else {
+                console.log("[DIAGNOSTIC] Skipping memoryManagerAgent registration");
+            }
             
             // Initialize VaultLibrarian with current settings if available
             const memorySettings = (this.plugin as any).settings?.settings?.memory;
             if (memorySettings) {
+                console.log("[DIAGNOSTIC] Updating VaultLibrarian settings");
                 vaultLibrarianAgent.updateSettings(memorySettings);
             }
+            
+            // Check agent registration
+            const registeredAgents = this.agentManager.getAgents();
+            console.log("[DIAGNOSTIC] Agents registered with AgentManager:", 
+                Array.from(registeredAgents.keys()).join(", "), 
+                "total:", registeredAgents.size);
             
             // Register all agents from the agent manager with the server
             this.registerAgentsWithServer();
         } catch (error) {
+            console.error("[DIAGNOSTIC] Error in initializeAgents:", error);
             if (error instanceof McpError) {
                 throw error;
             }
@@ -125,11 +165,24 @@ export class MCPConnector {
      */
     private registerAgentsWithServer(): void {
         try {
+            console.log("[DIAGNOSTIC] Starting registerAgentsWithServer");
             const agents = this.agentManager.getAgents();
+            console.log("[DIAGNOSTIC] Number of agents to register with server:", agents.size);
+            
             for (const agent of agents) {
+                console.log("[DIAGNOSTIC] Registering agent with server:", agent.name);
                 this.server.registerAgent(agent);
             }
+            
+            // Check how many agents are in the server after registration
+            const serverAgents = this.server.getAgents();
+            console.log("[DIAGNOSTIC] Agents registered in server:", 
+                Array.from(serverAgents.keys()).join(", "), 
+                "total:", serverAgents.size);
+                
+            console.log("[DIAGNOSTIC] registerAgentsWithServer completed");
         } catch (error) {
+            console.error("[DIAGNOSTIC] Error in registerAgentsWithServer:", error);
             if (error instanceof McpError) {
                 throw error;
             }

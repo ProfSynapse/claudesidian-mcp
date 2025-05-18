@@ -110,10 +110,7 @@ interface AgentSchema {
  * Handle tool listing request
  */
 /**
- * Handle tool listing request
- *
- * This function returns a list of available tools, with each tool name
- * including the vault identifier to ensure uniqueness across vaults.
+ * Handle tool listing request - optimized for fast response to avoid timeouts
  *
  * @param agents Map of agent names to agent instances
  * @param isVaultEnabled Boolean indicating if vault access is enabled
@@ -126,17 +123,20 @@ export async function handleToolList(
     app: App
 ): Promise<{ tools: any[] }> {
     try {
+        console.log("[DIAGNOSTIC] handleToolList called, agent count:", agents.size);
+        
+        // Return empty list immediately if vault access is disabled
+        if (!isVaultEnabled) {
+            console.log("[DIAGNOSTIC] Vault access is disabled, returning empty tool list");
+            return { tools: [] };
+        }
+        
         const tools: any[] = [];
+        console.log("[DIAGNOSTIC] Building tool list with minimal schema processing");
         
-        // Get the vault name for appending to tool names
-        const vaultName = app.vault.getName();
-        
-        // Sanitize the vault name using the centralized utility function
-        const sanitizedVaultName = sanitizeVaultName(vaultName);
-        
+        // Process agents with minimal logging and schema building
         for (const agent of agents.values()) {
-            
-            // Create a schema that includes the mode parameter and combines all tool schemas
+            // Simplified schema that includes just the mode parameter
             const agentSchema: AgentSchema = {
                 type: 'object',
                 properties: {
@@ -144,43 +144,36 @@ export async function handleToolList(
                         type: 'string',
                         enum: [] as string[],
                         description: 'The operation mode for this agent'
+                    },
+                    sessionId: {
+                        type: 'string',
+                        description: 'Session identifier to track related tool calls'
                     }
                 },
-                required: ['mode'],
+                required: ['mode', 'sessionId'],
                 allOf: []
             };
             
             // Get all modes for this agent
             const agentModes = agent.getModes();
             
-            // Add each mode
+            // Add basic mode information without detailed schemas
             for (const mode of agentModes) {
                 agentSchema.properties.mode.enum.push(mode.slug);
-                const modeSchema = mode.getParameterSchema();
-                
-                agentSchema.allOf.push({
-                    if: {
-                        properties: { mode: { enum: [mode.slug] } },
-                        required: ['mode']
-                    },
-                    then: {
-                        properties: modeSchema.properties || {},
-                        required: modeSchema.required || []
-                    }
-                });
             }
             
-            // Append vault ID to the tool name to ensure uniqueness
-            const toolName = `${agent.name}_${sanitizedVaultName}`;
-            
+            // Register tool with simplified schema
             tools.push({
-                name: toolName,
+                name: agent.name,
                 description: agent.description,
                 inputSchema: agentSchema
             });
         }
+        
+        console.log("[DIAGNOSTIC] Fast response: returning", tools.length, "tools");
         return { tools };
     } catch (error) {
+        console.error("[DIAGNOSTIC] Error in handleToolList:", error);
         throw new McpError(ErrorCode.InternalError, 'Failed to list tools', error);
     }
 }
@@ -286,9 +279,8 @@ export async function handleToolExecution(
     try {
         const { name: fullToolName } = request.params;
         
-        // Extract the actual agent name by removing the vault ID suffix
-        // The format is expected to be {agentName}_{vaultID}
-        const agentName = fullToolName.split('_')[0];
+        // Use the full tool name directly as the agent name (for testing)
+        const agentName = fullToolName;
         
         // Extract the mode from the arguments
         if (!parsedArgs) {

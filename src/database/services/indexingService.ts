@@ -93,10 +93,10 @@ export class IndexingService {
         };
       }
       
-      // Get workspace database
-      const workspaceDb = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.workspaceDb;
-      if (!workspaceDb) {
-        console.log('Workspace database not available, simulating indexing');
+      // Get vector store from the plugin
+      const vectorStore = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.vectorStore;
+      if (!vectorStore) {
+        console.log('Vector store not available, simulating indexing');
         
         // Simulate successful embedding (for development)
         const chunks = Math.floor(Math.random() * 5) + 1;
@@ -457,14 +457,14 @@ export class IndexingService {
     lastIndexedDate: string;
     indexingInProgress: boolean;
   } {
-    // Get data from workspaceDb if available
-    const workspaceDb = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.workspaceDb;
-    if (workspaceDb) {
+    // Get data from vector store if available
+    const vectorStore = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.vectorStore;
+    if (vectorStore) {
       try {
-        // Get real stats from db if possible (implementation depends on actual db structure)
+        // Get real stats from vector store if possible
         // For now we're using the tracked stats
       } catch (error) {
-        console.error('Error getting stats from database:', error);
+        console.error('Error getting stats from vector store:', error);
       }
     }
     
@@ -483,14 +483,14 @@ export class IndexingService {
   async resetUsageStats(): Promise<void> {
     this.indexingStats.tokensThisMonth = 0;
     
-    // Update the database if available
-    const workspaceDb = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.workspaceDb;
-    if (workspaceDb) {
+    // Update the vector store if available
+    const vectorStore = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.vectorStore;
+    if (vectorStore) {
       try {
-        // Reset database stats if possible
-        console.log('Resetting usage stats in database');
+        // Reset vector store stats if possible
+        console.log('Resetting usage stats in vector store');
       } catch (error) {
-        console.error('Error resetting stats in database:', error);
+        console.error('Error resetting stats in vector store:', error);
       }
     }
     
@@ -509,14 +509,14 @@ export class IndexingService {
     
     this.indexingStats.tokensThisMonth = tokenCount;
     
-    // Update the database if available
-    const workspaceDb = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.workspaceDb;
-    if (workspaceDb) {
+    // Update the vector store if available
+    const vectorStore = (this.app as any).plugins?.getPlugin('claudesidian-mcp')?.vectorStore;
+    if (vectorStore) {
       try {
-        // Update database stats if possible
-        console.log('Updating usage stats in database');
+        // Update vector store stats if possible
+        console.log('Updating usage stats in vector store');
       } catch (error) {
-        console.error('Error updating stats in database:', error);
+        console.error('Error updating stats in vector store:', error);
       }
     }
     
