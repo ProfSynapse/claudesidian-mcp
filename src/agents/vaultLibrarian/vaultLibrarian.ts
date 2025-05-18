@@ -2,14 +2,9 @@ import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { VaultLibrarianConfig } from './config';
 import {
-  SearchContentMode,
-  SearchTagMode,
-  SearchPropertyMode,
-  BatchSearchMode,
-  SemanticSearchMode,
-  CreateEmbeddingsMode,
-  BatchCreateEmbeddingsMode,
-  CombinedSearchMode
+  SearchMode,
+  VectorMode,
+  BatchMode
 } from './modes';
 import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { OpenAIProvider } from '../../database/providers/openai-provider';
@@ -98,9 +93,6 @@ export class VaultLibrarianAgent extends BaseAgent {
           if (plugin.services.searchService) {
             this.searchService = plugin.services.searchService;
           }
-          
-          // No longer need to handle workspaceDb compatibility
-          // ChromaDB services are now used directly
         }
       }
     } catch (error) {
@@ -108,17 +100,20 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.embeddingProvider = null;
     }
     
-    // Register traditional search modes - these are always available
-    this.registerMode(new SearchContentMode(app));
-    this.registerMode(new SearchTagMode(app));
-    this.registerMode(new SearchPropertyMode(app));
-    this.registerMode(new BatchSearchMode(app));
-    
-    // Register embedding-based modes with ChromaDB services
-    this.registerMode(new SemanticSearchMode(app, this.memoryService, this.searchService));
-    this.registerMode(new CombinedSearchMode(app, this.memoryService, this.searchService));
-    this.registerMode(new CreateEmbeddingsMode(app, this.memoryService, this.embeddingService));
-    this.registerMode(new BatchCreateEmbeddingsMode(app, this.memoryService, this.embeddingService));
+    // Register new unified modes
+    this.registerMode(new SearchMode(app));
+    this.registerMode(new VectorMode(
+      app, 
+      this.memoryService, 
+      this.searchService, 
+      this.embeddingService
+    ));
+    this.registerMode(new BatchMode(
+      app, 
+      this.memoryService, 
+      this.searchService, 
+      this.embeddingService
+    ));
   }
   
   /**
@@ -235,59 +230,6 @@ export class VaultLibrarianAgent extends BaseAgent {
       return {
         success: false,
         filePath,
-        error: error.message
-      };
-    }
-  }
-  
-  /**
-   * Perform a combined search with semantic search and filters
-   * @param query Search query
-   * @param filters Optional filters to apply to search results
-   * @param limit Maximum number of results to return
-   * @param threshold Similarity threshold
-   * @returns Promise that resolves with combined search results
-   */
-  async combinedSearch(
-    query: string, 
-    filters: Record<string, any> = {}, 
-    limit: number = 10, 
-    threshold: number = 0.7
-  ): Promise<{
-    success: boolean;
-    matches?: Array<{
-      similarity: number;
-      content: string;
-      filePath: string;
-      lineStart?: number;
-      lineEnd?: number;
-      metadata?: Record<string, any>;
-    }>;
-    error?: string;
-  }> {
-    try {
-      // This is a placeholder for the actual implementation
-      // Actual implementation would combine semantic search with traditional search
-      console.log(`Combined search for: ${query}, filters: ${JSON.stringify(filters)}, limit: ${limit}, threshold: ${threshold}`);
-      
-      // Simulate successful search with sample results
-      return {
-        success: true,
-        matches: [
-          {
-            similarity: 0.95,
-            content: `This is a matched content for "${query}"`,
-            filePath: 'example/file1.md',
-            lineStart: 1,
-            lineEnd: 5,
-            metadata: { tags: ['example', 'test'] }
-          }
-        ]
-      };
-    } catch (error) {
-      console.error(`Error performing combined search for "${query}":`, error);
-      return {
-        success: false,
         error: error.message
       };
     }
@@ -445,18 +387,6 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.currentIndexingOperationId = null;
       throw error;
     }
-  }
-  
-  /**
-   * Get all workspaces
-   * @returns Promise that resolves with workspace objects
-   */
-  async getWorkspaces(): Promise<Array<{id: string; name: string}>> {
-    // This is a placeholder for the actual implementation
-    return [{
-      id: 'default',
-      name: 'Default Workspace'
-    }];
   }
   
   /**

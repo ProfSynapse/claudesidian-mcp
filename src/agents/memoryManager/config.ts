@@ -10,10 +10,10 @@ export const MemoryManagerConfig = {
   /**
    * Agent description
    */
-  description: 'Manages workspace memory, sessions, and states',
+  description: 'Manages workspace memory, sessions, states, and collections',
   
   /**
    * Agent version
    */
-  version: '1.0.0'
+  version: '1.1.0'
 };

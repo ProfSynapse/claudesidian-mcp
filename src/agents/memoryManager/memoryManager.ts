@@ -1,12 +1,13 @@
 import { BaseAgent } from '../baseAgent';
 import { MemoryManagerConfig } from './config';
 import * as Modes from './modes';
+import * as CollectionModes from './modes/collection';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
 import { MemoryService } from '../../database/services/MemoryService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 
 /**
- * Agent for managing workspace memory, sessions, and state snapshots
+ * Agent for managing workspace memory, sessions, state snapshots, and ChromaDB collections
  */
 export class MemoryManagerAgent extends BaseAgent {
   /**
@@ -46,6 +47,13 @@ export class MemoryManagerAgent extends BaseAgent {
     this.registerMode(new Modes.LoadStateMode(this));
     this.registerMode(new Modes.EditStateMode(this));
     this.registerMode(new Modes.DeleteStateMode(this));
+    
+    // Register collection management modes (except query mode which is in VaultLibrarian)
+    this.registerMode(new CollectionModes.CreateCollectionMode(this));
+    this.registerMode(new CollectionModes.ListCollectionsMode(this));
+    this.registerMode(new CollectionModes.GetCollectionMode(this));
+    this.registerMode(new CollectionModes.DeleteCollectionMode(this));
+    this.registerMode(new CollectionModes.CollectionAddItemsMode(this));
   }
   
   /**
@@ -70,7 +78,6 @@ export class MemoryManagerAgent extends BaseAgent {
     return this.workspaceService;
   }
   
-  
   /**
    * Execute a mode with automatic session context tracking
    * @param modeSlug The mode to execute
@@ -78,8 +85,18 @@ export class MemoryManagerAgent extends BaseAgent {
    * @returns Result from mode execution
    */
   async executeMode(modeSlug: string, params: any): Promise<any> {
-    // If there's a workspace context but no session ID, try to get or create a session
-    if (params.workspaceContext?.workspaceId && !params.workspaceContext.sessionId) {
+    // Skip session handling for collection management modes
+    const isCollectionMode = [
+      'createCollection',
+      'listCollections',
+      'getCollection',
+      'deleteCollection',
+      'collectionAddItems'
+    ].includes(modeSlug);
+    
+    // If not a collection mode and there's a workspace context but no session ID,
+    // try to get or create a session
+    if (!isCollectionMode && params.workspaceContext?.workspaceId && !params.workspaceContext.sessionId) {
       try {
         const workspaceId = parseWorkspaceContext(params.workspaceContext)?.workspaceId;
         if (workspaceId) {

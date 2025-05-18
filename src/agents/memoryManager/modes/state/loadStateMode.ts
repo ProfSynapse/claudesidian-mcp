@@ -92,17 +92,23 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         console.warn(`Failed to retrieve original session: ${error.message}`);
       }
       
-      // For backward compatibility
-      // Note: This is a transitional approach during Chroma integration
-      const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
-      
-      // Since MemoryService doesn't have a direct restoreStateSnapshot method yet,
-      // we'll use the activity embedder for backward compatibility
-      if (activityEmbedder && typeof activityEmbedder.restoreStateSnapshot === 'function') {
-        await activityEmbedder.restoreStateSnapshot(stateId);
-      } else {
-        console.warn('State restoration functionality not fully implemented in MemoryService');
-        // In a complete implementation, we would add this functionality to MemoryService
+      // Restore the state using the MemoryService
+      let restoredState;
+      try {
+        restoredState = await memoryService.restoreStateSnapshot(stateId);
+        console.log(`Successfully restored state "${restoredState.name}" from workspace ${restoredState.workspaceId}`);
+      } catch (error) {
+        console.error(`Failed to restore state: ${error.message}`);
+        
+        // Try fallback to legacy method if available
+        const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
+        if (activityEmbedder && typeof activityEmbedder.restoreStateSnapshot === 'function') {
+          console.log('Falling back to legacy restoreStateSnapshot method');
+          await activityEmbedder.restoreStateSnapshot(stateId);
+        } else {
+          console.warn('State restoration failed and no fallback is available');
+          throw new Error(`Failed to restore state: ${error.message}`);
+        }
       }
       
       // Prepare session initialization data
