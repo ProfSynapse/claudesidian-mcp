@@ -1,6 +1,6 @@
-import { App, Plugin, TFile } from 'obsidian';
-import { IMCPServer, ServerStatus, MCPSettings } from './types';
-import { Settings } from './settings';
+import { App, Plugin } from 'obsidian';
+import { IMCPServer, ServerStatus } from './types';
+// import { Settings } from './settings';
 import { IAgent } from './agents/interfaces/IAgent';
 import { EventManager } from './services/EventManager';
 import { SessionContextManager } from './services/SessionContextManager';
@@ -20,8 +20,9 @@ import {
 import { Server as NetServer, createServer } from 'net';
 import { promises as fs } from 'fs';
 import { platform } from 'os';
-import { safeStringify, parseJsonArrays } from './utils/jsonUtils';
+import { parseJsonArrays } from './utils/jsonUtils';
 import { logger } from './utils/logger';
+import { getErrorMessage } from './utils/errorUtils';
 import { sanitizeVaultName } from './utils/vaultUtils';
 import {
     handleResourceList,
@@ -50,17 +51,15 @@ export class MCPServer implements IMCPServer {
     private server: MCPSDKServer;
     private stdioTransport: StdioServerTransport | null = null;
     private ipcServer: NetServer | null = null;
-    private settings: Settings;
     
     constructor(
         private app: App,
-        private plugin: Plugin,
+        private readonly plugin: Plugin,
         private eventManager: EventManager,
         private sessionContextManager?: SessionContextManager,
         private serverName?: string
     ) {
         // Get settings from plugin
-        this.settings = (plugin as any).settings;
         
         // Initialize server with settings
         
@@ -161,7 +160,7 @@ export class MCPServer implements IMCPServer {
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             try {
                 // Use the handleToolList function from requestHandlers.ts for complete schema generation
-                return await handleToolList(this.agents, true, this.app);
+                return await handleToolList(this.agents, true);
             } catch (error) {
                 console.error("Error in tool list handler:", error);
                 logger.systemError(error as Error, 'Tool List Handler');
@@ -454,7 +453,6 @@ export class MCPServer implements IMCPServer {
             
             // Apply workspace context from SessionContextManager if available
             let originalSessionId = params.sessionId;
-            let sessionIdChanged = false;
             
             if (this.sessionContextManager && params.sessionId) {
                 // Process the session ID
@@ -463,9 +461,9 @@ export class MCPServer implements IMCPServer {
                     // This allows clients to provide their own valid session IDs
                     params.sessionId = await this.sessionContextManager.validateSessionId(params.sessionId);
                     // Check if the session ID changed (should only happen if original was empty)
-                    sessionIdChanged = (originalSessionId !== params.sessionId);
+                    // sessionId has changed if it's different from the original
                 } catch (error) {
-                    logger.systemWarn(`Session validation failed: ${error.message}. Using original ID`);
+                    logger.systemWarn(`Session validation failed: ${getErrorMessage(error)}. Using original ID`);
                 }
                 
                 // Apply workspace context
