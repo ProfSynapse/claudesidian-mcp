@@ -419,6 +419,7 @@ export interface WorkspaceResult extends CommonResult {
       recentFiles: string[];
       keyFiles: string[];
       relatedConcepts: string[];
+      allFiles?: string[];
     };
     summary?: string;
   };
@@ -532,6 +533,7 @@ export interface LoadWorkspaceResult extends CommonResult {
       recentFiles: string[];
       keyFiles: string[];
       relatedConcepts: string[];
+      allFiles: string[];
     };
   };
 }

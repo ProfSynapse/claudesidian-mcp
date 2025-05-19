@@ -36,6 +36,12 @@ export interface VectorSearchParams extends CommonParameters {
   threshold?: number;
   
   /**
+   * Flag to use existing embeddings without regenerating them
+   * When true, will search using existing embeddings even without OpenAI API key
+   */
+  embeddings?: boolean;
+  
+  /**
    * Optional filters to apply to the search
    */
   filters?: {
@@ -251,31 +257,12 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     
     let queryEmbedding: number[] | undefined = undefined;
     
-    // If embedding is provided directly, use it
+    // Only use an embedding if directly provided in the request
     if (params.embedding) {
       queryEmbedding = params.embedding;
     }
-    // Otherwise, if query text is provided, generate embedding
-    else if (params.query && this.embeddingService) {
-      try {
-        const embedded = await this.embeddingService.createEmbedding(params.query);
-        queryEmbedding = embedded.vector;
-      } catch (error) {
-        console.error('Error generating embedding from query:', error);
-        throw new Error('Failed to generate embedding from query text');
-      }
-    }
-    // If no embedding service is available but we have query text, use direct text query
-    else if (params.query) {
-      // Will use text query directly without embedding
-    }
-    else {
+    else if (!params.query) {
       throw new Error('Either query text or embedding vector must be provided');
-    }
-    
-    // Check if we have an embedding or query
-    if (!queryEmbedding && !params.query) {
-      throw new Error('Failed to generate search parameters');
     }
     
     // Create search options
@@ -333,7 +320,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     }
     // Otherwise perform semantic search with default collection
     else {
-      // Use either embedding-based or text-based search
+      // Use either embedding-based or text-based search (without generating new embeddings)
       if (queryEmbedding) {
         result = await this.searchService.semanticSearchWithEmbedding(
           queryEmbedding,
@@ -342,7 +329,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
       } else if (params.query) {
         result = await this.searchService.semanticSearch(
           params.query,
-          searchOptions
+          { ...searchOptions, skipEmbeddingGeneration: true }
         );
       } else {
         throw new Error('No valid search parameters');
@@ -520,7 +507,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
    * @param error Optional error message
    * @returns Formatted result object
    */
-  private prepareResult(
+  protected prepareResult(
     success: boolean,
     data?: { matches: any[] },
     error?: string
@@ -555,6 +542,11 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
             type: 'number'
           },
           description: 'Embedding vector to search with directly (alternative to query)'
+        },
+        embeddings: {
+          type: 'boolean',
+          description: 'Set to true to use existing embeddings without regenerating them',
+          default: false
         },
         collectionName: {
           type: 'string',

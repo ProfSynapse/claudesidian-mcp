@@ -106,7 +106,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       properties: {
         path: {
           type: 'string',
-          description: 'Directory path to list folders from'
+          description: 'Directory path to list folders from (REQUIRED)'
         },
         filter: {
           type: 'string',
@@ -114,7 +114,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
         },
         ...commonSchema
       },
-      required: ['path']
+      required: ['path', 'sessionId', 'context']
     };
   }
   

@@ -8,6 +8,7 @@ import { IAgent } from '../agents/interfaces/IAgent';
 import { sanitizeVaultName } from '../utils/vaultUtils';
 import { SessionContextManager } from '../services/SessionContextManager';
 import { parseWorkspaceContext } from '../utils/contextUtils';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Request handler implementations for the MCP server
@@ -19,7 +20,13 @@ import { parseWorkspaceContext } from '../utils/contextUtils';
  * Get resources from the vault
  */
 async function getVaultResources(app: App) {
-    const resources = [];
+    interface Resource {
+        uri: string;
+        name: string;
+        mimeType: string;
+    }
+    
+    const resources: Resource[] = [];
     const files = app.vault.getMarkdownFiles();
     
     for (const file of files) {
@@ -110,7 +117,7 @@ interface AgentSchema {
  * Handle tool listing request
  */
 /**
- * Handle tool listing request - optimized for fast response to avoid timeouts
+ * Handle tool listing request with full parameter schemas from each mode
  *
  * @param agents Map of agent names to agent instances
  * @param isVaultEnabled Boolean indicating if vault access is enabled
@@ -123,20 +130,16 @@ export async function handleToolList(
     app: App
 ): Promise<{ tools: any[] }> {
     try {
-        console.log("[DIAGNOSTIC] handleToolList called, agent count:", agents.size);
-        
         // Return empty list immediately if vault access is disabled
         if (!isVaultEnabled) {
-            console.log("[DIAGNOSTIC] Vault access is disabled, returning empty tool list");
             return { tools: [] };
         }
         
         const tools: any[] = [];
-        console.log("[DIAGNOSTIC] Building tool list with minimal schema processing");
         
-        // Process agents with minimal logging and schema building
+        // Process agents with full schema building from each mode
         for (const agent of agents.values()) {
-            // Simplified schema that includes just the mode parameter
+            // Base schema for the agent (common to all modes)
             const agentSchema: AgentSchema = {
                 type: 'object',
                 properties: {
@@ -151,18 +154,89 @@ export async function handleToolList(
                     }
                 },
                 required: ['mode', 'sessionId'],
-                allOf: []
+                allOf: [] // Will contain mode-specific schema requirements
             };
             
             // Get all modes for this agent
             const agentModes = agent.getModes();
             
-            // Add basic mode information without detailed schemas
+            // Add each mode to the enum and create conditional schemas
             for (const mode of agentModes) {
+                // Add mode to the enum of available modes
                 agentSchema.properties.mode.enum.push(mode.slug);
+                
+                try {
+                    // Get the parameter schema for this mode
+                    const modeSchema = mode.getParameterSchema();
+                    
+                    if (modeSchema && typeof modeSchema === 'object') {
+                        // Create a copy of the schema to avoid modifying the original
+                        const modeSchemaCopy = JSON.parse(JSON.stringify(modeSchema));
+                        
+                        // Remove any mode property from the mode schema to avoid duplication
+                        if (modeSchemaCopy.properties && modeSchemaCopy.properties.mode) {
+                            delete modeSchemaCopy.properties.mode;
+                        }
+                        
+                        // If the mode schema has specific required properties, include them 
+                        // in a conditional requirement
+                        if (modeSchemaCopy.required && modeSchemaCopy.required.length > 0) {
+                            // Don't include 'mode' or 'sessionId' in the conditional required list
+                            // as they're already in the base schema
+                            const conditionalRequired = modeSchemaCopy.required.filter(
+                                prop => prop !== 'mode' && prop !== 'sessionId'
+                            );
+                            
+                            if (conditionalRequired.length > 0) {
+                                // Create a conditional schema that applies when this mode is selected
+                                agentSchema.allOf.push({
+                                    if: {
+                                        properties: {
+                                            mode: { enum: [mode.slug] }
+                                        }
+                                    },
+                                    then: {
+                                        required: conditionalRequired
+                                    }
+                                });
+                            }
+                        }
+                        
+                        // Merge the mode's properties into the agent schema
+                        if (modeSchemaCopy.properties) {
+                            for (const [propName, propSchema] of Object.entries(modeSchemaCopy.properties)) {
+                                // Skip mode and sessionId as they're already in the base schema
+                                if (propName !== 'mode' && propName !== 'sessionId') {
+                                    agentSchema.properties[propName] = propSchema;
+                                }
+                            }
+                        }
+                        
+                        // If the mode schema has conditional validations (allOf, anyOf, oneOf, etc.), 
+                        // include them in the agent schema
+                        ['allOf', 'anyOf', 'oneOf', 'not'].forEach(validationType => {
+                            if (modeSchemaCopy[validationType]) {
+                                // Create a conditional validation that applies when this mode is selected
+                                agentSchema.allOf.push({
+                                    if: {
+                                        properties: {
+                                            mode: { enum: [mode.slug] }
+                                        }
+                                    },
+                                    then: {
+                                        [validationType]: modeSchemaCopy[validationType]
+                                    }
+                                });
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error processing schema for mode ${mode.slug}:`, error);
+                    // Continue with other modes even if one fails
+                }
             }
             
-            // Register tool with simplified schema
+            // Register tool with complete schema
             tools.push({
                 name: agent.name,
                 description: agent.description,
@@ -170,10 +244,9 @@ export async function handleToolList(
             });
         }
         
-        console.log("[DIAGNOSTIC] Fast response: returning", tools.length, "tools");
         return { tools };
     } catch (error) {
-        console.error("[DIAGNOSTIC] Error in handleToolList:", error);
+        console.error("Error in handleToolList:", error);
         throw new McpError(ErrorCode.InternalError, 'Failed to list tools', error);
     }
 }
@@ -184,10 +257,14 @@ export async function handleToolList(
 function validateToolParams(params: any) {
     // Validate sessionId is present as a top-level parameter
     if (!params.sessionId) {
-        throw new McpError(
-            ErrorCode.InvalidParams,
-            `Missing required parameter: sessionId`
-        );
+        // Auto-generate a sessionId if missing to improve user experience
+        const newSessionId = uuidv4();
+        params.sessionId = newSessionId;
+        
+        // Mark that this is an auto-generated ID
+        params._autoGeneratedSessionId = true;
+        
+        logger.systemLog(`Auto-generated sessionId: ${params.sessionId}`);
     }
     
     // Validate batch operations if they exist
@@ -264,6 +341,11 @@ function validateToolParams(params: any) {
  * tool names that include vault identifiers by extracting the base agent name.
  * It also handles workspace context and handoff parameters.
  *
+ * For session management:
+ * - If a sessionId is missing, a new one will be auto-generated
+ * - If a sessionId is provided, it will be used regardless of whether it exists in the database
+ * - The sessionId is used to persist workspace context across tool calls
+ *
  * @param getAgent Function to get an agent by name
  * @param request The original request object
  * @param parsedArgs The parsed arguments for the tool
@@ -299,12 +381,114 @@ export async function handleToolExecution(
             );
         }
         
-        // Validate parameters
+        // Additional validation for specific modes
+        if (agentName === 'projectManager') {
+            if (mode === 'createWorkspace') {
+                if (!params.name) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: name for createWorkspace mode`
+                    );
+                }
+                if (!params.rootFolder) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: rootFolder for createWorkspace mode`
+                    );
+                }
+            } else if (mode === 'loadWorkspace') {
+                if (!params.id) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: id for loadWorkspace mode`
+                    );
+                }
+            }
+        } else if (agentName === 'memoryManager') {
+            if (mode === 'createState') {
+                if (!params.name) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: name for createState mode`
+                    );
+                }
+            }
+        } else if (agentName === 'vaultManager') {
+            if (mode === 'listFolders' || mode === 'createFolder' || mode === 'listFiles') {
+                if (!params.path) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: path for ${mode} mode`
+                    );
+                }
+            }
+        } else if (agentName === 'contentManager') {
+            if (mode === 'createContent') {
+                if (!params.filePath) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: filePath for createContent mode`
+                    );
+                }
+                if (params.content === undefined || params.content === null) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: content for createContent mode`
+                    );
+                }
+            }
+        } else if (agentName === 'vaultLibrarian') {
+            if (mode === 'search') {
+                if (!params.type) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: type for search mode (must be one of: content, tag, property)`
+                    );
+                }
+                
+                // Additional validations based on search type
+                if (params.type === 'content' && !params.query) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: query for content search`
+                    );
+                } else if (params.type === 'tag' && !params.tag) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: tag for tag search`
+                    );
+                } else if (params.type === 'property' && !params.key) {
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `Missing required parameter: key for property search`
+                    );
+                }
+            }
+        }
+        
+        // Validate common parameters
         validateToolParams(params);
         
         // Execute the agent with the specified mode
         // Get the agent using the base agent name (without vault ID)
         const agent = getAgent(agentName);
+        
+        // Validate session ID if SessionContextManager is available
+        let originalSessionId = params.sessionId;
+        let sessionIdChanged = false;
+        
+        if (sessionContextManager && params.sessionId) {
+            try {
+                // Process the session ID
+                // We no longer generate new IDs for existing session IDs
+                // This allows clients to provide their own valid session IDs
+                params.sessionId = await sessionContextManager.validateSessionId(params.sessionId);
+                // Check if the session ID changed (should only happen if original was empty)
+                sessionIdChanged = (originalSessionId !== params.sessionId);
+            } catch (error) {
+                logger.systemWarn(`Session validation failed: ${error.message}. Using original ID`);
+            }
+        }
         
         // Apply workspace context from SessionContextManager if available
         let processedParams = { ...params }; // Create a copy of params to avoid mutating the original
@@ -382,6 +566,17 @@ export async function handleToolExecution(
                     }]
                 };
             }
+        }
+        
+        // Only add session ID info if a new session was auto-generated from an empty ID
+        // Do NOT add session info for existing IDs that weren't in the database
+        if (params._autoGeneratedSessionId && result && !originalSessionId) {
+            result.newSessionId = params.sessionId;
+            result.validSessionInfo = {
+                originalId: null,
+                newId: params.sessionId,
+                message: "No session ID was provided. A new session has been created. Please use this session ID for future requests."
+            };
         }
         
         // Regular result with no handoff

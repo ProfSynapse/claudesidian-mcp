@@ -1,17 +1,32 @@
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../memoryManager';
+import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
+import { CreateCollectionParams, CollectionResult } from '../../types';
 
 /**
- * Mode for creating a new ChromaDB collection
+ * Mode for creating a new vector collection
  */
-export class CreateCollectionMode extends BaseMode<{
-  name: string;
-  metadata?: Record<string, any>;
-}, {
-  name: string;
-  created: boolean;
-}> {
+export class CreateCollectionMode extends BaseMode<CreateCollectionParams, CollectionResult> {
+  /**
+   * The parent agent
+   */
+  private agent: VectorManagerAgent;
+  
+  /**
+   * Create a new CreateCollectionMode
+   * @param agent The parent VectorManagerAgent
+   */
+  constructor(agent: VectorManagerAgent) {
+    super(
+      'createCollection',
+      'Create Collection',
+      'Creates a new vector collection for storing embeddings',
+      '1.0.0'
+    );
+    
+    this.agent = agent;
+  }
+  
   /**
    * Get the unique mode slug
    * @returns Mode slug
@@ -33,7 +48,7 @@ export class CreateCollectionMode extends BaseMode<{
    * @returns Mode description
    */
   getDescription(): string {
-    return 'Creates a new ChromaDB collection for vector storage';
+    return 'Creates a new vector collection for storing embeddings';
   }
 
   /**
@@ -41,27 +56,28 @@ export class CreateCollectionMode extends BaseMode<{
    * @param params Parameters for creating a collection
    * @returns Result of the creation operation
    */
-  async execute(params: {
-    name: string;
-    metadata?: Record<string, any>;
-  }): Promise<{
-    name: string;
-    created: boolean;
-  }> {
+  async execute(params: CreateCollectionParams): Promise<CollectionResult> {
     // Get the memory service from the agent
-    const memoryService = (this.agent as MemoryManagerAgent).getMemoryService();
+    const memoryService = (this.agent as VectorManagerAgent).getMemoryService();
     
     try {
       // Create a new collection with the given name and metadata
       await memoryService.createCollection(params.name, params.metadata);
       
       return {
-        name: params.name,
-        created: true
+        success: true,
+        data: {
+          name: params.name,
+          created: true,
+          metadata: params.metadata
+        }
       };
     } catch (error) {
       console.error(`Failed to create collection ${params.name}:`, error);
-      throw new Error(`Collection creation failed: ${error instanceof Error ? error.message : String(error)}`);
+      return {
+        success: false,
+        error: `Collection creation failed: ${error instanceof Error ? error.message : String(error)}`
+      };
     }
   }
 
@@ -102,16 +118,34 @@ export class CreateCollectionMode extends BaseMode<{
     return {
       type: 'object',
       properties: {
-        name: {
-          type: 'string',
-          description: 'Name of the created collection'
-        },
-        created: {
+        success: {
           type: 'boolean',
-          description: 'Whether the collection was created successfully'
+          description: 'Whether the operation was successful'
+        },
+        error: {
+          type: 'string',
+          description: 'Error message if the operation failed'
+        },
+        data: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Name of the created collection'
+            },
+            created: {
+              type: 'boolean',
+              description: 'Whether the collection was created successfully'
+            },
+            metadata: {
+              type: 'object',
+              description: 'Collection metadata',
+              additionalProperties: true
+            }
+          }
         }
       },
-      required: ['name', 'created']
+      required: ['success']
     };
   }
 }

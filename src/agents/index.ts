@@ -5,3 +5,4 @@ export * from './projectManager/projectManager';
 export * from './vaultManager/vaultManager';
 export * from './vaultLibrarian/vaultLibrarian';
 export * from './memoryManager/memoryManager';
+export * from './vectorManager/vectorManager';

@@ -347,11 +347,92 @@ export class MemoryService {
   }
   
   /**
-   * Get a session by ID
+   * Get a session by ID, auto-creating it if it doesn't exist
    * @param id Session ID
+   * @param autoCreate Whether to auto-create the session if it doesn't exist
+   * @returns The session, either existing or newly created
    */
-  async getSession(id: string): Promise<WorkspaceSession | undefined> {
-    return this.sessions.get(id);
+  async getSession(id: string, autoCreate: boolean = true): Promise<WorkspaceSession | undefined> {
+    try {
+      // Try to get the existing session
+      const session = await this.sessions.get(id);
+      
+      // If session exists, return it
+      if (session) {
+        return session;
+      }
+      
+      // If auto-create is disabled or no ID was provided, return undefined
+      if (!autoCreate || !id) {
+        return undefined;
+      }
+      
+      // Session doesn't exist and auto-create is enabled, create a new one
+      console.log(`Auto-creating session with ID: ${id}`);
+      
+      // Try to get the default workspace
+      let workspaceId: string;
+      try {
+        const plugin = this.plugin as any;
+        const workspaceService = plugin.services?.workspaceService;
+        
+        if (workspaceService) {
+          const workspaces = await workspaceService.getWorkspaces({ 
+            sortBy: 'lastAccessed', 
+            sortOrder: 'desc', 
+          });
+          
+          if (workspaces && workspaces.length > 0) {
+            workspaceId = workspaces[0].id;
+          } else {
+            // Create a default workspace if none exists
+            const defaultWorkspace = await workspaceService.createWorkspace({
+              name: 'Default Workspace',
+              description: 'Automatically created default workspace',
+              rootFolder: '/',
+              hierarchyType: 'workspace',
+              created: Date.now(),
+              lastAccessed: Date.now(),
+              childWorkspaces: [],
+              path: [],
+              relatedFolders: [],
+              relevanceSettings: {
+                folderProximityWeight: 0.5,
+                recencyWeight: 0.7,
+                frequencyWeight: 0.3
+              },
+              activityHistory: [],
+              completionStatus: {},
+              status: 'active'
+            });
+            workspaceId = defaultWorkspace.id;
+          }
+        } else {
+          // No workspace service, use a default ID
+          workspaceId = 'default-workspace';
+        }
+      } catch (error) {
+        // Fallback to a default workspace ID
+        console.warn(`Error getting default workspace: ${error.message}`);
+        workspaceId = 'default-workspace';
+      }
+      
+      // Create a new session with the provided ID
+      const newSession = await this.createSession({
+        id: id, // Use the provided ID directly
+        workspaceId: workspaceId,
+        name: `Session ${new Date().toLocaleString()}`,
+        description: 'Auto-created session',
+        startTime: Date.now(),
+        isActive: true,
+        toolCalls: 0
+      });
+      
+      return newSession;
+    } catch (error) {
+      console.error(`Error in getSession: ${error.message}`);
+      return undefined;
+    }
   }
   
   /**

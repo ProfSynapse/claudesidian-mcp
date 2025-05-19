@@ -98,7 +98,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                       contextDepth === 'standard' ? 50 : 100;
       
       // Get immediate children if requested
-      let children = undefined;
+      let children: Array<{id: string; name: string; hierarchyType: string}> | undefined = undefined;
       if (params.includeChildren) {
         children = [];
         
@@ -124,6 +124,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       const keyFiles = await this.getKeyFiles(workspace);
       const relatedConcepts = await this.getRelatedConcepts(workspace);
       
+      // Get all files in the workspace - this includes files in the root folder and all related folders
+      const allFiles = await this.getAllFiles(workspace);
+      
       // Create workspace context
       const workspaceContext = {
         workspaceId: workspace.id,
@@ -148,7 +151,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           context: {
             recentFiles,
             keyFiles,
-            relatedConcepts
+            relatedConcepts,
+            allFiles
           }
         },
         undefined,
@@ -163,7 +167,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           context: {
             recentFiles: [],
             keyFiles: [],
-            relatedConcepts: []
+            relatedConcepts: [],
+            allFiles: []
           }
         },
         `Failed to load workspace: ${error.message}`
@@ -264,6 +269,42 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   }
   
   /**
+   * Get all files in the workspace
+   * This uses the Obsidian API to get all markdown files in the vault,
+   * then filters them to include only those in the workspace's root folder and related folders
+   */
+  private async getAllFiles(workspace: {
+    rootFolder: string;
+    relatedFolders?: string[];
+  }): Promise<string[]> {
+    // Get all markdown files from the vault
+    const allMarkdownFiles = this.app.vault.getMarkdownFiles();
+    const allFiles: string[] = [];
+    
+    // Create a list of folders to include
+    const includeFolders = [workspace.rootFolder];
+    
+    // Add related folders if available
+    if (workspace.relatedFolders && workspace.relatedFolders.length > 0) {
+      includeFolders.push(...workspace.relatedFolders);
+    }
+    
+    // Filter files to include only those in the workspace's folders
+    for (const file of allMarkdownFiles) {
+      const filePath = file.path;
+      // Check if file path starts with any of the include folders
+      for (const folder of includeFolders) {
+        if (filePath === folder || filePath.startsWith(folder + '/')) {
+          allFiles.push(filePath);
+          break;
+        }
+      }
+    }
+    
+    return allFiles;
+  }
+  
+  /**
    * Get the parameter schema
    */
   getParameterSchema(): Record<string, any> {
@@ -274,7 +315,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       properties: {
         id: {
           type: 'string',
-          description: 'ID of the workspace to load'
+          description: 'ID of the workspace to load (REQUIRED)'
         },
         contextDepth: {
           type: 'string',
@@ -291,7 +332,85 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         },
         ...commonSchema
       },
-      required: ['id']
+      required: ['id', 'sessionId', 'context']
     };
+  }
+  
+  /**
+   * Get the result schema
+   */
+  getResultSchema(): Record<string, any> {
+    const baseSchema = super.getResultSchema();
+    
+    // Extend the base schema to include our specific data
+    baseSchema.properties.data = {
+      type: 'object',
+      properties: {
+        workspace: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Workspace ID' },
+            name: { type: 'string', description: 'Workspace name' },
+            description: { type: 'string', description: 'Workspace description' },
+            rootFolder: { type: 'string', description: 'Root folder path' },
+            summary: { type: 'string', description: 'Workspace summary' },
+            hierarchyType: { 
+              type: 'string', 
+              enum: ['workspace', 'phase', 'task'],
+              description: 'Hierarchy type of the workspace' 
+            },
+            path: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: 'Path from root workspace to this node' 
+            },
+            children: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'Child ID' },
+                  name: { type: 'string', description: 'Child name' },
+                  hierarchyType: { 
+                    type: 'string', 
+                    enum: ['workspace', 'phase', 'task'],
+                    description: 'Hierarchy type of the child' 
+                  }
+                }
+              },
+              description: 'Child workspaces/phases/tasks if requested'
+            }
+          }
+        },
+        context: {
+          type: 'object',
+          properties: {
+            recentFiles: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Recently accessed files in the workspace'
+            },
+            keyFiles: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Key files in the workspace'
+            },
+            relatedConcepts: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Related concepts for the workspace'
+            },
+            allFiles: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Complete list of all files in the workspace and related folders'
+            }
+          },
+          required: ['recentFiles', 'keyFiles', 'relatedConcepts', 'allFiles']
+        }
+      }
+    };
+    
+    return baseSchema;
   }
 }

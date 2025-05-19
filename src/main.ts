@@ -86,20 +86,8 @@ export default class ClaudesidianPlugin extends Plugin {
         };
         
         // Initialize connector with settings
-        console.log("[DIAGNOSTIC] Creating MCPConnector");
         this.connector = new MCPConnector(this.app, this);
-        console.log("[DIAGNOSTIC] Starting MCPConnector");
         await this.connector.start();
-        console.log("[DIAGNOSTIC] MCPConnector started successfully");
-        
-        // Debug: Print out available agents after connector start
-        const agentManager = this.connector.getAgentManager();
-        if (agentManager) {
-            const agents = agentManager.getAgents();
-            console.log("[DIAGNOSTIC] Agents available after connector start:", 
-                Array.from(agents.keys()).join(", "),
-                "total:", agents.size);
-        }
         
         // Add settings tab with services directly
         // Get agent references for settings tab

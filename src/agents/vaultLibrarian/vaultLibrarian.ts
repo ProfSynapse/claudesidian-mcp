@@ -4,11 +4,12 @@ import { VaultLibrarianConfig } from './config';
 import {
   SearchMode,
   VectorMode,
-  BatchMode
+  BatchMode,
+  DiagnosticMode
 } from './modes';
 import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { OpenAIProvider } from '../../database/providers/openai-provider';
-import { IndexingService } from '../../database/services/indexingService';
+import { EmbeddingServiceAdapter } from '../../database/services/EmbeddingServiceAdapter';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { MemoryService } from '../../database/services/MemoryService';
@@ -20,7 +21,7 @@ import { ChromaSearchService } from '../../database/services/ChromaSearchService
 export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
   private embeddingProvider: EmbeddingProvider | null = null;
-  private indexingService: IndexingService | null = null;
+  private indexingService: EmbeddingServiceAdapter | null = null;
   private embeddingService: EmbeddingService | null = null;
   private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
@@ -61,10 +62,11 @@ export class VaultLibrarianAgent extends BaseAgent {
     this.settings.reindexThreshold = 7;
     this.settings.maxTokensPerChunk = 8191; // Set token limit per chunk
     
-    // Try to initialize provider if settings available
+    // Define plugin outside the try-catch to make it accessible for all modes
+    let plugin = null;
     try {
       if (app.plugins) {
-        const plugin = app.plugins.getPlugin('claudesidian-mcp');
+        plugin = app.plugins.getPlugin('claudesidian-mcp');
         if (plugin?.settings?.settings?.memory?.embeddingsEnabled && plugin.settings.settings.memory.openaiApiKey) {
           this.settings = plugin.settings.settings.memory;
           this.embeddingProvider = new OpenAIProvider(this.settings);
@@ -98,6 +100,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     } catch (error) {
       console.error("Error initializing services:", error);
       this.embeddingProvider = null;
+      plugin = null; // Reset plugin if there was an error
     }
     
     // Register new unified modes
@@ -113,6 +116,15 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.memoryService, 
       this.searchService, 
       this.embeddingService
+    ));
+    
+    // Add diagnostic mode to help troubleshoot ChromaDB issues
+    // Use plugin?.services?.vectorStore safely since plugin is now in scope
+    const vectorStore = plugin?.services?.vectorStore || null;
+    this.registerMode(new DiagnosticMode(
+      app,
+      this.searchService,
+      vectorStore
     ));
   }
   
@@ -152,7 +164,7 @@ export class VaultLibrarianAgent extends BaseAgent {
    * Set the indexing service
    * @param indexingService The indexing service to use
    */
-  setIndexingService(indexingService: IndexingService): void {
+  setIndexingService(indexingService: EmbeddingServiceAdapter): void {
     this.indexingService = indexingService;
   }
   
@@ -204,11 +216,20 @@ export class VaultLibrarianAgent extends BaseAgent {
       if (!this.indexingService) {
         console.log("Getting indexingService from plugin");
         // Try to get the indexing service from the plugin
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-        if (plugin?.services?.indexingService) {
-          this.indexingService = plugin.services.indexingService;
-        } else {
-          throw new Error("Indexing service not available");
+        try {
+          if (this.app.plugins) {
+            const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+            if (plugin?.services?.indexingService) {
+              this.indexingService = plugin.services.indexingService;
+            } else {
+              throw new Error("Indexing service not available in plugin");
+            }
+          } else {
+            throw new Error("App plugins not available");
+          }
+        } catch (error) {
+          console.error("Error accessing indexing service:", error);
+          throw new Error("Indexing service not available: " + error.message);
         }
       }
       
@@ -363,11 +384,20 @@ export class VaultLibrarianAgent extends BaseAgent {
       if (!this.indexingService) {
         console.log("Getting indexingService from plugin");
         // Try to get the indexing service from the plugin
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-        if (plugin?.services?.indexingService) {
-          this.indexingService = plugin.services.indexingService;
-        } else {
-          throw new Error("Indexing service not available");
+        try {
+          if (this.app.plugins) {
+            const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+            if (plugin?.services?.indexingService) {
+              this.indexingService = plugin.services.indexingService;
+            } else {
+              throw new Error("Indexing service not available in plugin");
+            }
+          } else {
+            throw new Error("App plugins not available");
+          }
+        } catch (error) {
+          console.error("Error accessing indexing service:", error);
+          throw new Error("Indexing service not available: " + error.message);
         }
       }
       

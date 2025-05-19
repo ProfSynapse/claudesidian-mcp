@@ -443,15 +443,237 @@ class InMemoryChromaClient {
   }
 }
 
+// Create a hybrid ChromaClient class that can work both as in-memory and persistent storage
+class PersistentChromaClient extends InMemoryChromaClient {
+  private storagePath: string | null = null;
+  private collectionsData: Map<string, Map<string, any>> = new Map();
+  private fs: any = null;
+  
+  constructor(options: ChromaClientOptions = {}) {
+    super(options);
+    
+    try {
+      // Use Node.js fs module if available
+      this.fs = require('fs');
+      this.storagePath = options.path || null;
+      
+      if (this.storagePath) {
+        console.log(`PersistentChromaClient initialized with storage path: ${this.storagePath}`);
+        
+        // Load data from disk if the directory exists
+        this.loadCollectionsFromDisk();
+      } else {
+        console.log('PersistentChromaClient initialized without storage path (in-memory only)');
+      }
+    } catch (error) {
+      console.warn('Failed to initialize fs module, falling back to in-memory only:', error);
+    }
+  }
+  
+  private loadCollectionsFromDisk(): void {
+    if (!this.fs || !this.storagePath) return;
+    
+    try {
+      // Ensure the storage directory exists
+      if (!this.fs.existsSync(this.storagePath)) {
+        this.fs.mkdirSync(this.storagePath, { recursive: true });
+        console.log(`Created directory: ${this.storagePath}`);
+        return; // New directory, no collections to load
+      }
+      
+      // Check for collections subdirectory
+      const collectionsDir = `${this.storagePath}/collections`;
+      if (!this.fs.existsSync(collectionsDir)) {
+        this.fs.mkdirSync(collectionsDir, { recursive: true });
+        console.log(`Created collections directory: ${collectionsDir}`);
+        return; // New directory, no collections to load
+      }
+      
+      // Read the collections directory
+      const collections = this.fs.readdirSync(collectionsDir);
+      
+      for (const collectionName of collections) {
+        // Skip non-directories or hidden files
+        const collectionPath = `${collectionsDir}/${collectionName}`;
+        if (!this.fs.statSync(collectionPath).isDirectory() || collectionName.startsWith('.')) {
+          continue;
+        }
+        
+        // Create the collection in memory
+        super.createCollection({ name: collectionName })
+          .then(collection => {
+            console.log(`Loaded collection from disk: ${collectionName}`);
+            
+            // Load collection data
+            try {
+              const dataFile = `${collectionPath}/items.json`;
+              if (this.fs.existsSync(dataFile)) {
+                const data = JSON.parse(this.fs.readFileSync(dataFile, 'utf8'));
+                
+                // Load items into the collection
+                if (data && data.items && Array.isArray(data.items)) {
+                  const ids: string[] = [];
+                  const embeddings: number[][] = [];
+                  const metadatas: Record<string, any>[] = [];
+                  const documents: string[] = [];
+                  
+                  for (const item of data.items) {
+                    ids.push(item.id);
+                    embeddings.push(item.embedding || []);
+                    metadatas.push(item.metadata || {});
+                    documents.push(item.document || '');
+                  }
+                  
+                  if (ids.length > 0) {
+                    collection.add({
+                      ids,
+                      embeddings,
+                      metadatas,
+                      documents
+                    }).then(() => {
+                      console.log(`Loaded ${ids.length} items for collection: ${collectionName}`);
+                    }).catch(error => {
+                      console.error(`Failed to load items for collection ${collectionName}:`, error);
+                    });
+                  }
+                }
+              }
+            } catch (error) {
+              console.error(`Failed to load data for collection ${collectionName}:`, error);
+            }
+          })
+          .catch(error => {
+            console.error(`Failed to load collection ${collectionName}:`, error);
+          });
+      }
+    } catch (error) {
+      console.error('Failed to load collections from disk:', error);
+    }
+  }
+  
+  private async saveCollectionToDisk(name: string): Promise<void> {
+    if (!this.fs || !this.storagePath) return;
+    
+    try {
+      // Get the collection
+      const collection = await super.getCollection({ name });
+      
+      // Ensure the collection directory exists
+      const collectionDir = `${this.storagePath}/collections/${name}`;
+      if (!this.fs.existsSync(collectionDir)) {
+        this.fs.mkdirSync(collectionDir, { recursive: true });
+      }
+      
+      // Get all items
+      const result = await collection.get({
+        ids: [],
+        include: ['embeddings', 'metadatas', 'documents']
+      });
+      
+      // Convert to a format suitable for storage
+      const items = [];
+      for (let i = 0; i < result.ids.length; i++) {
+        items.push({
+          id: result.ids[i],
+          embedding: result.embeddings?.[i] || [],
+          metadata: result.metadatas?.[i] || {},
+          document: result.documents?.[i] || ''
+        });
+      }
+      
+      // Save to disk
+      const dataFile = `${collectionDir}/items.json`;
+      this.fs.writeFileSync(dataFile, JSON.stringify({ items }, null, 2));
+      
+      console.log(`Saved collection ${name} with ${items.length} items to disk`);
+    } catch (error) {
+      console.error(`Failed to save collection ${name} to disk:`, error);
+    }
+  }
+  
+  // Override collection methods to persist changes
+  async createCollection(params: ChromaCollectionOptions): Promise<Collection> {
+    const collection = await super.createCollection(params);
+    
+    // Save to disk
+    if (this.storagePath) {
+      await this.saveCollectionToDisk(params.name);
+    }
+    
+    return collection;
+  }
+  
+  async deleteCollection(params: { name: string }): Promise<void> {
+    await super.deleteCollection(params);
+    
+    // Remove from disk
+    if (this.fs && this.storagePath) {
+      try {
+        const collectionDir = `${this.storagePath}/collections/${params.name}`;
+        if (this.fs.existsSync(collectionDir)) {
+          // Simple recursive directory removal (could use a more robust solution in production)
+          const removeDir = (path: string) => {
+            if (this.fs!.existsSync(path)) {
+              this.fs!.readdirSync(path).forEach((file: string) => {
+                const curPath = `${path}/${file}`;
+                if (this.fs!.statSync(curPath).isDirectory()) {
+                  removeDir(curPath);
+                } else {
+                  this.fs!.unlinkSync(curPath);
+                }
+              });
+              this.fs!.rmdirSync(path);
+            }
+          };
+          
+          removeDir(collectionDir);
+          console.log(`Removed collection ${params.name} from disk`);
+        }
+      } catch (error) {
+        console.error(`Failed to remove collection ${params.name} from disk:`, error);
+      }
+    }
+  }
+  
+  // Wrap the InMemoryCollection methods to save after modifications
+  async getCollection(params: { name: string, embeddingFunction?: ChromaEmbeddingFunction }): Promise<Collection> {
+    const collection = await super.getCollection(params);
+    
+    // Wrap the collection's methods to save changes
+    const originalAdd = collection.add.bind(collection);
+    const originalUpdate = collection.update.bind(collection);
+    const originalDelete = collection.delete.bind(collection);
+    
+    collection.add = async (params: ChromaAddParams): Promise<void> => {
+      await originalAdd(params);
+      if (this.storagePath) {
+        await this.saveCollectionToDisk(collection.name);
+      }
+    };
+    
+    collection.update = async (params: ChromaUpdateParams): Promise<void> => {
+      await originalUpdate(params);
+      if (this.storagePath) {
+        await this.saveCollectionToDisk(collection.name);
+      }
+    };
+    
+    collection.delete = async (params: ChromaDeleteParams): Promise<void> => {
+      await originalDelete(params);
+      if (this.storagePath) {
+        await this.saveCollectionToDisk(collection.name);
+      }
+    };
+    
+    return collection;
+  }
+}
+
 // Export concrete classes and interfaces
-let ChromaClient: any = InMemoryChromaClient;
+let ChromaClient: any = PersistentChromaClient;
 
-// In Obsidian/Electron environment, always use in-memory implementation
-// This prevents errors with native dependencies that can't be loaded in the renderer process
-console.log('Using in-memory ChromaDB implementation in Obsidian environment');
-
-// We intentionally don't try to load the actual ChromaDB in Obsidian
-// because it has native dependencies that don't work in Electron's renderer process
+// Use the persistent implementation that can work both with persistence and in-memory
+console.log('Using file-backed ChromaDB implementation for Obsidian');
 
 // Export the client class and interfaces
 export { ChromaClient };

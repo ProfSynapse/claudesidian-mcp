@@ -188,6 +188,7 @@ export class ChromaSearchService {
     sessionId?: string;
     useGraphBoost?: boolean;
     graphBoostFactor?: number;
+    skipEmbeddingGeneration?: boolean;
   }): Promise<{
     success: boolean;
     matches?: Array<{
@@ -201,7 +202,112 @@ export class ChromaSearchService {
     error?: string;
   }> {
     try {
-      // Check if embeddings are enabled
+      // If skipEmbeddingGeneration flag is set or embeddings are disabled,
+      // use direct text search without trying to generate embeddings
+      if (options?.skipEmbeddingGeneration || !this.embeddingService.areEmbeddingsEnabled()) {
+        // Use ChromaDB's direct text search functionality
+        try {
+          // Check if the searchDirectWithText method is available
+          if (typeof this.memoryTraces.searchDirectWithText === 'function') {
+            // Search directly using the query text
+            const results = await this.memoryTraces.searchDirectWithText(query, {
+              workspaceId: options?.workspaceId,
+              workspacePath: options?.workspacePath,
+              sessionId: options?.sessionId,
+              limit: options?.limit,
+              threshold: options?.threshold
+            });
+            
+            // Process and return the results
+            return {
+              success: true,
+              matches: results.map(match => ({
+                similarity: match.similarity,
+                content: match.content || '',
+                filePath: match.filePath || '',
+                lineStart: match.lineStart || 0,
+                lineEnd: match.lineEnd || 0,
+                metadata: match.metadata || {}
+              }))
+            };
+          } else {
+            // Direct text search is not available, fall back to a manual approach
+            console.warn('searchDirectWithText method not available on MemoryTraceCollection - using fallback');
+            
+            // Use ChromaDB's query method with queryTexts parameter
+            const queryParams = {
+              queryTexts: [query],
+              nResults: options?.limit || 10,
+              where: this.buildWhereClause(options?.workspaceId, options?.workspacePath),
+              include: ['metadatas', 'documents', 'distances'] as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'>
+            };
+            
+            const results = await this.vectorStore.query(this.memoryTraces.collectionName, queryParams);
+            
+            if (!results.ids[0]?.length) {
+              return {
+                success: true,
+                matches: []
+              };
+            }
+            
+            // Process query results
+            const matches: Array<{
+              similarity: number;
+              content: string;
+              filePath: string;
+              lineStart: number;
+              lineEnd: number;
+              metadata?: Record<string, any>;
+            }> = [];
+            
+            for (let i = 0; i < results.ids[0].length; i++) {
+              const distance = results.distances?.[0]?.[i] || 0;
+              const metadata = results.metadatas?.[0]?.[i] || {};
+              const document = results.documents?.[0]?.[i] || '';
+              
+              // Convert distance to similarity
+              const similarity = 1 - distance;
+              
+              // Skip if below threshold
+              if (options?.threshold !== undefined && similarity < options.threshold) {
+                continue;
+              }
+              
+              const match: {
+                similarity: number;
+                content: string;
+                filePath: string;
+                lineStart: number;
+                lineEnd: number;
+                metadata?: Record<string, any>;
+              } = {
+                similarity,
+                content: document,
+                filePath: metadata.workspacePath || '',
+                lineStart: metadata.lineStart || 0,
+                lineEnd: metadata.lineEnd || 0,
+                metadata
+              };
+              matches.push(match);
+            }
+            
+            return {
+              success: true,
+              matches
+            };
+          }
+        } catch (error) {
+          console.error('Error in direct text search:', error);
+          return {
+            success: false,
+            error: `Direct text search failed: ${error.message}`
+          };
+        }
+      }
+      
+      // For normal flow with embeddings enabled and no skip flag
+      // This path should never be taken when skipEmbeddingGeneration is true
       if (!this.embeddingService.areEmbeddingsEnabled()) {
         return {
           success: false,
@@ -209,67 +315,13 @@ export class ChromaSearchService {
         };
       }
       
-      // Generate embedding for the query
-      const queryEmbedding = await this.embeddingService.getEmbedding(query);
-      if (!queryEmbedding) {
-        throw new Error('Failed to generate embedding for query');
-      }
-      
-      // Search for similar traces
-      const searchResults = await this.memoryTraces.searchTraces(queryEmbedding, {
-        workspaceId: options?.workspaceId,
-        workspacePath: options?.workspacePath,
-        sessionId: options?.sessionId,
-        limit: options?.limit,
-        threshold: options?.threshold
-      });
-      
-      // Format the results
-      const matches = searchResults.map(result => {
-        // Access metadata safely
-        const metadata = result.trace.metadata || {};
-        
-        // Extract tool metadata fields
-        const toolMetadata = (metadata && typeof metadata === 'object' && 'tool' in metadata) 
-          ? { ...metadata }
-          : {};
-          
-        // Extract metadata with proper type checks
-        const toolMetadataObj = (typeof toolMetadata === 'object' && toolMetadata !== null) ? toolMetadata : {};
-        const relatedFiles = result.trace.metadata?.relatedFiles || [];
-        const defaultFilePath = Array.isArray(relatedFiles) && relatedFiles.length > 0 ? relatedFiles[0] : '';
-          
-        // Create consistent result structure
-        return {
-          similarity: result.similarity,
-          content: result.trace.content,
-          filePath: (toolMetadataObj as any).filePath || defaultFilePath || '',
-          lineStart: (toolMetadataObj as any).lineStart || 0,
-          lineEnd: (toolMetadataObj as any).lineEnd || 0,
-          metadata: result.trace.metadata
-        };
-      });
-      
-      // Apply graph boosting if requested
-      if (options?.useGraphBoost && matches.length > 0) {
-        try {
-          // Import graph operations
-          const { GraphOperations } = await import('../utils/graph/GraphOperations');
-          const graphOps = new GraphOperations();
-          
-          // Apply boost
-          // This is a placeholder - actual implementation would depend on GraphOperations class
-          // We're simulating the boost here
-          console.log('Graph boost requested but not fully implemented');
-        } catch (boostError) {
-          console.error('Error applying graph boost:', boostError);
-        }
-      }
-      
+      // We explicitly don't want to generate embeddings for search operations
       return {
-        success: true,
-        matches
+        success: false,
+        error: 'Embedding generation for search queries is not supported'
       };
+      
+      /* All unreachable code removed */
     } catch (error) {
       console.error('Error in semantic search:', error);
       return {
@@ -279,6 +331,224 @@ export class ChromaSearchService {
     }
   }
   
+  /**
+   * Perform semantic search using a pre-computed embedding vector
+   * @param embedding Pre-computed embedding vector
+   * @param options Search options
+   */
+  async semanticSearchWithEmbedding(embedding: number[], options?: {
+    workspaceId?: string;
+    workspacePath?: string[];
+    limit?: number;
+    threshold?: number;
+    sessionId?: string;
+    useGraphBoost?: boolean;
+    graphBoostFactor?: number;
+    collectionName?: string;
+    filters?: any;
+  }): Promise<{
+    success: boolean;
+    matches?: Array<{
+      similarity: number;
+      content: string;
+      filePath: string;
+      lineStart?: number;
+      lineEnd?: number;
+      metadata?: any;
+    }>;
+    error?: string;
+  }> {
+    try {
+      // If a specific collection is provided, use it directly
+      if (options?.collectionName) {
+        const queryParams = {
+          queryEmbeddings: [embedding],
+          nResults: options?.limit || 10,
+          where: options?.filters ? options.filters : this.buildWhereClause(options?.workspaceId, options?.workspacePath),
+          include: ['metadatas', 'documents', 'distances'] as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'> as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'>
+        };
+        
+        const results = await this.vectorStore.query(options.collectionName, queryParams);
+        
+        if (!results.ids[0]?.length) {
+          return {
+            success: true,
+            matches: []
+          };
+        }
+        
+        // Process query results
+        const matches: Array<{
+          similarity: number;
+          content: string;
+          filePath: string;
+          lineStart?: number;
+          lineEnd?: number;
+          metadata?: Record<string, any>;
+        }> = [];
+        
+        for (let i = 0; i < results.ids[0].length; i++) {
+          const distance = results.distances?.[0]?.[i] || 0;
+          const metadata = results.metadatas?.[0]?.[i] || {};
+          const document = results.documents?.[0]?.[i] || '';
+          
+          // Convert distance to similarity
+          const similarity = 1 - distance;
+          
+          // Skip if below threshold
+          if (options?.threshold !== undefined && similarity < options.threshold) {
+            continue;
+          }
+          
+          const match: {
+            similarity: number;
+            content: string;
+            filePath: string;
+            lineStart?: number;
+            lineEnd?: number;
+            metadata?: Record<string, any>;
+          } = {
+            similarity,
+            content: document,
+            filePath: metadata.path || metadata.workspacePath || '',
+            lineStart: metadata.lineStart,
+            lineEnd: metadata.lineEnd,
+            metadata
+          };
+          matches.push(match);
+        }
+        
+        return {
+          success: true,
+          matches
+        };
+      }
+      
+      // Otherwise, use the memory traces collection by default
+      const where: Record<string, any> = {};
+      
+      if (options?.workspaceId) {
+        where['metadata.workspaceId'] = options.workspaceId;
+      }
+      
+      if (options?.workspacePath) {
+        const pathString = options.workspacePath.join('/');
+        where['metadata.workspacePath'] = { $like: `${pathString}%` };
+      }
+      
+      if (options?.sessionId) {
+        where['metadata.sessionId'] = options.sessionId;
+      }
+      
+      // Query the memory traces collection
+      const results = await this.vectorStore.query(this.memoryTraces.collectionName, {
+        queryEmbeddings: [embedding],
+        nResults: options?.limit || 10,
+        where: Object.keys(where).length > 0 ? where : undefined,
+        include: ['metadatas', 'documents', 'distances'] as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'>
+      });
+      
+      if (!results.ids[0]?.length) {
+        return {
+          success: true,
+          matches: []
+        };
+      }
+      
+      // Process and return the results
+      const matches: Array<{
+        similarity: number;
+        content: string;
+        filePath: string;
+        lineStart?: number;
+        lineEnd?: number;
+        metadata?: Record<string, any>;
+      }> = [];
+      
+      for (let i = 0; i < results.ids[0].length; i++) {
+        const distance = results.distances?.[0]?.[i] || 0;
+        const metadata = results.metadatas?.[0]?.[i] || {};
+        const document = results.documents?.[0]?.[i] || '';
+        
+        // Convert distance to similarity
+        const similarity = 1 - distance;
+        
+        // Skip if below threshold
+        if (options?.threshold !== undefined && similarity < options.threshold) {
+          continue;
+        }
+        
+        const match: {
+          similarity: number;
+          content: string;
+          filePath: string;
+          lineStart?: number;
+          lineEnd?: number;
+          metadata?: Record<string, any>;
+        } = {
+          similarity,
+          content: document,
+          filePath: metadata.workspacePath || '',
+          lineStart: metadata.lineStart,
+          lineEnd: metadata.lineEnd,
+          metadata
+        };
+        matches.push(match);
+      }
+      
+      return {
+        success: true,
+        matches
+      };
+    } catch (error) {
+      console.error('Error in semantic search with embedding:', error);
+      return {
+        success: false,
+        error: `Error performing semantic search with embedding: ${error.message}`
+      };
+    }
+  }
+  
+  /**
+   * Combined search with filters
+   * @param query Query text
+   * @param filters Optional filters
+   * @param limit Maximum results
+   * @param threshold Similarity threshold
+   */
+  /**
+   * Build a where clause for ChromaDB queries
+   * @param workspaceId Optional workspace ID to filter by
+   * @param workspacePath Optional workspace path to filter by
+   * @returns ChromaDB where clause or undefined
+   */
+  private buildWhereClause(workspaceId?: string, workspacePath?: string[]): Record<string, any> | undefined {
+    const where: Record<string, any> = {};
+    
+    if (workspaceId) {
+      where['metadata.workspaceId'] = workspaceId;
+    }
+    
+    if (workspacePath && workspacePath.length > 0) {
+      where['metadata.path'] = { $in: workspacePath };
+    }
+    
+    return Object.keys(where).length > 0 ? where : undefined;
+  }
+  
+  /**
+   * Directly query a collection
+   * @param collectionName Name of the collection to query
+   * @param queryParams Query parameters for ChromaDB
+   * @returns Query results
+   */
+  async queryCollection(
+    collectionName: string,
+    queryParams: any
+  ): Promise<any> {
+    return this.vectorStore.query(collectionName, queryParams);
+  }
+
   /**
    * Combined search with filters
    * @param query Query text

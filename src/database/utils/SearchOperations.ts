@@ -34,17 +34,22 @@ export const SEARCH_WEIGHTS: SearchWeights = {
 };
 
 /**
+ * Match information with type, term, score, and location
+ */
+export interface SearchMatch {
+    type: string;
+    term: string;
+    score: number;
+    location: string;
+}
+
+/**
  * Search result with scoring and match information
  */
 export interface SearchResult {
     file: TFile;
     score: number;
-    matches: {
-        type: string;
-        term: string;
-        score: number;
-        location: string;
-    }[];
+    matches: SearchMatch[];
     metadata?: Record<string, any>;
     content?: string;
 }
@@ -229,7 +234,7 @@ export class SearchOperations {
                 }
             }
 
-            const matches = [];
+            const matches: SearchMatch[] = [];
             let totalScore = 0;
 
             // Fuzzy path matching with custom weights
@@ -237,11 +242,14 @@ export class SearchOperations {
                 const pathScore = this.scoreFuzzyMatch(file.path, searchTerms, searchWeights);
                 if (pathScore.score > 0) {
                     totalScore += pathScore.score * searchWeights.fuzzyMatch;
-                    matches.push(...pathScore.matches.map(m => ({
-                        type: 'fuzzy',
-                        ...m,
-                        location: 'path'
-                    })));
+                    pathScore.matches.forEach(m => {
+                        matches.push({
+                            type: 'fuzzy',
+                            term: m.term,
+                            score: m.score,
+                            location: 'path'
+                        });
+                    });
                 }
             }
 
@@ -250,11 +258,14 @@ export class SearchOperations {
                 const contentScore = this.scoreFuzzyMatch(content, searchTerms, searchWeights);
                 if (contentScore.score > 0) {
                     totalScore += contentScore.score * searchWeights.fuzzyMatch;
-                    matches.push(...contentScore.matches.map(m => ({
-                        type: 'fuzzy',
-                        ...m,
-                        location: 'content'
-                    })));
+                    contentScore.matches.forEach(m => {
+                        matches.push({
+                            type: 'fuzzy',
+                            term: m.term,
+                            score: m.score,
+                            location: 'content'
+                        });
+                    });
                 }
             }
 
@@ -262,7 +273,9 @@ export class SearchOperations {
             if (metadata) {
                 const metadataScore = this.scoreMetadata(metadata, searchTerms, searchWeights);
                 totalScore += metadataScore.score;
-                matches.push(...metadataScore.matches);
+                for (const match of metadataScore.matches) {
+                    matches.push(match);
+                }
 
                 // Access tracking boost
                 if (metadata.lastViewedAt) {
@@ -342,7 +355,7 @@ export class SearchOperations {
         score: number;
         matches: Array<{ term: string; score: number }>;
     } {
-        const matches = [];
+        const matches: Array<{ term: string; score: number }> = [];
         let totalScore = 0;
 
         for (const term of terms) {
@@ -373,10 +386,10 @@ export class SearchOperations {
      */
     private scoreMetadata(metadata: Record<string, any>, terms: string[], weights: SearchWeights): {
         score: number;
-        matches: Array<{ type: string; term: string; score: number; location: string }>;
+        matches: SearchMatch[];
     } {
         let totalScore = 0;
-        const matches = [];
+        const matches: SearchMatch[] = [];
 
         // Score each metadata field
         for (const [field, weight] of Object.entries(weights.metadata)) {
@@ -389,12 +402,14 @@ export class SearchOperations {
                 const weightedScore = score * weight;
                 totalScore += weightedScore;
 
-                matches.push(...fieldMatches.map(m => ({
-                    type: 'metadata',
-                    term: m.term,
-                    score: m.score * weight,
-                    location: field
-                })));
+                fieldMatches.forEach(m => {
+                    matches.push({
+                        type: 'metadata',
+                        term: m.term,
+                        score: m.score * weight,
+                        location: field
+                    });
+                });
             }
         }
 
@@ -416,6 +431,28 @@ export class SearchOperations {
     }
 
     /**
+     * Split content into frontmatter and content parts
+     * @param content Full content of the note
+     * @returns Object with frontmatter (as string) and content
+     */
+    separateFrontmatterFromContent(content: string): { frontmatterText: string; contentWithoutFrontmatter: string } {
+        // Initialize return values
+        let frontmatterText = '';
+        let contentWithoutFrontmatter = content;
+        
+        // Check if content starts with YAML frontmatter (---)
+        if (content.startsWith('---')) {
+            const secondFrontmatterMarker = content.indexOf('\n---', 3);
+            if (secondFrontmatterMarker !== -1) {
+                frontmatterText = content.substring(0, secondFrontmatterMarker + 4);
+                contentWithoutFrontmatter = content.substring(secondFrontmatterMarker + 4).trim();
+            }
+        }
+        
+        return { frontmatterText, contentWithoutFrontmatter };
+    }
+
+    /**
      * Get a snippet from content based on match
      * @param content Content to get snippet from
      * @param term Term that matched
@@ -423,7 +460,11 @@ export class SearchOperations {
      * @returns Snippet with context
      */
     getSnippet(content: string, term: string, contextSize: number = 40): string {
-        const lowerContent = content.toLowerCase();
+        // Ensure we're using content without frontmatter for snippet generation
+        const { contentWithoutFrontmatter } = this.separateFrontmatterFromContent(content);
+        const textToSearch = contentWithoutFrontmatter;
+        
+        const lowerContent = textToSearch.toLowerCase();
         const lowerTerm = term.toLowerCase();
         const position = lowerContent.indexOf(lowerTerm);
         
@@ -432,7 +473,7 @@ export class SearchOperations {
         }
         
         // Find line containing the match
-        const lines = content.split('\n');
+        const lines = textToSearch.split('\n');
         let currentPos = 0;
         let matchLine = '';
         let lineNumber = 0;
@@ -449,10 +490,10 @@ export class SearchOperations {
         
         // Create snippet with context
         const start = Math.max(0, position - contextSize);
-        const end = Math.min(content.length, position + term.length + contextSize);
+        const end = Math.min(textToSearch.length, position + term.length + contextSize);
         const snippet = (start > 0 ? '...' : '') + 
-                        content.substring(start, end) + 
-                        (end < content.length ? '...' : '');
+                        textToSearch.substring(start, end) + 
+                        (end < textToSearch.length ? '...' : '');
         
         return snippet;
     }

@@ -188,7 +188,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       properties: {
         name: {
           type: 'string',
-          description: 'Name of the workspace'
+          description: 'Name of the workspace (REQUIRED)'
         },
         description: {
           type: 'string',
@@ -196,7 +196,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         },
         rootFolder: {
           type: 'string',
-          description: 'Root folder path for this workspace'
+          description: 'Root folder path for this workspace (REQUIRED)'
         },
         relatedFolders: {
           type: 'array',
@@ -217,7 +217,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
           description: 'Parent workspace/phase ID if applicable'
         }
       },
-      required: ['name', 'rootFolder']
+      required: ['name', 'rootFolder', 'sessionId', 'context']
     };
     
     // Merge with common schema (workspace context and handoff)

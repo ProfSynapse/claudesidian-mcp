@@ -1,6 +1,6 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
-import { WorkspaceMemoryTrace } from '../../../../database/workspace-types';
+import { WorkspaceMemoryTrace, WorkspaceSession } from '../../../../database/workspace-types';
 import { CreateSessionParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
@@ -110,6 +110,20 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
         );
       }
       
+      // Check if a session with the provided ID already exists (if ID was provided)
+      let existingSession: WorkspaceSession | undefined = undefined;
+      if (params.sessionId) {
+        try {
+          existingSession = await memoryService.getSession(params.sessionId);
+        } catch (error) {
+          console.warn(`Error checking for existing session: ${error.message}`);
+        }
+      }
+      
+      // If a session with this ID already exists, generate a new ID
+      // This ensures we don't reuse session IDs and cause conflicts
+      const finalId = existingSession ? undefined : params.sessionId;
+      
       // Create the session
       const sessionToCreate = {
         workspaceId,
@@ -119,7 +133,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
         isActive: true,
         toolCalls: 0,
         previousSessionId,
-        id: params.sessionId // Use provided ID if available
+        id: finalId // Use provided ID if available and not already used
       };
       
       // Create session using memory service

@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { SearchMode, UnifiedSearchParams, UnifiedSearchResult } from './searchMode';
 import { VectorMode, VectorSearchParams, VectorSearchResult } from './vectorMode';
 import { CommonParameters, CommonResult } from '../../../types';
+import { GraphBoostOptions } from '../types';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
@@ -87,16 +88,12 @@ export interface HybridOperation extends BatchOperation {
 /**
  * Batch mode parameters
  */
-export interface BatchModeParams extends CommonParameters {
+export interface BatchModeParams extends CommonParameters, GraphBoostOptions {
   /**
    * Array of operations to execute
    */
   operations: Array<SearchOperation | VectorOperation | HybridOperation>;
   
-  /**
-   * Whether to fail the batch if a single operation fails
-   */
-  failFast?: boolean;
 }
 
 /**
@@ -214,6 +211,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
   private memoryService: MemoryService | null = null;
   private searchService: ChromaSearchService | null = null;
   private embeddingService: EmbeddingService | null = null;
+  private batchParams: BatchModeParams | null = null;
   
   /**
    * Create a new BatchMode
@@ -251,6 +249,9 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
    * @returns Promise that resolves with batch operation results
    */
   async execute(params: BatchModeParams): Promise<BatchModeResult> {
+    // Store the batch parameters for use in individual operations
+    this.batchParams = params;
+    
     // Validate operations array
     if (!params.operations || !Array.isArray(params.operations) || params.operations.length === 0) {
       return {
@@ -282,11 +283,13 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
             result = await this.executeHybridOperation(operation);
             break;
           default:
+            // Handle unknown operation type with type assertion
+            const unknownOp = operation as unknown as BatchOperation;
             result = {
-              type: operation.type as BatchOperationType,
-              id: operation.id,
+              type: unknownOp.type || 'search',
+              id: unknownOp.id,
               success: false,
-              error: `Unsupported operation type: ${(operation as any).type}`
+              error: `Unsupported operation type: ${unknownOp.type || 'unknown'}`
             };
             break;
         }
@@ -298,10 +301,6 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
         } else {
           failed++;
           
-          // Stop processing if failFast is enabled
-          if (params.failFast) {
-            break;
-          }
         }
       } catch (error) {
         results.push({
@@ -313,10 +312,6 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
         
         failed++;
         
-        // Stop processing if failFast is enabled
-        if (params.failFast) {
-          break;
-        }
       }
     }
     
@@ -341,6 +336,14 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
       // Add sessionId if not provided
       if (!operation.params.sessionId) {
         operation.params.sessionId = 'batch-' + Date.now();
+      }
+      
+      // Pass through graph boost parameters from the batch operation to the search operation
+      if (this.batchParams) {
+        operation.params.useGraphBoost = operation.params.useGraphBoost ?? this.batchParams.useGraphBoost;
+        operation.params.graphBoostFactor = operation.params.graphBoostFactor ?? this.batchParams.graphBoostFactor;
+        operation.params.graphMaxDistance = operation.params.graphMaxDistance ?? this.batchParams.graphMaxDistance;
+        operation.params.seedNotes = operation.params.seedNotes ?? this.batchParams.seedNotes;
       }
       
       // Execute the search operation
@@ -374,6 +377,14 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
       // Add sessionId if not provided
       if (!operation.params.sessionId) {
         operation.params.sessionId = 'batch-' + Date.now();
+      }
+      
+      // Pass through graph boost parameters from the batch operation to the vector operation
+      if (this.batchParams) {
+        operation.params.useGraphBoost = operation.params.useGraphBoost ?? this.batchParams.useGraphBoost;
+        operation.params.graphBoostFactor = operation.params.graphBoostFactor ?? this.batchParams.graphBoostFactor;
+        operation.params.graphMaxDistance = operation.params.graphMaxDistance ?? this.batchParams.graphMaxDistance;
+        operation.params.seedNotes = operation.params.seedNotes ?? this.batchParams.seedNotes;
       }
       
       // Execute the vector operation
@@ -411,6 +422,21 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
       
       if (!operation.searchParams.sessionId) {
         operation.searchParams.sessionId = 'hybrid-search-' + Date.now();
+      }
+      
+      // Pass through graph boost parameters from the batch operation to both operations
+      if (this.batchParams) {
+        // Vector params
+        operation.vectorParams.useGraphBoost = operation.vectorParams.useGraphBoost ?? this.batchParams.useGraphBoost;
+        operation.vectorParams.graphBoostFactor = operation.vectorParams.graphBoostFactor ?? this.batchParams.graphBoostFactor;
+        operation.vectorParams.graphMaxDistance = operation.vectorParams.graphMaxDistance ?? this.batchParams.graphMaxDistance;
+        operation.vectorParams.seedNotes = operation.vectorParams.seedNotes ?? this.batchParams.seedNotes;
+        
+        // Search params
+        operation.searchParams.useGraphBoost = operation.searchParams.useGraphBoost ?? this.batchParams.useGraphBoost;
+        operation.searchParams.graphBoostFactor = operation.searchParams.graphBoostFactor ?? this.batchParams.graphBoostFactor;
+        operation.searchParams.graphMaxDistance = operation.searchParams.graphMaxDistance ?? this.batchParams.graphMaxDistance;
+        operation.searchParams.seedNotes = operation.searchParams.seedNotes ?? this.batchParams.seedNotes;
       }
       
       // Default weights if not provided
@@ -549,6 +575,27 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
           type: 'string',
           description: 'Session identifier to track related tool calls'
         },
+        // Graph boost parameters (shared across operations)
+        useGraphBoost: {
+          type: 'boolean',
+          description: 'Whether to use graph-based relevance boosting (applied to all operations)',
+          default: false
+        },
+        graphBoostFactor: {
+          type: 'number',
+          description: 'Graph boost factor (0-1) (applied to all operations)',
+          default: 0.3
+        },
+        graphMaxDistance: {
+          type: 'number',
+          description: 'Maximum distance for graph connections (applied to all operations)',
+          default: 1
+        },
+        seedNotes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of seed note paths to prioritize in results (applied to all operations)'
+        },
         operations: {
           type: 'array',
           items: {
@@ -629,11 +676,6 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
           },
           description: 'Array of operations to execute'
         },
-        failFast: {
-          type: 'boolean',
-          description: 'Whether to fail the batch if a single operation fails',
-          default: false
-        }
       },
       required: ['operations'],
       description: 'Execute multiple search operations (regular and vector) in a batch'

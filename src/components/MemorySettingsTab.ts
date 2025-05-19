@@ -4,7 +4,7 @@ import { Settings } from '../settings';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 import { ProgressBar } from './ProgressBar';
-import { IndexingService } from '../database/services/indexingService';
+import { EmbeddingServiceAdapter } from '../database/services/EmbeddingServiceAdapter';
 import { EmbeddingManager } from '../database/services/embeddingManager';
 import { SearchService } from '../database/services/searchService';
 
@@ -22,7 +22,7 @@ export class MemorySettingsTab {
     private app: App;
     
     // Services (direct access to database functionality)
-    private indexingService: IndexingService | null = null;
+    private indexingService: EmbeddingServiceAdapter | null = null;
     private embeddingManager: EmbeddingManager | null = null;
     private searchService: SearchService | null = null;
     
@@ -36,7 +36,7 @@ export class MemorySettingsTab {
      * @param containerEl Container element to append to
      * @param settingsManager Settings manager instance
      * @param app Obsidian app instance
-     * @param indexingService IndexingService for file indexing operations
+     * @param indexingService EmbeddingServiceAdapter for file indexing operations
      * @param embeddingManager EmbeddingManager for embedding provider management
      * @param searchService SearchService instance
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
@@ -46,7 +46,7 @@ export class MemorySettingsTab {
         private containerEl: HTMLElement,
         settingsManager: Settings,
         app?: App,
-        indexingService?: IndexingService,
+        indexingService?: EmbeddingServiceAdapter,
         embeddingManager?: EmbeddingManager,
         searchService?: SearchService,
         vaultLibrarian?: VaultLibrarianAgent,

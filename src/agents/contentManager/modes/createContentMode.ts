@@ -46,6 +46,16 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
     try {
       const { filePath, content, workspaceContext, handoff, sessionId } = params;
       
+      // Validate parameters
+      if (!filePath) {
+        return this.prepareResult(false, undefined, 'File path is required', workspaceContext);
+      }
+      
+      if (content === undefined || content === null) {
+        return this.prepareResult(false, undefined, 'Content is required', workspaceContext);
+      }
+      
+      // Create file
       const file = await ContentOperations.createContent(this.app, filePath, content);
       
       // Index the file using ChromaDB if available
@@ -68,7 +78,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       return result;
     } catch (error) {
-      return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+      return this.prepareResult(false, undefined, `Error creating file: ${error.message}`, params.workspaceContext);
     }
   }
   
@@ -136,15 +146,15 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       properties: {
         filePath: {
           type: 'string',
-          description: 'Path to the file to create'
+          description: 'Path to the file to create (REQUIRED)'
         },
         content: {
           type: 'string',
-          description: 'Content to write to the file'
+          description: 'Content to write to the file (REQUIRED)'
         },
         ...this.getCommonParameterSchema()
       },
-      required: ['filePath', 'content']
+      required: ['filePath', 'content', 'sessionId', 'context']
     };
   }
   

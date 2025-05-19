@@ -1,9 +1,10 @@
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../memoryManager';
+import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
+import { CommonParameters } from '../../../../types';
 
 /**
- * Mode for adding items to a ChromaDB collection
+ * Mode for adding items to a vector collection
  */
 export class CollectionAddItemsMode extends BaseMode<{
   collectionName: string;
@@ -11,10 +12,38 @@ export class CollectionAddItemsMode extends BaseMode<{
   embeddings?: number[][];
   metadatas?: Record<string, any>[];
   documents?: string[];
+  sessionId: string;
+  context: string;
+  workspaceContext?: any;
+  handoff?: any;
 }, {
-  added: number;
-  collectionName: string;
+  success: boolean;
+  data?: {
+    added: number;
+    collectionName: string;
+  };
+  error?: string;
 }> {
+  /**
+   * The parent agent
+   */
+  private agent: VectorManagerAgent;
+  
+  /**
+   * Create a new CollectionAddItemsMode
+   * @param agent The parent VectorManagerAgent
+   */
+  constructor(agent: VectorManagerAgent) {
+    super(
+      'collectionAddItems',
+      'Add Items to Collection',
+      'Adds items to a vector collection',
+      '1.0.0'
+    );
+    
+    this.agent = agent;
+  }
+  
   /**
    * Get the unique mode slug
    * @returns Mode slug
@@ -36,7 +65,7 @@ export class CollectionAddItemsMode extends BaseMode<{
    * @returns Mode description
    */
   getDescription(): string {
-    return 'Adds items to a ChromaDB collection';
+    return 'Adds items to a vector collection';
   }
 
   /**
@@ -50,12 +79,20 @@ export class CollectionAddItemsMode extends BaseMode<{
     embeddings?: number[][];
     metadatas?: Record<string, any>[];
     documents?: string[];
+    sessionId: string;
+    context: string;
+    workspaceContext?: any;
+    handoff?: any;
   }): Promise<{
-    added: number;
-    collectionName: string;
+    success: boolean;
+    data?: {
+      added: number;
+      collectionName: string;
+    };
+    error?: string;
   }> {
     // Get the memory service from the agent
-    const memoryService = (this.agent as MemoryManagerAgent).getMemoryService();
+    const memoryService = (this.agent as VectorManagerAgent).getMemoryService();
     
     try {
       // Ensure the collection exists or create it
@@ -73,13 +110,40 @@ export class CollectionAddItemsMode extends BaseMode<{
         documents: params.documents
       });
       
-      return {
-        added: params.ids.length,
-        collectionName: params.collectionName
-      };
+      // Get the workspace context from params
+      const workspaceContext = this.getInheritedWorkspaceContext(params);
+      
+      // Handle any handoff operations
+      const result = this.prepareResult(
+        true,
+        {
+          added: params.ids.length,
+          collectionName: params.collectionName
+        },
+        undefined,
+        params.context,
+        workspaceContext || undefined
+      );
+      
+      // Handle handoff if specified
+      if (params.handoff) {
+        return this.handleHandoff(params.handoff, result);
+      }
+      
+      return result;
     } catch (error) {
       console.error(`Failed to add items to collection ${params.collectionName}:`, error);
-      throw new Error(`Failed to add items: ${error instanceof Error ? error.message : String(error)}`);
+      
+      // Get the workspace context from params
+      const workspaceContext = this.getInheritedWorkspaceContext(params);
+      
+      return this.prepareResult(
+        false,
+        undefined,
+        `Failed to add items: ${error instanceof Error ? error.message : String(error)}`,
+        params.context,
+        workspaceContext || undefined
+      );
     }
   }
 
@@ -88,9 +152,9 @@ export class CollectionAddItemsMode extends BaseMode<{
    * @returns JSON schema for parameters
    */
   getParameterSchema(): JsonSchema.JSONSchema4 {
-    return {
+    return this.getMergedSchema({
       type: 'object',
-      required: ['collectionName', 'ids'],
+      required: ['collectionName', 'ids', 'sessionId', 'context'],
       properties: {
         collectionName: {
           type: 'string',
@@ -125,7 +189,7 @@ export class CollectionAddItemsMode extends BaseMode<{
           description: 'Document content for the items (must match the length of ids)'
         }
       }
-    };
+    });
   }
 
   /**
@@ -133,19 +197,33 @@ export class CollectionAddItemsMode extends BaseMode<{
    * @returns JSON schema for results
    */
   getResultSchema(): JsonSchema.JSONSchema4 {
-    return {
+    return this.getMergedSchema({
       type: 'object',
       properties: {
-        added: {
-          type: 'number',
-          description: 'Number of items added to the collection'
+        success: {
+          type: 'boolean',
+          description: 'Whether the operation was successful'
         },
-        collectionName: {
+        error: {
           type: 'string',
-          description: 'Name of the collection'
+          description: 'Error message if the operation failed'
+        },
+        data: {
+          type: 'object',
+          properties: {
+            added: {
+              type: 'number',
+              description: 'Number of items added to the collection'
+            },
+            collectionName: {
+              type: 'string',
+              description: 'Name of the collection'
+            }
+          },
+          required: ['added', 'collectionName']
         }
       },
-      required: ['added', 'collectionName']
-    };
+      required: ['success']
+    });
   }
 }

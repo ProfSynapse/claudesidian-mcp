@@ -662,7 +662,7 @@ ${contextSummary}`;
       properties: {
         name: {
           type: 'string',
-          description: 'Name for the state'
+          description: 'Name for the state (REQUIRED)'
         },
         description: {
           type: 'string',
@@ -732,7 +732,7 @@ ${contextSummary}`;
           description: 'Session ID for tracking this tool call (distinct from targetSessionId which is the session to create the state from)'
         }
       },
-      required: ['name']
+      required: ['name', 'sessionId', 'context']
     };
     
     // Merge with common schema

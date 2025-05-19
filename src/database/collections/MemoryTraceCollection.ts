@@ -223,4 +223,94 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
       similarity: result.similarity
     }));
   }
+  
+  /**
+   * Search memory traces by text directly using ChromaDB's text search capabilities
+   * @param query Query text
+   * @param options Search options
+   * @returns Similar memory traces and content
+   */
+  async searchDirectWithText(query: string, options?: {
+    workspaceId?: string;
+    workspacePath?: string[];
+    limit?: number;
+    threshold?: number;
+    sessionId?: string;
+  }): Promise<Array<{
+    similarity: number;
+    content: string;
+    filePath: string;
+    lineStart?: number;
+    lineEnd?: number;
+    metadata?: Record<string, any>;
+  }>> {
+    // Build where clause for filtering
+    const where: Record<string, any> = {};
+    
+    if (options?.workspaceId) {
+      where['metadata.workspaceId'] = options.workspaceId;
+    }
+    
+    if (options?.workspacePath) {
+      const pathString = options.workspacePath.join('/');
+      where['metadata.workspacePath'] = { $like: `${pathString}%` };
+    }
+    
+    if (options?.sessionId) {
+      where['metadata.sessionId'] = options.sessionId;
+    }
+    
+    try {
+      // Query ChromaDB with text query
+      const results = await this.vectorStore.query(this.collectionName, {
+        queryTexts: [query],
+        nResults: options?.limit || 10,
+        where: Object.keys(where).length > 0 ? where : undefined,
+        include: ['metadatas', 'documents', 'distances']
+      });
+      
+      if (!results.ids[0]?.length) {
+        return [];
+      }
+      
+      // Process and return the results
+      const matches: Array<{
+        similarity: number;
+        content: string;
+        filePath: string;
+        lineStart?: number;
+        lineEnd?: number;
+        metadata?: Record<string, any>;
+      }> = [];
+      
+      for (let i = 0; i < results.ids[0].length; i++) {
+        const distance = results.distances?.[0]?.[i] || 0;
+        const metadata = results.metadatas?.[0]?.[i] || {};
+        const document = results.documents?.[0]?.[i] || '';
+        
+        // Convert distance to similarity
+        const similarity = 1 - distance;
+        
+        // Skip if below threshold
+        if (options?.threshold !== undefined && similarity < options.threshold) {
+          continue;
+        }
+        
+        matches.push({
+          similarity,
+          content: document,
+          filePath: metadata.workspacePath || '',
+          // Include line information if available
+          lineStart: metadata.lineStart,
+          lineEnd: metadata.lineEnd,
+          metadata
+        });
+      }
+      
+      return matches;
+    } catch (error) {
+      console.error('Error in direct text search:', error);
+      throw new Error(`Direct text search failed: ${error.message}`);
+    }
+  }
 }

@@ -1,0 +1,237 @@
+import { BaseMode } from '../../../baseMode';
+import { VectorManagerAgent } from '../../vectorManager';
+import * as JsonSchema from 'json-schema';
+import { GetEmbeddingsParams, EmbeddingResult } from '../../types';
+
+/**
+ * Mode for getting embeddings from a collection
+ */
+export class GetEmbeddingMode extends BaseMode<GetEmbeddingsParams, EmbeddingResult> {
+  /**
+   * The parent agent
+   */
+  private agent: VectorManagerAgent;
+  
+  /**
+   * Create a new GetEmbeddingMode
+   * @param agent The parent VectorManagerAgent
+   */
+  constructor(agent: VectorManagerAgent) {
+    super(
+      'getEmbedding',
+      'Get Embedding',
+      'Gets embeddings from a vector collection by ID',
+      '1.0.0'
+    );
+    
+    this.agent = agent;
+  }
+  
+  /**
+   * Get the unique mode slug
+   * @returns Mode slug
+   */
+  getSlug(): string {
+    return 'getEmbedding';
+  }
+
+  /**
+   * Get the human-readable display name for the mode
+   * @returns Display name
+   */
+  getDisplayName(): string {
+    return 'Get Embedding';
+  }
+
+  /**
+   * Get the description of what the mode does
+   * @returns Mode description
+   */
+  getDescription(): string {
+    return 'Gets embeddings from a vector collection by ID';
+  }
+
+  /**
+   * Execute the mode to get embeddings
+   * @param params Parameters for getting embeddings
+   * @returns Result of the get operation
+   */
+  async execute(params: GetEmbeddingsParams): Promise<EmbeddingResult> {
+    // Get the search service from the agent
+    const searchService = (this.agent as VectorManagerAgent).getSearchService();
+    
+    try {
+      // First verify if the collection exists
+      const vectorStore = (this.agent as VectorManagerAgent).getVectorStore();
+      const collectionExists = await vectorStore.hasCollection(params.collectionName);
+      
+      if (!collectionExists) {
+        return {
+          success: false,
+          error: `Collection '${params.collectionName}' does not exist`
+        };
+      }
+      
+      // Prepare the query
+      const query = {
+        ids: params.ids,
+        include: [
+          'documents',
+          'metadatas'
+        ] as string[]
+      };
+      
+      // Include embeddings if requested
+      if (params.includeEmbeddings) {
+        query.include.push('embeddings');
+      }
+      
+      // Query the collection
+      const results = await searchService.queryCollection(params.collectionName, query);
+      
+      // Process results
+      if (!results || !results.ids || results.ids.length === 0) {
+        return {
+          success: true,
+          data: {
+            collectionName: params.collectionName,
+            items: []
+          }
+        };
+      }
+      
+      // Map results to items
+      const items: Array<{
+        id: string;
+        text?: string;
+        metadata?: Record<string, any>;
+        embedding?: number[];
+      }> = [];
+      
+      for (let i = 0; i < results.ids[0].length; i++) {
+        const item: {
+          id: string;
+          text?: string;
+          metadata?: Record<string, any>;
+          embedding?: number[];
+        } = {
+          id: results.ids[0][i],
+          text: results.documents?.[0]?.[i],
+          metadata: results.metadatas?.[0]?.[i]
+        };
+        
+        // Add embedding if requested
+        if (params.includeEmbeddings && results.embeddings) {
+          item.embedding = results.embeddings[0][i];
+        }
+        
+        items.push(item);
+      }
+      
+      return {
+        success: true,
+        data: {
+          collectionName: params.collectionName,
+          items
+        }
+      };
+    } catch (error) {
+      console.error(`Failed to get embeddings from collection ${params.collectionName}:`, error);
+      return {
+        success: false,
+        error: `Failed to get embeddings: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
+   * Get the parameter schema for getting embeddings
+   * @returns JSON schema for parameters
+   */
+  getParameterSchema(): JsonSchema.JSONSchema4 {
+    return {
+      type: 'object',
+      required: ['collectionName', 'ids'],
+      properties: {
+        collectionName: {
+          type: 'string',
+          description: 'Name of the collection to get embeddings from',
+          minLength: 1
+        },
+        ids: {
+          type: 'array',
+          items: {
+            type: 'string'
+          },
+          description: 'IDs of the embeddings to get',
+          minItems: 1
+        },
+        includeEmbeddings: {
+          type: 'boolean',
+          description: 'Whether to include the actual embedding vectors in the result',
+          default: false
+        }
+      }
+    };
+  }
+
+  /**
+   * Get the result schema for getting embeddings
+   * @returns JSON schema for results
+   */
+  getResultSchema(): JsonSchema.JSONSchema4 {
+    return {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          description: 'Whether the operation was successful'
+        },
+        error: {
+          type: 'string',
+          description: 'Error message if the operation failed'
+        },
+        data: {
+          type: 'object',
+          properties: {
+            collectionName: {
+              type: 'string',
+              description: 'Collection name'
+            },
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    description: 'Embedding ID'
+                  },
+                  text: {
+                    type: 'string',
+                    description: 'Original text content'
+                  },
+                  embedding: {
+                    type: 'array',
+                    items: {
+                      type: 'number'
+                    },
+                    description: 'Embedding vector (only included if includeEmbeddings is true)'
+                  },
+                  metadata: {
+                    type: 'object',
+                    description: 'Metadata associated with the embedding',
+                    additionalProperties: true
+                  }
+                },
+                required: ['id']
+              },
+              description: 'List of embedding items'
+            }
+          }
+        }
+      },
+      required: ['success']
+    };
+  }
+}

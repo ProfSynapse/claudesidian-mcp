@@ -2,11 +2,9 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   SearchContentArgs, 
-  SearchContentResult,
   SearchTagArgs,
-  SearchTagResult,
   SearchPropertyArgs,
-  SearchPropertyResult
+  GraphBoostOptions
 } from '../types';
 import { SearchOperations } from '../../../database/utils/SearchOperations';
 import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
@@ -20,7 +18,7 @@ export type SearchType = 'content' | 'tag' | 'property';
 /**
  * Unified search parameters
  */
-export interface UnifiedSearchParams extends CommonParameters {
+export interface UnifiedSearchParams extends CommonParameters, GraphBoostOptions {
   /**
    * Type of search to perform
    */
@@ -96,6 +94,7 @@ export interface UnifiedSearchResult extends CommonResult {
       line: number;
       position: number;
       score?: number;
+      frontmatter?: Record<string, any>; // Added frontmatter field
     }>;
     total: number;
     averageScore?: number;
@@ -162,9 +161,18 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
    * @returns Promise that resolves with the search results
    */
   async execute(params: UnifiedSearchParams): Promise<UnifiedSearchResult> {
-    const { type } = params;
-    
     try {
+      // Validate type parameter
+      if (!params.type) {
+        return {
+          success: false,
+          type: 'content', // default type for error reporting
+          error: 'Search type is required (must be one of: content, tag, property)'
+        };
+      }
+      
+      const { type } = params;
+      
       switch (type) {
         case 'content':
           return await this.executeContentSearch(params);
@@ -178,7 +186,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     } catch (error) {
       return {
         success: false,
-        type,
+        type: params.type || 'content', // default type for error reporting
         error: error.message
       };
     }
@@ -197,13 +205,14 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     // Convert to content search parameters
     const contentParams: SearchContentArgs = {
       sessionId: params.sessionId,
+      context: params.context || "Content search",
       query: params.query,
       paths: params.paths,
       limit: params.limit,
-      includeMetadata: params.includeMetadata,
+      includeMetadata: true, // Always include metadata to properly separate frontmatter
       searchFields: params.searchFields,
       weights: params.weights,
-      includeContent: params.includeContent
+      includeContent: true // Always include content to separate frontmatter from snippet
     };
     
     // First check if we can use ChromaDB for this search
@@ -254,13 +263,26 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       }
       
       // Convert ChromaDB results to SearchContentResult format
-      const results = searchResult.matches.map(match => ({
-        path: match.filePath,
-        snippet: match.content.length > 100 ? match.content.substring(0, 97) + '...' : match.content,
-        line: match.lineStart || 1,
-        position: 0,
-        score: match.similarity
-      }));
+      const results = searchResult.matches.map(match => {
+        // Extract frontmatter from metadata if available
+        const frontmatter = match.metadata?.frontmatter || {};
+        
+        // Get content without frontmatter for snippet
+        let snippetContent = match.content;
+        // Trim the snippet to a reasonable length if it's too long
+        if (snippetContent && snippetContent.length > 100) {
+          snippetContent = snippetContent.substring(0, 97) + '...';
+        }
+        
+        return {
+          path: match.filePath,
+          snippet: snippetContent,
+          line: match.lineStart || 1,
+          position: 0,
+          score: match.similarity,
+          frontmatter // Add frontmatter to results
+        };
+      });
       
       return {
         success: true,
@@ -297,7 +319,11 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
    * @returns Search result using standard search
    */
   private async executeStandardContentSearch(params: SearchContentArgs): Promise<UnifiedSearchResult> {
-    const { query, paths, limit, includeMetadata = true, searchFields, weights, includeContent = false } = params;
+    const { query, paths, limit, searchFields, weights } = params;
+    
+    // Always include metadata and content to properly separate frontmatter from snippets
+    const includeMetadata = true;
+    const includeContent = true;
     
     // Convert paths to a single path if needed
     const path = paths && paths.length > 0 ? paths[0] : undefined;
@@ -309,7 +335,12 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       includeMetadata,
       searchFields: searchFields || ['title', 'content', 'tags'],
       weights,
-      includeContent
+      includeContent,
+      // Pass through graph boost parameters
+      useGraphBoost: params.useGraphBoost,
+      graphBoostFactor: params.graphBoostFactor,
+      graphMaxDistance: params.graphMaxDistance,
+      seedNotes: params.seedNotes
     });
     
     // Convert to VaultLibrarian search result format
@@ -326,10 +357,14 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       let position = 0;
       
       if (result.content && bestMatch.term) {
-        snippet = this.searchOperations.getSnippet(result.content, bestMatch.term);
+        // Extract snippet from content (excluding frontmatter)
+        const content = result.content;
+        
+        // Generate snippet from content (the helper will automatically handle frontmatter separation)
+        snippet = this.searchOperations.getSnippet(content, bestMatch.term);
         
         // Calculate line and position
-        const lines = result.content.split('\n');
+        const lines = content.split('\n');
         let currentPos = 0;
         
         for (let i = 0; i < lines.length; i++) {
@@ -353,7 +388,8 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         snippet,
         line,
         position,
-        score: result.score
+        score: result.score,
+        frontmatter: result.metadata // Add frontmatter metadata
       };
     });
     
@@ -383,6 +419,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     // Convert to tag search parameters
     const tagParams: SearchTagArgs = {
       sessionId: params.sessionId,
+      context: params.context || "Tag search",
       tag: params.tag,
       paths: params.paths,
       limit: params.limit
@@ -390,7 +427,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     
     try {
       // Use the SearchOperations to find files with the tag
-      const files = await this.searchOperations.findFilesWithTag(tagParams.tag, {
+      const files = await this.searchOperations.searchByTag(tagParams.tag, {
         path: tagParams.paths && tagParams.paths.length > 0 ? tagParams.paths[0] : undefined,
         limit: tagParams.limit
       });
@@ -429,6 +466,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     // Convert to property search parameters
     const propertyParams: SearchPropertyArgs = {
       sessionId: params.sessionId,
+      context: params.context || "Property search",
       key: params.key,
       value: params.value,
       paths: params.paths,
@@ -437,7 +475,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     
     try {
       // Use the SearchOperations to find files with the property
-      const results = await this.searchOperations.findFilesWithProperty(
+      const results = await this.searchOperations.searchByProperty(
         propertyParams.key,
         propertyParams.value,
         {
@@ -447,10 +485,13 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       );
       
       // Convert to property matches
-      const files = results.map(result => ({
-        path: result.file.path,
-        value: result.value?.toString() || ''
-      }));
+      const files = results.map(file => {
+        const cache = this.app.metadataCache.getFileCache(file);
+        return {
+          path: file.path,
+          value: String(cache?.frontmatter?.[propertyParams.key] || '')
+        };
+      });
       
       return {
         success: true,
@@ -504,7 +545,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         type: {
           type: 'string',
           enum: ['content', 'tag', 'property'],
-          description: 'Type of search to perform'
+          description: 'Type of search to perform (REQUIRED)'
         },
         query: {
           type: 'string',
@@ -548,9 +589,30 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         includeContent: {
           type: 'boolean',
           description: 'Whether to include content in the results (optional for content search)'
+        },
+        // Graph boost parameters
+        useGraphBoost: {
+          type: 'boolean',
+          description: 'Whether to use graph-based relevance boosting',
+          default: false
+        },
+        graphBoostFactor: {
+          type: 'number',
+          description: 'Graph boost factor (0-1)',
+          default: 0.3
+        },
+        graphMaxDistance: {
+          type: 'number',
+          description: 'Maximum distance for graph connections',
+          default: 1
+        },
+        seedNotes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of seed note paths to prioritize in results'
         }
       },
-      required: ['type', 'sessionId'],
+      required: ['type', 'sessionId', 'context'],
       allOf: [
         {
           if: {
@@ -584,6 +646,128 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         }
       ],
       description: 'Unified search for content, tags, or properties in the vault'
+    };
+  }
+
+  /**
+   * Get the JSON schema for the mode's result
+   * @returns JSON schema object
+   */
+  getResultSchema(): any {
+    return {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          description: 'Whether the operation was successful'
+        },
+        error: {
+          type: 'string',
+          description: 'Error message if the operation failed'
+        },
+        type: {
+          type: 'string',
+          enum: ['content', 'tag', 'property'],
+          description: 'Type of search performed'
+        },
+        contentResults: {
+          type: 'object',
+          properties: {
+            results: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  path: {
+                    type: 'string',
+                    description: 'Path to the file'
+                  },
+                  snippet: {
+                    type: 'string',
+                    description: 'Snippet of content containing the match (excludes frontmatter)'
+                  },
+                  line: {
+                    type: 'number',
+                    description: 'Line number where the match was found'
+                  },
+                  position: {
+                    type: 'number',
+                    description: 'Position within the line where the match was found'
+                  },
+                  score: {
+                    type: 'number',
+                    description: 'Relevance score for the match'
+                  },
+                  frontmatter: {
+                    type: 'object',
+                    description: 'Frontmatter metadata from the file'
+                  }
+                }
+              },
+              description: 'Array of search results'
+            },
+            total: {
+              type: 'number',
+              description: 'Total number of results'
+            },
+            averageScore: {
+              type: 'number',
+              description: 'Average relevance score of results'
+            },
+            topResult: {
+              type: 'string',
+              description: 'Path to the top result'
+            }
+          },
+          description: 'Content search results'
+        },
+        tagResults: {
+          type: 'object',
+          properties: {
+            files: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              description: 'Array of file paths containing the tag'
+            },
+            total: {
+              type: 'number',
+              description: 'Total number of results'
+            }
+          },
+          description: 'Tag search results'
+        },
+        propertyResults: {
+          type: 'object',
+          properties: {
+            files: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  path: {
+                    type: 'string',
+                    description: 'Path to the file'
+                  },
+                  value: {
+                    type: 'string',
+                    description: 'Value of the property'
+                  }
+                }
+              },
+              description: 'Array of property matches'
+            },
+            total: {
+              type: 'number',
+              description: 'Total number of results'
+            }
+          },
+          description: 'Property search results'
+        }
+      },
+      required: ['success', 'type'],
+      description: 'Result of unified search in the vault'
     };
   }
 }

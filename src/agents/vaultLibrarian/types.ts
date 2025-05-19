@@ -6,7 +6,7 @@ import { WorkspaceParameters, WorkspaceResult } from '../../database/workspace-t
 /**
  * Search content arguments
  */
-export interface SearchContentArgs extends CommonParameters {
+export interface SearchContentArgs extends CommonParameters, GraphBoostOptions {
   /**
    * Query to search for
    */
@@ -231,24 +231,9 @@ export interface BatchSearchResult extends CommonResult {
 
 
 /**
- * Semantic search parameters
+ * Graph boost options for enhancing search results using graph connections
  */
-export interface SemanticSearchParams extends CommonParameters {
-  /**
-   * The query to search for
-   */
-  query: string;
-  
-  /**
-   * Maximum number of results to return
-   */
-  limit?: number;
-  
-  /**
-   * Similarity threshold (0-1)
-   */
-  threshold?: number;
-
+export interface GraphBoostOptions {
   /**
    * Whether to use graph-based relevance boosting
    */
@@ -268,6 +253,26 @@ export interface SemanticSearchParams extends CommonParameters {
    * List of seed note paths to prioritize in results
    */
   seedNotes?: string[];
+}
+
+/**
+ * Semantic search parameters
+ */
+export interface SemanticSearchParams extends CommonParameters, GraphBoostOptions {
+  /**
+   * The query to search for
+   */
+  query: string;
+  
+  /**
+   * Maximum number of results to return
+   */
+  limit?: number;
+  
+  /**
+   * Similarity threshold (0-1)
+   */
+  threshold?: number;
 }
 
 /**
@@ -397,5 +402,47 @@ export interface BatchCreateEmbeddingsResult extends CommonResult {
     }>;
     processed: number;
     failed: number;
+  };
+}
+
+/**
+ * Diagnostic mode parameters
+ */
+export interface DiagnosticModeParameters extends CommonParameters {
+  /**
+   * Level of detail for the diagnostic information
+   */
+  detail?: 'basic' | 'detailed' | 'full';
+}
+
+/**
+ * Diagnostic mode result
+ */
+export interface DiagnosticModeResult extends CommonResult {
+  data: {
+    /**
+     * Overall status of the vector store component
+     */
+    componentStatus: 'operational' | 'warning' | 'error';
+    
+    /**
+     * Diagnostic message
+     */
+    message?: string;
+    
+    /**
+     * Vector store diagnostic information
+     */
+    vectorStore?: Record<string, any>;
+    
+    /**
+     * System diagnostic information
+     */
+    system?: Record<string, any>;
+    
+    /**
+     * Error information if the check failed
+     */
+    error?: string;
   };
 }

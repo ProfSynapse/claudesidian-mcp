@@ -92,6 +92,9 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         console.warn(`Failed to retrieve original session: ${error.message}`);
       }
       
+      // Get the activity embedder from the plugin
+      const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
+      
       // Restore the state using the MemoryService
       let restoredState;
       try {
@@ -101,7 +104,6 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         console.error(`Failed to restore state: ${error.message}`);
         
         // Try fallback to legacy method if available
-        const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
         if (activityEmbedder && typeof activityEmbedder.restoreStateSnapshot === 'function') {
           console.log('Falling back to legacy restoreStateSnapshot method');
           await activityEmbedder.restoreStateSnapshot(stateId);
@@ -152,7 +154,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         const activeSessions = await memoryService.getSessions(workspaceId, true);
         newSessionId = activeSessions.length > 0 ? 
           activeSessions[0].id : 
-          (activityEmbedder ? activityEmbedder.getActiveSession(workspaceId) : 'unknown');
+          (activityEmbedder && typeof activityEmbedder.getActiveSession === 'function' ? 
+            activityEmbedder.getActiveSession(workspaceId) : 'unknown');
       }
       
       // Get details about the restored workspace

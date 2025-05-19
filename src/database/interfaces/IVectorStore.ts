@@ -84,12 +84,13 @@ export interface IVectorStore {
   deleteItems(collectionName: string, ids: string[]): Promise<void>;
   
   /**
-   * Query a collection by embeddings
+   * Query a collection by embeddings or text
    * @param collectionName Name of the collection
    * @param query Query parameters
    */
   query(collectionName: string, query: {
-    queryEmbeddings: number[][];
+    queryEmbeddings?: number[][];
+    queryTexts?: string[];
     nResults?: number;
     where?: Record<string, any>;
     include?: Array<'embeddings' | 'metadatas' | 'documents' | 'distances'>;

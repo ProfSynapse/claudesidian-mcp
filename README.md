@@ -15,11 +15,11 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
   - Manage file structure
   - Operate on frontmatter
 
-- 🧠 Memory Architecture
-  - Persistent memory storage in dedicated notes
-  - Structured knowledge organization
-  - Automatic memory indexing
-  - Memory retrieval and search
+- 🧠 Memory & Vector Architecture
+  - Session and state management for workspaces
+  - Vector collections for embeddings storage
+  - Semantic search capabilities
+  - Batch operations for efficiency
 
 - 🏗️ Agent-Mode Architecture
   - Domain-driven design with specialized agents
@@ -125,7 +125,7 @@ flowchart TD
 
 ### Available Agents and Their Modes
 
-The plugin features six specialized agents, each handling a specific domain of functionality:
+The plugin features eight specialized agents, each handling a specific domain of functionality:
 
 #### 1. NoteEditor Agent
 The NoteEditor agent provides operations for editing notes in the vault.
@@ -191,13 +191,34 @@ The VaultManager agent provides operations for managing files and folders in the
 | moveFolder    | Move a folder to a new location   | path, newPath, overwrite                        |
 
 #### 7. MemoryManager Agent
-The MemoryManager agent provides semantic search and embedding operations for vault content.
+The MemoryManager agent provides session and state management for workspaces.
 
-| Mode            | Description                            | Parameters                                      |
-|-----------------|----------------------------------------|-------------------------------------------------|
-| queryMemory     | Semantic search across your vault      | query, limit, threshold, filters                |
-| indexFile       | Index a specific file for search       | filePath, force                                 |
-| getStatus       | Get memory system status and stats     | (none)                                          |
+| Mode            | Description                              | Parameters                                      |
+|-----------------|------------------------------------------|-------------------------------------------------|
+| createSession   | Create a new session                     | name, description, sessionGoal                  |
+| listSessions    | List available sessions                  | activeOnly, limit, order, tags                  |
+| editSession     | Edit an existing session                 | sessionId, name, description, isActive          |
+| deleteSession   | Delete a session                         | sessionId, deleteMemoryTraces                   |
+| createState     | Create a new state snapshot              | name, description, includeSummary, maxFiles     |
+| listStates      | List available state snapshots           | includeContext, limit, targetSessionId          |
+| loadState       | Load a state snapshot                    | stateId, createContinuationSession              |
+| editState       | Edit a state snapshot                    | stateId, name, description, addTags             |
+| deleteState     | Delete a state snapshot                  | stateId                                         |
+
+#### 8. VectorManager Agent
+The VectorManager agent provides vector collections and embeddings management.
+
+| Mode               | Description                              | Parameters                                      |
+|--------------------|------------------------------------------|-------------------------------------------------|
+| createCollection   | Create a new vector collection           | name, metadata                                  |
+| listCollections    | List available vector collections        | pattern                                         |
+| getCollection      | Get details about a collection           | name, includeStats                              |
+| deleteCollection   | Delete a vector collection               | name, force                                     |
+| collectionAddItems | Add items to a collection                | collectionName, ids, embeddings, metadatas      |
+| createEmbedding    | Create embeddings from text              | collectionName, items                           |
+| getEmbedding       | Get embeddings by ID                     | collectionName, ids, includeEmbeddings          |
+| deleteEmbedding    | Delete embeddings from a collection      | collectionName, ids                             |
+| batchEmbedding     | Perform batch operations on embeddings   | collectionName, operation, items                |
 
 ```mermaid
 flowchart LR
@@ -208,29 +229,31 @@ flowchart LR
     subgraph "Server"
         MCPServer[MCP Server]
         subgraph "Agent Registry"
-            NoteEditor[NoteEditor Agent]
-            NoteReader[NoteReader Agent]
-            ProjectManager[ProjectManager Agent]
-            VaultManager[VaultManager Agent]
-            MemoryManager[MemoryManager Agent]
+            ContentManager[Content Manager]
+            CommandManager[Command Manager]
+            ProjectManager[Project Manager]
+            VaultManager[Vault Manager]
+            VaultLibrarian[Vault Librarian]
+            MemoryManager[Memory Manager]
+            VectorManager[Vector Manager]
         end
         
-        subgraph "NoteEditor Modes"
-            Replace[Replace Mode]
-            Insert[Insert Mode]
-            Append[Append Mode]
-            Prepend[Prepend Mode]
-            Batch[Batch Mode]
+        subgraph "Example: Vector Manager Modes"
+            CreateCollection[Create Collection]
+            ListCollections[List Collections]
+            GetCollection[Get Collection]
+            CreateEmbedding[Create Embedding]
+            BatchEmbedding[Batch Embedding]
         end
     end
     
     Client -->|executeMode| MCPServer
-    MCPServer -->|routes request| NoteEditor
-    NoteEditor -->|executes| Replace
-    NoteEditor -->|executes| Insert
-    NoteEditor -->|executes| Append
-    NoteEditor -->|executes| Prepend
-    NoteEditor -->|executes| Batch
+    MCPServer -->|routes request| VectorManager
+    VectorManager -->|executes| CreateCollection
+    VectorManager -->|executes| ListCollections
+    VectorManager -->|executes| GetCollection
+    VectorManager -->|executes| CreateEmbedding
+    VectorManager -->|executes| BatchEmbedding
 ```
 
 ## Key Extensibility Features:

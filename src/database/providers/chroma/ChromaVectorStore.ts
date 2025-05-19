@@ -62,8 +62,17 @@ export class ChromaVectorStore extends BaseVectorStore {
    * @param path Directory path to ensure exists
    */
   protected ensureDirectoryExists(path: string): void {
-    if (!existsSync(path)) {
-      mkdirSync(path, { recursive: true });
+    try {
+      if (!existsSync(path)) {
+        console.log(`Creating directory: ${path}`);
+        mkdirSync(path, { recursive: true });
+        console.log(`Successfully created directory: ${path}`);
+      } else {
+        console.log(`Directory already exists: ${path}`);
+      }
+    } catch (error) {
+      console.error(`Failed to create directory ${path}:`, error);
+      throw new Error(`Directory creation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -72,14 +81,25 @@ export class ChromaVectorStore extends BaseVectorStore {
    */
   async initialize(): Promise<void> {
     try {
-      // Ensure the data directory exists for persistent storage
+      // Set default persistent path if not provided
+      if (!this.config.persistentPath) {
+        this.config.persistentPath = `${this.plugin.manifest.dir}/data/chroma-db`;
+      }
+      
+      // Ensure the data parent directories exist first
+      const dataDir = `${this.plugin.manifest.dir}/data`;
+      this.ensureDirectoryExists(dataDir);
+      
+      // Then ensure the chroma-db directory exists
       if (!this.config.inMemory && this.config.persistentPath) {
         this.ensureDirectoryExists(this.config.persistentPath);
+        console.log(`Ensured ChromaDB directory exists at: ${this.config.persistentPath}`);
       }
       
       // Create ChromaDB client
       if (this.config.inMemory) {
         // In-memory client
+        console.log('Using in-memory ChromaDB client (not persistent)');
         this.client = new ChromaClient();
       } else if (this.config.server?.host) {
         // Remote server client
@@ -87,11 +107,13 @@ export class ChromaVectorStore extends BaseVectorStore {
         const port = this.config.server.port || 8000;
         const host = this.config.server.host;
         
+        console.log(`Connecting to remote ChromaDB server at: ${protocol}://${host}:${port}`);
         this.client = new ChromaClient({
           path: `${protocol}://${host}:${port}`
         });
       } else {
         // Local persistent client
+        console.log(`Using local persistent ChromaDB at: ${this.config.persistentPath}`);
         this.client = new ChromaClient({
           path: this.config.persistentPath
         });
@@ -102,6 +124,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       
       this.initialized = true;
       console.log(`ChromaDB vector store initialized with path: ${this.config.persistentPath || 'in-memory'}`);
+      console.log(`Found ${this.collections.size} collections in ChromaDB`);
     } catch (error) {
       console.error('Failed to initialize ChromaDB:', error);
       throw new Error(`ChromaDB initialization failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -139,6 +162,33 @@ export class ChromaVectorStore extends BaseVectorStore {
         }
       }
       
+      if (this.collections.size === 0 && !this.config.inMemory) {
+        // If no collections were found but we're in persistent mode, check if maybe
+        // the data directory exists but no collections are loaded
+        try {
+          const fs = require('fs');
+          const collectionsDir = `${this.config.persistentPath}/collections`;
+          
+          if (fs.existsSync(collectionsDir)) {
+            const dirs = fs.readdirSync(collectionsDir);
+            
+            for (const dir of dirs) {
+              // Skip non-directories or hidden files
+              const collectionPath = `${collectionsDir}/${dir}`;
+              if (!fs.statSync(collectionPath).isDirectory() || dir.startsWith('.')) {
+                continue;
+              }
+              
+              console.log(`Found collection directory: ${dir}, attempting to initialize...`);
+              // Try to initialize the collection
+              await this.createCollection(dir);
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to check collections directory: ${err}`);
+        }
+      }
+      
       console.log(`Loaded ${this.collections.size} collections from ChromaDB`);
     } catch (error) {
       console.error('Failed to refresh collections:', error);
@@ -164,17 +214,25 @@ export class ChromaVectorStore extends BaseVectorStore {
     try {
       let collection: Collection;
       
-      if (this.collections.has(collectionName)) {
-        // Get existing collection
+      // Try to get the collection directly from ChromaDB first, regardless of our local tracking
+      try {
         collection = await this.client.getCollection({ name: collectionName });
-      } else {
-        // Create new collection
-        collection = await this.client.createCollection({
-          name: collectionName,
-          metadata: { createdAt: new Date().toISOString() }
-        });
-        
+        // Update our tracking since the collection exists
         this.collections.add(collectionName);
+      } catch (error) {
+        // Only attempt to create if the collection truly doesn't exist in ChromaDB
+        if (error instanceof Error && error.message.includes('not found')) {
+          // Create new collection
+          collection = await this.client.createCollection({
+            name: collectionName,
+            metadata: { createdAt: new Date().toISOString() }
+          });
+          
+          this.collections.add(collectionName);
+        } else {
+          // Re-throw other errors
+          throw error;
+        }
       }
       
       // Cache the collection
@@ -422,12 +480,13 @@ export class ChromaVectorStore extends BaseVectorStore {
   }
   
   /**
-   * Query a collection by embeddings
+   * Query a collection by embeddings or text
    * @param collectionName Collection name
    * @param query Query parameters
    */
   async query(collectionName: string, query: {
-    queryEmbeddings: number[][];
+    queryEmbeddings?: number[][];
+    queryTexts?: string[];
     nResults?: number;
     where?: Record<string, any>;
     include?: StoreIncludeType[];
@@ -448,6 +507,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       // Query the collection
       const results = await collection.query({
         queryEmbeddings: query.queryEmbeddings,
+        queryTexts: query.queryTexts,
         nResults: query.nResults || 10,
         where: query.where,
         include: query.include || ['embeddings', 'metadatas', 'documents', 'distances']
@@ -511,6 +571,96 @@ export class ChromaVectorStore extends BaseVectorStore {
     } catch (error) {
       console.error(`Failed to get count for collection '${collectionName}':`, error);
       throw new Error(`Collection count failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  /**
+   * Get diagnostics about the ChromaDB store
+   * Useful for debugging and troubleshooting
+   */
+  async getDiagnostics(): Promise<Record<string, any>> {
+    if (!this.client) {
+      return {
+        status: 'error',
+        initialized: false,
+        error: 'ChromaDB client not initialized'
+      };
+    }
+    
+    try {
+      // Track if data directory exists
+      let dataDirectoryExists = false;
+      let collectionsDirectoryExists = false;
+      let filePermissionsOk = true;
+      let fsError = null;
+      
+      try {
+        const fs = require('fs');
+        
+        // Check data directory
+        if (this.config.persistentPath) {
+          dataDirectoryExists = fs.existsSync(this.config.persistentPath);
+          
+          // Check collections directory if data directory exists
+          if (dataDirectoryExists) {
+            const collectionsDir = `${this.config.persistentPath}/collections`;
+            collectionsDirectoryExists = fs.existsSync(collectionsDir);
+            
+            // Try to write a test file to check permissions
+            try {
+              const testFilePath = `${this.config.persistentPath}/.test_write`;
+              fs.writeFileSync(testFilePath, 'test');
+              fs.unlinkSync(testFilePath);
+            } catch (err) {
+              filePermissionsOk = false;
+              fsError = err;
+            }
+          }
+        }
+      } catch (err) {
+        fsError = err;
+      }
+      
+      // Get list of collections
+      const collections = await this.listCollections();
+      const collectionDetails = [];
+      
+      // Get details for each collection
+      for (const collectionName of collections) {
+        try {
+          const collection = await this.getOrCreateCollection(collectionName);
+          const count = await collection.count();
+          
+          collectionDetails.push({
+            name: collectionName,
+            itemCount: count
+          });
+        } catch (error) {
+          collectionDetails.push({
+            name: collectionName,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+      
+      return {
+        status: 'ok',
+        initialized: this.initialized,
+        storageMode: this.config.inMemory ? 'in-memory' : 'persistent',
+        persistentPath: this.config.persistentPath || 'none',
+        dataDirectoryExists,
+        collectionsDirectoryExists,
+        filePermissionsOk,
+        fsError: fsError ? String(fsError) : null,
+        totalCollections: this.collections.size,
+        collections: collectionDetails
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        initialized: this.initialized,
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
 }

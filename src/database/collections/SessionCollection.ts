@@ -160,14 +160,17 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
   
   /**
    * Create a new session
-   * @param session Session data without ID
-   * @returns Created session with generated ID
+   * @param session Session data (with optional ID)
+   * @returns Created session with ID (either provided or generated)
    */
-  async createSession(session: Omit<WorkspaceSession, 'id'>): Promise<WorkspaceSession> {
-    const id = uuidv4();
+  async createSession(session: Partial<WorkspaceSession>): Promise<WorkspaceSession> {
+    // Use provided ID or generate a new one
+    const id = session.id || uuidv4();
+    
     const newSession: WorkspaceSession = {
       ...session,
       id,
+      workspaceId: session.workspaceId || 'default-workspace',
       startTime: session.startTime || Date.now(),
       isActive: session.isActive !== undefined ? session.isActive : true,
       toolCalls: session.toolCalls || 0

@@ -1,6 +1,7 @@
 import { CommonResult } from '../types';
 import { logger } from '../utils/logger';
 import { parseWorkspaceContext } from '../utils/contextUtils';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Interface for workspace context
@@ -19,6 +20,8 @@ export interface WorkspaceContext {
  * without requiring explicit context passing between every operation.
  */
 export class SessionContextManager {
+  // Reference to memory service (for session validation)
+  private memoryService: any = null;
   // Map of sessionId -> workspace context
   private sessionContextMap: Map<string, WorkspaceContext> = new Map();
   
@@ -148,5 +151,32 @@ export class SessionContextManager {
   clearAll(): void {
     this.sessionContextMap.clear();
     this.defaultWorkspaceContext = null;
+  }
+  
+  /**
+   * Set the memory service for session validation
+   * 
+   * @param memoryService The memory service instance
+   */
+  setMemoryService(memoryService: any): void {
+    this.memoryService = memoryService;
+  }
+  
+  /**
+   * Validate a session ID
+   * 
+   * @param sessionId The session ID to validate
+   * @returns The sessionId if valid, or a new one if empty
+   */
+  async validateSessionId(sessionId: string): Promise<string> {
+    // If no session ID is provided, generate a new one
+    if (!sessionId) {
+      logger.systemWarn('Empty sessionId provided for validation, generating a new one');
+      return uuidv4();
+    }
+    
+    // Return the original sessionId as is, without trying to validate against memory service
+    // This prevents the issue of constantly generating new session IDs
+    return sessionId;
   }
 }
