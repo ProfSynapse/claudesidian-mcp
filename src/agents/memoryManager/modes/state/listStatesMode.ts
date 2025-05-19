@@ -35,16 +35,8 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         return this.prepareResult(false, undefined, 'Memory service not available');
       }
       
-      // If no workspace ID is provided, set it to a default value for system-wide states
-      let parsedContext = parseWorkspaceContext(params.workspaceContext);
-      if (!parsedContext?.workspaceId) {
-        params.workspaceContext = {
-          ...(typeof params.workspaceContext === 'object' ? params.workspaceContext : {}),
-          workspaceId: 'system'
-        };
-        parsedContext = parseWorkspaceContext(params.workspaceContext);
-      }
-      
+      // Parse workspace context
+      const parsedContext = parseWorkspaceContext(params.workspaceContext);
       const workspaceId = parsedContext?.workspaceId;
       const includeContext = params.includeContext || false;
       const limit = params.limit || 20;
@@ -52,14 +44,42 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       const order = params.order || 'desc';
       const filterTags = params.tags || [];
       
-      // Get states (snapshots) for the workspace
+      // Enhanced logging to aid debugging
+      console.log(`ListStatesMode - Query parameters:`, {
+        workspaceId: workspaceId || 'undefined',
+        sessionId: targetSessionId || 'undefined',
+        limit,
+        order,
+        filterTags
+      });
+      
+      // Get states (snapshots) prioritizing session over workspace
       let states: WorkspaceStateSnapshot[] = [];
       try {
-        console.log(`Trying to get snapshots for workspace: ${workspaceId || 'unknown'}, session: ${targetSessionId || 'any'}`);
-        states = await memoryService.getSnapshots(workspaceId || '', targetSessionId || undefined);
+        if (targetSessionId) {
+          // If session ID is provided, use that as primary filter
+          console.log(`Retrieving snapshots for session: ${targetSessionId}`);
+          states = await memoryService.getSnapshotsBySession(targetSessionId);
+        } else if (workspaceId) {
+          // If only workspace ID is provided, use that
+          console.log(`Retrieving snapshots for workspace: ${workspaceId}`);
+          states = await memoryService.getSnapshots(workspaceId);
+        } else {
+          // If neither is provided, get all states
+          console.log(`Retrieving all snapshots (limited to ${limit})`);
+          states = await memoryService.getSnapshots();
+        }
+        
         console.log(`Retrieved ${states.length} snapshots`);
+        
+        // If no states found with specific criteria, try a broader search
+        if (states.length === 0 && (workspaceId || targetSessionId)) {
+          console.log(`No snapshots found with specific criteria, trying broader search`);
+          states = await memoryService.getSnapshots();
+          console.log(`Broader search retrieved ${states.length} snapshots`);
+        }
       } catch (error) {
-        console.error(`Error retrieving snapshots: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(`Error retrieving snapshots:`, error);
         return this.prepareResult(false, undefined, `Error retrieving snapshots: ${error instanceof Error ? error.message : String(error)}`);
       }
 

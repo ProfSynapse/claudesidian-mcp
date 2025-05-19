@@ -588,12 +588,54 @@ export class MemoryService {
   }
   
   /**
-   * Get snapshots for a workspace
-   * @param workspaceId Workspace ID
+   * Get snapshots for a workspace or session
+   * @param workspaceId Optional workspace ID filter
    * @param sessionId Optional session ID filter
+   * @returns Array of workspace state snapshots
    */
-  async getSnapshots(workspaceId: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
-    return this.snapshots.getSnapshotsByWorkspace(workspaceId, sessionId);
+  async getSnapshots(workspaceId?: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
+    try {
+      if (sessionId) {
+        // If sessionId is provided, prioritize that
+        const sessionSnapshots = await this.snapshots.getSnapshotsBySession(sessionId);
+        
+        // If workspaceId is also provided, filter the results
+        if (workspaceId) {
+          return sessionSnapshots.filter(snapshot => snapshot.workspaceId === workspaceId);
+        }
+        
+        return sessionSnapshots;
+      } else if (workspaceId) {
+        // If only workspaceId is provided, use the existing method
+        return this.snapshots.getSnapshotsByWorkspace(workspaceId);
+      } else {
+        // If neither is provided, return all snapshots (with reasonable limits)
+        return this.snapshots.getAll({ 
+          sortBy: 'timestamp',
+          sortOrder: 'desc',
+          limit: 100 
+        });
+      }
+    } catch (error) {
+      console.error('Error retrieving snapshots:', error);
+      // Return empty array instead of throwing to avoid breaking UI
+      return [];
+    }
+  }
+
+  /**
+   * Get snapshots for a specific session
+   * @param sessionId Session ID
+   * @returns Array of workspace state snapshots
+   */
+  async getSnapshotsBySession(sessionId: string): Promise<WorkspaceStateSnapshot[]> {
+    try {
+      return this.snapshots.getSnapshotsBySession(sessionId);
+    } catch (error) {
+      console.error(`Error retrieving snapshots for session ${sessionId}:`, error);
+      // Return empty array instead of throwing to avoid breaking UI
+      return [];
+    }
   }
   
   /**

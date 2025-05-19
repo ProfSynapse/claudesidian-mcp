@@ -42,6 +42,12 @@ export interface VectorSearchParams extends CommonParameters {
   embeddings?: boolean;
   
   /**
+   * Flag to use direct collection query for backward compatibility
+   * When true, uses queryCollection instead of semanticSearch with collection parameter
+   */
+  useDirectQuery?: boolean;
+  
+  /**
    * Optional filters to apply to the search
    */
   filters?: {
@@ -279,9 +285,9 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     
     let result;
     
-    // If we have a direct collection name, use collection query
-    if (params.collectionName) {
-      // Build ChromaDB query parameters
+    // If we need to use the direct queryCollection method for backward compatibility
+    if (params.collectionName && params.query && params.useDirectQuery) {
+      // Build ChromaDB query parameters for direct collection query
       const queryParams: any = {
         nResults: params.limit || 10,
         where: this.buildChromaWhereClause(params.filters),
@@ -295,45 +301,56 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         queryParams.queryTexts = [params.query];
       }
       
-      // Execute collection query
+      // Execute collection query directly
       result = await this.searchService.queryCollection(
         params.collectionName,
         queryParams
       );
+    }
+    // Otherwise use the integrated search methods that now support collection filtering
+    else if (queryEmbedding) {
+      result = await this.searchService.semanticSearchWithEmbedding(
+        queryEmbedding,
+        searchOptions
+      );
+    } else if (params.query) {
+      result = await this.searchService.semanticSearch(
+        params.query,
+        { ...searchOptions, skipEmbeddingGeneration: true }
+      );
+    } else {
+      throw new Error('No valid search parameters');
+    }
       
-      // Handle result format conversion
-      if (result && result.ids && result.ids.length > 0) {
-        return this.prepareResult(
-          true,
-          {
-            matches: this.formatCollectionQueryResults(result)
-          }
-        );
-      }
-      
+    // Process and return the result with proper error handling
+    // If the result is already in the expected format, return it directly
+    if (result.matches) {
+      return this.prepareResult(
+        result.success !== false,
+        {
+          matches: result.matches || []
+        },
+        result.error
+      );
+    }
+    
+    // Otherwise, for direct query results from queryCollection, convert the format
+    if (result && result.ids && result.ids.length > 0) {
       return this.prepareResult(
         true,
         {
-          matches: []
+          matches: this.formatCollectionQueryResults(result)
         }
       );
     }
-    // Otherwise perform semantic search with default collection
-    else {
-      // Use either embedding-based or text-based search (without generating new embeddings)
-      if (queryEmbedding) {
-        result = await this.searchService.semanticSearchWithEmbedding(
-          queryEmbedding,
-          searchOptions
-        );
-      } else if (params.query) {
-        result = await this.searchService.semanticSearch(
-          params.query,
-          { ...searchOptions, skipEmbeddingGeneration: true }
-        );
-      } else {
-        throw new Error('No valid search parameters');
+    
+    // If no results were found
+    return this.prepareResult(
+      true,
+      {
+        matches: []
       }
+    );
       
       return this.prepareResult(
         result.success !== false, // Handle case where success is not explicitly set
@@ -546,6 +563,11 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         embeddings: {
           type: 'boolean',
           description: 'Set to true to use existing embeddings without regenerating them',
+          default: false
+        },
+        useDirectQuery: {
+          type: 'boolean',
+          description: 'Set to true to use direct collection query for backward compatibility',
           default: false
         },
         collectionName: {

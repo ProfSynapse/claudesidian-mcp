@@ -62,80 +62,87 @@ export class GetEmbeddingMode extends BaseMode<GetEmbeddingsParams, EmbeddingRes
     const searchService = (this.agent as VectorManagerAgent).getSearchService();
     
     try {
-      // First verify if the collection exists
-      const vectorStore = (this.agent as VectorManagerAgent).getVectorStore();
-      const collectionExists = await vectorStore.hasCollection(params.collectionName);
+      // Get necessary services (no need to directly use vectorStore anymore)
       
-      if (!collectionExists) {
-        return {
-          success: false,
-          error: `Collection '${params.collectionName}' does not exist`
+      // Try to access the collection directly instead of just checking if it exists
+      try {
+        // Prepare the query
+        const query = {
+          ids: params.ids,
+          include: [
+            'documents',
+            'metadatas'
+          ] as string[]
         };
-      }
-      
-      // Prepare the query
-      const query = {
-        ids: params.ids,
-        include: [
-          'documents',
-          'metadatas'
-        ] as string[]
-      };
-      
-      // Include embeddings if requested
-      if (params.includeEmbeddings) {
-        query.include.push('embeddings');
-      }
-      
-      // Query the collection
-      const results = await searchService.queryCollection(params.collectionName, query);
-      
-      // Process results
-      if (!results || !results.ids || results.ids.length === 0) {
-        return {
-          success: true,
-          data: {
-            collectionName: params.collectionName,
-            items: []
-          }
-        };
-      }
-      
-      // Map results to items
-      const items: Array<{
-        id: string;
-        text?: string;
-        metadata?: Record<string, any>;
-        embedding?: number[];
-      }> = [];
-      
-      for (let i = 0; i < results.ids[0].length; i++) {
-        const item: {
+        
+        // Include embeddings if requested
+        if (params.includeEmbeddings) {
+          query.include.push('embeddings');
+        }
+        
+        // Try to query the collection directly
+        const results = await searchService.queryCollection(params.collectionName, query);
+        
+        // Process results
+        if (!results || !results.ids || results.ids.length === 0) {
+          return {
+            success: true,
+            data: {
+              collectionName: params.collectionName,
+              items: []
+            }
+          };
+        }
+        
+        // Map results to items
+        const items: Array<{
           id: string;
           text?: string;
           metadata?: Record<string, any>;
           embedding?: number[];
-        } = {
-          id: results.ids[0][i],
-          text: results.documents?.[0]?.[i],
-          metadata: results.metadatas?.[0]?.[i]
+        }> = [];
+        
+        for (let i = 0; i < results.ids[0].length; i++) {
+          const item: {
+            id: string;
+            text?: string;
+            metadata?: Record<string, any>;
+            embedding?: number[];
+          } = {
+            id: results.ids[0][i],
+            text: results.documents?.[0]?.[i],
+            metadata: results.metadatas?.[0]?.[i]
+          };
+          
+          // Add embedding if requested
+          if (params.includeEmbeddings && results.embeddings) {
+            item.embedding = results.embeddings[0][i];
+          }
+          
+          items.push(item);
+        }
+        
+        return {
+          success: true,
+          data: {
+            collectionName: params.collectionName,
+            items
+          }
         };
-        
-        // Add embedding if requested
-        if (params.includeEmbeddings && results.embeddings) {
-          item.embedding = results.embeddings[0][i];
+      } catch (error) {
+        // Check if the error is because the collection doesn't exist
+        if (error instanceof Error && 
+            (error.message.includes('not found') || 
+             error.message.includes('does not exist'))) {
+          return {
+            success: false,
+            error: `Collection '${params.collectionName}' does not exist`
+          };
         }
         
-        items.push(item);
+        // For other errors, re-throw to be caught by the outer try/catch
+        throw error;
       }
-      
-      return {
-        success: true,
-        data: {
-          collectionName: params.collectionName,
-          items
-        }
-      };
     } catch (error) {
       console.error(`Failed to get embeddings from collection ${params.collectionName}:`, getErrorMessage(error));
       return {

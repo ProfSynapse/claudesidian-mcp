@@ -459,8 +459,14 @@ class PersistentChromaClient extends InMemoryChromaClient {
       if (this.storagePath) {
         console.log(`PersistentChromaClient initialized with storage path: ${this.storagePath}`);
         
-        // Load data from disk if the directory exists
-        this.loadCollectionsFromDisk();
+        // Note: We can't await here since constructors can't be async
+        // We'll immediately schedule loading collections from disk
+        // The collections will be loaded asynchronously
+        setTimeout(() => {
+          this.loadCollectionsFromDisk()
+            .then(() => console.log('Asynchronous collection loading complete'))
+            .catch(err => console.error('Error in async collection loading:', err));
+        }, 0);
       } else {
         console.log('PersistentChromaClient initialized without storage path (in-memory only)');
       }
@@ -469,7 +475,11 @@ class PersistentChromaClient extends InMemoryChromaClient {
     }
   }
   
-  private loadCollectionsFromDisk(): void {
+  /**
+   * Load collections from disk storage, properly handling async operations
+   * @returns Promise that resolves when all collections are loaded
+   */
+  private async loadCollectionsFromDisk(): Promise<void> {
     if (!this.fs || !this.storagePath) return;
     
     try {
@@ -490,6 +500,11 @@ class PersistentChromaClient extends InMemoryChromaClient {
       
       // Read the collections directory
       const collections = this.fs.readdirSync(collectionsDir);
+      console.log(`Found ${collections.length} potential collections in: ${collectionsDir}`);
+      
+      // Track collection loading tasks to await them all
+      const collectionLoadingTasks: Promise<void>[] = [];
+      const loadedCollections: string[] = [];
       
       for (const collectionName of collections) {
         // Skip non-directories or hidden files
@@ -498,15 +513,16 @@ class PersistentChromaClient extends InMemoryChromaClient {
           continue;
         }
         
-        // Create the collection in memory
-        super.createCollection({ name: collectionName })
-          .then(collection => {
-            console.log(`Loaded collection from disk: ${collectionName}`);
+        // Create a task for loading this collection
+        const loadTask = (async () => {
+          try {
+            // Create the collection in memory
+            const collection = await super.createCollection({ name: collectionName });
             
             // Load collection data
-            try {
-              const dataFile = `${collectionPath}/items.json`;
-              if (this.fs.existsSync(dataFile)) {
+            const dataFile = `${collectionPath}/items.json`;
+            if (this.fs.existsSync(dataFile)) {
+              try {
                 const data = JSON.parse(this.fs.readFileSync(dataFile, 'utf8'));
                 
                 // Load items into the collection
@@ -524,29 +540,44 @@ class PersistentChromaClient extends InMemoryChromaClient {
                   }
                   
                   if (ids.length > 0) {
-                    collection.add({
+                    await collection.add({
                       ids,
                       embeddings,
                       metadatas,
                       documents
-                    }).then(() => {
-                      console.log(`Loaded ${ids.length} items for collection: ${collectionName}`);
-                    }).catch(error => {
-                      console.error(`Failed to load items for collection ${collectionName}:`, error);
                     });
+                    console.log(`Loaded ${ids.length} items for collection: ${collectionName}`);
                   }
+                  
+                  // Record successful load
+                  loadedCollections.push(collectionName);
                 }
+              } catch (dataError) {
+                console.error(`Failed to parse data for collection ${collectionName}:`, dataError);
+                // Continue with the collection, even if items failed to load
+                loadedCollections.push(collectionName);
               }
-            } catch (error) {
-              console.error(`Failed to load data for collection ${collectionName}:`, error);
+            } else {
+              console.log(`No items.json found for collection: ${collectionName}`);
+              // Still a successful load of the collection (just empty)
+              loadedCollections.push(collectionName);
             }
-          })
-          .catch(error => {
+          } catch (error) {
             console.error(`Failed to load collection ${collectionName}:`, error);
-          });
+            // Don't re-throw, we want to continue with other collections
+          }
+        })();
+        
+        // Add this task to our array
+        collectionLoadingTasks.push(loadTask);
       }
+      
+      // Wait for all collections to load
+      await Promise.all(collectionLoadingTasks);
+      console.log(`Successfully loaded ${loadedCollections.length} collections from disk`);
     } catch (error) {
       console.error('Failed to load collections from disk:', error);
+      // We don't throw here to ensure the client can still function even if disk loading fails
     }
   }
   

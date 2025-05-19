@@ -45,12 +45,17 @@ export class ChromaCollectionManager {
 
   /**
    * Refresh the collection cache from ChromaDB
+   * Includes error recovery logic to handle collections that can be listed but not accessed
    */
   async refreshCollections(): Promise<void> {
     try {
       const collections = await this.client.listCollections();
-      this.collections.clear();
       
+      // Keep track of successful collections before clearing cache
+      const loadedCollections = new Set<string>();
+      const failedCollections = new Set<string>();
+      
+      // Process all collections first
       for (const collection of collections) {
         // Handle both string and object representations
         const name = typeof collection === 'string' ? collection : collection.name;
@@ -59,14 +64,78 @@ export class ChromaCollectionManager {
           try {
             // Get collection instance from ChromaDB
             const collectionObj = await this.client.getCollection({ name });
-            this.collections.set(name, collectionObj);
+            
+            // Validate the collection by trying a simple operation
+            if (collectionObj) {
+              // Try to access metadata or count to verify collection is functioning
+              try {
+                if (typeof collectionObj.count === 'function') {
+                  await collectionObj.count();
+                } else if (collectionObj.metadata && typeof collectionObj.metadata === 'function') {
+                  await collectionObj.metadata();
+                }
+                
+                // If we get here, collection is valid
+                loadedCollections.add(name);
+              } catch (validationError) {
+                console.warn(`Collection ${name} exists but validation failed:`, validationError);
+                failedCollections.add(name);
+                // We'll attempt to recreate this collection below
+              }
+            }
           } catch (error) {
             console.error(`Failed to get collection ${name}:`, error);
+            failedCollections.add(name);
           }
         }
       }
       
-      console.log(`Loaded ${this.collections.size} collections from ChromaDB`);
+      // Now clear the cache and repopulate with valid collections
+      this.collections.clear();
+      
+      // Add successfully loaded collections to the cache
+      for (const name of loadedCollections) {
+        try {
+          const collectionObj = await this.client.getCollection({ name });
+          this.collections.set(name, collectionObj);
+        } catch (error) {
+          console.error(`Unexpected error re-loading validated collection ${name}:`, error);
+        }
+      }
+      
+      // Attempt to recover failed collections
+      for (const name of failedCollections) {
+        try {
+          console.log(`Attempting to recreate failed collection: ${name}`);
+          
+          // Try to delete the collection if it exists but is corrupted
+          try {
+            await this.client.deleteCollection({ name });
+            console.log(`Deleted corrupted collection: ${name}`);
+          } catch (deleteError) {
+            console.warn(`Could not delete corrupted collection ${name}:`, deleteError);
+            // Continue anyway - creation will fail if deletion was needed but failed
+          }
+          
+          // Create a new collection with the same name
+          const newCollection = await this.client.createCollection({
+            name,
+            metadata: { 
+              createdAt: new Date().toISOString(),
+              recoveredAt: new Date().toISOString(),
+              isRecovered: true
+            }
+          });
+          
+          // Add to our collection cache
+          this.collections.set(name, newCollection);
+          console.log(`Successfully recovered collection: ${name}`);
+        } catch (recoveryError) {
+          console.error(`Failed to recover collection ${name}:`, recoveryError);
+        }
+      }
+      
+      console.log(`Loaded ${this.collections.size} collections from ChromaDB (${loadedCollections.size} valid, ${failedCollections.size} recovered)`);
     } catch (error) {
       console.error('Failed to refresh ChromaDB collections:', error);
       throw new Error(`Collection refresh failed: ${getErrorMessage(error)}`);

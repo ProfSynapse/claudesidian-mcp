@@ -235,12 +235,20 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
    * @returns Snapshots for the session
    */
   async getSnapshotsBySession(sessionId: string): Promise<WorkspaceStateSnapshot[]> {
-    const snapshots = await this.getAll({
-      where: { sessionId },
-      sortBy: 'timestamp',
-      sortOrder: 'desc'
-    });
-    
-    return snapshots;
+    console.log(`SnapshotCollection.getSnapshotsBySession called with sessionId: ${sessionId}`);
+    try {
+      const snapshots = await this.getAll({
+        where: { sessionId },
+        sortBy: 'timestamp',
+        sortOrder: 'desc'
+      });
+      
+      console.log(`Found ${snapshots.length} snapshots for session ${sessionId}`);
+      return snapshots;
+    } catch (error) {
+      console.error(`Error in getSnapshotsBySession for ${sessionId}:`, error);
+      throw error;
+    }
   }
+  
 }

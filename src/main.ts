@@ -79,6 +79,9 @@ export default class ClaudesidianPlugin extends Plugin {
             });
             
             console.log("ChromaDB collections initialization complete");
+            
+            // Add a validation step to ensure collections are properly loaded
+            this.validateCollections();
         } catch (error) {
             console.error("Failed to initialize ChromaDB collections:", error);
             // Continue with plugin loading despite initialization errors
@@ -202,6 +205,88 @@ export default class ClaudesidianPlugin extends Plugin {
      */
     getMemoryManager(): any {
         return this.connector.getMemoryManager();
+    }
+    
+    /**
+     * Validate that collections are properly loaded and accessible
+     * This runs after service initialization to ensure everything is working correctly
+     */
+    private async validateCollections(): Promise<void> {
+        console.log("Starting post-initialization collection validation");
+        
+        try {
+            // Define our essential collections that should always exist
+            const essentialCollections = [
+                'file-embeddings',
+                'memory-traces',
+                'sessions',
+                'snapshots',
+                'workspaces'
+            ];
+            
+            // Get current collections from memory service
+            const memoryService = this.memoryService;
+            const collectionManager = memoryService.getCollectionManager();
+            const existingCollections = await collectionManager.listCollections();
+            
+            // Track missing collections
+            const missingCollections = essentialCollections.filter(
+                name => !existingCollections.includes(name)
+            );
+            
+            // Validate each existing collection by trying to access it
+            const validationIssues: string[] = [];
+            const validatedCollections: string[] = [];
+            
+            for (const collectionName of existingCollections) {
+                try {
+                    // Get the collection and try a basic operation to validate it
+                    const collection = await collectionManager.getCollection(collectionName);
+                    
+                    if (collection) {
+                        // Try to count items to verify collection functionality
+                        await collectionManager.count(collectionName);
+                        validatedCollections.push(collectionName);
+                    } else {
+                        validationIssues.push(`Collection ${collectionName} exists but returned null`);
+                    }
+                } catch (error) {
+                    validationIssues.push(`Collection ${collectionName} exists but failed validation: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+            
+            // Create any missing essential collections
+            for (const collectionName of missingCollections) {
+                try {
+                    await collectionManager.createCollection(collectionName, {
+                        createdAt: new Date().toISOString(),
+                        createdBy: 'validation',
+                    });
+                    console.log(`Created missing essential collection: ${collectionName}`);
+                } catch (error) {
+                    validationIssues.push(`Failed to create missing collection ${collectionName}: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+            
+            // Log validation results
+            const validationSummary = [
+                `Validated ${validatedCollections.length} collections`,
+                missingCollections.length > 0 ? `Found ${missingCollections.length} missing collections` : null,
+                validationIssues.length > 0 ? `Found ${validationIssues.length} validation issues` : null,
+            ].filter(Boolean).join('. ');
+            
+            console.log(validationSummary);
+            
+            // Log detailed issues if any
+            if (validationIssues.length > 0) {
+                console.warn("Collection validation issues:");
+                for (const issue of validationIssues) {
+                    console.warn(`- ${issue}`);
+                }
+            }
+        } catch (error) {
+            console.error("Error during collection validation:", error);
+        }
     }
     
     /**

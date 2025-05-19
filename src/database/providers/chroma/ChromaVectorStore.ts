@@ -133,7 +133,7 @@ export class ChromaVectorStore extends BaseVectorStore {
   }
   
   /**
-   * Refresh the list of collections
+   * Refresh the list of collections with enhanced cache synchronization
    */
   private async refreshCollections(): Promise<void> {
     if (!this.client) {
@@ -142,8 +142,17 @@ export class ChromaVectorStore extends BaseVectorStore {
     
     try {
       const collections = await this.client.listCollections();
+      
+      // Track collections for better logging and debugging
+      const existingNames = new Set(this.collections);
+      const foundNames = new Set<string>();
+      const newNames = new Set<string>();
+      const missingNames = new Set<string>();
+      
+      // Clear the collections set, but keep track of what was there
       this.collections.clear();
       
+      // First, process collections reported by ChromaDB
       for (const collection of collections) {
         // Handle both string and object cases
         let collectionName = '';
@@ -159,38 +168,91 @@ export class ChromaVectorStore extends BaseVectorStore {
         }
         
         if (collectionName) {
+          // Add to our tracking sets
           this.collections.add(collectionName);
+          foundNames.add(collectionName);
+          
+          // Check if this is a new collection
+          if (!existingNames.has(collectionName)) {
+            newNames.add(collectionName);
+          }
+          
+          // Validate and update the cache for this collection
+          try {
+            // Skip collections that are already in the cache
+            // But try to get it once to validate it's accessible
+            if (!this.collectionCache.has(collectionName)) {
+              const collection = await this.client.getCollection({ name: collectionName });
+              
+              // If we get here, the collection is valid - add to cache
+              this.collectionCache.set(collectionName, collection);
+            }
+          } catch (cacheError) {
+            console.warn(`Collection ${collectionName} is reported by ChromaDB but failed validation:`, cacheError);
+            // Remove from our collections set if we can't access it
+            this.collections.delete(collectionName);
+            // Also remove from cache if it's there (might be corrupted)
+            this.collectionCache.delete(collectionName);
+          }
         }
       }
       
-      if (this.collections.size === 0 && !this.config.inMemory) {
-        // If no collections were found but we're in persistent mode, check if maybe
-        // the data directory exists but no collections are loaded
+      // Find collections that disappeared
+      for (const existingName of existingNames) {
+        if (!foundNames.has(existingName)) {
+          missingNames.add(existingName);
+          // Remove from cache since it's gone
+          this.collectionCache.delete(existingName);
+        }
+      }
+      
+      // In persistent mode, check file system for collections that might not be loaded
+      if (!this.config.inMemory && this.config.persistentPath) {
         try {
           const fs = require('fs');
           const collectionsDir = `${this.config.persistentPath}/collections`;
           
           if (fs.existsSync(collectionsDir)) {
             const dirs = fs.readdirSync(collectionsDir);
+            let recoveredCount = 0;
             
             for (const dir of dirs) {
-              // Skip non-directories or hidden files
+              // Skip non-directories, hidden files, or already known collections
               const collectionPath = `${collectionsDir}/${dir}`;
-              if (!fs.statSync(collectionPath).isDirectory() || dir.startsWith('.')) {
+              if (!fs.statSync(collectionPath).isDirectory() || dir.startsWith('.') || this.collections.has(dir)) {
                 continue;
               }
               
+              // Found a collection on disk that's not loaded in memory
               console.log(`Found collection directory: ${dir}, attempting to initialize...`);
-              // Try to initialize the collection
-              await this.createCollection(dir);
+              
+              try {
+                // Try to initialize the collection
+                await this.createCollection(dir);
+                recoveredCount++;
+              } catch (createError) {
+                console.error(`Failed to recover collection ${dir} from disk:`, createError);
+              }
+            }
+            
+            if (recoveredCount > 0) {
+              console.log(`Recovered ${recoveredCount} collections from disk storage`);
             }
           }
-        } catch (err) {
-          console.warn(`Failed to check collections directory: ${err}`);
+        } catch (fsError) {
+          console.warn(`Failed to check collections directory: ${fsError}`);
         }
       }
       
-      console.log(`Loaded ${this.collections.size} collections from ChromaDB`);
+      // Log detailed status for debugging
+      const status = [
+        `Loaded ${this.collections.size} collections from ChromaDB`,
+        newNames.size > 0 ? `${newNames.size} new collections: ${Array.from(newNames).join(', ')}` : null,
+        missingNames.size > 0 ? `${missingNames.size} removed collections: ${Array.from(missingNames).join(', ')}` : null,
+        `Cache contains ${this.collectionCache.size} collections`
+      ].filter(Boolean).join('. ');
+      
+      console.log(status);
     } catch (error) {
       console.error('Failed to refresh collections:', error);
       throw new Error(`Collection refresh failed: ${getErrorMessage(error)}`);
@@ -198,7 +260,7 @@ export class ChromaVectorStore extends BaseVectorStore {
   }
   
   /**
-   * Get a collection instance, creating it if needed
+   * Get a collection instance, creating it if needed, with enhanced error handling and recovery
    * @param collectionName Collection name
    * @returns Collection instance
    */
@@ -209,17 +271,65 @@ export class ChromaVectorStore extends BaseVectorStore {
     
     // Check cache first
     if (this.collectionCache.has(collectionName)) {
-      return this.collectionCache.get(collectionName)!;
+      const cachedCollection = this.collectionCache.get(collectionName)!;
+      
+      // Validate the cached collection by trying a simple operation
+      try {
+        // Call a safe method to verify the collection is still valid
+        if (typeof cachedCollection.count === 'function') {
+          await cachedCollection.count();
+          // Collection is valid, return it
+          return cachedCollection;
+        }
+      } catch (validationError) {
+        console.warn(`Cached collection ${collectionName} failed validation, will recreate:`, validationError);
+        // Remove invalid collection from cache
+        this.collectionCache.delete(collectionName);
+        // Fall through to recreate the collection
+      }
     }
     
+    // Collection not in cache or validation failed, try to get or create it
     try {
       let collection: Collection;
+      let isRecreated = false;
       
-      // Try to get the collection directly from ChromaDB first, regardless of our local tracking
+      // Try to get the collection directly from ChromaDB first
       try {
         collection = await this.client.getCollection({ name: collectionName });
-        // Update our tracking since the collection exists
-        this.collections.add(collectionName);
+        
+        // Verify the collection by calling count() or metadata()
+        try {
+          if (typeof collection.count === 'function') {
+            await collection.count();
+          } else if (collection.metadata && typeof collection.metadata === 'function') {
+            await collection.metadata();
+          }
+          // Successfully validated
+        } catch (validationError) {
+          console.warn(`Collection ${collectionName} exists but is corrupted, attempting to recreate:`, validationError);
+          
+          // Delete the corrupted collection first
+          try {
+            await this.client.deleteCollection({ name: collectionName });
+            console.log(`Successfully deleted corrupted collection: ${collectionName}`);
+          } catch (deleteError) {
+            console.error(`Failed to delete corrupted collection ${collectionName}:`, deleteError);
+            // We still try to recreate even if delete fails
+          }
+          
+          // Recreate the collection
+          collection = await this.client.createCollection({
+            name: collectionName,
+            metadata: { 
+              createdAt: new Date().toISOString(),
+              recoveredAt: new Date().toISOString(),
+              recoveryReason: 'validation_failed'
+            }
+          });
+          
+          isRecreated = true;
+        }
       } catch (error) {
         // Only attempt to create if the collection truly doesn't exist in ChromaDB
         if (error instanceof Error && error.message.includes('not found')) {
@@ -229,15 +339,23 @@ export class ChromaVectorStore extends BaseVectorStore {
             metadata: { createdAt: new Date().toISOString() }
           });
           
-          this.collections.add(collectionName);
+          console.log(`Created new collection: ${collectionName}`);
         } else {
-          // Re-throw other errors
+          // Unexpected error
           throw error;
         }
       }
       
+      // Update our tracking since the collection exists
+      this.collections.add(collectionName);
+      
       // Cache the collection
       this.collectionCache.set(collectionName, collection);
+      
+      // Log if collection was recreated
+      if (isRecreated) {
+        console.log(`Successfully recreated and cached collection: ${collectionName}`);
+      }
       
       return collection;
     } catch (error) {

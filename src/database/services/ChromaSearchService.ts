@@ -286,6 +286,8 @@ export class ChromaSearchService {
     useGraphBoost?: boolean;
     graphBoostFactor?: number;
     skipEmbeddingGeneration?: boolean;
+    collectionName?: string;
+    filters?: any;
   }): Promise<{
     success: boolean;
     matches?: Array<{
@@ -306,7 +308,64 @@ export class ChromaSearchService {
         try {
           // Check if the searchDirectWithText method is available
           if (typeof this.memoryTraces.searchDirectWithText === 'function') {
-            // Search directly using the query text
+            // If specific collection is provided, use the vector store's query method directly
+            if (options?.collectionName) {
+              const queryParams = {
+                queryTexts: [query],
+                nResults: options?.limit || 10,
+                where: options?.filters ? options.filters : this.buildWhereClause(options?.workspaceId, options?.workspacePath),
+                include: ['metadatas', 'documents', 'distances'] as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'>
+              };
+              
+              const results = await this.vectorStore.query(options.collectionName, queryParams);
+              
+              if (!results.ids[0]?.length) {
+                return {
+                  success: true,
+                  matches: []
+                };
+              }
+              
+              // Process query results
+              const matches: Array<{
+                similarity: number;
+                content: string;
+                filePath: string;
+                lineStart?: number;
+                lineEnd?: number;
+                metadata?: Record<string, any>;
+              }> = [];
+              
+              for (let i = 0; i < results.ids[0].length; i++) {
+                const distance = results.distances?.[0]?.[i] || 0;
+                const metadata = results.metadatas?.[0]?.[i] || {};
+                const document = results.documents?.[0]?.[i] || '';
+                
+                // Convert distance to similarity
+                const similarity = 1 - distance;
+                
+                // Skip if below threshold
+                if (options?.threshold !== undefined && similarity < options.threshold) {
+                  continue;
+                }
+                
+                matches.push({
+                  similarity,
+                  content: document,
+                  filePath: metadata.path || metadata.workspacePath || '',
+                  lineStart: metadata.lineStart,
+                  lineEnd: metadata.lineEnd,
+                  metadata
+                });
+              }
+              
+              return {
+                success: true,
+                matches
+              };
+            }
+            
+            // Otherwise, use memory traces collection's direct text search
             const results = await this.memoryTraces.searchDirectWithText(query, {
               workspaceId: options?.workspaceId,
               workspacePath: options?.workspacePath,
@@ -335,11 +394,13 @@ export class ChromaSearchService {
             const queryParams = {
               queryTexts: [query],
               nResults: options?.limit || 10,
-              where: this.buildWhereClause(options?.workspaceId, options?.workspacePath),
+              where: options?.filters ? options.filters : this.buildWhereClause(options?.workspaceId, options?.workspacePath),
               include: ['metadatas', 'documents', 'distances'] as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'>
             };
             
-            const results = await this.vectorStore.query(this.memoryTraces.collectionName, queryParams);
+            // Use specified collection or default to memory traces
+            const collectionName = options?.collectionName || this.memoryTraces.collectionName;
+            const results = await this.vectorStore.query(collectionName, queryParams);
             
             if (!results.ids[0]?.length) {
               return {
@@ -381,7 +442,7 @@ export class ChromaSearchService {
               } = {
                 similarity,
                 content: document,
-                filePath: metadata.workspacePath || '',
+                filePath: metadata.path || metadata.workspacePath || '',
                 lineStart: metadata.lineStart || 0,
                 lineEnd: metadata.lineEnd || 0,
                 metadata

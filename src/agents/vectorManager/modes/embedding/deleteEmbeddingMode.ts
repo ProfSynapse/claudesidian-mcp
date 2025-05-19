@@ -62,26 +62,31 @@ export class DeleteEmbeddingMode extends BaseMode<DeleteEmbeddingsParams, Embedd
     const memoryService = (this.agent as VectorManagerAgent).getMemoryService();
     
     try {
-      // Ensure the collection exists
-      const collectionExists = await memoryService.hasCollection(params.collectionName);
-      
-      if (!collectionExists) {
+      try {
+        // Attempt to delete the items - this will throw if collection doesn't exist
+        await memoryService.deleteItems(params.collectionName, params.ids);
+        
         return {
-          success: false,
-          error: `Collection ${params.collectionName} not found`
+          success: true,
+          data: {
+            collectionName: params.collectionName,
+            deleted: params.ids.length
+          }
         };
-      }
-      
-      // Delete the items
-      await memoryService.deleteItems(params.collectionName, params.ids);
-      
-      return {
-        success: true,
-        data: {
-          collectionName: params.collectionName,
-          deleted: params.ids.length
+      } catch (error) {
+        // Check if the error is because the collection doesn't exist
+        if (error instanceof Error && 
+            (error.message.includes('not found') || 
+             error.message.includes('does not exist'))) {
+          return {
+            success: false,
+            error: `Collection '${params.collectionName}' does not exist`
+          };
         }
-      };
+        
+        // Re-throw other errors
+        throw error;
+      }
     } catch (error) {
       console.error(`Failed to delete embeddings from collection ${params.collectionName}:`, getErrorMessage(error));
       return {
