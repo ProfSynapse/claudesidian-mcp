@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { SearchOperations } from '../../../database/utils/SearchOperations';
 import { CommonParameters, CommonResult } from '../../../types';
+import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Search type for unified search mode
@@ -176,7 +177,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       return {
         success: false,
         type: params.type || 'content', // default type for error reporting
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: getErrorMessage(error)
       };
     }
   }
@@ -343,7 +344,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       return {
         success: false,
         type: 'tag',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: createErrorMessage('Tag search error: ', error)
       };
     }
   }
@@ -400,7 +401,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       return {
         success: false,
         type: 'property',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: createErrorMessage('Property search error: ', error)
       };
     }
   }

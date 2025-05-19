@@ -51,16 +51,8 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
         // Get sessions for specific workspace
         sessions = await memoryService.getSessions(workspaceId, activeOnly);
       } else {
-        // Get all active sessions when no workspaceId is provided
-        sessions = await memoryService.getActiveSessions();
-        
-        // If not filtering to active only, we need to get all sessions from all workspaces
-        // This is a more complex operation with the new service architecture
-        if (!activeOnly) {
-          // TODO: Add getAllSessions method to MemoryService for ChromaDB integration
-          console.warn('getAllSessions method not available in MemoryService - consider implementing for ChromaDB integration');
-          // For now, we only return active sessions when no specific workspace is provided
-        }
+        // Get all sessions when no workspaceId is provided
+        sessions = await memoryService.getAllSessions(activeOnly);
       }
       
       // Apply tag filtering if requested

@@ -3,6 +3,7 @@ import { VectorManagerConfig } from './config';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
 import { MemoryService } from '../../database/services/MemoryService';
+import { createErrorMessage } from '../../utils/errorUtils';
 
 // Import collection modes
 import { CreateCollectionMode } from './modes/collection/createCollectionMode';
@@ -103,7 +104,7 @@ export class VectorManagerAgent extends BaseAgent {
    */
   getVectorStore(): any {
     if (!this.searchService) {
-      throw new Error('Search service not initialized');
+      throw new Error(createErrorMessage('Vector store error: ', 'Search service not initialized'));
     }
     return this.searchService['vectorStore'];
   }

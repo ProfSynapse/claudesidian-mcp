@@ -5,6 +5,7 @@ import { ContentOperations } from '../utils/ContentOperations';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for deleting content from a file
@@ -72,8 +73,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       
       return response;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return this.prepareResult(false, undefined, errorMessage, params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error deleting content: ', error), params.workspaceContext);
     }
   }
   
@@ -126,8 +126,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
         }
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Error updating embeddings with ChromaDB:', errorMessage);
+      console.error('Error updating embeddings with ChromaDB:', getErrorMessage(error));
       // Don't throw error - embedding update is a secondary operation
       // and should not prevent the primary operation from succeeding
     }

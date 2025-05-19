@@ -74,8 +74,15 @@ export class EditFolderMode extends BaseMode<EditFolderArgs, EditFolderResult> {
         };
       }
       
-      // In a real implementation, this would rename the folder
-      // using the Obsidian Vault API
+      // Rename the folder using the Obsidian Vault API
+      try {
+        await this.app.vault.adapter.rename(params.path, params.newPath);
+      } catch (renameError) {
+        return {
+          success: false,
+          error: createErrorMessage('Failed to rename folder: ', renameError)
+        };
+      }
       
       return {
         success: true,

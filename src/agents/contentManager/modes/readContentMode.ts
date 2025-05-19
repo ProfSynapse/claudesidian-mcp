@@ -4,6 +4,7 @@ import { ReadContentParams, ReadContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { MemoryService } from '../../../database/services/MemoryService';
+import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for reading content from a file
@@ -90,8 +91,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return this.prepareResult(false, undefined, errorMessage, params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error reading content: ', error), params.workspaceContext);
     }
   }
   
@@ -164,8 +164,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
           return;
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('Failed to get memory service from plugin:', errorMessage);
+        console.error('Failed to get memory service from plugin:', getErrorMessage(error));
         return;
       }
     }
@@ -212,8 +211,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       });
     } catch (error) {
       // Log but don't fail the main operation
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Failed to record content reading activity with memory service:', errorMessage);
+      console.error('Failed to record content reading activity with memory service:', getErrorMessage(error));
     }
   }
 

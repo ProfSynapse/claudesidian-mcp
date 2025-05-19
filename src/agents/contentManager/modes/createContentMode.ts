@@ -5,6 +5,7 @@ import { ContentOperations } from '../utils/ContentOperations';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for creating a new file with content
@@ -78,8 +79,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return this.prepareResult(false, undefined, `Error creating file: ${errorMessage}`, params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error creating file: ', error), params.workspaceContext);
     }
   }
   
@@ -131,7 +131,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
         }
       }
     } catch (error) {
-      console.error('Error indexing file with ChromaDB:', error);
+      console.error('Error indexing file with ChromaDB:', getErrorMessage(error));
       // Don't throw error - indexing is a secondary operation
       // and should not prevent file creation
     }

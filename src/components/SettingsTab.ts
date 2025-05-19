@@ -1,6 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, ButtonComponent } from 'obsidian';
 import { Settings } from '../settings';
-import { ConfigModal } from './ConfigModal';
+// import { ConfigModal } from './ConfigModal';
 import { 
     WhatIsClaudesidianAccordion, 
     BestPracticesAccordion, 
@@ -10,7 +10,6 @@ import {
 import { UpdateManager } from '../utils/UpdateManager';
 import { templateFiles } from '../templates';
 import type { TemplateFile } from '../templates';
-import { MemorySettingsTab } from './MemorySettingsTab';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 
@@ -28,13 +27,10 @@ import { IVectorStore } from '../database/interfaces/IVectorStore';
 export class SettingsTab extends PluginSettingTab {
     private settings: Settings;
     private plugin: Plugin;
-    private memorySettingsTab: MemorySettingsTab;
-    
+
     // ChromaDB Services
-    private vectorStore: IVectorStore | undefined;
     private embeddingService: EmbeddingService | undefined;
     private searchService: ChromaSearchService | undefined;
-    private workspaceService: WorkspaceService | undefined;
     private memoryService: MemoryService | undefined;
     
     // Agent references
@@ -72,9 +68,9 @@ export class SettingsTab extends PluginSettingTab {
         if (services) {
             this.embeddingService = services.embeddingService;
             this.searchService = services.searchService;
-            this.workspaceService = services.workspaceService;
+            // Removed assignment to unused property: this.workspaceService = services.workspaceService;
             this.memoryService = services.memoryService;
-            this.vectorStore = services.vectorStore;
+            // Removed assignment to unused property: this.vectorStore = services.vectorStore;
         }
         
         // Store agent references
@@ -159,7 +155,7 @@ export class SettingsTab extends PluginSettingTab {
             
             new Notice('Template pack created successfully!');
         } catch (error) {
-            new Notice('Error creating template pack: ' + error.message);
+            new Notice('Error creating template pack: ' + (error as Error).message);
         }
     }
 
@@ -167,7 +163,7 @@ export class SettingsTab extends PluginSettingTab {
      * Add CSS styles for the settings tab (now implemented in styles.css)
      * @param containerEl Container element
      */
-    private addStyles(containerEl: HTMLElement): void {
+    private addStyles(): void {
         // Styles are now in the global styles.css file
     }
     
@@ -202,7 +198,7 @@ export class SettingsTab extends PluginSettingTab {
         new BestPracticesAccordion(containerEl, () => this.createTemplatePack());
 
         // Add CSS styles
-        this.addStyles(containerEl);
+        this.addStyles();
     }
 
 }

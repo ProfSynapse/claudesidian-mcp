@@ -1,7 +1,6 @@
 import { Accordion } from '../Accordion';
 import { Setting } from 'obsidian';
 import { templateFiles } from '../../templates';
-import type { TemplateFile } from '../../templates';
 
 export class BestPracticesAccordion {
     constructor(container: HTMLElement, createTemplatePack: () => Promise<void>) {

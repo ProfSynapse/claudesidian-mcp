@@ -1,13 +1,11 @@
 import { App } from 'obsidian';
 import { TFile } from 'obsidian';
-import { IMCPServer } from '../types';
 import { safeStringify } from '../utils/jsonUtils';
 import { logger } from '../utils/logger';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IAgent } from '../agents/interfaces/IAgent';
-import { sanitizeVaultName } from '../utils/vaultUtils';
 import { SessionContextManager } from '../services/SessionContextManager';
-import { parseWorkspaceContext } from '../utils/contextUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -121,13 +119,11 @@ interface AgentSchema {
  *
  * @param agents Map of agent names to agent instances
  * @param isVaultEnabled Boolean indicating if vault access is enabled
- * @param app Obsidian App instance to get vault information
  * @returns Promise resolving to an object containing the tools list
  */
 export async function handleToolList(
     agents: Map<string, IAgent>,
-    isVaultEnabled: boolean,
-    app: App
+    isVaultEnabled: boolean
 ): Promise<{ tools: any[] }> {
     try {
         // Return empty list immediately if vault access is disabled
@@ -184,7 +180,7 @@ export async function handleToolList(
                             // Don't include 'mode' or 'sessionId' in the conditional required list
                             // as they're already in the base schema
                             const conditionalRequired = modeSchemaCopy.required.filter(
-                                prop => prop !== 'mode' && prop !== 'sessionId'
+                                (prop: string) => prop !== 'mode' && prop !== 'sessionId'
                             );
                             
                             if (conditionalRequired.length > 0) {
@@ -476,7 +472,6 @@ export async function handleToolExecution(
         
         // Validate session ID if SessionContextManager is available
         let originalSessionId = params.sessionId;
-        let sessionIdChanged = false;
         
         if (sessionContextManager && params.sessionId) {
             try {
@@ -484,10 +479,9 @@ export async function handleToolExecution(
                 // We no longer generate new IDs for existing session IDs
                 // This allows clients to provide their own valid session IDs
                 params.sessionId = await sessionContextManager.validateSessionId(params.sessionId);
-                // Check if the session ID changed (should only happen if original was empty)
-                sessionIdChanged = (originalSessionId !== params.sessionId);
+                // We retain the original ID for reference but don't track if it changed
             } catch (error) {
-                logger.systemWarn(`Session validation failed: ${error.message}. Using original ID`);
+                logger.systemWarn(`Session validation failed: ${getErrorMessage(error)}. Using original ID`);
             }
         }
         
@@ -557,7 +551,7 @@ export async function handleToolExecution(
                 // If handoff fails, include the error in the original result
                 result.handoffResult = {
                     success: false,
-                    error: handoffError.message || "Handoff failed"
+                    error: getErrorMessage(handoffError)
                 };
                 
                 return {

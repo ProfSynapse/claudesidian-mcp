@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { AddEmbeddingsParams, EmbeddingResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for adding embeddings to a collection
@@ -113,10 +114,10 @@ export class CreateEmbeddingMode extends BaseMode<AddEmbeddingsParams, Embedding
         }
       };
     } catch (error) {
-      console.error(`Failed to add embeddings to collection ${params.collectionName}:`, error);
+      console.error(`Failed to add embeddings to collection ${params.collectionName}:`, getErrorMessage(error));
       return {
         success: false,
-        error: `Failed to add embeddings: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage('Failed to add embeddings: ', error)
       };
     }
   }

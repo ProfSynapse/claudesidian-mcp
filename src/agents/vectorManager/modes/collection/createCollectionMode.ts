@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { CreateCollectionParams, CollectionResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for creating a new vector collection
@@ -73,10 +74,10 @@ export class CreateCollectionMode extends BaseMode<CreateCollectionParams, Colle
         }
       };
     } catch (error) {
-      console.error(`Failed to create collection ${params.name}:`, error);
+      console.error(`Failed to create collection ${params.name}:`, getErrorMessage(error));
       return {
         success: false,
-        error: `Collection creation failed: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage(`Collection creation failed: `, error)
       };
     }
   }

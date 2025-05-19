@@ -1,6 +1,5 @@
 import { App, Modal, Platform, Setting } from 'obsidian';
 import * as path from 'path';
-import { Settings } from '../settings';
 import { sanitizeVaultName } from '../utils/vaultUtils';
 
 /**
@@ -11,7 +10,6 @@ export class ConfigModal extends Modal {
     private activeTab: string = 'windows';
     private tabButtons: Record<string, HTMLElement> = {};
     private tabContents: Record<string, HTMLElement> = {};
-    private settings?: Settings;
     private isFirstTimeSetup: boolean = true;
     
     /**
@@ -19,9 +17,8 @@ export class ConfigModal extends Modal {
      * @param app Obsidian app instance
      * @param settings Settings instance (optional)
      */
-    constructor(app: App, settings?: Settings) {
+    constructor(app: App) {
         super(app);
-        this.settings = settings;
     }
     
     /**
@@ -36,7 +33,7 @@ export class ConfigModal extends Modal {
         // Add configuration type toggle
         const toggleContainer = contentEl.createDiv({ cls: 'mcp-config-toggle' });
         toggleContainer.createEl('span', { text: 'Configuration Type:', cls: 'mcp-config-label' });
-        const toggleComponent = new Setting(toggleContainer)
+        new Setting(toggleContainer)
             .setName('First Time Setup')
             .setDesc('Toggle between first-time setup and adding to existing configuration')
             .addToggle(toggle => toggle

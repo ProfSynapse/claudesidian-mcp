@@ -7,16 +7,16 @@ import { WorkspaceMemoryTrace, WorkspaceSession, WorkspaceStateSnapshot } from '
 import { VectorStoreFactory } from '../factory/VectorStoreFactory';
 import { EmbeddingService } from './EmbeddingService';
 import { ChromaCollectionManager } from '../providers/chroma/ChromaCollectionManager';
-import { v4 as uuidv4 } from 'uuid';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Service for managing memory traces, sessions, snapshots, and ChromaDB collections
  */
 export class MemoryService {
   /**
-   * Vector store instance
+   * Vector store instance used by this service
    */
-  private vectorStore: IVectorStore;
+  private readonly vectorStore: IVectorStore;
   
   /**
    * Collections for memory-related data
@@ -98,6 +98,14 @@ export class MemoryService {
    */
   getCollectionManager(): ChromaCollectionManager {
     return this.collectionManager;
+  }
+  
+  /**
+   * Get the vector store instance
+   * @returns The vector store used by this service
+   */
+  getVectorStore(): IVectorStore {
+    return this.vectorStore;
   }
   
   /**
@@ -413,7 +421,7 @@ export class MemoryService {
         }
       } catch (error) {
         // Fallback to a default workspace ID
-        console.warn(`Error getting default workspace: ${error.message}`);
+        console.warn(`Error getting default workspace: ${getErrorMessage(error)}`);
         workspaceId = 'default-workspace';
       }
       
@@ -429,7 +437,7 @@ export class MemoryService {
       
       return newSession;
     } catch (error) {
-      console.error(`Error in getSession: ${error.message}`);
+      console.error(`Error in getSession: ${getErrorMessage(error)}`);
       return undefined;
     }
   }
@@ -666,7 +674,7 @@ export class MemoryService {
    * @param targetSessionId Optional target session ID to restore into (if not provided, uses active session)
    * @returns Information about the restored state
    */
-  async restoreStateSnapshot(stateId: string, targetSessionId?: string): Promise<{
+  async restoreStateSnapshot(stateId: string): Promise<{
     stateId: string;
     name: string;
     workspaceId: string;

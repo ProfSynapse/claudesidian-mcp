@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { GetCollectionParams, CollectionResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for getting collection details
@@ -105,7 +106,7 @@ export class GetCollectionMode extends BaseMode<GetCollectionParams, CollectionR
             lastUpdated: new Date().toISOString() // Not stored directly, use current time
           };
         } catch (statsError) {
-          console.warn(`Error getting detailed stats for collection ${params.name}:`, statsError);
+          console.warn(`Error getting detailed stats for collection ${params.name}:`, getErrorMessage(statsError));
           // Provide basic stats
           result.data!.stats = {
             itemCount,
@@ -118,10 +119,10 @@ export class GetCollectionMode extends BaseMode<GetCollectionParams, CollectionR
       
       return result;
     } catch (error) {
-      console.error(`Failed to get collection ${params.name}:`, error);
+      console.error(`Failed to get collection ${params.name}:`, getErrorMessage(error));
       return {
         success: false,
-        error: `Failed to get collection: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage('Failed to get collection: ', error)
       };
     }
   }

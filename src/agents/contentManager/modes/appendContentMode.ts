@@ -5,6 +5,7 @@ import { ContentOperations } from '../utils/ContentOperations';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for appending content to a file
@@ -69,8 +70,7 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
       
       return response;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return this.prepareResult(false, undefined, errorMessage, params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error appending content: ', error), params.workspaceContext);
     }
   }
   
@@ -123,7 +123,7 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
         }
       }
     } catch (error) {
-      console.error('Error updating embeddings with ChromaDB:', error);
+      console.error('Error updating embeddings with ChromaDB:', getErrorMessage(error));
       // Don't throw error - embedding update is a secondary operation
       // and should not prevent the primary operation from succeeding
     }

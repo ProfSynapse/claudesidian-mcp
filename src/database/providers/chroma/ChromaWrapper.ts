@@ -269,7 +269,7 @@ class InMemoryCollection implements Collection {
     documents?: string[][];
     distances?: number[][];
   }> {
-    const { queryEmbeddings = [], queryTexts = [], nResults = 10, where, include = ['embeddings', 'metadatas', 'documents', 'distances'] } = params;
+    const { queryEmbeddings = [], nResults = 10, where, include = ['embeddings', 'metadatas', 'documents', 'distances'] } = params;
     
     // Initialize results
     const results: {
@@ -301,7 +301,7 @@ class InMemoryCollection implements Collection {
     // Use query embeddings, or just return top results if no query provided
     const queries = queryEmbeddings.length > 0 ? queryEmbeddings : [[]]; // Empty query = return anything
     
-    for (const queryEmbedding of queries) {
+    for (const _ of queries) {
       // Filter items by where clause if provided
       let filteredItems = Array.from(this.items.entries());
       
@@ -381,7 +381,7 @@ class InMemoryCollection implements Collection {
 class InMemoryChromaClient {
   private collections: Map<string, InMemoryCollection> = new Map();
   
-  constructor(options: ChromaClientOptions = {}) {
+  constructor(_options: ChromaClientOptions = {}) {
     console.log('Using In-Memory ChromaDB fallback');
   }
 
@@ -446,16 +446,15 @@ class InMemoryChromaClient {
 // Create a hybrid ChromaClient class that can work both as in-memory and persistent storage
 class PersistentChromaClient extends InMemoryChromaClient {
   private storagePath: string | null = null;
-  private collectionsData: Map<string, Map<string, any>> = new Map();
   private fs: any = null;
   
-  constructor(options: ChromaClientOptions = {}) {
-    super(options);
+  constructor(_options: ChromaClientOptions = {}) {
+    super(_options);
     
     try {
       // Use Node.js fs module if available
       this.fs = require('fs');
-      this.storagePath = options.path || null;
+      this.storagePath = _options.path || null;
       
       if (this.storagePath) {
         console.log(`PersistentChromaClient initialized with storage path: ${this.storagePath}`);

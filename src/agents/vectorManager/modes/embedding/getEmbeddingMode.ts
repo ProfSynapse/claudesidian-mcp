@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { GetEmbeddingsParams, EmbeddingResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for getting embeddings from a collection
@@ -136,10 +137,10 @@ export class GetEmbeddingMode extends BaseMode<GetEmbeddingsParams, EmbeddingRes
         }
       };
     } catch (error) {
-      console.error(`Failed to get embeddings from collection ${params.collectionName}:`, error);
+      console.error(`Failed to get embeddings from collection ${params.collectionName}:`, getErrorMessage(error));
       return {
         success: false,
-        error: `Failed to get embeddings: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage('Failed to get embeddings: ', error)
       };
     }
   }

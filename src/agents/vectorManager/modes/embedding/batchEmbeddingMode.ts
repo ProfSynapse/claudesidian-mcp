@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { BatchEmbeddingsParams, BatchResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for batch operations on embeddings
@@ -89,10 +90,10 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
           };
       }
     } catch (error) {
-      console.error(`Failed to perform batch ${params.operation} operation on collection ${params.collectionName}:`, error);
+      console.error(`Failed to perform batch ${params.operation} operation on collection ${params.collectionName}:`, getErrorMessage(error));
       return {
         success: false,
-        error: `Batch operation failed: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage('Batch operation failed: ', error)
       };
     }
   }
@@ -147,7 +148,7 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
         results.push({
           id: item.id,
           success: false,
-          error: error instanceof Error ? error.message : String(error)
+          error: getErrorMessage(error)
         });
         failed++;
       }
@@ -160,7 +161,7 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
         try {
           await memoryService.deleteItems(params.collectionName, ids);
         } catch (deleteError) {
-          console.warn(`Error pre-deleting items for update: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`);
+          console.warn(`Error pre-deleting items for update: ${getErrorMessage(deleteError)}`);
         }
       }
       
@@ -333,7 +334,7 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
         results.push({
           id: item.id,
           success: false,
-          error: error instanceof Error ? error.message : String(error)
+          error: getErrorMessage(error)
         });
         failed++;
       }

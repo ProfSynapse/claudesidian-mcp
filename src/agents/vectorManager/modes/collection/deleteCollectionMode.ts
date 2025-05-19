@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { DeleteCollectionParams, CollectionResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for deleting a vector collection
@@ -93,10 +94,10 @@ export class DeleteCollectionMode extends BaseMode<DeleteCollectionParams, Colle
         }
       };
     } catch (error) {
-      console.error(`Failed to delete collection ${params.name}:`, error);
+      console.error(`Failed to delete collection ${params.name}:`, getErrorMessage(error));
       return {
         success: false,
-        error: `Failed to delete collection: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage('Failed to delete collection: ', error)
       };
     }
   }

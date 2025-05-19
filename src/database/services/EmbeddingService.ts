@@ -211,7 +211,6 @@ export class EmbeddingService {
    * @param settings Memory settings
    */
   async updateSettings(settings: MemorySettings): Promise<void> {
-    const prevSettings = this.settings;
     this.settings = settings;
     
     // Validate API key if embeddings are enabled

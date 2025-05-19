@@ -1,7 +1,7 @@
 import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
-import { CommonParameters } from '../../../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for adding items to a vector collection
@@ -132,7 +132,7 @@ export class CollectionAddItemsMode extends BaseMode<{
       
       return result;
     } catch (error) {
-      console.error(`Failed to add items to collection ${params.collectionName}:`, error);
+      console.error(`Failed to add items to collection ${params.collectionName}:`, getErrorMessage(error));
       
       // Get the workspace context from params
       const workspaceContext = this.getInheritedWorkspaceContext(params);
@@ -140,7 +140,7 @@ export class CollectionAddItemsMode extends BaseMode<{
       return this.prepareResult(
         false,
         undefined,
-        `Failed to add items: ${error instanceof Error ? error.message : String(error)}`,
+        createErrorMessage('Failed to add items: ', error),
         params.context,
         workspaceContext || undefined
       );

@@ -7,6 +7,7 @@ import {
   WorkspaceStatus
 } from '../../../database/workspace-types';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 // Define a custom interface for the Claudesidian plugin
 interface ClaudesidianPlugin extends Plugin {
@@ -169,7 +170,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       return this.prepareResult(
         false, 
         undefined,
-        `Failed to create workspace: ${error.message}`
+        createErrorMessage('Failed to create workspace: ', error)
       );
     }
   }

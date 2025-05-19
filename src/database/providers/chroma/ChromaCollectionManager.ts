@@ -5,6 +5,7 @@
 
 import { ChromaClient } from './ChromaWrapper';
 import { IVectorStore } from '../../interfaces/IVectorStore';
+import { getErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Manager for ChromaDB collections
@@ -25,7 +26,7 @@ export class ChromaCollectionManager {
    * Create a new ChromaCollectionManager
    * @param vectorStore Vector store implementation
    */
-  constructor(private vectorStore: IVectorStore) {
+  constructor(vectorStore: IVectorStore) {
     // Extract ChromaClient from the vector store implementation
     // This is specifically for ChromaVectorStore which has a client property
     this.client = (vectorStore as any).client;
@@ -68,7 +69,7 @@ export class ChromaCollectionManager {
       console.log(`Loaded ${this.collections.size} collections from ChromaDB`);
     } catch (error) {
       console.error('Failed to refresh ChromaDB collections:', error);
-      throw new Error(`Collection refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection refresh failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -104,7 +105,7 @@ export class ChromaCollectionManager {
       }
       
       console.error(`Failed to create collection '${name}':`, error);
-      throw new Error(`Collection creation failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection creation failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -133,7 +134,7 @@ export class ChromaCollectionManager {
       }
       
       console.error(`Failed to get collection '${name}':`, error);
-      throw new Error(`Collection retrieval failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection retrieval failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -215,7 +216,7 @@ export class ChromaCollectionManager {
       this.collections.delete(name);
     } catch (error) {
       console.error(`Failed to delete collection '${name}':`, error);
-      throw new Error(`Collection deletion failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection deletion failed: ${getErrorMessage(error)}`);
     }
   }
 

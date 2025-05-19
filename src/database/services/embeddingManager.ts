@@ -1,6 +1,7 @@
 import { App, Notice } from 'obsidian';
 import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { OpenAIProvider } from '../providers/openai-provider';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Manages embedding providers and settings
@@ -60,7 +61,7 @@ export class EmbeddingManager {
         console.error("Error initializing OpenAI provider:", providerError);
         this.settings.embeddingsEnabled = false;
         this.embeddingProvider = null;
-        new Notice(`Error initializing embeddings: ${providerError.message}`);
+        new Notice(`Error initializing embeddings: ${getErrorMessage(providerError)}`);
       }
     } else {
       this.embeddingProvider = null;
@@ -154,7 +155,7 @@ export class EmbeddingManager {
     } catch (error) {
       // Handle provider initialization errors
       console.error('Error initializing embedding provider:', error);
-      new Notice(`Error initializing embedding provider: ${error.message}`);
+      new Notice(`Error initializing embedding provider: ${getErrorMessage(error)}`);
       
       // Disable embeddings since provider failed
       this.settings.embeddingsEnabled = false;

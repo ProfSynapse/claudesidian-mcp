@@ -1,5 +1,4 @@
-import { CommonParameters, CommonResult } from '../types';
-import { WorkspaceContext } from './contextUtils';
+import type { CommonResult } from '../types';
 
 /**
  * Utility functions for handling JSON schemas in a DRY way

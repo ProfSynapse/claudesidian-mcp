@@ -6,6 +6,7 @@ import { EmbeddingService } from './EmbeddingService';
 import { VectorStoreFactory } from '../factory/VectorStoreFactory';
 import { FileEmbedding } from '../workspace-types';
 import { v4 as uuidv4 } from 'uuid';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * ChromaDB implementation of the search service
@@ -88,7 +89,7 @@ export class ChromaSearchService {
       content = await this.plugin.app.vault.read(file as any);
     } catch (error) {
       if (notice) notice.hide();
-      throw new Error(`Failed to read file: ${error.message}`);
+      throw new Error(`Failed to read file: ${getErrorMessage(error)}`);
     }
     
     // Generate embedding for the content
@@ -210,7 +211,7 @@ export class ChromaSearchService {
       
       return ids;
     } catch (error) {
-      notice.setMessage(`Error generating embeddings: ${error.message}`);
+      notice.setMessage(`Error generating embeddings: ${getErrorMessage(error)}`);
       setTimeout(() => notice.hide(), 3000);
       throw error;
     }
@@ -397,7 +398,7 @@ export class ChromaSearchService {
           console.error('Error in direct text search:', error);
           return {
             success: false,
-            error: `Direct text search failed: ${error.message}`
+            error: `Direct text search failed: ${getErrorMessage(error)}`
           };
         }
       }
@@ -422,7 +423,7 @@ export class ChromaSearchService {
       console.error('Error in semantic search:', error);
       return {
         success: false,
-        error: `Error performing semantic search: ${error.message}`
+        error: `Error performing semantic search: ${getErrorMessage(error)}`
       };
     }
   }
@@ -600,7 +601,7 @@ export class ChromaSearchService {
       console.error('Error in semantic search with embedding:', error);
       return {
         success: false,
-        error: `Error performing semantic search with embedding: ${error.message}`
+        error: `Error performing semantic search with embedding: ${getErrorMessage(error)}`
       };
     }
   }
@@ -757,7 +758,7 @@ export class ChromaSearchService {
     } catch (error) {
       return {
         success: false,
-        error: `Error performing combined search: ${error.message}`
+        error: `Error performing combined search: ${getErrorMessage(error)}`
       };
     }
   }

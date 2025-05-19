@@ -1,4 +1,4 @@
-import { App, TFile, Command, PluginManifest } from 'obsidian';
+import { App, TFile, PluginManifest } from 'obsidian';
 import { IAgent } from './agents/interfaces/IAgent';
 import { WorkspaceContext } from './utils/contextUtils';
 

@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { ListCollectionsParams, CollectionResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for listing vector collections
@@ -88,7 +89,7 @@ export class ListCollectionsMode extends BaseMode<ListCollectionsParams, Collect
               metadata: metadataObj?.metadata || {}
             };
           } catch (error) {
-            console.warn(`Failed to get item count for collection ${collectionName}:`, error);
+            console.warn(`Failed to get item count for collection ${collectionName}:`, getErrorMessage(error));
             return {
               name: collectionName,
               metadata: {}
@@ -104,10 +105,10 @@ export class ListCollectionsMode extends BaseMode<ListCollectionsParams, Collect
         }
       };
     } catch (error) {
-      console.error('Failed to list collections:', error);
+      console.error('Failed to list collections:', getErrorMessage(error));
       return {
         success: false,
-        error: `Failed to list collections: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage('Failed to list collections: ', error)
       };
     }
   }

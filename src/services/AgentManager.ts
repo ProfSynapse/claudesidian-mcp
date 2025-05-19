@@ -16,10 +16,14 @@ export class AgentManager {
    * @param eventManager Event manager instance
    */
   constructor(
-    private app: App,
-    private plugin: any,
-    private eventManager: EventManager
-  ) {}
+    _app: App,
+    _plugin: any,
+    _eventManager: EventManager
+  ) {
+    // We're not currently using these parameters but they might be needed in the future
+    // No need to store them as class properties for now
+    // Using underscore prefix to indicate intentionally unused parameters
+  }
   
   /**
    * Register an agent

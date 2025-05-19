@@ -2,6 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { DeleteEmbeddingsParams, EmbeddingResult } from '../../types';
+import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode for deleting embeddings from a collection
@@ -82,10 +83,10 @@ export class DeleteEmbeddingMode extends BaseMode<DeleteEmbeddingsParams, Embedd
         }
       };
     } catch (error) {
-      console.error(`Failed to delete embeddings from collection ${params.collectionName}:`, error);
+      console.error(`Failed to delete embeddings from collection ${params.collectionName}:`, getErrorMessage(error));
       return {
         success: false,
-        error: `Failed to delete embeddings: ${error instanceof Error ? error.message : String(error)}`
+        error: createErrorMessage('Failed to delete embeddings: ', error)
       };
     }
   }

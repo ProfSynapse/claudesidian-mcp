@@ -1,4 +1,4 @@
-import { CommonParameters, CommonResult } from '../types';
+import { CommonParameters } from '../types';
 
 /**
  * Interface for workspace context

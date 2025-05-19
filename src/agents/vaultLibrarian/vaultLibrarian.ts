@@ -9,9 +9,9 @@ import {
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { OpenAIProvider } from '../../database/providers/openai-provider';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
-import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Agent for searching and navigating the vault
@@ -20,7 +20,6 @@ export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
   private embeddingProvider: OpenAIProvider | null = null;
   private embeddingService: EmbeddingService | null = null;
-  private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
   private searchService: ChromaSearchService | null = null;
   private settings: MemorySettings;
@@ -45,12 +44,11 @@ export class VaultLibrarianAgent extends BaseAgent {
     this.settings.embeddingsEnabled = false; // Disable by default until API key is provided
     
     // Define plugin using safe type check
-    let pluginInstance = null;
     try {
       if (app.plugins) {
         const plugin = app.plugins.getPlugin('claudesidian-mcp');
         if (plugin) {
-          pluginInstance = plugin;
+          // Plugin instance found
           // Safely access settings
           const pluginAny = plugin as any;
           const memorySettings = pluginAny.settings?.settings?.memory;
@@ -67,9 +65,6 @@ export class VaultLibrarianAgent extends BaseAgent {
               this.embeddingService = services.embeddingService;
             }
             
-            if (services.workspaceService) {
-              this.workspaceService = services.workspaceService;
-            }
             
             if (services.memoryService) {
               this.memoryService = services.memoryService;
@@ -82,7 +77,7 @@ export class VaultLibrarianAgent extends BaseAgent {
         }
       }
     } catch (error) {
-      console.error("Error initializing services:", error);
+      console.error("Error initializing services:", getErrorMessage(error));
       this.embeddingProvider = null;
     }
     
@@ -131,7 +126,7 @@ export class VaultLibrarianAgent extends BaseAgent {
       try {
         this.embeddingProvider = new OpenAIProvider(settings);
       } catch (error) {
-        console.error('Error initializing embedding provider:', error);
+        console.error('Error initializing embedding provider:', getErrorMessage(error));
         this.embeddingProvider = null;
       }
     }
@@ -162,7 +157,7 @@ export class VaultLibrarianAgent extends BaseAgent {
       
       console.log('VaultLibrarian agent unloaded successfully');
     } catch (error) {
-      console.error('Error unloading VaultLibrarian agent:', error);
+      console.error('Error unloading VaultLibrarian agent:', getErrorMessage(error));
     }
   }
 }

@@ -1,5 +1,5 @@
-import { CommonParameters, CommonResult } from '../../types';
-import { WorkspaceParameters, WorkspaceResult } from '../../database/workspace-types';
+import { CommonResult } from '../../types';
+import { WorkspaceParameters } from '../../database/workspace-types';
 
 /**
  * Base parameters for vector operations

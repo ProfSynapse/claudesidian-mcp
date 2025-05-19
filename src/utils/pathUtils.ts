@@ -40,10 +40,9 @@ export function sanitizeName(name: string, useUnderscores: boolean = false): str
 /**
  * Sanitizes a file path by replacing invalid characters with safe alternatives
  * @param path The file path to sanitize
- * @param rootPath The root path of the vault
  * @returns A sanitized path safe for file system operations
  */
-export function sanitizePath(path: string, rootPath?: string): string {
+export function sanitizePath(path: string): string {
     // Handle empty or invalid input
     if (!path || typeof path !== 'string') {
         return '';

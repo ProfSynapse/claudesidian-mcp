@@ -1,7 +1,5 @@
-import { TFile } from 'obsidian';
 import { SearchWeights } from '../../database/utils/SearchOperations';
 import { CommonParameters, CommonResult } from '../../types';
-import { WorkspaceParameters, WorkspaceResult } from '../../database/workspace-types';
 
 /**
  * Search content arguments

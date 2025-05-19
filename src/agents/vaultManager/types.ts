@@ -1,4 +1,3 @@
-import { TFile } from 'obsidian';
 import { CommonParameters } from '../../types';
 
 /**

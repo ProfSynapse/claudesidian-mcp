@@ -4,6 +4,7 @@ import * as Modes from './modes';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
 import { MemoryService } from '../../database/services/MemoryService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Agent for managing workspace memory, sessions, and state snapshots
@@ -115,7 +116,7 @@ export class MemoryManagerAgent extends BaseAgent {
           }
         }
       } catch (error) {
-        console.error('Failed to get/create session:', error);
+        console.error('Failed to get/create session:', getErrorMessage(error));
       }
     }
     

@@ -2,6 +2,7 @@ import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceMemoryTrace } from '../workspace-types';
 import { v4 as uuidv4 } from 'uuid';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Collection manager for memory traces
@@ -310,7 +311,7 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
       return matches;
     } catch (error) {
       console.error('Error in direct text search:', error);
-      throw new Error(`Direct text search failed: ${error.message}`);
+      throw new Error(`Direct text search failed: ${getErrorMessage(error)}`);
     }
   }
 }

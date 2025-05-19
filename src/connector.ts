@@ -66,9 +66,11 @@ export class MCPConnector {
             // Get services from the plugin if available
             const services = this.plugin && (this.plugin as any).services ? (this.plugin as any).services : {};
             const memoryService = services.memoryService;
-            const embeddingService = services.embeddingService;
-            const searchService = services.searchService;
-            const workspaceService = services.workspaceService;
+            // These services are available but not currently used in this method
+            // Keeping them commented for future use
+            // const embeddingService = services.embeddingService;
+            // const searchService = services.searchService;
+            // const workspaceService = services.workspaceService;
             
             // Create all agents with services
             const contentManagerAgent = new ContentManagerAgent(
@@ -254,7 +256,7 @@ export class MCPConnector {
             // Remove operational logging to avoid console noise
             throw new McpError(
                 ErrorCode.InvalidParams,
-                error.message || 'Failed to call tool',
+                (error as Error).message || 'Failed to call tool',
                 error
             );
         }

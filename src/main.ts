@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, debounce } from 'obsidian';
+import { Plugin, Notice, TFile, TAbstractFile, debounce } from 'obsidian';
 import { UpdateManager } from './utils/UpdateManager';
 import { MCPConnector } from './connector';
 import { Settings } from './settings';
@@ -12,32 +12,31 @@ import { IVectorStore } from './database/interfaces/IVectorStore';
 import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 import { WorkspaceService } from './database/services/WorkspaceService';
 import { MemoryService } from './database/services/MemoryService';
-import { EmbeddingServiceAdapter } from './database/services/EmbeddingServiceAdapter';
 
 export default class ClaudesidianPlugin extends Plugin {
-    public settings: Settings;
-    private connector: MCPConnector;
-    private settingsTab: SettingsTab;
+    public settings!: Settings;
+    private connector!: MCPConnector;
+    private settingsTab!: SettingsTab;
     
     // ChromaDB infrastructure
-    public vectorStore: IVectorStore;
+    public vectorStore!: IVectorStore;
     
     // Services
-    public embeddingService: EmbeddingService;
-    public searchService: ChromaSearchService;
-    public workspaceService: WorkspaceService;
-    public memoryService: MemoryService;
+    public embeddingService!: EmbeddingService;
+    public searchService!: ChromaSearchService;
+    public workspaceService!: WorkspaceService;
+    public memoryService!: MemoryService;
     
     // Event handlers
-    private fileCreatedHandler: (file: TFile) => void;
-    private fileModifiedHandler: (file: TFile) => void;
-    private fileDeletedHandler: (file: TFile) => void;
+    private fileCreatedHandler!: (file: TAbstractFile) => void;
+    private fileModifiedHandler!: (file: TAbstractFile) => void;
+    private fileDeletedHandler!: (file: TAbstractFile) => void;
     private idleTimer: NodeJS.Timeout | null = null;
     private pendingFiles: Set<string> = new Set();
     private isProcessingFiles: boolean = false;
     
     // Service registry
-    public services: {
+    public services!: {
         embeddingService: EmbeddingService;
         searchService: ChromaSearchService;
         workspaceService: WorkspaceService;
@@ -122,7 +121,7 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Add ribbon icons
         this.addRibbonIcon('bot', 'Open Claudesidian MCP', () => {
-            new ConfigModal(this.app, this.settings).open();
+            new ConfigModal(this.app).open();
         });
 
         this.addRibbonIcon('refresh-cw', 'Check for Updates', async () => {
@@ -242,20 +241,42 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
+     * Helper method to safely register vault event handlers with proper typing
+     * @param event The event name
+     * @param handler The event handler
+     */
+    private registerVaultHandler(event: 'create' | 'modify' | 'delete', handler: (file: TAbstractFile) => void): void {
+        // Using Function type cast to bypass TypeScript's strict checking
+        // @ts-ignore - Ignoring type mismatch as we know the handler signature is compatible
+        this.app.vault.on(event, handler);
+    }
+    
+    /**
+     * Helper method to safely unregister vault event handlers with proper typing
+     * @param event The event name
+     * @param handler The event handler
+     */
+    private unregisterVaultHandler(event: 'create' | 'modify' | 'delete', handler: (file: TAbstractFile) => void): void {
+        // Using Function type cast to bypass TypeScript's strict checking
+        // @ts-ignore - Ignoring type mismatch as we know the handler signature is compatible
+        this.app.vault.off(event, handler);
+    }
+    
+    /**
      * Remove all embedding-related event listeners
      */
     private removeEmbeddingEventListeners(): void {
         // Only remove if handlers were defined
         if (this.fileCreatedHandler) {
-            this.app.vault.off('create', this.fileCreatedHandler);
+            this.unregisterVaultHandler('create', this.fileCreatedHandler);
         }
         
         if (this.fileModifiedHandler) {
-            this.app.vault.off('modify', this.fileModifiedHandler);
+            this.unregisterVaultHandler('modify', this.fileModifiedHandler);
         }
         
         if (this.fileDeletedHandler) {
-            this.app.vault.off('delete', this.fileDeletedHandler);
+            this.unregisterVaultHandler('delete', this.fileDeletedHandler);
         }
     }
     
@@ -266,30 +287,30 @@ export default class ClaudesidianPlugin extends Plugin {
         console.log("Setting up live embedding event listeners");
         
         // Handle file creation
-        this.fileCreatedHandler = (file: TFile) => {
-            if (file.extension === 'md') {
+        this.fileCreatedHandler = (file: TAbstractFile) => {
+            if (file instanceof TFile && file.extension === 'md') {
                 this.embedFile(file.path);
             }
         };
         
         // Handle file modification
-        this.fileModifiedHandler = (file: TFile) => {
-            if (file.extension === 'md') {
+        this.fileModifiedHandler = (file: TAbstractFile) => {
+            if (file instanceof TFile && file.extension === 'md') {
                 this.embedFile(file.path);
             }
         };
         
         // Handle file deletion
-        this.fileDeletedHandler = (file: TFile) => {
-            if (file.extension === 'md') {
+        this.fileDeletedHandler = (file: TAbstractFile) => {
+            if (file instanceof TFile && file.extension === 'md') {
                 this.deleteEmbedding(file.path);
             }
         };
         
         // Register event listeners
-        this.app.vault.on('create', this.fileCreatedHandler);
-        this.app.vault.on('modify', this.fileModifiedHandler);
-        this.app.vault.on('delete', this.fileDeletedHandler);
+        this.registerVaultHandler('create', this.fileCreatedHandler);
+        this.registerVaultHandler('modify', this.fileModifiedHandler);
+        this.registerVaultHandler('delete', this.fileDeletedHandler);
     }
     
     /**
@@ -308,24 +329,24 @@ export default class ClaudesidianPlugin extends Plugin {
         }, idleTimeThreshold);
         
         // Handle file creation
-        this.fileCreatedHandler = (file: TFile) => {
-            if (file.extension === 'md') {
+        this.fileCreatedHandler = (file: TAbstractFile) => {
+            if (file instanceof TFile && file.extension === 'md') {
                 this.pendingFiles.add(file.path);
                 processQueueAfterIdle();
             }
         };
         
         // Handle file modification
-        this.fileModifiedHandler = (file: TFile) => {
-            if (file.extension === 'md') {
+        this.fileModifiedHandler = (file: TAbstractFile) => {
+            if (file instanceof TFile && file.extension === 'md') {
                 this.pendingFiles.add(file.path);
                 processQueueAfterIdle();
             }
         };
         
         // Handle file deletion
-        this.fileDeletedHandler = (file: TFile) => {
-            if (file.extension === 'md') {
+        this.fileDeletedHandler = (file: TAbstractFile) => {
+            if (file instanceof TFile && file.extension === 'md') {
                 // Remove from pending queue if present
                 this.pendingFiles.delete(file.path);
                 // Delete embedding
@@ -334,9 +355,9 @@ export default class ClaudesidianPlugin extends Plugin {
         };
         
         // Register event listeners
-        this.app.vault.on('create', this.fileCreatedHandler);
-        this.app.vault.on('modify', this.fileModifiedHandler);
-        this.app.vault.on('delete', this.fileDeletedHandler);
+        this.registerVaultHandler('create', this.fileCreatedHandler);
+        this.registerVaultHandler('modify', this.fileModifiedHandler);
+        this.registerVaultHandler('delete', this.fileDeletedHandler);
     }
     
     /**
@@ -363,7 +384,7 @@ export default class ClaudesidianPlugin extends Plugin {
             console.log("Completed processing pending files");
         } catch (error) {
             console.error("Error processing file queue:", error);
-            new Notice(`Error generating embeddings: ${error.message}`);
+            new Notice(`Error generating embeddings: ${(error as Error).message}`);
         } finally {
             this.isProcessingFiles = false;
             
@@ -431,7 +452,7 @@ export default class ClaudesidianPlugin extends Plugin {
             await this.searchService.indexFile(filePath);
         } catch (error) {
             console.error(`Error embedding file ${filePath}:`, error);
-            new Notice(`Error generating embedding for ${filePath}: ${error.message}`);
+            new Notice(`Error generating embedding for ${filePath}: ${(error as Error).message}`);
         }
     }
     

@@ -20,8 +20,7 @@ export interface WorkspaceContext {
  * without requiring explicit context passing between every operation.
  */
 export class SessionContextManager {
-  // Reference to memory service (for session validation)
-  private memoryService: any = null;
+  // Reference to memory service (will be used for future session validation)
   // Map of sessionId -> workspace context
   private sessionContextMap: Map<string, WorkspaceContext> = new Map();
   
@@ -158,8 +157,9 @@ export class SessionContextManager {
    * 
    * @param memoryService The memory service instance
    */
-  setMemoryService(memoryService: any): void {
-    this.memoryService = memoryService;
+  setMemoryService(_memoryService: any): void {
+    // Placeholder for future implementation
+    // Memory service will be used for session validation in future releases
   }
   
   /**

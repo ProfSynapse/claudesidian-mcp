@@ -2,6 +2,7 @@ import { Notice, requestUrl } from 'obsidian';
 import { MemorySettings } from '../../types';
 import { BaseEmbeddingProvider } from './embeddings-provider';
 import * as gptTokenizer from 'gpt-tokenizer';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * OpenAI provider for generating embeddings
@@ -324,8 +325,8 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
         } catch (error) {
             // Log error and provide user notification
             console.error('Error generating embeddings:', error);
-            new Notice('Error generating embeddings: ' + (error.message || error));
-            throw error;
+            new Notice('Error generating embeddings: ' + getErrorMessage(error));
+            throw new Error(`Failed to generate embeddings: ${getErrorMessage(error)}`);
         }
     }
     

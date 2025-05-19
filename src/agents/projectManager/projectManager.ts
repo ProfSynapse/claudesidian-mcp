@@ -14,6 +14,7 @@ import {
   LoadWorkspaceMode
 } from './modes';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Agent for managing projects and workspaces in the vault
@@ -85,7 +86,7 @@ export class ProjectManagerAgent extends BaseAgent {
           params.workspaceContext.sessionId = sessionId;
         }
       } catch (error) {
-        console.error('Failed to get/create session:', error);
+        console.error('Failed to get/create session:', getErrorMessage(error));
       }
     }
     

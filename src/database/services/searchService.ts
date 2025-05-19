@@ -4,21 +4,20 @@ import { EmbeddingService } from './EmbeddingService';
 import { ChromaSearchService } from './ChromaSearchService';
 import { MemoryService } from './MemoryService';
 import ClaudesidianPlugin from '../../main';
-import { WorkspaceContext as SessionWorkspaceContext } from '../../services/SessionContextManager';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Handles semantic and combined search operations using ChromaDB
  */
 export class SearchService {
   private app: App;
-  private plugin: Plugin;
+  // The plugin property is used for initialization in the constructor
   private embeddingService: EmbeddingService;
   private chromaSearch: ChromaSearchService;
   private memoryService: MemoryService;
 
   constructor(app: App, plugin: Plugin) {
     this.app = app;
-    this.plugin = plugin;
     
     // Get the new services from the plugin
     this.embeddingService = (plugin as ClaudesidianPlugin).services?.embeddingService;
@@ -242,7 +241,7 @@ export class SearchService {
       console.error('Error in semantic search:', error);
       return {
         success: false,
-        error: `Error performing semantic search: ${error.message}`
+        error: `Error performing semantic search: ${getErrorMessage(error)}`
       };
     }
   }
@@ -365,7 +364,7 @@ export class SearchService {
     } catch (error) {
       return {
         success: false,
-        error: `Error performing combined search: ${error.message}`
+        error: `Error performing combined search: ${getErrorMessage(error)}`
       };
     }
   }

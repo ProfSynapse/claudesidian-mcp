@@ -1,4 +1,5 @@
 import { BaseEmbeddingProvider } from '../base/BaseEmbeddingProvider';
+import { getErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Embedding provider for ChromaDB
@@ -44,7 +45,7 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider {
       return await this.embeddingFunction(texts);
     } catch (error) {
       console.error('Failed to generate embeddings:', error);
-      throw new Error(`Embedding generation failed: ${error.message}`);
+      throw new Error(`Embedding generation failed: ${getErrorMessage(error)}`);
     }
   }
   

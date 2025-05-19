@@ -164,7 +164,7 @@ export class SearchOperations {
     async search(query: string, options: {
         path?: string;
         limit?: number;
-        includeFolders?: boolean;
+        includeFolders?: boolean; // Renamed to _includeFolders in the implementation
         includeMetadata?: boolean;
         searchFields?: string[];
         weights?: Partial<SearchWeights>;
@@ -174,19 +174,17 @@ export class SearchOperations {
         graphMaxDistance?: number;
         seedNotes?: string[];
     } = {}): Promise<SearchResult[]> {
-        const {
-            path,
-            limit = 10,
-            includeFolders = false,
-            includeMetadata = true,
-            searchFields = ['title', 'content', 'tags'],
-            weights,
-            includeContent = false,
-            useGraphBoost = false,
-            graphBoostFactor = 0.3,
-            graphMaxDistance = 1,
-            seedNotes = []
-        } = options;
+        // Extract only the options we need
+        const path = options.path;
+        const limit = options.limit || 10;
+        const includeMetadata = options.includeMetadata !== undefined ? options.includeMetadata : true;
+        const searchFields = options.searchFields || ['title', 'content', 'tags'];
+        const weights = options.weights;
+        const includeContent = options.includeContent || false;
+        const useGraphBoost = options.useGraphBoost || false;
+        const graphBoostFactor = options.graphBoostFactor || 0.3;
+        const graphMaxDistance = options.graphMaxDistance || 1;
+        const seedNotes = options.seedNotes || [];
 
         // Apply custom weights if provided, otherwise use defaults
         const searchWeights = weights ? 
@@ -472,17 +470,15 @@ export class SearchOperations {
             return '';
         }
         
-        // Find line containing the match
+        // Find position for snippet extraction
         const lines = textToSearch.split('\n');
         let currentPos = 0;
-        let matchLine = '';
-        let lineNumber = 0;
         
+        // Advance to the position where match occurs
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             if (currentPos <= position && position < currentPos + line.length) {
-                matchLine = line;
-                lineNumber = i;
+                // Found the matching line - no need to track line number
                 break;
             }
             currentPos += line.length + 1; // +1 for the newline character

@@ -12,15 +12,16 @@ import { BaseVectorStore } from '../base/BaseVectorStore';
 import { IStorageOptions } from '../../interfaces/IStorageOptions';
 import { existsSync, mkdirSync } from 'fs';
 import { Plugin } from 'obsidian';
+import { getErrorMessage } from '../../../utils/errorUtils';
 
 // Define standard include types for vector store compatibility
 type StoreIncludeType = 'embeddings' | 'metadatas' | 'documents' | 'distances';
 
 // Define a type for embedding results
-type Embeddings = number[][];
+// type Embeddings = number[][];
 
 // Define a type for metadata results
-type Metadata = Record<string, any>;
+// type Metadata = Record<string, any>;
 
 /**
  * ChromaDB implementation of vector store
@@ -72,7 +73,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       }
     } catch (error) {
       console.error(`Failed to create directory ${path}:`, error);
-      throw new Error(`Directory creation failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Directory creation failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -127,7 +128,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       console.log(`Found ${this.collections.size} collections in ChromaDB`);
     } catch (error) {
       console.error('Failed to initialize ChromaDB:', error);
-      throw new Error(`ChromaDB initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`ChromaDB initialization failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -192,7 +193,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       console.log(`Loaded ${this.collections.size} collections from ChromaDB`);
     } catch (error) {
       console.error('Failed to refresh collections:', error);
-      throw new Error(`Collection refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection refresh failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -241,7 +242,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       return collection;
     } catch (error) {
       console.error(`Failed to get/create collection '${collectionName}':`, error);
-      throw new Error(`Collection operation failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection operation failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -290,7 +291,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       
       // Otherwise, log and re-throw the error
       console.error(`Failed to create collection '${collectionName}':`, error);
-      throw new Error(`Collection creation failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection creation failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -331,7 +332,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       this.collectionCache.delete(collectionName);
     } catch (error) {
       console.error(`Failed to delete collection '${collectionName}':`, error);
-      throw new Error(`Collection deletion failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection deletion failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -371,7 +372,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       });
     } catch (error) {
       console.error(`Failed to add items to collection '${collectionName}':`, error);
-      throw new Error(`Item addition failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Item addition failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -405,18 +406,18 @@ export class ChromaVectorStore extends BaseVectorStore {
       return {
         ids: results.ids,
         embeddings: Array.isArray(results.embeddings) 
-          ? results.embeddings.map(e => e === null ? [] : e) as number[][] 
+          ? results.embeddings.map((e: any) => e === null ? [] : e) as number[][] 
           : undefined,
         metadatas: Array.isArray(results.metadatas) 
-          ? results.metadatas.map(m => m === null ? {} : m) as Record<string, any>[] 
+          ? results.metadatas.map((m: any) => m === null ? {} : m) as Record<string, any>[] 
           : undefined,
         documents: Array.isArray(results.documents) 
-          ? results.documents.map(d => d === null ? '' : d) as string[] 
+          ? results.documents.map((d: any) => d === null ? '' : d) as string[] 
           : undefined
       };
     } catch (error) {
       console.error(`Failed to get items from collection '${collectionName}':`, error);
-      throw new Error(`Item retrieval failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Item retrieval failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -452,7 +453,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       });
     } catch (error) {
       console.error(`Failed to update items in collection '${collectionName}':`, error);
-      throw new Error(`Item update failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Item update failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -475,7 +476,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       });
     } catch (error) {
       console.error(`Failed to delete items from collection '${collectionName}':`, error);
-      throw new Error(`Item deletion failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Item deletion failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -524,23 +525,23 @@ export class ChromaVectorStore extends BaseVectorStore {
       return {
         ids: resultIds,
         embeddings: resultEmbeddings.length > 0 
-          ? resultEmbeddings.map(batch => 
+          ? resultEmbeddings.map((batch: any) => 
               Array.isArray(batch) 
-                ? batch.map(e => e === null ? [] : Array.isArray(e) ? e : []) 
+                ? batch.map((e: any) => e === null ? [] : Array.isArray(e) ? e : []) 
                 : []
             ) 
           : undefined,
         metadatas: resultMetadatas.length > 0 
-          ? resultMetadatas.map(batch => 
+          ? resultMetadatas.map((batch: any) => 
               Array.isArray(batch) 
-                ? batch.map(m => m === null ? {} : (typeof m === 'object' ? m : {})) 
+                ? batch.map((m: any) => m === null ? {} : (typeof m === 'object' ? m : {})) 
                 : []
             ) 
           : undefined,
         documents: resultDocuments.length > 0 
-          ? resultDocuments.map(batch => 
+          ? resultDocuments.map((batch: any) => 
               Array.isArray(batch) 
-                ? batch.map(d => d === null ? '' : (typeof d === 'string' ? d : '')) 
+                ? batch.map((d: any) => d === null ? '' : (typeof d === 'string' ? d : '')) 
                 : []
             ) 
           : undefined,
@@ -548,7 +549,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       };
     } catch (error) {
       console.error(`Failed to query collection '${collectionName}':`, error);
-      throw new Error(`Collection query failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection query failed: ${getErrorMessage(error)}`);
     }
   }
   
@@ -570,7 +571,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       return count;
     } catch (error) {
       console.error(`Failed to get count for collection '${collectionName}':`, error);
-      throw new Error(`Collection count failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Collection count failed: ${getErrorMessage(error)}`);
     }
   }
   

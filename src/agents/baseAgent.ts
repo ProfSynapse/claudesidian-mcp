@@ -2,6 +2,7 @@ import { IAgent } from './interfaces/IAgent';
 import { IMode } from './interfaces/IMode';
 import { CommonParameters, CommonResult } from '../types';
 import { parseWorkspaceContext } from '../utils/contextUtils';
+import { createErrorMessage } from '../utils/errorUtils';
 
 /**
  * Base class for all agents in the MCP plugin
@@ -90,7 +91,8 @@ export abstract class BaseAgent implements IAgent {
       // Return error if sessionId is missing - it's now a required parameter
       return {
         success: false,
-        error: `Session ID is required for all tool calls. Mode ${modeSlug} cannot execute without a sessionId.`,
+        error: createErrorMessage('Session ID required: ', 
+          `Mode ${modeSlug} cannot execute without a sessionId.`),
         data: null
       };
     }
@@ -143,7 +145,7 @@ export abstract class BaseAgent implements IAgent {
       // If no agent manager is available, return original result with error
       return {
         ...originalResult,
-        error: originalResult.error || 'Handoff failed: Agent manager not available'
+        error: originalResult.error || createErrorMessage('Handoff failed: ', 'Agent manager not available')
       };
     }
     
@@ -152,7 +154,7 @@ export abstract class BaseAgent implements IAgent {
     if (!targetAgent) {
       return {
         ...originalResult,
-        error: `Handoff failed: Target agent '${handoff.tool}' not found`
+        error: createErrorMessage('Handoff failed: ', `Target agent '${handoff.tool}' not found`)
       };
     }
     
@@ -213,11 +215,10 @@ export abstract class BaseAgent implements IAgent {
       // Otherwise, just return the handoff result with potentially updated context
       return handoffResult;
     } catch (error) {
-      // Handle errors in handoff
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Handle errors in handoff using errorUtils
       return {
         success: false,
-        error: `Handoff error: ${errorMessage || 'Unknown error'}`,
+        error: createErrorMessage('Handoff error: ', error),
         workspaceContext: originalResult.workspaceContext,
         sessionId: originalResult.sessionId
       };
