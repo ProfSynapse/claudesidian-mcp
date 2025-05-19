@@ -54,8 +54,9 @@ export class MCPServer implements IMCPServer {
     
     constructor(
         private app: App,
-        // Using _ to indicate intentionally unused parameter
-        private readonly _plugin: Plugin,
+        // Plugin is not directly used but may be needed for type compatibility
+        // with external code. Marking with _ and making it non-private
+        _plugin: Plugin,
         private eventManager: EventManager,
         private sessionContextManager?: SessionContextManager,
         private serverName?: string
