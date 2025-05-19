@@ -6,13 +6,12 @@ import { CheckpointArgs, CheckpointResult } from '../types';
  * Mode for creating a project checkpoint
  */
 export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
-  private app: App;
 
   /**
    * Create a new CheckpointMode
-   * @param app Obsidian app instance
+   * @param _app Obsidian app instance (not used)
    */
-  constructor(app: App) {
+  constructor(_app: App) {
     super(
       'checkpoint',
       'Checkpoint',
@@ -20,7 +19,6 @@ export class CheckpointMode extends BaseMode<CheckpointArgs, CheckpointResult> {
       '1.0.0'
     );
 
-    this.app = app;
   }
 
   /**

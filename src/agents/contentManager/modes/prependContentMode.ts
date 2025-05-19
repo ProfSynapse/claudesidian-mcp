@@ -69,7 +69,8 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, errorMessage, params.workspaceContext);
     }
   }
   
@@ -122,7 +123,8 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
         }
       }
     } catch (error) {
-      console.error('Error updating embeddings with ChromaDB:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Error updating embeddings with ChromaDB:', errorMessage);
       // Don't throw error - embedding update is a secondary operation
       // and should not prevent the primary operation from succeeding
     }

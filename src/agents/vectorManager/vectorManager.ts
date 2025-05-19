@@ -24,17 +24,17 @@ export class VectorManagerAgent extends BaseAgent {
   /**
    * Embedding service for generating and managing embeddings
    */
-  private embeddingService: EmbeddingService;
+  private embeddingService!: EmbeddingService;
 
   /**
    * Search service for ChromaDB operations
    */
-  private searchService: ChromaSearchService;
+  private searchService!: ChromaSearchService;
 
   /**
    * Memory service for tracking operations
    */
-  private memoryService: MemoryService;
+  private memoryService!: MemoryService;
 
   /**
    * Create a new VectorManagerAgent
@@ -95,5 +95,16 @@ export class VectorManagerAgent extends BaseAgent {
    */
   getMemoryService(): MemoryService {
     return this.memoryService;
+  }
+  
+  /**
+   * Get the vector store instance from the search service
+   * @returns The vector store instance
+   */
+  getVectorStore(): any {
+    if (!this.searchService) {
+      throw new Error('Search service not initialized');
+    }
+    return this.searchService['vectorStore'];
   }
 }

@@ -1,6 +1,7 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Arguments for editing a folder
@@ -84,7 +85,7 @@ export class EditFolderMode extends BaseMode<EditFolderArgs, EditFolderResult> {
     } catch (error) {
       return {
         success: false,
-        error: `Failed to edit folder: ${error.message}`
+        error: createErrorMessage('Failed to edit folder: ', error)
       };
     }
   }

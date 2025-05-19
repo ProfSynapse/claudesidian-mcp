@@ -79,8 +79,9 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
       }
       
       return response;
-    } catch (error) {
-      return this.prepareResult(false, undefined, `Error executing command: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, `Error executing command: ${errorMessage}`);
     }
   }
   

@@ -2,7 +2,6 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceSession } from '../../../../database/workspace-types';
 import { CreateSessionParams, SessionResult } from '../../types';
-import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**
  * Mode for creating a new session with rich context
@@ -78,7 +77,8 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             workspaceId = defaultWorkspace.id;
           }
         } catch (error) {
-          return this.prepareResult(false, undefined, `Failed to determine workspace: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          return this.prepareResult(false, undefined, `Failed to determine workspace: ${errorMessage}`);
         }
       }
       
@@ -116,7 +116,8 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
         try {
           existingSession = await memoryService.getSession(params.sessionId);
         } catch (error) {
-          console.warn(`Error checking for existing session: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.warn(`Error checking for existing session: ${errorMessage}`);
         }
       }
       
@@ -207,7 +208,8 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             }
           }
         } catch (error) {
-          console.warn(`Failed to retrieve previous session data: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.warn(`Failed to retrieve previous session data: ${errorMessage}`);
         }
       }
       
@@ -235,7 +237,8 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             contextSummary += ` within "${parent.name}"`;
           }
         } catch (error) {
-          console.warn(`Failed to retrieve parent workspace: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.warn(`Failed to retrieve parent workspace: ${errorMessage}`);
         }
       }
       
@@ -345,7 +348,8 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
             );
           }
         } catch (error) {
-          console.warn(`Failed to create initial memory trace: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.warn(`Failed to create initial memory trace: ${errorMessage}`);
         }
       }
       
@@ -359,7 +363,8 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
         memoryContext: contextData
       });
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error creating session: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, `Error creating session: ${errorMessage}`);
     }
   }
   

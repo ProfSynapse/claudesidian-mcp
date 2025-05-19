@@ -11,7 +11,6 @@ import { ClaudesidianPlugin } from '../utils/pluginTypes';
  * Mode to delete a workspace
  */
 export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, WorkspaceResult> {
-  private app: App;
   private plugin: Plugin;
   private workspaceService: WorkspaceService | null = null;
   
@@ -26,7 +25,6 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
       'Remove a workspace and optionally its children',
       '1.0.0'
     );
-    this.app = app;
     this.plugin = app.plugins.getPlugin('claudesidian-mcp');
     
     // Safely access the workspace service
@@ -96,7 +94,7 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
         workspaceContext
       );
       
-    } catch (error) {
+    } catch (error: any) {
       return this.prepareResult(
         false,
         undefined,

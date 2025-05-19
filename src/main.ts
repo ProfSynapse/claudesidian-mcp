@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, debounce } from 'obsidian';
 import { UpdateManager } from './utils/UpdateManager';
 import { MCPConnector } from './connector';
 import { Settings } from './settings';
@@ -12,6 +12,7 @@ import { IVectorStore } from './database/interfaces/IVectorStore';
 import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 import { WorkspaceService } from './database/services/WorkspaceService';
 import { MemoryService } from './database/services/MemoryService';
+import { EmbeddingServiceAdapter } from './database/services/EmbeddingServiceAdapter';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings: Settings;
@@ -26,6 +27,14 @@ export default class ClaudesidianPlugin extends Plugin {
     public searchService: ChromaSearchService;
     public workspaceService: WorkspaceService;
     public memoryService: MemoryService;
+    
+    // Event handlers
+    private fileCreatedHandler: (file: TFile) => void;
+    private fileModifiedHandler: (file: TFile) => void;
+    private fileDeletedHandler: (file: TFile) => void;
+    private idleTimer: NodeJS.Timeout | null = null;
+    private pendingFiles: Set<string> = new Set();
+    private isProcessingFiles: boolean = false;
     
     // Service registry
     public services: {
@@ -85,6 +94,12 @@ export default class ClaudesidianPlugin extends Plugin {
             vectorStore: this.vectorStore
         };
         
+        // Initialize file watchers based on embedding strategy
+        this.initializeEmbeddingStrategy();
+        
+        // Handle startup embedding if configured
+        this.handleStartupEmbedding();
+        
         // Initialize connector with settings
         this.connector = new MCPConnector(this.app, this);
         await this.connector.start();
@@ -131,6 +146,15 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     async onunload() {
+        // Remove event listeners
+        this.removeEmbeddingEventListeners();
+        
+        // Clear any pending timers
+        if (this.idleTimer) {
+            clearTimeout(this.idleTimer);
+            this.idleTimer = null;
+        }
+        
         // Clean up the vault librarian if necessary
         const vaultLibrarian = this.connector.getVaultLibrarian();
         if (vaultLibrarian && typeof vaultLibrarian.onunload === 'function') {
@@ -181,4 +205,246 @@ export default class ClaudesidianPlugin extends Plugin {
         return this.connector.getMemoryManager();
     }
     
+    /**
+     * Initialize embedding strategy based on settings
+     * This is public so it can be called when settings change
+     */
+    public initializeEmbeddingStrategy(): void {
+        const memorySettings = this.settings.settings.memory;
+        if (!memorySettings) return;
+        
+        // First, remove any existing event listeners
+        this.removeEmbeddingEventListeners();
+        
+        // If embeddings are disabled, don't set up any event listeners
+        if (!memorySettings.embeddingsEnabled) {
+            console.log("Embeddings are disabled, skipping event listener setup");
+            return;
+        }
+        
+        // Setup event handlers based on the chosen strategy
+        switch (memorySettings.embeddingStrategy) {
+            case 'live':
+                this.setupLiveEmbedding();
+                break;
+            case 'idle':
+                this.setupIdleEmbedding();
+                break;
+            case 'startup':
+                // Startup embedding is handled separately in handleStartupEmbedding
+                break;
+            case 'manual':
+            default:
+                // No automatic embedding for manual mode
+                console.log("Manual embedding mode selected - no automatic embedding");
+                break;
+        }
+    }
+    
+    /**
+     * Remove all embedding-related event listeners
+     */
+    private removeEmbeddingEventListeners(): void {
+        // Only remove if handlers were defined
+        if (this.fileCreatedHandler) {
+            this.app.vault.off('create', this.fileCreatedHandler);
+        }
+        
+        if (this.fileModifiedHandler) {
+            this.app.vault.off('modify', this.fileModifiedHandler);
+        }
+        
+        if (this.fileDeletedHandler) {
+            this.app.vault.off('delete', this.fileDeletedHandler);
+        }
+    }
+    
+    /**
+     * Set up event listeners for live embedding
+     */
+    private setupLiveEmbedding(): void {
+        console.log("Setting up live embedding event listeners");
+        
+        // Handle file creation
+        this.fileCreatedHandler = (file: TFile) => {
+            if (file.extension === 'md') {
+                this.embedFile(file.path);
+            }
+        };
+        
+        // Handle file modification
+        this.fileModifiedHandler = (file: TFile) => {
+            if (file.extension === 'md') {
+                this.embedFile(file.path);
+            }
+        };
+        
+        // Handle file deletion
+        this.fileDeletedHandler = (file: TFile) => {
+            if (file.extension === 'md') {
+                this.deleteEmbedding(file.path);
+            }
+        };
+        
+        // Register event listeners
+        this.app.vault.on('create', this.fileCreatedHandler);
+        this.app.vault.on('modify', this.fileModifiedHandler);
+        this.app.vault.on('delete', this.fileDeletedHandler);
+    }
+    
+    /**
+     * Set up event listeners for idle-based embedding
+     * Files are added to a queue and processed after a period of inactivity
+     */
+    private setupIdleEmbedding(): void {
+        console.log("Setting up idle-triggered embedding event listeners");
+        
+        // Get idle threshold from settings
+        const idleTimeThreshold = this.settings.settings.memory?.idleTimeThreshold || 60000; // default 1 minute
+        
+        // Create debounced handler that will process files after idle period
+        const processQueueAfterIdle = debounce(() => {
+            this.processFileQueue();
+        }, idleTimeThreshold);
+        
+        // Handle file creation
+        this.fileCreatedHandler = (file: TFile) => {
+            if (file.extension === 'md') {
+                this.pendingFiles.add(file.path);
+                processQueueAfterIdle();
+            }
+        };
+        
+        // Handle file modification
+        this.fileModifiedHandler = (file: TFile) => {
+            if (file.extension === 'md') {
+                this.pendingFiles.add(file.path);
+                processQueueAfterIdle();
+            }
+        };
+        
+        // Handle file deletion
+        this.fileDeletedHandler = (file: TFile) => {
+            if (file.extension === 'md') {
+                // Remove from pending queue if present
+                this.pendingFiles.delete(file.path);
+                // Delete embedding
+                this.deleteEmbedding(file.path);
+            }
+        };
+        
+        // Register event listeners
+        this.app.vault.on('create', this.fileCreatedHandler);
+        this.app.vault.on('modify', this.fileModifiedHandler);
+        this.app.vault.on('delete', this.fileDeletedHandler);
+    }
+    
+    /**
+     * Process the queue of pending files
+     */
+    private async processFileQueue(): Promise<void> {
+        if (this.isProcessingFiles || this.pendingFiles.size === 0) {
+            return;
+        }
+        
+        // Mark as processing to prevent multiple simultaneous runs
+        this.isProcessingFiles = true;
+        
+        try {
+            console.log(`Processing ${this.pendingFiles.size} pending files for embedding`);
+            const filePaths = Array.from(this.pendingFiles);
+            
+            // Clear the queue
+            this.pendingFiles.clear();
+            
+            // Process files in batches with the search service's batch method
+            await this.searchService.batchIndexFiles(filePaths);
+            
+            console.log("Completed processing pending files");
+        } catch (error) {
+            console.error("Error processing file queue:", error);
+            new Notice(`Error generating embeddings: ${error.message}`);
+        } finally {
+            this.isProcessingFiles = false;
+            
+            // If new files were added during processing, schedule another run
+            if (this.pendingFiles.size > 0) {
+                console.log(`${this.pendingFiles.size} new files added during processing, scheduling another run`);
+                this.processFileQueue();
+            }
+        }
+    }
+    
+    /**
+     * Handle startup embedding if configured
+     */
+    private async handleStartupEmbedding(): Promise<void> {
+        const memorySettings = this.settings.settings.memory;
+        if (!memorySettings || !memorySettings.embeddingsEnabled) return;
+        
+        if (memorySettings.embeddingStrategy === 'startup') {
+            console.log("Startup embedding strategy detected, indexing all non-indexed files");
+            
+            // Get all markdown files
+            const markdownFiles = this.app.vault.getMarkdownFiles();
+            
+            // To avoid indexing everything on every startup, we could:
+            // 1. Only index files modified since last indexing
+            // 2. Only index files that have no embedding yet
+            // 3. Skip files that match exclude patterns
+            
+            // Get existing embeddings
+            try {
+                const existingEmbeddings = await this.searchService.getAllFileEmbeddings();
+                const indexedFilePaths = new Set(existingEmbeddings.map(e => e.filePath));
+                
+                // Filter to only non-indexed files
+                const filesToIndex = markdownFiles
+                    .filter(file => !indexedFilePaths.has(file.path))
+                    .map(file => file.path);
+                
+                if (filesToIndex.length > 0) {
+                    console.log(`Found ${filesToIndex.length} non-indexed files to process on startup`);
+                    
+                    // Process files in batches with the search service's batch method
+                    await this.searchService.batchIndexFiles(filesToIndex);
+                    
+                    console.log("Completed startup indexing");
+                } else {
+                    console.log("No new files to index on startup");
+                }
+            } catch (error) {
+                console.error("Error during startup indexing:", error);
+            }
+        }
+    }
+    
+    /**
+     * Embed a single file
+     * @param filePath Path to the file to embed
+     */
+    private async embedFile(filePath: string): Promise<void> {
+        try {
+            console.log(`Embedding file: ${filePath}`);
+            
+            // Use the indexFile method which now shows notices internally
+            await this.searchService.indexFile(filePath);
+        } catch (error) {
+            console.error(`Error embedding file ${filePath}:`, error);
+            new Notice(`Error generating embedding for ${filePath}: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Delete embedding for a single file
+     * @param filePath Path to the file to delete embedding for
+     */
+    private async deleteEmbedding(filePath: string): Promise<void> {
+        try {
+            console.log(`Deleting embedding for file: ${filePath}`);
+            await this.searchService.deleteFileEmbedding(filePath);
+        } catch (error) {
+            console.error(`Error deleting embedding for file ${filePath}:`, error);
+        }
+    }
 }

@@ -19,6 +19,7 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
   - Session and state management for workspaces
   - Vector collections for embeddings storage
   - Semantic search capabilities
+  - Multiple embedding strategies (manual, live, idle, startup)
   - Batch operations for efficiency
 
 - 🏗️ Agent-Mode Architecture
@@ -91,6 +92,63 @@ Claudesidian MCP supports running across multiple Obsidian vaults simultaneously
 - Check that the paths to connector.js are correct for each vault
 - Ensure IPC paths don't conflict
 - If experiencing issues, check the plugin logs for each vault
+
+## Automatic Embedding Strategies
+
+Claudesidian MCP offers multiple strategies for embedding your notes, giving you control over when and how your content is indexed for semantic search. These strategies can be configured in the plugin settings under the "Memory" tab.
+
+### Available Embedding Strategies
+
+#### 1. Manual Only
+- **Description**: No automatic embedding; you control exactly when to index content
+- **Best for**: Users who want complete control over the indexing process
+- **How it works**: You need to manually trigger indexing through the "Reindex All Content" button in settings or via MCP tools
+
+#### 2. Live Embedding
+- **Description**: Embeds files immediately when they are created or modified
+- **Best for**: Real-time search capabilities, smaller vaults
+- **How it works**: File change events trigger immediate embedding of modified content
+- **Considerations**: May consume more API tokens, can cause brief UI pauses during embedding
+
+#### 3. Idle Embedding
+- **Description**: Waits for a period of inactivity before processing changes
+- **Best for**: Balancing real-time updates with performance
+- **How it works**: 
+  - Files are queued when modified
+  - After a configurable idle period (default: 60 seconds), queued files are processed
+  - Changes are batched for efficiency
+- **Considerations**: Good balance between token usage and having up-to-date embeddings
+
+#### 4. Startup Embedding
+- **Description**: Indexes non-embedded files when Obsidian starts
+- **Best for**: New vaults or infrequently updated content
+- **How it works**: 
+  - On plugin initialization, it compares existing files with already-embedded content
+  - Only processes files that have no existing embedding
+- **Considerations**: Might cause initial slowdown when Obsidian starts, but doesn't interfere during regular use
+
+### Changing Embedding Strategy
+
+1. Open Obsidian Settings
+2. Navigate to the "Claudesidian MCP" plugin settings
+3. Go to the "Memory" tab
+4. In the "Embedding" section, find "Embedding Strategy" dropdown
+5. Select your preferred strategy
+6. If you select "Idle", you can also configure the idle time threshold
+
+### Additional Settings
+
+- **Idle Time Threshold**: For the Idle strategy, controls how long to wait (5-300 seconds) after the last change before processing
+- **Batch Size**: Controls how many files are processed together in a batch
+- **Processing Delay**: Controls the delay between processing batches (to reduce UI freezing)
+- **Concurrent Requests**: Controls how many API requests can run in parallel
+
+### Best Practices
+
+1. For large vaults, use "Idle" or "Startup" strategy to avoid performance issues
+2. For small vaults or if you need real-time search, "Live" strategy works well
+3. If you're concerned about API token usage, use "Manual" or "Startup" strategy
+4. Configure exclusion patterns to skip folders you don't want to index (like images, attachments, etc.)
 
 ## Security
 

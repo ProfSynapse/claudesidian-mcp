@@ -34,7 +34,11 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
      * @param text The text to validate
      * @param maxTokens The maximum number of tokens allowed
      */
-    validateTokenLimit(text: string, maxTokens: number = 8191): boolean {
+    validateTokenLimit(text: string, maxTokens: number = 0): boolean {
+        // If maxTokens is 0 or less, don't enforce a limit
+        if (maxTokens <= 0) {
+            return true;
+        }
         const tokenCount = this.getTokenCount(text);
         return tokenCount <= maxTokens;
     }

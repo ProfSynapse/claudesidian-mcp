@@ -1,6 +1,7 @@
 import { App, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Parameters for list folders mode
@@ -91,7 +92,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       return this.prepareResult(true, { folders: folderData }, undefined, params.workspaceContext);
       
     } catch (error) {
-      return this.prepareResult(false, undefined, `Failed to list folders: ${error.message}`);
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to list folders: ', error));
     }
   }
   

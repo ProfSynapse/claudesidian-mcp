@@ -21,9 +21,10 @@ import { parseWorkspaceContext } from '../../utils/contextUtils';
 export class ProjectManagerAgent extends BaseAgent {
   /**
    * Create a new ProjectManagerAgent
-   * @param app Obsidian app instance
+   * @param _app Obsidian app instance (used for mode initialization)
+   * @param plugin Plugin instance for accessing services
    */
-  constructor(private app: App, public plugin?: any) {
+  constructor(private readonly _app: App, public plugin?: any) {
     super(
       ProjectManagerConfig.name,
       ProjectManagerConfig.description,
@@ -31,17 +32,17 @@ export class ProjectManagerAgent extends BaseAgent {
     );
     
     // Register project modes
-    this.registerMode(new ProjectPlanMode(app));
-    this.registerMode(new AskQuestionMode(app));
-    this.registerMode(new CheckpointMode(app));
-    this.registerMode(new CompletionMode(app));
+    this.registerMode(new ProjectPlanMode(this._app));
+    this.registerMode(new AskQuestionMode(this._app));
+    this.registerMode(new CheckpointMode(this._app));
+    this.registerMode(new CompletionMode(this._app));
     
     // Register workspace management modes
-    this.registerMode(new ListWorkspacesMode(app));
-    this.registerMode(new CreateWorkspaceMode(app));
-    this.registerMode(new EditWorkspaceMode(app));
-    this.registerMode(new DeleteWorkspaceMode(app));
-    this.registerMode(new LoadWorkspaceMode(app));
+    this.registerMode(new ListWorkspacesMode(this._app));
+    this.registerMode(new CreateWorkspaceMode(this._app));
+    this.registerMode(new EditWorkspaceMode(this._app));
+    this.registerMode(new DeleteWorkspaceMode(this._app));
+    this.registerMode(new LoadWorkspaceMode(this._app));
   }
   
   /**

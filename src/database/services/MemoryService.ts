@@ -419,7 +419,6 @@ export class MemoryService {
       
       // Create a new session with the provided ID
       const newSession = await this.createSession({
-        id: id, // Use the provided ID directly
         workspaceId: workspaceId,
         name: `Session ${new Date().toLocaleString()}`,
         description: 'Auto-created session',

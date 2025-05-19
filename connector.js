@@ -114,7 +114,7 @@ var retryCount = 0;
 function connectWithRetry() {
     var ipcPath = getIPCPath();
     process.stderr.write("Attempting to connect to MCP server (attempt ".concat(retryCount + 1, "/").concat(MAX_RETRIES, ")...\n"));
-    process.stderr.write("DEBUG: Using IPC path: ".concat(ipcPath, "\n"));
+    process.stderr.write("Using IPC path: ".concat(ipcPath, "\n"));
     try {
         var socket = (0, net_1.createConnection)(ipcPath);
         // Pipe stdin/stdout to/from the socket
@@ -128,22 +128,22 @@ function connectWithRetry() {
             // Cast error to NodeJS.ErrnoException to access the code property
             var nodeErr = err;
             if (nodeErr.code === 'ENOENT') {
-                process.stderr.write("DEBUG: The IPC path does not exist. This may indicate:\n");
-                process.stderr.write("DEBUG: 1. Obsidian is not running\n");
-                process.stderr.write("DEBUG: 2. The Claudesidian MCP plugin is not enabled\n");
-                process.stderr.write("DEBUG: 3. The vault name extraction failed (extracted: \"".concat(sanitizeVaultName(extractVaultName()), "\")\n"));
+                process.stderr.write("The IPC path does not exist. This may indicate:\n");
+                process.stderr.write("1. Obsidian is not running\n");
+                process.stderr.write("2. The Claudesidian MCP plugin is not enabled\n");
+                process.stderr.write("3. The vault name extraction failed (extracted: \"".concat(sanitizeVaultName(extractVaultName()), "\")\n"));
             }
             else if (nodeErr.code === 'ECONNREFUSED') {
-                process.stderr.write("DEBUG: Connection refused. The server may have stopped or is not listening.\n");
+                process.stderr.write("Connection refused. The server may have stopped or is not listening.\n");
             }
             if (retryCount < MAX_RETRIES - 1) {
                 retryCount++;
                 var retryDelay = 1000 * retryCount; // Increasing backoff
-                process.stderr.write("INFO: Retrying connection in ".concat(retryDelay / 1000, " second(s)...\n"));
+                process.stderr.write("Retrying connection in ".concat(retryDelay / 1000, " second(s)...\n"));
                 setTimeout(connectWithRetry, retryDelay);
             }
             else {
-                process.stderr.write("ERROR: Maximum retry attempts reached. Please ensure:\n");
+                process.stderr.write("Maximum retry attempts reached. Please ensure:\n");
                 process.stderr.write("1. Obsidian is running\n");
                 process.stderr.write("2. The Claudesidian MCP plugin is enabled\n");
                 process.stderr.write("3. The plugin settings are correctly configured\n");
@@ -164,11 +164,11 @@ function connectWithRetry() {
         process.stderr.write("ERROR: Failed to create connection: ".concat(error, "\n"));
         // Add stack trace for debugging
         if (error instanceof Error && error.stack) {
-            process.stderr.write("DEBUG: Stack trace: ".concat(error.stack, "\n"));
+            process.stderr.write("Stack trace: ".concat(error.stack, "\n"));
         }
         // Log the IPC path that was being used
-        process.stderr.write("DEBUG: Was attempting to connect to: ".concat(getIPCPath(), "\n"));
-        process.stderr.write("DEBUG: Extracted vault name: \"".concat(extractVaultName(), "\"\n"));
+        process.stderr.write("Was attempting to connect to: ".concat(getIPCPath(), "\n"));
+        process.stderr.write("Extracted vault name: \"".concat(extractVaultName(), "\"\n"));
         process.exit(1);
     }
 }

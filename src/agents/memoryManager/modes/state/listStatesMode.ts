@@ -2,7 +2,7 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { ListStatesParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { MemoryService } from '../../../../database/services/MemoryService';
+// Memory service is used indirectly through the agent
 import { WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 
 /**
@@ -59,8 +59,8 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         states = await memoryService.getSnapshots(workspaceId || '', targetSessionId || undefined);
         console.log(`Retrieved ${states.length} snapshots`);
       } catch (error) {
-        console.error(`Error retrieving snapshots: ${error.message}`);
-        return this.prepareResult(false, undefined, `Error retrieving snapshots: ${error.message}`);
+        console.error(`Error retrieving snapshots: ${error instanceof Error ? error.message : String(error)}`);
+        return this.prepareResult(false, undefined, `Error retrieving snapshots: ${error instanceof Error ? error.message : String(error)}`);
       }
 
       // Apply tags filtering if provided
@@ -144,7 +144,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         total: totalCount
       });
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error listing states: ${error.message}`);
+      return this.prepareResult(false, undefined, `Error listing states: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

@@ -12,12 +12,12 @@ export class MemoryManagerAgent extends BaseAgent {
   /**
    * Memory service instance
    */
-  private memoryService: MemoryService;
+  private memoryService!: MemoryService;
 
   /**
    * Workspace service instance
    */
-  private workspaceService: WorkspaceService;
+  private workspaceService!: WorkspaceService;
 
   /**
    * Create a new MemoryManagerAgent

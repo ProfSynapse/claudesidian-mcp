@@ -7,7 +7,6 @@ import {
   GraphBoostOptions
 } from '../types';
 import { SearchOperations } from '../../../database/utils/SearchOperations';
-import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { CommonParameters, CommonResult } from '../../../types';
 
 /**
@@ -127,7 +126,6 @@ export interface UnifiedSearchResult extends CommonResult {
 export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResult> {
   private app: App;
   private searchOperations: SearchOperations;
-  private searchService: ChromaSearchService | null = null;
   
   /**
    * Create a new SearchMode
@@ -144,15 +142,6 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     this.app = app;
     this.searchOperations = new SearchOperations(app);
     
-    // Initialize ChromaDB search service if available
-    try {
-      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-      if (plugin?.services?.searchService) {
-        this.searchService = plugin.services.searchService;
-      }
-    } catch (error) {
-      console.error('Error initializing ChromaDB search service:', error);
-    }
   }
   
   /**
@@ -187,7 +176,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       return {
         success: false,
         type: params.type || 'content', // default type for error reporting
-        error: error.message
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
@@ -215,103 +204,10 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       includeContent: true // Always include content to separate frontmatter from snippet
     };
     
-    // First check if we can use ChromaDB for this search
-    if (this.searchService && this.isChromaCompatibleSearch(contentParams)) {
-      return await this.executeChromaContentSearch(contentParams);
-    }
-    
-    // Use standard search otherwise
+    // Perform standard search
     return await this.executeStandardContentSearch(contentParams);
   }
   
-  /**
-   * Execute search using ChromaDB
-   * @param params Search parameters
-   * @returns Search result using ChromaDB
-   */
-  private async executeChromaContentSearch(params: SearchContentArgs): Promise<UnifiedSearchResult> {
-    try {
-      if (!this.searchService) {
-        throw new Error('ChromaDB search service is not available');
-      }
-      
-      const { query, paths, limit, searchFields } = params;
-      
-      // Create a combined search config
-      const filters: any = {};
-      
-      // Add path filters if provided
-      if (paths && paths.length > 0) {
-        filters.paths = paths;
-      }
-      
-      // Add any specific search field filters
-      if (searchFields && searchFields.length > 0) {
-        // Map searchFields to ChromaDB filter fields if needed
-      }
-      
-      // Execute combined search via ChromaDB service
-      const searchResult = await this.searchService.combinedSearch(
-        query,
-        filters,
-        limit || 10,
-        0.6 // Lower threshold for content search
-      );
-      
-      if (!searchResult.success || !searchResult.matches) {
-        throw new Error(searchResult.error || 'Search failed');
-      }
-      
-      // Convert ChromaDB results to SearchContentResult format
-      const results = searchResult.matches.map(match => {
-        // Extract frontmatter from metadata if available
-        const frontmatter = match.metadata?.frontmatter || {};
-        
-        // Get content without frontmatter for snippet
-        let snippetContent = match.content;
-        // Trim the snippet to a reasonable length if it's too long
-        if (snippetContent && snippetContent.length > 100) {
-          snippetContent = snippetContent.substring(0, 97) + '...';
-        }
-        
-        return {
-          path: match.filePath,
-          snippet: snippetContent,
-          line: match.lineStart || 1,
-          position: 0,
-          score: match.similarity,
-          frontmatter // Add frontmatter to results
-        };
-      });
-      
-      return {
-        success: true,
-        type: 'content',
-        contentResults: {
-          results,
-          total: results.length,
-          averageScore: this.calculateAverageScore(results),
-          topResult: results.length > 0 ? results[0].path : undefined
-        }
-      };
-    } catch (error) {
-      console.error('Error in ChromaDB search:', error);
-      
-      // Fall back to standard search on ChromaDB error
-      return this.executeStandardContentSearch(params);
-    }
-  }
-  
-  /**
-   * Check if the search can be handled by ChromaDB
-   * @param params Search parameters
-   * @returns Whether ChromaDB can handle this search
-   */
-  private isChromaCompatibleSearch(params: SearchContentArgs): boolean {
-    // For now, simple check if the search service is available
-    // In the future, we could have more complex logic here
-    return !!this.searchService;
-  }
   
   /**
    * Execute standard content search
@@ -444,11 +340,10 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         }
       };
     } catch (error) {
-      console.error('Error in tag search:', error);
       return {
         success: false,
         type: 'tag',
-        error: error.message
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
@@ -502,11 +397,10 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         }
       };
     } catch (error) {
-      console.error('Error in property search:', error);
       return {
         success: false,
         type: 'property',
-        error: error.message
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }

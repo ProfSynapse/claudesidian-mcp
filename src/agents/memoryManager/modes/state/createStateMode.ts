@@ -3,8 +3,8 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace } from '../../../../database/workspace-types';
 import { CreateStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { MemoryService } from '../../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+// Memory service is used indirectly through the agent
+// Workspace service is used indirectly through the agent
 
 /**
  * Mode for creating a workspace state with rich context
@@ -95,7 +95,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           return this.prepareResult(
             false, 
             undefined, 
-            `Failed to determine workspace: ${error.message}`,
+            `Failed to determine workspace: ${error instanceof Error ? error.message : String(error)}`,
             { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
           );
         }
@@ -131,7 +131,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         return this.prepareResult(
           false, 
           undefined, 
-          `Error retrieving workspace: ${error.message}`,
+          `Error retrieving workspace: ${error instanceof Error ? error.message : String(error)}`,
           { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
         );
       }
@@ -152,7 +152,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             usedSessionId = activityEmbedder.getActiveSession(workspaceId);
           }
         } catch (error) {
-          console.warn(`Failed to get active sessions: ${error.message}`);
+          console.warn(`Failed to get active sessions: ${error instanceof Error ? error.message : String(error)}`);
         }
         
         // If still no active session, create one automatically
@@ -186,7 +186,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             return this.prepareResult(
               false, 
               undefined, 
-              `Failed to create session: ${error.message}`,
+              `Failed to create session: ${error instanceof Error ? error.message : String(error)}`,
               { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
             );
           }
@@ -253,7 +253,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             return this.prepareResult(
               false,
               undefined,
-              `Session validation failed: ${sessionError.message}`,
+              `Session validation failed: ${sessionError instanceof Error ? sessionError.message : String(sessionError)}`,
               { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
             );
           }
@@ -291,7 +291,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             return this.prepareResult(
               false,
               undefined,
-              `Failed to create an active session: ${sessionError.message}`,
+              `Failed to create an active session: ${sessionError instanceof Error ? sessionError.message : String(sessionError)}`,
               { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
             );
           }
@@ -301,7 +301,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         return this.prepareResult(
           false, 
           undefined, 
-          `Error retrieving session: ${error.message}`,
+          `Error retrieving session: ${error instanceof Error ? error.message : String(error)}`,
           { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
         );
       }
@@ -330,7 +330,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         }
         console.log(`Retrieved ${recentTraces.length} traces for session ${usedSessionId}`);
       } catch (error) {
-        console.warn(`Error retrieving session traces: ${error.message}. Continuing with empty traces.`);
+        console.warn(`Error retrieving session traces: ${error instanceof Error ? error.message : String(error)}. Continuing with empty traces.`);
         // Continue with empty traces rather than failing completely
       }
       
@@ -357,8 +357,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             reason
           );
         } catch (error) {
-          console.warn(`Error generating context summary: ${error.message}. Continuing with empty summary.`);
-          contextSummary = `Failed to generate complete summary: ${error.message}`;
+          console.warn(`Error generating context summary: ${error instanceof Error ? error.message : String(error)}. Continuing with empty summary.`);
+          contextSummary = `Failed to generate complete summary: ${error instanceof Error ? error.message : String(error)}`;
         }
       }
       
@@ -383,7 +383,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         try {
           enhancedMetadata.tags.push(`folder:${workspace.rootFolder.split('/').pop()}`);
         } catch (error) {
-          console.warn(`Error adding folder tag: ${error.message}`);
+          console.warn(`Error adding folder tag: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
       
@@ -426,8 +426,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         console.error('Error creating state snapshot:', error);
         
         // Try to provide a more helpful error message
-        let errorMessage = `Error creating state snapshot: ${error.message}`;
-        if (error.message.includes('index') && error.message.includes('not found')) {
+        let errorMessage = `Error creating state snapshot: ${error instanceof Error ? error.message : String(error)}`;
+        if (error instanceof Error && error.message.includes('index') && error.message.includes('not found')) {
           errorMessage = "Database schema is missing required indexes. Try manually deleting the database from your browser's developer tools and try again.";
         }
         
@@ -507,7 +507,7 @@ ${contextSummary}`;
           );
         }
       } catch (error) {
-        console.warn(`Failed to create memory trace for state: ${error.message}`);
+        console.warn(`Failed to create memory trace for state: ${error instanceof Error ? error.message : String(error)}`);
         // Non-critical error, we can continue
       }
       
@@ -532,7 +532,7 @@ ${contextSummary}`;
       return this.prepareResult(
         false, 
         undefined, 
-        `Error creating state: ${error.message}`, 
+        `Error creating state: ${error instanceof Error ? error.message : String(error)}`, 
         { 
           sessionId: params.sessionId, 
           workspaceContext: params.workspaceContext 

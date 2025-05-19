@@ -6,7 +6,8 @@ import {
   createResult,
   mergeWithCommonSchema
 } from '../utils/schemaUtils';
-import { parseWorkspaceContext, WorkspaceContext } from '../utils/contextUtils';
+import { parseWorkspaceContext } from '../utils/contextUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * Base class for all modes in the MCP plugin
@@ -260,7 +261,7 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
         ...currentResult,
         handoffResult: {
           success: false,
-          error: error.message || 'Failed to handle handoff'
+          error: getErrorMessage(error) || 'Failed to handle handoff'
         }
       } as R;
     }

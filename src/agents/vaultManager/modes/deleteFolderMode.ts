@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { DeleteFolderArgs, DeleteFolderResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for deleting a folder
@@ -43,7 +44,7 @@ export class DeleteFolderMode extends BaseMode<DeleteFolderArgs, DeleteFolderRes
       return {
         path,
         success: false,
-        error: error.message
+        error: createErrorMessage('Failed to delete folder: ', error)
       };
     }
   }

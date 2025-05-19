@@ -2,4 +2,3 @@
 export * from './searchMode';
 export * from './vectorMode';
 export * from './batchMode';
-export * from './diagnosticMode';

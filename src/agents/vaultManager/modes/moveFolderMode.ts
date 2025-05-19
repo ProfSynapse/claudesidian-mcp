@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { MoveFolderArgs, MoveFolderResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for moving a folder
@@ -45,7 +46,7 @@ export class MoveFolderMode extends BaseMode<MoveFolderArgs, MoveFolderResult> {
         path,
         newPath,
         success: false,
-        error: error.message
+        error: createErrorMessage('Failed to move folder: ', error)
       };
     }
   }

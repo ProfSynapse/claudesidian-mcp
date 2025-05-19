@@ -23,9 +23,9 @@ import { ChromaSearchService } from '../../database/services/ChromaSearchService
  * Consolidates functionality from noteEditor and noteReader
  */
 export class ContentManagerAgent extends BaseAgent {
-  private app: App;
+  protected app: App;
   protected agentManager: AgentManager;
-  private plugin: ClaudesidianPlugin | null = null;
+  protected plugin: ClaudesidianPlugin | null = null;
   
   // ChromaDB services
   private embeddingService: EmbeddingService | null = null;
@@ -74,7 +74,7 @@ export class ContentManagerAgent extends BaseAgent {
     }
     
     // Register modes with access to ChromaDB services
-    this.registerMode(new ReadContentMode(app, this.memoryService, this.embeddingService));
+    this.registerMode(new ReadContentMode(app, this.memoryService));
     this.registerMode(new CreateContentMode(app, this.embeddingService, this.searchService));
     this.registerMode(new AppendContentMode(app, this.embeddingService, this.searchService));
     this.registerMode(new PrependContentMode(app, this.embeddingService, this.searchService));

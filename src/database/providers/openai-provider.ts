@@ -59,6 +59,12 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
     }
     
     /**
+     * Maximum token limit for the embedding models
+     * OpenAI's text-embedding-3 models have an 8192 token limit
+     */
+    private readonly MAX_TOKEN_LIMIT = 8192;
+    
+    /**
      * Get a precise token count for OpenAI models using gpt-tokenizer
      * @param text The text to count tokens for
      */
@@ -76,6 +82,163 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
     }
     
     /**
+     * Check if text exceeds the token limit
+     * @param text Text to check
+     * @returns True if the text exceeds token limit, false otherwise
+     */
+    private exceedsTokenLimit(text: string): boolean {
+        const tokenCount = this.getTokenCount(text);
+        return tokenCount > this.MAX_TOKEN_LIMIT;
+    }
+    
+    /**
+     * Split text into chunks that fit within token limits
+     * @param text Text to split
+     * @param maxTokens Maximum tokens per chunk (defaults to MAX_TOKEN_LIMIT)
+     * @returns Array of text chunks
+     */
+    private splitTextByTokenLimit(text: string, maxTokens: number = this.MAX_TOKEN_LIMIT): string[] {
+        if (!this.exceedsTokenLimit(text)) {
+            return [text]; // No splitting needed
+        }
+        
+        const chunks: string[] = [];
+        
+        // Try splitting by paragraphs first (most natural boundaries)
+        const paragraphs = text.split(/\n\s*\n/);
+        
+        let currentChunk = "";
+        let currentChunkTokens = 0;
+        
+        for (const paragraph of paragraphs) {
+            const paragraphTokens = this.getTokenCount(paragraph);
+            
+            // If a single paragraph exceeds the limit, we'll need to split it further
+            if (paragraphTokens > maxTokens) {
+                // If we have content in the current chunk, add it first
+                if (currentChunkTokens > 0) {
+                    chunks.push(currentChunk);
+                    currentChunk = "";
+                    currentChunkTokens = 0;
+                }
+                
+                // Split the large paragraph by sentences
+                const sentenceChunks = this.splitLargeParagraph(paragraph, maxTokens);
+                chunks.push(...sentenceChunks);
+                continue;
+            }
+            
+            // Check if adding this paragraph would exceed the limit
+            if (currentChunkTokens + paragraphTokens + 1 > maxTokens) { // +1 for the newline
+                // Add the current chunk to the result and start a new one
+                chunks.push(currentChunk);
+                currentChunk = paragraph;
+                currentChunkTokens = paragraphTokens;
+            } else {
+                // Add to the current chunk
+                if (currentChunk.length > 0) {
+                    currentChunk += "\n\n" + paragraph;
+                    currentChunkTokens += paragraphTokens + 2; // +2 for the newlines
+                } else {
+                    currentChunk = paragraph;
+                    currentChunkTokens = paragraphTokens;
+                }
+            }
+        }
+        
+        // Add the last chunk if it has content
+        if (currentChunk.length > 0) {
+            chunks.push(currentChunk);
+        }
+        
+        return chunks;
+    }
+    
+    /**
+     * Split a large paragraph into smaller chunks by sentences
+     * @param paragraph Large paragraph to split
+     * @param maxTokens Maximum tokens per chunk
+     * @returns Array of text chunks
+     */
+    private splitLargeParagraph(paragraph: string, maxTokens: number): string[] {
+        const chunks: string[] = [];
+        
+        // Split by sentences - try to be smarter about sentence boundaries
+        const sentences = paragraph.match(/[^.!?]+[.!?]+/g) || [paragraph];
+        
+        let currentChunk = "";
+        let currentChunkTokens = 0;
+        
+        for (const sentence of sentences) {
+            const sentenceTokens = this.getTokenCount(sentence);
+            
+            // If a single sentence exceeds the limit, we'll need to split it further by words
+            if (sentenceTokens > maxTokens) {
+                // If we have content in the current chunk, add it first
+                if (currentChunkTokens > 0) {
+                    chunks.push(currentChunk);
+                    currentChunk = "";
+                    currentChunkTokens = 0;
+                }
+                
+                // Split the large sentence by words
+                const words = sentence.split(/\s+/);
+                let wordChunk = "";
+                let wordChunkTokens = 0;
+                
+                for (const word of words) {
+                    const wordTokens = this.getTokenCount(word);
+                    
+                    if (wordChunkTokens + wordTokens + 1 > maxTokens) { // +1 for the space
+                        chunks.push(wordChunk);
+                        wordChunk = word;
+                        wordChunkTokens = wordTokens;
+                    } else {
+                        if (wordChunk.length > 0) {
+                            wordChunk += " " + word;
+                            wordChunkTokens += wordTokens + 1; // +1 for the space
+                        } else {
+                            wordChunk = word;
+                            wordChunkTokens = wordTokens;
+                        }
+                    }
+                }
+                
+                // Add the last word chunk if it has content
+                if (wordChunk.length > 0) {
+                    chunks.push(wordChunk);
+                }
+                
+                continue;
+            }
+            
+            // Check if adding this sentence would exceed the limit
+            if (currentChunkTokens + sentenceTokens + 1 > maxTokens) { // +1 for the space
+                // Add the current chunk to the result and start a new one
+                chunks.push(currentChunk);
+                currentChunk = sentence;
+                currentChunkTokens = sentenceTokens;
+            } else {
+                // Add to the current chunk
+                if (currentChunk.length > 0) {
+                    currentChunk += " " + sentence;
+                    currentChunkTokens += sentenceTokens + 1; // +1 for the space
+                } else {
+                    currentChunk = sentence;
+                    currentChunkTokens = sentenceTokens;
+                }
+            }
+        }
+        
+        // Add the last chunk if it has content
+        if (currentChunk.length > 0) {
+            chunks.push(currentChunk);
+        }
+        
+        return chunks;
+    }
+    
+    /**
      * Get embeddings for a text using OpenAI API
      * Includes rate limiting and error handling
      * @param text The text to get embeddings for
@@ -83,6 +246,12 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
     async getEmbedding(text: string): Promise<number[]> {
         if (!text || text.trim().length === 0) {
             throw new Error('Text is required for embedding');
+        }
+        
+        // Check if the text exceeds token limit
+        if (this.exceedsTokenLimit(text)) {
+            console.log(`Text exceeds token limit (${this.getTokenCount(text)} tokens). Splitting and averaging embeddings.`);
+            return this.getEmbeddingForLongText(text);
         }
         
         // Apply rate limiting
@@ -161,6 +330,152 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
     }
     
     /**
+     * Get embedding for a long text by splitting it into chunks, getting embeddings for each chunk,
+     * and then averaging the embeddings weighted by chunk length
+     * @param text Long text to get embedding for
+     * @returns Averaged embedding vector
+     */
+    private async getEmbeddingForLongText(text: string): Promise<number[]> {
+        // Split the text into chunks that fit within token limits
+        const chunks = this.splitTextByTokenLimit(text);
+        console.log(`Split long text into ${chunks.length} chunks for embedding.`);
+        
+        // Get embeddings for each chunk
+        const embeddings: number[][] = [];
+        const weights: number[] = [];
+        
+        for (const chunk of chunks) {
+            try {
+                // Apply rate limiting
+                await this.checkRateLimit();
+                
+                // Skip empty chunks
+                if (!chunk || chunk.trim().length === 0) continue;
+                
+                const tokenCount = this.getTokenCount(chunk);
+                weights.push(tokenCount); // Use token count as weight
+                
+                const response = await requestUrl({
+                    url: this.apiUrl,
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json',
+                        ...(this.organization ? { 'OpenAI-Organization': this.organization } : {})
+                    },
+                    body: JSON.stringify({
+                        input: chunk,
+                        model: this.model,
+                        dimensions: this.dimensions
+                    })
+                });
+                
+                // Update rate limiting tracker
+                this.trackRequest();
+                
+                if (response.status === 200) {
+                    const data = response.json;
+                    
+                    // Track token usage
+                    try {
+                        const actualTokenCount = data.usage?.prompt_tokens || tokenCount;
+                        this.modelUsage[this.model] = (this.modelUsage[this.model] || 0) + actualTokenCount;
+                        
+                        const cost = (actualTokenCount / 1000) * (this.costPerThousandTokens[this.model] || 0);
+                        
+                        const app = (window as any).app;
+                        if (app) {
+                            const plugin = app.plugins.getPlugin('claudesidian-mcp');
+                            if (plugin) {
+                                const vaultLibrarian = plugin.connector.getVaultLibrarian();
+                                if (vaultLibrarian && vaultLibrarian.trackTokenUsage) {
+                                    vaultLibrarian.trackTokenUsage(actualTokenCount, {
+                                        model: this.model,
+                                        cost: cost,
+                                        modelUsage: this.modelUsage
+                                    });
+                                }
+                            }
+                        }
+                    } catch (usageError) {
+                        console.warn('Failed to track token usage:', usageError);
+                    }
+                    
+                    if (data.data && data.data.length > 0 && data.data[0].embedding) {
+                        embeddings.push(data.data[0].embedding);
+                    } else {
+                        console.warn('Invalid response format for chunk, skipping');
+                    }
+                } else {
+                    console.warn(`Error embedding chunk: ${response.status} ${response.text}`);
+                }
+            } catch (error) {
+                console.warn('Error embedding chunk:', error);
+                // Continue with other chunks
+            }
+        }
+        
+        // If we couldn't get any embeddings, throw an error
+        if (embeddings.length === 0) {
+            throw new Error('Failed to generate embeddings for all chunks');
+        }
+        
+        // If we only got one embedding, return it
+        if (embeddings.length === 1) {
+            return embeddings[0];
+        }
+        
+        // Otherwise, average the embeddings, weighted by chunk token count
+        return this.weightedAverageEmbeddings(embeddings, weights);
+    }
+    
+    /**
+     * Calculate the weighted average of multiple embeddings
+     * @param embeddings Array of embedding vectors
+     * @param weights Array of weights (same length as embeddings)
+     * @returns Weighted average embedding vector
+     */
+    private weightedAverageEmbeddings(embeddings: number[][], weights: number[]): number[] {
+        if (embeddings.length === 0) {
+            throw new Error('No embeddings to average');
+        }
+        
+        if (embeddings.length !== weights.length) {
+            // If weights don't match, use equal weights
+            weights = embeddings.map(() => 1);
+        }
+        
+        const dimensions = embeddings[0].length;
+        const result = new Array(dimensions).fill(0);
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        
+        // If total weight is 0, use equal weights
+        const normalizedWeights = totalWeight === 0 
+            ? weights.map(() => 1 / weights.length) 
+            : weights.map(w => w / totalWeight);
+        
+        // Calculate weighted average
+        for (let i = 0; i < embeddings.length; i++) {
+            const embedding = embeddings[i];
+            const weight = normalizedWeights[i];
+            
+            for (let j = 0; j < dimensions; j++) {
+                result[j] += embedding[j] * weight;
+            }
+        }
+        
+        // Normalize the result vector
+        const norm = Math.sqrt(result.reduce((sum, val) => sum + val * val, 0));
+        if (norm > 0) {
+            for (let i = 0; i < dimensions; i++) {
+                result[i] /= norm;
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
      * Get the cost per token for the current model
      */
     getCostPerToken(): number {
@@ -185,6 +500,34 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
      */
     getModelUsage(): {[key: string]: number} {
         return { ...this.modelUsage };
+    }
+    
+    /**
+     * Generate embeddings for multiple texts in one batch
+     * Handles token limit checking and chunking for each text
+     * @param texts Array of texts to get embeddings for
+     * @returns Array of embedding vectors
+     */
+    async generateEmbeddings(texts: string[]): Promise<number[][]> {
+        if (!texts || texts.length === 0) {
+            return [];
+        }
+        
+        const results: number[][] = [];
+        
+        // Process each text individually to handle token limits properly
+        for (const text of texts) {
+            try {
+                const embedding = await this.getEmbedding(text);
+                results.push(embedding);
+            } catch (error) {
+                console.error('Error generating embedding for text:', error);
+                // Push null or a zero vector to maintain array length matching input
+                results.push(new Array(this.dimensions).fill(0));
+            }
+        }
+        
+        return results;
     }
     
     /**

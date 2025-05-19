@@ -74,6 +74,10 @@ export interface MemorySettings {
     indexingSchedule: 'manual' | 'on-save' | 'daily' | 'weekly';
     indexingTime?: string;
     
+    // Embedding strategy
+    embeddingStrategy: 'manual' | 'live' | 'idle' | 'startup';
+    idleTimeThreshold?: number; // Time in ms to wait before considering the system idle
+    
     // Performance settings
     batchSize: number;
     concurrentRequests: number;
@@ -135,6 +139,8 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     excludePaths: ['.obsidian/**/*', 'node_modules/**/*'],
     minContentLength: 50,
     indexingSchedule: 'on-save',
+    embeddingStrategy: 'manual',
+    idleTimeThreshold: 60000, // 1 minute of idle time before indexing
     batchSize: 10,
     concurrentRequests: 3,
     processingDelay: 1000, // 1 second delay between batches

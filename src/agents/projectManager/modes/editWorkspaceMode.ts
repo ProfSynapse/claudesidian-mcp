@@ -13,7 +13,6 @@ import { ClaudesidianPlugin } from '../utils/pluginTypes';
  * Mode to edit an existing workspace
  */
 export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, WorkspaceResult> {
-  private app: App;
   private plugin: Plugin;
   private workspaceService: WorkspaceService | null = null;
   
@@ -28,7 +27,6 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       'Update an existing workspace properties',
       '1.0.0'
     );
-    this.app = app;
     this.plugin = app.plugins.getPlugin('claudesidian-mcp');
     
     // Safely access the workspace service
@@ -169,7 +167,7 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
         workspaceContext
       );
       
-    } catch (error) {
+    } catch (error: any) {
       return this.prepareResult(
         false,
         undefined,

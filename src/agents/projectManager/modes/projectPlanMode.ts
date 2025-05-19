@@ -6,13 +6,12 @@ import { ProjectPlanArgs, ProjectPlanResult } from '../types';
  * Mode for creating a project plan
  */
 export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult> {
-  private app: App;
   
   /**
    * Create a new ProjectPlanMode
-   * @param app Obsidian app instance
+   * @param _app Obsidian app instance (not used)
    */
-  constructor(app: App) {
+  constructor(_app: App) {
     super(
       'projectPlan',
       'Project Plan',
@@ -20,7 +19,6 @@ export class ProjectPlanMode extends BaseMode<ProjectPlanArgs, ProjectPlanResult
       '1.0.0'
     );
     
-    this.app = app;
   }
   
   /**

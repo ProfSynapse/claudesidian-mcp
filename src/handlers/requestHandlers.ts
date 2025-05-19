@@ -284,10 +284,11 @@ function validateToolParams(params: any) {
                 );
             }
             
-            if (!operation.path) {
+            // Ensure params object exists
+            if (!operation.params) {
                 throw new McpError(
                     ErrorCode.InvalidParams,
-                    `Invalid operation at index ${index} in batch operations: missing 'path' property`
+                    `Invalid operation at index ${index} in batch operations: missing 'params' property`
                 );
             }
         });

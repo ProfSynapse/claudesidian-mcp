@@ -69,7 +69,8 @@ export class ListCommandsMode extends BaseMode<ListCommandsParams, ListCommandsR
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error listing commands: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, `Error listing commands: ${errorMessage}`);
     }
   }
   
@@ -78,7 +79,7 @@ export class ListCommandsMode extends BaseMode<ListCommandsParams, ListCommandsR
    * @param commandId ID of the command
    * @returns Array of hotkey strings or undefined if none
    */
-  private getCommandHotkeys(commandId: string): string[] | undefined {
+  private getCommandHotkeys(_commandId: string): string[] | undefined {
     // This is a placeholder as Obsidian's public API doesn't expose hotkeys directly
     // In a real implementation, we'd need to access the internal hotkey registry
     return undefined;

@@ -160,7 +160,7 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
         try {
           await memoryService.deleteItems(params.collectionName, ids);
         } catch (deleteError) {
-          console.warn(`Error pre-deleting items for update: ${deleteError.message}`);
+          console.warn(`Error pre-deleting items for update: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`);
         }
       }
       
@@ -223,6 +223,19 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
     params: BatchEmbeddingsParams,
     searchService: any
   ): Promise<BatchResult> {
+    // Define the interface for query results
+    interface QueryResult {
+      success: boolean;
+      error?: string;
+      matches?: Array<{
+        id: string;
+        similarity: number;
+        content?: string;
+        filePath?: string;
+        metadata?: Record<string, any>;
+      }>;
+    }
+    
     const results: Array<{
       id: string;
       success: boolean;
@@ -241,7 +254,8 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
     // Process each query item
     for (const item of params.items) {
       try {
-        let queryResult;
+        // Variable to hold the query result
+        let queryResult: QueryResult;
         
         // Use either embedding or text for the query
         if (item.embedding) {
@@ -281,6 +295,11 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
               const metadata = chromaResult.metadatas?.[0]?.[i] || {};
               const document = chromaResult.documents?.[0]?.[i] || '';
               
+              // Ensure matches array exists
+              if (!queryResult.matches) {
+                queryResult.matches = [];
+              }
+              
               queryResult.matches.push({
                 id,
                 similarity: 1 - distance,
@@ -299,12 +318,12 @@ export class BatchEmbeddingMode extends BaseMode<BatchEmbeddingsParams, BatchRes
           results.push({
             id: item.id,
             success: true,
-            matches: queryResult.matches?.map(match => ({
+            matches: queryResult.matches ? queryResult.matches.map((match) => ({
               id: match.id || '',
               similarity: match.similarity,
               text: match.content,
               metadata: match.metadata
-            }))
+            })) : []
           });
           processed++;
         } else {

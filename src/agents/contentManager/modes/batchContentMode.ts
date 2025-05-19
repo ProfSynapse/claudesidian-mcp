@@ -162,10 +162,10 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
               sessionId
             );
           }
-        } catch (error) {
+        } catch (error: unknown) {
           results.push({
             success: false,
-            error: error.message,
+            error: error instanceof Error ? error.message : String(error),
             type: operation.type,
             filePath: operation.params.filePath || 'unknown'
           });
@@ -188,8 +188,8 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       }
       
       return response;
-    } catch (error) {
-      return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+    } catch (error: unknown) {
+      return this.prepareResult(false, undefined, error instanceof Error ? error.message : String(error), params.workspaceContext);
     }
   }
   
@@ -337,18 +337,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
     };
   }
   
-  /**
-   * Get the file path from an operation
-   * @param operation The operation
-   * @returns The file path
-   */
-  private getFilePathFromOperation(operation: ContentOperation): string {
-    // Make sure the path property exists
-    if (!operation.params.filePath) {
-      throw new Error(`Missing 'filePath' property in operation params: ${JSON.stringify(operation)}`);
-    }
-    return operation.params.filePath;
-  }
+  // This function was removed as it's not used
   
   /**
    * Update the file embeddings using ChromaDB if available

@@ -1,8 +1,6 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { EditSessionParams, SessionResult } from '../../types';
-import { MemoryService } from '../../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 
 /**
  * Mode for editing an existing session's metadata
@@ -141,7 +139,8 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
           });
           
         } catch (error) {
-          console.warn(`Failed to record session goal update: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.warn(`Failed to record session goal update: ${errorMessage}`);
           // This is non-critical, so we continue
         }
       }
@@ -149,10 +148,6 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
       // Only update if there are changes to make
       if (Object.keys(updates).length > 0) {
         await memoryService.updateSession(sessionId, updates);
-        
-        // Get the updated session
-        const updatedSession = await memoryService.getSession(sessionId);
-        
         
         // Get the updated session to ensure we have the latest state
         const finalSession = await memoryService.getSession(sessionId);
@@ -184,7 +179,8 @@ export class EditSessionMode extends BaseMode<EditSessionParams, SessionResult> 
         }, 'No changes were made');
       }
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error editing session: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, `Error editing session: ${errorMessage}`);
     }
   }
   

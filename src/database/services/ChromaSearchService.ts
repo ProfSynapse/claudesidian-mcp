@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { Plugin, Notice } from 'obsidian';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { FileEmbeddingCollection } from '../collections/FileEmbeddingCollection';
 import { MemoryTraceCollection } from '../collections/MemoryTraceCollection';
@@ -64,19 +64,30 @@ export class ChromaSearchService {
    * @param workspaceId Optional workspace ID
    * @param metadata Optional metadata
    */
-  async indexFile(filePath: string, workspaceId?: string, metadata?: any): Promise<string> {
+  async indexFile(filePath: string, workspaceId?: string, metadata?: any, showNotice: boolean = true): Promise<string> {
+    // Extract the file name from the path for a more concise notice
+    const fileName = filePath.split('/').pop() || filePath;
+    
+    // Show notice if enabled
+    let notice: Notice | null = null;
+    if (showNotice) {
+      notice = new Notice(`Generating embedding for ${fileName}...`, 0);
+    }
+    
     // Read the file content
     let content: string;
     try {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
       // Check if it's a folder by testing if it's a TFolder (has children property)
       if (!file || 'children' in file) { // Check for folder-like behavior
+        if (notice) notice.hide();
         throw new Error(`File not found or is a folder: ${filePath}`);
       }
       
       // Cast to TFile type
       content = await this.plugin.app.vault.read(file as any);
     } catch (error) {
+      if (notice) notice.hide();
       throw new Error(`Failed to read file: ${error.message}`);
     }
     
@@ -84,6 +95,7 @@ export class ChromaSearchService {
     const embedding = await this.embeddingService.getEmbedding(content);
     
     if (!embedding) {
+      if (notice) notice.hide();
       throw new Error('Failed to generate embedding for file');
     }
     
@@ -109,6 +121,12 @@ export class ChromaSearchService {
     
     await this.fileEmbeddings.add(fileEmbedding);
     
+    // Update notice with completion message if it exists
+    if (notice) {
+      notice.setMessage(`Completed embedding for ${fileName}`);
+      setTimeout(() => notice.hide(), 2000);
+    }
+    
     return fileEmbedding.id;
   }
   
@@ -118,6 +136,84 @@ export class ChromaSearchService {
    */
   async getFileEmbedding(filePath: string): Promise<FileEmbedding | undefined> {
     return this.fileEmbeddings.getEmbeddingByPath(filePath);
+  }
+  
+  /**
+   * Delete embedding for a file
+   * @param filePath File path
+   */
+  /**
+   * Batch index multiple files with progress reporting
+   * @param filePaths Array of file paths to index
+   * @param progressCallback Optional callback for progress updates
+   */
+  async batchIndexFiles(filePaths: string[], progressCallback?: (current: number, total: number) => void): Promise<string[]> {
+    if (!filePaths || filePaths.length === 0) {
+      return [];
+    }
+    
+    // Get settings for batching
+    const batchSize = (this.plugin as any).settings?.settings?.memory?.batchSize || 5;
+    const processingDelay = (this.plugin as any).settings?.settings?.memory?.processingDelay || 1000;
+    
+    // Show a single notice for the batch operation
+    const notice = new Notice(`Generating embeddings for ${filePaths.length} files...`, 0);
+    
+    const ids: string[] = [];
+    let processedCount = 0;
+    
+    try {
+      // Process files in batches
+      for (let i = 0; i < filePaths.length; i += batchSize) {
+        const batch = filePaths.slice(i, i + batchSize);
+        
+        // Process batch in parallel
+        const results = await Promise.allSettled(batch.map(async (filePath) => {
+          try {
+            // Process each file without showing individual notices
+            return await this.indexFile(filePath, undefined, undefined, false);
+          } catch (error) {
+            console.error(`Error indexing file ${filePath}:`, error);
+            return null;
+          }
+        }));
+        
+        // Update progress count
+        processedCount += batch.length;
+        
+        // Update notice
+        notice.setMessage(`Generating embeddings: ${processedCount}/${filePaths.length} files`);
+        
+        // Call progress callback if provided
+        if (progressCallback) {
+          progressCallback(processedCount, filePaths.length);
+        }
+        
+        // Add successful IDs to the result
+        results.forEach(result => {
+          if (result.status === 'fulfilled' && result.value) {
+            ids.push(result.value);
+          }
+        });
+        
+        // Add a small delay between batches to prevent UI freezing
+        if (i + batchSize < filePaths.length) {
+          await new Promise(resolve => setTimeout(resolve, processingDelay));
+        }
+      }
+      
+      // Update the notice with completion message
+      notice.setMessage(`Completed embedding generation for ${processedCount} files`);
+      
+      // Automatically hide notice after 3 seconds
+      setTimeout(() => notice.hide(), 3000);
+      
+      return ids;
+    } catch (error) {
+      notice.setMessage(`Error generating embeddings: ${error.message}`);
+      setTimeout(() => notice.hide(), 3000);
+      throw error;
+    }
   }
   
   /**

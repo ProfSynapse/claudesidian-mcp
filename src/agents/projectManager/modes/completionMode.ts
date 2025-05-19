@@ -6,13 +6,12 @@ import { CompletionArgs, CompletionResult } from '../types';
  * Mode for marking a project as complete
  */
 export class CompletionMode extends BaseMode<CompletionArgs, CompletionResult> {
-  private app: App;
 
   /**
    * Create a new CompletionMode
-   * @param app Obsidian app instance
+   * @param _app Obsidian app instance (not used)
    */
-  constructor(app: App) {
+  constructor(_app: App) {
     super(
       'completion',
       'Completion',
@@ -20,7 +19,6 @@ export class CompletionMode extends BaseMode<CompletionArgs, CompletionResult> {
       '1.0.0'
     );
 
-    this.app = app;
   }
 
   /**

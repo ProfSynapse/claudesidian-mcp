@@ -3,7 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceSession } from '../../../../database/workspace-types';
 import { ListSessionsParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { MemoryService } from '../../../../database/services/MemoryService';
+// Memory service is used indirectly through the agent
 
 /**
  * Mode for listing sessions for a workspace with enhanced filtering
@@ -84,7 +84,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       });
       
       // Apply limit
-      const totalCount = sessions.length;
+      // Track total count for potential future pagination implementation
       sessions = sessions.slice(0, limit);
       
       // Return result
@@ -102,7 +102,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
         }))
       });
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error listing sessions: ${error.message}`);
+      return this.prepareResult(false, undefined, `Error listing sessions: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

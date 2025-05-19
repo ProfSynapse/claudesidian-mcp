@@ -214,9 +214,10 @@ export abstract class BaseAgent implements IAgent {
       return handoffResult;
     } catch (error) {
       // Handle errors in handoff
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         success: false,
-        error: `Handoff error: ${error.message || 'Unknown error'}`,
+        error: `Handoff error: ${errorMessage || 'Unknown error'}`,
         workspaceContext: originalResult.workspaceContext,
         sessionId: originalResult.sessionId
       };

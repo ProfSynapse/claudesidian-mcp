@@ -1,7 +1,6 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { DeleteSessionParams, SessionResult } from '../../types';
-import { MemoryService } from '../../../../database/services/MemoryService';
 
 /**
  * Mode for deleting a session and optionally its associated data
@@ -88,14 +87,16 @@ export class DeleteSessionMode extends BaseMode<DeleteSessionParams, SessionResu
           snapshotsDeleted: deleteResult.snapshotsDeleted
         };
       } catch (error) {
-        console.error(`Failed to delete session: ${error.message}`);
-        return this.prepareResult(false, undefined, `Failed to delete session: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to delete session: ${errorMessage}`);
+        return this.prepareResult(false, undefined, `Failed to delete session: ${errorMessage}`);
       }
       
       // Return result with the deleted session info
       return this.prepareResult(true, sessionData, 'Session deleted successfully');
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error deleting session: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, `Error deleting session: ${errorMessage}`);
     }
   }
   

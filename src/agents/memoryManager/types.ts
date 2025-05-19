@@ -1,11 +1,5 @@
-import { CommonParameters, CommonResult } from '../../types';
-import { 
-  WorkspaceParameters, 
-  WorkspaceResult, 
-  WorkspaceMemoryTrace, 
-  WorkspaceStateSnapshot,
-  WorkspaceSession
-} from '../../database/workspace-types';
+import { CommonResult } from '../../types';
+import { WorkspaceParameters } from '../../database/workspace-types';
 import { WorkspaceContext } from '../../utils/contextUtils';
 
 /**

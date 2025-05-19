@@ -92,10 +92,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Update the last accessed timestamp
       await this.workspaceService.updateLastAccessed(workspace.id);
       
-      // Define context depth for content loading
-      const contextDepth = params.contextDepth || 'standard';
-      const maxItems = contextDepth === 'minimal' ? 10 : 
-                      contextDepth === 'standard' ? 50 : 100;
+      // Context depth is handled elsewhere in the implementation
+      // params.contextDepth is accessed via the parameter schema
       
       // Get immediate children if requested
       let children: Array<{id: string; name: string; hierarchyType: string}> | undefined = undefined;
@@ -122,7 +120,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Gather key context items
       const recentFiles = await this.getRecentFiles(workspace);
       const keyFiles = await this.getKeyFiles(workspace);
-      const relatedConcepts = await this.getRelatedConcepts(workspace);
+      const relatedConcepts = await this.getRelatedConcepts();
       
       // Get all files in the workspace - this includes files in the root folder and all related folders
       const allFiles = await this.getAllFiles(workspace);
@@ -159,7 +157,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         workspaceContext
       );
       
-    } catch (error) {
+    } catch (error: any) {
       return this.prepareResult(
         false,
         {
@@ -255,10 +253,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   /**
    * Get related concepts for the workspace
    */
-  private async getRelatedConcepts(workspace: {
-    id: string;
-    name: string;
-  }): Promise<string[]> {
+  private async getRelatedConcepts(): Promise<string[]> {
     // In a real implementation, this would extract key topics
     // For now, return placeholder concepts
     return [

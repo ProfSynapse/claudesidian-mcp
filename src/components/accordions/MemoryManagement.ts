@@ -1,15 +1,12 @@
-import { Setting, Notice, App } from 'obsidian';
 import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { MemoryManagerAgent } from '../../agents/memoryManager/memoryManager';
 import { MemorySettingsTab } from '../MemorySettingsTab';
-import { DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
 import { MemoryService } from '../../database/services/MemoryService';
-import { EmbeddingServiceAdapter } from '../../database/services/EmbeddingServiceAdapter';
-import { SearchService } from '../../database/services/searchService';
+import { EmbeddingManager } from '../../database/services/embeddingManager';
 
 /**
  * Memory Management accordion component
@@ -23,6 +20,7 @@ export class MemoryManagementAccordion extends Accordion {
     private embeddingService: EmbeddingService | undefined;
     private chromaSearchService: ChromaSearchService | undefined;
     private memoryService: MemoryService | undefined;
+    private embeddingManager: EmbeddingManager | undefined;
     
     // Agents (for backward compatibility)
     private vaultLibrarian: VaultLibrarianAgent | undefined;
@@ -39,6 +37,7 @@ export class MemoryManagementAccordion extends Accordion {
      * @param memoryService MemoryService for memory traces and sessions
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
      * @param memoryManager MemoryManager agent instance (optional)
+     * @param embeddingManager EmbeddingManager for managing embedding providers (optional)
      */
     constructor(
         containerEl: HTMLElement, 
@@ -47,7 +46,8 @@ export class MemoryManagementAccordion extends Accordion {
         chromaSearchService?: ChromaSearchService,
         memoryService?: MemoryService,
         vaultLibrarian?: VaultLibrarianAgent,
-        memoryManager?: MemoryManagerAgent
+        memoryManager?: MemoryManagerAgent,
+        embeddingManager?: EmbeddingManager
     ) {
         super(containerEl, 'Memory Management', false);
         this.settings = settings;
@@ -56,6 +56,7 @@ export class MemoryManagementAccordion extends Accordion {
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
         this.memoryManager = memoryManager;
+        this.embeddingManager = embeddingManager;
         
         const contentEl = this.getContentEl();
         
@@ -112,31 +113,12 @@ export class MemoryManagementAccordion extends Accordion {
             return;
         }
         
-        // Create memory settings tab with services (preferred) or agents (fallback)
-        // Use an adapter for EmbeddingService to make it compatible with IndexingService interface
-        const indexingAdapter = this.embeddingService 
-            ? new EmbeddingServiceAdapter(this.embeddingService, window.app)
-            : undefined;
-        
-        // Create a proper SearchService instance if we have a ChromaSearchService
-        const searchService = this.chromaSearchService && this.embeddingService && this.memoryService
-            ? new SearchService(window.app, {
-                app: window.app,
-                services: {
-                    searchService: this.chromaSearchService,
-                    embeddingService: this.embeddingService,
-                    memoryService: this.memoryService
-                }
-              } as any)
-            : undefined;
-            
+        // Initialize the MemorySettingsTab with our services and agents
         this.memorySettingsTab = new MemorySettingsTab(
             this.memorySettingsContainer,
             this.settings,
             window.app,
-            indexingAdapter,
-            undefined, // No direct equivalent for EmbeddingManager
-            searchService,
+            this.embeddingManager,
             this.vaultLibrarian,
             this.memoryManager
         );

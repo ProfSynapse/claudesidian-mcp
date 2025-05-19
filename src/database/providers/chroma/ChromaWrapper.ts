@@ -571,7 +571,12 @@ class PersistentChromaClient extends InMemoryChromaClient {
       });
       
       // Convert to a format suitable for storage
-      const items = [];
+      const items: Array<{
+        id: string;
+        embedding: number[];
+        metadata: Record<string, any>;
+        document: string;
+      }> = [];
       for (let i = 0; i < result.ids.length; i++) {
         items.push({
           id: result.ids[i],

@@ -78,7 +78,8 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       return result;
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error creating file: ${error.message}`, params.workspaceContext);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, `Error creating file: ${errorMessage}`, params.workspaceContext);
     }
   }
   

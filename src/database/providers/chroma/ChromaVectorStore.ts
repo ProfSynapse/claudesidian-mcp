@@ -623,7 +623,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       
       // Get list of collections
       const collections = await this.listCollections();
-      const collectionDetails = [];
+      const collectionDetails: Array<{name: string; itemCount?: number; error?: string}> = [];
       
       // Get details for each collection
       for (const collectionName of collections) {

@@ -1,6 +1,7 @@
 import { App, TFile, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Parameters for list files mode
@@ -97,7 +98,7 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
       return this.prepareResult(true, { files: fileData }, undefined, params.workspaceContext);
       
     } catch (error) {
-      return this.prepareResult(false, undefined, `Failed to list files: ${error.message}`);
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to list files: ', error));
     }
   }
   

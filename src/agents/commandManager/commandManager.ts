@@ -147,9 +147,6 @@ export class CommandManagerAgent extends BaseAgent {
     }
     
     try {
-      // Get workspace path (or use just the ID if no path provided)
-      const path = workspacePath || [workspaceId];
-      
       // Create a descriptive content about this command execution
       const content = `Executed command: ${commandName}\n` +
                       `Command ID: ${commandId}\n`;

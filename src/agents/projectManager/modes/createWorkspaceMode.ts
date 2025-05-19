@@ -4,11 +4,9 @@ import {
   CreateWorkspaceParameters, 
   CreateWorkspaceResult,
   ProjectWorkspace,
-  HierarchyType,
   WorkspaceStatus
 } from '../../../database/workspace-types';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
-import { v4 as uuidv4 } from 'uuid';
 
 // Define a custom interface for the Claudesidian plugin
 interface ClaudesidianPlugin extends Plugin {
@@ -22,7 +20,6 @@ interface ClaudesidianPlugin extends Plugin {
  * Mode to create a new workspace
  */
 export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, CreateWorkspaceResult> {
-  private app: App;
   private plugin: Plugin;
   private workspaceService: WorkspaceService | null = null;
   
@@ -37,7 +34,6 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       'Create a new workspace, phase, or task',
       '1.0.0'
     );
-    this.app = app;
     this.plugin = app.plugins.getPlugin('claudesidian-mcp');
     
     // Safely access the workspace service
@@ -169,7 +165,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         workspaceContext
       );
       
-    } catch (error) {
+    } catch (error: any) {
       return this.prepareResult(
         false, 
         undefined,

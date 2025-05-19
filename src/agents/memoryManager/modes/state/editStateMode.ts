@@ -2,8 +2,8 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { EditStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { MemoryService } from '../../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+// Memory service is used indirectly through the agent
+// Workspace service is used indirectly through the agent
 import { WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 
 /**
@@ -211,7 +211,7 @@ ${removeTags.length > 0 ? `Removed tags: ${removeTags.join(', ')}\n` : ''}`;
           );
         }
       } catch (error) {
-        console.warn(`Failed to create memory trace for state update: ${error.message}`);
+        console.warn(`Failed to create memory trace for state update: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       // Return result
@@ -227,7 +227,7 @@ ${removeTags.length > 0 ? `Removed tags: ${removeTags.join(', ')}\n` : ''}`;
         }
       });
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error editing state: ${error.message}`);
+      return this.prepareResult(false, undefined, `Error editing state: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

@@ -69,7 +69,8 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, errorMessage, params.workspaceContext);
     }
   }
   

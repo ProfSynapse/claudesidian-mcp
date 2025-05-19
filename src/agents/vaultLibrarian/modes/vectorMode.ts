@@ -204,7 +204,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         return this.prepareResult(
           false,
           undefined,
-          error.message || 'Vector search failed'
+          error instanceof Error ? error.message : 'Vector search failed'
         );
       }
     }

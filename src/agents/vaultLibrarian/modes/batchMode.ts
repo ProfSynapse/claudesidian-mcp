@@ -7,7 +7,6 @@ import { GraphBoostOptions } from '../types';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
-import { logger } from '../../../utils/logger';
 
 /**
  * Batch operation type
@@ -205,12 +204,8 @@ export interface BatchModeResult extends CommonResult {
  * Mode for executing batch operations combining search and vector approaches
  */
 export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
-  private app: App;
   private searchMode: SearchMode;
   private vectorMode: VectorMode;
-  private memoryService: MemoryService | null = null;
-  private searchService: ChromaSearchService | null = null;
-  private embeddingService: EmbeddingService | null = null;
   private batchParams: BatchModeParams | null = null;
   
   /**
@@ -233,10 +228,6 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
       '1.0.0'
     );
     
-    this.app = app;
-    this.memoryService = memoryService || null;
-    this.searchService = searchService || null;
-    this.embeddingService = embeddingService || null;
     
     // Initialize the search modes
     this.searchMode = new SearchMode(app);
@@ -307,7 +298,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
           type: operation.type,
           id: operation.id,
           success: false,
-          error: error.message || 'Unknown error'
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
         
         failed++;
@@ -362,7 +353,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
         type: 'search',
         id: operation.id,
         success: false,
-        error: error.message || 'Unknown error during search operation'
+        error: error instanceof Error ? error.message : 'Unknown error during search operation'
       };
     }
   }
@@ -403,7 +394,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
         type: 'vector',
         id: operation.id,
         success: false,
-        error: error.message || 'Unknown error during vector operation'
+        error: error instanceof Error ? error.message : 'Unknown error during vector operation'
       };
     }
   }
@@ -479,7 +470,7 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
         type: 'hybrid',
         id: operation.id,
         success: false,
-        error: error.message || 'Unknown error during hybrid operation'
+        error: error instanceof Error ? error.message : 'Unknown error during hybrid operation'
       };
     }
   }

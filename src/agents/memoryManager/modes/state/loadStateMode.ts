@@ -3,8 +3,8 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 import { LoadStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { MemoryService } from '../../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+// Memory service is used indirectly through the agent
+// Workspace service is used indirectly through the agent
 
 /**
  * Mode for loading a workspace state with comprehensive context restoration
@@ -81,15 +81,14 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       
       // Try to get the original session information
       let originalSessionName = 'Unknown session';
-      let originalSessionDescription: string | undefined;
+      // We don't need to store the original session description for now
       try {
         const originalSession = await memoryService.getSession(originalSessionId);
         if (originalSession) {
           originalSessionName = originalSession.name || 'Unnamed session';
-          originalSessionDescription = originalSession.description;
         }
       } catch (error) {
-        console.warn(`Failed to retrieve original session: ${error.message}`);
+        console.warn(`Failed to retrieve original session: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       // Get the activity embedder from the plugin
@@ -101,7 +100,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         restoredState = await memoryService.restoreStateSnapshot(stateId);
         console.log(`Successfully restored state "${restoredState.name}" from workspace ${restoredState.workspaceId}`);
       } catch (error) {
-        console.error(`Failed to restore state: ${error.message}`);
+        console.error(`Failed to restore state: ${error instanceof Error ? error.message : String(error)}`);
         
         // Try fallback to legacy method if available
         if (activityEmbedder && typeof activityEmbedder.restoreStateSnapshot === 'function') {
@@ -109,13 +108,12 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
           await activityEmbedder.restoreStateSnapshot(stateId);
         } else {
           console.warn('State restoration failed and no fallback is available');
-          throw new Error(`Failed to restore state: ${error.message}`);
+          throw new Error(`Failed to restore state: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
       
       // Prepare session initialization data
       let newSessionId: string;
-      const restorationDate = new Date();
       
       // Create a continuation session if requested
       if (createContinuationSession) {
@@ -193,7 +191,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
           description: `Loaded state "${stateName}"`
         });
       } catch (error) {
-        console.warn(`Failed to build state history: ${error.message}`);
+        console.warn(`Failed to build state history: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       // If comprehensive context is requested, retrieve detailed trace information
@@ -213,7 +211,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             }
           }
         } catch (error) {
-          console.warn(`Failed to retrieve detailed trace information: ${error.message}`);
+          console.warn(`Failed to retrieve detailed trace information: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
       
@@ -311,7 +309,7 @@ ${contextSummary}`;
             );
           }
         } catch (error) {
-          console.warn(`Failed to create memory trace for restoration: ${error.message}`);
+          console.warn(`Failed to create memory trace for restoration: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
       
@@ -333,7 +331,7 @@ ${contextSummary}`;
         }
       });
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error loading state: ${error.message}`);
+      return this.prepareResult(false, undefined, `Error loading state: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

@@ -1,4 +1,4 @@
-import { App, Notice, TFile } from 'obsidian';
+import { App, TFile } from 'obsidian';
 
 /**
  * Utility class for content operations
@@ -36,7 +36,8 @@ export class ContentOperations {
       
       return await app.vault.read(file);
     } catch (error) {
-      throw new Error(`Error reading file: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error reading file: ${errorMessage}`);
     }
   }
   
@@ -54,7 +55,8 @@ export class ContentOperations {
       
       return lines.map((line, index) => `${index + 1}: ${line}`).join('\n');
     } catch (error) {
-      throw new Error(`Error reading file with line numbers: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error reading file with line numbers: ${errorMessage}`);
     }
   }
   
@@ -95,7 +97,8 @@ export class ContentOperations {
       
       return selectedLines;
     } catch (error) {
-      throw new Error(`Error reading lines: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error reading lines: ${errorMessage}`);
     }
   }
   
@@ -127,7 +130,8 @@ export class ContentOperations {
       
       return await app.vault.create(normalizedPath, content);
     } catch (error) {
-      throw new Error(`Error creating file: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error creating file: ${errorMessage}`);
     }
   }
   
@@ -165,7 +169,8 @@ export class ContentOperations {
         totalLength: newContent.length
       };
     } catch (error) {
-      throw new Error(`Error appending to file: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error appending to file: ${errorMessage}`);
     }
   }
   
@@ -203,7 +208,8 @@ export class ContentOperations {
         totalLength: newContent.length
       };
     } catch (error) {
-      throw new Error(`Error prepending to file: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error prepending to file: ${errorMessage}`);
     }
   }
   
@@ -251,7 +257,8 @@ export class ContentOperations {
       
       return count;
     } catch (error) {
-      throw new Error(`Error replacing content: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error replacing content: ${errorMessage}`);
     }
   }
   
@@ -313,7 +320,8 @@ export class ContentOperations {
       
       return linesReplaced;
     } catch (error) {
-      throw new Error(`Error replacing lines: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error replacing lines: ${errorMessage}`);
     }
   }
   
@@ -359,7 +367,8 @@ export class ContentOperations {
       
       return count;
     } catch (error) {
-      throw new Error(`Error deleting content: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error deleting content: ${errorMessage}`);
     }
   }
   

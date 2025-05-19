@@ -4,7 +4,6 @@ import { ReadContentParams, ReadContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { MemoryService } from '../../../database/services/MemoryService';
-import { EmbeddingService } from '../../../database/services/EmbeddingService';
 
 /**
  * Mode for reading content from a file
@@ -12,18 +11,15 @@ import { EmbeddingService } from '../../../database/services/EmbeddingService';
 export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResult> {
   private app: App;
   private memoryService: MemoryService | null = null;
-  private embeddingService: EmbeddingService | null = null;
   
   /**
    * Create a new ReadContentMode
    * @param app Obsidian app instance
    * @param memoryService Optional MemoryService for activity recording
-   * @param embeddingService Optional EmbeddingService for embedding generation
    */
   constructor(
     app: App, 
-    memoryService?: MemoryService | null,
-    embeddingService?: EmbeddingService | null
+    memoryService?: MemoryService | null
   ) {
     super(
       'readContent',
@@ -34,7 +30,6 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     
     this.app = app;
     this.memoryService = memoryService || null;
-    this.embeddingService = embeddingService || null;
   }
   
   /**
@@ -95,7 +90,8 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       
       return result;
     } catch (error) {
-      return this.prepareResult(false, undefined, error.message, params.workspaceContext);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return this.prepareResult(false, undefined, errorMessage, params.workspaceContext);
     }
   }
   
@@ -168,7 +164,8 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
           return;
         }
       } catch (error) {
-        console.error('Failed to get memory service from plugin:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('Failed to get memory service from plugin:', errorMessage);
         return;
       }
     }
@@ -215,7 +212,8 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       });
     } catch (error) {
       // Log but don't fail the main operation
-      console.error('Failed to record content reading activity with memory service:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Failed to record content reading activity with memory service:', errorMessage);
     }
   }
 

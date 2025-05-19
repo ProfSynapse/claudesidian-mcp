@@ -10,28 +10,16 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export class WorkspaceService {
   /**
-   * Vector store instance
-   */
-  private vectorStore: IVectorStore;
-  
-  /**
    * Workspace collection
    */
   private collection: WorkspaceCollection;
   
   /**
-   * Plugin instance
-   */
-  private plugin: Plugin;
-  
-  /**
    * Create a new workspace service
-   * @param plugin Plugin instance
+   * @param _plugin Plugin instance (unused but kept for API compatibility)
    * @param vectorStore Vector store instance
    */
-  constructor(plugin: Plugin, vectorStore: IVectorStore) {
-    this.plugin = plugin;
-    this.vectorStore = vectorStore;
+  constructor(_plugin: Plugin, vectorStore: IVectorStore) {
     this.collection = VectorStoreFactory.createWorkspaceCollection(vectorStore);
   }
   

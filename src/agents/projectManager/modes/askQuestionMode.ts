@@ -6,13 +6,12 @@ import { AskQuestionArgs, AskQuestionResult } from '../types';
  * Mode for asking questions about a project
  */
 export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult> {
-  private app: App;
 
   /**
    * Create a new AskQuestionMode
-   * @param app Obsidian app instance
+   * @param _app Obsidian app instance (not used)
    */
-  constructor(app: App) {
+  constructor(_app: App) {
     super(
       'askQuestion',
       'Ask Question',
@@ -20,7 +19,6 @@ export class AskQuestionMode extends BaseMode<AskQuestionArgs, AskQuestionResult
       '1.0.0'
     );
 
-    this.app = app;
   }
 
   /**

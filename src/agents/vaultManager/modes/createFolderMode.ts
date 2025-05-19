@@ -4,6 +4,7 @@ import { CommonParameters, CommonResult } from '../../../types';
 import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Parameters for create folder mode
@@ -105,7 +106,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
         params.workspaceContext
       );
     } catch (error) {
-      return this.prepareResult(false, undefined, `Failed to create folder: ${error.message}`);
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to create folder: ', error));
     }
   }
   
@@ -170,7 +171,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
       );
     } catch (error) {
       // Log but don't fail the main operation
-      console.error('Failed to record folder creation activity:', error);
+      console.error('Failed to record folder creation activity:', createErrorMessage('', error));
       
       // Try to get memory service from plugin if not available
       if (!this.memoryService) {
@@ -182,7 +183,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
             await this.recordActivity(params, result);
           }
         } catch (retryError) {
-          console.error('Error accessing memory service for retry:', retryError);
+          console.error('Error accessing memory service for retry:', createErrorMessage('', retryError));
         }
       }
     }

@@ -1,8 +1,8 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { DeleteStateParams, StateResult } from '../../types';
-import { MemoryService } from '../../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+// Memory service is used indirectly through the agent
+// Workspace service is used indirectly through the agent
 
 /**
  * Mode for deleting a workspace state/snapshot
@@ -107,14 +107,14 @@ ${state.description ? `Description: ${state.description}` : ''}`;
           
         }
       } catch (error) {
-        console.warn(`Failed to create memory trace for state deletion: ${error.message}`);
+        console.warn(`Failed to create memory trace for state deletion: ${error instanceof Error ? error.message : String(error)}`);
         // Continue with normal response even if trace creation fails
       }
       
       // Return result with the deleted state info
       return this.prepareResult(true, stateData, 'State deleted successfully');
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error deleting state: ${error.message}`);
+      return this.prepareResult(false, undefined, `Error deleting state: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

@@ -13,7 +13,6 @@ import { ClaudesidianPlugin } from '../utils/pluginTypes';
  * Mode to list available workspaces
  */
 export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListWorkspacesResult> {
-  private app: App;
   private plugin: Plugin;
   private workspaceService: WorkspaceService | null = null;
   
@@ -28,7 +27,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       'List available workspaces with filters and sorting',
       '1.0.0'
     );
-    this.app = app;
     this.plugin = app.plugins.getPlugin('claudesidian-mcp');
     
     // Safely access the workspace service
@@ -94,7 +92,7 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
         workspaceContext: workspaceContext
       };
       
-    } catch (error) {
+    } catch (error: any) {
       // For error case, ensure workspaceContext has required workspaceId if present
       const workspaceContext = params.workspaceContext 
         ? { 

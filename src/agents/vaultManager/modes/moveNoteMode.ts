@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { MoveNoteArgs, MoveNoteResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for moving a note
@@ -45,7 +46,7 @@ export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
         path,
         newPath,
         success: false,
-        error: error.message
+        error: createErrorMessage('Failed to move note: ', error)
       };
     }
   }
