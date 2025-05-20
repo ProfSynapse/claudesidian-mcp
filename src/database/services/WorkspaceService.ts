@@ -15,6 +15,21 @@ export class WorkspaceService {
   private collection: WorkspaceCollection;
   
   /**
+   * Flag to prevent recursive activity recording
+   */
+  private isRecordingActivity: boolean = false;
+  
+  /**
+   * Track last activity timestamp to limit frequency
+   */
+  private lastActivityTime: number = 0;
+  
+  /**
+   * Minimum interval between activity recordings (in ms)
+   */
+  private activityRateLimit: number = 1000; // 1 second
+  
+  /**
    * Create a new workspace service
    * @param _plugin Plugin instance (unused but kept for API compatibility)
    * @param vectorStore Vector store instance
@@ -199,6 +214,23 @@ export class WorkspaceService {
    * @param activity Activity data
    */
   async addActivity(workspaceId: string, activity: ProjectWorkspace['activityHistory'][0]): Promise<void> {
+    // Prevent recursive calls and implement rate limiting
+    if (this.isRecordingActivity) {
+      console.log(`[WorkspaceService] Skipping activity recording to prevent recursion for workspace ${workspaceId}`);
+      return;
+    }
+    
+    // Check rate limiting
+    const now = Date.now();
+    if (now - this.lastActivityTime < this.activityRateLimit) {
+      console.log(`[WorkspaceService] Rate limiting activity recording for workspace ${workspaceId} (too frequent)`);
+      return;
+    }
+    
+    // Set flag and update timestamp
+    this.isRecordingActivity = true;
+    this.lastActivityTime = now;
+    
     console.log(`[WorkspaceService] Adding activity to workspace ${workspaceId}:`, activity);
     
     try {
@@ -206,6 +238,7 @@ export class WorkspaceService {
       
       if (!workspace) {
         console.error(`[WorkspaceService] Workspace with ID ${workspaceId} not found`);
+        this.isRecordingActivity = false; // Reset flag before throwing
         throw new Error(`Workspace with ID ${workspaceId} not found`);
       }
       
@@ -224,6 +257,9 @@ export class WorkspaceService {
     } catch (error) {
       console.error(`[WorkspaceService] Failed to add activity to workspace ${workspaceId}:`, error);
       throw error;
+    } finally {
+      // Always reset the flag when done
+      this.isRecordingActivity = false;
     }
   }
   
@@ -233,6 +269,19 @@ export class WorkspaceService {
    * @param activity Activity data
    */
   async recordActivity(workspaceId: string, activity: ProjectWorkspace['activityHistory'][0]): Promise<void> {
+    // Prevent recursive calls and implement rate limiting
+    if (this.isRecordingActivity) {
+      console.log(`[WorkspaceService] Skipping recordActivity to prevent recursion for workspace ${workspaceId}`);
+      return;
+    }
+    
+    // Check rate limiting
+    const now = Date.now();
+    if (now - this.lastActivityTime < this.activityRateLimit) {
+      console.log(`[WorkspaceService] Rate limiting recordActivity for workspace ${workspaceId} (too frequent)`);
+      return;
+    }
+    
     console.log(`[WorkspaceService] Recording activity for workspace ${workspaceId}:`, activity);
     
     try {
@@ -247,22 +296,25 @@ export class WorkspaceService {
       // Extra verification - log current activity history
       console.log(`[WorkspaceService] Pre-verification: Workspace ${workspaceId} has ${workspace.activityHistory.length} activities`);
       
-      // Add the activity
+      // Add the activity (addActivity already handles the recursion flags)
       await this.addActivity(workspaceId, activity);
       
-      // Verify that the activity was added correctly by re-fetching the workspace
-      const updatedWorkspace = await this.collection.get(workspaceId);
-      
-      if (updatedWorkspace) {
-        console.log(`[WorkspaceService] Post-verification: Workspace ${workspaceId} now has ${updatedWorkspace.activityHistory.length} activities`);
+      // Only verify if we haven't hit recursion or rate limiting in addActivity
+      if (!this.isRecordingActivity) {
+        // Verify that the activity was added correctly by re-fetching the workspace
+        const updatedWorkspace = await this.collection.get(workspaceId);
         
-        // Check if the most recent activity matches
-        if (updatedWorkspace.activityHistory.length > 0) {
-          const lastActivity = updatedWorkspace.activityHistory[updatedWorkspace.activityHistory.length - 1];
-          console.log(`[WorkspaceService] Last activity: action=${lastActivity.action}, timestamp=${lastActivity.timestamp}`);
+        if (updatedWorkspace) {
+          console.log(`[WorkspaceService] Post-verification: Workspace ${workspaceId} now has ${updatedWorkspace.activityHistory.length} activities`);
+          
+          // Check if the most recent activity matches
+          if (updatedWorkspace.activityHistory.length > 0) {
+            const lastActivity = updatedWorkspace.activityHistory[updatedWorkspace.activityHistory.length - 1];
+            console.log(`[WorkspaceService] Last activity: action=${lastActivity.action}, timestamp=${lastActivity.timestamp}`);
+          }
+        } else {
+          console.error(`[WorkspaceService] Failed to verify activity addition - workspace ${workspaceId} not found after update`);
         }
-      } else {
-        console.error(`[WorkspaceService] Failed to verify activity addition - workspace ${workspaceId} not found after update`);
       }
     } catch (error) {
       console.error(`[WorkspaceService] Error in recordActivity: ${error instanceof Error ? error.message : String(error)}`);

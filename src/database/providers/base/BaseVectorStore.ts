@@ -24,11 +24,47 @@ export abstract class BaseVectorStore implements IVectorStore {
   protected initialized: boolean = false;
   
   /**
+   * Flag to indicate if the current operation is a system operation
+   * System operations should not trigger file event handling
+   */
+  public isSystemOperation: boolean = false;
+  
+  /**
    * Create a new base vector store
    * @param options Storage options
    */
   constructor(options?: Partial<IStorageOptions>) {
     this.config = new VectorStoreConfig(options);
+  }
+  
+  /**
+   * Mark the beginning of a system operation
+   * System operations won't trigger workspace activity recording
+   */
+  public startSystemOperation(): void {
+    this.isSystemOperation = true;
+  }
+  
+  /**
+   * Mark the end of a system operation
+   */
+  public endSystemOperation(): void {
+    this.isSystemOperation = false;
+  }
+  
+  /**
+   * Execute a function as a system operation
+   * @param fn Function to execute
+   * @returns Promise resolving to the function result
+   */
+  public async withSystemOperation<T>(fn: () => Promise<T>): Promise<T> {
+    const wasSystemOperation = this.isSystemOperation;
+    this.isSystemOperation = true;
+    try {
+      return await fn();
+    } finally {
+      this.isSystemOperation = wasSystemOperation;
+    }
   }
   
   /**

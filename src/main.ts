@@ -209,6 +209,9 @@ export default class ClaudesidianPlugin extends Plugin {
         });
         
         try {
+            // Mark as system operation to prevent file event handling
+            this.vectorStore.startSystemOperation();
+            
             await this.vectorStore.initialize();
             console.log("ChromaDB vector store initialized successfully");
             
@@ -216,7 +219,12 @@ export default class ClaudesidianPlugin extends Plugin {
             const diagnostics = await this.vectorStore.getDiagnostics();
             console.log(`ChromaDB diagnostics: ${diagnostics.totalCollections} collections found`);
             console.log(`Storage mode: ${diagnostics.storageMode}, path: ${diagnostics.persistentPath}`);
+            
+            // Clear system operation flag
+            this.vectorStore.endSystemOperation();
         } catch (error) {
+            // Make sure to clear the flag even on error
+            this.vectorStore.endSystemOperation();
             console.error("Failed to initialize ChromaDB vector store:", error);
         }
         
@@ -229,6 +237,9 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Initialize collections - do this sequentially to avoid race conditions
         try {
+            // Mark as system operation to prevent file event handling
+            this.vectorStore.startSystemOperation();
+            
             await this.searchService.initialize().catch(error => {
                 console.warn(`Failed to initialize search service: ${error.message}`);
             });
@@ -245,7 +256,12 @@ export default class ClaudesidianPlugin extends Plugin {
             
             // Add a validation step to ensure collections are properly loaded
             this.validateCollections();
+            
+            // End system operation
+            this.vectorStore.endSystemOperation();
         } catch (error) {
+            // Make sure to clear the flag even on error
+            this.vectorStore.endSystemOperation();
             console.error("Failed to initialize ChromaDB collections:", error);
             // Continue with plugin loading despite initialization errors
         }
@@ -459,6 +475,13 @@ export default class ClaudesidianPlugin extends Plugin {
     private async validateCollections(): Promise<void> {
         console.log("Starting post-initialization collection validation");
         
+        // This should be running within a system operation context already,
+        // but we'll ensure it here just in case it's called separately
+        const wasInSystemOperation = !!this.vectorStore.isSystemOperation;
+        if (!wasInSystemOperation) {
+            this.vectorStore.startSystemOperation();
+        }
+        
         try {
             // Define our essential collections that should always exist
             const essentialCollections = [
@@ -531,6 +554,11 @@ export default class ClaudesidianPlugin extends Plugin {
             }
         } catch (error) {
             console.error("Error during collection validation:", error);
+        } finally {
+            // Only clear the flag if we set it here
+            if (!wasInSystemOperation) {
+                this.vectorStore.endSystemOperation();
+            }
         }
     }
     

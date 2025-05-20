@@ -5,3 +5,4 @@ export * from './FilterSettingsTab';
 export * from './AdvancedSettingsTab';
 export * from './UsageStatsComponent';
 export * from './UsageSettingsTab';
+export * from './DeleteCollectionComponent';

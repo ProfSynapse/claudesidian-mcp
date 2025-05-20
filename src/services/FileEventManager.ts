@@ -13,6 +13,7 @@ interface FileEvent {
   type: 'create' | 'modify' | 'delete';
   timestamp: number;
   workspaceIds: string[];
+  isSystemOperation?: boolean;
 }
 
 /**
@@ -25,11 +26,29 @@ interface FileCacheItem {
 }
 
 /**
+ * Map to track last activity time for each workspace
+ * Used for rate limiting activity recording
+ */
+interface WorkspaceActivityRate {
+  [workspaceId: string]: number; // timestamp of last activity
+}
+
+/**
  * Service for tracking file events and updating workspaces accordingly
  */
 export class FileEventManager {
   // Track current active sessions for memory trace recording
   private activeSessions: Record<string, string> = {}; // workspaceId -> sessionId
+  
+  // Flag to prevent activity recording during initialization
+  private isInitializing: boolean = true;
+  
+  // Flag to prevent recursive activity recording
+  private isRecordingActivity: boolean = false;
+  
+  // Rate limiting for activity recording
+  private lastActivityTimes: WorkspaceActivityRate = {};
+  private activityRateLimit: number = 5000; // 5 seconds minimum between activities per workspace
   
   // Service references
   private memoryService: MemoryService;
@@ -111,11 +130,18 @@ export class FileEventManager {
    * This sets up the event listeners and caches
    */
   async initialize(): Promise<void> {
+    // Set flag at start of initialization
+    this.isInitializing = true;
+    
     // Register event listeners
     this.registerEventListeners();
     
     // Load active sessions for memory trace recording
     await this.refreshActiveSessions();
+    
+    // Clear flag after initialization is complete
+    this.isInitializing = false;
+    console.log('[FileEventManager] Initialization complete, enabling activity recording');
   }
   
   /**
@@ -240,11 +266,15 @@ export class FileEventManager {
    */
   private handleFileCreated(file: TAbstractFile): void {
     if (file instanceof TFile && file.extension === 'md') {
+      // Check if path contains system directories (like chroma-db or .obsidian)
+      const isSystemFile = this.isSystemPath(file.path);
+      
       this.queueFileEvent({
         path: file.path,
         type: 'create',
         timestamp: Date.now(),
-        workspaceIds: []
+        workspaceIds: [],
+        isSystemOperation: isSystemFile
       });
     }
   }
@@ -255,11 +285,15 @@ export class FileEventManager {
    */
   private handleFileModified(file: TAbstractFile): void {
     if (file instanceof TFile && file.extension === 'md') {
+      // Check if path contains system directories
+      const isSystemFile = this.isSystemPath(file.path);
+      
       this.queueFileEvent({
         path: file.path,
         type: 'modify',
         timestamp: Date.now(),
-        workspaceIds: []
+        workspaceIds: [],
+        isSystemOperation: isSystemFile
       });
     }
   }
@@ -275,16 +309,36 @@ export class FileEventManager {
       const cachedItem = this.fileWorkspaceCache.get(file.path);
       const workspaceIds = cachedItem ? cachedItem.workspaceIds : [];
       
+      // Check if path contains system directories
+      const isSystemFile = this.isSystemPath(file.path);
+      
       this.queueFileEvent({
         path: file.path,
         type: 'delete',
         timestamp: Date.now(),
-        workspaceIds: workspaceIds
+        workspaceIds: workspaceIds,
+        isSystemOperation: isSystemFile
       });
       
       // Remove from cache
       this.fileWorkspaceCache.delete(file.path);
     }
+  }
+  
+  /**
+   * Check if a path is a system path (not a user file)
+   * @param path File path to check
+   * @returns Whether it's a system path
+   */
+  private isSystemPath(path: string): boolean {
+    const lowerPath = path.toLowerCase();
+    // Consider collection files, settings files, etc. as system files
+    return (
+      lowerPath.includes('chroma-db') ||
+      lowerPath.includes('.obsidian') ||
+      lowerPath.includes('/data/') ||
+      lowerPath.includes('/collection')
+    );
   }
   
   /**
@@ -421,6 +475,29 @@ export class FileEventManager {
    */
   private async recordWorkspaceActivity(workspaceId: string, event: FileEvent): Promise<void> {
     try {
+      // Skip activity recording for system operations
+      if (event.isSystemOperation) {
+        console.log(`[FileEventManager] Skipping activity recording for system operation: ${event.type} for ${event.path}`);
+        return;
+      }
+      
+      // Skip activity recording during initialization to prevent unnecessary embedding creation
+      if (this.isInitializing) {
+        console.log(`[FileEventManager] Skipping activity recording during initialization: ${event.type} for ${event.path}`);
+        return;
+      }
+      
+      // Rate limit checking using workspace-specific timestamps
+      const now = Date.now();
+      const lastTime = this.lastActivityTimes[workspaceId] || 0;
+      if (now - lastTime < this.activityRateLimit) {
+        console.log(`[FileEventManager] Rate limiting activity for workspace ${workspaceId} (too frequent)`);
+        return;
+      }
+      
+      // Update the timestamp for this workspace
+      this.lastActivityTimes[workspaceId] = now;
+      
       // Map event type to action, ensuring it matches allowed action types
       const action = event.type === 'create' ? 'create' :
                      event.type === 'modify' ? 'edit' :
@@ -526,6 +603,12 @@ export class FileEventManager {
     filePath: string,
     action: 'view' | 'edit' | 'create'
   ): Promise<string[]> {
+    // Skip activity recording during initialization to prevent unnecessary embedding creation
+    if (this.isInitializing) {
+      console.log(`[FileEventManager] Skipping manual activity recording during initialization for ${filePath}`);
+      return [];
+    }
+    
     // Find workspaces for this file
     const workspaceIds = await this.findWorkspacesForFile(filePath);
     

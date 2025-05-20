@@ -90,8 +90,16 @@ export class TokenTrackingMixin {
     
     /**
      * Emit token usage events using the plugin's event manager if available
+     * NOTE: Disabled to prevent event loops. Token updates are now manual.
      */
     protected emitTokenUsageEvents(): void {
+        // We've completely disabled automatic token usage event emission
+        // to prevent recursion issues. Token usage is now updated
+        // manually via refresh buttons in the UI.
+        console.log('Token usage updated (events disabled to prevent recursion)');
+        
+        // DISABLED code below to prevent event loops:
+        /*
         try {
             const app = (window as any).app;
             const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
@@ -107,6 +115,7 @@ export class TokenTrackingMixin {
         } catch (emitError) {
             console.warn('Failed to emit token usage event:', emitError);
         }
+        */
     }
     
     /**

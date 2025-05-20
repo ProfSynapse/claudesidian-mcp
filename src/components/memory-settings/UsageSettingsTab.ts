@@ -14,10 +14,16 @@ export class UsageSettingsTab extends BaseSettingsTab {
     private vaultLibrarian: VaultLibrarianAgent | null;
     private usageStatsComponent: UsageStatsComponent | null = null;
     private usageStatsService: UsageStatsService | null = null;
+    private vectorStore: any = null;
     
     /**
      * Create a new usage settings tab
      */
+    // Flag to prevent recursive refreshes
+    private isRefreshing: boolean = false;
+    // Storage event handler
+    private storageEventHandler: (e: StorageEvent) => void;
+    
     constructor(
         settings: any, 
         settingsManager: any, 
@@ -31,10 +37,27 @@ export class UsageSettingsTab extends BaseSettingsTab {
         
         // Initialize the UsageStatsService
         this.initializeUsageStatsService();
+        
+        // Set up storage event listener for collection deletion events
+        this.storageEventHandler = (e: StorageEvent) => {
+            if (e.key === 'claudesidian-collection-deleted' || e.key === 'claudesidian-collections-purged') {
+                console.log(`UsageSettingsTab: Detected collection change via localStorage: ${e.key}`);
+                // Use setTimeout to avoid immediate refresh that could cause cycles
+                setTimeout(() => {
+                    if (!this.isRefreshing) {
+                        this.refreshStats();
+                    }
+                }, 500);
+            }
+        };
+        
+        if (typeof window !== 'undefined') {
+            window.addEventListener('storage', this.storageEventHandler);
+        }
     }
     
     /**
-     * Initialize the UsageStatsService
+     * Initialize the UsageStatsService and VectorStore
      */
     private initializeUsageStatsService(): void {
         const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
@@ -43,40 +66,36 @@ export class UsageSettingsTab extends BaseSettingsTab {
             return;
         }
         
+        // Get the vector store first, as it's needed for both the UsageStatsService and DeleteCollectionComponent
+        this.vectorStore = plugin.services?.vectorStore || plugin.vectorStore;
+        
         // First try to get the global service instance
         if (plugin.services?.usageStatsService) {
             this.usageStatsService = plugin.services.usageStatsService;
             console.log('UsageSettingsTab: Using global UsageStatsService from services');
-            return;
-        }
-        
-        if (plugin.usageStatsService) {
+        } else if (plugin.usageStatsService) {
             this.usageStatsService = plugin.usageStatsService;
             console.log('UsageSettingsTab: Using global UsageStatsService from plugin');
-            return;
-        }
-        
-        // If we couldn't get the global instance, create a new one (this should rarely happen)
-        console.warn('UsageSettingsTab: Global UsageStatsService not found, creating local instance (fallback)');
-        
-        // Get the embedding service
-        const embeddingService = plugin.services?.embeddingService || plugin.embeddingService;
-        
-        // Get the vector store
-        const vectorStore = plugin.vectorStore || plugin.services?.vectorStore;
-        
-        if (embeddingService && vectorStore) {
-            this.usageStatsService = new UsageStatsService(
-                embeddingService,
-                vectorStore,
-                this.settings,
-                plugin.eventManager // Pass the global event manager
-            );
         } else {
-            console.warn('Missing dependencies for UsageStatsService', {
-                embeddingService: !!embeddingService,
-                vectorStore: !!vectorStore
-            });
+            // If we couldn't get the global instance, create a new one (this should rarely happen)
+            console.warn('UsageSettingsTab: Global UsageStatsService not found, creating local instance (fallback)');
+            
+            // Get the embedding service
+            const embeddingService = plugin.services?.embeddingService || plugin.embeddingService;
+            
+            if (embeddingService && this.vectorStore) {
+                this.usageStatsService = new UsageStatsService(
+                    embeddingService,
+                    this.vectorStore,
+                    this.settings,
+                    plugin.eventManager // Pass the global event manager
+                );
+            } else {
+                console.warn('Missing dependencies for UsageStatsService', {
+                    embeddingService: !!embeddingService,
+                    vectorStore: !!this.vectorStore
+                });
+            }
         }
     }
     
@@ -219,9 +238,17 @@ export class UsageSettingsTab extends BaseSettingsTab {
      * This ensures the UI is updated properly after operations
      */
     private async refreshStats(): Promise<void> {
+        // Prevent recursive refreshes
+        if (this.isRefreshing) {
+            console.log('UsageSettingsTab: Already refreshing, skipping duplicate refresh');
+            return;
+        }
+        
         console.log('UsageSettingsTab: Refreshing usage stats...');
         
         try {
+            this.isRefreshing = true;
+            
             // First, try to get the most recent service instance in case it was updated
             this.initializeUsageStatsService();
             
@@ -241,6 +268,8 @@ export class UsageSettingsTab extends BaseSettingsTab {
             } else {
                 console.warn('UsageSettingsTab: No UsageStatsComponent available for refresh');
             }
+            
+            // DeleteCollectionComponent has been moved to AdvancedSettingsTab
             
             // Force localStorage events for other components
             try {
@@ -268,6 +297,19 @@ export class UsageSettingsTab extends BaseSettingsTab {
             }
         } catch (error) {
             console.error('Error refreshing stats:', error);
+        } finally {
+            // Reset the refreshing flag
+            this.isRefreshing = false;
+        }
+    }
+    
+    /**
+     * Clean up event listeners when component is unloaded
+     */
+    onUnload(): void {
+        // Remove storage event listener
+        if (typeof window !== 'undefined' && this.storageEventHandler) {
+            window.removeEventListener('storage', this.storageEventHandler);
         }
     }
     

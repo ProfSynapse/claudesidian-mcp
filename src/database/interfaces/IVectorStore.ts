@@ -4,6 +4,30 @@
  */
 export interface IVectorStore {
   /**
+   * Flag to indicate if the current operation is a system operation
+   * System operations should not trigger file event handling
+   */
+  readonly isSystemOperation?: boolean;
+  
+  /**
+   * Mark the beginning of a system operation
+   * System operations won't trigger workspace activity recording
+   */
+  startSystemOperation(): void;
+  
+  /**
+   * Mark the end of a system operation
+   */
+  endSystemOperation(): void;
+  
+  /**
+   * Execute a function as a system operation
+   * @param fn Function to execute
+   * @returns Promise resolving to the function result
+   */
+  withSystemOperation<T>(fn: () => Promise<T>): Promise<T>;
+  
+  /**
    * Initialize the vector store
    */
   initialize(): Promise<void>;

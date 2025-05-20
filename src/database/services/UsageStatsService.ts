@@ -93,8 +93,13 @@ export class UsageStatsService {
         '#4285F4', '#EA4335', '#FBBC05', '#34A853', // Google colors
         '#3498DB', '#E74C3C', '#2ECC71', '#F39C12', // Flat UI colors
         '#9B59B6', '#1ABC9C', '#D35400', '#C0392B', // More colors
-        '#8E44AD', '#16A085', '#27AE60', '#D35400', // Additional colors
-        '#2980B9', '#E67E22', '#27AE60', '#2C3E50'  // Even more colors
+        '#8E44AD', '#16A085', '#27AE60', '#E67E22', // Additional colors
+        '#2980B9', '#F1C40F', '#7D3C98', '#2C3E50', // Even more colors
+        '#1E8449', '#922B21', '#1F618D', '#F4D03F', // Deep colors
+        '#5499C7', '#CD6155', '#52BE80', '#F5B041', // Pastel variations
+        '#6C3483', '#117A65', '#A04000', '#839192', // Dark variations
+        '#85C1E9', '#EC7063', '#ABEBC6', '#FAD7A0', // Light variations
+        '#BB8FCE', '#76D7C4', '#F0B27A', '#BFC9CA'  // Soft variations
     ];
 
     /**
@@ -130,18 +135,22 @@ export class UsageStatsService {
      * Set up event listeners for token usage changes
      */
     private setupEventListeners(): void {
-        // Create a debounced refresh function to prevent multiple rapid refreshes
-        const debouncedRefresh = this.debounce(() => {
-            console.log('Debounced refresh triggered');
-            this.refreshStats();
-        }, 500);  // 500ms debounce delay
-        
         if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
-            // Set up storage event listener to detect changes from other components
+            // We're completely disabling auto-refresh on storage events to break the cycle
+            // Token updates will be reflected when the user manually interacts with the UI
+            console.log('Token usage auto-refresh is disabled to prevent recursion');
+            
+            // We'll just listen for explicit collection deletion/purge events
             window.addEventListener('storage', (event) => {
-                if (event.key === 'claudesidian-tokens-used' || event.key === 'claudesidian-token-usage') {
-                    console.log('Token usage updated in localStorage, triggering debounced refresh');
-                    debouncedRefresh();
+                if (event.key === 'claudesidian-collection-deleted' || event.key === 'claudesidian-collections-purged') {
+                    console.log(`Collection change event detected: ${event.key}`);
+                    // We'll use a long timeout to ensure we're not in a refresh cycle
+                    setTimeout(() => {
+                        if (!this.isRefreshing) {
+                            console.log('Scheduling refresh after collection change');
+                            this.refreshStats();
+                        }
+                    }, 3000); // Wait 3 seconds
                 }
             });
         }
@@ -152,25 +161,17 @@ export class UsageStatsService {
             const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
             
             if (plugin?.eventManager) {
-                // Listen for token usage updated event
-                plugin.eventManager.on('token-usage-updated', (data: any) => {
-                    console.log('Token usage updated event received:', data);
-                    debouncedRefresh();
-                });
-                
-                // Listen for token usage reset event
+                // Listen for token usage reset event only - this is important enough to always process
                 plugin.eventManager.on('token-usage-reset', (data: any) => {
                     console.log('Token usage reset event received:', data);
-                    debouncedRefresh();
+                    setTimeout(() => {
+                        if (!this.isRefreshing) {
+                            this.refreshStats();
+                        }
+                    }, 2000); // Delay refresh to avoid conflicts
                 });
                 
-                // Listen for batch embedding completed event
-                plugin.eventManager.on('batch-embedding-completed', (data: any) => {
-                    console.log('Batch embedding completed event received:', data);
-                    debouncedRefresh();
-                });
-                
-                console.log('UsageStatsService: Set up plugin event listeners successfully');
+                console.log('UsageStatsService: Set up limited plugin event listeners');
             }
         } catch (error) {
             console.warn('Failed to set up plugin event listeners:', error);
@@ -632,10 +633,22 @@ export class UsageStatsService {
         }
     }
 
+    // Track the time of the last refresh to prevent too frequent refreshes
+    private lastRefreshTime: number = 0;
+    
     /**
      * Force refresh of statistics
      */
     async refreshStats(): Promise<UsageStats> {
+        // Only update once every 2 seconds at most
+        const now = Date.now();
+        const minimumRefreshInterval = 2000; // 2 seconds
+        
+        if (now - this.lastRefreshTime < minimumRefreshInterval) {
+            console.log(`Refresh too soon (${now - this.lastRefreshTime}ms < ${minimumRefreshInterval}ms), skipping`);
+            return this.defaultStats;
+        }
+        
         console.log('Refreshing usage stats...');
         
         // Prevent concurrent refreshes and infinite loops
@@ -646,6 +659,7 @@ export class UsageStatsService {
         
         try {
             this.isRefreshing = true;
+            this.lastRefreshTime = now;
             
             // Clear any cached data
             this.defaultStats = {
@@ -669,6 +683,9 @@ export class UsageStatsService {
             this.eventManager.emit(USAGE_EVENTS.STATS_REFRESHED, stats);
             
             return stats;
+        } catch (error) {
+            console.error('Error during stats refresh:', error);
+            return this.defaultStats;
         } finally {
             // Always reset the flag when done, even if there's an error
             this.isRefreshing = false;
@@ -681,9 +698,27 @@ export class UsageStatsService {
      * by forcing a complete cache invalidation and reload
      */
     async forceCompleteRefresh(): Promise<UsageStats> {
+        // Only update once every 2 seconds at most
+        const now = Date.now();
+        const minimumRefreshInterval = 2000; // 2 seconds
+        
+        if (now - this.lastRefreshTime < minimumRefreshInterval) {
+            console.log(`Force refresh too soon (${now - this.lastRefreshTime}ms < ${minimumRefreshInterval}ms), skipping`);
+            return this.defaultStats;
+        }
+        
         console.log('Forcing complete stats refresh with collection cache invalidation...');
         
+        // Prevent concurrent refreshes and infinite loops
+        if (this.isRefreshing) {
+            console.log('Refresh already in progress, skipping force refresh');
+            return this.defaultStats;
+        }
+        
         try {
+            this.isRefreshing = true;
+            this.lastRefreshTime = now;
+            
             // Force a complete cache reset if vector store supports it
             if (this.vectorStore && typeof (this.vectorStore as any).refreshCollections === 'function') {
                 await (this.vectorStore as any).refreshCollections();
@@ -719,8 +754,9 @@ export class UsageStatsService {
             return stats;
         } catch (error) {
             console.error('Error during complete refresh:', error);
-            // Still try to do a basic refresh even if the aggressive refresh fails
-            return this.refreshStats();
+            return this.defaultStats; // Don't try to refresh again, just return default stats
+        } finally {
+            this.isRefreshing = false; // Always reset flag
         }
     }
 

@@ -681,6 +681,101 @@ a:hover {
     color: var(--text-accent-hover);
 }
 
+/* Collection Management */
+.collection-management-container {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: var(--background-secondary);
+    border-radius: 5px;
+}
+
+.delete-collection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.delete-collection-description {
+    margin: 0;
+    flex: 1;
+    color: var(--text-muted);
+}
+
+.refresh-collections-button {
+    margin-left: 10px;
+    white-space: nowrap;
+}
+
+.refresh-button-container {
+    margin: 15px 0;
+    text-align: center;
+}
+
+.collection-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    background-color: var(--background-primary);
+    transition: background-color 0.2s ease;
+}
+
+.collection-row:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.collection-name {
+    font-weight: 500;
+    flex: 1;
+}
+
+.collection-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.collection-delete-button {
+    background-color: var(--text-error) !important;
+    color: white !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    height: auto !important;
+    min-height: 24px !important;
+}
+
+.collection-delete-button:hover {
+    background-color: var(--text-error-hover) !important;
+}
+
+.purge-all-container {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: var(--background-modifier-error-rgb);
+    border-radius: 5px;
+    border: 1px solid var(--text-error);
+}
+
+.danger-zone-text {
+    color: var(--text-error);
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.no-collections-notice {
+    font-style: italic;
+    color: var(--text-muted);
+    margin-bottom: 15px;
+}
+
+.collection-management-error {
+    color: var(--text-error);
+    font-style: italic;
+    margin: 15px 0;
+}
+
 /* MCP Connection Status */
 .mcp-connector-status {
     display: flex;
