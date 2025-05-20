@@ -11,6 +11,7 @@ import { EmbeddingManager } from '../../database/services/embeddingManager';
 export class UsageStatsComponent extends BaseSettingsTab {
     private vaultLibrarian: VaultLibrarianAgent | null;
     private embeddingManager: EmbeddingManager | null;
+    private searchService: any; // Added for storing search service reference
     
     /**
      * Create a new usage stats component
@@ -25,12 +26,17 @@ export class UsageStatsComponent extends BaseSettingsTab {
         super(settings, settingsManager, app);
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
+        
+        // Try to get search service from vault librarian if available
+        if (vaultLibrarian && (vaultLibrarian as any).searchService) {
+            this.searchService = (vaultLibrarian as any).searchService;
+        }
     }
     
     /**
      * Display the usage statistics
      */
-    display(containerEl: HTMLElement): void {
+    async display(containerEl: HTMLElement): Promise<void> {
         const section = containerEl.createEl('div', { cls: 'memory-usage-stats' });
         
         section.createEl('h3', { text: 'Usage Statistics' });
@@ -47,6 +53,11 @@ export class UsageStatsComponent extends BaseSettingsTab {
                 'text-embedding-3-small': number;
                 'text-embedding-3-large': number;
             };
+            collectionStats?: Array<{
+                name: string;
+                count: number;
+                color: string;
+            }>;
         } = { 
             tokensThisMonth: 0,
             totalEmbeddings: 0,
@@ -57,12 +68,20 @@ export class UsageStatsComponent extends BaseSettingsTab {
             modelUsage: {
                 'text-embedding-3-small': 0,
                 'text-embedding-3-large': 0
-            }
+            },
+            collectionStats: []
         };
         
         try {
             // Get usage stats using our helper method
-            usageStats = this.getUsageStats();
+            usageStats = await this.getUsageStats();
+            
+            // Update token usage stats if provider is available
+            if (this.embeddingManager && this.embeddingManager.getProvider()) {
+                this.updateUsageStats(usageStats.tokensThisMonth).catch(err => 
+                    console.error('Error updating usage stats:', err)
+                );
+            }
         } catch (error) {
             console.error('Error getting usage stats:', error instanceof Error ? error.message : String(error));
         }
@@ -77,6 +96,77 @@ export class UsageStatsComponent extends BaseSettingsTab {
         const progressContainer = section.createDiv({ cls: 'memory-usage-progress' });
         const progressBar = progressContainer.createDiv({ cls: 'memory-usage-bar' });
         progressBar.style.width = `${percentUsed}%`;
+        
+        // Collection embedding stats
+        const collectionSection = section.createDiv({ cls: 'memory-collections-section' });
+        collectionSection.createEl('h4', { text: 'Embeddings by Collection' });
+            
+        if (usageStats.collectionStats && usageStats.collectionStats.length > 0) {
+            // Create collection stats container
+            const collectionStatsContainer = collectionSection.createDiv({ cls: 'collection-stats-container' });
+            
+            // Total embeddings display
+            collectionStatsContainer.createDiv({ 
+                cls: 'collection-stats-total',
+                text: `Total embeddings: ${usageStats.totalEmbeddings.toLocaleString()}`
+            });
+            
+            // Create stacked bar for visualization
+            const barContainer = collectionStatsContainer.createDiv({ cls: 'collection-bar-container' });
+            
+            // Create segments for each collection
+            usageStats.collectionStats.forEach((collection: {name: string; count: number; color: string}) => {
+                const percentage = (collection.count / usageStats.totalEmbeddings) * 100;
+                const segment = barContainer.createDiv({ cls: 'collection-bar-segment' });
+                segment.style.width = `${percentage}%`;
+                segment.style.backgroundColor = collection.color;
+                
+                // Add tooltip
+                segment.createDiv({
+                    cls: 'collection-tooltip',
+                    text: `${collection.name}: ${collection.count.toLocaleString()} embeddings (${percentage.toFixed(1)}%)`
+                });
+            });
+            
+            // Collection legend with counts
+            const legendContainer = collectionStatsContainer.createDiv({ cls: 'collection-legend' });
+            usageStats.collectionStats.forEach((collection: {name: string; count: number; color: string}) => {
+                const legendItem = legendContainer.createDiv({ cls: 'legend-item' });
+                const colorBox = legendItem.createDiv({ cls: 'legend-color' });
+                colorBox.style.backgroundColor = collection.color;
+                legendItem.createEl('span', { text: `${collection.name}: ${collection.count.toLocaleString()}` });
+            });
+        } else {
+            // Display message when no collections or vector store isn't initialized
+            const noCollectionsMessage = collectionSection.createDiv({ cls: 'memory-no-collections' });
+            noCollectionsMessage.createEl('p', { 
+                text: 'No collections found. This might be because:',
+                cls: 'memory-notice'
+            });
+            
+            const reasonsList = noCollectionsMessage.createEl('ul');
+            reasonsList.createEl('li', { text: 'The vector store is not yet initialized' });
+            reasonsList.createEl('li', { text: 'No files have been embedded yet' });
+            reasonsList.createEl('li', { text: 'There might be an issue connecting to the embedding database' });
+            
+            // Add a button to check the vector store status
+            const checkButton = noCollectionsMessage.createEl('button', {
+                text: 'Refresh Collection Data',
+                cls: 'mod-cta'
+            });
+            
+            checkButton.addEventListener('click', async () => {
+                try {
+                    // Try to force refresh the stats
+                    await this.getCollectionStats();
+                    if (this.onSettingsChanged) {
+                        this.onSettingsChanged();
+                    }
+                } catch (error) {
+                    console.error('Error refreshing collection data:', error);
+                }
+            });
+        }
         
         // Estimated cost - use the cost from usage stats if available, otherwise calculate
         const estimatedCost = usageStats.estimatedCost || 
@@ -104,10 +194,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
             }
         }
         
-        // Database stats
-        section.createEl('div', {
-            text: `Total embeddings: ${usageStats.totalEmbeddings.toLocaleString()}`
-        });
+        // Database stats - moved to collection visualization section
         
         section.createEl('div', {
             text: `Database size: ${(usageStats.dbSizeMB).toFixed(2)} MB / ${this.settings.maxDbSize} MB`
@@ -132,28 +219,6 @@ export class UsageStatsComponent extends BaseSettingsTab {
         
         // Action buttons
         const actionsContainer = section.createDiv({ cls: 'memory-actions' });
-        
-        // Update Token Usage button
-        const updateButton = actionsContainer.createEl('button', {
-            text: 'Update Usage Counter',
-            cls: 'mod-cta'
-        });
-        updateButton.addEventListener('click', async () => {
-            const currentCount = usageStats.tokensThisMonth;
-            const newCount = prompt('Enter new token count:', currentCount.toString());
-            
-            if (newCount !== null) {
-                const numValue = Number(newCount);
-                if (!isNaN(numValue) && numValue >= 0) {
-                    await this.updateUsageStats(numValue);
-                    if (this.onSettingsChanged) {
-                        this.onSettingsChanged();
-                    }
-                } else {
-                    new Notice('Please enter a valid number for token count');
-                }
-            }
-        });
         
         // Reset Token Usage button
         const resetButton = actionsContainer.createEl('button', {
@@ -231,11 +296,31 @@ export class UsageStatsComponent extends BaseSettingsTab {
                     reindexButton.setText('Indexing in progress...');
                     
                     try {
-                        // Reindexing functionality has been moved to the plugin's vector store implementation
-                        new Notice('Please use the ChromaDB interface to reindex content');
+                        const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+                        if (!plugin) {
+                            throw new Error('Plugin not found');
+                        }
+                        
+                        if (plugin.searchService && typeof plugin.searchService.batchIndexFiles === 'function') {
+                            // Get all markdown files from the vault
+                            const files = plugin.app.vault.getMarkdownFiles();
+                            const filePaths = files.map((file: {path: string}) => file.path);
+                            
+                            new Notice(`Starting indexing of ${filePaths.length} files...`);
+                            
+                            // Start the indexing process
+                            await plugin.searchService.batchIndexFiles(filePaths);
+                            
+                            new Notice(`Successfully indexed ${filePaths.length} files`);
+                        } else {
+                            throw new Error('Search service not available');
+                        }
                     } catch (error) {
                         console.error('Error reindexing:', error);
+                        new Notice(`Error reindexing: ${error instanceof Error ? error.message : String(error)}`);
                     } finally {
+                        reindexButton.disabled = false;
+                        reindexButton.setText('Reindex All Content');
                         if (this.onSettingsChanged) {
                             this.onSettingsChanged();
                         }
@@ -248,7 +333,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
     /**
      * Helper method to get usage stats
      */
-    private getUsageStats(): {
+    private async getUsageStats(): Promise<{
         tokensThisMonth: number;
         totalEmbeddings: number;
         dbSizeMB: number;
@@ -259,7 +344,12 @@ export class UsageStatsComponent extends BaseSettingsTab {
             'text-embedding-3-small': number;
             'text-embedding-3-large': number;
         };
-    } {
+        collectionStats?: Array<{
+            name: string;
+            count: number;
+            color: string;
+        }>;
+    }> {
         const defaultStats = { 
             tokensThisMonth: 0,
             totalEmbeddings: 0,
@@ -270,7 +360,8 @@ export class UsageStatsComponent extends BaseSettingsTab {
             modelUsage: {
                 'text-embedding-3-small': 0,
                 'text-embedding-3-large': 0
-            }
+            },
+            collectionStats: []
         };
         
         try {
@@ -280,6 +371,25 @@ export class UsageStatsComponent extends BaseSettingsTab {
                 if (provider) {
                     defaultStats.estimatedCost = (provider as any).getTotalCost?.() || defaultStats.estimatedCost;
                     defaultStats.modelUsage = (provider as any).getModelUsage?.() || defaultStats.modelUsage;
+                }
+            }
+            
+            // Get collection statistics if VaultLibrarian is available
+            if (this.vaultLibrarian) {
+                try {
+                    console.log('Getting collection stats from VaultLibrarian');
+                    const stats = await this.getCollectionStats();
+                    console.log('Got collection stats:', stats);
+                    
+                    if (stats && stats.length > 0) {
+                        defaultStats.collectionStats = stats as any;
+                        defaultStats.totalEmbeddings = stats.reduce((sum, stat) => sum + stat.count, 0);
+                        console.log('Updated stats with collection data, total embeddings:', defaultStats.totalEmbeddings);
+                    } else {
+                        console.log('No collection stats found or empty array returned');
+                    }
+                } catch (error) {
+                    console.error('Error getting collection stats:', error);
                 }
             }
             
@@ -345,4 +455,199 @@ export class UsageStatsComponent extends BaseSettingsTab {
     
     // Optional callback for when settings change
     onSettingsChanged?: () => void;
+    
+    /**
+     * Get statistics for each collection
+     * @returns Array of collection statistics
+     */
+    private async getCollectionStats(): Promise<Array<{name: string; count: number; color: string}>> {
+        console.log('Getting collection statistics');
+        
+        // Prepare result array
+        const result: Array<{name: string; count: number; color: string}> = [];
+        
+        // Prepare color palette
+        const colors = [
+            '#4285F4', '#EA4335', '#FBBC05', '#34A853', // Google colors
+            '#3498DB', '#E74C3C', '#2ECC71', '#F39C12', // Flat UI colors
+            '#9B59B6', '#1ABC9C', '#D35400', '#C0392B', // More colors
+            '#8E44AD', '#16A085', '#27AE60', '#D35400', // Additional colors
+            '#2980B9', '#E67E22', '#27AE60', '#2C3E50'  // Even more colors
+        ];
+        
+        // Step 1: Try using the VaultLibrarian if available
+        if (this.vaultLibrarian) {
+            try {
+                console.log('Attempting to use VaultLibrarian for collection stats');
+                
+                // Force initialization of search service and vector store
+                if (typeof this.vaultLibrarian.initializeSearchService === 'function') {
+                    console.log('Initializing search service in VaultLibrarian');
+                    await this.vaultLibrarian.initializeSearchService();
+                }
+                
+                // Get the search service from the vault librarian
+                const searchService = (this.vaultLibrarian as any).searchService;
+                if (searchService && searchService.vectorStore) {
+                    console.log('Found search service with vector store in VaultLibrarian');
+                    
+                    const vectorStore = searchService.vectorStore;
+                    const collections = await vectorStore.listCollections();
+                    console.log('Found collections:', collections);
+                    
+                    // Try to get diagnostics for counts
+                    try {
+                        const diagnostics = await vectorStore.getDiagnostics();
+                        console.log('Got diagnostics:', diagnostics);
+                        
+                        if (diagnostics && diagnostics.collections && diagnostics.collections.length > 0) {
+                            diagnostics.collections.forEach((collection: any, index: number) => {
+                                if (collection.name && collection.itemCount !== undefined) {
+                                    result.push({
+                                        name: collection.name,
+                                        count: collection.itemCount,
+                                        color: colors[index % colors.length]
+                                    });
+                                }
+                            });
+                            
+                            if (result.length > 0) {
+                                result.sort((a, b) => b.count - a.count);
+                                console.log('Got collection stats from diagnostics:', result);
+                                return result;
+                            }
+                        }
+                    } catch (diagError) {
+                        console.warn('Error getting diagnostics, falling back to count:', diagError);
+                    }
+                    
+                    // Fallback to manual count if diagnostics didn't work
+                    for (let i = 0; i < collections.length; i++) {
+                        const name = collections[i];
+                        try {
+                            const count = await vectorStore.count(name);
+                            result.push({
+                                name,
+                                count,
+                                color: colors[i % colors.length]
+                            });
+                        } catch (countError) {
+                            console.error(`Error getting count for collection ${name}:`, countError);
+                        }
+                    }
+                    
+                    if (result.length > 0) {
+                        result.sort((a, b) => b.count - a.count);
+                        console.log('Got collection stats from counts:', result);
+                        return result;
+                    }
+                }
+            } catch (vaultLibrarianError) {
+                console.warn('Error using VaultLibrarian for collection stats:', vaultLibrarianError);
+            }
+        }
+        
+        // Step 2: Try getting the vector store directly from the plugin
+        try {
+            console.log('Attempting to get vector store directly from plugin');
+            const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+            
+            if (plugin && plugin.vectorStore) {
+                console.log('Found vector store in plugin');
+                
+                const vectorStore = plugin.vectorStore;
+                const collections = await vectorStore.listCollections();
+                console.log('Found collections:', collections);
+                
+                // First try diagnostics
+                try {
+                    if (typeof vectorStore.getDiagnostics === 'function') {
+                        const diagnostics = await vectorStore.getDiagnostics();
+                        if (diagnostics && diagnostics.collections && diagnostics.collections.length > 0) {
+                            diagnostics.collections.forEach((collection: any, index: number) => {
+                                if (collection.name && collection.itemCount !== undefined) {
+                                    result.push({
+                                        name: collection.name,
+                                        count: collection.itemCount,
+                                        color: colors[index % colors.length]
+                                    });
+                                }
+                            });
+                            
+                            if (result.length > 0) {
+                                result.sort((a, b) => b.count - a.count);
+                                console.log('Got collection stats from plugin diagnostics:', result);
+                                return result;
+                            }
+                        }
+                    }
+                } catch (diagError) {
+                    console.warn('Error getting vector store diagnostics:', diagError);
+                }
+                
+                // Then try counts
+                for (let i = 0; i < collections.length; i++) {
+                    const name = collections[i];
+                    try {
+                        const count = await vectorStore.count(name);
+                        result.push({
+                            name,
+                            count,
+                            color: colors[i % colors.length]
+                        });
+                    } catch (countError) {
+                        console.error(`Error getting count for collection ${name}:`, countError);
+                    }
+                }
+                
+                if (result.length > 0) {
+                    result.sort((a, b) => b.count - a.count);
+                    console.log('Got collection stats from plugin vector store counts:', result);
+                    return result;
+                }
+            }
+        } catch (pluginError) {
+            console.warn('Error getting vector store from plugin:', pluginError);
+        }
+        
+        // Step 3: If all else failed, try any service references we have
+        if (this.searchService) {
+            try {
+                console.log('Attempting to use search service directly');
+                const vectorStore = this.searchService.vectorStore;
+                
+                if (vectorStore) {
+                    const collections = await vectorStore.listCollections();
+                    
+                    for (let i = 0; i < collections.length; i++) {
+                        const name = collections[i];
+                        try {
+                            const count = await vectorStore.count(name);
+                            result.push({
+                                name,
+                                count,
+                                color: colors[i % colors.length]
+                            });
+                        } catch (error) {
+                            console.error(`Error getting count for collection ${name}:`, error);
+                        }
+                    }
+                    
+                    if (result.length > 0) {
+                        result.sort((a, b) => b.count - a.count);
+                        console.log('Got collection stats from direct search service:', result);
+                        return result;
+                    }
+                } else {
+                    console.warn('No vector store found in search service');
+                }
+            } catch (searchServiceError) {
+                console.warn('Error using search service for collection stats:', searchServiceError);
+            }
+        }
+        
+        // If we get here, we couldn't get any collection stats
+        console.warn('Failed to get collection statistics from any source');
+        return result;
+    }
 }

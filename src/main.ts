@@ -12,6 +12,8 @@ import { IVectorStore } from './database/interfaces/IVectorStore';
 import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 import { WorkspaceService } from './database/services/WorkspaceService';
 import { MemoryService } from './database/services/MemoryService';
+import { EventManager } from './services/EventManager';
+import { FileEventManager } from './services/FileEventManager';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
@@ -26,6 +28,8 @@ export default class ClaudesidianPlugin extends Plugin {
     public searchService!: ChromaSearchService;
     public workspaceService!: WorkspaceService;
     public memoryService!: MemoryService;
+    public fileEventManager!: FileEventManager;
+    public eventManager!: EventManager;
     
     // Event handlers
     private fileCreatedHandler!: (file: TAbstractFile) => void;
@@ -42,6 +46,8 @@ export default class ClaudesidianPlugin extends Plugin {
         workspaceService: WorkspaceService;
         memoryService: MemoryService;
         vectorStore: IVectorStore;
+        eventManager: EventManager;
+        fileEventManager: FileEventManager;
     };
     
     async onload() {
@@ -49,11 +55,164 @@ export default class ClaudesidianPlugin extends Plugin {
         this.settings = new Settings(this);
         await this.settings.loadSettings();
         
-        // Initialize ChromaDB vector store
-        this.vectorStore = VectorStoreFactory.createVectorStore(this);
+        // Ensure data directories exist before initialization
+        try {
+            // Use the correct vault's plugin directory path
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Get path to the plugin in the current vault
+            // Get the vault's base path using FileSystemAdapter
+            let basePath;
+            if (this.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
+                // Use type assertion to access getBasePath
+                basePath = (this.app.vault.adapter as any).getBasePath();
+            } else {
+                throw new Error('FileSystemAdapter not available');
+            }
+            
+            const pluginId = this.manifest.id;
+            
+            // Construct the correct plugin directory within the vault
+            const pluginDir = path.join(basePath, '.obsidian', 'plugins', pluginId);
+            const dataDir = path.join(pluginDir, 'data');
+            const chromaDbDir = path.join(dataDir, 'chroma-db');
+            const collectionsDir = path.join(chromaDbDir, 'collections');
+            
+            // Log directory information for debugging
+            console.log(`Plugin directory (from manifest): ${pluginDir}`);
+            console.log(`Plugin ID: ${pluginId}`);
+            console.log(`Data directory path: ${dataDir}`);
+            console.log(`ChromaDB directory path: ${chromaDbDir}`);
+            
+            // Check and create the main data directory
+            if (!fs.existsSync(dataDir)) {
+                console.log(`Creating main data directory at: ${dataDir} (does not exist)`);
+                fs.mkdirSync(dataDir, { recursive: true });
+                // Verify creation
+                if (fs.existsSync(dataDir)) {
+                    console.log(`Successfully created data directory at: ${dataDir}`);
+                } else {
+                    console.error(`Failed to verify data directory creation at: ${dataDir}`);
+                }
+            } else {
+                console.log(`Data directory exists at: ${dataDir}`);
+            }
+            
+            // Check and create the ChromaDB directory
+            if (!fs.existsSync(chromaDbDir)) {
+                console.log(`Creating ChromaDB directory at: ${chromaDbDir} (does not exist)`);
+                fs.mkdirSync(chromaDbDir, { recursive: true });
+                // Verify creation
+                if (fs.existsSync(chromaDbDir)) {
+                    console.log(`Successfully created ChromaDB directory at: ${chromaDbDir}`);
+                } else {
+                    console.error(`Failed to verify ChromaDB directory creation at: ${chromaDbDir}`);
+                }
+            } else {
+                console.log(`ChromaDB directory exists at: ${chromaDbDir}`);
+            }
+            
+            // Check if there's a collections folder
+            if (!fs.existsSync(collectionsDir)) {
+                console.log(`Creating ChromaDB collections directory at: ${collectionsDir} (does not exist)`);
+                fs.mkdirSync(collectionsDir, { recursive: true });
+                // Verify creation
+                if (fs.existsSync(collectionsDir)) {
+                    console.log(`Successfully created collections directory at: ${collectionsDir}`);
+                } else {
+                    console.error(`Failed to verify collections directory creation at: ${collectionsDir}`);
+                }
+            } else {
+                console.log(`ChromaDB collections directory exists at: ${collectionsDir}`);
+            }
+            
+            // After creating all directories, list the contents for verification
+            console.log("Listing data directory contents:");
+            if (fs.existsSync(dataDir)) {
+                console.log(fs.readdirSync(dataDir));
+            } else {
+                console.log("Data directory still doesn't exist");
+            }
+            
+            // Ensure memory settings exist before setting the path
+            if (!this.settings.settings.memory) {
+                this.settings.settings.memory = {
+                    dbStoragePath: chromaDbDir,
+                    // Add other required memory settings with defaults
+                    enabled: true,
+                    embeddingsEnabled: true,
+                    apiProvider: 'openai',
+                    openaiApiKey: '',
+                    embeddingModel: 'text-embedding-3-small',
+                    dimensions: 1536,
+                    maxTokensPerMonth: 1000000,
+                    apiRateLimitPerMinute: 500,
+                    chunkStrategy: 'paragraph',
+                    chunkSize: 512,
+                    chunkOverlap: 50,
+                    includeFrontmatter: true,
+                    excludePaths: ['.obsidian/**/*'],
+                    minContentLength: 50,
+                    indexingSchedule: 'on-save',
+                    embeddingStrategy: 'manual',
+                    idleTimeThreshold: 60000,
+                    batchSize: 10,
+                    concurrentRequests: 3,
+                    processingDelay: 1000,
+                    autoCleanOrphaned: true,
+                    maxDbSize: 500,
+                    pruningStrategy: 'least-used',
+                    defaultResultLimit: 10,
+                    includeNeighbors: true,
+                    graphBoostFactor: 0.3,
+                    backlinksEnabled: true,
+                    backlinksWeight: 0.5,
+                    useFilters: true,
+                    defaultThreshold: 0.7
+                };
+            } else {
+                // Just update the dbStoragePath if memory settings already exist
+                this.settings.settings.memory.dbStoragePath = chromaDbDir;
+            }
+            
+            await this.settings.saveSettings();
+        } catch (dirError) {
+            console.error("Failed to create data directories:", dirError);
+        }
+        
+        // Initialize ChromaDB vector store with path in the plugin directory
+        const path = require('path');
+        
+        // Get the vault's base path using FileSystemAdapter
+        let basePath;
+        if (this.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
+            // Use type assertion to access getBasePath
+            basePath = (this.app.vault.adapter as any).getBasePath();
+        } else {
+            throw new Error('FileSystemAdapter not available');
+        }
+        
+        // Construct the correct plugin directory within the vault
+        const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.manifest.id);
+        const dataDir = path.join(pluginDir, 'data', 'chroma-db');
+        
+        console.log(`Plugin directory: ${pluginDir}`);
+        console.log(`Creating vector store with path: ${dataDir}`);
+        
+        this.vectorStore = VectorStoreFactory.createVectorStore(this, {
+            persistentPath: dataDir,
+            inMemory: false // Explicitly set to false to ensure persistence
+        });
+        
         try {
             await this.vectorStore.initialize();
             console.log("ChromaDB vector store initialized successfully");
+            
+            // Check if we can access the store and collection
+            const diagnostics = await this.vectorStore.getDiagnostics();
+            console.log(`ChromaDB diagnostics: ${diagnostics.totalCollections} collections found`);
+            console.log(`Storage mode: ${diagnostics.storageMode}, path: ${diagnostics.persistentPath}`);
         } catch (error) {
             console.error("Failed to initialize ChromaDB vector store:", error);
         }
@@ -63,6 +222,7 @@ export default class ClaudesidianPlugin extends Plugin {
         this.searchService = new ChromaSearchService(this, this.vectorStore, this.embeddingService);
         this.workspaceService = new WorkspaceService(this, this.vectorStore);
         this.memoryService = new MemoryService(this, this.vectorStore, this.embeddingService);
+        this.eventManager = new EventManager();
         
         // Initialize collections - do this sequentially to avoid race conditions
         try {
@@ -87,13 +247,25 @@ export default class ClaudesidianPlugin extends Plugin {
             // Continue with plugin loading despite initialization errors
         }
         
+        // Initialize the file event manager (after other services are initialized)
+        this.fileEventManager = new FileEventManager(
+            this.app,
+            this,
+            this.memoryService,
+            this.workspaceService,
+            this.eventManager
+        );
+        await this.fileEventManager.initialize();
+        
         // Expose services
         this.services = {
             embeddingService: this.embeddingService,
             searchService: this.searchService,
             workspaceService: this.workspaceService,
             memoryService: this.memoryService,
-            vectorStore: this.vectorStore
+            vectorStore: this.vectorStore,
+            eventManager: this.eventManager,
+            fileEventManager: this.fileEventManager
         };
         
         // Initialize file watchers based on embedding strategy
@@ -143,7 +315,84 @@ export default class ClaudesidianPlugin extends Plugin {
             }
         });
         
-        // No need to register commands as clients use MCP to interact with tools directly
+        // Register commands for maintenance and troubleshooting
+        this.addCommand({
+            id: 'repair-collections',
+            name: 'Repair vector collections',
+            callback: async () => {
+                try {
+                    const notice = new Notice('Repairing vector collections...', 0);
+                    
+                    if (!this.vectorStore) {
+                        notice.setMessage('Vector store not initialized');
+                        setTimeout(() => notice.hide(), 5000);
+                        return;
+                    }
+                    
+                    // Check if the repair method exists
+                    if (typeof (this.vectorStore as any).repairCollections !== 'function') {
+                        notice.setMessage('Repair function not available');
+                        setTimeout(() => notice.hide(), 5000);
+                        return;
+                    }
+                    
+                    // Run the repair
+                    const result = await (this.vectorStore as any).repairCollections();
+                    
+                    if (result.success) {
+                        notice.setMessage(`Repair successful: ${result.repairedCollections.length} collections restored`);
+                    } else {
+                        notice.setMessage(`Repair completed with issues: ${result.errors.length} errors`);
+                        console.error('Collection repair errors:', result.errors);
+                    }
+                    
+                    // Show the result for a few seconds
+                    setTimeout(() => notice.hide(), 5000);
+                } catch (error) {
+                    new Notice(`Repair failed: ${(error as Error).message}`);
+                    console.error('Collection repair error:', error);
+                }
+            }
+        });
+        
+        this.addCommand({
+            id: 'check-vector-storage',
+            name: 'Check vector storage status',
+            callback: async () => {
+                try {
+                    const notice = new Notice('Checking vector storage...', 0);
+                    
+                    if (!this.vectorStore) {
+                        notice.setMessage('Vector store not initialized');
+                        setTimeout(() => notice.hide(), 5000);
+                        return;
+                    }
+                    
+                    const diagnostics = await this.vectorStore.getDiagnostics();
+                    
+                    // Format a message with the key information
+                    const message = [
+                        `Storage mode: ${diagnostics.storageMode}`,
+                        `Path: ${diagnostics.persistentPath}`,
+                        `Collections: ${diagnostics.totalCollections}`,
+                        `Directory exists: ${diagnostics.dataDirectoryExists ? 'Yes' : 'No'}`,
+                        `Permissions OK: ${diagnostics.filePermissionsOk ? 'Yes' : 'No'}`
+                    ].join('\n');
+                    
+                    // Update the notice
+                    notice.setMessage(message);
+                    
+                    // Show detailed information in the console
+                    console.log('Vector storage diagnostics:', diagnostics);
+                    
+                    // Keep the notice visible for longer so user can read it
+                    setTimeout(() => notice.hide(), 10000);
+                } catch (error) {
+                    new Notice(`Diagnostics failed: ${(error as Error).message}`);
+                    console.error('Diagnostics error:', error);
+                }
+            }
+        });
         
     }
     
@@ -155,6 +404,11 @@ export default class ClaudesidianPlugin extends Plugin {
         if (this.idleTimer) {
             clearTimeout(this.idleTimer);
             this.idleTimer = null;
+        }
+        
+        // Clean up the file event manager
+        if (this.fileEventManager) {
+            this.fileEventManager.unload();
         }
         
         // Clean up the vault librarian if necessary
@@ -217,8 +471,8 @@ export default class ClaudesidianPlugin extends Plugin {
         try {
             // Define our essential collections that should always exist
             const essentialCollections = [
-                'file-embeddings',
-                'memory-traces',
+                'file_embeddings',
+                'memory_traces',
                 'sessions',
                 'snapshots',
                 'workspaces'
@@ -308,9 +562,6 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Setup event handlers based on the chosen strategy
         switch (memorySettings.embeddingStrategy) {
-            case 'live':
-                this.setupLiveEmbedding();
-                break;
             case 'idle':
                 this.setupIdleEmbedding();
                 break;
@@ -365,38 +616,7 @@ export default class ClaudesidianPlugin extends Plugin {
         }
     }
     
-    /**
-     * Set up event listeners for live embedding
-     */
-    private setupLiveEmbedding(): void {
-        console.log("Setting up live embedding event listeners");
-        
-        // Handle file creation
-        this.fileCreatedHandler = (file: TAbstractFile) => {
-            if (file instanceof TFile && file.extension === 'md') {
-                this.embedFile(file.path);
-            }
-        };
-        
-        // Handle file modification
-        this.fileModifiedHandler = (file: TAbstractFile) => {
-            if (file instanceof TFile && file.extension === 'md') {
-                this.embedFile(file.path);
-            }
-        };
-        
-        // Handle file deletion
-        this.fileDeletedHandler = (file: TAbstractFile) => {
-            if (file instanceof TFile && file.extension === 'md') {
-                this.deleteEmbedding(file.path);
-            }
-        };
-        
-        // Register event listeners
-        this.registerVaultHandler('create', this.fileCreatedHandler);
-        this.registerVaultHandler('modify', this.fileModifiedHandler);
-        this.registerVaultHandler('delete', this.fileDeletedHandler);
-    }
+    // 'live' embedding strategy has been completely removed
     
     /**
      * Set up event listeners for idle-based embedding
@@ -494,9 +714,8 @@ export default class ClaudesidianPlugin extends Plugin {
             // Get all markdown files
             const markdownFiles = this.app.vault.getMarkdownFiles();
             
-            // To avoid indexing everything on every startup, we could:
-            // 1. Only index files modified since last indexing
-            // 2. Only index files that have no embedding yet
+            // Only index files that don't already have embeddings
+            console.log("Checking for files that don't have embeddings yet");
             // 3. Skip files that match exclude patterns
             
             // Get existing embeddings
@@ -504,9 +723,30 @@ export default class ClaudesidianPlugin extends Plugin {
                 const existingEmbeddings = await this.searchService.getAllFileEmbeddings();
                 const indexedFilePaths = new Set(existingEmbeddings.map(e => e.filePath));
                 
+                console.log(`Found ${existingEmbeddings.length} existing embeddings`);
+                
                 // Filter to only non-indexed files
                 const filesToIndex = markdownFiles
-                    .filter(file => !indexedFilePaths.has(file.path))
+                    .filter(file => {
+                        const needsIndexing = !indexedFilePaths.has(file.path);
+                        if (needsIndexing) {
+                            console.log(`File needs embedding: ${file.path}`);
+                        }
+                        return needsIndexing;
+                    })
+                    .filter(file => {
+                        // Apply exclude paths if defined
+                        if (memorySettings.excludePaths && memorySettings.excludePaths.length > 0) {
+                            const isExcluded = memorySettings.excludePaths.some(
+                                pattern => file.path.includes(pattern)
+                            );
+                            if (isExcluded) {
+                                console.log(`Skipping excluded file: ${file.path}`);
+                            }
+                            return !isExcluded;
+                        }
+                        return true;
+                    })
                     .map(file => file.path);
                 
                 if (filesToIndex.length > 0) {
@@ -525,21 +765,7 @@ export default class ClaudesidianPlugin extends Plugin {
         }
     }
     
-    /**
-     * Embed a single file
-     * @param filePath Path to the file to embed
-     */
-    private async embedFile(filePath: string): Promise<void> {
-        try {
-            console.log(`Embedding file: ${filePath}`);
-            
-            // Use the indexFile method which now shows notices internally
-            await this.searchService.indexFile(filePath);
-        } catch (error) {
-            console.error(`Error embedding file ${filePath}:`, error);
-            new Notice(`Error generating embedding for ${filePath}: ${(error as Error).message}`);
-        }
-    }
+    // Removed embedFile method - now using searchService.indexFile directly
     
     /**
      * Delete embedding for a single file

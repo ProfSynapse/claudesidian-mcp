@@ -1,13 +1,4 @@
-import { ChromaClient } from './ChromaWrapper';
-// Define the Collection interface inline based on what we need
-interface Collection {
-  add(params: any): Promise<void>;
-  get(params: any): Promise<any>;
-  query(params: any): Promise<any>;
-  update(params: any): Promise<void>;
-  delete(params: any): Promise<void>;
-  count(): Promise<number>;
-}
+import { ChromaClient, Collection } from './fixed-persistence-wrapper';
 import { BaseVectorStore } from '../base/BaseVectorStore';
 import { IStorageOptions } from '../../interfaces/IStorageOptions';
 import { existsSync, mkdirSync } from 'fs';
@@ -54,7 +45,9 @@ export class ChromaVectorStore extends BaseVectorStore {
     
     // Set default persistent path if not provided
     if (!this.config.persistentPath) {
-      this.config.persistentPath = `${this.plugin.manifest.dir}/data/chroma-db`;
+      // We'll defer this initialization to the initialize() method
+      // where we can properly access the FileSystemAdapter
+      console.log("Persistent path will be set during initialization");
     }
   }
   
@@ -82,13 +75,27 @@ export class ChromaVectorStore extends BaseVectorStore {
    */
   async initialize(): Promise<void> {
     try {
+      const path = require('path');
+      
       // Set default persistent path if not provided
       if (!this.config.persistentPath) {
-        this.config.persistentPath = `${this.plugin.manifest.dir}/data/chroma-db`;
+        // Get the vault's base path using FileSystemAdapter
+        let basePath;
+        if (this.plugin.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
+            // Use type assertion to access getBasePath
+            basePath = (this.plugin.app.vault.adapter as any).getBasePath();
+        } else {
+            throw new Error('FileSystemAdapter not available');
+        }
+        
+        // Construct the correct plugin directory within the vault
+        const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.plugin.manifest.id);
+        this.config.persistentPath = path.join(pluginDir, 'data', 'chroma-db');
+        console.log(`Using ChromaDB path: ${this.config.persistentPath}`);
       }
       
       // Ensure the data parent directories exist first
-      const dataDir = `${this.plugin.manifest.dir}/data`;
+      const dataDir = path.dirname(this.config.persistentPath);
       this.ensureDirectoryExists(dataDir);
       
       // Then ensure the chroma-db directory exists
@@ -114,10 +121,28 @@ export class ChromaVectorStore extends BaseVectorStore {
         });
       } else {
         // Local persistent client
-        console.log(`Using local persistent ChromaDB at: ${this.config.persistentPath}`);
+        console.log(`Using StrictPersistence ChromaDB at: ${this.config.persistentPath}`);
+        
+        // Create new strict persistence client
         this.client = new ChromaClient({
           path: this.config.persistentPath
         });
+        
+        // Log path info to confirm it's being used correctly
+        console.log(`ChromaDB storage path set to: ${this.config.persistentPath}`);
+        
+        // Create the directory structure if needed (redundant but safer)
+        const fs = require('fs');
+        if (!fs.existsSync(this.config.persistentPath)) {
+          console.log(`Creating ChromaDB storage directory: ${this.config.persistentPath}`);
+          fs.mkdirSync(this.config.persistentPath, { recursive: true });
+        }
+        
+        const collectionsDir = `${this.config.persistentPath}/collections`;
+        if (!fs.existsSync(collectionsDir)) {
+          console.log(`Creating ChromaDB collections directory: ${collectionsDir}`);
+          fs.mkdirSync(collectionsDir, { recursive: true });
+        }
       }
       
       // Load existing collections
@@ -302,7 +327,7 @@ export class ChromaVectorStore extends BaseVectorStore {
         try {
           if (typeof collection.count === 'function') {
             await collection.count();
-          } else if (collection.metadata && typeof collection.metadata === 'function') {
+          } else if (typeof collection.metadata === 'function') {
             await collection.metadata();
           }
           // Successfully validated
@@ -368,10 +393,44 @@ export class ChromaVectorStore extends BaseVectorStore {
    * Close the ChromaDB client
    */
   async close(): Promise<void> {
-    this.collectionCache.clear();
-    this.collections.clear();
-    this.client = null;
-    this.initialized = false;
+    try {
+      // First, explicitly save all collections to ensure nothing is lost
+      if (this.client && !this.config.inMemory) {
+        console.log("Explicitly saving all collections before shutdown...");
+        
+        try {
+          // Check if client has the saveAllCollections method
+          if (typeof (this.client as any).saveAllCollections === 'function') {
+            const saveResult = await (this.client as any).saveAllCollections();
+            console.log(`Save result: ${saveResult.success ? 'Success' : 'Failed'}`);
+            console.log(`Saved ${saveResult.savedCollections.length} collections: ${saveResult.savedCollections.join(', ')}`);
+            
+            if (saveResult.errors.length > 0) {
+              console.error("Errors during save:", saveResult.errors);
+            }
+          } else {
+            console.log("Client does not support explicit save - will rely on auto-save");
+          }
+        } catch (saveError) {
+          console.error("Error during explicit save:", saveError);
+          // Continue with shutdown despite save errors
+        }
+      }
+      
+      // Then clean up resources
+      this.collectionCache.clear();
+      this.collections.clear();
+      this.client = null;
+      this.initialized = false;
+      console.log("ChromaDB client closed and resources released");
+    } catch (error) {
+      console.error("Error during ChromaDB shutdown:", error);
+      // Reset state even if there was an error
+      this.collectionCache.clear();
+      this.collections.clear();
+      this.client = null;
+      this.initialized = false;
+    }
   }
   
   /**
@@ -779,6 +838,54 @@ export class ChromaVectorStore extends BaseVectorStore {
         status: 'error',
         initialized: this.initialized,
         error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  
+  /**
+   * Repair and reload collections from disk
+   * This can be used to recover from situations where in-memory state is lost
+   * @returns Result of the repair operation
+   */
+  async repairCollections(): Promise<{
+    success: boolean;
+    repairedCollections: string[];
+    errors: string[];
+  }> {
+    if (!this.client) {
+      return {
+        success: false,
+        repairedCollections: [],
+        errors: ['ChromaDB client not initialized']
+      };
+    }
+    
+    try {
+      // Check if client has the repair function
+      if (typeof (this.client as any).repairAndReloadCollections === 'function') {
+        console.log("Calling repairAndReloadCollections method on StrictPersistenceChromaClient...");
+        const result = await (this.client as any).repairAndReloadCollections();
+        
+        // Refresh the collections list after repair
+        await this.refreshCollections();
+        
+        return {
+          success: result.errors.length === 0,
+          repairedCollections: result.repairedCollections,
+          errors: result.errors
+        };
+      } else {
+        return {
+          success: false,
+          repairedCollections: [],
+          errors: ['ChromaDB client does not support repair operations (not a persistent client)']
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        repairedCollections: [],
+        errors: [`Failed to repair collections: ${error instanceof Error ? error.message : String(error)}`]
       };
     }
   }

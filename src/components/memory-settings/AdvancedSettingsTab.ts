@@ -11,18 +11,6 @@ export class AdvancedSettingsTab extends BaseSettingsTab {
      */
     display(containerEl: HTMLElement): void {
         containerEl.createEl('h3', { text: 'Database Settings' });
-        
-        new Setting(containerEl)
-            .setName('Database Path')
-            .setDesc('Custom path for the database file (leave empty for default)')
-            .addText(text => text
-                .setPlaceholder('Default (.obsidian/plugins/claudesidian-mcp/memory-db)')
-                .setValue(this.settings.dbStoragePath)
-                .onChange(async (value) => {
-                    this.settings.dbStoragePath = value;
-                    await this.saveSettings();
-                })
-            );
             
         new Setting(containerEl)
             .setName('Maximum Database Size')

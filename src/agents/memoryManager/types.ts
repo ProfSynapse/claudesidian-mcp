@@ -216,6 +216,11 @@ export interface SessionResult extends MemoryResult {
     isActive?: boolean;
     
     /**
+     * ID of the new continuation session (when loading a session)
+     */
+    newSessionId?: string;
+    
+    /**
      * List of sessions (for listing operations)
      */
     sessions?: Array<{
@@ -229,7 +234,53 @@ export interface SessionResult extends MemoryResult {
       toolCalls: number;
       tags?: string[];
     }>;
+    
+    /**
+     * Context information for the loaded session
+     */
+    sessionContext?: {
+      summary: string;
+      associatedNotes: string[];
+      sessionCreatedAt: string;
+      traces?: Array<{
+        timestamp: number;
+        content: string;
+        type: string;
+        importance: number;
+      }>;
+      tags: string[];
+    };
   };
+}
+
+/**
+ * Parameters for loading a session
+ */
+export interface LoadSessionParams extends MemoryParameters {
+  /**
+   * ID of the session to load
+   */
+  sessionId: string;
+  
+  /**
+   * Custom name for the new continuation session (optional)
+   */
+  sessionName?: string;
+  
+  /**
+   * Custom description for the new continuation session (optional)
+   */
+  sessionDescription?: string;
+  
+  /**
+   * Whether to automatically start a new session if the original is inactive (default: true)
+   */
+  createContinuationSession?: boolean;
+  
+  /**
+   * Tags to associate with the loaded session context
+   */
+  tags?: string[];
 }
 
 /**
@@ -448,7 +499,7 @@ export interface StateResult extends MemoryResult {
      */
     restoredContext?: {
       summary: string;
-      relevantFiles: string[];
+      associatedNotes: string[];
       stateCreatedAt: string;
       originalSessionId: string;
       continuationHistory?: Array<{

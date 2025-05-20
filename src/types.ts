@@ -75,7 +75,7 @@ export interface MemorySettings {
     indexingTime?: string;
     
     // Embedding strategy
-    embeddingStrategy: 'manual' | 'live' | 'idle' | 'startup';
+    embeddingStrategy: 'manual' | 'idle' | 'startup';
     idleTimeThreshold?: number; // Time in ms to wait before considering the system idle
     
     // Performance settings

@@ -143,4 +143,36 @@ export abstract class BaseVectorStore implements IVectorStore {
    * @param collectionName Name of the collection
    */
   abstract count(collectionName: string): Promise<number>;
+  
+  /**
+   * Get diagnostics about the vector store
+   * Base implementation with minimal information
+   * @returns Diagnostic information about the vector store
+   */
+  async getDiagnostics(): Promise<Record<string, any>> {
+    return {
+      initialized: this.initialized,
+      storageMode: this.config.inMemory ? 'in-memory' : 'persistent',
+      persistentPath: this.config.persistentPath || 'none',
+      totalCollections: this.collections.size,
+    };
+  }
+  
+  /**
+   * Repair and reload collections from disk
+   * Base implementation that returns no-op result
+   * Should be overridden by subclasses that support repair
+   * @returns Result of the repair operation
+   */
+  async repairCollections(): Promise<{
+    success: boolean;
+    repairedCollections: string[];
+    errors: string[];
+  }> {
+    return {
+      success: false,
+      repairedCollections: [],
+      errors: ['Repair not supported by this vector store implementation']
+    };
+  }
 }

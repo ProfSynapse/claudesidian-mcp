@@ -142,7 +142,26 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     
     this.app = app;
     this.searchOperations = new SearchOperations(app);
+  }
+  
+  /**
+   * Get the backlinkEnabled setting value from plugin settings
+   * Used to determine the default value for useGraphBoost
+   * @returns Whether backlink boost is enabled in settings
+   */
+  private getBacklinksEnabledSetting(): boolean {
+    // Try to get the plugin settings
+    try {
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      if (plugin && plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
+        return plugin.settings.settings.memory.backlinksEnabled === true;
+      }
+    } catch (error) {
+      console.warn('Failed to get backlinksEnabled setting:', error);
+    }
     
+    // Default to true if setting can't be retrieved
+    return true;
   }
   
   /**
@@ -202,7 +221,12 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       includeMetadata: true, // Always include metadata to properly separate frontmatter
       searchFields: params.searchFields,
       weights: params.weights,
-      includeContent: true // Always include content to separate frontmatter from snippet
+      includeContent: true, // Always include content to separate frontmatter from snippet
+      // Pass through graph boost parameters or use backlinksEnabled setting as default
+      useGraphBoost: params.useGraphBoost !== undefined ? params.useGraphBoost : this.getBacklinksEnabledSetting(),
+      graphBoostFactor: params.graphBoostFactor,
+      graphMaxDistance: params.graphMaxDistance,
+      seedNotes: params.seedNotes
     };
     
     // Perform standard search
@@ -488,8 +512,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         // Graph boost parameters
         useGraphBoost: {
           type: 'boolean',
-          description: 'Whether to use graph-based relevance boosting',
-          default: false
+          description: 'Whether to use graph-based relevance boosting. Defaults to the value of backlinksEnabled in settings.',
         },
         graphBoostFactor: {
           type: 'number',

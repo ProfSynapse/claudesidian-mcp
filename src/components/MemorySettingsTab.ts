@@ -2,15 +2,15 @@ import { App, Setting } from 'obsidian';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../types';
 import { Settings } from '../settings';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
-import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 import { EmbeddingManager } from '../database/services/embeddingManager';
+import { EmbeddingService } from '../database/services/EmbeddingService';
 import {
     ApiSettingsTab,
     EmbeddingSettingsTab, 
     FilterSettingsTab,
     AdvancedSettingsTab,
-    SessionsSettingsTab,
-    UsageStatsComponent
+    UsageStatsComponent,
+    UsageSettingsTab
 } from './memory-settings';
 
 /**
@@ -31,15 +31,15 @@ export class MemorySettingsTab {
     private embeddingSettingsTab: EmbeddingSettingsTab;
     private filterSettingsTab: FilterSettingsTab;
     private advancedSettingsTab: AdvancedSettingsTab;
-    private sessionsSettingsTab: SessionsSettingsTab;
+    private usageSettingsTab: UsageSettingsTab;
     private usageStatsComponent: UsageStatsComponent;
     
     // Services (direct access to database functionality)
     private embeddingManager: EmbeddingManager | null = null;
+    private embeddingService: EmbeddingService | null = null;
     
-    // Agents (for backward compatibility and specific MCP operations)
+    // Agent for backward compatibility
     private vaultLibrarian: VaultLibrarianAgent | null = null;
-    private memoryManager: MemoryManagerAgent | null = null;
 
     /**
      * Create a new Memory Settings Tab
@@ -49,7 +49,6 @@ export class MemorySettingsTab {
      * @param app Obsidian app instance
      * @param embeddingManager EmbeddingManager for embedding provider management
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
-     * @param memoryManager Optional MemoryManager agent instance
      */
     constructor(
         private containerEl: HTMLElement,
@@ -57,25 +56,32 @@ export class MemorySettingsTab {
         app?: App,
         embeddingManager?: EmbeddingManager,
         vaultLibrarian?: VaultLibrarianAgent,
-        memoryManager?: MemoryManagerAgent
+        embeddingService?: EmbeddingService
     ) {
         this.settingsManager = settingsManager;
         this.app = app || (vaultLibrarian?.app || window.app);
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
-        this.memoryManager = memoryManager || null;
+        this.embeddingService = embeddingService || null;
         this.settings = this.settingsManager.settings.memory || { ...DEFAULT_MEMORY_SETTINGS };
         
         // Initialize tab components
-        this.apiSettingsTab = new ApiSettingsTab(this.settings, this.settingsManager, this.app);
+        this.apiSettingsTab = new ApiSettingsTab(
+            this.settings, 
+            this.settingsManager, 
+            this.app,
+            this.embeddingManager || undefined,
+            this.embeddingService || undefined
+        );
         this.embeddingSettingsTab = new EmbeddingSettingsTab(this.settings, this.settingsManager, this.app);
         this.filterSettingsTab = new FilterSettingsTab(this.settings, this.settingsManager, this.app);
         this.advancedSettingsTab = new AdvancedSettingsTab(this.settings, this.settingsManager, this.app);
-        this.sessionsSettingsTab = new SessionsSettingsTab(
+        this.usageSettingsTab = new UsageSettingsTab(
             this.settings, 
             this.settingsManager, 
             this.app, 
-            this.memoryManager || undefined
+            this.embeddingManager || undefined,
+            this.vaultLibrarian || undefined
         );
         this.usageStatsComponent = new UsageStatsComponent(
             this.settings, 
@@ -88,14 +94,24 @@ export class MemorySettingsTab {
         // Register refresh callbacks
         this.apiSettingsTab.onSettingsChanged = () => this.display();
         this.embeddingSettingsTab.onSettingsChanged = () => this.display();
-        this.sessionsSettingsTab.onSettingsChanged = () => this.display();
+        this.usageSettingsTab.onSettingsChanged = () => this.display();
         this.usageStatsComponent.onSettingsChanged = () => this.display();
     }
 
     /**
      * Display the Memory Manager settings tab
      */
-    display(): void {
+    async display(): Promise<void> {
+        // Initialize VaultLibrarian search service if available
+        if (this.vaultLibrarian && typeof this.vaultLibrarian.initializeSearchService === 'function') {
+            console.log('Initializing VaultLibrarian search service in MemorySettingsTab');
+            try {
+                await this.vaultLibrarian.initializeSearchService();
+            } catch (error) {
+                console.warn('Error initializing VaultLibrarian search service:', error);
+            }
+        }
+        
         // Clear the container first to avoid duplication
         this.containerEl.empty();
         
@@ -137,7 +153,7 @@ export class MemorySettingsTab {
             embedding: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Embedding' }),
             filters: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Filters' }),
             advanced: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Advanced' }),
-            sessions: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Sessions' })
+            usage: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Usage' })
         };
 
         // Content containers for each tab
@@ -148,7 +164,7 @@ export class MemorySettingsTab {
             embedding: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
             filters: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
             advanced: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
-            sessions: this.contentContainer.createDiv({ cls: 'memory-tab-pane' })
+            usage: this.contentContainer.createDiv({ cls: 'memory-tab-pane' })
         };
 
         // Setup tab switching logic
@@ -169,10 +185,7 @@ export class MemorySettingsTab {
         this.embeddingSettingsTab.display(this.contents.embedding);
         this.filterSettingsTab.display(this.contents.filters);
         this.advancedSettingsTab.display(this.contents.advanced);
-        this.sessionsSettingsTab.display(this.contents.sessions);
-        
-        // Add Usage Statistics
-        this.usageStatsComponent.display(memorySection);
+        this.usageSettingsTab.display(this.contents.usage);
         
         // Add disabled class to the embedding settings container if embeddings are disabled
         if (!this.settings.embeddingsEnabled) {
@@ -208,7 +221,7 @@ export class MemorySettingsTab {
         this.embeddingSettingsTab.updateSettings(this.settings);
         this.filterSettingsTab.updateSettings(this.settings);
         this.advancedSettingsTab.updateSettings(this.settings);
-        this.sessionsSettingsTab.updateSettings(this.settings);
+        this.usageSettingsTab.updateSettings(this.settings);
         this.usageStatsComponent.updateSettings(this.settings);
     }
 }

@@ -39,6 +39,26 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
             'text-embedding-3-large': 0.00087
         };
         
+        // Load saved model usage from localStorage if available
+        try {
+            if (typeof localStorage !== 'undefined') {
+                const savedUsage = localStorage.getItem('claudesidian-tokens-used');
+                if (savedUsage) {
+                    const parsedUsage = JSON.parse(savedUsage);
+                    // Validate that it's an object with model keys
+                    if (typeof parsedUsage === 'object' && parsedUsage !== null) {
+                        this.modelUsage = {
+                            'text-embedding-3-small': parsedUsage['text-embedding-3-small'] || 0,
+                            'text-embedding-3-large': parsedUsage['text-embedding-3-large'] || 0
+                        };
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load token usage from localStorage:', error);
+            // Continue with default model usage
+        }
+        
         // Validate API key
         if (!this.apiKey) {
             throw new Error('OpenAI API key is required');
@@ -291,6 +311,15 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                     // Track model-specific usage
                     this.modelUsage[this.model] = (this.modelUsage[this.model] || 0) + actualTokenCount;
                     
+                    // Save to local storage for persistence
+                    try {
+                        if (typeof localStorage !== 'undefined') {
+                            localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+                        }
+                    } catch (storageError) {
+                        console.warn('Failed to save token usage to localStorage:', storageError);
+                    }
+                    
                     // Calculate cost
                     const cost = (actualTokenCount / 1000) * (this.costPerThousandTokens[this.model] || 0);
                     
@@ -381,6 +410,15 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                     try {
                         const actualTokenCount = data.usage?.prompt_tokens || tokenCount;
                         this.modelUsage[this.model] = (this.modelUsage[this.model] || 0) + actualTokenCount;
+                        
+                        // Save to local storage for persistence
+                        try {
+                            if (typeof localStorage !== 'undefined') {
+                                localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+                            }
+                        } catch (storageError) {
+                            console.warn('Failed to save token usage to localStorage:', storageError);
+                        }
                         
                         const cost = (actualTokenCount / 1000) * (this.costPerThousandTokens[this.model] || 0);
                         
@@ -501,6 +539,54 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
      */
     getModelUsage(): {[key: string]: number} {
         return { ...this.modelUsage };
+    }
+    
+    /**
+     * Get total tokens used this month
+     */
+    getTokensThisMonth(): number {
+        let total = 0;
+        for (const model in this.modelUsage) {
+            total += this.modelUsage[model];
+        }
+        return total;
+    }
+    
+    /**
+     * Update usage stats with a new token count
+     */
+    async updateUsageStats(tokenCount: number): Promise<void> {
+        // For simplicity, we'll update the current model's usage
+        this.modelUsage[this.model] = tokenCount;
+        
+        // Save to local storage for persistence
+        try {
+            // Use localStorage if available (in Obsidian environment)
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+            }
+        } catch (error) {
+            console.warn('Failed to save token usage to localStorage:', error);
+        }
+    }
+    
+    /**
+     * Reset usage stats
+     */
+    async resetUsageStats(): Promise<void> {
+        // Reset all model usage to zero
+        for (const model in this.modelUsage) {
+            this.modelUsage[model] = 0;
+        }
+        
+        // Save to local storage for persistence
+        try {
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+            }
+        } catch (error) {
+            console.warn('Failed to save token usage to localStorage:', error);
+        }
     }
     
     /**

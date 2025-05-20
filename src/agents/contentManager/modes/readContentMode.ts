@@ -209,6 +209,35 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
         contextLevel: 'workspace',
         tags: ['read', 'content']
       });
+      
+      // Use the FileEventManager to record the activity across all relevant workspaces
+      try {
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const fileEventManager = plugin?.services?.fileEventManager;
+        
+        if (fileEventManager) {
+          // This will automatically update all workspaces that contain this file
+          await fileEventManager.updateFileActivity(
+            params.filePath,
+            'view'
+          );
+        } else {
+          // Fallback to direct workspace service if file event manager is not available
+          const workspaceService = plugin?.services?.workspaceService;
+          
+          if (workspaceService && parsedContext.workspaceId) {
+            await workspaceService.recordActivity(parsedContext.workspaceId, {
+              action: 'view',
+              timestamp: Date.now(),
+              hierarchyPath: [params.filePath],
+              toolName: 'readContent'
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('Error recording file activity:', getErrorMessage(error));
+        // Don't fail the main operation
+      }
     } catch (error) {
       // Log but don't fail the main operation
       console.error('Failed to record content reading activity with memory service:', getErrorMessage(error));

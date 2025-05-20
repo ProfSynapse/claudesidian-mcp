@@ -15,7 +15,7 @@ export class ChromaSearchService {
   /**
    * Vector store instance
    */
-  private vectorStore: IVectorStore;
+  public vectorStore: IVectorStore;
   
   /**
    * Collections for search-related data
@@ -78,11 +78,13 @@ export class ChromaSearchService {
     // Read the file content
     let content: string;
     try {
-      const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+      // Remove leading slash if present to normalize path
+      const normalizedPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+      const file = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
       // Check if it's a folder by testing if it's a TFolder (has children property)
       if (!file || 'children' in file) { // Check for folder-like behavior
         if (notice) notice.hide();
-        throw new Error(`File not found or is a folder: ${filePath}`);
+        throw new Error(`File not found or is a folder: ${normalizedPath}`);
       }
       
       // Cast to TFile type
@@ -294,8 +296,8 @@ export class ChromaSearchService {
       similarity: number;
       content: string;
       filePath: string;
-      lineStart: number;
-      lineEnd: number;
+      lineStart: number; // We provide default values when undefined
+      lineEnd: number;   // We provide default values when undefined
       metadata?: any;
     }>;
     error?: string;
@@ -331,8 +333,8 @@ export class ChromaSearchService {
                 similarity: number;
                 content: string;
                 filePath: string;
-                lineStart?: number;
-                lineEnd?: number;
+                lineStart: number;
+                lineEnd: number;
                 metadata?: Record<string, any>;
               }> = [];
               
@@ -353,8 +355,8 @@ export class ChromaSearchService {
                   similarity,
                   content: document,
                   filePath: metadata.path || metadata.workspacePath || '',
-                  lineStart: metadata.lineStart,
-                  lineEnd: metadata.lineEnd,
+                  lineStart: metadata.lineStart || 0,
+                  lineEnd: metadata.lineEnd || 0,
                   metadata
                 });
               }

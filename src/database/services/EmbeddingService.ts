@@ -261,4 +261,74 @@ export class EmbeddingService {
       console.error('Error unloading embedding service:', error);
     }
   }
+
+  /**
+   * Check if any embeddings exist in the system
+   * @returns Promise resolving to true if embeddings exist
+   */
+  async hasExistingEmbeddings(): Promise<boolean> {
+    try {
+      // Get the vector store directly from the plugin
+      const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'];
+      if (!plugin) {
+        console.error('Claudesidian plugin not found');
+        return false;
+      }
+      
+      // Try to get the vector store directly
+      const vectorStore = plugin.vectorStore;
+      if (!vectorStore) {
+        console.error('Vector store not found on plugin');
+        return false;
+      }
+
+      // Check collections that would have embeddings
+      const collections = await vectorStore.listCollections();
+      if (!collections || collections.length === 0) {
+        console.log('No collections found');
+        return false;
+      }
+      
+      console.log('Found collections:', collections);
+
+      // Check for specific collections that would contain embeddings
+      const embeddingCollections = [
+        'file_embeddings', 
+        'memory_traces', 
+        'sessions',
+        'snapshots',
+        'workspaces'
+      ];
+      
+      const collectionExists = embeddingCollections.some(name => 
+        collections.includes(name)
+      );
+
+      if (!collectionExists) {
+        console.log('No embedding collections found');
+        return false;
+      }
+
+      // Check if any of those collections have items
+      for (const collectionName of embeddingCollections) {
+        if (collections.includes(collectionName)) {
+          try {
+            const count = await vectorStore.count(collectionName);
+            console.log(`Collection ${collectionName} has ${count} items`);
+            if (count > 0) {
+              return true;
+            }
+          } catch (countError) {
+            console.warn(`Error getting count for collection ${collectionName}:`, countError);
+          }
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error checking for existing embeddings:', error);
+      // In case of error, we'll return false instead of true
+      return false;
+    }
+  }
 }

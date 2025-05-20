@@ -40,13 +40,17 @@ export function sanitizeName(name: string, useUnderscores: boolean = false): str
 /**
  * Sanitizes a file path by replacing invalid characters with safe alternatives
  * @param path The file path to sanitize
+ * @param preserveLeadingSlash Whether to preserve a leading slash if present
  * @returns A sanitized path safe for file system operations
  */
-export function sanitizePath(path: string): string {
+export function sanitizePath(path: string, preserveLeadingSlash: boolean = false): string {
     // Handle empty or invalid input
     if (!path || typeof path !== 'string') {
         return '';
     }
+
+    // Detect if path had a leading slash
+    const hadLeadingSlash = path.startsWith('/');
 
     // Normalize path separators
     const normalizedPath = path.replace(/\\/g, '/');
@@ -66,7 +70,18 @@ export function sanitizePath(path: string): string {
     });
 
     // Reconstruct path
-    return sanitizedParts.join('/');
+    let result = sanitizedParts.join('/');
+    
+    // Handle leading slash consistently
+    if (hadLeadingSlash && preserveLeadingSlash) {
+        // Ensure path starts with exactly one slash
+        result = '/' + result.replace(/^\/+/, '');
+    } else {
+        // Remove any leading slashes
+        result = result.replace(/^\/+/, '');
+    }
+
+    return result;
 }
 
 /**

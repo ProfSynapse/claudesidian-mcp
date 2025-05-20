@@ -138,7 +138,44 @@ export class VaultLibrarianAgent extends BaseAgent {
    */
   async initialize(): Promise<void> {
     await super.initialize();
-    // No additional initialization needed - all ChromaDB services are initialized elsewhere
+    
+    // Ensure we have our search service initialized
+    await this.initializeSearchService();
+  }
+  
+  /**
+   * Initialize the search service if it doesn't have a vector store
+   */
+  async initializeSearchService(): Promise<void> {
+    if (!this.searchService) {
+      console.warn('Search service not available in VaultLibrarian');
+      return;
+    }
+    
+    // Try to connect the vector store from the plugin if needed
+    if (!this.searchService.vectorStore) {
+      try {
+        console.log('Attempting to get vector store from plugin');
+        const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+        if (plugin && plugin.vectorStore) {
+          console.log('Found vector store in plugin, connecting to search service');
+          // Set the vector store property (public in ChromaSearchService)
+          this.searchService.vectorStore = plugin.vectorStore;
+          
+          // Initialize collections if needed
+          try {
+            await this.searchService.initialize();
+            console.log('Successfully initialized search service with plugin vector store');
+          } catch (initError) {
+            console.error('Error initializing search service collections:', initError);
+          }
+        } else {
+          console.warn('Plugin or vector store not found on plugin');
+        }
+      } catch (error) {
+        console.error('Error connecting vector store to search service:', error);
+      }
+    }
   }
   
   /**

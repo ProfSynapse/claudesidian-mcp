@@ -107,4 +107,21 @@ export interface IVectorStore {
    * @param collectionName Name of the collection
    */
   count(collectionName: string): Promise<number>;
+  
+  /**
+   * Get diagnostics about the vector store
+   * @returns Diagnostic information about the vector store
+   */
+  getDiagnostics(): Promise<Record<string, any>>;
+  
+  /**
+   * Repair and reload collections from disk
+   * This can be used to recover from situations where in-memory state is lost
+   * @returns Result of the repair operation
+   */
+  repairCollections(): Promise<{
+    success: boolean;
+    repairedCollections: string[];
+    errors: string[];
+  }>;
 }

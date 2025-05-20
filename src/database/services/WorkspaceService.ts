@@ -199,17 +199,75 @@ export class WorkspaceService {
    * @param activity Activity data
    */
   async addActivity(workspaceId: string, activity: ProjectWorkspace['activityHistory'][0]): Promise<void> {
-    const workspace = await this.collection.get(workspaceId);
+    console.log(`[WorkspaceService] Adding activity to workspace ${workspaceId}:`, activity);
     
-    if (!workspace) {
-      throw new Error(`Workspace with ID ${workspaceId} not found`);
+    try {
+      const workspace = await this.collection.get(workspaceId);
+      
+      if (!workspace) {
+        console.error(`[WorkspaceService] Workspace with ID ${workspaceId} not found`);
+        throw new Error(`Workspace with ID ${workspaceId} not found`);
+      }
+      
+      console.log(`[WorkspaceService] Current activity history for workspace ${workspaceId} has ${workspace.activityHistory.length} entries`);
+      
+      // Add the activity and update last accessed
+      const newHistory = [...workspace.activityHistory, activity];
+      console.log(`[WorkspaceService] New activity history will have ${newHistory.length} entries`);
+      
+      await this.collection.update(workspaceId, {
+        activityHistory: newHistory,
+        lastAccessed: activity.timestamp
+      });
+      
+      console.log(`[WorkspaceService] Successfully updated activity history for workspace ${workspaceId}`);
+    } catch (error) {
+      console.error(`[WorkspaceService] Failed to add activity to workspace ${workspaceId}:`, error);
+      throw error;
     }
+  }
+  
+  /**
+   * Record an activity to a workspace's history (alias to addActivity for API consistency)
+   * @param workspaceId Workspace ID
+   * @param activity Activity data
+   */
+  async recordActivity(workspaceId: string, activity: ProjectWorkspace['activityHistory'][0]): Promise<void> {
+    console.log(`[WorkspaceService] Recording activity for workspace ${workspaceId}:`, activity);
     
-    // Add the activity and update last accessed
-    await this.collection.update(workspaceId, {
-      activityHistory: [...workspace.activityHistory, activity],
-      lastAccessed: activity.timestamp
-    });
+    try {
+      // First check if the workspace exists
+      const workspace = await this.collection.get(workspaceId);
+      
+      if (!workspace) {
+        console.error(`[WorkspaceService] Cannot record activity - workspace ${workspaceId} not found`);
+        throw new Error(`Workspace with ID ${workspaceId} not found`);
+      }
+      
+      // Extra verification - log current activity history
+      console.log(`[WorkspaceService] Pre-verification: Workspace ${workspaceId} has ${workspace.activityHistory.length} activities`);
+      
+      // Add the activity
+      await this.addActivity(workspaceId, activity);
+      
+      // Verify that the activity was added correctly by re-fetching the workspace
+      const updatedWorkspace = await this.collection.get(workspaceId);
+      
+      if (updatedWorkspace) {
+        console.log(`[WorkspaceService] Post-verification: Workspace ${workspaceId} now has ${updatedWorkspace.activityHistory.length} activities`);
+        
+        // Check if the most recent activity matches
+        if (updatedWorkspace.activityHistory.length > 0) {
+          const lastActivity = updatedWorkspace.activityHistory[updatedWorkspace.activityHistory.length - 1];
+          console.log(`[WorkspaceService] Last activity: action=${lastActivity.action}, timestamp=${lastActivity.timestamp}`);
+        }
+      } else {
+        console.error(`[WorkspaceService] Failed to verify activity addition - workspace ${workspaceId} not found after update`);
+      }
+    } catch (error) {
+      console.error(`[WorkspaceService] Error in recordActivity: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   }
   
   /**

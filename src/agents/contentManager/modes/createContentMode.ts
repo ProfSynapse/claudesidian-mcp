@@ -130,6 +130,50 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
           // No action needed here as the architecture uses services
         }
       }
+      
+      // Record memory trace for file creation to track activity
+      // This is critical for workspace recent files and associated notes
+      if (workspaceId && sessionId) {
+        try {
+          // Get the memoryService from the plugin
+          const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+          const memoryService = plugin?.services?.memoryService;
+          
+          if (memoryService) {
+            // Store a memory trace with the file path in relatedFiles
+            await memoryService.storeMemoryTrace({
+              workspaceId,
+              workspacePath: parsedContext?.workspacePath || [workspaceId],
+              contextLevel: 'workspace',
+              activityType: 'research',
+              content: `Created file: ${filePath}`,
+              metadata: {
+                tool: 'contentManager.createContent',
+                params: { filePath },
+                result: { success: true },
+                relatedFiles: [filePath]  // This is critical for tracking recent files
+              },
+              sessionId: sessionId,
+              timestamp: Date.now(),
+              importance: 0.6,
+              tags: ['file-creation']
+            });
+            
+            // Optionally record in workspace activity history if available
+            const workspaceService = plugin?.services?.workspaceService;
+            if (workspaceService) {
+              await workspaceService.recordActivity(workspaceId, {
+                action: 'create',
+                timestamp: Date.now(),
+                hierarchyPath: [filePath]
+              });
+            }
+          }
+        } catch (error) {
+          console.warn('Error recording memory trace for file creation:', getErrorMessage(error));
+          // Don't throw - this is supplementary tracking
+        }
+      }
     } catch (error) {
       console.error('Error indexing file with ChromaDB:', getErrorMessage(error));
       // Don't throw error - indexing is a secondary operation

@@ -18,6 +18,7 @@ import { EmbeddingService } from '../database/services/EmbeddingService';
 import { ChromaSearchService } from '../database/services/ChromaSearchService';
 import { WorkspaceService } from '../database/services/WorkspaceService';
 import { MemoryService } from '../database/services/MemoryService';
+import { EmbeddingManager } from '../database/services/embeddingManager';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
 
 /**
@@ -32,6 +33,7 @@ export class SettingsTab extends PluginSettingTab {
     private embeddingService: EmbeddingService | undefined;
     private searchService: ChromaSearchService | undefined;
     private memoryService: MemoryService | undefined;
+    private embeddingManager: EmbeddingManager | undefined;
     
     // Agent references
     private vaultLibrarian: VaultLibrarianAgent | undefined;
@@ -71,6 +73,11 @@ export class SettingsTab extends PluginSettingTab {
             // Removed assignment to unused property: this.workspaceService = services.workspaceService;
             this.memoryService = services.memoryService;
             // Removed assignment to unused property: this.vectorStore = services.vectorStore;
+            
+            // Create embedding manager instance if we have app access
+            if (window.app && !this.embeddingManager && services.embeddingService) {
+                this.embeddingManager = new EmbeddingManager(window.app);
+            }
         }
         
         // Store agent references
@@ -178,6 +185,14 @@ export class SettingsTab extends PluginSettingTab {
         this.createUpdateSection(containerEl);
 
         // Memory Management accordion with services and agents
+        // Create EmbeddingManager instance if we have memory manager but no embedding manager
+        let embeddingManager = this.embeddingManager;
+        if (this.memoryManager && !embeddingManager && window.app) {
+            // The MemoryManagerAgent is not directly compatible with EmbeddingManager
+            // We're not creating a real EmbeddingManager since it may require complex initialization
+            console.log('Using memory manager without embedding manager');
+        }
+        
         new MemoryManagementAccordion(
             containerEl, 
             this.settingsManager,
@@ -185,7 +200,7 @@ export class SettingsTab extends PluginSettingTab {
             this.searchService,
             this.memoryService,
             this.vaultLibrarian,
-            this.memoryManager
+            embeddingManager
         );
 
         // Setup Instructions accordion

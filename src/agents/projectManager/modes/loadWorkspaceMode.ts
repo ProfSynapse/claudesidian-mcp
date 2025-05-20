@@ -5,7 +5,10 @@ import {
   LoadWorkspaceResult
 } from '../../../database/workspace-types';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { MemoryService } from '../../../database/services/MemoryService';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
+import { SearchOperations } from '../../../database/utils/SearchOperations';
+import { sanitizePath } from '../../../utils/pathUtils';
 
 /**
  * Mode to load a workspace as the active context
@@ -14,6 +17,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   private app: App;
   private plugin: Plugin;
   private workspaceService: WorkspaceService | null = null;
+  private memoryService: MemoryService | null = null;
+  private searchOperations: SearchOperations;
   
   /**
    * Create a new LoadWorkspaceMode
@@ -28,12 +33,18 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     );
     this.app = app;
     this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    this.searchOperations = new SearchOperations(app);
     
-    // Safely access the workspace service
+    // Safely access the plugin services
     if (this.plugin) {
       const pluginWithServices = this.plugin as ClaudesidianPlugin;
-      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
-        this.workspaceService = pluginWithServices.services.workspaceService;
+      if (pluginWithServices.services) {
+        if (pluginWithServices.services.workspaceService) {
+          this.workspaceService = pluginWithServices.services.workspaceService;
+        }
+        if (pluginWithServices.services.memoryService) {
+          this.memoryService = pluginWithServices.services.memoryService;
+        }
       }
     }
   }
@@ -117,13 +128,19 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Generate workspace summary
       const summary = await this.generateWorkspaceSummary(workspace);
       
-      // Gather key context items
+      // Gather context based on contextDepth
+      const contextDepth = params.contextDepth || 'standard';
+      
+      // Get key context items - adjust limits based on context depth
       const recentFiles = await this.getRecentFiles(workspace);
       const keyFiles = await this.getKeyFiles(workspace);
-      const relatedConcepts = await this.getRelatedConcepts();
+      const associatedNotes = await this.getAssociatedNotes(workspace);
       
-      // Get all files in the workspace - this includes files in the root folder and all related folders
-      const allFiles = await this.getAllFiles(workspace);
+      // Get sessions and states if requested depth allows
+      const sessions = contextDepth !== 'minimal' ? 
+        await this.getWorkspaceSessions(workspace.id) : [];
+      const states = contextDepth === 'comprehensive' ? 
+        await this.getWorkspaceStates(workspace.id) : [];
       
       // Create workspace context
       const workspaceContext = {
@@ -149,8 +166,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           context: {
             recentFiles,
             keyFiles,
-            relatedConcepts,
-            allFiles
+            associatedNotes,
+            sessions,
+            states
           }
         },
         undefined,
@@ -165,8 +183,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           context: {
             recentFiles: [],
             keyFiles: [],
-            relatedConcepts: [],
-            allFiles: []
+            associatedNotes: [],
+            sessions: [],
+            states: []
           }
         },
         `Failed to load workspace: ${error.message}`
@@ -220,83 +239,383 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   }
   
   /**
-   * Get recent files for the workspace
+   * Get recent files for the workspace based on activity history and memory traces
    */
   private async getRecentFiles(workspace: {
     rootFolder: string;
     id: string;
   }): Promise<string[]> {
-    // In a real implementation, this would query file history
-    // For now, return placeholder paths
-    return [
-      `${workspace.rootFolder}/README.md`,
-      `${workspace.rootFolder}/notes.md`,
-      `${workspace.rootFolder}/plan.md`
-    ];
+    console.log(`[LoadWorkspaceMode] Getting recent files for workspace ${workspace.id} (rootFolder: ${workspace.rootFolder})`);
+    const recentFiles: Array<{ path: string; timestamp: number }> = [];
+    
+    // 1. Get files from workspace activity history
+    try {
+      console.log(`[LoadWorkspaceMode] Checking workspace activity history`);
+      const fullWorkspace = await this.workspaceService?.getWorkspace(workspace.id);
+      if (fullWorkspace && fullWorkspace.activityHistory) {
+        console.log(`[LoadWorkspaceMode] Found ${fullWorkspace.activityHistory.length} activities in history`);
+        
+        for (const activity of fullWorkspace.activityHistory) {
+          console.log(`[LoadWorkspaceMode] Activity: action=${activity.action}, has hierarchyPath=${!!activity.hierarchyPath}, timestamp=${new Date(activity.timestamp).toISOString()}`);
+          
+          // Check for actions that reference files - using hierarchyPath for file paths
+          if ((activity.action === 'edit' || activity.action === 'view' || activity.action === 'create') && 
+              activity.hierarchyPath && activity.hierarchyPath.length > 0) {
+            // Use the last element of hierarchyPath as the filePath (if it exists)
+            const filePath = activity.hierarchyPath[activity.hierarchyPath.length - 1];
+            if (filePath) {
+              console.log(`[LoadWorkspaceMode] Found file path in activity: ${filePath}`);
+              recentFiles.push({
+                path: filePath,
+                timestamp: activity.timestamp
+              });
+            }
+          }
+        }
+      } else {
+        console.log(`[LoadWorkspaceMode] No activity history found for workspace ${workspace.id}`);
+      }
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Error getting workspace activity history:', error);
+    }
+    
+    // 2. Get files from memory traces
+    if (this.memoryService) {
+      try {
+        console.log(`[LoadWorkspaceMode] Checking memory traces for workspace ${workspace.id}`);
+        const traces = await this.memoryService.getMemoryTraces(workspace.id, 20);
+        console.log(`[LoadWorkspaceMode] Found ${traces.length} memory traces`);
+        
+        for (const trace of traces) {
+          if (trace.metadata && trace.metadata.relatedFiles) {
+            console.log(`[LoadWorkspaceMode] Trace has ${trace.metadata.relatedFiles.length} related files`);
+            for (const filePath of trace.metadata.relatedFiles) {
+              if (filePath) {
+                console.log(`[LoadWorkspaceMode] Found file path in trace: ${filePath}`);
+                recentFiles.push({
+                  path: filePath,
+                  timestamp: trace.timestamp
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('[LoadWorkspaceMode] Error getting memory traces:', error);
+      }
+    } else {
+      console.log(`[LoadWorkspaceMode] Memory service not available`);
+    }
+    
+    // 3. Get files based on Obsidian's file stats
+    console.log(`[LoadWorkspaceMode] Checking files in workspace root folder: ${workspace.rootFolder}`);
+    
+    // Normalize the workspace root folder path using our utility
+    // Don't preserve leading slashes for consistent matching
+    const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
+      
+    // Make sure the root folder ends with a slash for proper directory matching
+    const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
+      normalizedRootFolder : normalizedRootFolder + '/';
+    
+    console.log(`[LoadWorkspaceMode] Normalized root folder: ${normalizedRootFolder}, with slash: ${rootFolderWithSlash}`);
+    
+    const allFiles = this.app.vault.getMarkdownFiles()
+      .filter(file => {
+        // Normalize file path for consistent comparison using our utility
+        const normalizedFilePath = sanitizePath(file.path, false);
+        
+        // Check if this file belongs to the workspace (exact match or in subfolder)
+        return normalizedFilePath === normalizedRootFolder || 
+               normalizedFilePath.startsWith(rootFolderWithSlash);
+      });
+    
+    console.log(`[LoadWorkspaceMode] Found ${allFiles.length} files in workspace root folder`);
+    
+    for (const file of allFiles) {
+      const stat = file.stat;
+      if (stat && stat.mtime) {
+        // Add file with its modification time
+        console.log(`[LoadWorkspaceMode] Adding file from vault: ${file.path}`);
+        recentFiles.push({
+          path: file.path,
+          timestamp: stat.mtime
+        });
+      }
+    }
+    
+    // Remove duplicates, keep most recent timestamp for each path
+    const uniquePaths = new Map<string, number>();
+    for (const file of recentFiles) {
+      // If this path exists and has a newer timestamp, update it
+      if (!uniquePaths.has(file.path) || uniquePaths.get(file.path)! < file.timestamp) {
+        uniquePaths.set(file.path, file.timestamp);
+      }
+    }
+    
+    console.log(`[LoadWorkspaceMode] Total unique files found: ${uniquePaths.size}`);
+    
+    // Sort by timestamp, most recent first
+    const result = Array.from(uniquePaths.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(entry => entry[0])
+      .slice(0, 10); // Limit to 10 most recent files
+    
+    console.log(`[LoadWorkspaceMode] Final recent files list (${result.length} items):`, result);
+    return result;
   }
   
   /**
-   * Get key files for the workspace
+   * Get key files for the workspace based on frontmatter and common file patterns
    */
   private async getKeyFiles(workspace: {
     rootFolder: string;
     id: string;
   }): Promise<string[]> {
-    // In a real implementation, this would identify important files
-    // For now, return placeholder paths
-    return [
-      `${workspace.rootFolder}/index.md`,
-      `${workspace.rootFolder}/guidelines.md`
-    ];
-  }
-  
-  /**
-   * Get related concepts for the workspace
-   */
-  private async getRelatedConcepts(): Promise<string[]> {
-    // In a real implementation, this would extract key topics
-    // For now, return placeholder concepts
-    return [
-      "Main concept",
-      "Related idea",
-      "Key framework"
-    ];
-  }
-  
-  /**
-   * Get all files in the workspace
-   * This uses the Obsidian API to get all markdown files in the vault,
-   * then filters them to include only those in the workspace's root folder and related folders
-   */
-  private async getAllFiles(workspace: {
-    rootFolder: string;
-    relatedFolders?: string[];
-  }): Promise<string[]> {
-    // Get all markdown files from the vault
-    const allMarkdownFiles = this.app.vault.getMarkdownFiles();
-    const allFiles: string[] = [];
+    const keyFiles: string[] = [];
     
-    // Create a list of folders to include
-    const includeFolders = [workspace.rootFolder];
-    
-    // Add related folders if available
-    if (workspace.relatedFolders && workspace.relatedFolders.length > 0) {
-      includeFolders.push(...workspace.relatedFolders);
-    }
-    
-    // Filter files to include only those in the workspace's folders
-    for (const file of allMarkdownFiles) {
-      const filePath = file.path;
-      // Check if file path starts with any of the include folders
-      for (const folder of includeFolders) {
-        if (filePath === folder || filePath.startsWith(folder + '/')) {
-          allFiles.push(filePath);
-          break;
+    try {
+      // 1. Search for files with the "key: true" property
+      const propertyFiles = await this.searchOperations.searchByProperty('key', 'true', {
+        path: workspace.rootFolder,
+        limit: 20
+      });
+      
+      for (const file of propertyFiles) {
+        keyFiles.push(file.path);
+      }
+      
+      // 2. Add common key files by name pattern if in the workspace (case insensitive)
+      const commonKeyFilePatterns = [
+        /readme\.md$/i, 
+        /index\.md$/i, 
+        /summary\.md$/i, 
+        /moc\.md$/i, 
+        /map(?:\s|_|-)*of(?:\s|_|-)*contents\.md$/i
+      ];
+      
+      // Normalize the workspace root folder path using our utility
+      // Don't preserve leading slashes for consistent matching
+      const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
+      
+      // Make sure the root folder ends with a slash for proper directory matching
+      const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
+        normalizedRootFolder : normalizedRootFolder + '/';
+      
+      const files = this.app.vault.getMarkdownFiles()
+        .filter(file => {
+          // Normalize file path for consistent comparison using our utility
+          const normalizedFilePath = sanitizePath(file.path, false);
+          
+          // Check if this file belongs to the workspace (exact match or in subfolder)
+          return normalizedFilePath === normalizedRootFolder || 
+                 normalizedFilePath.startsWith(rootFolderWithSlash);
+        });
+        
+      for (const file of files) {
+        for (const pattern of commonKeyFilePatterns) {
+          if (pattern.test(file.path) && !keyFiles.includes(file.path)) {
+            keyFiles.push(file.path);
+            break;
+          }
         }
       }
+    } catch (error) {
+      console.warn('Error getting key files:', error);
     }
     
-    return allFiles;
+    return keyFiles;
+  }
+  
+  /**
+   * Get associated notes for the workspace
+   */
+  private async getAssociatedNotes(workspace: {
+    rootFolder: string;
+    id: string;
+    relatedFolders?: string[];
+  }): Promise<string[]> {
+    const associatedNotes = new Set<string>();
+    
+    try {
+      console.log(`[LoadWorkspaceMode] Getting associated notes for workspace ${workspace.id} (rootFolder: ${workspace.rootFolder})`);
+      
+      // 1. Get files mentioned in workspace sessions
+      if (this.memoryService) {
+        console.log(`[LoadWorkspaceMode] Getting files from memory traces`);
+        const sessions = await this.memoryService.getSessions(workspace.id);
+        console.log(`[LoadWorkspaceMode] Found ${sessions.length} sessions`);
+        
+        for (const session of sessions) {
+          const traces = await this.memoryService.getSessionTraces(session.id);
+          console.log(`[LoadWorkspaceMode] Found ${traces.length} traces for session ${session.id}`);
+          
+          for (const trace of traces) {
+            if (trace.metadata && trace.metadata.relatedFiles) {
+              console.log(`[LoadWorkspaceMode] Found ${trace.metadata.relatedFiles.length} related files in trace`);
+              for (const filePath of trace.metadata.relatedFiles) {
+                if (filePath) {
+                  associatedNotes.add(filePath);
+                  console.log(`[LoadWorkspaceMode] Added file from trace: ${filePath}`);
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // 2. Add workspace state snapshots
+      if (this.memoryService) {
+        console.log(`[LoadWorkspaceMode] Getting files from state snapshots`);
+        const snapshots = await this.memoryService.getSnapshots(workspace.id);
+        console.log(`[LoadWorkspaceMode] Found ${snapshots.length} snapshots`);
+        
+        for (const snapshot of snapshots) {
+          if (snapshot.state && snapshot.state.contextFiles) {
+            console.log(`[LoadWorkspaceMode] Found ${snapshot.state.contextFiles.length} context files in snapshot`);
+            for (const filePath of snapshot.state.contextFiles) {
+              associatedNotes.add(filePath);
+              console.log(`[LoadWorkspaceMode] Added file from snapshot: ${filePath}`);
+            }
+          }
+        }
+      }
+      
+      // 3. Add files in workspace's root folder
+      console.log(`[LoadWorkspaceMode] Finding files in workspace root folder: ${workspace.rootFolder}`);
+      
+      // Normalize the workspace root folder for consistent matching
+      const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
+      const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
+        normalizedRootFolder : normalizedRootFolder + '/';
+      
+      // Get all markdown files in the workspace's root folder
+      const files = this.app.vault.getMarkdownFiles()
+        .filter(file => {
+          // Normalize file path for consistent comparison
+          const normalizedFilePath = sanitizePath(file.path, false);
+          
+          // Check if file belongs to workspace
+          return normalizedFilePath === normalizedRootFolder || 
+                 normalizedFilePath.startsWith(rootFolderWithSlash);
+        });
+      
+      console.log(`[LoadWorkspaceMode] Found ${files.length} files in workspace root folder`);
+      
+      // Add each file to the associated notes
+      for (const file of files) {
+        associatedNotes.add(file.path);
+        console.log(`[LoadWorkspaceMode] Added file from workspace folder: ${file.path}`);
+      }
+      
+      // 4. Add files from related folders if specified
+      if (workspace.relatedFolders && workspace.relatedFolders.length > 0) {
+        console.log(`[LoadWorkspaceMode] Checking ${workspace.relatedFolders.length} related folders`);
+        
+        for (const folderPath of workspace.relatedFolders) {
+          if (!folderPath) continue;
+          
+          console.log(`[LoadWorkspaceMode] Checking related folder: ${folderPath}`);
+          
+          // Normalize the folder path
+          const normalizedFolderPath = sanitizePath(folderPath, false);
+          const folderWithSlash = normalizedFolderPath.endsWith('/') ? 
+            normalizedFolderPath : normalizedFolderPath + '/';
+          
+          // Find files in this related folder
+          const relatedFiles = this.app.vault.getMarkdownFiles()
+            .filter(file => {
+              const normalizedFilePath = sanitizePath(file.path, false);
+              return normalizedFilePath === normalizedFolderPath || 
+                     normalizedFilePath.startsWith(folderWithSlash);
+            });
+          
+          console.log(`[LoadWorkspaceMode] Found ${relatedFiles.length} files in related folder ${folderPath}`);
+          
+          // Add each file to the associated notes
+          for (const file of relatedFiles) {
+            associatedNotes.add(file.path);
+            console.log(`[LoadWorkspaceMode] Added file from related folder: ${file.path}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Error getting associated notes:', error);
+    }
+    
+    const result = Array.from(associatedNotes);
+    console.log(`[LoadWorkspaceMode] Total associated notes found: ${result.length}`);
+    return result;
+  }
+  
+  /**
+   * Get workspace sessions
+   */
+  private async getWorkspaceSessions(workspaceId: string): Promise<Array<{
+    id: string;
+    name: string;
+    isActive: boolean;
+    startTime: number;
+    endTime?: number;
+  }>> {
+    const sessions: Array<{
+      id: string;
+      name: string;
+      isActive: boolean;
+      startTime: number;
+      endTime?: number;
+    }> = [];
+    
+    try {
+      if (this.memoryService) {
+        const workspaceSessions = await this.memoryService.getSessions(workspaceId);
+        for (const session of workspaceSessions) {
+          sessions.push({
+            id: session.id,
+            name: session.name || `Session ${new Date(session.startTime).toLocaleString()}`,
+            isActive: session.isActive,
+            startTime: session.startTime,
+            endTime: session.endTime
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('Error getting workspace sessions:', error);
+    }
+    
+    return sessions;
+  }
+  
+  /**
+   * Get workspace states/snapshots
+   */
+  private async getWorkspaceStates(workspaceId: string): Promise<Array<{
+    id: string;
+    name: string;
+    timestamp: number;
+  }>> {
+    const states: Array<{
+      id: string;
+      name: string;
+      timestamp: number;
+    }> = [];
+    
+    try {
+      if (this.memoryService) {
+        const snapshots = await this.memoryService.getSnapshots(workspaceId);
+        for (const snapshot of snapshots) {
+          states.push({
+            id: snapshot.id,
+            name: snapshot.name,
+            timestamp: snapshot.timestamp
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('Error getting workspace states:', error);
+    }
+    
+    return states;
   }
   
   /**
@@ -383,25 +702,46 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             recentFiles: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Recently accessed files in the workspace'
+              description: 'Recently accessed files in the workspace, based on interaction history'
             },
             keyFiles: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Key files in the workspace'
+              description: 'Files marked with key: true in frontmatter or matching common patterns like readme.md'
             },
-            relatedConcepts: {
+            associatedNotes: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Related concepts for the workspace'
+              description: 'All notes associated with this workspace including files accessed during workspace sessions'
             },
-            allFiles: {
+            sessions: {
               type: 'array',
-              items: { type: 'string' },
-              description: 'Complete list of all files in the workspace and related folders'
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'Session ID' },
+                  name: { type: 'string', description: 'Session name' },
+                  isActive: { type: 'boolean', description: 'Whether the session is active' },
+                  startTime: { type: 'number', description: 'Session start timestamp' },
+                  endTime: { type: 'number', description: 'Session end timestamp (if ended)' }
+                }
+              },
+              description: 'Sessions associated with this workspace'
+            },
+            states: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'State ID' },
+                  name: { type: 'string', description: 'State name' },
+                  timestamp: { type: 'number', description: 'State creation timestamp' }
+                }
+              },
+              description: 'Saved states associated with this workspace'
             }
           },
-          required: ['recentFiles', 'keyFiles', 'relatedConcepts', 'allFiles']
+          required: ['recentFiles', 'keyFiles', 'associatedNotes', 'sessions', 'states']
         }
       }
     };

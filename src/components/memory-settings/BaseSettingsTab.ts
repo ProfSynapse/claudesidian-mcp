@@ -11,7 +11,7 @@ export interface IMemorySettingsTab {
      * 
      * @param containerEl Container to render content in
      */
-    display(containerEl: HTMLElement): void;
+    display(containerEl: HTMLElement): void | Promise<void>;
     
     /**
      * Update settings
@@ -47,7 +47,7 @@ export abstract class BaseSettingsTab implements IMemorySettingsTab {
      * 
      * @param containerEl Container to render content in
      */
-    abstract display(containerEl: HTMLElement): void;
+    abstract display(containerEl: HTMLElement): void | Promise<void>;
     
     /**
      * Update settings with new values

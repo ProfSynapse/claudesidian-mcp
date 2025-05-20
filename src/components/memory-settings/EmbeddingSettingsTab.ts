@@ -103,12 +103,11 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
             .setDesc('How should new or modified notes be automatically embedded')
             .addDropdown(dropdown => dropdown
                 .addOption('manual', 'Manual Only (No auto-embedding)')
-                .addOption('live', 'Live (Embed immediately on changes)')
                 .addOption('idle', 'Idle (Embed after period of inactivity)')
                 .addOption('startup', 'Startup (Embed non-indexed files on startup)')
                 .setValue(this.settings.embeddingStrategy || 'manual')
                 .onChange(async (value) => {
-                    this.settings.embeddingStrategy = value as 'manual' | 'live' | 'idle' | 'startup';
+                    this.settings.embeddingStrategy = value as 'manual' | 'idle' | 'startup';
                     await this.saveSettings();
                     // Trigger re-render if needed
                     if (this.onSettingsChanged) {

@@ -182,6 +182,26 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
   }
   
   /**
+   * Get the backlinkEnabled setting value from plugin settings
+   * Used to determine the default value for useGraphBoost
+   * @returns Whether backlink boost is enabled in settings
+   */
+  private getBacklinksEnabledSetting(): boolean {
+    // Try to get the plugin settings
+    try {
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      if (plugin && plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
+        return plugin.settings.settings.memory.backlinksEnabled === true;
+      }
+    } catch (error) {
+      console.warn('Failed to get backlinksEnabled setting:', error);
+    }
+    
+    // Default to true if setting can't be retrieved
+    return true;
+  }
+  
+  /**
    * Execute the mode
    * @param params Mode parameters
    * @returns Promise that resolves with search results
@@ -196,9 +216,27 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
       );
     }
     
-    // Try to use ChromaDB implementation if available
-    if (this.searchService) {
+    // Get the parent VaultLibrarian agent to make sure search service is initialized
+    const vaultLibrarian = this.app.plugins.getPlugin('claudesidian-mcp')?.getConnector?.()?.getVaultLibrarian?.();
+    if (vaultLibrarian && typeof vaultLibrarian.initializeSearchService === 'function') {
+      console.log('Initializing VaultLibrarian search service before executing vector search');
       try {
+        await vaultLibrarian.initializeSearchService();
+        
+        // If the parent VaultLibrarian has a search service, use it
+        if ((vaultLibrarian as any).searchService && !this.searchService) {
+          console.log('Using search service from parent VaultLibrarian');
+          this.searchService = (vaultLibrarian as any).searchService;
+        }
+      } catch (error) {
+        console.warn('Error initializing VaultLibrarian search service:', error);
+      }
+    }
+    
+    // Try to use ChromaDB implementation if available
+    if (this.searchService && this.searchService.vectorStore) {
+      try {
+        console.log('Executing search with ChromaDB using configured search service');
         const result = await this.executeWithChromaDB(params);
         
         // Record this activity if in a workspace context
@@ -213,41 +251,64 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
           error instanceof Error ? error.message : 'Vector search failed'
         );
       }
+    } else if (this.searchService) {
+      console.warn('Search service exists but vectorStore is null or undefined');
     }
     
-    // Try to get services from plugin if not passed in constructor
+    // Try to get services and vector store from plugin if not passed in constructor
     try {
+      console.log('Trying to get services from plugin');
       const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-      if (plugin?.services) {
-        if (!this.searchService && plugin.services.searchService) {
-          this.searchService = plugin.services.searchService;
+      if (plugin) {
+        // Try getting vectorStore directly
+        if (plugin.vectorStore) {
+          console.log('Found vector store directly on plugin');
           
-          // Try again with the newly found service
-          const result = await this.executeWithChromaDB(params);
-          
-          // Record this activity if in a workspace context
-          await this.recordActivity(params, result);
-          
-          return result;
+          // If we have searchService, connect the vectorStore
+          if (this.searchService) {
+            console.log('Connecting vector store to existing search service');
+            this.searchService.vectorStore = plugin.vectorStore;
+            
+            // Try again with the connected service
+            const result = await this.executeWithChromaDB(params);
+            await this.recordActivity(params, result);
+            return result;
+          }
         }
         
-        if (!this.memoryService && plugin.services.memoryService) {
-          this.memoryService = plugin.services.memoryService;
+        // Try getting searchService from plugin services
+        if (plugin.services) {
+          if (!this.searchService && plugin.services.searchService) {
+            console.log('Using search service from plugin services');
+            this.searchService = plugin.services.searchService;
+            
+            // Try again with the newly found service
+            const result = await this.executeWithChromaDB(params);
+            await this.recordActivity(params, result);
+            return result;
+          }
+          
+          if (!this.memoryService && plugin.services.memoryService) {
+            this.memoryService = plugin.services.memoryService;
+          }
+          
+          if (!this.embeddingService && plugin.services.embeddingService) {
+            this.embeddingService = plugin.services.embeddingService;
+          }
         }
-        
-        if (!this.embeddingService && plugin.services.embeddingService) {
-          this.embeddingService = plugin.services.embeddingService;
-        }
+      } else {
+        console.warn('Plugin not found');
       }
     } catch (error) {
       console.error('Error accessing plugin services:', error);
     }
     
     // Fallback message if nothing else worked
+    console.error('Vector search failed - ChromaDB services not found or not properly initialized');
     return this.prepareResult(
       false,
       undefined,
-      'Vector search is not available - ChromaDB services not found'
+      'Vector search is not available - Vector store factory not found or not properly initialized'
     );
   }
   
@@ -276,7 +337,8 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
       limit: params.limit || 10,
       threshold: params.threshold || 0.7,
       filters: params.filters,
-      useGraphBoost: params.useGraphBoost,
+      // Use the provided useGraphBoost parameter if available, otherwise use the backlinksEnabled setting
+      useGraphBoost: params.useGraphBoost !== undefined ? params.useGraphBoost : this.getBacklinksEnabledSetting(),
       graphBoostFactor: params.graphBoostFactor,
       graphMaxDistance: params.graphMaxDistance,
       seedNotes: params.seedNotes,
@@ -351,15 +413,6 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         matches: []
       }
     );
-      
-      return this.prepareResult(
-        result.success !== false, // Handle case where success is not explicitly set
-        {
-          matches: result.matches || []
-        },
-        result.error
-      );
-    }
   }
   
   /**
@@ -540,7 +593,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
    * Get the JSON schema for the mode's parameters
    * @returns JSON schema object
    */
-  getParameterSchema(): any {
+  override getParameterSchema(): any {
     // Create the mode-specific schema
     const modeSchema = {
       type: 'object',
@@ -614,8 +667,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         },
         useGraphBoost: {
           type: 'boolean',
-          description: 'Whether to use graph-based relevance boosting',
-          default: false
+          description: 'Whether to use graph-based relevance boosting. Defaults to the value of backlinksEnabled in settings.',
         },
         graphBoostFactor: {
           type: 'number',
@@ -649,7 +701,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
    * Get the JSON schema for the mode's result
    * @returns JSON schema object
    */
-  getResultSchema(): any {
+  override getResultSchema(): any {
     return {
       type: 'object',
       properties: {

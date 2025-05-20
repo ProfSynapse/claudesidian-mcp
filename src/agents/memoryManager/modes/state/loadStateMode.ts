@@ -3,6 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 import { LoadStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { SearchOperations } from '../../../../database/utils/SearchOperations';
 // Memory service is used indirectly through the agent
 // Workspace service is used indirectly through the agent
 
@@ -163,7 +164,56 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       }
       
       // Get details about the restored state files and context
+      const associatedNotes = new Set<string>();
+      
+      // Add context files from the state
       const stateFiles = state.state?.contextFiles || [];
+      stateFiles.forEach(file => associatedNotes.add(file));
+      
+      // Try to get key files based on the workspace root folder
+      if (workspace && workspace.rootFolder) {
+        try {
+          const app = this.agent.getApp();
+          if (app) {
+            const searchOperations = new SearchOperations(app);
+            
+            // Search for files with 'key: true' property
+            const keyFiles = await searchOperations.searchByProperty('key', 'true', {
+              path: workspace.rootFolder,
+              limit: 10
+            });
+            
+            for (const file of keyFiles) {
+              associatedNotes.add(file.path);
+            }
+            
+            // Add common key file patterns if this is comprehensive context
+            if (contextDepth === 'comprehensive') {
+              const commonKeyFilePatterns = [
+                /readme\.md$/i, 
+                /index\.md$/i, 
+                /summary\.md$/i, 
+                /moc\.md$/i, 
+                /map(?:\s|_|-)*of(?:\s|_|-)*contents\.md$/i
+              ];
+              
+              const files = app.vault.getMarkdownFiles()
+                .filter((file: { path: string }) => file.path.startsWith(workspace.rootFolder));
+                
+              for (const file of files) {
+                for (const pattern of commonKeyFilePatterns) {
+                  if (pattern.test(file.path) && !associatedNotes.has(file.path)) {
+                    associatedNotes.add(file.path);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to get key files: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
       
       // Build context information
       let continuationHistory: Array<{ timestamp: number; description: string }> = [];
@@ -222,7 +272,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         stateCreatedAt,
         originalSessionName,
         restorationGoal,
-        stateFiles,
+        Array.from(associatedNotes),
         restoredTraces,
         contextDepth
       );
@@ -250,7 +300,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       if (createContinuationSession) {
         const restorationTraceContent = `Loaded from state "${stateName}" created on ${stateCreatedAt} during session "${originalSessionName}"
 
-This state captured ${stateFiles.length} relevant files and contains workspace state from "${workspace.name}".
+This state captured ${associatedNotes.size} associated notes and contains workspace state from "${workspace.name}".
 
 ${restorationGoal ? `Restoration goal: ${restorationGoal}\n` : ''}
 
@@ -273,10 +323,10 @@ ${contextSummary}`;
               },
               result: {
                 newSessionId,
-                stateFiles,
+                associatedNotes: Array.from(associatedNotes),
                 originalSessionId
               },
-              relatedFiles: stateFiles
+              relatedFiles: Array.from(associatedNotes)
             },
             workspacePath: workspace.path || [],
             contextLevel: workspace.hierarchyType || 'workspace',
@@ -300,11 +350,11 @@ ${contextSummary}`;
                 },
                 result: {
                   newSessionId,
-                  stateFiles,
+                  associatedNotes: Array.from(associatedNotes),
                   originalSessionId
                 }
               },
-              stateFiles,
+              Array.from(associatedNotes),
               newSessionId
             );
           }
@@ -323,7 +373,7 @@ ${contextSummary}`;
         timestamp: Date.now(),
         restoredContext: {
           summary: contextSummary,
-          relevantFiles: stateFiles,
+          associatedNotes: Array.from(associatedNotes),
           stateCreatedAt,
           originalSessionId,
           continuationHistory,
@@ -342,7 +392,7 @@ ${contextSummary}`;
    * @param stateCreatedAt Formatted creation date
    * @param originalSessionName Original session name
    * @param restorationGoal Optional restoration goal
-   * @param files Relevant files
+   * @param associatedNotes Associated notes with the state
    * @param traces Memory traces if available
    * @param contextDepth Depth of context to include
    * @returns Formatted summary string
@@ -353,7 +403,7 @@ ${contextSummary}`;
     stateCreatedAt: string,
     originalSessionName: string,
     restorationGoal?: string,
-    files: string[] = [],
+    associatedNotes: string[] = [],
     traces: WorkspaceMemoryTrace[] = [],
     contextDepth: 'minimal' | 'standard' | 'comprehensive' = 'standard'
   ): string {
@@ -396,10 +446,10 @@ ${contextSummary}`;
       }
     }
     
-    // Include files information
-    if (files.length > 0) {
-      summary += `\n## Relevant Files (${files.length})\n`;
-      files.forEach(file => {
+    // Include associated notes information
+    if (associatedNotes.length > 0) {
+      summary += `\n## Associated Notes (${associatedNotes.length})\n`;
+      associatedNotes.forEach(file => {
         summary += `- ${file}\n`;
       });
     }

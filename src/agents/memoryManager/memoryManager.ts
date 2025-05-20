@@ -42,6 +42,7 @@ export class MemoryManagerAgent extends BaseAgent {
     this.registerMode(new Modes.ListSessionsMode(this));
     this.registerMode(new Modes.EditSessionMode(this));
     this.registerMode(new Modes.DeleteSessionMode(this));
+    this.registerMode(new Modes.LoadSessionMode(this));
     
     // Register state modes
     this.registerMode(new Modes.CreateStateMode(this));
@@ -71,6 +72,13 @@ export class MemoryManagerAgent extends BaseAgent {
    */
   getWorkspaceService(): WorkspaceService {
     return this.workspaceService;
+  }
+  
+  /**
+   * Get the Obsidian app instance
+   */
+  getApp() {
+    return this.plugin?.app;
   }
   
   /**

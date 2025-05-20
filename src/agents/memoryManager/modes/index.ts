@@ -3,6 +3,7 @@ export * from './session/createSessionMode';
 export * from './session/listSessionsMode';
 export * from './session/editSessionMode';
 export * from './session/deleteSessionMode';
+export * from './session/loadSessionMode';
 
 // State modes
 export * from './state/createStateMode';

@@ -66,11 +66,8 @@ export class MCPConnector {
             // Get services from the plugin if available
             const services = this.plugin && (this.plugin as any).services ? (this.plugin as any).services : {};
             const memoryService = services.memoryService;
-            // These services are available but not currently used in this method
-            // Keeping them commented for future use
-            // const embeddingService = services.embeddingService;
-            // const searchService = services.searchService;
-            // const workspaceService = services.workspaceService;
+            // Get vector store for initialization
+            const vectorStore = services.vectorStore;
             
             // Create all agents with services
             const contentManagerAgent = new ContentManagerAgent(
@@ -88,6 +85,14 @@ export class MCPConnector {
             const vaultLibrarianAgent = new VaultLibrarianAgent(
                 this.app
             );
+            
+            // Initialize searchService immediately if we have vectorStore
+            if (vaultLibrarianAgent && vectorStore) {
+                console.log('Setting vector store in VaultLibrarian during initialization');
+                vaultLibrarianAgent.initializeSearchService().catch(error => 
+                    console.error('Error initializing VaultLibrarian search service:', error)
+                );
+            }
             
             // Create project manager with services
             const projectManagerAgent = new ProjectManagerAgent(

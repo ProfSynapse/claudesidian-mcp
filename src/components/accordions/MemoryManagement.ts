@@ -1,7 +1,6 @@
 import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
-import { MemoryManagerAgent } from '../../agents/memoryManager/memoryManager';
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
@@ -22,9 +21,8 @@ export class MemoryManagementAccordion extends Accordion {
     private memoryService: MemoryService | undefined;
     private embeddingManager: EmbeddingManager | undefined;
     
-    // Agents (for backward compatibility)
+    // Agent (for backward compatibility)
     private vaultLibrarian: VaultLibrarianAgent | undefined;
-    private memoryManager: MemoryManagerAgent | undefined;
     
     private memorySettingsTab: MemorySettingsTab | null = null;
     
@@ -36,7 +34,6 @@ export class MemoryManagementAccordion extends Accordion {
      * @param chromaSearchService ChromaSearchService for search operations
      * @param memoryService MemoryService for memory traces and sessions
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
-     * @param memoryManager MemoryManager agent instance (optional)
      * @param embeddingManager EmbeddingManager for managing embedding providers (optional)
      */
     constructor(
@@ -46,7 +43,6 @@ export class MemoryManagementAccordion extends Accordion {
         chromaSearchService?: ChromaSearchService,
         memoryService?: MemoryService,
         vaultLibrarian?: VaultLibrarianAgent,
-        memoryManager?: MemoryManagerAgent,
         embeddingManager?: EmbeddingManager
     ) {
         super(containerEl, 'Memory Management', false);
@@ -55,7 +51,6 @@ export class MemoryManagementAccordion extends Accordion {
         this.chromaSearchService = chromaSearchService;
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
-        this.memoryManager = memoryManager;
         this.embeddingManager = embeddingManager;
         
         const contentEl = this.getContentEl();
@@ -113,14 +108,14 @@ export class MemoryManagementAccordion extends Accordion {
             return;
         }
         
-        // Initialize the MemorySettingsTab with our services and agents
+        // Initialize the MemorySettingsTab with our services and agent
         this.memorySettingsTab = new MemorySettingsTab(
             this.memorySettingsContainer,
             this.settings,
             window.app,
             this.embeddingManager,
             this.vaultLibrarian,
-            this.memoryManager
+            this.embeddingService
         );
         
         // Display settings
