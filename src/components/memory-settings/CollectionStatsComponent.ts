@@ -28,6 +28,13 @@ export class CollectionStatsComponent {
             this.displayedStats = stats;
             this.refresh();
         });
+        // Listen for collection purge events which require a complete UI refresh
+        this.usageStatsService.on(USAGE_EVENTS.COLLECTIONS_PURGED, () => {
+            console.log('Collections purged event received, forcing complete UI refresh');
+            // Force a complete reloading of stats
+            this.displayedStats = null;
+            this.refresh();
+        });
     }
     
     /**

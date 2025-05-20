@@ -103,9 +103,11 @@ export class ChromaSearchService {
     }
     
     // Delete existing embedding if any
+    // The fileEmbeddings collection will handle path normalization internally
     const existing = await this.fileEmbeddings.getEmbeddingByPath(filePath);
     if (existing) {
       await this.fileEmbeddings.delete(existing.id);
+      console.log(`Deleted existing embedding for file: ${filePath}`);
     }
     
     // Create new embedding

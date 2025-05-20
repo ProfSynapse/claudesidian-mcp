@@ -175,4 +175,22 @@ export abstract class BaseVectorStore implements IVectorStore {
       errors: ['Repair not supported by this vector store implementation']
     };
   }
+  
+  /**
+   * Validate collections to ensure they are in sync with disk storage
+   * Base implementation that returns no-op result
+   * Should be overridden by subclasses that support validation
+   * @returns Result of the validation operation
+   */
+  async validateCollections(): Promise<{
+    success: boolean;
+    validatedCollections: string[];
+    errors: string[];
+  }> {
+    return {
+      success: false,
+      validatedCollections: [],
+      errors: ['Validation not supported by this vector store implementation']
+    };
+  }
 }

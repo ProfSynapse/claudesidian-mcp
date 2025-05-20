@@ -42,7 +42,8 @@ export type UsageStats = {
 export const USAGE_EVENTS = {
     STATS_UPDATED: 'usage-stats-updated',
     STATS_RESET: 'usage-stats-reset',
-    STATS_REFRESHED: 'usage-stats-refreshed'
+    STATS_REFRESHED: 'usage-stats-refreshed',
+    COLLECTIONS_PURGED: 'collections-purged'
 };
 
 /**
@@ -671,6 +672,55 @@ export class UsageStatsService {
         } finally {
             // Always reset the flag when done, even if there's an error
             this.isRefreshing = false;
+        }
+    }
+    
+    /**
+     * Force a complete refresh with collection purging
+     * This is a more aggressive refresh that ensures collection stats are accurate
+     * by forcing a complete cache invalidation and reload
+     */
+    async forceCompleteRefresh(): Promise<UsageStats> {
+        console.log('Forcing complete stats refresh with collection cache invalidation...');
+        
+        try {
+            // Force a complete cache reset if vector store supports it
+            if (this.vectorStore && typeof (this.vectorStore as any).refreshCollections === 'function') {
+                await (this.vectorStore as any).refreshCollections();
+                console.log('Successfully refreshed vector store collections');
+            }
+            
+            // Completely clear the default stats
+            this.defaultStats = {
+                tokensThisMonth: 0,
+                totalEmbeddings: 0,
+                dbSizeMB: 0,
+                lastIndexedDate: '',
+                indexingInProgress: false,
+                estimatedCost: 0,
+                modelUsage: {
+                    'text-embedding-3-small': 0,
+                    'text-embedding-3-large': 0
+                },
+                collectionStats: []
+            };
+            
+            // Get completely fresh stats
+            const stats = await this.getUsageStats(true);
+            
+            // Emit multiple events to ensure all UI components update
+            this.eventManager.emit(USAGE_EVENTS.COLLECTIONS_PURGED, {
+                timestamp: Date.now(),
+                source: 'force-complete-refresh'
+            });
+            
+            this.eventManager.emit(USAGE_EVENTS.STATS_REFRESHED, stats);
+            
+            return stats;
+        } catch (error) {
+            console.error('Error during complete refresh:', error);
+            // Still try to do a basic refresh even if the aggressive refresh fails
+            return this.refreshStats();
         }
     }
 

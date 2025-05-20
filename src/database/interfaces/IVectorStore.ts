@@ -124,4 +124,15 @@ export interface IVectorStore {
     repairedCollections: string[];
     errors: string[];
   }>;
+  
+  /**
+   * Validate collections to ensure they are in sync with disk storage
+   * This can be used to ensure the collections are properly loaded and statistics are accurate
+   * @returns Result of the validation operation
+   */
+  validateCollections(): Promise<{
+    success: boolean;
+    validatedCollections: string[];
+    errors: string[];
+  }>;
 }

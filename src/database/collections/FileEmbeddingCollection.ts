@@ -16,6 +16,15 @@ export class FileEmbeddingCollection extends BaseChromaCollection<FileEmbedding>
   }
   
   /**
+   * Normalize a file path for consistent storage and lookup
+   * @param filePath File path to normalize
+   * @returns Normalized path without leading slash
+   */
+  private normalizePath(filePath: string): string {
+    return filePath.startsWith('/') ? filePath.slice(1) : filePath;
+  }
+  
+  /**
    * Extract ID from a file embedding
    * @param embedding File embedding object
    * @returns Embedding ID
@@ -36,8 +45,11 @@ export class FileEmbeddingCollection extends BaseChromaCollection<FileEmbedding>
     document?: string;
   } {
     // Extract important metadata fields for filtering and searching
+    // Normalize the file path for consistent storage
+    const normalizedPath = this.normalizePath(embedding.filePath);
+    
     const metadata = {
-      filePath: embedding.filePath,
+      filePath: normalizedPath,
       timestamp: embedding.timestamp,
       workspaceId: embedding.workspaceId || '',
       additionalMetadata: embedding.metadata ? JSON.stringify(embedding.metadata) : '{}',
@@ -109,8 +121,11 @@ export class FileEmbeddingCollection extends BaseChromaCollection<FileEmbedding>
    * @returns File embedding if found
    */
   async getEmbeddingByPath(filePath: string): Promise<FileEmbedding | undefined> {
+    // Normalize the path for lookup to ensure consistent matching
+    const normalizedPath = this.normalizePath(filePath);
+    
     const embeddings = await this.getAll({
-      where: { filePath }
+      where: { filePath: normalizedPath }
     });
     
     return embeddings.length > 0 ? embeddings[0] : undefined;
@@ -169,10 +184,42 @@ export class FileEmbeddingCollection extends BaseChromaCollection<FileEmbedding>
    * @param filePath File path
    */
   async deleteEmbeddingByPath(filePath: string): Promise<void> {
-    const embedding = await this.getEmbeddingByPath(filePath);
+    // Normalize the path for consistent lookup
+    const normalizedPath = this.normalizePath(filePath);
+    const embedding = await this.getEmbeddingByPath(normalizedPath);
     
     if (embedding) {
       await this.delete(embedding.id);
     }
+  }
+  
+  /**
+   * Delete all embeddings for multiple file paths
+   * @param filePaths Array of file paths to delete
+   * @returns Number of embeddings deleted
+   */
+  async deleteEmbeddingsByPaths(filePaths: string[]): Promise<number> {
+    if (!filePaths || filePaths.length === 0) {
+      return 0;
+    }
+    
+    // Normalize all paths for consistent lookup
+    const normalizedPaths = filePaths.map(path => this.normalizePath(path));
+    
+    // Find all embeddings that match the paths
+    const allEmbeddings = await this.getAll();
+    const embeddingsToDelete = allEmbeddings.filter(embedding => 
+      normalizedPaths.includes(this.normalizePath(embedding.filePath))
+    );
+    
+    if (embeddingsToDelete.length === 0) {
+      return 0;
+    }
+    
+    // Delete all matched embeddings
+    const ids = embeddingsToDelete.map(e => e.id);
+    await this.deleteBatch(ids);
+    
+    return embeddingsToDelete.length;
   }
 }

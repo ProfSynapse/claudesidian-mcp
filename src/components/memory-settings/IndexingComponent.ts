@@ -186,6 +186,34 @@ export class IndexingComponent {
                 throw new Error('Embedding service not available. Please restart Obsidian and try again.');
             }
             
+            // Force vector store collection stats refresh
+            try {
+                const vectorStore = this.plugin.vectorStore || this.plugin.services?.vectorStore;
+                if (vectorStore) {
+                    console.log('Refreshing vector store collection stats');
+                    
+                    // Explicitly validate collections to ensure stats are accurate
+                    const validationResult = await vectorStore.validateCollections();
+                    console.log('Collection validation results:', validationResult);
+                    
+                    // Force direct collection stats re-reading
+                    if (typeof (vectorStore as any).refreshCollections === 'function') {
+                        await (vectorStore as any).refreshCollections();
+                        console.log('Explicitly refreshed vector store collections');
+                    }
+                    
+                    // Get fresh count of file embeddings
+                    try {
+                        const fileEmbeddingsCount = await vectorStore.count('file_embeddings');
+                        console.log(`Current file_embeddings count: ${fileEmbeddingsCount}`);
+                    } catch (countError) {
+                        console.warn('Error getting file_embeddings count:', countError);
+                    }
+                }
+            } catch (refreshError) {
+                console.warn('Error refreshing vector store collections:', refreshError);
+            }
+            
             // Manually trigger usage stats update via the plugin's service
             if (this.plugin.services?.usageStatsService) {
                 console.log('Refreshing via plugin UsageStatsService');
@@ -203,13 +231,90 @@ export class IndexingComponent {
             
             // Wait a moment to ensure all stats are updated
             setTimeout(async () => {
-                // Force refresh the stats using both methods for redundancy
-                await this.usageStatsService.refreshStats();
-                
-                if (this.plugin.services?.usageStatsService) {
-                    await this.plugin.services.usageStatsService.refreshStats();
+                try {
+                    // Force collection data refresh first to ensure stats are up-to-date
+                    const vectorStore = this.plugin.vectorStore || this.plugin.services?.vectorStore;
+                    if (vectorStore) {
+                        // Run explicit collection validation
+                        await vectorStore.validateCollections();
+                        
+                        // Directly update collection information if possible
+                        if (typeof (vectorStore as any).refreshCollections === 'function') {
+                            await (vectorStore as any).refreshCollections();
+                        }
+                    }
+                    
+                    // Use the more aggressive complete refresh method which handles collection purging
+                    console.log('Final stats refresh after reindexing - using forceCompleteRefresh');
+                    
+                    if (this.plugin.services?.usageStatsService) {
+                        try {
+                            // Check if the service has the forceCompleteRefresh method (it should from our changes)
+                            if (typeof (this.plugin.services.usageStatsService as any).forceCompleteRefresh === 'function') {
+                                await (this.plugin.services.usageStatsService as any).forceCompleteRefresh();
+                                console.log('Successfully performed complete stats refresh');
+                            } else {
+                                // Fall back to regular refresh
+                                await this.plugin.services.usageStatsService.refreshStats();
+                            }
+                        } catch (refreshError) {
+                            console.warn('Error during complete stats refresh:', refreshError);
+                            // Fall back to regular refresh
+                            await this.plugin.services.usageStatsService.refreshStats();
+                        }
+                    } else if (this.usageStatsService) {
+                        // Try with our own service instance
+                        try {
+                            if (typeof (this.usageStatsService as any).forceCompleteRefresh === 'function') {
+                                await (this.usageStatsService as any).forceCompleteRefresh();
+                            } else {
+                                await this.usageStatsService.refreshStats();
+                            }
+                        } catch (refreshError) {
+                            console.warn('Error refreshing stats:', refreshError);
+                            await this.usageStatsService.refreshStats();
+                        }
+                    }
+                    
+                    // Force UI update to ensure collection percentages are updated
+                    if (this.plugin.services?.eventManager?.emit) {
+                        // Emit multiple events to ensure all UI components are updated
+                        this.plugin.services.eventManager.emit('collection-stats-updated', {
+                            timestamp: Date.now(),
+                            source: 'reindex-operation'
+                        });
+                        
+                        // Also emit a more general event that will trigger UI refreshes
+                        this.plugin.services.eventManager.emit('embedding-stats-changed', {
+                            timestamp: Date.now(),
+                            source: 'reindex-operation',
+                            collectionRefreshed: true
+                        });
+                    }
+                    
+                    // As a fail-safe, explicitly reload usage stats components if possible
+                    try {
+                        // Try to access any 'refresh' methods on UI components that display collection stats
+                        const components = [
+                            this.plugin.services?.collectionStatsComponent,
+                            this.plugin.collectionStatsComponent,
+                            this.plugin.services?.usageStatsComponent,
+                            this.plugin.usageStatsComponent
+                        ].filter(Boolean);
+                        
+                        for (const component of components) {
+                            if (component && typeof component.refresh === 'function') {
+                                console.log('Explicitly refreshing UI component:', component.constructor.name);
+                                await component.refresh();
+                            }
+                        }
+                    } catch (componentRefreshError) {
+                        console.warn('Error refreshing UI components:', componentRefreshError);
+                    }
+                } catch (finalRefreshError) {
+                    console.warn('Error during final stats refresh:', finalRefreshError);
                 }
-            }, 1000);
+            }, 2000); // Increased timeout to ensure all operations complete
         }
     }
 }

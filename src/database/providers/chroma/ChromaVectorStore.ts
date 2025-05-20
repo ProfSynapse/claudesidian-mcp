@@ -939,4 +939,72 @@ export class ChromaVectorStore extends BaseVectorStore {
       };
     }
   }
+  
+  /**
+   * Validate collections to ensure they are in sync with disk storage
+   * This can be used to ensure the collections are properly loaded and statistics are accurate
+   * @returns Result of the validation operation
+   */
+  async validateCollections(): Promise<{
+    success: boolean;
+    validatedCollections: string[];
+    errors: string[];
+  }> {
+    if (!this.client) {
+      return {
+        success: false,
+        validatedCollections: [],
+        errors: ['ChromaDB client not initialized']
+      };
+    }
+    
+    try {
+      console.log("Validating all collections and refreshing cache...");
+      
+      // Get all known collections
+      await this.refreshCollections();
+      const collections = Array.from(this.collections);
+      
+      const validatedCollections: string[] = [];
+      const errors: string[] = [];
+      
+      // For each collection, validate by performing a count operation
+      for (const collectionName of collections) {
+        try {
+          // First remove from cache to force a fresh connection
+          this.collectionCache.delete(collectionName);
+          
+          // Try to get the collection and validate it
+          const collection = await this.getOrCreateCollection(collectionName);
+          await collection.count();
+          
+          // Validate collection data 
+          try {
+            const itemCount = await collection.count();
+            console.log(`Validated collection ${collectionName} with ${itemCount} items`);
+            validatedCollections.push(collectionName);
+          } catch (countError) {
+            errors.push(`Failed to count items in collection ${collectionName}: ${getErrorMessage(countError)}`);
+          }
+        } catch (validationError) {
+          errors.push(`Failed to validate collection ${collectionName}: ${getErrorMessage(validationError)}`);
+        }
+      }
+      
+      // One final refresh to ensure we have the latest state
+      await this.refreshCollections();
+      
+      return {
+        success: errors.length === 0,
+        validatedCollections,
+        errors
+      };
+    } catch (error) {
+      return {
+        success: false,
+        validatedCollections: [],
+        errors: [`Failed to validate collections: ${getErrorMessage(error)}`]
+      };
+    }
+  }
 }

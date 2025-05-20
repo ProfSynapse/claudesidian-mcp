@@ -1,5 +1,5 @@
 import { BaseSettingsTab } from './BaseSettingsTab';
-import { UsageStatsService } from '../../database/services/UsageStatsService';
+import { UsageStatsService, USAGE_EVENTS } from '../../database/services/UsageStatsService';
 import { TokenUsageComponent } from './TokenUsageComponent';
 import { CollectionStatsComponent } from './CollectionStatsComponent';
 import { IndexingComponent } from './IndexingComponent';
@@ -19,6 +19,9 @@ export class UsageStatsComponent extends BaseSettingsTab {
     private searchService: any;
     private embeddingService: EmbeddingService | null;
     private usageStatsService: UsageStatsService;
+    
+    // The container element where the component is displayed
+    private containerEl!: HTMLElement; // ! operator to tell TypeScript it will be initialized before use
     
     // Sub-components
     private tokenUsageComponent: TokenUsageComponent | null = null;
@@ -100,6 +103,9 @@ export class UsageStatsComponent extends BaseSettingsTab {
      * Display the usage statistics
      */
     async display(containerEl: HTMLElement): Promise<void> {
+        // Store the container element for reference
+        this.containerEl = containerEl;
+        
         const section = containerEl.createEl('div', { cls: 'memory-usage-stats' });
         
         section.createEl('h3', { text: 'Usage Statistics' });
@@ -162,6 +168,25 @@ export class UsageStatsComponent extends BaseSettingsTab {
             pluginInstance.eventManager.on('batch-embedding-completed', async () => {
                 console.log('Batch embedding completed event received, refreshing stats');
                 await this.refresh();
+            });
+            
+            pluginInstance.eventManager.on('collection-stats-updated', async () => {
+                console.log('Collection stats updated event received, refreshing stats');
+                await this.refresh();
+            });
+        }
+        
+        // Also listen for the special collections purged event from UsageStatsService
+        if (this.usageStatsService) {
+            this.usageStatsService.on(USAGE_EVENTS.COLLECTIONS_PURGED, async () => {
+                console.log('Collections purged event received, forcing complete refresh');
+                // Explicitly request a new set of stats by setting all components to null
+                this.tokenUsageComponent = null;
+                this.collectionStatsComponent = null;
+                this.indexingComponent = null;
+                
+                // Force a complete redisplay of all components
+                await this.display(this.containerEl);
             });
         }
     }

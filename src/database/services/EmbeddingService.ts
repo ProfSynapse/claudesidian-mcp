@@ -302,6 +302,35 @@ export class EmbeddingService {
     // Get collections
     const fileEmbeddings = VectorStoreFactory.createFileEmbeddingCollection(plugin.vectorStore);
     
+    // Get vector store for direct collection access
+    const vectorStore = plugin.vectorStore;
+    if (!vectorStore) {
+      throw new Error('Vector store not available');
+    }
+    
+    // IMPORTANT: For reindexing, we need to completely purge the file_embeddings collection
+    // to ensure we get a clean slate. This is more reliable than trying to delete individual embeddings.
+    try {
+      // First get a count to log how many embeddings will be purged
+      const beforeCount = await vectorStore.count('file_embeddings');
+      console.log(`Found ${beforeCount} existing file embeddings before reindexing`);
+      
+      if (beforeCount > 0) {
+        console.log('Purging file_embeddings collection before reindexing...');
+        // Delete the collection
+        await vectorStore.deleteCollection('file_embeddings');
+        // Recreate it (empty)
+        await vectorStore.createCollection('file_embeddings', { 
+          createdAt: new Date().toISOString(),
+          reindexOperation: true
+        });
+        console.log('Successfully purged file_embeddings collection');
+      }
+    } catch (purgeError) {
+      console.error('Error purging file_embeddings collection:', purgeError);
+      // Don't throw here, we'll try to continue with reindexing anyway
+    }
+    
     // Get settings for batching
     const batchSize = this.settings.batchSize || 5;
     const processingDelay = this.settings.processingDelay || 1000;
@@ -345,11 +374,8 @@ export class EmbeddingService {
               return null;
             }
             
-            // Delete existing embedding if any
-            const existing = await fileEmbeddings.getEmbeddingByPath(filePath);
-            if (existing) {
-              await fileEmbeddings.delete(existing.id);
-            }
+            // Since we've purged the collection at the start of the reindexing process,
+            // we don't need to check for existing embeddings for each file anymore
             
             // Create new embedding
             const id = uuidv4();
