@@ -4,6 +4,7 @@ import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { createErrorMessage } from '../../utils/errorUtils';
+import { Notice } from 'obsidian';
 
 // Import collection modes
 import { CreateCollectionMode } from './modes/collection/createCollectionMode';
@@ -107,5 +108,37 @@ export class VectorManagerAgent extends BaseAgent {
       throw new Error(createErrorMessage('Vector store error: ', 'Search service not initialized'));
     }
     return this.searchService['vectorStore'];
+  }
+  
+  /**
+   * Track token usage for the embedding provider
+   * This is called by the OpenAIProvider when embeddings are generated
+   * @param tokenCount Number of tokens used
+   * @param details Optional details about the usage
+   */
+  trackTokenUsage(tokenCount: number, details?: {
+    model: string;
+    cost: number;
+    modelUsage?: {[key: string]: number};
+  }): void {
+    try {
+      console.log(`Tracking token usage: ${tokenCount} tokens for model ${details?.model || 'unknown'}`);
+      
+      // Update provider if available through embedding service
+      if (this.embeddingService && this.embeddingService.getProvider()) {
+        const provider = this.embeddingService.getProvider();
+        if (provider && typeof (provider as any).updateUsageStats === 'function') {
+          (provider as any).updateUsageStats(tokenCount);
+        }
+      }
+      
+      // Display notice for significant usage (over 1000 tokens)
+      if (tokenCount > 1000) {
+        const cost = details?.cost || 0;
+        new Notice(`Used ${tokenCount.toLocaleString()} tokens for embedding (estimated cost: $${cost.toFixed(4)})`);
+      }
+    } catch (error) {
+      console.warn('Failed to track token usage:', error);
+    }
   }
 }

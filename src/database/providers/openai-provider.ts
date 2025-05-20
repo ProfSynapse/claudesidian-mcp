@@ -35,8 +35,11 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
         this.dimensions = settings.dimensions;
         this.rateLimitPerMinute = settings.apiRateLimitPerMinute;
         this.costPerThousandTokens = settings.costPerThousandTokens || {
-            'text-embedding-3-small': 0.00013,
-            'text-embedding-3-large': 0.00087
+            // Convert per million token costs to per thousand token costs
+            // $0.02 per million = $0.00002 per thousand for text-embedding-3-small
+            // $0.13 per million = $0.00013 per thousand for text-embedding-3-large
+            'text-embedding-3-small': 0.00002,
+            'text-embedding-3-large': 0.00013
         };
         
         // Load saved model usage from localStorage if available
@@ -327,14 +330,19 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                     if (app) {
                         const plugin = app.plugins.getPlugin('claudesidian-mcp');
                         if (plugin) {
-                            const vaultLibrarian = plugin.connector.getVaultLibrarian();
-                            if (vaultLibrarian && vaultLibrarian.trackTokenUsage) {
+                            // First try to use VectorManager which is the correct agent for embedding operations
+                            const vectorManager = plugin.connector?.getVectorManager?.();
+                            if (vectorManager && vectorManager.trackTokenUsage) {
                                 // Track token usage with detailed info
-                                vaultLibrarian.trackTokenUsage(actualTokenCount, {
+                                vectorManager.trackTokenUsage(actualTokenCount, {
                                     model: this.model,
                                     cost: cost,
                                     modelUsage: this.modelUsage
                                 });
+                            } else {
+                                console.warn('VectorManager not available for token tracking, updating stats directly');
+                                // If VectorManager is not available, update stats directly
+                                this.updateUsageStats(actualTokenCount);
                             }
                         }
                     }
@@ -426,13 +434,19 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                         if (app) {
                             const plugin = app.plugins.getPlugin('claudesidian-mcp');
                             if (plugin) {
-                                const vaultLibrarian = plugin.connector.getVaultLibrarian();
-                                if (vaultLibrarian && vaultLibrarian.trackTokenUsage) {
-                                    vaultLibrarian.trackTokenUsage(actualTokenCount, {
+                                // First try to use VectorManager which is the correct agent for embedding operations
+                                const vectorManager = plugin.connector?.getVectorManager?.();
+                                if (vectorManager && vectorManager.trackTokenUsage) {
+                                    // Track token usage with detailed info
+                                    vectorManager.trackTokenUsage(actualTokenCount, {
                                         model: this.model,
                                         cost: cost,
                                         modelUsage: this.modelUsage
                                     });
+                                } else {
+                                    console.warn('VectorManager not available for token tracking, updating stats directly');
+                                    // If VectorManager is not available, update stats directly
+                                    this.updateUsageStats(actualTokenCount);
                                 }
                             }
                         }
@@ -526,11 +540,24 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
      */
     getTotalCost(): number {
         let totalCost = 0;
+        
+        // Iterate through each model in the usage stats
         for (const model in this.modelUsage) {
+            // Get the token count for this model
             const tokens = this.modelUsage[model];
+            
+            // Ensure the model has a cost defined
             const costPerThousand = this.costPerThousandTokens[model] || 0;
-            totalCost += (tokens / 1000) * costPerThousand;
+            
+            // Calculate the cost for this model and add to the total
+            // (tokens / 1000) * cost per thousand tokens
+            const modelCost = (tokens / 1000) * costPerThousand;
+            totalCost += modelCost;
+            
+            console.log(`Cost calculation for ${model}: ${tokens} tokens at $${costPerThousand} per 1k = $${modelCost.toFixed(6)}`);
         }
+        
+        console.log(`Total cost calculated: $${totalCost.toFixed(6)}`);
         return totalCost;
     }
     
@@ -556,8 +583,9 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
      * Update usage stats with a new token count
      */
     async updateUsageStats(tokenCount: number): Promise<void> {
-        // For simplicity, we'll update the current model's usage
-        this.modelUsage[this.model] = tokenCount;
+        // Add to the current model's usage instead of overwriting
+        const currentUsage = this.modelUsage[this.model] || 0;
+        this.modelUsage[this.model] = currentUsage + tokenCount;
         
         // Save to local storage for persistence
         try {

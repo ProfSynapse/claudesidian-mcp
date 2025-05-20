@@ -50,7 +50,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
         
         const tokenLimitSetting = new Setting(containerEl)
             .setName('Monthly Token Limit')
-            .setDesc('Maximum tokens to process per month (1M ≈ $0.13 for small model)')
+            .setDesc('Maximum tokens to process per month (1M ≈ $0.02 for small model)')
             .addText(text => text
                 .setPlaceholder('1000000')
                 .setValue(String(this.settings.maxTokensPerMonth))
@@ -294,20 +294,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
                 colorBox.style.backgroundColor = color;
                 legendItem.createEl('span', { text: `${collection.name}: ${collection.count.toLocaleString()}` });
             });
-            
-            // Also include the table view
-            // Create a table for collection stats
-            const table = collectionsSection.createEl('table', { cls: 'memory-collections-table' });
-            const headerRow = table.createEl('tr');
-            headerRow.createEl('th', { text: 'Collection' });
-            headerRow.createEl('th', { text: 'Embeddings' });
-            
-            // Add a row for each collection
-            for (const collection of usageStats.collectionStats) {
-                const row = table.createEl('tr');
-                row.createEl('td', { text: collection.name });
-                row.createEl('td', { text: collection.count.toLocaleString() });
-            }
         } else {
             // Display message when no collections found
             const noCollectionsMessage = collectionsSection.createDiv({ cls: 'memory-no-collections' });

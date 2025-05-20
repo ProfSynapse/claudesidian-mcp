@@ -56,7 +56,8 @@ export class MemorySettingsTab {
         app?: App,
         embeddingManager?: EmbeddingManager,
         vaultLibrarian?: VaultLibrarianAgent,
-        embeddingService?: EmbeddingService
+        embeddingService?: EmbeddingService,
+        private searchService?: any
     ) {
         this.settingsManager = settingsManager;
         this.app = app || (vaultLibrarian?.app || window.app);
@@ -64,6 +65,16 @@ export class MemorySettingsTab {
         this.vaultLibrarian = vaultLibrarian || null;
         this.embeddingService = embeddingService || null;
         this.settings = this.settingsManager.settings.memory || { ...DEFAULT_MEMORY_SETTINGS };
+        
+        // Try to get searchService from the plugin if not provided
+        if (!this.searchService) {
+            const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+            if (plugin?.services?.searchService) {
+                this.searchService = plugin.services.searchService;
+            } else if (plugin?.searchService) {
+                this.searchService = plugin.searchService;
+            }
+        }
         
         // Initialize tab components
         this.apiSettingsTab = new ApiSettingsTab(
@@ -88,7 +99,8 @@ export class MemorySettingsTab {
             this.settingsManager, 
             this.app, 
             this.embeddingManager || undefined,
-            this.vaultLibrarian || undefined
+            this.vaultLibrarian || undefined,
+            this.searchService || undefined
         );
         
         // Register refresh callbacks

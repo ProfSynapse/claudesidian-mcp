@@ -166,10 +166,12 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     maxStates: 10,
     statePruningStrategy: 'oldest',
     
-    // Cost tracking
+    // Cost tracking - per thousand token costs (converted from per million)
+    // $0.02 per million = $0.00002 per thousand for text-embedding-3-small
+    // $0.13 per million = $0.00013 per thousand for text-embedding-3-large
     costPerThousandTokens: {
-        'text-embedding-3-small': 0.00013,
-        'text-embedding-3-large': 0.00087
+        'text-embedding-3-small': 0.00002,
+        'text-embedding-3-large': 0.00013
     }
 };
 

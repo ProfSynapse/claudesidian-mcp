@@ -5,13 +5,27 @@ import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian'
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 
 /**
+ * Type definition for model cost map
+ */
+type ModelCostMap = {
+    'text-embedding-3-small': number;
+    'text-embedding-3-large': number;
+    [key: string]: number; // Allow indexing with string keys
+};
+
+/**
  * Usage Statistics Component
  * Displays and manages usage statistics for memory and embeddings
  */
 export class UsageStatsComponent extends BaseSettingsTab {
     private vaultLibrarian: VaultLibrarianAgent | null;
     private embeddingManager: EmbeddingManager | null;
-    private searchService: any; // Added for storing search service reference
+    private searchService: any; // Search service reference
+    
+    // Type-safe access to costPerThousandTokens in settings
+    private get costPerThousandTokens(): ModelCostMap {
+        return (this.settings.costPerThousandTokens || {}) as ModelCostMap;
+    }
     
     /**
      * Create a new usage stats component
@@ -21,15 +35,27 @@ export class UsageStatsComponent extends BaseSettingsTab {
         settingsManager: any, 
         app: any, 
         embeddingManager?: EmbeddingManager,
-        vaultLibrarian?: VaultLibrarianAgent
+        vaultLibrarian?: VaultLibrarianAgent,
+        searchService?: any
     ) {
         super(settings, settingsManager, app);
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
+        this.searchService = searchService || null;
         
-        // Try to get search service from vault librarian if available
-        if (vaultLibrarian && (vaultLibrarian as any).searchService) {
-            this.searchService = (vaultLibrarian as any).searchService;
+        // Try to get search service from different sources if not directly provided
+        if (!this.searchService) {
+            // Try from vault librarian if available
+            if (vaultLibrarian && (vaultLibrarian as any).searchService) {
+                this.searchService = (vaultLibrarian as any).searchService;
+            }
+            // Try from the plugin
+            else if (window.app.plugins.plugins['claudesidian-mcp']?.services?.searchService) {
+                this.searchService = window.app.plugins.plugins['claudesidian-mcp'].services.searchService;
+            }
+            else if (window.app.plugins.plugins['claudesidian-mcp']?.searchService) {
+                this.searchService = window.app.plugins.plugins['claudesidian-mcp'].searchService;
+            }
         }
     }
     
@@ -49,10 +75,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
             lastIndexedDate: string;
             indexingInProgress: boolean;
             estimatedCost?: number;
-            modelUsage?: {
-                'text-embedding-3-small': number;
-                'text-embedding-3-large': number;
-            };
+            modelUsage?: ModelCostMap;
             collectionStats?: Array<{
                 name: string;
                 count: number;
@@ -68,7 +91,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
             modelUsage: {
                 'text-embedding-3-small': 0,
                 'text-embedding-3-large': 0
-            },
+            } as ModelCostMap,
             collectionStats: []
         };
         
@@ -128,13 +151,21 @@ export class UsageStatsComponent extends BaseSettingsTab {
                 });
             });
             
-            // Collection legend with counts
-            const legendContainer = collectionStatsContainer.createDiv({ cls: 'collection-legend' });
+            // Collection legend with counts - more compact display
+            const legendContainer = collectionStatsContainer.createDiv({ cls: 'collection-legend-compact' });
+            const legendHeader = legendContainer.createDiv({ cls: 'legend-header' });
+            legendHeader.createEl('span', { text: 'Collection breakdown:' });
+            
+            // Create a flex container for the color indicators and names
+            const legendItemsContainer = legendContainer.createDiv({ cls: 'legend-items-container' });
             usageStats.collectionStats.forEach((collection: {name: string; count: number; color: string}) => {
-                const legendItem = legendContainer.createDiv({ cls: 'legend-item' });
+                const legendItem = legendItemsContainer.createDiv({ cls: 'legend-item-compact' });
                 const colorBox = legendItem.createDiv({ cls: 'legend-color' });
                 colorBox.style.backgroundColor = collection.color;
-                legendItem.createEl('span', { text: `${collection.name}: ${collection.count.toLocaleString()}` });
+                const percentage = (collection.count / usageStats.totalEmbeddings) * 100;
+                legendItem.createEl('span', { 
+                    text: `${collection.name} (${percentage.toFixed(1)}%)` 
+                });
             });
         } else {
             // Display message when no collections or vector store isn't initialized
@@ -169,8 +200,10 @@ export class UsageStatsComponent extends BaseSettingsTab {
         }
         
         // Estimated cost - use the cost from usage stats if available, otherwise calculate
+        // Default to text-embedding-3-small cost (0.00002) if not defined
         const estimatedCost = usageStats.estimatedCost || 
-            ((usageStats.tokensThisMonth / 1000) * (this.settings.costPerThousandTokens?.[this.settings.embeddingModel] || 0.00013));
+            ((usageStats.tokensThisMonth / 1000) * 
+             (this.costPerThousandTokens[this.settings.embeddingModel] || 0.00002));
         
         section.createEl('div', {
             text: `Estimated cost this month: $${estimatedCost.toFixed(4)}`
@@ -182,9 +215,12 @@ export class UsageStatsComponent extends BaseSettingsTab {
             section.createEl('h4', { text: 'Token Usage by Model' });
             
             for (const model in usageStats.modelUsage) {
-                const tokens = usageStats.modelUsage[model as 'text-embedding-3-small' | 'text-embedding-3-large'];
+                // Use type assertion for known model keys
+                const modelKey = model as 'text-embedding-3-small' | 'text-embedding-3-large';
+                const tokens = usageStats.modelUsage[modelKey];
                 if (tokens > 0) {
-                    const costPerK = this.settings.costPerThousandTokens?.[model as 'text-embedding-3-small' | 'text-embedding-3-large'] || 0;
+                    // Use our type-safe getter for costPerThousandTokens
+                    const costPerK = this.costPerThousandTokens[modelKey] || 0;
                     const modelCost = (tokens / 1000) * costPerK;
                     
                     modelUsageContainer.createEl('div', {
@@ -296,34 +332,62 @@ export class UsageStatsComponent extends BaseSettingsTab {
                     reindexButton.setText('Indexing in progress...');
                     
                     try {
+                        // Get all markdown files from the vault
+                        const files = this.app.vault.getMarkdownFiles();
+                        const filePaths = files.map((file: {path: string}) => file.path);
+                        
+                        new Notice(`Starting indexing of ${filePaths.length} files...`);
+                        
                         const plugin = window.app.plugins.plugins['claudesidian-mcp'];
                         if (!plugin) {
                             throw new Error('Plugin not found');
                         }
                         
-                        if (plugin.searchService && typeof plugin.searchService.batchIndexFiles === 'function') {
-                            // Get all markdown files from the vault
-                            const files = plugin.app.vault.getMarkdownFiles();
-                            const filePaths = files.map((file: {path: string}) => file.path);
-                            
-                            new Notice(`Starting indexing of ${filePaths.length} files...`);
-                            
-                            // Start the indexing process
-                            await plugin.searchService.batchIndexFiles(filePaths);
-                            
-                            new Notice(`Successfully indexed ${filePaths.length} files`);
-                        } else {
-                            throw new Error('Search service not available');
+                        if (!plugin.settings?.settings?.memory?.embeddingsEnabled) {
+                            throw new Error('Embeddings are disabled in settings. Enable them in the API tab first.');
+                        }
+                        
+                        // Track progress with an update function
+                        const progressTracker = (current: number, total: number) => {
+                            const percent = Math.round((current / total) * 100);
+                            reindexButton.setText(`Indexing: ${percent}% (${current}/${total})`);
+                        };
+                        
+                        // 1. Try using directly stored ChromaSearchService first
+                        if (this.searchService && typeof this.searchService.batchIndexFiles === 'function') {
+                            new Notice(`Started indexing ${filePaths.length} files...`);
+                            await this.searchService.batchIndexFiles(filePaths, progressTracker);
+                        } 
+                        // 2. Try plugin.services.searchService
+                        else if (plugin.services?.searchService && typeof plugin.services.searchService.batchIndexFiles === 'function') {
+                            new Notice(`Started indexing ${filePaths.length} files...`);
+                            await plugin.services.searchService.batchIndexFiles(filePaths, progressTracker);
+                        }
+                        // 3. Try direct plugin.searchService 
+                        else if (plugin.searchService && typeof plugin.searchService.batchIndexFiles === 'function') {
+                            new Notice(`Started indexing ${filePaths.length} files...`);
+                            await plugin.searchService.batchIndexFiles(filePaths, progressTracker);
+                        } 
+                        else {
+                            throw new Error('Search service not available to handle embedding. Please restart Obsidian and try again.');
                         }
                     } catch (error) {
                         console.error('Error reindexing:', error);
                         new Notice(`Error reindexing: ${error instanceof Error ? error.message : String(error)}`);
                     } finally {
+                        // Re-enable the button and reset its text
                         reindexButton.disabled = false;
                         reindexButton.setText('Reindex All Content');
+                        
+                        // Refresh the UI to show updated stats
                         if (this.onSettingsChanged) {
                             this.onSettingsChanged();
                         }
+                        
+                        // Force refresh collection stats
+                        this.getCollectionStats().catch(err => 
+                            console.error('Error refreshing collection stats after indexing:', err)
+                        );
                     }
                 }
             }
@@ -340,10 +404,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
         lastIndexedDate: string;
         indexingInProgress: boolean;
         estimatedCost?: number;
-        modelUsage?: {
-            'text-embedding-3-small': number;
-            'text-embedding-3-large': number;
-        };
+        modelUsage?: ModelCostMap;
         collectionStats?: Array<{
             name: string;
             count: number;
@@ -360,7 +421,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
             modelUsage: {
                 'text-embedding-3-small': 0,
                 'text-embedding-3-large': 0
-            },
+            } as ModelCostMap,
             collectionStats: []
         };
         
@@ -369,8 +430,67 @@ export class UsageStatsComponent extends BaseSettingsTab {
             if (this.embeddingManager && this.embeddingManager.getProvider()) {
                 const provider = this.embeddingManager.getProvider();
                 if (provider) {
-                    defaultStats.estimatedCost = (provider as any).getTotalCost?.() || defaultStats.estimatedCost;
-                    defaultStats.modelUsage = (provider as any).getModelUsage?.() || defaultStats.modelUsage;
+                    // Get total cost if the method exists
+                    if (typeof (provider as any).getTotalCost === 'function') {
+                        defaultStats.estimatedCost = (provider as any).getTotalCost() || defaultStats.estimatedCost;
+                    }
+                    
+                    // Get model usage if the method exists
+                    if (typeof (provider as any).getModelUsage === 'function') {
+                        defaultStats.modelUsage = (provider as any).getModelUsage() || defaultStats.modelUsage;
+                    }
+                    
+                    // Get total tokens for the month if the method exists
+                    if (typeof (provider as any).getTokensThisMonth === 'function') {
+                        defaultStats.tokensThisMonth = (provider as any).getTokensThisMonth() || defaultStats.tokensThisMonth;
+                    } else {
+                        // Fallback to calculating from model usage
+                        defaultStats.tokensThisMonth = Object.values(defaultStats.modelUsage).reduce((sum, count) => sum + count, 0);
+                    }
+                    
+                    console.log('Loaded token usage stats from provider:', {
+                        tokensThisMonth: defaultStats.tokensThisMonth,
+                        estimatedCost: defaultStats.estimatedCost,
+                        modelUsage: defaultStats.modelUsage
+                    });
+                }
+            } else {
+                // Try to load from localStorage directly if provider is not available
+                try {
+                    if (typeof localStorage !== 'undefined') {
+                        const savedUsage = localStorage.getItem('claudesidian-tokens-used');
+                        if (savedUsage) {
+                            const parsedUsage = JSON.parse(savedUsage);
+                            if (typeof parsedUsage === 'object' && parsedUsage !== null) {
+                                defaultStats.modelUsage = {
+                                    'text-embedding-3-small': parsedUsage['text-embedding-3-small'] || 0,
+                                    'text-embedding-3-large': parsedUsage['text-embedding-3-large'] || 0
+                                };
+                                
+                                // Calculate total tokens from model usage
+                                defaultStats.tokensThisMonth = Object.values(defaultStats.modelUsage).reduce((sum, count) => sum + count, 0);
+                                
+                                // Calculate estimated cost based on model usage and configured costs
+                                defaultStats.estimatedCost = 0;
+                                for (const model in defaultStats.modelUsage) {
+                                    // Ensure type safety for model keys
+                                    const modelKey = model as 'text-embedding-3-small' | 'text-embedding-3-large';
+                                    const tokens = defaultStats.modelUsage[modelKey];
+                                    // Use our type-safe getter for costPerThousandTokens
+                                    const costPerThousand = this.costPerThousandTokens[modelKey] || 0;
+                                    defaultStats.estimatedCost += (tokens / 1000) * costPerThousand;
+                                }
+                                
+                                console.log('Loaded token usage stats from localStorage:', {
+                                    tokensThisMonth: defaultStats.tokensThisMonth,
+                                    estimatedCost: defaultStats.estimatedCost,
+                                    modelUsage: defaultStats.modelUsage
+                                });
+                            }
+                        }
+                    }
+                } catch (localStorageError) {
+                    console.warn('Failed to load token usage from localStorage:', localStorageError);
                 }
             }
             

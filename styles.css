@@ -533,6 +533,36 @@
     margin-right: 12px;
 }
 
+/* More compact legend design */
+.collection-legend-compact {
+    margin-top: 12px;
+    margin-bottom: 8px;
+    background-color: var(--background-primary);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.legend-header {
+    margin-bottom: 8px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.legend-items-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.legend-item-compact {
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    background-color: var(--background-secondary);
+    padding: 4px 8px;
+    border-radius: 16px;
+}
+
 .legend-color {
     width: 12px;
     height: 12px;
