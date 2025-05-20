@@ -50,44 +50,44 @@ export class WhatIsClaudesidianAccordion {
         // Add all agents
         this.createAgentDescription(
             agentsContainer,
-            'Note Reader',
-            'Reads notes from your vault and provides information based on their content. Can analyze multiple notes simultaneously, extract key information, summarize content, and answer questions about your notes with detailed context awareness.'
+            'Content Manager',
+            'Manages note content with read, create, append, prepend, replace, delete, and batch operations. Combines functionality of the previous Note Reader and Note Editor agents into a single unified interface for all content operations.'
         );
         
         this.createAgentDescription(
             agentsContainer,
-            'Note Editor',
-            'Edits notes in your vault, helping you refine content. Can append, prepend, or replace text precisely in any of your notes. Can do single or multiple notes or sections at a time.'
-        );
-        
-        this.createAgentDescription(
-            agentsContainer,
-            'Vault Librarian',
-            'Searches and navigates your vault to find relevant notes and information. Can perform advanced searches using keywords, tags, or content patterns, identify connections between notes, and help find information in your vault.'
-        );
-        
-        this.createAgentDescription(
-            agentsContainer,
-            'Memory Manager',
-            'Creates and manages vector embeddings of your vault content, enabling powerful semantic search capabilities. Allows searching your notes by meaning, not just keywords, with automatic indexing of new and modified content.'
-        );
-        
-        this.createAgentDescription(
-            agentsContainer,
-            'Palette Commander',
-            'Executes Obsidian commands on your behalf using the command palette (Control+P/Cmd+P). Can access any functionality available in the command palette, automate repetitive tasks, apply formatting, manage workspaces, and trigger plugins without manual intervention.'
+            'Command Manager',
+            'Executes Obsidian commands on your behalf using the command palette (Control+P/Cmd+P). Can list available commands and execute them, enabling access to any functionality in the command palette, automating tasks, and triggering plugin features.'
         );
         
         this.createAgentDescription(
             agentsContainer,
             'Project Manager',
-            'Manages projects in Claude, helping you organize and track progress in a chat session. Used to help keep Claude on track and checking in with you as a project progresses.'
+            'Manages projects with planning, checkpointing, question-answering, and completion tracking capabilities. Helps organize complex tasks, create project plans, track progress, and maintain project context across sessions.'
         );
         
         this.createAgentDescription(
             agentsContainer,
             'Vault Manager',
-            'Manages files and folders in your vault by creating, moving or deleting them.'
+            'Manages files and folders in your vault with operations for listing, creating, editing, deleting, and moving files and folders. Provides comprehensive file system management for your vault structure.'
+        );
+        
+        this.createAgentDescription(
+            agentsContainer,
+            'Vault Librarian',
+            'Searches and navigates your vault with advanced content, tag, property, and semantic vector search capabilities. Includes batch operations for complex search patterns and semantic similarity matching.'
+        );
+        
+        this.createAgentDescription(
+            agentsContainer,
+            'Memory Manager',
+            'Manages workspace sessions, state snapshots, and persistent memory across conversations. Provides operations for creating, listing, editing, and deleting sessions and snapshot states.'
+        );
+        
+        this.createAgentDescription(
+            agentsContainer,
+            'Vector Manager',
+            'Manages vector collections and embeddings with operations for creating, retrieving, updating, and deleting collections and embeddings. Enables powerful semantic search and knowledge organization through vector embeddings.'
         );
 
         // Example Interactions section within intro

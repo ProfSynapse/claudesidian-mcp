@@ -138,5 +138,11 @@ Please work through this systematically, creating the structure and initializing
         commandsList.createEl('li', {
             text: '/plan - "Create new project plan using template"'
         });
+        commandsList.createEl('li', {
+            text: '/search - "Search vault content using VaultLibrarian"'
+        });
+        commandsList.createEl('li', {
+            text: '/vector - "Perform semantic search with VectorManager"'
+        });
     }
 }

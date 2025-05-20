@@ -183,100 +183,97 @@ flowchart TD
 
 ### Available Agents and Their Modes
 
-The plugin features eight specialized agents, each handling a specific domain of functionality:
+The plugin features seven specialized agents, each handling a specific domain of functionality:
 
-#### 1. NoteEditor Agent
-The NoteEditor agent provides operations for editing notes in the vault.
+#### 1. ContentManager Agent
+The ContentManager agent provides operations for reading and editing notes in the vault (combines functionality of the previous NoteEditor and NoteReader agents).
 
-| Mode     | Description                    | Parameters                                      |
-|----------|--------------------------------|-------------------------------------------------|
-| replace  | Replace text in a note         | path, search, replace, replaceAll               |
-| insert   | Insert text at a position      | path, content, position                         |
-| delete   | Delete lines from a note       | path, startPosition, endPosition                |
-| append   | Append text to a note          | path, content                                   |
-| prepend  | Prepend text to a note         | path, content                                   |
-| batch    | Perform multiple operations    | operations[]                                    |
+| Mode              | Description                         | Parameters                                     |
+|-------------------|-------------------------------------|------------------------------------------------|
+| readContent       | Read content from a note            | path                                           |
+| createContent     | Create a new note with content      | path, content, overwrite                       |
+| appendContent     | Append content to a note            | path, content                                  |
+| prependContent    | Prepend content to a note           | path, content                                  |
+| replaceContent    | Replace content in a note           | path, search, replace, replaceAll              |
+| replaceByLine     | Replace content by line numbers     | path, startLine, endLine, content              |
+| deleteContent     | Delete content from a note          | path, startPosition, endPosition               |
+| batchContent      | Perform multiple content operations | operations[]                                   |
 
-#### 2. NoteReader Agent
-The NoteReader agent provides operations for reading notes from the vault.
+#### 2. CommandManager Agent
+The CommandManager agent provides operations for executing commands from the command palette.
 
-| Mode      | Description                     | Parameters                                      |
-|-----------|---------------------------------|-------------------------------------------------|
-| readNote  | Read the content of a note      | path                                            |
-| batchRead | Read multiple notes at once     | paths[]                                         |
-| readLine  | Read specific lines from a note | path, startLine, endLine                        |
+| Mode           | Description                       | Parameters                                     |
+|----------------|-----------------------------------|------------------------------------------------|
+| listCommands   | List available commands           | filter (optional)                              |
+| executeCommand | Execute a command by ID           | id                                             |
 
 #### 3. ProjectManager Agent
 The ProjectManager agent provides operations for managing projects.
 
-| Mode         | Description                    | Parameters                                      |
-|--------------|--------------------------------|-------------------------------------------------|
-| projectPlan  | Generate a project plan        | primaryGoal, subgoals, path                     |
-| askQuestion  | Ask a question about a project | context, questions                              |
-| checkpoint   | Create a project checkpoint    | description, progressSummary, checkpointReason, nextStep, projectPath |
+| Mode         | Description                     | Parameters                                     |
+|--------------|---------------------------------|------------------------------------------------|
+| projectPlan  | Generate a project plan         | primaryGoal, subgoals, path                    |
+| askQuestion  | Ask a question about a project  | context, questions                             |
+| checkpoint   | Create a project checkpoint     | description, progressSummary, checkpointReason, nextStep, projectPath |
+| completion   | Record project completion       | summary, projectPath                          |
 
-#### 4. PaletteCommander Agent
-The PaletteCommander agent provides operations for executing commands from the command palette.
+#### 4. VaultManager Agent
+The VaultManager agent provides operations for managing files and folders in the vault.
 
-| Mode           | Description                       | Parameters                                      |
-|----------------|-----------------------------------|-------------------------------------------------|
-| listCommands   | List available commands           | filter (optional)                               |
-| executeCommand | Execute a command by ID           | id                                              |
+| Mode         | Description                     | Parameters                                     |
+|--------------|---------------------------------|------------------------------------------------|
+| listFiles    | List files in a folder          | path, recursive, extension                     |
+| listFolders  | List folders in a path          | path, recursive                                |
+| createFolder | Create a new folder             | path                                           |
+| editFolder   | Rename a folder                 | path, newName                                  |
+| deleteFolder | Delete a folder                 | path, recursive                                |
+| moveNote     | Move a note to a new location   | path, newPath, overwrite                       |
+| moveFolder   | Move a folder to a new location | path, newPath, overwrite                       |
 
 #### 5. VaultLibrarian Agent
 The VaultLibrarian agent provides operations for searching and navigating the vault.
 
-| Mode             | Description                       | Parameters                                      |
-|------------------|-----------------------------------|-------------------------------------------------|
-| searchContent    | Search note content               | query, paths, limit, includeMetadata            |
-| searchTag        | Find notes with specific tag      | tag, paths, limit                               |
-| searchProperty   | Find notes with specific property | key, value, paths, limit                        |
-| listFolder       | List contents of a folder         | path, includeFiles, includeFolders              |
-| listNote         | List notes in the vault           | path, extension, limit                          |
-| listTag          | List all tags in the vault        | prefix, limit                                   |
-| listProperties   | List all properties in the vault  | key, limit                                      |
+| Mode       | Description                       | Parameters                                     |
+|------------|-----------------------------------|------------------------------------------------|
+| search     | Search content with multiple options | query, type, paths, limit, includeMetadata  |
+| vector     | Perform semantic vector search    | query, limit, filter, includeContent          |
+| batch      | Perform batch operations          | operations[]                                   |
 
-#### 6. VaultManager Agent
-The VaultManager agent provides operations for managing files and folders in the vault.
+#### 6. MemoryManager Agent
+The MemoryManager agent provides operations for managing sessions, states, and workspaces.
 
-| Mode          | Description                       | Parameters                                      |
-|---------------|-----------------------------------|-------------------------------------------------|
-| createNote    | Create a new note                 | path, content, overwrite                        |
-| createFolder  | Create a new folder               | path                                            |
-| deleteNote    | Delete a note                     | path                                            |
-| deleteFolder  | Delete a folder                   | path, recursive                                 |
-| moveNote      | Move a note to a new location     | path, newPath, overwrite                        |
-| moveFolder    | Move a folder to a new location   | path, newPath, overwrite                        |
+| Mode            | Description                         | Parameters                                    |
+|-----------------|-------------------------------------|-----------------------------------------------|
+| createSession   | Create a new session                | name, description, sessionGoal                |
+| listSessions    | List available sessions             | activeOnly, limit, order, tags                |
+| editSession     | Edit an existing session            | sessionId, name, description, isActive        |
+| deleteSession   | Delete a session                    | sessionId, deleteMemoryTraces                 |
+| loadSession     | Load an existing session            | sessionId                                     |
+| createState     | Create a new state snapshot         | name, description, includeSummary, maxFiles   |
+| listStates      | List available state snapshots      | includeContext, limit, targetSessionId        |
+| loadState       | Load a state snapshot               | stateId, createContinuationSession            |
+| editState       | Edit a state snapshot               | stateId, name, description, addTags           |
+| deleteState     | Delete a state snapshot             | stateId                                       |
+| createWorkspace | Create a new workspace              | name, description, tags                       |
+| listWorkspaces  | List available workspaces           | limit, order, tags                            |
+| editWorkspace   | Edit a workspace                    | workspaceId, name, description, addTags       |
+| deleteWorkspace | Delete a workspace                  | workspaceId, deleteAll                        |
+| loadWorkspace   | Load a workspace                    | workspaceId                                   |
 
-#### 7. MemoryManager Agent
-The MemoryManager agent provides session and state management for workspaces.
+#### 7. VectorManager Agent
+The VectorManager agent provides operations for managing vector collections and embeddings.
 
-| Mode            | Description                              | Parameters                                      |
-|-----------------|------------------------------------------|-------------------------------------------------|
-| createSession   | Create a new session                     | name, description, sessionGoal                  |
-| listSessions    | List available sessions                  | activeOnly, limit, order, tags                  |
-| editSession     | Edit an existing session                 | sessionId, name, description, isActive          |
-| deleteSession   | Delete a session                         | sessionId, deleteMemoryTraces                   |
-| createState     | Create a new state snapshot              | name, description, includeSummary, maxFiles     |
-| listStates      | List available state snapshots           | includeContext, limit, targetSessionId          |
-| loadState       | Load a state snapshot                    | stateId, createContinuationSession              |
-| editState       | Edit a state snapshot                    | stateId, name, description, addTags             |
-| deleteState     | Delete a state snapshot                  | stateId                                         |
-
-#### 8. VectorManager Agent
-The VectorManager agent provides vector collections and embeddings management.
-
-| Mode               | Description                              | Parameters                                      |
-|--------------------|------------------------------------------|-------------------------------------------------|
-| createCollection   | Create a new vector collection           | name, metadata                                  |
-| listCollections    | List available vector collections        | pattern                                         |
-| getCollection      | Get details about a collection           | name, includeStats                              |
-| deleteCollection   | Delete a vector collection               | name, force                                     |
-| collectionAddItems | Add items to a collection                | collectionName, ids, embeddings, metadatas      |
-| createEmbedding    | Create embeddings from text              | collectionName, items                           |
-| getEmbedding       | Get embeddings by ID                     | collectionName, ids, includeEmbeddings          |
-| deleteEmbedding    | Delete embeddings from a collection      | collectionName, ids                             |
-| batchEmbedding     | Perform batch operations on embeddings   | collectionName, operation, items                |
+| Mode               | Description                              | Parameters                                    |
+|--------------------|------------------------------------------|-----------------------------------------------|
+| createCollection   | Create a new vector collection           | name, metadata                                |
+| listCollections    | List available vector collections        | pattern                                       |
+| getCollection      | Get details about a collection           | name, includeStats                            |
+| deleteCollection   | Delete a vector collection               | name, force                                   |
+| collectionAddItems | Add items to a collection                | collectionName, ids, embeddings, metadatas    |
+| createEmbedding    | Create embeddings from text              | collectionName, items                         |
+| getEmbedding       | Get embeddings by ID                     | collectionName, ids, includeEmbeddings        |
+| deleteEmbedding    | Delete embeddings from a collection      | collectionName, ids                           |
+| batchEmbedding     | Perform batch operations on embeddings   | collectionName, operation, items              |
 
 ```mermaid
 flowchart LR
