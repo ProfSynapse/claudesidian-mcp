@@ -335,7 +335,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     // Create search options
     const searchOptions = {
       limit: params.limit || 10,
-      threshold: params.threshold || 0.7,
+      threshold: params.threshold || 0.3, // Lower default threshold for better recall
       filters: params.filters,
       // Use the provided useGraphBoost parameter if available, otherwise use the backlinksEnabled setting
       useGraphBoost: params.useGraphBoost !== undefined ? params.useGraphBoost : this.getBacklinksEnabledSetting(),
@@ -635,7 +635,7 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         threshold: {
           type: 'number',
           description: 'Similarity threshold (0-1)',
-          default: 0.7
+          default: 0.3
         },
         filters: {
           type: 'object',

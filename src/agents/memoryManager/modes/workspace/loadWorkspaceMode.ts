@@ -245,26 +245,19 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     rootFolder: string;
     id: string;
   }): Promise<string[]> {
-    console.log(`[LoadWorkspaceMode] Getting recent files for workspace ${workspace.id} (rootFolder: ${workspace.rootFolder})`);
     const recentFiles: Array<{ path: string; timestamp: number }> = [];
     
     // 1. Get files from workspace activity history
     try {
-      console.log(`[LoadWorkspaceMode] Checking workspace activity history`);
       const fullWorkspace = await this.workspaceService?.getWorkspace(workspace.id);
       if (fullWorkspace && fullWorkspace.activityHistory) {
-        console.log(`[LoadWorkspaceMode] Found ${fullWorkspace.activityHistory.length} activities in history`);
-        
         for (const activity of fullWorkspace.activityHistory) {
-          console.log(`[LoadWorkspaceMode] Activity: action=${activity.action}, has hierarchyPath=${!!activity.hierarchyPath}, timestamp=${new Date(activity.timestamp).toISOString()}`);
-          
           // Check for actions that reference files - using hierarchyPath for file paths
           if ((activity.action === 'edit' || activity.action === 'view' || activity.action === 'create') && 
               activity.hierarchyPath && activity.hierarchyPath.length > 0) {
             // Use the last element of hierarchyPath as the filePath (if it exists)
             const filePath = activity.hierarchyPath[activity.hierarchyPath.length - 1];
             if (filePath) {
-              console.log(`[LoadWorkspaceMode] Found file path in activity: ${filePath}`);
               recentFiles.push({
                 path: filePath,
                 timestamp: activity.timestamp
@@ -272,8 +265,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             }
           }
         }
-      } else {
-        console.log(`[LoadWorkspaceMode] No activity history found for workspace ${workspace.id}`);
       }
     } catch (error) {
       console.warn('[LoadWorkspaceMode] Error getting workspace activity history:', error);
@@ -282,16 +273,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     // 2. Get files from memory traces
     if (this.memoryService) {
       try {
-        console.log(`[LoadWorkspaceMode] Checking memory traces for workspace ${workspace.id}`);
         const traces = await this.memoryService.getMemoryTraces(workspace.id, 20);
-        console.log(`[LoadWorkspaceMode] Found ${traces.length} memory traces`);
         
         for (const trace of traces) {
           if (trace.metadata && trace.metadata.relatedFiles) {
-            console.log(`[LoadWorkspaceMode] Trace has ${trace.metadata.relatedFiles.length} related files`);
             for (const filePath of trace.metadata.relatedFiles) {
               if (filePath) {
-                console.log(`[LoadWorkspaceMode] Found file path in trace: ${filePath}`);
                 recentFiles.push({
                   path: filePath,
                   timestamp: trace.timestamp
@@ -303,12 +290,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       } catch (error) {
         console.warn('[LoadWorkspaceMode] Error getting memory traces:', error);
       }
-    } else {
-      console.log(`[LoadWorkspaceMode] Memory service not available`);
     }
     
     // 3. Get files based on Obsidian's file stats
-    console.log(`[LoadWorkspaceMode] Checking files in workspace root folder: ${workspace.rootFolder}`);
     
     // Normalize the workspace root folder path using our utility
     // Don't preserve leading slashes for consistent matching
@@ -317,8 +301,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     // Make sure the root folder ends with a slash for proper directory matching
     const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
       normalizedRootFolder : normalizedRootFolder + '/';
-    
-    console.log(`[LoadWorkspaceMode] Normalized root folder: ${normalizedRootFolder}, with slash: ${rootFolderWithSlash}`);
     
     const allFiles = this.app.vault.getMarkdownFiles()
       .filter(file => {
@@ -330,13 +312,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                normalizedFilePath.startsWith(rootFolderWithSlash);
       });
     
-    console.log(`[LoadWorkspaceMode] Found ${allFiles.length} files in workspace root folder`);
-    
     for (const file of allFiles) {
       const stat = file.stat;
       if (stat && stat.mtime) {
         // Add file with its modification time
-        console.log(`[LoadWorkspaceMode] Adding file from vault: ${file.path}`);
         recentFiles.push({
           path: file.path,
           timestamp: stat.mtime
@@ -353,15 +332,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       }
     }
     
-    console.log(`[LoadWorkspaceMode] Total unique files found: ${uniquePaths.size}`);
-    
     // Sort by timestamp, most recent first
     const result = Array.from(uniquePaths.entries())
       .sort((a, b) => b[1] - a[1])
       .map(entry => entry[0])
       .slice(0, 10); // Limit to 10 most recent files
     
-    console.log(`[LoadWorkspaceMode] Final recent files list (${result.length} items):`, result);
     return result;
   }
   
@@ -438,25 +414,18 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     const associatedNotes = new Set<string>();
     
     try {
-      console.log(`[LoadWorkspaceMode] Getting associated notes for workspace ${workspace.id} (rootFolder: ${workspace.rootFolder})`);
-      
       // 1. Get files mentioned in workspace sessions
       if (this.memoryService) {
-        console.log(`[LoadWorkspaceMode] Getting files from memory traces`);
         const sessions = await this.memoryService.getSessions(workspace.id);
-        console.log(`[LoadWorkspaceMode] Found ${sessions.length} sessions`);
         
         for (const session of sessions) {
           const traces = await this.memoryService.getSessionTraces(session.id);
-          console.log(`[LoadWorkspaceMode] Found ${traces.length} traces for session ${session.id}`);
           
           for (const trace of traces) {
             if (trace.metadata && trace.metadata.relatedFiles) {
-              console.log(`[LoadWorkspaceMode] Found ${trace.metadata.relatedFiles.length} related files in trace`);
               for (const filePath of trace.metadata.relatedFiles) {
                 if (filePath) {
                   associatedNotes.add(filePath);
-                  console.log(`[LoadWorkspaceMode] Added file from trace: ${filePath}`);
                 }
               }
             }
@@ -466,23 +435,18 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       
       // 2. Add workspace state snapshots
       if (this.memoryService) {
-        console.log(`[LoadWorkspaceMode] Getting files from state snapshots`);
         const snapshots = await this.memoryService.getSnapshots(workspace.id);
-        console.log(`[LoadWorkspaceMode] Found ${snapshots.length} snapshots`);
         
         for (const snapshot of snapshots) {
           if (snapshot.state && snapshot.state.contextFiles) {
-            console.log(`[LoadWorkspaceMode] Found ${snapshot.state.contextFiles.length} context files in snapshot`);
             for (const filePath of snapshot.state.contextFiles) {
               associatedNotes.add(filePath);
-              console.log(`[LoadWorkspaceMode] Added file from snapshot: ${filePath}`);
             }
           }
         }
       }
       
       // 3. Add files in workspace's root folder
-      console.log(`[LoadWorkspaceMode] Finding files in workspace root folder: ${workspace.rootFolder}`);
       
       // Normalize the workspace root folder for consistent matching
       const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
@@ -500,22 +464,15 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                  normalizedFilePath.startsWith(rootFolderWithSlash);
         });
       
-      console.log(`[LoadWorkspaceMode] Found ${files.length} files in workspace root folder`);
-      
       // Add each file to the associated notes
       for (const file of files) {
         associatedNotes.add(file.path);
-        console.log(`[LoadWorkspaceMode] Added file from workspace folder: ${file.path}`);
       }
       
       // 4. Add files from related folders if specified
       if (workspace.relatedFolders && workspace.relatedFolders.length > 0) {
-        console.log(`[LoadWorkspaceMode] Checking ${workspace.relatedFolders.length} related folders`);
-        
         for (const folderPath of workspace.relatedFolders) {
           if (!folderPath) continue;
-          
-          console.log(`[LoadWorkspaceMode] Checking related folder: ${folderPath}`);
           
           // Normalize the folder path
           const normalizedFolderPath = sanitizePath(folderPath, false);
@@ -530,12 +487,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                      normalizedFilePath.startsWith(folderWithSlash);
             });
           
-          console.log(`[LoadWorkspaceMode] Found ${relatedFiles.length} files in related folder ${folderPath}`);
-          
           // Add each file to the associated notes
           for (const file of relatedFiles) {
             associatedNotes.add(file.path);
-            console.log(`[LoadWorkspaceMode] Added file from related folder: ${file.path}`);
           }
         }
       }
@@ -544,7 +498,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     }
     
     const result = Array.from(associatedNotes);
-    console.log(`[LoadWorkspaceMode] Total associated notes found: ${result.length}`);
     return result;
   }
   

@@ -115,6 +115,32 @@ class StrictPersistentCollection implements Collection {
   private saveDebounceMs: number = 250; // Save after 250ms of no activity
   private saveTimeout: NodeJS.Timeout | null = null;
   
+  /**
+   * Calculate cosine distance between two vectors
+   * @param vecA First vector
+   * @param vecB Second vector
+   * @returns Cosine distance (1 - similarity)
+   */
+  private cosineDistance(vecA: number[], vecB: number[]): number {
+    if (vecA.length !== vecB.length) return 0.99; // High distance for mismatched dimensions
+    
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    
+    for (let i = 0; i < vecA.length; i++) {
+      dotProduct += vecA[i] * vecB[i];
+      normA += vecA[i] * vecA[i];
+      normB += vecB[i] * vecB[i];
+    }
+    
+    if (normA === 0 || normB === 0) return 0.99; // High distance for zero vectors
+    
+    // Calculate cosine similarity and convert to distance
+    const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    return 1 - similarity; // Convert to distance (0 = identical, 2 = opposite)
+  }
+  
   constructor(name: string, storageDir: string, fs: any, metadata: Record<string, any> = {}, _parent: StrictPersistenceChromaClient) {
     this.name = name;
     this.items = new Map();
@@ -516,16 +542,31 @@ class StrictPersistentCollection implements Collection {
         });
       }
       
-      // Calculate "distances" - in a real implementation, this would compute
-      // cosine similarity between query embedding and each item
-      // Here we just use a simple mock implementation
+      // Calculate "distances" - compute actual cosine similarity
       const itemsWithDistances = filteredItems.map(item => {
         let distance = 0;
         
-        // If we have a query embedding and the item has an embedding, compute a mock distance
+        // If we have a query embedding and the item has an embedding, compute cosine distance
         if (queryEmbedding.length > 0 && item.embedding.length > 0) {
-          // Simple mock distance - in reality this would be cosine similarity
-          distance = Math.random(); // Mock a random distance
+          // Compute cosine distance (1 - similarity)
+          // Implemented directly here instead of using a separate method
+          let dotProduct = 0;
+          let normA = 0;
+          let normB = 0;
+          
+          for (let i = 0; i < queryEmbedding.length; i++) {
+            dotProduct += queryEmbedding[i] * item.embedding[i];
+            normA += queryEmbedding[i] * queryEmbedding[i];
+            normB += item.embedding[i] * item.embedding[i];
+          }
+          
+          if (normA === 0 || normB === 0) {
+            distance = 0.99; // High distance for zero vectors
+          } else {
+            // Calculate cosine similarity and convert to distance
+            const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+            distance = 1 - similarity; // Convert to distance (0 = identical, 2 = opposite)
+          }
         } else {
           // If no embeddings to compare, use a high distance
           distance = 0.99;

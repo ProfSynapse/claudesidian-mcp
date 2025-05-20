@@ -111,15 +111,11 @@ export class FileEventManager {
    * This sets up the event listeners and caches
    */
   async initialize(): Promise<void> {
-    console.log("Initializing FileEventManager");
-    
     // Register event listeners
     this.registerEventListeners();
     
     // Load active sessions for memory trace recording
     await this.refreshActiveSessions();
-    
-    console.log("FileEventManager initialized");
   }
   
   /**
@@ -216,19 +212,15 @@ export class FileEventManager {
    */
   private async refreshWorkspaceRoots(): Promise<void> {
     try {
-      console.log(`[FileEventManager] Refreshing workspace roots cache`);
-      
       // Clear the current cache
       this.workspaceRoots.clear();
       
       // Get all workspaces
       const workspaces = await this.workspaceService.getWorkspaces();
-      console.log(`[FileEventManager] Found ${workspaces.length} total workspaces`);
       
       // Populate the cache
       for (const workspace of workspaces) {
         if (workspace.rootFolder) {
-          console.log(`[FileEventManager] Adding workspace to cache: id=${workspace.id}, name=${workspace.name}, rootFolder=${workspace.rootFolder}`);
           this.workspaceRoots.set(workspace.id, {
             id: workspace.id,
             rootFolder: workspace.rootFolder
@@ -237,8 +229,6 @@ export class FileEventManager {
           console.warn(`[FileEventManager] Workspace ${workspace.id} has no rootFolder, skipping`);
         }
       }
-      
-      console.log(`[FileEventManager] Loaded ${this.workspaceRoots.size} workspace roots for file tracking`);
     } catch (error) {
       console.error("[FileEventManager] Error refreshing workspace roots:", error);
     }
@@ -318,8 +308,6 @@ export class FileEventManager {
     this.isProcessingEvents = true;
     
     try {
-      console.log(`Processing ${this.pendingEvents.length} pending file events`);
-      
       // Capture events to process in this batch
       const events = [...this.pendingEvents];
       this.pendingEvents = [];
@@ -349,11 +337,8 @@ export class FileEventManager {
    */
   private async processFileEvent(event: FileEvent): Promise<void> {
     try {
-      console.log(`[FileEventManager] Processing ${event.type} event for ${event.path}`);
-      
       // Determine which workspaces this file belongs to
       const workspaceIds = await this.findWorkspacesForFile(event.path);
-      console.log(`[FileEventManager] File ${event.path} belongs to ${workspaceIds.length} workspaces:`, workspaceIds);
       
       // Store in cache for future lookups
       this.fileWorkspaceCache.set(event.path, {
@@ -367,13 +352,11 @@ export class FileEventManager {
       
       // No workspaces found, skip further processing
       if (workspaceIds.length === 0) {
-        console.log(`[FileEventManager] No workspaces found for ${event.path}, skipping activity recording`);
         return;
       }
       
       // For each workspace, record the activity
       for (const workspaceId of workspaceIds) {
-        console.log(`[FileEventManager] Recording ${event.type} activity for workspace ${workspaceId}`);
         await this.recordWorkspaceActivity(workspaceId, event);
       }
       
@@ -384,7 +367,6 @@ export class FileEventManager {
         workspaceIds: event.workspaceIds,
         timestamp: event.timestamp
       });
-      console.log(`[FileEventManager] Emitted file:activity event for ${event.path}`);
     } catch (error) {
       console.error(`[FileEventManager] Error processing file event for ${event.path}:`, error);
     }
@@ -396,29 +378,21 @@ export class FileEventManager {
    * @returns Array of workspace IDs
    */
   private async findWorkspacesForFile(filePath: string): Promise<string[]> {
-    console.log(`[FileEventManager] Finding workspaces for file: ${filePath}`);
-    
     // Check cache first
     const cachedItem = this.fileWorkspaceCache.get(filePath);
     if (cachedItem && Date.now() - cachedItem.timestamp < this.cacheExpiry) {
-      console.log(`[FileEventManager] Using cached workspace IDs for ${filePath}:`, cachedItem.workspaceIds);
       return cachedItem.workspaceIds;
     }
     
     // If cache is empty or stale, rebuild the workspace roots cache
     if (this.workspaceRoots.size === 0) {
-      console.log(`[FileEventManager] Workspace roots cache is empty, refreshing...`);
       await this.refreshWorkspaceRoots();
     }
-    
-    console.log(`[FileEventManager] Workspace roots cache has ${this.workspaceRoots.size} entries`);
     
     const result: string[] = [];
     
     // Find all workspaces that contain this file based on rootFolder
     for (const [id, workspace] of this.workspaceRoots.entries()) {
-      console.log(`[FileEventManager] Checking if ${filePath} is in workspace ${id} with root folder ${workspace.rootFolder}`);
-      
       // Normalize both paths to ensure consistent comparison using our utility
       // Don't preserve leading slashes for consistent matching
       const normalizedFilePath = sanitizePath(filePath, false);
@@ -429,18 +403,14 @@ export class FileEventManager {
         ? normalizedRootFolder 
         : normalizedRootFolder + '/';
       
-      console.log(`[FileEventManager] Normalized paths - file: ${normalizedFilePath}, root: ${normalizedRootFolder}, matching with: ${rootFolderWithSlash}`);
-      
       // Check if the file is in this workspace's root folder
       // Either an exact match or the file path starts with the root folder followed by a slash
       if (normalizedFilePath === normalizedRootFolder || 
           normalizedFilePath.startsWith(rootFolderWithSlash)) {
-        console.log(`[FileEventManager] Match found: ${filePath} is in workspace ${id}`);
         result.push(id);
       }
     }
     
-    console.log(`[FileEventManager] Found ${result.length} workspaces for file ${filePath}:`, result);
     return result;
   }
   
@@ -456,8 +426,6 @@ export class FileEventManager {
                      event.type === 'modify' ? 'edit' :
                      'view'; // Use 'view' instead of 'delete' for delete events as a workaround
       
-      console.log(`[FileEventManager] Recording activity for workspace ${workspaceId}: action=${action}, file=${event.path}`);
-      
       try {
         // Record in workspace activity history
         await this.workspaceService.recordActivity(workspaceId, {
@@ -466,7 +434,6 @@ export class FileEventManager {
           hierarchyPath: [event.path],
           toolName: 'fileEventManager'
         });
-        console.log(`[FileEventManager] Successfully recorded activity in workspace ${workspaceId}`);
       } catch (activityError) {
         console.error(`[FileEventManager] Failed to record activity in workspace ${workspaceId}:`, activityError);
       }
@@ -474,15 +441,11 @@ export class FileEventManager {
       // Record memory trace if there's an active session for this workspace
       const sessionId = this.activeSessions[workspaceId];
       if (sessionId) {
-        console.log(`[FileEventManager] Found active session ${sessionId} for workspace ${workspaceId}, recording memory trace`);
         try {
           await this.recordMemoryTrace(workspaceId, sessionId, event);
-          console.log(`[FileEventManager] Successfully recorded memory trace for session ${sessionId}`);
         } catch (traceError) {
           console.error(`[FileEventManager] Failed to record memory trace for session ${sessionId}:`, traceError);
         }
-      } else {
-        console.log(`[FileEventManager] No active session found for workspace ${workspaceId}, skipping memory trace recording`);
       }
     } catch (error) {
       console.error(`[FileEventManager] Error recording workspace activity for ${workspaceId}:`, error);
@@ -658,7 +621,5 @@ export class FileEventManager {
     for (const path of expiredPaths) {
       this.fileWorkspaceCache.delete(path);
     }
-    
-    console.log(`Purged ${expiredPaths.length} expired items from file-workspace cache`);
   }
 }
