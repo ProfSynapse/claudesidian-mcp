@@ -1,3 +1,4 @@
+import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { MemoryManagerConfig } from './config';
 import * as Modes from './modes';
@@ -19,17 +20,25 @@ export class MemoryManagerAgent extends BaseAgent {
    * Workspace service instance
    */
   private workspaceService!: WorkspaceService;
+  
+  /**
+   * App instance
+   */
+  private app: App;
 
   /**
    * Create a new MemoryManagerAgent
+   * @param app Obsidian app instance
    * @param plugin Plugin instance for accessing shared services
    */
-  constructor(public plugin?: any) {
+  constructor(app: App, public plugin?: any) {
     super(
       MemoryManagerConfig.name,
       MemoryManagerConfig.description,
       MemoryManagerConfig.version
     );
+    
+    this.app = app;
     
     // Get services if plugin is defined
     if (plugin && plugin.services) {
@@ -50,6 +59,13 @@ export class MemoryManagerAgent extends BaseAgent {
     this.registerMode(new Modes.LoadStateMode(this));
     this.registerMode(new Modes.EditStateMode(this));
     this.registerMode(new Modes.DeleteStateMode(this));
+    
+    // Register workspace modes
+    this.registerMode(new Modes.CreateWorkspaceMode(this.app));
+    this.registerMode(new Modes.DeleteWorkspaceMode(this.app));
+    this.registerMode(new Modes.EditWorkspaceMode(this.app));
+    this.registerMode(new Modes.ListWorkspacesMode(this.app));
+    this.registerMode(new Modes.LoadWorkspaceMode(this.app));
   }
   
   /**
@@ -78,7 +94,7 @@ export class MemoryManagerAgent extends BaseAgent {
    * Get the Obsidian app instance
    */
   getApp() {
-    return this.plugin?.app;
+    return this.app;
   }
   
   /**

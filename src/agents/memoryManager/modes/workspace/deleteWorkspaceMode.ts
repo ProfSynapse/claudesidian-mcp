@@ -1,10 +1,10 @@
 import { App, Plugin } from 'obsidian';
-import { BaseMode } from '../../baseMode';
+import { BaseMode } from '../../../baseMode';
 import { 
   DeleteWorkspaceParameters, 
   WorkspaceResult
-} from '../../../database/workspace-types';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
+} from '../../../../database/workspace-types';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**

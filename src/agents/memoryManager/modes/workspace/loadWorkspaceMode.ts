@@ -1,14 +1,14 @@
 import { App, Plugin } from 'obsidian';
-import { BaseMode } from '../../baseMode';
+import { BaseMode } from '../../../baseMode';
 import { 
   LoadWorkspaceParameters, 
   LoadWorkspaceResult
-} from '../../../database/workspace-types';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
-import { MemoryService } from '../../../database/services/MemoryService';
+} from '../../../../database/workspace-types';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+import { MemoryService } from '../../../../database/services/MemoryService';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
-import { SearchOperations } from '../../../database/utils/SearchOperations';
-import { sanitizePath } from '../../../utils/pathUtils';
+import { SearchOperations } from '../../../../database/utils/SearchOperations';
+import { sanitizePath } from '../../../../utils/pathUtils';
 
 /**
  * Mode to load a workspace as the active context

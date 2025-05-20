@@ -95,7 +95,7 @@ export function getContextSchema(): any {
   return {
     context: {
       type: 'string',
-      description: 'Background information and purpose for running this tool',
+      description: 'Background information and purpose of this workspace/session/state - this will be preserved in memory',
       minLength: 1
     }
   };

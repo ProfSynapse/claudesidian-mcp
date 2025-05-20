@@ -1,12 +1,12 @@
 import { App, Plugin } from 'obsidian';
-import { BaseMode } from '../../baseMode';
+import { BaseMode } from '../../../baseMode';
 import { 
   ListWorkspacesParameters, 
   ListWorkspacesResult, 
   HierarchyType 
-} from '../../../database/workspace-types';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
-import { parseWorkspaceContext } from '../../../utils/contextUtils';
+} from '../../../../database/workspace-types';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**

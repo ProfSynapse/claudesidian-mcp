@@ -310,12 +310,19 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       let enhancedDescription = description;
       const stateDate = new Date().toLocaleString();
       
+      // Use the context parameter to enhance the description
       if (!enhancedDescription) {
         enhancedDescription = `State created on ${stateDate}`;
         if (reason) {
           enhancedDescription += ` - Reason: ${reason}`;
         }
+        if (params.context) {
+          enhancedDescription += ` - Purpose: ${params.context}`;
+        }
         enhancedDescription += ` - Session: ${session.name}`;
+      } else if (params.context && !enhancedDescription.includes(params.context)) {
+        // If description exists but doesn't include the context, append it
+        enhancedDescription = `${enhancedDescription}\n\nPurpose: ${params.context}`;
       }
       
       // Get recent traces for enhanced context
@@ -370,6 +377,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         sessionStartTime: new Date(session.startTime).toLocaleString(),
         workspaceName: workspace.name,
         reason: reason || 'Manual state save',
+        // Store the context parameter for better discoverability
+        purpose: params.context,
         summary: contextSummary,
         includedFiles,
         includesFileContents: includeFileContents,
@@ -442,6 +451,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
       // Record a memory trace about the state creation
       const stateTraceContent = `Created state "${name}" of workspace "${workspace.name}" at ${stateDate}
 ${reason ? `Reason: ${reason}` : ''}
+${params.context ? `Purpose: ${params.context}` : ''}
 
 This state captures the workspace state after ${recentTraces.length} activities in session "${session.name}"
 and includes ${includedFiles.length} relevant files.
@@ -512,20 +522,31 @@ ${contextSummary}`;
       }
       
       // Return result with enhanced context
-      return this.prepareResult(true, {
-        stateId,
-        name,
-        workspaceId,
-        sessionId: usedSessionId,
-        timestamp: Date.now(),
-        capturedContext: {
-          summary: contextSummary,
-          files: includedFiles,
-          traceCount: recentTraces.length,
-          tags: enhancedMetadata.tags,
-          reason
-        }
-      });
+      // Include the purpose/context in the result for better discoverability
+      const contextString = params.context ? 
+        `Created state "${name}" with purpose: ${params.context}` :
+        `Created state "${name}" ${reason ? `Reason: ${reason}` : ''}`;
+        
+      return this.prepareResult(
+        true, 
+        {
+          stateId,
+          name,
+          workspaceId,
+          sessionId: usedSessionId,
+          timestamp: Date.now(),
+          capturedContext: {
+            summary: contextSummary,
+            files: includedFiles,
+            traceCount: recentTraces.length,
+            tags: enhancedMetadata.tags,
+            reason,
+            purpose: params.context  // Add purpose/context directly in result
+          }
+        },
+        undefined,
+        contextString
+      );
     } catch (error) {
       console.error('Error in create state mode:', error);
       // Provide a detailed error response with the workspace context
@@ -668,6 +689,11 @@ ${contextSummary}`;
           type: 'string',
           description: 'Description of the state'
         },
+        context: {
+          type: 'string',
+          description: 'Purpose or goal of this state - IMPORTANT: This will be stored with the state and used in memory operations',
+          minLength: 1
+        },
         targetSessionId: {
           type: 'string',
           description: 'Optional target session ID to associate with this state'
@@ -779,6 +805,10 @@ ${contextSummary}`;
               type: 'string',
               description: 'Summary of the workspace state at save time'
             },
+            purpose: {
+              type: 'string',
+              description: 'The purpose or goal of this state derived from context parameter'
+            },
             files: {
               type: 'array',
               items: {
@@ -807,6 +837,11 @@ ${contextSummary}`;
       },
       required: ['stateId', 'name', 'workspaceId', 'timestamp', 'capturedContext']
     };
+    
+    // Modify the context property description
+    if (baseSchema.properties.context) {
+      baseSchema.properties.context.description = 'The purpose and context of this state creation';
+    }
     
     return baseSchema;
   }

@@ -140,6 +140,7 @@ export interface ProjectWorkspace {
     toolName?: string;
     duration?: number;
     hierarchyPath?: string[];
+    context?: string;
   }>;
   
   /**

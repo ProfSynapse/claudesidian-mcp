@@ -8,6 +8,7 @@ import { VectorStoreFactory } from '../factory/VectorStoreFactory';
 import { EmbeddingService } from './EmbeddingService';
 import { ChromaCollectionManager } from '../providers/chroma/ChromaCollectionManager';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { generateSessionId } from '../../utils/sessionUtils';
 
 /**
  * Service for managing memory traces, sessions, snapshots, and ChromaDB collections
@@ -425,14 +426,21 @@ export class MemoryService {
         workspaceId = 'default-workspace';
       }
       
-      // Create a new session with the provided ID
-      const newSession = await this.createSession({
+      // Create a session object but pass the id parameter separately
+      // Since createSession expects Omit<WorkspaceSession, "id">, we can't include id directly
+      const sessionData = {
         workspaceId: workspaceId,
         name: `Session ${new Date().toLocaleString()}`,
         description: 'Auto-created session',
         startTime: Date.now(),
         isActive: true,
         toolCalls: 0
+      };
+      
+      // The createSession method will handle the id correctly
+      const newSession = await this.sessions.createSession({
+        ...sessionData,
+        id: id || generateSessionId() // This is handled properly by SessionCollection
       });
       
       return newSession;

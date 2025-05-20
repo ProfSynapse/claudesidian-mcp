@@ -3,6 +3,11 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceSession } from '../../../../database/workspace-types';
 import { CreateSessionParams, SessionResult } from '../../types';
 import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
+import { 
+  generateSessionId, 
+  formatSessionInstructions, 
+  enhanceContextWithSessionInstructions 
+} from '../../../../utils/sessionUtils';
 
 /**
  * Mode for creating a new session with rich context
@@ -120,20 +125,40 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
         }
       }
       
-      // If a session with this ID already exists, generate a new ID
-      // This ensures we don't reuse session IDs and cause conflicts
-      const finalId = existingSession ? undefined : params.sessionId;
+      // If a session with this ID already exists or the provided ID is not in our standard format,
+      // generate a new standardized ID.
+      // This ensures unique, predictable session IDs
+      const finalId = existingSession ? generateSessionId() : 
+                      (params.sessionId || generateSessionId());
       
       // Create the session
+      
+      // Enhance description with context if provided
+      let enhancedDescription = description;
+      if (!enhancedDescription && params.context) {
+        enhancedDescription = `Purpose: ${params.context}`;
+      } else if (enhancedDescription && params.context && !enhancedDescription.includes(params.context)) {
+        enhancedDescription = `${enhancedDescription}\n\nPurpose: ${params.context}`;
+      }
+      
+      // If session goal was provided, ensure it's included in the description
+      if (sessionGoal && enhancedDescription && !enhancedDescription.includes(sessionGoal)) {
+        enhancedDescription = `${enhancedDescription}\n\nGoal: ${sessionGoal}`;
+      } else if (sessionGoal && !enhancedDescription) {
+        enhancedDescription = `Goal: ${sessionGoal}`;
+      }
+      
       const sessionToCreate = {
         workspaceId,
         name: name || `Session ${new Date().toLocaleString()}`,
-        description: description || (sessionGoal ? `Goal: ${sessionGoal}` : undefined),
+        description: enhancedDescription || `Session created at ${new Date().toLocaleString()}`,
         startTime: Date.now(),
         isActive: true,
         toolCalls: 0,
         previousSessionId,
-        id: finalId // Use provided ID if available and not already used
+        id: finalId, // Use provided ID if available and not already used
+        // Store context separately for better discoverability
+        context: params.context
       };
       
       // Create session using memory service
@@ -288,6 +313,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
           
 ${contextSummary}
 
+${params.context ? `Purpose: ${params.context}` : ''}
 ${sessionGoal ? `This session's goal is to: ${sessionGoal}` : ''}
 ${previousSessionId ? 'This session continues work from a previous session.' : 'This is a new session starting from scratch.'}`;
 
@@ -349,15 +375,44 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
         }
       }
       
-      // Return result with context
-      return this.prepareResult(true, {
+      // Prepare the context string
+      let contextString = params.context ? 
+        `Created session with purpose: ${params.context}` :
+        `Created session ${name || new Date().toLocaleString()}`;
+      
+      // Get the session context manager to check if instructions have been sent
+      const sessionManager = (this.agent.plugin as any).services?.sessionContextManager;
+      
+      // Only add instructions if they haven't been sent before
+      if (sessionManager && !sessionManager.hasReceivedInstructions(finalSessionId)) {
+        contextString = enhanceContextWithSessionInstructions(finalSessionId, contextString);
+        sessionManager.markInstructionsReceived(finalSessionId);
+      }
+      
+      // Prepare result object
+      const resultData: any = {
         sessionId: finalSessionId,
         name: name || `Session ${new Date().toLocaleString()}`,
         workspaceId,
         startTime: Date.now(),
         previousSessionId,
         memoryContext: contextData
-      });
+      };
+      
+      // Only include session instructions if we just sent them (i.e., they weren't sent before this request)
+      if (!sessionManager || 
+         (sessionManager.hasReceivedInstructions(finalSessionId) && 
+          contextString.includes("[SESSION_ID:"))) {
+        resultData.sessionInstructions = formatSessionInstructions(finalSessionId);
+      }
+      
+      // Return result with context
+      return this.prepareResult(
+        true, 
+        resultData,
+        undefined,
+        contextString
+      );
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error creating session: ', error));
     }
@@ -407,6 +462,11 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
         description: {
           type: 'string',
           description: 'Description of the session purpose'
+        },
+        context: {
+          type: 'string',
+          description: 'Purpose or goal of this session - IMPORTANT: This will be stored with the session and used in memory operations',
+          minLength: 1
         },
         generateContextTrace: {
           type: 'boolean',
@@ -497,6 +557,10 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
           type: 'string',
           description: 'ID of the previous session (if continuing)'
         },
+        purpose: {
+          type: 'string',
+          description: 'The purpose of this session extracted from context parameter'
+        },
         context: {
           type: 'string',
           description: 'Contextual information about the operation (from CommonResult)'
@@ -508,6 +572,10 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
             summary: {
               type: 'string',
               description: 'Summary of the workspace state at session start'
+            },
+            purpose: {
+              type: 'string',
+              description: 'The purpose or goal of this session derived from context parameter'
             },
             relevantFiles: {
               type: 'array',
@@ -550,6 +618,11 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
       },
       required: ['sessionId', 'workspaceId', 'startTime']
     };
+    
+    // Modify the context property description
+    if (baseSchema.properties.context) {
+      baseSchema.properties.context.description = 'The purpose and context of this session creation';
+    }
     
     return baseSchema;
   }

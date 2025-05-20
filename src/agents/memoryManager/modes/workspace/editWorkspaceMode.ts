@@ -1,12 +1,12 @@
 import { App, Plugin } from 'obsidian';
-import { BaseMode } from '../../baseMode';
+import { BaseMode } from '../../../baseMode';
 import { 
   EditWorkspaceParameters, 
   WorkspaceResult,
   WorkspaceStatus,
   ProjectWorkspace
-} from '../../../database/workspace-types';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
+} from '../../../../database/workspace-types';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**

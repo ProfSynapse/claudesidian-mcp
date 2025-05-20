@@ -11,3 +11,6 @@ export * from './state/listStatesMode';
 export * from './state/loadStateMode';
 export * from './state/editStateMode';
 export * from './state/deleteStateMode';
+
+// Workspace modes
+export * from './workspace';

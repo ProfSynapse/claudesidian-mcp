@@ -14,6 +14,7 @@ import { WorkspaceService } from './database/services/WorkspaceService';
 import { MemoryService } from './database/services/MemoryService';
 import { EventManager } from './services/EventManager';
 import { FileEventManager } from './services/FileEventManager';
+import { UsageStatsService } from './database/services/UsageStatsService';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
@@ -30,6 +31,7 @@ export default class ClaudesidianPlugin extends Plugin {
     public memoryService!: MemoryService;
     public fileEventManager!: FileEventManager;
     public eventManager!: EventManager;
+    public usageStatsService!: UsageStatsService;
     
     // Event handlers
     private fileCreatedHandler!: (file: TAbstractFile) => void;
@@ -48,6 +50,7 @@ export default class ClaudesidianPlugin extends Plugin {
         vectorStore: IVectorStore;
         eventManager: EventManager;
         fileEventManager: FileEventManager;
+        usageStatsService: UsageStatsService;
     };
     
     async onload() {
@@ -257,6 +260,14 @@ export default class ClaudesidianPlugin extends Plugin {
         );
         await this.fileEventManager.initialize();
         
+        // Initialize the usage stats service
+        this.usageStatsService = new UsageStatsService(
+            this.embeddingService,
+            this.vectorStore,
+            this.settings.settings.memory,
+            this.eventManager  // Pass the existing event manager
+        );
+        
         // Expose services
         this.services = {
             embeddingService: this.embeddingService,
@@ -265,7 +276,8 @@ export default class ClaudesidianPlugin extends Plugin {
             memoryService: this.memoryService,
             vectorStore: this.vectorStore,
             eventManager: this.eventManager,
-            fileEventManager: this.fileEventManager
+            fileEventManager: this.fileEventManager,
+            usageStatsService: this.usageStatsService
         };
         
         // Initialize file watchers based on embedding strategy
@@ -293,27 +305,6 @@ export default class ClaudesidianPlugin extends Plugin {
             memoryManager || undefined
         );
         this.addSettingTab(this.settingsTab);
-        
-        // Add ribbon icons
-        this.addRibbonIcon('bot', 'Open Claudesidian MCP', () => {
-            new ConfigModal(this.app).open();
-        });
-
-        this.addRibbonIcon('refresh-cw', 'Check for Updates', async () => {
-            try {
-                const updateManager = new UpdateManager(this);
-                const hasUpdate = await updateManager.checkForUpdate();
-                
-                if (!hasUpdate) {
-                    new Notice('You are already on the latest version!');
-                    return;
-                }
-
-                await updateManager.updatePlugin();
-            } catch (error) {
-                new Notice(`Update failed: ${(error as Error).message}`);
-            }
-        });
         
         // Register commands for maintenance and troubleshooting
         this.addCommand({
@@ -683,8 +674,8 @@ export default class ClaudesidianPlugin extends Plugin {
             // Clear the queue
             this.pendingFiles.clear();
             
-            // Process files in batches with the search service's batch method
-            await this.searchService.batchIndexFiles(filePaths);
+            // Process files in batches with the embedding service's batch method
+            await this.embeddingService.batchIndexFiles(filePaths);
             
             console.log("Completed processing pending files");
         } catch (error) {
@@ -752,8 +743,8 @@ export default class ClaudesidianPlugin extends Plugin {
                 if (filesToIndex.length > 0) {
                     console.log(`Found ${filesToIndex.length} non-indexed files to process on startup`);
                     
-                    // Process files in batches with the search service's batch method
-                    await this.searchService.batchIndexFiles(filesToIndex);
+                    // Process files in batches with the embedding service's batch method
+                    await this.embeddingService.batchIndexFiles(filesToIndex);
                     
                     console.log("Completed startup indexing");
                 } else {

@@ -112,10 +112,11 @@ export class MemoryManagementAccordion extends Accordion {
         this.memorySettingsTab = new MemorySettingsTab(
             this.memorySettingsContainer,
             this.settings,
-            window.app,
+            (window as any).app,
             this.embeddingManager,
             this.vaultLibrarian,
-            this.embeddingService
+            this.embeddingService,
+            this.chromaSearchService
         );
         
         // Display settings

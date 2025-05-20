@@ -42,3 +42,35 @@ export interface IEmbeddingProvider {
    */
   getType(): string;
 }
+
+/**
+ * Extended interface for embedding providers that track token usage
+ */
+export interface ITokenTrackingProvider extends IEmbeddingProvider {
+  /**
+   * Get total tokens used this month
+   */
+  getTokensThisMonth(): number;
+  
+  /**
+   * Get model usage stats
+   */
+  getModelUsage(): {[key: string]: number};
+  
+  /**
+   * Get the total estimated cost based on token usage
+   */
+  getTotalCost(): number;
+  
+  /**
+   * Update token usage stats
+   * @param tokenCount Number of tokens to add
+   * @param model Optional model name
+   */
+  updateUsageStats(tokenCount: number, model?: string): Promise<void>;
+  
+  /**
+   * Reset usage stats to zero
+   */
+  resetUsageStats(): Promise<void>;
+}

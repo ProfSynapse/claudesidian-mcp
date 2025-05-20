@@ -5,19 +5,13 @@ import {
   ProjectPlanMode, 
   AskQuestionMode, 
   CheckpointMode, 
-  CompletionMode,
-  // Workspace management modes
-  ListWorkspacesMode,
-  CreateWorkspaceMode,
-  EditWorkspaceMode,
-  DeleteWorkspaceMode,
-  LoadWorkspaceMode
+  CompletionMode
 } from './modes';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
- * Agent for managing projects and workspaces in the vault
+ * Agent for managing projects in the vault
  */
 export class ProjectManagerAgent extends BaseAgent {
   /**
@@ -37,24 +31,13 @@ export class ProjectManagerAgent extends BaseAgent {
     this.registerMode(new AskQuestionMode(this._app));
     this.registerMode(new CheckpointMode(this._app));
     this.registerMode(new CompletionMode(this._app));
-    
-    // Register workspace management modes
-    this.registerMode(new ListWorkspacesMode(this._app));
-    this.registerMode(new CreateWorkspaceMode(this._app));
-    this.registerMode(new EditWorkspaceMode(this._app));
-    this.registerMode(new DeleteWorkspaceMode(this._app));
-    this.registerMode(new LoadWorkspaceMode(this._app));
   }
   
   /**
    * Initialize the agent
-   * Sets up workspace database connections
    */
   async initialize(): Promise<void> {
     await super.initialize();
-    
-    // Any additional initialization for workspace functionality will go here
-    // For example, setting up database connections or loading active workspace
   }
   
   /**

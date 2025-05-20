@@ -20,6 +20,45 @@ type StoreIncludeType = 'embeddings' | 'metadatas' | 'documents' | 'distances';
  */
 export class ChromaVectorStore extends BaseVectorStore {
   /**
+   * Calculate the size of a directory in MB
+   * @param directoryPath Path to the directory
+   * @returns Size in MB
+   */
+  private async calculateDirectorySize(directoryPath: string): Promise<number> {
+    const fs = require('fs');
+    const path = require('path');
+    const { promisify } = require('util');
+    const readdirAsync = promisify(fs.readdir);
+    const statAsync = promisify(fs.stat);
+    
+    async function calculateSize(dirPath: string): Promise<number> {
+      let totalSize = 0;
+      const items = await readdirAsync(dirPath);
+      
+      for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stats = await statAsync(itemPath);
+        
+        if (stats.isDirectory()) {
+          totalSize += await calculateSize(itemPath);
+        } else {
+          totalSize += stats.size;
+        }
+      }
+      
+      return totalSize;
+    }
+    
+    try {
+      // Calculate size in bytes and convert to MB
+      const sizeInBytes = await calculateSize(directoryPath);
+      return sizeInBytes / (1024 * 1024);
+    } catch (error) {
+      console.error(`Error calculating size of directory ${directoryPath}:`, error);
+      return 0;
+    }
+  }
+  /**
    * ChromaDB client
    */
   private client: InstanceType<typeof ChromaClient> | null = null;
@@ -223,7 +262,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       }
       
       // Find collections that disappeared
-      for (const existingName of existingNames) {
+      for (const existingName of Array.from(existingNames)) {
         if (!foundNames.has(existingName)) {
           missingNames.add(existingName);
           // Remove from cache since it's gone
@@ -771,9 +810,11 @@ export class ChromaVectorStore extends BaseVectorStore {
       let collectionsDirectoryExists = false;
       let filePermissionsOk = true;
       let fsError = null;
+      let dbSizeMB = 0;
       
       try {
         const fs = require('fs');
+        const path = require('path');
         
         // Check data directory
         if (this.config.persistentPath) {
@@ -783,6 +824,14 @@ export class ChromaVectorStore extends BaseVectorStore {
           if (dataDirectoryExists) {
             const collectionsDir = `${this.config.persistentPath}/collections`;
             collectionsDirectoryExists = fs.existsSync(collectionsDir);
+            
+            // Calculate database size
+            try {
+              dbSizeMB = await this.calculateDirectorySize(this.config.persistentPath);
+              console.log(`Calculated database size: ${dbSizeMB.toFixed(2)} MB`);
+            } catch (sizeError) {
+              console.warn('Failed to calculate database size:', sizeError);
+            }
             
             // Try to write a test file to check permissions
             try {
@@ -831,7 +880,8 @@ export class ChromaVectorStore extends BaseVectorStore {
         filePermissionsOk,
         fsError: fsError ? String(fsError) : null,
         totalCollections: this.collections.size,
-        collections: collectionDetails
+        collections: collectionDetails,
+        dbSizeMB: dbSizeMB
       };
     } catch (error) {
       return {

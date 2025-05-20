@@ -108,6 +108,7 @@ export class MCPConnector {
             let memoryManagerAgent;
             try {
                 memoryManagerAgent = new MemoryManagerAgent(
+                    this.app,
                     this.plugin
                 );
             } catch (error) {

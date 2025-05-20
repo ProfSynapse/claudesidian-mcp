@@ -247,7 +247,7 @@ class InMemoryCollection implements Collection {
       }
     } else if (where) {
       // Delete by where filter
-      for (const [id, item] of this.items.entries()) {
+      for (const [id, item] of Array.from(this.items.entries())) {
         let matches = true;
         for (const [key, value] of Object.entries(where)) {
           if (item.metadata[key] !== value) {

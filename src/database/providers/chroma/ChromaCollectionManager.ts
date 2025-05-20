@@ -94,7 +94,7 @@ export class ChromaCollectionManager {
       this.collections.clear();
       
       // Add successfully loaded collections to the cache
-      for (const name of loadedCollections) {
+      for (const name of Array.from(loadedCollections)) {
         try {
           const collectionObj = await this.client.getCollection({ name });
           this.collections.set(name, collectionObj);
@@ -104,7 +104,7 @@ export class ChromaCollectionManager {
       }
       
       // Attempt to recover failed collections
-      for (const name of failedCollections) {
+      for (const name of Array.from(failedCollections)) {
         try {
           console.log(`Attempting to recreate failed collection: ${name}`);
           
@@ -254,7 +254,7 @@ export class ChromaCollectionManager {
     // Get details for each collection
     const details: Array<{ name: string; metadata?: Record<string, any> }> = [];
     
-    for (const [name, collection] of this.collections.entries()) {
+    for (const [name, collection] of Array.from(this.collections.entries())) {
       try {
         // Some collections might have a metadata property
         const metadata = collection.metadata ? await collection.metadata() : undefined;

@@ -1,6 +1,7 @@
 import { Notice, requestUrl } from 'obsidian';
 import { MemorySettings } from '../../types';
 import { BaseEmbeddingProvider } from './embeddings-provider';
+import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
 import * as gptTokenizer from 'gpt-tokenizer';
 import { getErrorMessage } from '../../utils/errorUtils';
 
@@ -8,7 +9,8 @@ import { getErrorMessage } from '../../utils/errorUtils';
  * OpenAI provider for generating embeddings
  * Uses the OpenAI API to create embeddings for text
  */
-export class OpenAIProvider extends BaseEmbeddingProvider {
+// Implement both interfaces separately since they have different requirements
+export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrackingProvider {
     private apiKey: string;
     private organization?: string;
     private model: string;
@@ -66,6 +68,52 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
         if (!this.apiKey) {
             throw new Error('OpenAI API key is required');
         }
+    }
+    
+    // IEmbeddingProvider implementation
+    async initialize(): Promise<void> {
+        console.log('OpenAI embedding provider initialized');
+        return Promise.resolve();
+    }
+    
+    calculateSimilarity(a: number[], b: number[]): number {
+        if (a.length !== b.length) {
+            throw new Error('Vectors must have the same dimensions');
+        }
+        
+        let dotProduct = 0;
+        let normA = 0;
+        let normB = 0;
+        
+        for (let i = 0; i < a.length; i++) {
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        
+        if (normA === 0 || normB === 0) {
+            return 0;
+        }
+        
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+    
+    normalizeVector(vector: number[]): number[] {
+        const norm = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+        
+        if (norm === 0) {
+            return new Array(vector.length).fill(0);
+        }
+        
+        return vector.map(val => val / norm);
+    }
+    
+    getDimension(): number {
+        return this.dimensions;
+    }
+    
+    getType(): string {
+        return 'openai';
     }
     
     /**
@@ -318,6 +366,40 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                     try {
                         if (typeof localStorage !== 'undefined') {
                             localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+                            
+                            // Dispatch a storage event to notify other components
+                            // This is needed because localStorage events don't fire in the same window
+                            try {
+                                if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
+                                    window.dispatchEvent(new StorageEvent('storage', {
+                                        key: 'claudesidian-tokens-used',
+                                        newValue: JSON.stringify(this.modelUsage),
+                                        storageArea: localStorage
+                                    }));
+                                    console.log('Dispatched storage event for token usage update');
+                                } else {
+                                    console.log('StorageEvent not supported in this browser, skipping dispatch');
+                                }
+                            } catch (dispatchError) {
+                                console.warn('Failed to dispatch storage event:', dispatchError);
+                            }
+                            
+                            // Try to emit event using the plugin's EventManager if available
+                            try {
+                                const app = (window as any).app;
+                                const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+                                
+                                if (plugin?.eventManager?.emit) {
+                                    plugin.eventManager.emit('token-usage-updated', {
+                                        modelUsage: this.modelUsage,
+                                        tokensThisMonth: this.getTokensThisMonth(),
+                                        estimatedCost: this.getTotalCost()
+                                    });
+                                    console.log('Emitted token-usage-updated event');
+                                }
+                            } catch (emitError) {
+                                console.warn('Failed to emit token usage event:', emitError);
+                            }
                         }
                     } catch (storageError) {
                         console.warn('Failed to save token usage to localStorage:', storageError);
@@ -423,6 +505,36 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
                         try {
                             if (typeof localStorage !== 'undefined') {
                                 localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+                                
+                                // Dispatch a storage event to notify other components
+                                // This is needed because localStorage events don't fire in the same window
+                                try {
+                                    window.dispatchEvent(new StorageEvent('storage', {
+                                        key: 'claudesidian-tokens-used',
+                                        newValue: JSON.stringify(this.modelUsage),
+                                        storageArea: localStorage
+                                    }));
+                                    console.log('Dispatched storage event for token usage update');
+                                } catch (dispatchError) {
+                                    console.warn('Failed to dispatch storage event:', dispatchError);
+                                }
+                                
+                                // Try to emit event using the plugin's EventManager if available
+                                try {
+                                    const app = (window as any).app;
+                                    const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+                                    
+                                    if (plugin?.eventManager?.emit) {
+                                        plugin.eventManager.emit('token-usage-updated', {
+                                            modelUsage: this.modelUsage,
+                                            tokensThisMonth: this.getTokensThisMonth(),
+                                            estimatedCost: this.getTotalCost()
+                                        });
+                                        console.log('Emitted token-usage-updated event');
+                                    }
+                                } catch (emitError) {
+                                    console.warn('Failed to emit token usage event:', emitError);
+                                }
                             }
                         } catch (storageError) {
                             console.warn('Failed to save token usage to localStorage:', storageError);
@@ -581,17 +693,56 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
     
     /**
      * Update usage stats with a new token count
+     * @param tokenCount Number of tokens to add
+     * @param model Optional model name (defaults to current model)
      */
-    async updateUsageStats(tokenCount: number): Promise<void> {
-        // Add to the current model's usage instead of overwriting
-        const currentUsage = this.modelUsage[this.model] || 0;
-        this.modelUsage[this.model] = currentUsage + tokenCount;
+    async updateUsageStats(tokenCount: number, model?: string): Promise<void> {
+        // Add to the specified model's usage count, or create a new entry if it doesn't exist
+        const modelToUpdate = model || this.model;
+        const currentUsage = this.modelUsage[modelToUpdate] || 0;
+        this.modelUsage[modelToUpdate] = currentUsage + tokenCount;
         
-        // Save to local storage for persistence
+        console.log(`Updated token usage for ${modelToUpdate}: ${currentUsage} + ${tokenCount} = ${this.modelUsage[modelToUpdate]}`);
+        
+        // Save to localStorage for persistence
         try {
             // Use localStorage if available (in Obsidian environment)
             if (typeof localStorage !== 'undefined') {
                 localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+                console.log(`Saved updated token usage to localStorage: `, this.modelUsage);
+                
+                // Dispatch a storage event to notify other components
+                try {
+                    if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
+                        window.dispatchEvent(new StorageEvent('storage', {
+                            key: 'claudesidian-tokens-used',
+                            newValue: JSON.stringify(this.modelUsage),
+                            storageArea: localStorage
+                        }));
+                        console.log('Dispatched storage event for manual token usage update');
+                    } else {
+                        console.log('StorageEvent not supported in this browser, skipping dispatch');
+                    }
+                } catch (dispatchError) {
+                    console.warn('Failed to dispatch storage event:', dispatchError);
+                }
+                
+                // Try to emit event using the plugin's EventManager if available
+                try {
+                    const app = (window as any).app;
+                    const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+                    
+                    if (plugin?.eventManager?.emit) {
+                        plugin.eventManager.emit('token-usage-updated', {
+                            modelUsage: this.modelUsage,
+                            tokensThisMonth: this.getTokensThisMonth(),
+                            estimatedCost: this.getTotalCost()
+                        });
+                        console.log('Emitted token-usage-updated event for manual update');
+                    }
+                } catch (emitError) {
+                    console.warn('Failed to emit token usage event:', emitError);
+                }
             }
         } catch (error) {
             console.warn('Failed to save token usage to localStorage:', error);
@@ -611,18 +762,46 @@ export class OpenAIProvider extends BaseEmbeddingProvider {
         try {
             if (typeof localStorage !== 'undefined') {
                 localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
+                
+                // Dispatch a storage event to notify other components
+                try {
+                    if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
+                        window.dispatchEvent(new StorageEvent('storage', {
+                            key: 'claudesidian-tokens-used',
+                            newValue: JSON.stringify(this.modelUsage),
+                            storageArea: localStorage
+                        }));
+                        console.log('Dispatched storage event for token usage reset');
+                    } else {
+                        console.log('StorageEvent not supported in this browser, skipping dispatch');
+                    }
+                } catch (dispatchError) {
+                    console.warn('Failed to dispatch storage event:', dispatchError);
+                }
+                
+                // Try to emit event using the plugin's EventManager if available
+                try {
+                    const app = (window as any).app;
+                    const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+                    
+                    if (plugin?.eventManager?.emit) {
+                        plugin.eventManager.emit('token-usage-reset', {
+                            modelUsage: this.modelUsage,
+                            tokensThisMonth: 0,
+                            estimatedCost: 0
+                        });
+                        console.log('Emitted token-usage-reset event');
+                    }
+                } catch (emitError) {
+                    console.warn('Failed to emit token usage event:', emitError);
+                }
             }
         } catch (error) {
             console.warn('Failed to save token usage to localStorage:', error);
         }
     }
     
-    /**
-     * Generate embeddings for multiple texts in one batch
-     * Handles token limit checking and chunking for each text
-     * @param texts Array of texts to get embeddings for
-     * @returns Array of embedding vectors
-     */
+    // Implement generateEmbeddings from IEmbeddingProvider
     async generateEmbeddings(texts: string[]): Promise<number[][]> {
         if (!texts || texts.length === 0) {
             return [];

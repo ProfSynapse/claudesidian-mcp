@@ -156,7 +156,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     if (!this.searchService.vectorStore) {
       try {
         console.log('Attempting to get vector store from plugin');
-        const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+        const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
         if (plugin && plugin.vectorStore) {
           console.log('Found vector store in plugin, connecting to search service');
           // Set the vector store property (public in ChromaSearchService)

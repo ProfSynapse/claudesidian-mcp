@@ -1,21 +1,16 @@
 import { App, Plugin } from 'obsidian';
-import { BaseMode } from '../../baseMode';
+import { BaseMode } from '../../../baseMode';
 import { 
   CreateWorkspaceParameters, 
   CreateWorkspaceResult,
   ProjectWorkspace,
   WorkspaceStatus
-} from '../../../database/workspace-types';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
-import { createErrorMessage } from '../../../utils/errorUtils';
+} from '../../../../database/workspace-types';
+import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+import { createErrorMessage } from '../../../../utils/errorUtils';
 
 // Define a custom interface for the Claudesidian plugin
-interface ClaudesidianPlugin extends Plugin {
-  services: {
-    workspaceService: WorkspaceService;
-    [key: string]: any;
-  };
-}
+import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**
  * Mode to create a new workspace
@@ -67,6 +62,48 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         return this.prepareResult(false, undefined, 'Root folder is required');
       }
       
+      // Check if the root folder exists and create it if it doesn't
+      try {
+        // Try to get folder utility from the plugin
+        let folderCreated = false;
+        const plugin = this.plugin as any;
+        
+        if (plugin?.app) {
+          const app = plugin.app;
+          
+          // Check if FileOperations utility is available
+          if (typeof app.plugins.getPlugin('claudesidian-mcp')?.services?.FileOperations?.ensureFolder === 'function') {
+            const FileOperations = app.plugins.getPlugin('claudesidian-mcp').services.FileOperations;
+            await FileOperations.ensureFolder(app, params.rootFolder);
+            folderCreated = true;
+          } 
+          // Try to import FileOperations if it's not available as a service
+          else {
+            try {
+              // Try to dynamically import the FileOperations class
+              const { FileOperations } = await import('../../../vaultManager/utils/FileOperations');
+              await FileOperations.ensureFolder(app, params.rootFolder);
+              folderCreated = true;
+            } catch (importError) {
+              // Fallback to basic folder creation if import fails
+              const folder = app.vault.getAbstractFileByPath(params.rootFolder);
+              if (!folder) {
+                await app.vault.createFolder(params.rootFolder);
+              }
+              folderCreated = true;
+            }
+          }
+        }
+        
+        if (!folderCreated) {
+          console.log(`Attempted to create root folder '${params.rootFolder}' but could not access the required utilities.`);
+        }
+      } catch (folderError) {
+        console.error(`Error ensuring root folder exists: ${folderError}`);
+        // Continue with workspace creation even if folder creation fails
+        // The folder might already exist or the user might need to create it manually
+      }
+      
       // Determine hierarchy type and path
       const hierarchyType = params.hierarchyType || 'workspace';
       let path: string[] = [];
@@ -108,9 +145,26 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       
       // Create the workspace object
       const now = Date.now();
+      
+      // Use context parameter to enhance the description if provided
+      let enhancedDescription = params.description || '';
+      if (params.context && (!enhancedDescription || enhancedDescription.trim() === '')) {
+        enhancedDescription = params.context;
+      } else if (params.context && enhancedDescription) {
+        // If both exist, append context to description with a separator if not already included
+        if (!enhancedDescription.includes(params.context)) {
+          enhancedDescription = `${enhancedDescription}\n\nPurpose: ${params.context}`;
+        }
+      }
+      
+      // Add information about root folder to the description if appropriate
+      if (params.rootFolder && !enhancedDescription.includes(params.rootFolder)) {
+        enhancedDescription = `${enhancedDescription}\n\nRoot folder: ${params.rootFolder}`;
+      }
+      
       const workspaceData: Omit<ProjectWorkspace, 'id'> = {
         name: params.name,
-        description: params.description,
+        description: enhancedDescription,
         created: now,
         lastAccessed: now,
         
@@ -135,7 +189,11 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         activityHistory: [{
           timestamp: now,
           action: 'create',
-          toolName: 'CreateWorkspaceMode'
+          toolName: 'CreateWorkspaceMode',
+          // Store the context in activity history including root folder information
+          context: params.context ? 
+            `${params.context} (Root folder: ${params.rootFolder})` : 
+            `Workspace created with root folder: ${params.rootFolder}`
         }],
         
         // User preferences
@@ -156,6 +214,11 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         workspacePath: [...path, newWorkspace.id]
       };
 
+      // Pass the context from parameters to result
+      const contextString = params.context ? 
+        `Created workspace "${params.name}" with purpose: ${params.context}` :
+        `Created workspace "${params.name}"`;
+        
       return this.prepareResult(
         true,
         {
@@ -163,6 +226,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
           workspace: newWorkspace
         },
         undefined,
+        contextString,
         workspaceContext
       );
       
@@ -190,6 +254,11 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         description: {
           type: 'string',
           description: 'Optional description of the workspace'
+        },
+        context: {
+          type: 'string',
+          description: 'Purpose or goal of this workspace - IMPORTANT: This will be stored with the workspace and used in memory operations',
+          minLength: 1
         },
         rootFolder: {
           type: 'string',
@@ -242,7 +311,10 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
           properties: {
             id: { type: 'string' },
             name: { type: 'string' },
-            description: { type: 'string' },
+            description: { 
+              type: 'string',
+              description: 'Workspace description including purpose/goal'
+            },
             hierarchyType: { 
               type: 'string',
               enum: ['workspace', 'phase', 'task']
@@ -253,10 +325,19 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             },
             // Other workspace properties omitted for brevity
           }
+        },
+        purpose: {
+          type: 'string',
+          description: 'The purpose or goal of this workspace, extracted from context parameter'
         }
       },
       required: ['workspaceId', 'workspace']
     };
+    
+    // Modify the context property description
+    if (baseSchema.properties.context) {
+      baseSchema.properties.context.description = 'The purpose and context of this workspace creation';
+    }
     
     return baseSchema;
   }

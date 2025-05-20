@@ -1,7 +1,10 @@
-import { Plugin } from 'obsidian';
-import { IEmbeddingProvider } from '../interfaces/IEmbeddingProvider';
+import { Plugin, Notice, TFile } from 'obsidian';
+import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
 import { VectorStoreFactory } from '../factory/VectorStoreFactory';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
+import { v4 as uuidv4 } from 'uuid';
+import { getErrorMessage } from '../../utils/errorUtils';
+import { FileEmbedding } from '../workspace-types';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {
@@ -17,6 +20,19 @@ interface ClaudesidianPlugin extends Plugin {
  * Service for generating and managing embeddings
  */
 export class EmbeddingService {
+  /**
+   * Check if provider implements token tracking interface
+   * @param provider Embedding provider to check
+   * @returns true if provider implements ITokenTrackingProvider
+   */
+  private isTokenTrackingProvider(provider: IEmbeddingProvider): boolean {
+    return (
+      provider &&
+      typeof (provider as ITokenTrackingProvider).getTokensThisMonth === 'function' &&
+      typeof (provider as ITokenTrackingProvider).updateUsageStats === 'function' &&
+      typeof (provider as ITokenTrackingProvider).getTotalCost === 'function'
+    );
+  }
   /**
    * Embedding provider instance
    */
@@ -259,6 +275,272 @@ export class EmbeddingService {
       console.log('Embedding service unloaded successfully');
     } catch (error) {
       console.error('Error unloading embedding service:', error);
+    }
+  }
+  
+  /**
+   * Batch index multiple files with progress reporting
+   * @param filePaths Array of file paths to index
+   * @param progressCallback Optional callback for progress updates
+   * @returns Promise resolving to an array of created embedding IDs
+   */
+  async batchIndexFiles(filePaths: string[], progressCallback?: (current: number, total: number) => void): Promise<string[]> {
+    if (!this.settings.embeddingsEnabled) {
+      throw new Error('Embeddings are disabled in settings');
+    }
+    
+    if (!filePaths || filePaths.length === 0) {
+      return [];
+    }
+    
+    // Get plugin and vector store
+    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'];
+    if (!plugin || !plugin.vectorStore) {
+      throw new Error('Vector store not available');
+    }
+    
+    // Get collections
+    const fileEmbeddings = VectorStoreFactory.createFileEmbeddingCollection(plugin.vectorStore);
+    
+    // Get settings for batching
+    const batchSize = this.settings.batchSize || 5;
+    const processingDelay = this.settings.processingDelay || 1000;
+    
+    // Show a single notice for the batch operation
+    const notice = new Notice(`Generating embeddings for ${filePaths.length} files...`, 0);
+    
+    const ids: string[] = [];
+    let processedCount = 0;
+    let totalTokensProcessed = 0;
+    
+    try {
+      // Process files in batches
+      for (let i = 0; i < filePaths.length; i += batchSize) {
+        const batch = filePaths.slice(i, i + batchSize);
+        
+        // Process batch in parallel
+        const results = await Promise.allSettled(batch.map(async (filePath) => {
+          try {
+            // Read file content
+            const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+            if (!file || !('children' in file === false)) { // Not a folder
+              console.warn(`File not found or is a folder: ${filePath}`);
+              return null;
+            }
+            
+            const content = await this.plugin.app.vault.read(file as TFile);
+            if (!content || content.trim().length === 0) {
+              console.warn(`File is empty: ${filePath}`);
+              return null;
+            }
+            
+            // Estimate token count (approximation: 1 token per 4 characters)
+            const estimatedTokens = Math.ceil(content.length / 4);
+            totalTokensProcessed += estimatedTokens;
+            
+            // Generate embedding
+            const embedding = await this.getEmbedding(content);
+            if (!embedding) {
+              console.warn(`Failed to generate embedding for: ${filePath}`);
+              return null;
+            }
+            
+            // Delete existing embedding if any
+            const existing = await fileEmbeddings.getEmbeddingByPath(filePath);
+            if (existing) {
+              await fileEmbeddings.delete(existing.id);
+            }
+            
+            // Create new embedding
+            const id = uuidv4();
+            const fileEmbedding: FileEmbedding = {
+              id,
+              filePath,
+              timestamp: Date.now(),
+              workspaceId: 'default',
+              vector: embedding,
+              metadata: {
+                fileSize: content.length,
+                indexedAt: new Date().toISOString()
+              }
+            };
+            
+            await fileEmbeddings.add(fileEmbedding);
+            return { id, tokens: estimatedTokens };
+          } catch (error) {
+            console.error(`Error indexing file ${filePath}:`, error);
+            return null;
+          }
+        }));
+        
+        // Update progress count
+        processedCount += batch.length;
+        
+        // Update notice
+        notice.setMessage(`Generating embeddings: ${processedCount}/${filePaths.length} files`);
+        
+        // Call progress callback if provided
+        if (progressCallback) {
+          progressCallback(processedCount, filePaths.length);
+        }
+        
+        // Add successful IDs to the result
+        results.forEach(result => {
+          if (result.status === 'fulfilled' && result.value) {
+            ids.push(result.value.id);
+          }
+        });
+        
+        // Add a small delay between batches to prevent UI freezing
+        if (i + batchSize < filePaths.length) {
+          await new Promise(resolve => setTimeout(resolve, processingDelay));
+        }
+      }
+      
+      // Update token usage stats
+      if (totalTokensProcessed > 0) {
+        try {
+          // Update token usage
+          const embeddingModel = this.settings.embeddingModel || 'text-embedding-3-small';
+          const provider = this.embeddingProvider;
+          
+          // Log important info for debugging
+          console.log(`Attempting to update token usage: ${totalTokensProcessed} tokens for ${embeddingModel}`);
+          console.log(`Provider type: ${provider ? provider.constructor.name : 'null'}`);
+          
+          // Check if provider supports token tracking
+          const supportsTokenTracking = this.isTokenTrackingProvider(provider);
+          console.log(`Provider supports token tracking interface: ${supportsTokenTracking}`);
+          
+          if (supportsTokenTracking) {
+            // Use the standard interface for token tracking
+            const trackingProvider = provider as ITokenTrackingProvider;
+            await trackingProvider.updateUsageStats(totalTokensProcessed, embeddingModel);
+            console.log(`Updated token usage stats via standard interface: +${totalTokensProcessed} tokens for ${embeddingModel}`);
+            
+            // Log current tokens and cost after update
+            const tokensThisMonth = trackingProvider.getTokensThisMonth();
+            const estimatedCost = trackingProvider.getTotalCost();
+            console.log(`Current token usage: ${tokensThisMonth} tokens, estimated cost: $${estimatedCost.toFixed(6)}`);
+          } else {
+            console.warn(`Provider ${provider.constructor.name} does not support token tracking. Stats won't be updated.`);
+          }
+          
+          // Also manually update all-time token usage in localStorage
+          try {
+            if (typeof localStorage !== 'undefined') {
+              // Get current all-time stats
+              const allTimeUsageStr = localStorage.getItem('claudesidian-tokens-all-time');
+              let allTimeStats = {
+                tokensAllTime: 0,
+                estimatedCostAllTime: 0,
+                lastUpdated: new Date().toISOString()
+              };
+              
+              if (allTimeUsageStr) {
+                try {
+                  const parsed = JSON.parse(allTimeUsageStr);
+                  if (typeof parsed === 'object' && parsed !== null) {
+                    allTimeStats = parsed;
+                  }
+                } catch (parseError) {
+                  console.warn('Failed to parse all-time token usage:', parseError);
+                }
+              }
+              
+              // Add new tokens to all-time count
+              allTimeStats.tokensAllTime += totalTokensProcessed;
+              
+              // Calculate cost based on model
+              const costPerThousandTokens = this.settings.costPerThousandTokens || {
+                'text-embedding-3-small': 0.00002,
+                'text-embedding-3-large': 0.00013
+              };
+              
+              const costPerThousand = costPerThousandTokens[embeddingModel] || 0.00002;
+              const cost = (totalTokensProcessed / 1000) * costPerThousand;
+              
+              // Add cost to all-time cost
+              allTimeStats.estimatedCostAllTime += cost;
+              allTimeStats.lastUpdated = new Date().toISOString();
+              
+              // Save updated all-time stats
+              localStorage.setItem('claudesidian-tokens-all-time', JSON.stringify(allTimeStats));
+              console.log(`Updated all-time token usage: +${totalTokensProcessed} tokens, +$${cost.toFixed(6)} cost. New total: ${allTimeStats.tokensAllTime} tokens, $${allTimeStats.estimatedCostAllTime.toFixed(6)} cost`);
+              
+              // Force event dispatch to notify UI components
+              if (typeof window !== 'undefined' && typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
+                window.dispatchEvent(new StorageEvent('storage', {
+                  key: 'claudesidian-tokens-all-time',
+                  newValue: JSON.stringify(allTimeStats),
+                  storageArea: localStorage
+                }));
+                console.log('Dispatched storage event for all-time token usage update');
+              }
+            }
+          } catch (allTimeError) {
+            console.warn('Failed to update all-time token usage:', allTimeError);
+          }
+          
+          // Update last indexed date
+          if (plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
+            plugin.settings.settings.memory.lastIndexedDate = new Date().toISOString();
+            await plugin.settings.saveSettings();
+          }
+        } catch (statsError) {
+          console.error('Error updating token usage stats:', statsError);
+        }
+      }
+      
+      // Notify completion
+      if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.completeProgress) {
+        (window as any).mcpProgressHandlers.completeProgress({
+          success: true,
+          processed: processedCount,
+          failed: filePaths.length - ids.length,
+          operationId: 'batch-index'
+        });
+      }
+      
+      // Update the notice with completion message
+      notice.setMessage(`Completed embedding generation for ${processedCount} files (${totalTokensProcessed} tokens)`);
+      
+      // Automatically hide notice after 3 seconds
+      setTimeout(() => notice.hide(), 3000);
+      
+      // Emit event for token usage updates and batch completion
+      try {
+        const app = (window as any).app;
+        const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+        
+        if (plugin?.eventManager?.emit) {
+          plugin.eventManager.emit('batch-embedding-completed', {
+            processedCount,
+            totalTokensProcessed,
+            timestamp: new Date().toISOString()
+          });
+          console.log('Emitted batch-embedding-completed event');
+        }
+      } catch (emitError) {
+        console.warn('Failed to emit batch completion event:', emitError);
+      }
+      
+      return ids;
+    } catch (error) {
+      // Notify error
+      if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.completeProgress) {
+        (window as any).mcpProgressHandlers.completeProgress({
+          success: false,
+          processed: processedCount,
+          failed: filePaths.length - processedCount,
+          error: getErrorMessage(error),
+          operationId: 'batch-index'
+        });
+      }
+      
+      notice.setMessage(`Error generating embeddings: ${getErrorMessage(error)}`);
+      setTimeout(() => notice.hide(), 3000);
+      throw error;
     }
   }
 

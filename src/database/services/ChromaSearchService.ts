@@ -146,77 +146,29 @@ export class ChromaSearchService {
    * @param filePath File path
    */
   /**
-   * Batch index multiple files with progress reporting
+   * Batch index multiple files with progress reporting (deprecated)
    * @param filePaths Array of file paths to index
    * @param progressCallback Optional callback for progress updates
+   * @returns Promise resolving to an array of created embedding IDs
+   * @deprecated Use EmbeddingService.batchIndexFiles instead
    */
   async batchIndexFiles(filePaths: string[], progressCallback?: (current: number, total: number) => void): Promise<string[]> {
-    if (!filePaths || filePaths.length === 0) {
-      return [];
+    console.warn('ChromaSearchService.batchIndexFiles is deprecated. Use EmbeddingService.batchIndexFiles instead.');
+    
+    // Get embedding service from plugin
+    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'];
+    if (!plugin) {
+      throw new Error('Plugin not found');
     }
     
-    // Get settings for batching
-    const batchSize = (this.plugin as any).settings?.settings?.memory?.batchSize || 5;
-    const processingDelay = (this.plugin as any).settings?.settings?.memory?.processingDelay || 1000;
-    
-    // Show a single notice for the batch operation
-    const notice = new Notice(`Generating embeddings for ${filePaths.length} files...`, 0);
-    
-    const ids: string[] = [];
-    let processedCount = 0;
-    
-    try {
-      // Process files in batches
-      for (let i = 0; i < filePaths.length; i += batchSize) {
-        const batch = filePaths.slice(i, i + batchSize);
-        
-        // Process batch in parallel
-        const results = await Promise.allSettled(batch.map(async (filePath) => {
-          try {
-            // Process each file without showing individual notices
-            return await this.indexFile(filePath, undefined, undefined, false);
-          } catch (error) {
-            console.error(`Error indexing file ${filePath}:`, error);
-            return null;
-          }
-        }));
-        
-        // Update progress count
-        processedCount += batch.length;
-        
-        // Update notice
-        notice.setMessage(`Generating embeddings: ${processedCount}/${filePaths.length} files`);
-        
-        // Call progress callback if provided
-        if (progressCallback) {
-          progressCallback(processedCount, filePaths.length);
-        }
-        
-        // Add successful IDs to the result
-        results.forEach(result => {
-          if (result.status === 'fulfilled' && result.value) {
-            ids.push(result.value);
-          }
-        });
-        
-        // Add a small delay between batches to prevent UI freezing
-        if (i + batchSize < filePaths.length) {
-          await new Promise(resolve => setTimeout(resolve, processingDelay));
-        }
-      }
-      
-      // Update the notice with completion message
-      notice.setMessage(`Completed embedding generation for ${processedCount} files`);
-      
-      // Automatically hide notice after 3 seconds
-      setTimeout(() => notice.hide(), 3000);
-      
-      return ids;
-    } catch (error) {
-      notice.setMessage(`Error generating embeddings: ${getErrorMessage(error)}`);
-      setTimeout(() => notice.hide(), 3000);
-      throw error;
+    // Try to get embeddingService from plugin.services first
+    const embeddingService = plugin.services?.embeddingService || plugin.embeddingService;
+    if (!embeddingService || typeof embeddingService.batchIndexFiles !== 'function') {
+      throw new Error('Embedding service not available');
     }
+    
+    // Forward to embedding service
+    return embeddingService.batchIndexFiles(filePaths, progressCallback);
   }
   
   /**

@@ -66,7 +66,7 @@ export abstract class BaseSettingsTab implements IMemorySettingsTab {
         await this.settingsManager.saveSettings();
         
         // Get plugin reference to trigger embedding strategy update
-        const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+        const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
         if (plugin && typeof plugin.initializeEmbeddingStrategy === 'function') {
             plugin.initializeEmbeddingStrategy();
         }

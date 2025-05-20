@@ -25,6 +25,7 @@ export class MemorySettingsTab {
     private settings: MemorySettings;
     private settingsManager: Settings;
     private app: App;
+    private activeTabKey: string = 'api'; // Track the active tab
     
     // Component tabs
     private apiSettingsTab: ApiSettingsTab;
@@ -60,7 +61,7 @@ export class MemorySettingsTab {
         private searchService?: any
     ) {
         this.settingsManager = settingsManager;
-        this.app = app || (vaultLibrarian?.app || window.app);
+        this.app = app || (vaultLibrarian?.app || (window as any).app);
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
         this.embeddingService = embeddingService || null;
@@ -68,7 +69,7 @@ export class MemorySettingsTab {
         
         // Try to get searchService from the plugin if not provided
         if (!this.searchService) {
-            const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+            const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
             if (plugin?.services?.searchService) {
                 this.searchService = plugin.services.searchService;
             } else if (plugin?.searchService) {
@@ -100,7 +101,8 @@ export class MemorySettingsTab {
             this.app, 
             this.embeddingManager || undefined,
             this.vaultLibrarian || undefined,
-            this.searchService || undefined
+            this.searchService || undefined,
+            this.embeddingService || undefined
         );
         
         // Register refresh callbacks
@@ -161,7 +163,7 @@ export class MemorySettingsTab {
         this.tabContainer = memorySection.createDiv({ cls: 'memory-settings-tabs' });
         
         this.tabs = {
-            api: this.tabContainer.createDiv({ cls: 'memory-tab active', text: 'API' }),
+            api: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'API' }),
             embedding: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Embedding' }),
             filters: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Filters' }),
             advanced: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Advanced' }),
@@ -172,7 +174,7 @@ export class MemorySettingsTab {
         this.contentContainer = memorySection.createDiv({ cls: 'memory-tab-content' });
         
         this.contents = {
-            api: this.contentContainer.createDiv({ cls: 'memory-tab-pane active' }),
+            api: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
             embedding: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
             filters: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
             advanced: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
@@ -189,6 +191,9 @@ export class MemorySettingsTab {
                 // Add active class to clicked tab and corresponding content
                 tab.addClass('active');
                 this.contents[key as keyof typeof this.contents].addClass('active');
+                
+                // Save the active tab
+                this.activeTabKey = key;
             });
         });
 
@@ -198,6 +203,17 @@ export class MemorySettingsTab {
         this.filterSettingsTab.display(this.contents.filters);
         this.advancedSettingsTab.display(this.contents.advanced);
         this.usageSettingsTab.display(this.contents.usage);
+        
+        // Activate the previously active tab (or default to API)
+        if (this.tabs[this.activeTabKey]) {
+            this.tabs[this.activeTabKey].addClass('active');
+            this.contents[this.activeTabKey].addClass('active');
+        } else {
+            // Fallback to API tab if the saved tab key is invalid
+            this.tabs.api.addClass('active');
+            this.contents.api.addClass('active');
+            this.activeTabKey = 'api';
+        }
         
         // Add disabled class to the embedding settings container if embeddings are disabled
         if (!this.settings.embeddingsEnabled) {
@@ -223,7 +239,7 @@ export class MemorySettingsTab {
         }
         
         // Get plugin reference to trigger embedding strategy update
-        const plugin = window.app.plugins.plugins['claudesidian-mcp'];
+        const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
         if (plugin && typeof plugin.initializeEmbeddingStrategy === 'function') {
             plugin.initializeEmbeddingStrategy();
         }

@@ -1,7 +1,7 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceSession } from '../workspace-types';
-import { v4 as uuidv4 } from 'uuid';
+import { generateSessionId } from '../../utils/sessionUtils';
 
 /**
  * Collection manager for workspace sessions
@@ -164,8 +164,8 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
    * @returns Created session with ID (either provided or generated)
    */
   async createSession(session: Partial<WorkspaceSession>): Promise<WorkspaceSession> {
-    // Use provided ID or generate a new one
-    const id = session.id || uuidv4();
+    // Use provided ID or generate a standardized one
+    const id = session.id || generateSessionId();
     
     const newSession: WorkspaceSession = {
       ...session,
