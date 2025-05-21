@@ -29,7 +29,6 @@ const context = await esbuild.context({
     "@codemirror/state",
     "@codemirror/view",
     ...builtins,
-    "onnxruntime-node",
     "sharp",
     "chromadb",
     "chromadb-default-embed",

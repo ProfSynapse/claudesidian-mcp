@@ -4,8 +4,13 @@ import { BaseEmbeddingProvider } from './embeddings-provider';
 import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
 import { getErrorMessage } from '../../utils/errorUtils';
 
-// Import transformer.js
+// Import transformer.js and configure environment
 import { pipeline, env } from '@xenova/transformers';
+
+// Configure transformers.js to use WASM backend instead of node
+env.backends.onnx.wasm.numThreads = 1; // Set to number of threads to use
+env.backends.onnx.node = false;   // Disable Node.js backend
+env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/'; // Use CDN for WASM files
 
 /**
  * Local embedding provider using transformers.js and all-MiniLM-L6-v2
