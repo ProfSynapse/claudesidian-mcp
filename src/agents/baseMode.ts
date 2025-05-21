@@ -8,6 +8,7 @@ import {
 } from '../utils/schemaUtils';
 import { parseWorkspaceContext } from '../utils/contextUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { enhanceSchemaDocumentation } from '../utils/validationUtils';
 
 /**
  * Base class for all modes in the MCP plugin
@@ -70,6 +71,14 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
    * @param customSchema The mode-specific schema
    * @returns Merged schema with common parameters
    */
+  /**
+   * Helper method to merge mode-specific schema with common schema and enhance documentation
+   * This ensures that every mode has workspace context and handoff parameters,
+   * and provides clear documentation on which parameters are required vs. optional
+   * 
+   * @param customSchema The mode-specific schema
+   * @returns Merged and enhanced schema with common parameters and improved documentation
+   */
   protected getMergedSchema(customSchema: any): any {
     // Get the merged schema with common parameters
     const mergedSchema = mergeWithCommonSchema(customSchema);
@@ -124,7 +133,9 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
       };
     }
     
-    return mergedSchema;
+    // Enhance schema with detailed documentation on required vs. optional parameters
+    // and type information, to improve user experience
+    return enhanceSchemaDocumentation(mergedSchema);
   }
   
   /**

@@ -145,7 +145,32 @@ export class IndexingComponent {
             
             // Check if embeddings are enabled
             if (!this.plugin.settings?.settings?.memory?.embeddingsEnabled) {
-                throw new Error('Embeddings are disabled in settings. Enable them in the API tab first.');
+                // Instead of throwing an error, try to enable embeddings automatically
+                try {
+                    console.log('Embeddings were disabled, attempting to enable them for this operation...');
+                    if (this.plugin.settings?.settings?.memory) {
+                        this.plugin.settings.settings.memory.embeddingsEnabled = true;
+                        await this.plugin.settings.saveSettings();
+                        
+                        // Update embedding service directly
+                        if (this.embeddingService && typeof this.embeddingService.updateSettings === 'function') {
+                            await this.embeddingService.updateSettings(this.plugin.settings.settings.memory);
+                            console.log('Successfully enabled embeddings for this operation');
+                        } else {
+                            throw new Error('Embeddings service not available to update');
+                        }
+                    } else {
+                        throw new Error('Memory settings not initialized');
+                    }
+                } catch (error) {
+                    console.error('Failed to automatically enable embeddings:', error);
+                    throw new Error('Embeddings are disabled in settings. Enable them in the API tab first.');
+                }
+            }
+            
+            // Also check if the API key is present
+            if (!this.plugin.settings?.settings?.memory?.openaiApiKey) {
+                throw new Error('OpenAI API key is required but not provided. Add your API key in the API tab.');
             }
             
             // Track progress with an update function that updates the progress bar

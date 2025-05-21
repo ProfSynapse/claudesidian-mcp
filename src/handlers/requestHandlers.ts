@@ -13,6 +13,18 @@ import {
     enhanceContextWithSessionInstructions,
     isStandardSessionId 
 } from '../utils/sessionUtils';
+// Import from parameterHintUtils is already included in the imports above
+import { 
+    validateParams, 
+    formatValidationErrors,
+    ValidationError 
+} from '../utils/validationUtils';
+import {
+    generateStructuredHints,
+    generateHintsForErrors,
+    formatModeHelp,
+    generateModeHelp
+} from '../utils/parameterHintUtils';
 
 /**
  * Request handler implementations for the MCP server
@@ -255,94 +267,268 @@ export async function handleToolList(
 
 /**
  * Validate tool execution parameters
+ * 
+ * This enhanced version provides more detailed error messages and parameter hints
+ * when validation fails.
+ * 
+ * @param params Parameters to validate
+ * @param schema Optional JSON schema to validate against
+ * @returns Enhanced params object with session ID handling
  */
-function validateToolParams(params: any) {
+function validateToolParams(params: any, schema?: any): any {
+    // Create a copy of params to avoid mutation issues
+    const enhancedParams = { ...params };
+    
     // Validate sessionId is present as a top-level parameter
-    if (!params.sessionId) {
+    if (!enhancedParams.sessionId) {
         // Auto-generate a sessionId if missing using our standardized format
         const newSessionId = generateSessionId();
-        params.sessionId = newSessionId;
+        enhancedParams.sessionId = newSessionId;
         
         // Mark that this is a brand new session (first request)
-        params._isNewSession = true;
+        enhancedParams._isNewSession = true;
         
-        logger.systemLog(`Created new session with standardized ID: ${params.sessionId}`);
-    } else if (!isStandardSessionId(params.sessionId)) {
+        logger.systemLog(`Created new session with standardized ID: ${enhancedParams.sessionId}`);
+    } else if (!isStandardSessionId(enhancedParams.sessionId)) {
         // If the sessionId is not in our standard format, it's likely a Claude-generated ID
         // Store the original ID for reference
-        params._originalSessionId = params.sessionId;
+        enhancedParams._originalSessionId = enhancedParams.sessionId;
         
         // Replace it with a standardized ID
-        params.sessionId = generateSessionId();
+        enhancedParams.sessionId = generateSessionId();
         
         // Flag this for session instructions to be injected
-        params._isNonStandardId = true;
+        enhancedParams._isNonStandardId = true;
         
-        logger.systemLog(`Replaced non-standard session ID: ${params._originalSessionId} with standardized ID: ${params.sessionId}`);
+        logger.systemLog(`Replaced non-standard session ID: ${enhancedParams._originalSessionId} with standardized ID: ${enhancedParams.sessionId}`);
+    }
+    
+    // Validate against schema if provided
+    if (schema) {
+        const validationErrors = validateParams(enhancedParams, schema);
+        if (validationErrors.length > 0) {
+            // Generate more detailed parameter hints for the validation errors
+            const hints = generateHintsForErrors(validationErrors, schema);
+            
+            // Add parameter hints to the validation errors where applicable
+            for (const error of validationErrors) {
+                if (error.path.length === 1) {
+                    const paramName = error.path[0];
+                    if (hints[paramName] && !error.hint) {
+                        error.hint = hints[paramName];
+                    }
+                }
+            }
+            
+            // Add guidance on required parameters
+            if (schema.required && Array.isArray(schema.required) && schema.required.length > 0) {
+                const missingRequiredParams = schema.required.filter(
+                    (param: string) => !enhancedParams[param]
+                );
+                
+                if (missingRequiredParams.length > 0) {
+                    const missingParamsInfo = missingRequiredParams.map((param: string) => {
+                        const paramSchema = schema.properties[param];
+                        return `- ${param}: ${paramSchema?.description || 'No description'}` + 
+                               `${paramSchema?.type ? ` (${paramSchema.type})` : ''}`;
+                    }).join('\n');
+                    
+                    const requiredParamsMessage = `\nRequired parameters:\n${missingParamsInfo}`;
+                    
+                    // Append to the validation error message
+                    throw new McpError(
+                        ErrorCode.InvalidParams,
+                        formatValidationErrors(validationErrors) + requiredParamsMessage
+                    );
+                }
+            }
+            
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                formatValidationErrors(validationErrors)
+            );
+        }
     }
     
     // Validate batch operations if they exist
-    if (params.operations && Array.isArray(params.operations)) {
-        params.operations.forEach((operation: any, index: number) => {
+    if (enhancedParams.operations && Array.isArray(enhancedParams.operations)) {
+        const batchErrors: ValidationError[] = [];
+        
+        enhancedParams.operations.forEach((operation: any, index: number) => {
             if (!operation || typeof operation !== 'object') {
-                throw new McpError(
-                    ErrorCode.InvalidParams,
-                    `Invalid operation at index ${index} in batch operations: operation must be an object`
-                );
+                batchErrors.push({
+                    path: ['operations', index.toString()],
+                    message: 'Operation must be an object',
+                    code: 'TYPE_ERROR',
+                    expectedType: 'object',
+                    receivedType: typeof operation
+                });
+                return;
             }
             
             if (!operation.type) {
-                throw new McpError(
-                    ErrorCode.InvalidParams,
-                    `Invalid operation at index ${index} in batch operations: missing 'type' property`
-                );
+                batchErrors.push({
+                    path: ['operations', index.toString(), 'type'],
+                    message: "Missing 'type' property",
+                    code: 'MISSING_REQUIRED',
+                    hint: "Each operation must have a 'type' property that specifies the operation type"
+                });
             }
             
             // Ensure params object exists
             if (!operation.params) {
-                throw new McpError(
-                    ErrorCode.InvalidParams,
-                    `Invalid operation at index ${index} in batch operations: missing 'params' property`
-                );
+                batchErrors.push({
+                    path: ['operations', index.toString(), 'params'],
+                    message: "Missing 'params' property",
+                    code: 'MISSING_REQUIRED',
+                    hint: "Each operation must have a 'params' object containing the operation parameters"
+                });
+            } else if (typeof operation.params !== 'object' || Array.isArray(operation.params)) {
+                batchErrors.push({
+                    path: ['operations', index.toString(), 'params'],
+                    message: "'params' must be an object",
+                    code: 'TYPE_ERROR',
+                    expectedType: 'object',
+                    receivedType: Array.isArray(operation.params) ? 'array' : typeof operation.params
+                });
             }
         });
+        
+        if (batchErrors.length > 0) {
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                formatValidationErrors(batchErrors)
+            );
+        }
     }
 
     // Validate batch read paths if they exist
-    if (params.paths) {
+    if (enhancedParams.paths) {
         // Validate paths parameter
+        const pathErrors: ValidationError[] = [];
         
         // Ensure paths is an array
-        if (!Array.isArray(params.paths)) {
+        if (!Array.isArray(enhancedParams.paths)) {
             // If paths is a string that looks like an array, try to parse it
-            if (typeof params.paths === 'string' &&
-                params.paths.trim().startsWith('[') &&
-                params.paths.trim().endsWith(']')) {
+            if (typeof enhancedParams.paths === 'string' &&
+                enhancedParams.paths.trim().startsWith('[') &&
+                enhancedParams.paths.trim().endsWith(']')) {
                 try {
-                    params.paths = JSON.parse(params.paths);
+                    enhancedParams.paths = JSON.parse(enhancedParams.paths);
                 } catch (error) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Invalid paths parameter: must be an array, got ${typeof params.paths}`
-                    );
+                    pathErrors.push({
+                        path: ['paths'],
+                        message: `Failed to parse 'paths' as JSON array: ${getErrorMessage(error)}`,
+                        code: 'PARSE_ERROR',
+                        expectedType: 'array',
+                        receivedType: 'string',
+                        hint: "The 'paths' parameter must be a valid JSON array of strings"
+                    });
                 }
             } else {
-                throw new McpError(
-                    ErrorCode.InvalidParams,
-                    `Invalid paths parameter: must be an array, got ${typeof params.paths}`
-                );
+                pathErrors.push({
+                    path: ['paths'],
+                    message: `'paths' must be an array`,
+                    code: 'TYPE_ERROR',
+                    expectedType: 'array',
+                    receivedType: typeof enhancedParams.paths,
+                    hint: "The 'paths' parameter must be an array of strings specifying the paths to read"
+                });
             }
         }
         
-        // Validate each path in the batch
-        params.paths.forEach((path: any, index: number) => {
-            if (typeof path !== 'string') {
-                throw new McpError(
-                    ErrorCode.InvalidParams,
-                    `Invalid path at index ${index} in batch paths: path must be a string`
-                );
-            }
-        });
+        // Validate each path in the batch if paths is an array
+        if (Array.isArray(enhancedParams.paths)) {
+            enhancedParams.paths.forEach((path: any, index: number) => {
+                if (typeof path !== 'string') {
+                    pathErrors.push({
+                        path: ['paths', index.toString()],
+                        message: 'Path must be a string',
+                        code: 'TYPE_ERROR',
+                        expectedType: 'string',
+                        receivedType: typeof path,
+                        hint: "Each path in the 'paths' array must be a string"
+                    });
+                }
+            });
+        }
+        
+        if (pathErrors.length > 0) {
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                formatValidationErrors(pathErrors)
+            );
+        }
+    }
+    
+    return enhancedParams;
+}
+
+/**
+ * Handle tool help request
+ * 
+ * This function provides detailed help for a specific agent mode, including
+ * parameter descriptions, types, required vs. optional status, and examples.
+ * 
+ * @param getAgent Function to get an agent by name
+ * @param request The request object containing the tool name
+ * @param parsedArgs The parsed arguments with mode specified
+ * @returns Promise resolving to help text for the specified mode
+ */
+export async function handleToolHelp(
+    getAgent: (name: string) => IAgent,
+    request: any,
+    parsedArgs: any
+): Promise<{ content: { type: string, text: string }[] }> {
+    try {
+        const { name: agentName } = request.params;
+        const { mode } = parsedArgs as { mode: string };
+        
+        if (!mode) {
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                `Missing required parameter: mode for help on agent ${agentName}`
+            );
+        }
+        
+        // Get the agent
+        const agent = getAgent(agentName);
+        
+        // Get the mode
+        const modeInstance = agent.getMode(mode);
+        
+        if (!modeInstance) {
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                `Mode ${mode} not found in agent ${agentName}`
+            );
+        }
+        
+        // Get the mode's parameter schema
+        const schema = modeInstance.getParameterSchema();
+        
+        // Generate mode help
+        const help = generateModeHelp(
+            mode,
+            modeInstance.description,
+            schema
+        );
+        
+        // Format and return the help
+        const helpText = formatModeHelp(help);
+        
+        return {
+            content: [{
+                type: "text",
+                text: helpText
+            }]
+        };
+    } catch (error) {
+        if (error instanceof McpError) {
+            throw error;
+        }
+        logger.systemError(error as Error, 'Tool Help');
+        throw new McpError(ErrorCode.InternalError, 'Failed to get tool help', error);
     }
 }
 
@@ -481,12 +667,24 @@ export async function handleToolExecution(
             }
         }
         
-        // Validate common parameters
-        validateToolParams(params);
-        
         // Execute the agent with the specified mode
         // Get the agent using the base agent name (without vault ID)
         const agent = getAgent(agentName);
+        
+        // Get the mode's parameter schema for validation
+        const modeInstance = agent.getMode(mode);
+        let paramSchema;
+        
+        try {
+            if (modeInstance && typeof modeInstance.getParameterSchema === 'function') {
+                paramSchema = modeInstance.getParameterSchema();
+            }
+        } catch (error) {
+            logger.systemWarn(`Failed to get parameter schema for mode ${mode}: ${getErrorMessage(error)}`);
+        }
+        
+        // Validate common parameters with enhanced schema-based validation
+        const enhancedParams = validateToolParams(params, paramSchema);
         
         // Validate session ID if SessionContextManager is available
         let originalSessionId = params.sessionId;

@@ -149,6 +149,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         activeWorkspace: true
       };
 
+      // Get or create default key file instructions
+      const keyFileInstructions = workspace.keyFileInstructions || 
+        "Key files can be designated in two ways:\n" +
+        "1. Add 'key: true' to the file's YAML frontmatter\n" +
+        "2. Use a standard filename like readme.md, index.md, summary.md, or moc.md";
+      
       // Prepare result
       return this.prepareResult(
         true,
@@ -161,11 +167,13 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             summary,
             hierarchyType: workspace.hierarchyType,
             path: workspace.path,
+            keyFileInstructions,
             children
           },
           context: {
             recentFiles,
             keyFiles,
+            keyFileInstructions, // Include in context for direct access
             associatedNotes,
             sessions,
             states
@@ -176,6 +184,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       );
       
     } catch (error: any) {
+      // Default key file instructions for error case
+      const defaultKeyFileInstructions = 
+        "Key files can be designated in two ways:\n" +
+        "1. Add 'key: true' to the file's YAML frontmatter\n" +
+        "2. Use a standard filename like readme.md, index.md, summary.md, or moc.md";
+      
       return this.prepareResult(
         false,
         {
@@ -183,6 +197,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           context: {
             recentFiles: [],
             keyFiles: [],
+            keyFileInstructions: defaultKeyFileInstructions,
             associatedNotes: [],
             sessions: [],
             states: []
@@ -626,6 +641,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               enum: ['workspace', 'phase', 'task'],
               description: 'Hierarchy type of the workspace' 
             },
+            keyFileInstructions: { 
+              type: 'string', 
+              description: 'Instructions for how to designate key files within this workspace' 
+            },
             path: { 
               type: 'array', 
               items: { type: 'string' },
@@ -662,6 +681,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               items: { type: 'string' },
               description: 'Files marked with key: true in frontmatter or matching common patterns like readme.md'
             },
+            keyFileInstructions: {
+              type: 'string',
+              description: 'Instructions for how to designate key files within this workspace (duplicate of workspace.keyFileInstructions for convenience)'
+            },
             associatedNotes: {
               type: 'array',
               items: { type: 'string' },
@@ -694,7 +717,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               description: 'Saved states associated with this workspace'
             }
           },
-          required: ['recentFiles', 'keyFiles', 'associatedNotes', 'sessions', 'states']
+          required: ['recentFiles', 'keyFiles', 'keyFileInstructions', 'associatedNotes', 'sessions', 'states']
         }
       }
     };

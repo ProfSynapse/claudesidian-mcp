@@ -141,6 +141,16 @@ export class ApiSettingsTab extends BaseSettingsTab {
                         .onChange(async (value) => {
                             this.settings.openaiApiKey = value;
                             await this.saveSettings();
+                            
+                            // If embeddings are enabled but provider not initialized, update it
+                            if (this.settings.embeddingsEnabled && this.embeddingService) {
+                                try {
+                                    await this.embeddingService.updateSettings(this.settings);
+                                    console.log('Embedding service updated with new API key');
+                                } catch (error) {
+                                    console.error('Error updating embedding service with new API key:', error);
+                                }
+                            }
                         });
                 });
             

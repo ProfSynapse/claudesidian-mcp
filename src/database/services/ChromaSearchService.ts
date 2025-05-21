@@ -138,9 +138,18 @@ export class ChromaSearchService {
   /**
    * Get an embedding for a file
    * @param filePath File path
+   * @param chunkIndex Optional chunk index to retrieve a specific chunk
    */
-  async getFileEmbedding(filePath: string): Promise<FileEmbedding | undefined> {
-    return this.fileEmbeddings.getEmbeddingByPath(filePath);
+  async getFileEmbedding(filePath: string, chunkIndex?: number): Promise<FileEmbedding | undefined> {
+    return this.fileEmbeddings.getEmbeddingByPath(filePath, chunkIndex);
+  }
+  
+  /**
+   * Get all chunks for a file
+   * @param filePath File path
+   */
+  async getFileChunks(filePath: string): Promise<FileEmbedding[]> {
+    return this.fileEmbeddings.getAllFileChunks(filePath);
   }
   
   /**

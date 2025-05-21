@@ -5,6 +5,7 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { FileEmbedding } from '../workspace-types';
+import { TextChunk, chunkText } from '../utils/TextChunker';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {
@@ -363,36 +364,67 @@ export class EmbeddingService {
               return null;
             }
             
-            // Estimate token count (approximation: 1 token per 4 characters)
-            const estimatedTokens = Math.ceil(content.length / 4);
-            totalTokensProcessed += estimatedTokens;
+            // Get the chunking settings from plugin settings
+            const chunkMaxTokens = this.settings.maxTokensPerChunk || 8000; // Default to 8000 tokens to stay under limit
+            const chunkStrategy = this.settings.chunkStrategy || 'paragraph';
             
-            // Generate embedding
-            const embedding = await this.getEmbedding(content);
-            if (!embedding) {
-              console.warn(`Failed to generate embedding for: ${filePath}`);
-              return null;
+            // Chunk the content based on settings
+            const chunks = chunkText(content, {
+              maxTokens: chunkMaxTokens,
+              strategy: chunkStrategy as any, // Cast to satisfy TS
+              includeMetadata: true
+            });
+            
+            // Create an array to store the chunk IDs
+            const chunkIds: string[] = [];
+            let totalTokensInFile = 0;
+            
+            // Process each chunk
+            for (let i = 0; i < chunks.length; i++) {
+              const chunk = chunks[i];
+              
+              // Accumulate token count for total
+              totalTokensInFile += chunk.metadata.tokenCount;
+              
+              // Generate embedding for the chunk
+              const embedding = await this.getEmbedding(chunk.content);
+              if (!embedding) {
+                console.warn(`Failed to generate embedding for chunk ${i+1}/${chunks.length} of file: ${filePath}`);
+                continue; // Skip this chunk but continue with others
+              }
+              
+              // Create new embedding for this chunk
+              const id = uuidv4();
+              const fileEmbedding: FileEmbedding = {
+                id,
+                filePath,
+                timestamp: Date.now(),
+                workspaceId: 'default',
+                vector: embedding,
+                content: chunk.content,
+                chunkIndex: chunk.metadata.chunkIndex,
+                totalChunks: chunk.metadata.totalChunks,
+                metadata: {
+                  fileSize: content.length,
+                  chunkSize: chunk.content.length,
+                  indexedAt: new Date().toISOString(),
+                  startPosition: chunk.metadata.startPosition,
+                  endPosition: chunk.metadata.endPosition
+                }
+              };
+              
+              await fileEmbeddings.add(fileEmbedding);
+              chunkIds.push(id);
             }
             
-            // Since we've purged the collection at the start of the reindexing process,
-            // we don't need to check for existing embeddings for each file anymore
+            // Add to total tokens processed
+            totalTokensProcessed += totalTokensInFile;
             
-            // Create new embedding
-            const id = uuidv4();
-            const fileEmbedding: FileEmbedding = {
-              id,
-              filePath,
-              timestamp: Date.now(),
-              workspaceId: 'default',
-              vector: embedding,
-              metadata: {
-                fileSize: content.length,
-                indexedAt: new Date().toISOString()
-              }
-            };
-            
-            await fileEmbeddings.add(fileEmbedding);
-            return { id, tokens: estimatedTokens };
+            return { 
+              ids: chunkIds, 
+              tokens: totalTokensInFile,
+              chunks: chunks.length
+            } as { ids: string[]; tokens: number; chunks: number };
           } catch (error) {
             console.error(`Error indexing file ${filePath}:`, error);
             return null;
@@ -413,7 +445,13 @@ export class EmbeddingService {
         // Add successful IDs to the result
         results.forEach(result => {
           if (result.status === 'fulfilled' && result.value) {
-            ids.push(result.value.id);
+            if (Array.isArray(result.value.ids)) {
+              // Add all chunk IDs from the file
+              ids.push(...result.value.ids);
+            } else if (result.value && typeof result.value === 'object' && 'id' in result.value) {
+              // Legacy format - single embedding
+              ids.push(result.value.id as string);
+            }
           }
         });
         

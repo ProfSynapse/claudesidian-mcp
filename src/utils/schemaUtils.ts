@@ -1,4 +1,5 @@
 import type { CommonResult } from '../types';
+import { enhanceSchemaDocumentation } from './validationUtils';
 
 /**
  * Utility functions for handling JSON schemas in a DRY way
@@ -9,7 +10,7 @@ import type { CommonResult } from '../types';
  * @returns JSON schema for workspace context
  */
 export function getWorkspaceContextSchema(): any {
-  return {
+  return enhanceSchemaDocumentation({
     workspaceContext: {
       oneOf: [
         {
@@ -39,7 +40,7 @@ export function getWorkspaceContextSchema(): any {
       ],
       description: 'Optional workspace context - if not provided, uses a default workspace'
     }
-  };
+  });
 }
 
 /**
@@ -47,7 +48,7 @@ export function getWorkspaceContextSchema(): any {
  * @returns JSON schema for a mode call
  */
 export function getModeCallSchema(): any {
-  return {
+  return enhanceSchemaDocumentation({
     type: 'object',
     properties: {
       tool: { 
@@ -82,7 +83,7 @@ export function getModeCallSchema(): any {
     },
     required: ['tool', 'mode', 'parameters'],
     description: 'Mode call definition'
-  };
+  });
 }
 
 /**
@@ -92,7 +93,7 @@ export function getModeCallSchema(): any {
 export function getHandoffSchema(): any {
   const modeCallSchema = getModeCallSchema();
   
-  return {
+  return enhanceSchemaDocumentation({
     handoff: {
       oneOf: [
         // Single mode call (backward compatibility)
@@ -107,7 +108,7 @@ export function getHandoffSchema(): any {
       ],
       description: 'Optional handoff to another agent/mode(s)'
     }
-  };
+  });
 }
 
 /**
@@ -115,12 +116,12 @@ export function getHandoffSchema(): any {
  * @returns JSON schema for session parameters
  */
 export function getSessionSchema(): any {
-  return {
+  return enhanceSchemaDocumentation({
     sessionId: {
       type: 'string',
       description: 'Session identifier to track related tool calls'
     }
-  };
+  });
 }
 
 /**
@@ -128,13 +129,13 @@ export function getSessionSchema(): any {
  * @returns JSON schema for context
  */
 export function getContextSchema(): any {
-  return {
+  return enhanceSchemaDocumentation({
     context: {
       type: 'string',
       description: 'Background information and purpose of this workspace/session/state - this will be preserved in memory',
       minLength: 1
     }
-  };
+  });
 }
 
 export function getCommonParameterSchema(): any {
@@ -151,7 +152,7 @@ export function getCommonParameterSchema(): any {
  * @returns JSON schema for common result
  */
 export function getCommonResultSchema(): any {
-  return {
+  return enhanceSchemaDocumentation({
     type: 'object',
     properties: {
       success: {
@@ -291,7 +292,7 @@ export function getCommonResultSchema(): any {
       }
     },
     required: ['success', 'sessionId']
-  };
+  });
 }
 
 /**

@@ -162,6 +162,12 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         enhancedDescription = `${enhancedDescription}\n\nRoot folder: ${params.rootFolder}`;
       }
       
+      // Define default key file instructions if not provided
+      const defaultKeyFileInstructions = 
+        "Key files can be designated in two ways:\n" +
+        "1. Add 'key: true' to the file's YAML frontmatter\n" +
+        "2. Use a standard filename like readme.md, index.md, summary.md, or moc.md";
+      
       const workspaceData: Omit<ProjectWorkspace, 'id'> = {
         name: params.name,
         description: enhancedDescription,
@@ -177,6 +183,9 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         // Context boundaries
         rootFolder: params.rootFolder,
         relatedFolders: params.relatedFolders || [],
+        
+        // Instructions for key files
+        keyFileInstructions: params.keyFileInstructions || defaultKeyFileInstructions,
         
         // Memory parameters
         relevanceSettings: {
@@ -268,6 +277,10 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
           type: 'array',
           items: { type: 'string' },
           description: 'Additional related folders'
+        },
+        keyFileInstructions: {
+          type: 'string',
+          description: 'Instructions for how to designate key files within this workspace - these will be provided to AI to help it correctly work with key files'
         },
         preferences: {
           type: 'object',

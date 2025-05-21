@@ -54,14 +54,22 @@ export class FileEmbeddingCollection extends BaseChromaCollection<FileEmbedding>
       workspaceId: embedding.workspaceId || '',
       additionalMetadata: embedding.metadata ? JSON.stringify(embedding.metadata) : '{}',
       
+      // Chunk metadata for split files
+      chunkIndex: embedding.chunkIndex ?? 0,
+      totalChunks: embedding.totalChunks ?? 1,
+      
       // Metadata field for searching
       isFileEmbedding: true,
     };
     
+    // Create document object
+    const document = embedding.content || undefined;
+    
     return {
       id: embedding.id,
       embedding: embedding.vector,
-      metadata
+      metadata,
+      document
     };
   }
   
@@ -93,6 +101,11 @@ export class FileEmbeddingCollection extends BaseChromaCollection<FileEmbedding>
       timestamp: storage.metadata.timestamp,
       workspaceId: storage.metadata.workspaceId || undefined,
       vector: storage.embedding,
+      // Add chunk metadata if available
+      chunkIndex: storage.metadata.chunkIndex !== undefined ? storage.metadata.chunkIndex : 0,
+      totalChunks: storage.metadata.totalChunks !== undefined ? storage.metadata.totalChunks : 1,
+      // Add content if available
+      content: storage.document,
       metadata: storage.metadata.additionalMetadata ? 
         JSON.parse(storage.metadata.additionalMetadata) : undefined
     };
@@ -118,17 +131,41 @@ export class FileEmbeddingCollection extends BaseChromaCollection<FileEmbedding>
   /**
    * Get embedding by file path
    * @param filePath File path
+   * @param chunkIndex Optional chunk index to retrieve specific chunk
    * @returns File embedding if found
    */
-  async getEmbeddingByPath(filePath: string): Promise<FileEmbedding | undefined> {
+  async getEmbeddingByPath(filePath: string, chunkIndex?: number): Promise<FileEmbedding | undefined> {
     // Normalize the path for lookup to ensure consistent matching
     const normalizedPath = this.normalizePath(filePath);
     
+    // Build where clause - either get specific chunk or first chunk
+    const where: Record<string, any> = { filePath: normalizedPath };
+    if (chunkIndex !== undefined) {
+      where.chunkIndex = chunkIndex;
+    }
+    
+    const embeddings = await this.getAll({ where });
+    
+    return embeddings.length > 0 ? embeddings[0] : undefined;
+  }
+  
+  /**
+   * Get all chunks for a file
+   * @param filePath File path
+   * @returns Array of file embedding chunks
+   */
+  async getAllFileChunks(filePath: string): Promise<FileEmbedding[]> {
+    // Normalize the path for lookup
+    const normalizedPath = this.normalizePath(filePath);
+    
+    // Get all chunks for this file, sorted by chunk index
     const embeddings = await this.getAll({
       where: { filePath: normalizedPath }
     });
     
-    return embeddings.length > 0 ? embeddings[0] : undefined;
+    return embeddings.sort((a, b) => 
+      (a.chunkIndex ?? 0) - (b.chunkIndex ?? 0)
+    );
   }
   
   /**

@@ -30,6 +30,21 @@ export interface FileEmbedding {
   vector: number[];
   
   /**
+   * The text content that was embedded (optional)
+   */
+  content?: string;
+  
+  /**
+   * Chunk index when file content is split into multiple chunks (0-based)
+   */
+  chunkIndex?: number;
+  
+  /**
+   * Total number of chunks for this file
+   */
+  totalChunks?: number;
+  
+  /**
    * Additional metadata
    */
   metadata?: any;
@@ -110,6 +125,12 @@ export interface ProjectWorkspace {
    * Additional related folders
    */
   relatedFolders: string[];
+  
+  /**
+   * Instructions for key file designation within workspace
+   * Explains how to mark files as key files in frontmatter or by filename
+   */
+  keyFileInstructions?: string;
   
   /**
    * Memory tuning parameters
@@ -466,6 +487,11 @@ export interface CreateWorkspaceParameters extends WorkspaceParameters {
   preferences?: Record<string, any>;
   hierarchyType?: HierarchyType;
   parentId?: string;
+  /**
+   * Instructions for how to designate key files within this workspace
+   * This will be displayed to AI to help it correctly mark or identify key files
+   */
+  keyFileInstructions?: string;
 }
 
 /**
@@ -490,6 +516,11 @@ export interface EditWorkspaceParameters extends WorkspaceParameters {
   preferences?: Record<string, any>;
   status?: WorkspaceStatus;
   parentId?: string;
+  /**
+   * Instructions for how to designate key files within this workspace
+   * This will be displayed to AI to help it correctly mark or identify key files
+   */
+  keyFileInstructions?: string;
 }
 
 /**
@@ -524,6 +555,7 @@ export interface LoadWorkspaceResult extends CommonResult {
       summary: string;
       hierarchyType: HierarchyType;
       path: string[];
+      keyFileInstructions?: string;
       children?: Array<{
         id: string;
         name: string;
@@ -535,6 +567,11 @@ export interface LoadWorkspaceResult extends CommonResult {
       keyFiles: string[];
       relatedConcepts: string[];
       allFiles: string[];
+      /**
+       * Instructions for how to create/identify key files
+       * Added for convenience to avoid accessing it via workspace object
+       */
+      keyFileInstructions?: string;
     };
   };
 }

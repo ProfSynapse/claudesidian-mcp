@@ -142,6 +142,22 @@ export class MemorySettingsTab {
                     this.settings.embeddingsEnabled = value;
                     await this.saveSettings();
                     
+                    // Directly update the EmbeddingService with the new setting
+                    if (this.embeddingService) {
+                        try {
+                            await this.embeddingService.updateSettings(this.settings);
+                            console.log(`Embedding service settings updated. embeddingsEnabled: ${value}`);
+                        } catch (error) {
+                            console.error('Error updating embedding service:', error);
+                        }
+                    }
+                    
+                    // Update plugin embedding strategy
+                    const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+                    if (plugin && typeof plugin.initializeEmbeddingStrategy === 'function') {
+                        plugin.initializeEmbeddingStrategy();
+                    }
+                    
                     // Refresh UI to reflect the new state
                     this.display();
                 })

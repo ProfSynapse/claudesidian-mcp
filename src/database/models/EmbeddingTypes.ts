@@ -67,6 +67,21 @@ export interface FileEmbedding extends BaseEmbedding {
   workspaceId?: string;
   
   /**
+   * The text content that was embedded (optional for backward compatibility)
+   */
+  content?: string;
+  
+  /**
+   * Chunk index when file content is split into multiple chunks (0-based)
+   */
+  chunkIndex?: number;
+  
+  /**
+   * Total number of chunks for this file
+   */
+  totalChunks?: number;
+  
+  /**
    * Additional metadata
    */
   metadata?: Record<string, any>;

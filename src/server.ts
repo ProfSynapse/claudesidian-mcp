@@ -23,13 +23,15 @@ import { platform } from 'os';
 import { parseJsonArrays } from './utils/jsonUtils';
 import { logger } from './utils/logger';
 import { getErrorMessage } from './utils/errorUtils';
+import { generateModeHelp, formatModeHelp } from './utils/parameterHintUtils';
 import { sanitizeVaultName } from './utils/vaultUtils';
 import {
     handleResourceList,
     handleResourceRead,
     handlePromptsList,
     handleToolList,
-    handleToolExecution
+    handleToolExecution,
+    handleToolHelp
 } from './handlers/requestHandlers';
 
 /**
@@ -174,6 +176,18 @@ export class MCPServer implements IMCPServer {
         // Handle tool execution
         this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const parsedArgs = parseJsonArrays(request.params.arguments);
+            
+            // Check if this is a help request
+            if (parsedArgs && parsedArgs.help === true) {
+                // This is a help request
+                return await handleToolHelp(
+                    (agentName: string) => this.getAgent(agentName),
+                    request,
+                    parsedArgs
+                );
+            }
+            
+            // Normal execution
             return await handleToolExecution(
                 (agentName: string) => this.getAgent(agentName), 
                 request, 
@@ -419,6 +433,55 @@ export class MCPServer implements IMCPServer {
         }
         
         return agent;
+    }
+    
+    /**
+     * Get detailed help for a specific mode
+     * 
+     * This method provides detailed documentation for a mode's parameters,
+     * including type information, required vs. optional status, and examples.
+     * 
+     * @param agentName Name of the agent
+     * @param modeName Name of the mode
+     * @returns Formatted help string for the mode
+     */
+    getModeHelp(agentName: string, modeName: string): string {
+        try {
+            // Get the agent
+            const agent = this.getAgent(agentName);
+            
+            // Get the mode
+            const mode = agent.getMode(modeName);
+            
+            if (!mode) {
+                throw new McpError(
+                    ErrorCode.InvalidParams,
+                    `Mode ${modeName} not found in agent ${agentName}`
+                );
+            }
+            
+            // Get the mode's parameter schema
+            const schema = mode.getParameterSchema();
+            
+            // Generate mode help
+            const help = generateModeHelp(
+                modeName,
+                mode.description,
+                schema
+            );
+            
+            // Format and return the help
+            return formatModeHelp(help);
+        } catch (error) {
+            if (error instanceof McpError) {
+                throw error;
+            }
+            throw new McpError(
+                ErrorCode.InternalError,
+                `Failed to get help for agent ${agentName} mode ${modeName}`,
+                error
+            );
+        }
     }
     
     /**
