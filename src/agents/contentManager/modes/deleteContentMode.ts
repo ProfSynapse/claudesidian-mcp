@@ -45,12 +45,13 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
    */
   async execute(params: DeleteContentParams): Promise<DeleteContentResult> {
     try {
-      const { filePath, content, workspaceContext, handoff, sessionId } = params;
+      const { filePath, content, similarityThreshold = 0.95, workspaceContext, handoff, sessionId } = params;
       
       const deletions = await ContentOperations.deleteContent(
         this.app,
         filePath,
-        content
+        content,
+        similarityThreshold
       );
       
       // Update embeddings for the file if available
@@ -147,6 +148,13 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
         content: {
           type: 'string',
           description: 'Content to delete'
+        },
+        similarityThreshold: {
+          type: 'number',
+          description: 'Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)',
+          default: 0.95,
+          minimum: 0.0,
+          maximum: 1.0
         },
         ...this.getCommonParameterSchema()
       },

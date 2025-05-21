@@ -280,13 +280,14 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
    * @returns Promise that resolves with the operation result
    */
   private async executeReplaceOperation(operation: Extract<ContentOperation, { type: 'replace' }>): Promise<any> {
-    const { filePath, oldContent, newContent } = operation.params;
+    const { filePath, oldContent, newContent, similarityThreshold = 0.95 } = operation.params;
     
     const replacements = await ContentOperations.replaceContent(
       this.app,
       filePath,
       oldContent,
-      newContent
+      newContent,
+      similarityThreshold
     );
     
     return {
@@ -323,12 +324,13 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
    * @returns Promise that resolves with the operation result
    */
   private async executeDeleteOperation(operation: Extract<ContentOperation, { type: 'delete' }>): Promise<any> {
-    const { filePath, content } = operation.params;
+    const { filePath, content, similarityThreshold = 0.95 } = operation.params;
     
     const deletions = await ContentOperations.deleteContent(
       this.app,
       filePath,
-      content
+      content,
+      similarityThreshold
     );
     
     return {
@@ -531,7 +533,14 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
                       properties: {
                         filePath: { type: 'string', description: 'Path to the file to modify' },
                         oldContent: { type: 'string', description: 'Content to replace' },
-                        newContent: { type: 'string', description: 'Content to replace with' }
+                        newContent: { type: 'string', description: 'Content to replace with' },
+                        similarityThreshold: { 
+                          type: 'number', 
+                          description: 'Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)',
+                          default: 0.95,
+                          minimum: 0.0,
+                          maximum: 1.0
+                        }
                       },
                       required: ['filePath', 'oldContent', 'newContent']
                     }
@@ -561,7 +570,14 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
                     then: {
                       properties: {
                         filePath: { type: 'string', description: 'Path to the file to modify' },
-                        content: { type: 'string', description: 'Content to delete' }
+                        content: { type: 'string', description: 'Content to delete' },
+                        similarityThreshold: { 
+                          type: 'number', 
+                          description: 'Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)',
+                          default: 0.95,
+                          minimum: 0.0,
+                          maximum: 1.0
+                        }
                       },
                       required: ['filePath', 'content']
                     }

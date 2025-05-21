@@ -45,13 +45,14 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
    */
   async execute(params: ReplaceContentParams): Promise<ReplaceContentResult> {
     try {
-      const { filePath, oldContent, newContent, workspaceContext, handoff, sessionId } = params;
+      const { filePath, oldContent, newContent, similarityThreshold = 0.95, workspaceContext, handoff, sessionId } = params;
       
       const replacements = await ContentOperations.replaceContent(
         this.app,
         filePath,
         oldContent,
-        newContent
+        newContent,
+        similarityThreshold
       );
       
       // Update embeddings for the file if available
@@ -196,6 +197,13 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
         newContent: {
           type: 'string',
           description: 'Content to replace with'
+        },
+        similarityThreshold: {
+          type: 'number',
+          description: 'Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)',
+          default: 0.95,
+          minimum: 0.0,
+          maximum: 1.0
         },
         ...this.getCommonParameterSchema()
       },

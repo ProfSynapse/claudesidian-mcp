@@ -1,4 +1,5 @@
 import { App, TFile } from 'obsidian';
+import { diff_match_patch } from 'diff-match-patch';
 
 /**
  * Utility class for content operations
@@ -214,18 +215,20 @@ export class ContentOperations {
   }
   
   /**
-   * Replace content in a file
+   * Replace content in a file using fuzzy matching
    * @param app Obsidian app instance
    * @param filePath Path to the file
    * @param oldContent Content to replace
    * @param newContent Content to replace with
+   * @param similarityThreshold Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)
    * @returns Promise that resolves with the number of replacements made
    */
   static async replaceContent(
     app: App,
     filePath: string,
     oldContent: string,
-    newContent: string
+    newContent: string,
+    similarityThreshold = 0.95
   ): Promise<number> {
     try {
       // Normalize path to remove any leading slash
@@ -242,20 +245,48 @@ export class ContentOperations {
       
       const existingContent = await app.vault.read(file);
       
-      // Count replacements
+      // Try exact match first
       const regex = new RegExp(this.escapeRegExp(oldContent), 'g');
-      const count = (existingContent.match(regex) || []).length;
+      const exactMatches = (existingContent.match(regex) || []).length;
       
-      if (count === 0) {
-        throw new Error('Content to replace not found in file');
+      if (exactMatches > 0) {
+        // Perform exact replacement if found
+        const modifiedContent = existingContent.replace(regex, newContent);
+        await app.vault.modify(file, modifiedContent);
+        return exactMatches;
       }
       
-      // Perform replacement
-      const modifiedContent = existingContent.replace(regex, newContent);
+      // If no exact match, try fuzzy matching
+      const dmp = new diff_match_patch();
       
+      // Configure the matcher
+      dmp.Match_Threshold = similarityThreshold;
+      dmp.Match_Distance = 1000; // Maximum distance to search
+      
+      // Find the best match position
+      const matchPosition = dmp.match_main(existingContent, oldContent, 0);
+      
+      if (matchPosition === -1) {
+        // No match found even with fuzzy matching
+        throw new Error(`Content to replace not found in file, even with fuzzy matching at ${similarityThreshold * 100}% threshold`);
+      }
+      
+      // Extract the actual matched text for informational purposes
+      const matchedLength = oldContent.length;
+      const actualMatchedText = existingContent.substring(matchPosition, matchPosition + matchedLength);
+      
+      // Get the similarity score
+      const matchScore = this.calculateSimilarity(oldContent, actualMatchedText);
+      
+      // Create a clean replacement by slicing the original content
+      const beforeMatch = existingContent.substring(0, matchPosition);
+      const afterMatch = existingContent.substring(matchPosition + matchedLength);
+      const modifiedContent = beforeMatch + newContent + afterMatch;
+      
+      // Modify the file
       await app.vault.modify(file, modifiedContent);
       
-      return count;
+      return 1; // One fuzzy replacement made
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Error replacing content: ${errorMessage}`);
@@ -326,16 +357,18 @@ export class ContentOperations {
   }
   
   /**
-   * Delete content from a file
+   * Delete content from a file with fuzzy matching support
    * @param app Obsidian app instance
    * @param filePath Path to the file
    * @param content Content to delete
+   * @param similarityThreshold Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)
    * @returns Promise that resolves with the number of deletions made
    */
   static async deleteContent(
     app: App,
     filePath: string,
-    content: string
+    content: string,
+    similarityThreshold = 0.95
   ): Promise<number> {
     try {
       // Normalize path to remove any leading slash
@@ -352,20 +385,48 @@ export class ContentOperations {
       
       const existingContent = await app.vault.read(file);
       
-      // Count deletions
+      // Try exact match first
       const regex = new RegExp(this.escapeRegExp(content), 'g');
-      const count = (existingContent.match(regex) || []).length;
+      const exactMatches = (existingContent.match(regex) || []).length;
       
-      if (count === 0) {
-        throw new Error('Content to delete not found in file');
+      if (exactMatches > 0) {
+        // Perform exact deletion if found
+        const modifiedContent = existingContent.replace(regex, '');
+        await app.vault.modify(file, modifiedContent);
+        return exactMatches;
       }
       
-      // Perform deletion
-      const modifiedContent = existingContent.replace(regex, '');
+      // If no exact match, try fuzzy matching
+      const dmp = new diff_match_patch();
       
+      // Configure the matcher
+      dmp.Match_Threshold = similarityThreshold;
+      dmp.Match_Distance = 1000; // Maximum distance to search
+      
+      // Find the best match position
+      const matchPosition = dmp.match_main(existingContent, content, 0);
+      
+      if (matchPosition === -1) {
+        // No match found even with fuzzy matching
+        throw new Error(`Content to delete not found in file, even with fuzzy matching at ${similarityThreshold * 100}% threshold`);
+      }
+      
+      // Extract the actual matched text for informational purposes
+      const matchedLength = content.length;
+      const actualMatchedText = existingContent.substring(matchPosition, matchPosition + matchedLength);
+      
+      // Get the similarity score
+      const matchScore = this.calculateSimilarity(content, actualMatchedText);
+      
+      // Create a clean deletion by slicing the original content
+      const beforeMatch = existingContent.substring(0, matchPosition);
+      const afterMatch = existingContent.substring(matchPosition + matchedLength);
+      const modifiedContent = beforeMatch + afterMatch;
+      
+      // Modify the file
       await app.vault.modify(file, modifiedContent);
       
-      return count;
+      return 1; // One fuzzy deletion made
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Error deleting content: ${errorMessage}`);
@@ -379,5 +440,27 @@ export class ContentOperations {
    */
   private static escapeRegExp(string: string): string {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  
+  /**
+   * Calculate similarity between two strings (0.0 to 1.0)
+   * @param str1 First string
+   * @param str2 Second string
+   * @returns Similarity score between 0.0 and 1.0
+   */
+  private static calculateSimilarity(str1: string, str2: string): number {
+    if (str1 === str2) return 1.0;
+    if (str1.length === 0 || str2.length === 0) return 0.0;
+    
+    const dmp = new diff_match_patch();
+    const diffs = dmp.diff_main(str1, str2);
+    dmp.diff_cleanupSemantic(diffs);
+    
+    // Calculate similarity based on edit distance
+    const levenshtein = dmp.diff_levenshtein(diffs);
+    const maxLength = Math.max(str1.length, str2.length);
+    
+    // Return similarity as 1 - (edit distance / max length)
+    return 1.0 - (levenshtein / maxLength);
   }
 }

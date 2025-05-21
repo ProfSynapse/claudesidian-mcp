@@ -181,6 +181,12 @@ export interface ReplaceContentParams extends CommonParameters {
    * Content to replace with
    */
   newContent: string;
+  
+  /**
+   * Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)
+   * @default 0.95
+   */
+  similarityThreshold?: number;
 }
 
 /**
@@ -255,6 +261,12 @@ export interface DeleteContentParams extends CommonParameters {
    * Content to delete
    */
   content: string;
+  
+  /**
+   * Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)
+   * @default 0.95
+   */
+  similarityThreshold?: number;
 }
 
 /**
