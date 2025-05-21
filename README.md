@@ -41,6 +41,85 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
 4. Configure your claude desktop config file (instructions in the plugin settings)
 5. Restart obsidian (if it's open) and fully restart claude (you might have to go to your task manager and end the task, as it runs in the background if you just `x` out).
 
+## Handoff Mode Chaining
+
+Claudesidian MCP implements a powerful handoff mechanism that allows for chaining multiple operations together, enabling complex workflows and reducing the number of round-trips between the client and server.
+
+### How Handoffs Work
+
+Handoffs allow one operation to seamlessly pass control to another operation, with the results of the first operation flowing into the next. This creates a chain of operations that execute in sequence or parallel, depending on the configuration.
+
+```mermaid
+flowchart LR
+    Mode1[Mode 1] -->|handoff| Mode2[Mode 2]
+    Mode2 -->|handoff| Mode3[Mode 3]
+    Mode3 -->|result| Client[Client]
+```
+
+### Key Features of Handoffs
+
+- **Sequential and Parallel Execution**: Modes can be executed in sequence (waiting for each to complete) or in parallel for improved performance
+- **Error Handling Control**: Configure whether subsequent operations should continue even if earlier operations fail
+- **Result Aggregation**: All results are collected and returned to the client in a structured format
+- **Named Operations**: Assign names to each operation for easier identification in results
+- **Cross-Agent Execution**: Chain operations across different agents for complex workflows
+
+### Using Handoffs in Your Requests
+
+Handoffs are specified through the `handoff` parameter, which can be either a single operation or an array of operations:
+
+```json
+{
+  "sessionId": "my-session",
+  "context": "Processing a note",
+  "handoff": {
+    "tool": "contentManager",
+    "mode": "readContent",
+    "parameters": {
+      "path": "path/to/note.md",
+      "sessionId": "my-session"
+    },
+    "returnHere": true
+  }
+}
+```
+
+For multiple operations:
+
+```json
+{
+  "sessionId": "my-session",
+  "context": "Processing multiple notes",
+  "handoff": [
+    {
+      "tool": "contentManager",
+      "mode": "readContent",
+      "parameters": {
+        "path": "note1.md",
+        "sessionId": "my-session"
+      },
+      "strategy": "parallel"
+    },
+    {
+      "tool": "contentManager",
+      "mode": "readContent",
+      "parameters": {
+        "path": "note2.md",
+        "sessionId": "my-session"
+      },
+      "strategy": "parallel"
+    }
+  ]
+}
+```
+
+### Advanced Configuration Options
+
+- **returnHere**: Whether to return results to the original operation (default: false)
+- **continueOnFailure**: Whether to continue executing subsequent operations if this one fails (default: false)
+- **strategy**: Execution strategy - 'serial' (default) or 'parallel'
+- **callName**: Optional name to identify this operation in the results
+
 ## Multi-Vault Support
 
 Claudesidian MCP supports running across multiple Obsidian vaults simultaneously, with each vault having its own isolated MCP server instance.

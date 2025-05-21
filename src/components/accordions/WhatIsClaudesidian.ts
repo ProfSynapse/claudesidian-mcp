@@ -91,6 +91,33 @@ export class WhatIsClaudesidianAccordion {
         );
 
         // Example Interactions section within intro
+        // Handoff section within intro
+        const handoffSection = content.createEl('div', { cls: 'mcp-section' });
+        handoffSection.createEl('h4', { text: 'Handoff Mode Chaining' });
+        
+        handoffSection.createEl('p', {
+            text: 'Claudesidian implements powerful mode chaining through handoffs, enabling complex workflows with minimal round-trips:'
+        });
+        
+        const handoffList = handoffSection.createEl('ul');
+        handoffList.createEl('li', {
+            text: 'Sequential and parallel execution of multiple operations'
+        });
+        handoffList.createEl('li', {
+            text: 'Controlled error handling with continueOnFailure option'
+        });
+        handoffList.createEl('li', {
+            text: 'Cross-agent communication through chained operations'
+        });
+        handoffList.createEl('li', {
+            text: 'Result aggregation from multiple operations'
+        });
+        
+        handoffSection.createEl('p', {
+            cls: 'handoff-example-text',
+            text: 'Example: A single request could read content, search for related notes, and update a project map - all in one operation.'
+        });
+        
         const examplesSection = content.createEl('div', { cls: 'mcp-section' });
         examplesSection.createEl('h4', { text: 'Example Interactions' });
         

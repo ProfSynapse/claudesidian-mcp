@@ -8,20 +8,63 @@ import { applyBrowserPolyfills } from '../../utils/browserPolyfills';
 // Apply browser polyfills first to ensure compatibility
 applyBrowserPolyfills();
 
-// Now import transformer.js
-import { pipeline, env } from '@xenova/transformers';
+// Create safe import.meta.url to prevent fileURLToPath errors
+// This must be done before importing transformers
+if (typeof (globalThis as any).import === 'undefined') {
+    (globalThis as any).import = {};
+}
+if (typeof (globalThis as any).import.meta === 'undefined') {
+    (globalThis as any).import.meta = { url: './' };
+}
 
-// Configure transformers.js for browser environment
-// Use browser compatible settings
-env.useBrowserCache = true;
-env.allowLocalModels = false;
-env.backends.onnx.wasm.numThreads = 1;
-env.backends.onnx.node = false;
-env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
+// Polyfill URL.fileURLToPath globally for Obsidian environment
+if (typeof window !== 'undefined') {
+    (window as any).URL = window.URL || {};
+    if (!(window as any).URL.fileURLToPath) {
+        (window as any).URL.fileURLToPath = (url: string) => './';
+    }
+}
+
+// Now import transformer.js with polyfills in place
+let pipeline: any;
+let env: any;
+
+try {
+    // Dynamic import to ensure polyfills are applied first
+    const transformers = require('@xenova/transformers');
+    pipeline = transformers.pipeline;
+    env = transformers.env;
+    
+    // Configure transformers.js for browser environment
+    // Use browser compatible settings
+    env.useBrowserCache = true;
+    env.allowLocalModels = false;
+    env.backends.onnx.wasm.numThreads = 1;
+    env.backends.onnx.node = false;
+    env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
+    
+    // Make sure paths are properly configured to avoid the fileURLToPath error
+    env.localModelPath = './models/';
+    env.DEFAULT_CACHE_DIR = './cache/';
+    env.RUNNING_LOCALLY = false;
+} catch (error) {
+    console.error("Error loading transformers library:", error);
+    // Create dummy implementations if transformers fails to load
+    pipeline = () => Promise.reject("Transformers library failed to load");
+    env = { useBrowserCache: true };
+}
 
 // Configure caching in browser's IndexedDB
-env.cacheDir = null; // Don't use filesystem cache
-env.remoteHost = 'https://huggingface.co';
+if (env) {
+    env.cacheDir = null; // Don't use filesystem cache
+    env.remoteHost = 'https://huggingface.co';
+    
+    // Ensure RUNNING_LOCALLY is false to prevent fileURLToPath usage
+    env.RUNNING_LOCALLY = false;
+    
+    // Print a diagnostic message
+    console.log('Transformers.js configuration complete with browser compatibility settings');
+}
 
 /**
  * Local embedding provider using transformers.js and all-MiniLM-L6-v2
@@ -85,6 +128,14 @@ export class LocalEmbeddingProvider extends BaseEmbeddingProvider implements ITo
      * Loads the embedding model in the background
      */
     async initialize(): Promise<void> {
+        // Check if pipeline function is available
+        if (!pipeline || typeof pipeline !== 'function') {
+            console.error('Transformers pipeline not available - browser polyfill may have failed');
+            this.loadError = 'Transformers library not properly loaded';
+            new Notice('Embedding model unavailable: transformers library not properly loaded');
+            throw new Error('Transformers library not properly loaded');
+        }
+        
         if (this.isLoading) {
             console.log('Model is already loading...');
             return;
@@ -102,9 +153,31 @@ export class LocalEmbeddingProvider extends BaseEmbeddingProvider implements ITo
             // Show loading notice to user
             const notice = new Notice(`Loading local embedding model: ${this.modelName}...`, 0);
             
-            // Load the embedding pipeline
-            console.log(`Loading embedding model: ${this.modelName}`);
-            this.embeddingPipeline = await pipeline('feature-extraction', this.modelName);
+            // Set critical environment variables to prevent fileURLToPath errors
+            if (env) {
+                env.RUNNING_LOCALLY = false;
+                env.useBrowserCache = true;
+                env.allowLocalModels = false;
+            }
+            
+            // Create a guard for import.meta.url
+            if (typeof (globalThis as any).import === 'undefined') {
+                (globalThis as any).import = {};
+            }
+            if (typeof (globalThis as any).import.meta === 'undefined') {
+                (globalThis as any).import.meta = { url: './' };
+            }
+            
+            // Diagnostic message
+            console.log(`Loading embedding model: ${this.modelName} with env:`, env);
+            
+            // Load the embedding pipeline with timeout for safety
+            const pipelinePromise = pipeline('feature-extraction', this.modelName);
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Embedding model loading timed out after 30 seconds')), 30000);
+            });
+            
+            this.embeddingPipeline = await Promise.race([pipelinePromise, timeoutPromise]);
             
             this.modelLoaded = true;
             this.isLoading = false;
@@ -120,7 +193,22 @@ export class LocalEmbeddingProvider extends BaseEmbeddingProvider implements ITo
             this.isLoading = false;
             this.loadError = getErrorMessage(error);
             console.error('Error loading local embedding model:', error);
-            new Notice('Error loading local embedding model: ' + this.loadError);
+            
+            // Provide more detailed error message to the user
+            let userMessage = 'Error loading local embedding model';
+            
+            // Check for specific error types to give better guidance
+            if (this.loadError.includes('fileURLToPath')) {
+                userMessage += ': Browser compatibility issue. Use OpenAI embeddings instead.';
+            } else if (this.loadError.includes('timeout')) {
+                userMessage += ': Loading timed out. Your device may not have enough resources.';
+            } else if (this.loadError.includes('network')) {
+                userMessage += ': Network error. Check your internet connection.';
+            } else {
+                userMessage += ': ' + this.loadError;
+            }
+            
+            new Notice(userMessage);
             throw new Error(`Failed to load embedding model: ${this.loadError}`);
         }
     }

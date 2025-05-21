@@ -120,15 +120,47 @@ export class EmbeddingService {
       // Check which provider to use
       if (this.settings.apiProvider === 'openai' && this.settings.openaiApiKey) {
         // Initialize OpenAI provider
-        this.embeddingProvider = new OpenAIProvider(this.settings);
-        await this.embeddingProvider.initialize();
-        console.log("OpenAI embedding provider initialized successfully");
+        try {
+          this.embeddingProvider = new OpenAIProvider(this.settings);
+          await this.embeddingProvider.initialize();
+          console.log("OpenAI embedding provider initialized successfully");
+        } catch (openaiError) {
+          console.error("Error initializing OpenAI provider:", openaiError);
+          throw new Error(`OpenAI provider initialization failed: ${getErrorMessage(openaiError)}`);
+        }
       } 
       else if (this.settings.apiProvider === 'local-minilm') {
-        // Initialize local MiniLM provider
-        this.embeddingProvider = new LocalEmbeddingProvider(this.settings);
-        await this.embeddingProvider.initialize();
-        console.log("Local MiniLM embedding provider initialized successfully");
+        // Try to create and initialize local MiniLM provider with additional error handling
+        try {
+          console.log("Attempting to initialize local embedding provider...");
+          const localProvider = new LocalEmbeddingProvider(this.settings);
+          
+          // Set a timeout for initialization to avoid hanging
+          const initPromise = localProvider.initialize();
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("Local provider initialization timed out after 30 seconds")), 30000);
+          });
+          
+          // Wait for initialization with timeout
+          await Promise.race([initPromise, timeoutPromise]);
+          
+          // If initialization succeeded, set as the provider
+          this.embeddingProvider = localProvider;
+          console.log("Local MiniLM embedding provider initialized successfully");
+        } catch (localError) {
+          // If local provider fails, log and throw with detailed message
+          console.error("Error initializing local MiniLM provider:", localError);
+          
+          // Check for specific errors
+          const errorMsg = getErrorMessage(localError);
+          if (errorMsg.includes('fileURLToPath') || errorMsg.includes('import.meta.url')) {
+            throw new Error(`Local provider failed due to browser compatibility issues: ${errorMsg}`);
+          } else if (errorMsg.includes('timeout')) {
+            throw new Error(`Local provider initialization timed out - your device may not have enough resources`);
+          } else {
+            throw new Error(`Local provider initialization failed: ${errorMsg}`);
+          }
+        }
       } 
       else {
         // No valid provider configuration, fall back to default
@@ -139,20 +171,34 @@ export class EmbeddingService {
     } catch (providerError) {
       console.error("Error initializing embedding provider:", providerError);
       
-      // Log provider-specific details
+      // Log detailed provider-specific error messages
+      const errorMsg = getErrorMessage(providerError);
       if (this.settings.apiProvider === 'openai') {
-        console.error("Error initializing OpenAI provider. Check your API key and settings.");
+        console.error(`OpenAI provider error: ${errorMsg}`);
+        new Notice(`OpenAI embeddings error: ${errorMsg.includes('key') ? 'Invalid API key' : errorMsg}`);
       } else if (this.settings.apiProvider === 'local-minilm') {
-        console.error("Error initializing local MiniLM provider. This might be due to browser compatibility issues or memory constraints.");
+        console.error(`Local MiniLM provider error: ${errorMsg}`);
+        
+        // Check for fileURLToPath specific error
+        if (errorMsg.includes('fileURLToPath') || errorMsg.includes('import.meta.url')) {
+          new Notice("Local embeddings not supported in this environment. Switching to OpenAI embeddings instead.");
+        } else {
+          new Notice(`Local embeddings error: ${errorMsg}`);
+        }
       }
       
-      // Fall back to default provider
+      // Fall back to default provider and disable embeddings
       this.settings.embeddingsEnabled = false;
       this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
-      await this.embeddingProvider.initialize();
       
-      // Show error notice to user
-      new Notice(`Error initializing embedding provider: ${getErrorMessage(providerError)}`);
+      try {
+        await this.embeddingProvider.initialize();
+      } catch (fallbackError) {
+        console.error("Even fallback provider failed to initialize:", fallbackError);
+      }
+      
+      // Save updated settings
+      this.saveSettings();
     }
   }
   
