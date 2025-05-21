@@ -3,8 +3,12 @@ import { MemorySettings } from '../../types';
 import { BaseEmbeddingProvider } from './embeddings-provider';
 import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { applyBrowserPolyfills } from '../../utils/browserPolyfills';
 
-// Import transformer.js and configure environment
+// Apply browser polyfills first to ensure compatibility
+applyBrowserPolyfills();
+
+// Now import transformer.js
 import { pipeline, env } from '@xenova/transformers';
 
 // Configure transformers.js for browser environment
