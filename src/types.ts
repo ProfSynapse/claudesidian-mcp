@@ -216,8 +216,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     // $0.00 for local models
     costPerThousandTokens: {
         'text-embedding-3-small': 0.00002,
-        'text-embedding-3-large': 0.00013,
-        'all-MiniLM-L6-v2': 0
+        'text-embedding-3-large': 0.00013
     }
 };
 

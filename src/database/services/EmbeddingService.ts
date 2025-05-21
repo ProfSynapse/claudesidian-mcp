@@ -520,13 +520,15 @@ export class EmbeddingService {
               // Add new tokens to all-time count
               allTimeStats.tokensAllTime += totalTokensProcessed;
               
-              // Calculate cost based on model
+              // Calculate cost based on model (local models are free)
               const costPerThousandTokens = this.settings.costPerThousandTokens || {
                 'text-embedding-3-small': 0.00002,
                 'text-embedding-3-large': 0.00013
               };
               
-              const costPerThousand = costPerThousandTokens[embeddingModel] || 0.00002;
+              // If it's a local model, cost is 0
+              const isLocalModel = embeddingModel === 'all-MiniLM-L6-v2';
+              const costPerThousand = isLocalModel ? 0 : (costPerThousandTokens[embeddingModel as keyof typeof costPerThousandTokens] || 0.00002);
               const cost = (totalTokensProcessed / 1000) * costPerThousand;
               
               // Add cost to all-time cost

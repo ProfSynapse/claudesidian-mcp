@@ -144,7 +144,7 @@ export class LocalEmbeddingProvider extends BaseEmbeddingProvider implements ITo
             console.log(`Embedding generation took ${endTime - startTime}ms`);
             
             // Get the embedding data as a typed array
-            const embedding = Array.from(output.data);
+            const embedding = Array.from(output.data) as number[];
             
             // Track token usage
             const tokenCount = this.getTokenCount(text);
@@ -203,7 +203,7 @@ export class LocalEmbeddingProvider extends BaseEmbeddingProvider implements ITo
                             normalize: true
                         });
                         
-                        const embedding = Array.from(output.data);
+                        const embedding = Array.from(output.data) as number[];
                         results.push(embedding);
                         
                         // Track token usage

@@ -428,6 +428,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                         }
                     })
                 );
+        }
     }
     /**
      * Check if any embeddings exist in the system
