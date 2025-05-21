@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { FileEmbedding } from '../workspace-types';
 import { TextChunk, chunkText } from '../utils/TextChunker';
+import { OpenAIProvider } from '../providers/openai-provider';
+import { LocalEmbeddingProvider } from '../providers/local-provider';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {
@@ -106,56 +108,51 @@ export class EmbeddingService {
    * Initialize the embedding provider
    */
   private async initializeProvider(): Promise<void> {
-    if (this.settings.embeddingsEnabled && this.settings.openaiApiKey) {
-      try {
-        // Use a custom embedding function for OpenAI
-        const openAiEmbedFunc = async (texts: string[]): Promise<number[][]> => {
-          try {
-            // Make OpenAI API call
-            const response = await fetch('https://api.openai.com/v1/embeddings', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.settings.openaiApiKey}`
-              },
-              body: JSON.stringify({
-                input: texts,
-                model: this.settings.embeddingModel || 'text-embedding-ada-002'
-              })
-            });
-            
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(`OpenAI API error: ${errorData.error?.message || response.statusText}`);
-            }
-            
-            const data = await response.json();
-            return data.data.map((item: any) => item.embedding);
-          } catch (error) {
-            console.error('Error calling OpenAI API:', error);
-            throw error;
-          }
-        };
-        
-        // Create a new provider with the OpenAI function
-        this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider(1536, openAiEmbedFunc);
+    if (!this.settings.embeddingsEnabled) {
+      // Embeddings are disabled - use the default provider
+      this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
+      await this.embeddingProvider.initialize();
+      console.log("Embeddings are disabled - using default provider");
+      return;
+    }
+
+    try {
+      // Check which provider to use
+      if (this.settings.apiProvider === 'openai' && this.settings.openaiApiKey) {
+        // Initialize OpenAI provider
+        this.embeddingProvider = new OpenAIProvider(this.settings);
         await this.embeddingProvider.initialize();
-        
         console.log("OpenAI embedding provider initialized successfully");
-      } catch (providerError) {
-        console.error("Error initializing OpenAI provider:", providerError);
-        this.settings.embeddingsEnabled = false;
-        
-        // Fall back to default provider
+      } 
+      else if (this.settings.apiProvider === 'local-minilm') {
+        // Initialize local MiniLM provider
+        this.embeddingProvider = new LocalEmbeddingProvider(this.settings);
+        await this.embeddingProvider.initialize();
+        console.log("Local MiniLM embedding provider initialized successfully");
+      } 
+      else {
+        // No valid provider configuration, fall back to default
+        console.warn("No valid embedding provider configuration - using default provider");
         this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
         await this.embeddingProvider.initialize();
       }
-    } else {
-      // Use the default provider in disabled mode
+    } catch (providerError) {
+      console.error("Error initializing embedding provider:", providerError);
+      
+      // Log provider-specific details
+      if (this.settings.apiProvider === 'openai') {
+        console.error("Error initializing OpenAI provider. Check your API key and settings.");
+      } else if (this.settings.apiProvider === 'local-minilm') {
+        console.error("Error initializing local MiniLM provider. This might be due to browser compatibility issues or memory constraints.");
+      }
+      
+      // Fall back to default provider
+      this.settings.embeddingsEnabled = false;
       this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
       await this.embeddingProvider.initialize();
       
-      console.log("Embeddings are disabled - using default provider");
+      // Show error notice to user
+      new Notice(`Error initializing embedding provider: ${getErrorMessage(providerError)}`);
     }
   }
   
@@ -230,11 +227,19 @@ export class EmbeddingService {
   async updateSettings(settings: MemorySettings): Promise<void> {
     this.settings = settings;
     
-    // Validate API key if embeddings are enabled
-    if (settings.embeddingsEnabled && (!settings.openaiApiKey || settings.openaiApiKey.trim() === "")) {
-      // API key is required but not provided, disable embeddings
-      console.warn("OpenAI API key is required but not provided. Embeddings will be disabled.");
-      this.settings.embeddingsEnabled = false;
+    // Validate settings based on provider
+    if (settings.embeddingsEnabled) {
+      if (settings.apiProvider === 'openai' && (!settings.openaiApiKey || settings.openaiApiKey.trim() === "")) {
+        // OpenAI API key is required but not provided when using OpenAI provider
+        console.warn("OpenAI API key is required but not provided. Embeddings will be disabled.");
+        this.settings.embeddingsEnabled = false;
+      }
+      else if (settings.apiProvider === 'local-minilm') {
+        // Local provider doesn't need validation, set the appropriate model
+        this.settings.embeddingModel = 'all-MiniLM-L6-v2';
+        this.settings.dimensions = 384; // Force the correct dimensions
+        console.log("Using local MiniLM provider with 384 dimensions");
+      }
     }
     
     // Reinitialize provider

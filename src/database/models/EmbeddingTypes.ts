@@ -5,7 +5,7 @@
 /**
  * Supported embedding models
  */
-export type EmbeddingModel = 'default' | 'openai' | 'local' | 'custom';
+export type EmbeddingModel = 'default' | 'openai' | 'local' | 'local-minilm' | 'custom';
 
 /**
  * Structure for basic embedding data

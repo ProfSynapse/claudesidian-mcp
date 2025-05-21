@@ -87,12 +87,12 @@ export interface MemorySettings {
     // Core settings
     enabled: boolean;
     embeddingsEnabled: boolean; // Toggle for enabling/disabling embeddings functionality
-    apiProvider: 'openai' | 'local';
+    apiProvider: 'openai' | 'local' | 'local-minilm';
     openaiApiKey: string;
     openaiOrganization?: string;
     
     // Model settings
-    embeddingModel: 'text-embedding-3-small' | 'text-embedding-3-large';
+    embeddingModel: 'text-embedding-3-small' | 'text-embedding-3-large' | 'all-MiniLM-L6-v2';
     dimensions: number;
     
     // Rate limiting
@@ -213,9 +213,11 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     // Cost tracking - per thousand token costs (converted from per million)
     // $0.02 per million = $0.00002 per thousand for text-embedding-3-small
     // $0.13 per million = $0.00013 per thousand for text-embedding-3-large
+    // $0.00 for local models
     costPerThousandTokens: {
         'text-embedding-3-small': 0.00002,
-        'text-embedding-3-large': 0.00013
+        'text-embedding-3-large': 0.00013,
+        'all-MiniLM-L6-v2': 0
     }
 };
 
@@ -340,6 +342,7 @@ export interface MemoryUsageStats {
     modelUsage?: {
         'text-embedding-3-small': number;
         'text-embedding-3-large': number;
+        'all-MiniLM-L6-v2': number;
     };
 }
 
