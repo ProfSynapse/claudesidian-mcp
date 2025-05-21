@@ -7,10 +7,17 @@ import { getErrorMessage } from '../../utils/errorUtils';
 // Import transformer.js and configure environment
 import { pipeline, env } from '@xenova/transformers';
 
-// Configure transformers.js to use WASM backend instead of node
-env.backends.onnx.wasm.numThreads = 1; // Set to number of threads to use
-env.backends.onnx.node = false;   // Disable Node.js backend
-env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/'; // Use CDN for WASM files
+// Configure transformers.js for browser environment
+// Use browser compatible settings
+env.useBrowserCache = true;
+env.allowLocalModels = false;
+env.backends.onnx.wasm.numThreads = 1;
+env.backends.onnx.node = false;
+env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
+
+// Configure caching in browser's IndexedDB
+env.cacheDir = null; // Don't use filesystem cache
+env.remoteHost = 'https://huggingface.co';
 
 /**
  * Local embedding provider using transformers.js and all-MiniLM-L6-v2
@@ -28,17 +35,14 @@ export class LocalEmbeddingProvider extends BaseEmbeddingProvider implements ITo
     private isLoading: boolean = false;
     private loadError: string | null = null;
     
-    // Configure the transformers.js cache location if needed
-    // This would normally be in localStorage, but can be customized
+    // Configure browser-compatible cache for models
     private configureCache() {
         try {
-            // Set cache directory for transformers.js
-            // This helps reduce redownloads of models
-            env.cacheDir = './.cache/transformers.js';
-            console.log('Set transformers.js cache directory to:', env.cacheDir);
+            // Browser caching is already configured in the imports section
+            // IndexedDB will be used automatically for caching
+            console.log('Using browser IndexedDB for transformers.js caching');
         } catch (error) {
-            console.warn('Unable to set cache directory:', error);
-            // Continue anyway, transformers.js will use its default cache location
+            console.warn('Error configuring browser cache:', error);
         }
     }
     
