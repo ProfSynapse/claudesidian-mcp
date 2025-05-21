@@ -6,6 +6,7 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IAgent } from '../agents/interfaces/IAgent';
 import { SessionContextManager } from '../services/SessionContextManager';
 import { getErrorMessage } from '../utils/errorUtils';
+import { ModeCall, ModeCallResult } from '../types';
 import { 
     generateSessionId, 
     formatSessionInstructions, 
@@ -521,34 +522,29 @@ export async function handleToolExecution(
         
         // Handle handoff if specified in the result
         if (result.handoff && result.success) {
-            // Get the handoff details
-            const { tool, mode: handoffMode, parameters, returnHere } = result.handoff;
-            
             try {
-                // Get the agent to hand off to
-                const handoffAgent = getAgent(tool);
-                
-                // Include the workspace context in the handoff parameters if it exists in the original result
-                if (result.workspaceContext) {
-                    parameters.workspaceContext = result.workspaceContext;
-                }
-                
-                // Ensure sessionId is passed to the handoff operation
-                if (processedParams.sessionId && !parameters.sessionId) {
-                    parameters.sessionId = processedParams.sessionId;
-                }
-                
-                // Execute the handoff
-                const handoffResult = await handoffAgent.executeMode(handoffMode, parameters);
-                
-                // Update context manager with handoff result if it contains workspace context
-                if (sessionContextManager && parameters.sessionId && handoffResult.workspaceContext) {
-                    sessionContextManager.updateFromResult(parameters.sessionId, handoffResult);
-                }
-                
-                // If returnHere is true, return combined results
-                if (returnHere) {
-                    result.handoffResult = handoffResult;
+                // Check if this is a multi-mode handoff
+                if (Array.isArray(result.handoff)) {
+                    // Multi-mode execution
+                    logger.systemLog(`Processing multi-mode handoff with ${result.handoff.length} modes`);
+                    
+                    // The actual execution happens in baseAgent, we just need to handle the results here
+                    // Update context manager with handoff results if they contain workspace context
+                    if (sessionContextManager && processedParams.sessionId && result.handoffResults) {
+                        // Update from the last successful result that has workspace context
+                        const lastSuccessfulResult = result.handoffResults
+                            .filter((r: ModeCallResult) => r.success && r.workspaceContext)
+                            .pop();
+                            
+                        if (lastSuccessfulResult && lastSuccessfulResult.workspaceContext) {
+                            sessionContextManager.updateFromResult(
+                                processedParams.sessionId, 
+                                lastSuccessfulResult
+                            );
+                        }
+                    }
+                    
+                    // Return the result with all handoff results included
                     return {
                         content: [{
                             type: "text",
@@ -556,20 +552,77 @@ export async function handleToolExecution(
                         }]
                     };
                 } else {
-                    // Otherwise, return just the handoff result
-                    return {
-                        content: [{
-                            type: "text",
-                            text: safeStringify(handoffResult)
-                        }]
-                    };
+                    // Single mode handoff (legacy support)
+                    const { tool, mode: handoffMode, parameters, returnHere } = result.handoff as ModeCall;
+                    
+                    // Get the agent to hand off to
+                    const handoffAgent = getAgent(tool);
+                    
+                    // Include the workspace context in the handoff parameters if it exists in the original result
+                    if (result.workspaceContext) {
+                        parameters.workspaceContext = result.workspaceContext;
+                    }
+                    
+                    // Ensure sessionId is passed to the handoff operation
+                    if (processedParams.sessionId && !parameters.sessionId) {
+                        parameters.sessionId = processedParams.sessionId;
+                    }
+                    
+                    // Execute the handoff
+                    const handoffResult = await handoffAgent.executeMode(handoffMode, parameters);
+                    
+                    // Update context manager with handoff result if it contains workspace context
+                    if (sessionContextManager && parameters.sessionId && handoffResult.workspaceContext) {
+                        sessionContextManager.updateFromResult(parameters.sessionId, handoffResult);
+                    }
+                    
+                    // If returnHere is true, return combined results
+                    if (returnHere) {
+                        result.handoffResult = handoffResult;
+                        return {
+                            content: [{
+                                type: "text",
+                                text: safeStringify(result)
+                            }]
+                        };
+                    } else {
+                        // Otherwise, return just the handoff result
+                        return {
+                            content: [{
+                                type: "text",
+                                text: safeStringify(handoffResult)
+                            }]
+                        };
+                    }
                 }
             } catch (handoffError) {
-                // If handoff fails, include the error in the original result
-                result.handoffResult = {
-                    success: false,
-                    error: getErrorMessage(handoffError)
-                };
+                logger.systemError(handoffError as Error, 'Handoff Error');
+                
+                // Check if this was a multi-mode handoff attempt
+                if (Array.isArray(result.handoff)) {
+                    // If multi-mode handoff fails, include the error in the original result
+                    result.handoffResults = result.handoff.map((call: ModeCall, index: number) => ({
+                        success: false,
+                        error: getErrorMessage(handoffError),
+                        tool: call.tool,
+                        mode: call.mode,
+                        callName: call.callName,
+                        sequence: index,
+                        sessionId: processedParams.sessionId
+                    }));
+                    
+                    result.handoffSummary = {
+                        successCount: 0,
+                        failureCount: result.handoff.length,
+                        executionStrategy: 'unknown'
+                    };
+                } else {
+                    // If single handoff fails, include the error in the original result
+                    result.handoffResult = {
+                        success: false,
+                        error: getErrorMessage(handoffError)
+                    };
+                }
                 
                 return {
                     content: [{

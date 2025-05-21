@@ -43,33 +43,69 @@ export function getWorkspaceContextSchema(): any {
 }
 
 /**
+ * Get schema for a single mode call
+ * @returns JSON schema for a mode call
+ */
+export function getModeCallSchema(): any {
+  return {
+    type: 'object',
+    properties: {
+      tool: { 
+        type: 'string',
+        description: 'Agent name to execute mode on' 
+      },
+      mode: { 
+        type: 'string',
+        description: 'Mode to execute' 
+      },
+      parameters: { 
+        type: 'object',
+        description: 'Parameters to pass to the mode'
+      },
+      returnHere: { 
+        type: 'boolean',
+        description: 'Whether to return results to original agent'
+      },
+      continueOnFailure: {
+        type: 'boolean',
+        description: 'Whether to continue execution if this mode fails'
+      },
+      strategy: {
+        type: 'string',
+        enum: ['serial', 'parallel'],
+        description: 'Execution strategy for this mode call'
+      },
+      callName: {
+        type: 'string',
+        description: 'Optional name to identify this mode call in the results'
+      }
+    },
+    required: ['tool', 'mode', 'parameters'],
+    description: 'Mode call definition'
+  };
+}
+
+/**
  * Get schema for handoff parameters
  * @returns JSON schema for handoff
  */
 export function getHandoffSchema(): any {
+  const modeCallSchema = getModeCallSchema();
+  
   return {
     handoff: {
-      type: 'object',
-      properties: {
-        tool: { 
-          type: 'string',
-          description: 'Agent name to hand off to' 
-        },
-        mode: { 
-          type: 'string',
-          description: 'Mode to execute' 
-        },
-        parameters: { 
-          type: 'object',
-          description: 'Parameters to pass to the next mode'
-        },
-        returnHere: { 
-          type: 'boolean',
-          description: 'Whether to return results to original agent'
+      oneOf: [
+        // Single mode call (backward compatibility)
+        modeCallSchema,
+        
+        // Array of mode calls (multi-mode execution)
+        {
+          type: 'array',
+          items: modeCallSchema,
+          description: 'Array of mode calls to execute'
         }
-      },
-      required: ['tool', 'mode', 'parameters'],
-      description: 'Optional handoff to another tool'
+      ],
+      description: 'Optional handoff to another agent/mode(s)'
     }
   };
 }
@@ -164,7 +200,90 @@ export function getCommonResultSchema(): any {
       },
       handoffResult: {
         type: 'object',
-        description: 'Result from handoff operation if one was performed'
+        description: 'Result from handoff operation if one was performed (legacy support)'
+      },
+      handoffResults: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              description: 'Whether the operation succeeded'
+            },
+            error: {
+              type: 'string', 
+              description: 'Error message if operation failed'
+            },
+            data: {
+              type: 'object',
+              description: 'Operation-specific result data'
+            },
+            tool: {
+              type: 'string',
+              description: 'Agent name that executed the mode'
+            },
+            mode: {
+              type: 'string',
+              description: 'Mode that was executed'
+            },
+            callName: {
+              type: 'string',
+              description: 'Name of the mode call if specified'
+            },
+            sequence: {
+              type: 'number',
+              description: 'Sequence number of this mode call'
+            },
+            startTime: {
+              type: 'number',
+              description: 'Timestamp when the mode call started'
+            },
+            endTime: {
+              type: 'number',
+              description: 'Timestamp when the mode call completed'
+            },
+            duration: {
+              type: 'number',
+              description: 'Duration of the mode call in milliseconds'
+            }
+          },
+          required: ['success', 'tool', 'mode'],
+          description: 'Result of a single mode execution'
+        },
+        description: 'Results from multiple handoffs when executing multiple modes'
+      },
+      handoffSummary: {
+        type: 'object',
+        properties: {
+          successCount: {
+            type: 'number',
+            description: 'Number of successful mode calls'
+          },
+          failureCount: {
+            type: 'number',
+            description: 'Number of failed mode calls'
+          },
+          startTime: {
+            type: 'number',
+            description: 'Timestamp when execution started'
+          },
+          endTime: {
+            type: 'number',
+            description: 'Timestamp when execution completed'
+          },
+          totalDuration: {
+            type: 'number',
+            description: 'Total duration of all handoffs in milliseconds'
+          },
+          executionStrategy: {
+            type: 'string',
+            enum: ['serial', 'parallel', 'mixed'],
+            description: 'How modes were executed'
+          }
+        },
+        required: ['successCount', 'failureCount', 'executionStrategy'],
+        description: 'Summary of multi-mode execution results'
       },
       sessionId: {
         type: 'string',

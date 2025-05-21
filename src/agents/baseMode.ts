@@ -1,5 +1,5 @@
 import { IMode } from './interfaces/IMode';
-import { CommonParameters, CommonResult } from '../types';
+import { CommonParameters, CommonResult, ModeCall, ModeCallResult } from '../types';
 import { 
   getCommonParameterSchema, 
   getCommonResultSchema, 
@@ -230,10 +230,10 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
   }
   
   /**
-   * Handle handoff to another agent/mode
-   * @param handoff Handoff parameters
+   * Handle handoff to another agent/mode(s)
+   * @param handoff Handoff parameters - can be a single mode call or an array of mode calls
    * @param currentResult Current result to include in handoff
-   * @returns Promise resolving to result with handoff result
+   * @returns Promise resolving to result with handoff result(s)
    */
   protected async handleHandoff(
     handoff: CommonParameters['handoff'],
@@ -249,6 +249,34 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
       // The actual implementation will be in BaseAgent
       console.log('Warning: Base handleHandoff called - not implemented in BaseMode');
       
+      // Check if this is a multi-mode handoff (array of mode calls)
+      if (Array.isArray(handoff)) {
+        return {
+          ...currentResult,
+          handoffResults: handoff.map((call, index) => ({
+            success: false,
+            error: 'Multi-mode handoff not implemented in BaseMode',
+            tool: call.tool,
+            mode: call.mode,
+            callName: call.callName,
+            sequence: index,
+            startTime: Date.now(),
+            endTime: Date.now(),
+            duration: 0,
+            sessionId: currentResult.sessionId
+          })),
+          handoffSummary: {
+            successCount: 0,
+            failureCount: handoff.length,
+            startTime: Date.now(),
+            endTime: Date.now(),
+            totalDuration: 0,
+            executionStrategy: 'serial'
+          }
+        } as R;
+      }
+      
+      // Single mode handoff (legacy support)
       return {
         ...currentResult,
         handoffResult: {
@@ -257,6 +285,34 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
         }
       } as R;
     } catch (error) {
+      // Check if this was a multi-mode handoff attempt
+      if (Array.isArray(handoff)) {
+        return {
+          ...currentResult,
+          handoffResults: handoff.map((call, index) => ({
+            success: false,
+            error: getErrorMessage(error) || 'Failed to handle multi-mode handoff',
+            tool: call.tool,
+            mode: call.mode,
+            callName: call.callName,
+            sequence: index,
+            startTime: Date.now(),
+            endTime: Date.now(),
+            duration: 0,
+            sessionId: currentResult.sessionId
+          })),
+          handoffSummary: {
+            successCount: 0,
+            failureCount: handoff.length,
+            startTime: Date.now(),
+            endTime: Date.now(),
+            totalDuration: 0,
+            executionStrategy: 'serial'
+          }
+        } as R;
+      }
+      
+      // Single mode handoff error
       return {
         ...currentResult,
         handoffResult: {

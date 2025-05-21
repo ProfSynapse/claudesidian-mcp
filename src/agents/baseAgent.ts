@@ -1,7 +1,12 @@
 import { IAgent } from './interfaces/IAgent';
 import { IMode } from './interfaces/IMode';
-import { CommonParameters, CommonResult } from '../types';
-import { parseWorkspaceContext } from '../utils/contextUtils';
+import { CommonParameters, CommonResult, ModeCall, ModeCallResult } from '../types';
+import { 
+  parseWorkspaceContext, 
+  mergeWorkspaceContexts, 
+  trackWorkspaceContexts,
+  prepareModeCallParams
+} from '../utils/contextUtils';
 import { createErrorMessage } from '../utils/errorUtils';
 
 /**
@@ -132,8 +137,8 @@ export abstract class BaseAgent implements IAgent {
   }
   
   /**
-   * Handle handoff to another agent/mode
-   * @param handoff Handoff parameters
+   * Handle handoff to another agent/mode(s)
+   * @param handoff Handoff parameters - can be a single mode call or an array of mode calls
    * @param originalResult Result from the original mode execution
    * @returns Result from handoff or combined result
    */
@@ -149,8 +154,27 @@ export abstract class BaseAgent implements IAgent {
       };
     }
     
+    // Check if this is a multi-mode handoff (array of mode calls)
+    if (Array.isArray(handoff)) {
+      return await this.handleMultiModeHandoff(handoff, originalResult);
+    }
+    
+    // Single mode handoff (legacy support)
+    return await this.handleSingleModeHandoff(handoff, originalResult);
+  }
+  
+  /**
+   * Handle a single mode handoff (legacy support)
+   * @param handoff Single mode call parameters
+   * @param originalResult Result from the original mode execution
+   * @returns Result from handoff or combined result
+   */
+  protected async handleSingleModeHandoff(
+    handoff: ModeCall,
+    originalResult: CommonResult
+  ): Promise<CommonResult> {
     // Get the target agent
-    const targetAgent = this.agentManager.getAgent(handoff.tool);
+    const targetAgent = this.agentManager!.getAgent(handoff.tool);
     if (!targetAgent) {
       return {
         ...originalResult,
@@ -221,6 +245,214 @@ export abstract class BaseAgent implements IAgent {
         error: createErrorMessage('Handoff error: ', error),
         workspaceContext: originalResult.workspaceContext,
         sessionId: originalResult.sessionId
+      };
+    }
+  }
+  
+  /**
+   * Handle multiple mode calls (multi-mode execution)
+   * @param modeCalls Array of mode calls to execute
+   * @param originalResult Result from the original mode execution
+   * @returns Result with all mode call results
+   */
+  protected async handleMultiModeHandoff(
+    modeCalls: ModeCall[],
+    originalResult: CommonResult
+  ): Promise<CommonResult> {
+    if (!modeCalls || modeCalls.length === 0) {
+      return {
+        ...originalResult,
+        error: originalResult.error || createErrorMessage('Multi-mode handoff failed: ', 'No mode calls provided')
+      };
+    }
+    
+    // Track start time
+    const startTime = Date.now();
+    
+    // Determine overall execution strategy
+    // If ALL modes are marked parallel, use parallel execution
+    // If ANY mode is marked serial OR no strategy is specified, use serial execution
+    const allParallel = modeCalls.every(call => call.strategy === 'parallel');
+    const executionStrategy = allParallel ? 'parallel' : 
+                             modeCalls.some(call => call.strategy === 'serial' || !call.strategy) ? 'serial' : 'mixed';
+    
+    // Create results array and counters
+    const handoffResults: ModeCallResult[] = [];
+    let successCount = 0;
+    let failureCount = 0;
+    let lastWorkspaceContext = originalResult.workspaceContext;
+    
+    try {
+      if (executionStrategy === 'parallel') {
+        // Execute all mode calls in parallel
+        const promises = modeCalls.map((modeCall, index) => 
+          this.executeModeCall(modeCall, originalResult, lastWorkspaceContext, index)
+        );
+        
+        // Wait for all promises to resolve
+        const results = await Promise.all(promises);
+        
+        // Process results
+        results.forEach(result => {
+          if (result.success) {
+            successCount++;
+          } else {
+            failureCount++;
+          }
+          
+          handoffResults.push(result);
+        });
+        
+        // Use utility function to track and merge all workspace contexts
+        const updatedContext = trackWorkspaceContexts(results, lastWorkspaceContext);
+        if (updatedContext) {
+          lastWorkspaceContext = updatedContext;
+        }
+      } else {
+        // Execute mode calls serially
+        for (let i = 0; i < modeCalls.length; i++) {
+          const modeCall = modeCalls[i];
+          const result = await this.executeModeCall(modeCall, originalResult, lastWorkspaceContext, i);
+          
+          handoffResults.push(result);
+          
+          if (result.success) {
+            successCount++;
+            
+            // Update workspace context using utility function
+            const updatedContext = mergeWorkspaceContexts(
+              lastWorkspaceContext, 
+              result.workspaceContext, 
+              'second' // Prioritize the newer context
+            );
+            if (updatedContext) {
+              lastWorkspaceContext = updatedContext;
+            }
+          } else {
+            failureCount++;
+            
+            // Stop execution on failure unless continueOnFailure is true
+            if (!modeCall.continueOnFailure && i < modeCalls.length - 1) {
+              break;
+            }
+          }
+        }
+      }
+      
+      // Calculate end time and total duration
+      const endTime = Date.now();
+      const totalDuration = endTime - startTime;
+      
+      // Determine overall success
+      // Consider the operation successful if at least one mode succeeded
+      const overallSuccess = successCount > 0;
+      
+      // Return combined result
+      return {
+        ...originalResult,
+        success: overallSuccess,
+        workspaceContext: lastWorkspaceContext,
+        handoffResults,
+        handoffSummary: {
+          successCount,
+          failureCount,
+          startTime,
+          endTime,
+          totalDuration,
+          executionStrategy
+        }
+      };
+    } catch (error) {
+      // Handle errors in multi-mode handoff
+      return {
+        ...originalResult,
+        success: false,
+        error: createErrorMessage('Multi-mode handoff error: ', error),
+        workspaceContext: lastWorkspaceContext,
+        handoffResults,
+        handoffSummary: {
+          successCount,
+          failureCount,
+          startTime,
+          endTime: Date.now(),
+          totalDuration: Date.now() - startTime,
+          executionStrategy
+        }
+      };
+    }
+  }
+  
+  /**
+   * Execute a single mode call
+   * @param modeCall Mode call to execute
+   * @param originalResult Original result from the previous mode
+   * @param currentWorkspaceContext Current workspace context
+   * @param sequence Sequence number for this mode call
+   * @returns Result of the mode execution
+   */
+  private async executeModeCall(
+    modeCall: ModeCall,
+    originalResult: CommonResult,
+    currentWorkspaceContext: any,
+    sequence: number
+  ): Promise<ModeCallResult> {
+    // Track start time
+    const startTime = Date.now();
+    
+    try {
+      // Get the target agent
+      if (!this.agentManager) {
+        throw new Error('Agent manager not available');
+      }
+      
+      const targetAgent = this.agentManager.getAgent(modeCall.tool);
+      if (!targetAgent) {
+        throw new Error(`Target agent '${modeCall.tool}' not found`);
+      }
+      
+      // Use utility function to prepare parameters with proper context inheritance
+      const callParams = prepareModeCallParams(
+        modeCall, 
+        originalResult.sessionId, 
+        currentWorkspaceContext || originalResult.workspaceContext
+      );
+      
+      // Execute the target mode
+      const callResult = await targetAgent.executeMode(modeCall.mode, callParams);
+      
+      // Calculate end time and duration
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Return the result with additional metadata
+      return {
+        ...callResult,
+        tool: modeCall.tool,
+        mode: modeCall.mode,
+        callName: modeCall.callName,
+        sequence,
+        startTime,
+        endTime,
+        duration
+      };
+    } catch (error) {
+      // Calculate end time and duration
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Return error result
+      return {
+        success: false,
+        error: createErrorMessage('Mode call error: ', error),
+        tool: modeCall.tool,
+        mode: modeCall.mode,
+        callName: modeCall.callName,
+        sequence,
+        startTime,
+        endTime,
+        duration,
+        sessionId: originalResult.sessionId,
+        workspaceContext: currentWorkspaceContext
       };
     }
   }
