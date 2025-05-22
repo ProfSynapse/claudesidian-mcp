@@ -692,10 +692,15 @@ export async function handleToolExecution(
         if (sessionContextManager && params.sessionId) {
             try {
                 // Process the session ID
-                // We no longer generate new IDs for existing session IDs
-                // This allows clients to provide their own valid session IDs
-                params.sessionId = await sessionContextManager.validateSessionId(params.sessionId);
-                // We retain the original ID for reference but don't track if it changed
+                const validatedSessionId = await sessionContextManager.validateSessionId(params.sessionId);
+                
+                // Check if the session ID was changed and set appropriate flags
+                if (validatedSessionId !== params.sessionId) {
+                    params._isNonStandardId = true;
+                    params._originalSessionId = params.sessionId;
+                    params.sessionId = validatedSessionId;
+                    logger.systemLog(`Session ID standardized from "${params._originalSessionId}" to "${validatedSessionId}"`);
+                }
             } catch (error) {
                 logger.systemWarn(`Session validation failed: ${getErrorMessage(error)}. Using original ID`);
             }
@@ -873,6 +878,26 @@ export async function handleToolExecution(
         }
         
         // Regular result with no handoff
+        if (needsInstructions && (result.sessionInstructions || result.sessionIdCorrection || result.newSessionInfo)) {
+            // Make session instructions prominent at the top of the response
+            let responseText = "";
+            
+            if (result.sessionIdCorrection) {
+                responseText += `🔄 SESSION ID UPDATED: Please use session ID "${result.sessionIdCorrection.correctedId}" for all future requests in this conversation.\n\n`;
+            } else if (result.newSessionInfo) {
+                responseText += `🆕 SESSION CREATED: Please use session ID "${result.newSessionInfo.sessionId}" for all future requests in this conversation.\n\n`;
+            }
+            
+            responseText += safeStringify(result);
+            
+            return {
+                content: [{
+                    type: "text",
+                    text: responseText
+                }]
+            };
+        }
+        
         return {
             content: [{
                 type: "text",
