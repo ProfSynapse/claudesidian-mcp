@@ -434,6 +434,73 @@ export class ContentOperations {
   }
   
   /**
+   * Find and replace text in a file
+   * @param app Obsidian app instance
+   * @param filePath Path to the file
+   * @param findText Text to find
+   * @param replaceText Text to replace with
+   * @param replaceAll Whether to replace all occurrences or just the first one
+   * @param caseSensitive Whether the search should be case sensitive
+   * @param wholeWord Whether to use whole word matching
+   * @returns Promise that resolves with the number of replacements made
+   */
+  static async findReplaceContent(
+    app: App,
+    filePath: string,
+    findText: string,
+    replaceText: string,
+    replaceAll = false,
+    caseSensitive = true,
+    wholeWord = false
+  ): Promise<number> {
+    try {
+      // Normalize path to remove any leading slash
+      const normalizedPath = this.normalizePath(filePath);
+      const file = app.vault.getAbstractFileByPath(normalizedPath);
+      
+      if (!file) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      
+      if (!(file instanceof TFile)) {
+        throw new Error(`Not a file: ${filePath}`);
+      }
+      
+      const existingContent = await app.vault.read(file);
+      
+      // Build regex pattern
+      let pattern = this.escapeRegExp(findText);
+      
+      // Add word boundaries if wholeWord is true
+      if (wholeWord) {
+        pattern = `\\b${pattern}\\b`;
+      }
+      
+      // Create regex with appropriate flags
+      const flags = (caseSensitive ? '' : 'i') + (replaceAll ? 'g' : '');
+      const regex = new RegExp(pattern, flags);
+      
+      // Count matches before replacement
+      const matches = existingContent.match(regex);
+      const matchCount = matches ? matches.length : 0;
+      
+      if (matchCount === 0) {
+        // No matches found
+        return 0;
+      }
+      
+      // Perform replacement
+      const modifiedContent = existingContent.replace(regex, replaceText);
+      await app.vault.modify(file, modifiedContent);
+      
+      return matchCount;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Error in find and replace: ${errorMessage}`);
+    }
+  }
+
+  /**
    * Escape special characters in a string for use in a regular expression
    * @param string String to escape
    * @returns Escaped string

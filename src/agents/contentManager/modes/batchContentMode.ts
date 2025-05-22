@@ -103,6 +103,14 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
               throw new Error(`Missing 'content' property in delete operation at index ${index}`);
             }
             break;
+          case 'findReplace':
+            if (!operation.params.findText) {
+              throw new Error(`Missing 'findText' property in findReplace operation at index ${index}`);
+            }
+            if (!operation.params.replaceText) {
+              throw new Error(`Missing 'replaceText' property in findReplace operation at index ${index}`);
+            }
+            break;
         }
       });
       
@@ -111,7 +119,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
         success: boolean;
         error?: string;
         data?: any;
-        type: "read" | "create" | "append" | "prepend" | "replace" | "replaceByLine" | "delete";
+        type: "read" | "create" | "append" | "prepend" | "replace" | "replaceByLine" | "delete" | "findReplace";
         filePath: string;
       }> = [];
       
@@ -143,6 +151,9 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
             case 'delete':
               result = await this.executeDeleteOperation(operation);
               break;
+            case 'findReplace':
+              result = await this.executeFindReplaceOperation(operation);
+              break;
             default:
               throw new Error(`Unknown operation type: ${(operation as any).type}`);
           }
@@ -155,7 +166,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
           });
           
           // For operations that modify content, update embeddings if available
-          if (['create', 'append', 'prepend', 'replace', 'replaceByLine', 'delete'].includes(operation.type)) {
+          if (['create', 'append', 'prepend', 'replace', 'replaceByLine', 'delete', 'findReplace'].includes(operation.type)) {
             await this.updateEmbeddingsWithChromaDB(
               operation.params.filePath,
               workspaceContext,
@@ -339,6 +350,39 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
     };
   }
   
+  /**
+   * Execute a find and replace operation
+   * @param operation The find and replace operation to execute
+   * @returns Promise that resolves with the operation result
+   */
+  private async executeFindReplaceOperation(operation: Extract<ContentOperation, { type: 'findReplace' }>): Promise<any> {
+    const { 
+      filePath, 
+      findText, 
+      replaceText, 
+      replaceAll = false, 
+      caseSensitive = true, 
+      wholeWord = false 
+    } = operation.params;
+    
+    const replacements = await ContentOperations.findReplaceContent(
+      this.app,
+      filePath,
+      findText,
+      replaceText,
+      replaceAll,
+      caseSensitive,
+      wholeWord
+    );
+    
+    return {
+      filePath,
+      replacements,
+      findText,
+      replaceText
+    };
+  }
+  
   // This function was removed as it's not used
   
   /**
@@ -472,7 +516,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
             properties: {
               type: {
                 type: 'string',
-                enum: ['read', 'create', 'append', 'prepend', 'replace', 'replaceByLine', 'delete'],
+                enum: ['read', 'create', 'append', 'prepend', 'replace', 'replaceByLine', 'delete', 'findReplace'],
                 description: 'Type of operation'
               },
               params: {
@@ -580,6 +624,36 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
                         }
                       },
                       required: ['filePath', 'content']
+                    }
+                  },
+                  {
+                    if: {
+                      properties: { 
+                        "type": { "enum": ["findReplace"] }
+                      }
+                    },
+                    then: {
+                      properties: {
+                        filePath: { type: 'string', description: 'Path to the file to modify' },
+                        findText: { type: 'string', description: 'Text to find' },
+                        replaceText: { type: 'string', description: 'Text to replace with' },
+                        replaceAll: { 
+                          type: 'boolean', 
+                          description: 'Whether to replace all occurrences or just the first one',
+                          default: false
+                        },
+                        caseSensitive: { 
+                          type: 'boolean', 
+                          description: 'Whether the search should be case sensitive',
+                          default: true
+                        },
+                        wholeWord: { 
+                          type: 'boolean', 
+                          description: 'Whether to use whole word matching',
+                          default: false
+                        }
+                      },
+                      required: ['filePath', 'findText', 'replaceText']
                     }
                   }
                 ]

@@ -9,6 +9,7 @@ import {
   ReplaceContentMode,
   ReplaceByLineMode,
   DeleteContentMode,
+  FindReplaceContentMode,
   BatchContentMode
 } from './modes';
 import { AgentManager } from '../../services/AgentManager';
@@ -81,6 +82,7 @@ export class ContentManagerAgent extends BaseAgent {
     this.registerMode(new ReplaceContentMode(app, this.embeddingService, this.searchService));
     this.registerMode(new ReplaceByLineMode(app, this.embeddingService, this.searchService));
     this.registerMode(new DeleteContentMode(app, this.embeddingService, this.searchService));
+    this.registerMode(new FindReplaceContentMode(app, this.embeddingService, this.searchService));
     this.registerMode(new BatchContentMode(app, this.embeddingService, this.searchService, this.memoryService));
     
     // Set agent manager reference for handoff capability

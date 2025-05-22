@@ -287,6 +287,71 @@ export interface DeleteContentResult extends CommonResult {
 }
 
 /**
+ * Parameters for find and replace operations in a file
+ */
+export interface FindReplaceContentParams extends CommonParameters {
+  /**
+   * Path to the file to modify
+   */
+  filePath: string;
+  
+  /**
+   * Text to find
+   */
+  findText: string;
+  
+  /**
+   * Text to replace with
+   */
+  replaceText: string;
+  
+  /**
+   * Whether to replace all occurrences or just the first one
+   * @default false
+   */
+  replaceAll?: boolean;
+  
+  /**
+   * Whether the search should be case sensitive
+   * @default true
+   */
+  caseSensitive?: boolean;
+  
+  /**
+   * Whether to use whole word matching
+   * @default false
+   */
+  wholeWord?: boolean;
+}
+
+/**
+ * Result of find and replace operations in a file
+ */
+export interface FindReplaceContentResult extends CommonResult {
+  data?: {
+    /**
+     * Path to the file
+     */
+    filePath: string;
+    
+    /**
+     * Number of replacements made
+     */
+    replacements: number;
+    
+    /**
+     * Text that was searched for
+     */
+    findText: string;
+    
+    /**
+     * Text that was used as replacement
+     */
+    replaceText: string;
+  };
+}
+
+/**
  * Content operation type for batch operations
  */
 export type ContentOperation = 
@@ -296,7 +361,8 @@ export type ContentOperation =
   | { type: 'prepend', params: Omit<PrependContentParams, keyof CommonParameters> }
   | { type: 'replace', params: Omit<ReplaceContentParams, keyof CommonParameters> }
   | { type: 'replaceByLine', params: Omit<ReplaceByLineParams, keyof CommonParameters> }
-  | { type: 'delete', params: Omit<DeleteContentParams, keyof CommonParameters> };
+  | { type: 'delete', params: Omit<DeleteContentParams, keyof CommonParameters> }
+  | { type: 'findReplace', params: Omit<FindReplaceContentParams, keyof CommonParameters> };
 
 /**
  * Parameters for batch content operations
