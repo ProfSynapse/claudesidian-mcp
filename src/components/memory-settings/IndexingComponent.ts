@@ -61,10 +61,35 @@ export class IndexingComponent {
         // Action buttons
         const actionsContainer = this.containerEl.createDiv({ cls: 'memory-actions' });
         
+        // Check if there's a resumable indexing operation
+        let hasResumable = false;
+        if (this.embeddingService && typeof this.embeddingService.hasResumableIndexing === 'function') {
+            hasResumable = await this.embeddingService.hasResumableIndexing();
+        } else if (this.plugin.services?.embeddingService && typeof this.plugin.services.embeddingService.hasResumableIndexing === 'function') {
+            hasResumable = await this.plugin.services.embeddingService.hasResumableIndexing();
+        } else if (this.plugin.embeddingService && typeof this.plugin.embeddingService.hasResumableIndexing === 'function') {
+            hasResumable = await this.plugin.embeddingService.hasResumableIndexing();
+        }
+        
+        // Show resume button if there's a resumable operation
+        if (hasResumable) {
+            const resumeButton = actionsContainer.createEl('button', {
+                text: 'Resume Indexing',
+                cls: 'mod-cta mod-warning'
+            });
+            
+            resumeButton.addEventListener('click', async () => {
+                await this.handleResumeOperation(resumeButton);
+            });
+            
+            // Add some spacing
+            actionsContainer.createEl('span', { text: ' ' });
+        }
+        
         // Reindex button
         const reindexButton = actionsContainer.createEl('button', {
             text: 'Reindex All Content',
-            cls: 'mod-cta'
+            cls: hasResumable ? '' : 'mod-cta'
         });
         
         reindexButton.addEventListener('click', async () => {
@@ -173,6 +198,16 @@ export class IndexingComponent {
                 throw new Error('OpenAI API key is required but not provided. Add your API key in the API tab.');
             }
             
+            // Initialize progress bar immediately
+            if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.updateProgress) {
+                (window as any).mcpProgressHandlers.updateProgress({
+                    total: filePaths.length,
+                    processed: 0,
+                    remaining: filePaths.length,
+                    operationId: 'batch-index'
+                });
+            }
+            
             // Track progress with an update function that updates the progress bar
             const progressTracker = (current: number, total: number) => {
                 // Update the progress bar using the global handler if available
@@ -180,7 +215,8 @@ export class IndexingComponent {
                     (window as any).mcpProgressHandlers.updateProgress({
                         total: total,
                         processed: current,
-                        remaining: total - current
+                        remaining: total - current,
+                        operationId: 'batch-index'
                     });
                 }
             };
@@ -340,6 +376,69 @@ export class IndexingComponent {
                     console.warn('Error during final stats refresh:', finalRefreshError);
                 }
             }, 2000); // Increased timeout to ensure all operations complete
+        }
+    }
+    
+    /**
+     * Handle resume indexing operation
+     * @param resumeButton The resume button element
+     */
+    private async handleResumeOperation(resumeButton: HTMLButtonElement): Promise<void> {
+        try {
+            // Disable the button to prevent multiple clicks
+            resumeButton.setAttribute('disabled', 'true');
+            resumeButton.textContent = 'Resuming...';
+            
+            // Track progress with an update function that updates the progress bar
+            const progressTracker = (current: number, total: number) => {
+                // Update the progress bar using the global handler if available
+                if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.updateProgress) {
+                    (window as any).mcpProgressHandlers.updateProgress({
+                        total: total,
+                        processed: current,
+                        remaining: total - current,
+                        operationId: 'batch-index'
+                    });
+                }
+            };
+            
+            // Try to use embeddingService (direct injection preferred)
+            if (this.embeddingService && typeof this.embeddingService.resumeIndexing === 'function') {
+                await this.embeddingService.resumeIndexing(progressTracker);
+                
+                // Force a stats update afterward to ensure the UI refreshes
+                await this.forceStatsUpdate(this.embeddingService);
+            }
+            // Fallback methods if direct injection isn't available
+            else if (this.plugin.services?.embeddingService && 
+                typeof this.plugin.services.embeddingService.resumeIndexing === 'function') {
+                await this.plugin.services.embeddingService.resumeIndexing(progressTracker);
+                
+                // Force a stats update afterward to ensure the UI refreshes
+                await this.forceStatsUpdate(this.plugin.services.embeddingService);
+            }
+            else if (this.plugin.embeddingService && 
+                typeof this.plugin.embeddingService.resumeIndexing === 'function') {
+                await this.plugin.embeddingService.resumeIndexing(progressTracker);
+                
+                // Force a stats update afterward to ensure the UI refreshes
+                await this.forceStatsUpdate(this.plugin.embeddingService);
+            }
+            else {
+                throw new Error('Embedding service not available for resuming indexing');
+            }
+            
+            new Notice('Successfully resumed and completed indexing');
+            
+            // Refresh the component to update button state
+            await this.refresh();
+        } catch (error) {
+            console.error('Error resuming indexing:', error);
+            new Notice(`Error resuming indexing: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            // Re-enable the button and reset its text
+            resumeButton.removeAttribute('disabled');
+            resumeButton.textContent = 'Resume Indexing';
         }
     }
 }

@@ -386,6 +386,7 @@ export class ChromaVectorStore extends BaseVectorStore {
           collection = await this.client.createCollection({
             name: collectionName,
             metadata: { 
+              'hnsw:space': 'cosine',  // Use cosine similarity for better embedding search
               createdAt: new Date().toISOString(),
               recoveredAt: new Date().toISOString(),
               recoveryReason: 'validation_failed'
@@ -400,7 +401,10 @@ export class ChromaVectorStore extends BaseVectorStore {
           // Create new collection
           collection = await this.client.createCollection({
             name: collectionName,
-            metadata: { createdAt: new Date().toISOString() }
+            metadata: { 
+              'hnsw:space': 'cosine',  // Use cosine similarity for better embedding search
+              createdAt: new Date().toISOString() 
+            }
           });
           
           console.log(`Created new collection: ${collectionName}`);
@@ -491,6 +495,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       await this.client.createCollection({
         name: collectionName,
         metadata: {
+          'hnsw:space': 'cosine',  // Use cosine similarity for better embedding search
           ...metadata,
           createdAt: new Date().toISOString()
         }

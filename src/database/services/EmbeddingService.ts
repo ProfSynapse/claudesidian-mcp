@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { FileEmbedding } from '../workspace-types';
 import { TextChunk, chunkText } from '../utils/TextChunker';
+import { IndexingStateManager } from './IndexingStateManager';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {
@@ -50,6 +51,11 @@ export class EmbeddingService {
   private plugin: Plugin;
   
   /**
+   * Indexing state manager
+   */
+  private stateManager: IndexingStateManager;
+  
+  /**
    * Initialization status
    */
   private initialized: boolean = false;
@@ -64,6 +70,9 @@ export class EmbeddingService {
     
     // Create a default embedding provider
     this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
+    
+    // Initialize state manager
+    this.stateManager = new IndexingStateManager(plugin);
     
     this.initializeSettings();
   }
@@ -138,7 +147,7 @@ export class EmbeddingService {
         };
         
         // Create a new provider with the OpenAI function
-        this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider(1536, openAiEmbedFunc);
+        this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider(this.settings.openaiApiKey, this.settings.embeddingModel);
         await this.embeddingProvider.initialize();
         
         console.log("OpenAI embedding provider initialized successfully");
@@ -269,6 +278,56 @@ export class EmbeddingService {
   }
   
   /**
+   * Check if there's a resumable indexing operation
+   */
+  async hasResumableIndexing(): Promise<boolean> {
+    return await this.stateManager.hasResumableIndexing();
+  }
+  
+  /**
+   * Resume a previously interrupted indexing operation
+   */
+  async resumeIndexing(progressCallback?: (current: number, total: number) => void): Promise<string[]> {
+    const state = await this.stateManager.loadState();
+    if (!state || state.pendingFiles.length === 0) {
+      throw new Error('No resumable indexing operation found');
+    }
+    
+    console.log(`Resuming indexing: ${state.completedFiles.length} completed, ${state.pendingFiles.length} remaining`);
+    
+    // Update the state to show we're resuming
+    state.status = 'indexing';
+    await this.stateManager.saveState(state);
+    
+    // Process only the pending files
+    const result = await this.batchIndexFiles(state.pendingFiles, (current, total) => {
+      // Adjust progress to account for already completed files
+      const totalProgress = state.completedFiles.length + current;
+      const totalFiles = state.totalFiles;
+      
+      if (progressCallback) {
+        progressCallback(totalProgress, totalFiles);
+      }
+    });
+    
+    // Clear the state after successful completion
+    await this.stateManager.clearState();
+    
+    return result;
+  }
+  
+  /**
+   * Update embeddings for files that have changed (used by file modification queue)
+   * @param filePaths Array of file paths that have been modified
+   * @param progressCallback Optional callback for progress updates
+   * @returns Promise resolving to array of updated embedding IDs
+   */
+  async updateFileEmbeddings(filePaths: string[], progressCallback?: (current: number, total: number) => void): Promise<string[]> {
+    // For now, just reindex the files - can be optimized later for incremental updates
+    return await this.batchIndexFiles(filePaths, progressCallback);
+  }
+  
+  /**
    * Clean up resources
    */
   onunload(): void {
@@ -295,9 +354,23 @@ export class EmbeddingService {
     }
     
     // Get plugin and vector store
-    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'];
+    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'] as any;
     if (!plugin || !plugin.vectorStore) {
       throw new Error('Vector store not available');
+    }
+    
+    // Set reindexing flag to prevent file update queue from processing
+    plugin.isReindexing = true;
+    
+    // Check if this is a new indexing operation or resuming
+    const existingState = await this.stateManager.loadState();
+    const isResuming = existingState && existingState.pendingFiles.length > 0;
+    
+    if (!isResuming) {
+      // Initialize new indexing state
+      await this.stateManager.initializeIndexing(filePaths);
+    } else {
+      console.log(`Resuming indexing operation: ${existingState.completedFiles.length} files already completed`);
     }
     
     // Get collections
@@ -337,16 +410,23 @@ export class EmbeddingService {
     const processingDelay = this.settings.processingDelay || 1000;
     
     // Show a single notice for the batch operation
-    const notice = new Notice(`Generating embeddings for ${filePaths.length} files...`, 0);
+    const notice = new Notice(`Generating embeddings: 0/${filePaths.length} files`, 0);
     
     const ids: string[] = [];
     let processedCount = 0;
     let totalTokensProcessed = 0;
     
+    // Initialize progress immediately
+    if (progressCallback) {
+      progressCallback(0, filePaths.length);
+    }
+    
     try {
       // Process files in batches
       for (let i = 0; i < filePaths.length; i += batchSize) {
         const batch = filePaths.slice(i, i + batchSize);
+        const successfulFiles: string[] = [];
+        const failedFiles: string[] = [];
         
         // Process batch in parallel
         const results = await Promise.allSettled(batch.map(async (filePath) => {
@@ -355,12 +435,14 @@ export class EmbeddingService {
             const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
             if (!file || !('children' in file === false)) { // Not a folder
               console.warn(`File not found or is a folder: ${filePath}`);
+              failedFiles.push(filePath);
               return null;
             }
             
             const content = await this.plugin.app.vault.read(file as TFile);
             if (!content || content.trim().length === 0) {
               console.warn(`File is empty: ${filePath}`);
+              failedFiles.push(filePath);
               return null;
             }
             
@@ -368,8 +450,13 @@ export class EmbeddingService {
             const chunkMaxTokens = this.settings.maxTokensPerChunk || 8000; // Default to 8000 tokens to stay under limit
             const chunkStrategy = this.settings.chunkStrategy || 'paragraph';
             
-            // Chunk the content based on settings
-            const chunks = chunkText(content, {
+            // Extract frontmatter and main content separately
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
+            const frontmatter = frontmatterMatch ? frontmatterMatch[1] : '';
+            const mainContent = frontmatterMatch ? content.slice(frontmatterMatch[0].length) : content;
+            
+            // Chunk only the main content (excluding frontmatter to reduce redundancy)
+            const chunks = chunkText(mainContent, {
               maxTokens: chunkMaxTokens,
               strategy: chunkStrategy as any, // Cast to satisfy TS
               includeMetadata: true
@@ -386,30 +473,29 @@ export class EmbeddingService {
               // Accumulate token count for total
               totalTokensInFile += chunk.metadata.tokenCount;
               
-              // Generate embedding for the chunk
+              // Generate embedding for the chunk content (just the text, no file path)
               const embedding = await this.getEmbedding(chunk.content);
               if (!embedding) {
                 console.warn(`Failed to generate embedding for chunk ${i+1}/${chunks.length} of file: ${filePath}`);
                 continue; // Skip this chunk but continue with others
               }
               
-              // Create new embedding for this chunk
+              // Create new embedding for this chunk with minimal metadata
               const id = uuidv4();
               const fileEmbedding: FileEmbedding = {
                 id,
-                filePath,
+                filePath, // Still need this to identify which file the chunk belongs to
                 timestamp: Date.now(),
                 workspaceId: 'default',
                 vector: embedding,
-                content: chunk.content,
+                content: chunk.content, // Only the chunk text content, no file path or frontmatter
                 chunkIndex: chunk.metadata.chunkIndex,
                 totalChunks: chunk.metadata.totalChunks,
                 metadata: {
-                  fileSize: content.length,
+                  // Store frontmatter separately at file level instead of per chunk
+                  frontmatter: i === 0 ? frontmatter : undefined, // Only store with first chunk
                   chunkSize: chunk.content.length,
-                  indexedAt: new Date().toISOString(),
-                  startPosition: chunk.metadata.startPosition,
-                  endPosition: chunk.metadata.endPosition
+                  indexedAt: new Date().toISOString()
                 }
               };
               
@@ -419,6 +505,7 @@ export class EmbeddingService {
             
             // Add to total tokens processed
             totalTokensProcessed += totalTokensInFile;
+            successfulFiles.push(filePath);
             
             return { 
               ids: chunkIds, 
@@ -427,9 +514,13 @@ export class EmbeddingService {
             } as { ids: string[]; tokens: number; chunks: number };
           } catch (error) {
             console.error(`Error indexing file ${filePath}:`, error);
+            failedFiles.push(filePath);
             return null;
           }
         }));
+        
+        // Update state after each batch
+        await this.stateManager.updateProgress(successfulFiles, failedFiles);
         
         // Update progress count
         processedCount += batch.length;
@@ -589,8 +680,18 @@ export class EmbeddingService {
         console.warn('Failed to emit batch completion event:', emitError);
       }
       
+      // Clear the indexing state on successful completion
+      await this.stateManager.clearState();
+      
       return ids;
     } catch (error) {
+      // Mark state as error but don't clear it - allow resume
+      const state = await this.stateManager.loadState();
+      if (state) {
+        state.status = 'error';
+        state.errorMessage = getErrorMessage(error);
+        await this.stateManager.saveState(state);
+      }
       // Notify error
       if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.completeProgress) {
         (window as any).mcpProgressHandlers.completeProgress({
@@ -605,6 +706,9 @@ export class EmbeddingService {
       notice.setMessage(`Error generating embeddings: ${getErrorMessage(error)}`);
       setTimeout(() => notice.hide(), 3000);
       throw error;
+    } finally {
+      // Clear reindexing flag
+      plugin.isReindexing = false;
     }
   }
 

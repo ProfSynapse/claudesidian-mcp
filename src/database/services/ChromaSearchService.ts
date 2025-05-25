@@ -265,6 +265,7 @@ export class ChromaSearchService {
     }>;
     error?: string;
   }> {
+    console.log('[ChromaSearchService] semanticSearch called with query:', query);
     try {
       // If skipEmbeddingGeneration flag is set or embeddings are disabled,
       // use direct text search without trying to generate embeddings
@@ -309,8 +310,12 @@ export class ChromaSearchService {
                 // Convert distance to similarity
                 const similarity = 1 - distance;
                 
+                // Debug logging
+                console.log(`[semanticSearch direct] ChromaDB distance: ${distance}, converted similarity: ${similarity}, threshold: ${options?.threshold || 'none'}`);
+                
                 // Skip if below threshold
                 if (options?.threshold !== undefined && similarity < options.threshold) {
+                  console.log(`[semanticSearch direct] Skipping result with similarity ${similarity} below threshold ${options.threshold}`);
                   continue;
                 }
                 
@@ -392,8 +397,12 @@ export class ChromaSearchService {
               // Convert distance to similarity
               const similarity = 1 - distance;
               
+              // Debug logging
+              console.log(`ChromaDB distance: ${distance}, converted similarity: ${similarity}, threshold: ${options?.threshold || 'none'}`);
+              
               // Skip if below threshold
               if (options?.threshold !== undefined && similarity < options.threshold) {
+                console.log(`Skipping result with similarity ${similarity} below threshold ${options.threshold}`);
                 continue;
               }
               
@@ -430,21 +439,53 @@ export class ChromaSearchService {
       }
       
       // For normal flow with embeddings enabled and no skip flag
-      // This path should never be taken when skipEmbeddingGeneration is true
-      if (!this.embeddingService.areEmbeddingsEnabled()) {
+      const embeddingsEnabled = this.embeddingService.areEmbeddingsEnabled();
+      console.log('[semanticSearch] Embeddings enabled:', embeddingsEnabled);
+      
+      if (!embeddingsEnabled) {
         return {
           success: false,
           error: 'Embeddings functionality is currently disabled'
         };
       }
       
-      // We explicitly don't want to generate embeddings for search operations
+      // Generate embedding for the query
+      console.log('[semanticSearch] Generating embedding for query:', query);
+      const embedding = await this.embeddingService.getEmbedding(query);
+      console.log('[semanticSearch] Generated embedding length:', embedding?.length);
+      
+      if (!embedding) {
+        return {
+          success: false,
+          error: 'Failed to generate embedding for query'
+        };
+      }
+      
+      // Use the embedding for search
+      console.log('[semanticSearch] About to call semanticSearchWithEmbedding with options:', options);
+      const result = await this.semanticSearchWithEmbedding(embedding, options);
+      console.log('[semanticSearch] Result from semanticSearchWithEmbedding:', result);
+      
+      // Ensure all matches have required lineStart and lineEnd values
+      if (result.success && result.matches) {
+        return {
+          success: true,
+          matches: result.matches.map(match => ({
+            similarity: match.similarity,
+            content: match.content,
+            filePath: match.filePath,
+            lineStart: match.lineStart ?? 0,
+            lineEnd: match.lineEnd ?? 0,
+            metadata: match.metadata
+          }))
+        };
+      }
+      
+      // Return error result without matches
       return {
         success: false,
-        error: 'Embedding generation for search queries is not supported'
+        error: result.error || 'Search failed'
       };
-      
-      /* All unreachable code removed */
     } catch (error) {
       console.error('Error in semantic search:', error);
       return {
@@ -481,17 +522,39 @@ export class ChromaSearchService {
     }>;
     error?: string;
   }> {
+    console.log('[ChromaSearchService] semanticSearchWithEmbedding called');
+    console.log('[ChromaSearchService] Embedding provided:', !!embedding);
+    console.log('[ChromaSearchService] Collection name:', options?.collectionName);
     try {
       // If a specific collection is provided, use it directly
       if (options?.collectionName) {
+        // Don't filter by workspaceId for file_embeddings collection
+        const shouldFilterByWorkspace = options.collectionName !== 'file_embeddings' || options?.filters;
+        
         const queryParams = {
           queryEmbeddings: [embedding],
           nResults: options?.limit || 10,
-          where: options?.filters ? options.filters : this.buildWhereClause(options?.workspaceId, options?.workspacePath),
+          where: options?.filters ? options.filters : 
+                 (shouldFilterByWorkspace ? this.buildWhereClause(options?.workspaceId, options?.workspacePath) : undefined),
           include: ['metadatas', 'documents', 'distances'] as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'> as Array<'embeddings' | 'metadatas' | 'documents' | 'distances'>
         };
         
+        console.log('[ChromaSearchService] Querying specific collection:', options.collectionName);
+        
+        // Quick check if file_embeddings has any data
+        if (options.collectionName === 'file_embeddings') {
+          try {
+            const testQuery = await this.vectorStore.query('file_embeddings', {
+              queryTexts: ['test'],
+              nResults: 1
+            });
+            console.log('[ChromaSearchService] file_embeddings has data:', (testQuery.ids?.[0]?.length || 0) > 0);
+          } catch (e) {
+            console.log('[ChromaSearchService] Error checking file_embeddings:', e);
+          }
+        }
         const results = await this.vectorStore.query(options.collectionName, queryParams);
+        console.log('[semanticSearchWithEmbedding] Query results:', results);
         
         if (!results.ids[0]?.length) {
           return {
@@ -518,8 +581,12 @@ export class ChromaSearchService {
           // Convert distance to similarity
           const similarity = 1 - distance;
           
+          // Debug logging
+          console.log(`[semanticSearchWithEmbedding] ChromaDB distance: ${distance}, converted similarity: ${similarity}, threshold: ${options?.threshold || 'none'}`);
+          
           // Skip if below threshold
           if (options?.threshold !== undefined && similarity < options.threshold) {
+            console.log(`[semanticSearchWithEmbedding] Skipping result with similarity ${similarity} below threshold ${options.threshold}`);
             continue;
           }
           
@@ -547,10 +614,16 @@ export class ChromaSearchService {
         };
       }
       
-      // Otherwise, use the memory traces collection by default
+      // Otherwise, default to file embeddings collection for semantic search
+      // Unless we're in a workspace context, then use memory traces
+      const collectionToUse = options?.workspaceId ? this.memoryTraces.collectionName : this.fileEmbeddings.collectionName;
+      console.log('[semanticSearchWithEmbedding] No specific collection provided, using:', collectionToUse);
+      
       const where: Record<string, any> = {};
       
-      if (options?.workspaceId) {
+      // Only add workspaceId filter if explicitly provided and not searching file_embeddings
+      // File embeddings don't use workspace isolation effectively
+      if (options?.workspaceId && collectionToUse !== this.fileEmbeddings.collectionName) {
         where['metadata.workspaceId'] = options.workspaceId;
       }
       
@@ -563,8 +636,8 @@ export class ChromaSearchService {
         where['metadata.sessionId'] = options.sessionId;
       }
       
-      // Query the memory traces collection
-      const results = await this.vectorStore.query(this.memoryTraces.collectionName, {
+      // Query the selected collection
+      const results = await this.vectorStore.query(collectionToUse, {
         queryEmbeddings: [embedding],
         nResults: options?.limit || 10,
         where: Object.keys(where).length > 0 ? where : undefined,
@@ -596,9 +669,23 @@ export class ChromaSearchService {
         // Convert distance to similarity
         const similarity = 1 - distance;
         
+        // Debug logging
+        console.log(`[semanticSearchWithEmbedding 2] ChromaDB distance: ${distance}, converted similarity: ${similarity}, threshold: ${options?.threshold || 'none'}`);
+        
         // Skip if below threshold
         if (options?.threshold !== undefined && similarity < options.threshold) {
+          console.log(`[semanticSearchWithEmbedding 2] Skipping result with similarity ${similarity} below threshold ${options.threshold}`);
           continue;
+        }
+        
+        // Handle different metadata structures based on collection type
+        let filePath = '';
+        if (collectionToUse === this.fileEmbeddings.collectionName) {
+          // For file embeddings, the path is stored directly
+          filePath = metadata.path || metadata.filePath || '';
+        } else {
+          // For memory traces, use workspacePath
+          filePath = metadata.workspacePath || '';
         }
         
         const match: {
@@ -611,7 +698,7 @@ export class ChromaSearchService {
         } = {
           similarity,
           content: document,
-          filePath: metadata.workspacePath || '',
+          filePath,
           lineStart: metadata.lineStart,
           lineEnd: metadata.lineEnd,
           metadata

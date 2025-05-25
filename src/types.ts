@@ -100,7 +100,7 @@ export interface MemorySettings {
     apiRateLimitPerMinute: number;
     
     // Chunking options
-    chunkStrategy: 'paragraph' | 'heading' | 'fixed-size' | 'sliding-window';
+    chunkStrategy: 'paragraph' | 'heading' | 'fixed-size' | 'sliding-window' | 'full-document';
     chunkSize: number;
     chunkOverlap: number;
     includeFrontmatter: boolean;
@@ -198,7 +198,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     backlinksEnabled: true,
     backlinksWeight: 0.5,
     useFilters: true,
-    defaultThreshold: 0.7,
+    defaultThreshold: 0.3,
     
     // Memory Manager session settings
     autoCreateSessions: true,

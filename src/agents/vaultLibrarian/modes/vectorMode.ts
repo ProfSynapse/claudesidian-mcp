@@ -182,23 +182,47 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
   }
   
   /**
+   * Get memory settings from plugin
+   * @returns Memory settings object or null if not available
+   */
+  private getMemorySettings(): any {
+    try {
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      if (plugin && plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
+        return plugin.settings.settings.memory;
+      }
+    } catch (error) {
+      console.warn('Failed to get memory settings:', error);
+    }
+    return null;
+  }
+
+  /**
    * Get the backlinkEnabled setting value from plugin settings
    * Used to determine the default value for useGraphBoost
    * @returns Whether backlink boost is enabled in settings
    */
   private getBacklinksEnabledSetting(): boolean {
-    // Try to get the plugin settings
-    try {
-      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-      if (plugin && plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
-        return plugin.settings.settings.memory.backlinksEnabled === true;
-      }
-    } catch (error) {
-      console.warn('Failed to get backlinksEnabled setting:', error);
-    }
-    
-    // Default to true if setting can't be retrieved
-    return true;
+    const settings = this.getMemorySettings();
+    return settings?.backlinksEnabled ?? true;
+  }
+
+  /**
+   * Get the default threshold from plugin settings
+   * @returns Default similarity threshold
+   */
+  private getDefaultThreshold(): number {
+    const settings = this.getMemorySettings();
+    return settings?.defaultThreshold ?? 0.7;
+  }
+
+  /**
+   * Get the graph boost factor from plugin settings
+   * @returns Graph boost factor
+   */
+  private getGraphBoostFactor(): number {
+    const settings = this.getMemorySettings();
+    return settings?.graphBoostFactor ?? 0.3;
   }
   
   /**
@@ -207,6 +231,9 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
    * @returns Promise that resolves with search results
    */
   async execute(params: VectorSearchParams): Promise<VectorSearchResult> {
+    console.log('[VectorMode] Execute called with query:', params.query, 'threshold:', params.threshold);
+    
+    
     // Validate parameters
     if (!params.query && !params.embedding) {
       return this.prepareResult(
@@ -234,10 +261,14 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     }
     
     // Try to use ChromaDB implementation if available
+    console.log('[VectorMode] searchService exists:', !!this.searchService);
+    console.log('[VectorMode] vectorStore exists:', !!(this.searchService?.vectorStore));
+    
     if (this.searchService && this.searchService.vectorStore) {
       try {
         console.log('Executing search with ChromaDB using configured search service');
         const result = await this.executeWithChromaDB(params);
+        console.log('[VectorMode] executeWithChromaDB result:', result);
         
         // Record this activity if in a workspace context
         await this.recordActivity(params, result);
@@ -318,6 +349,8 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
    * @returns Promise that resolves with search results
    */
   private async executeWithChromaDB(params: VectorSearchParams): Promise<VectorSearchResult> {
+    console.log('[VectorMode.executeWithChromaDB] Called with params:', params);
+    
     if (!this.searchService) {
       throw new Error('ChromaDB search service not available');
     }
@@ -335,15 +368,23 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     // Create search options
     const searchOptions = {
       limit: params.limit || 10,
-      threshold: params.threshold || 0.3, // Lower default threshold for better recall
+      threshold: params.threshold ?? this.getDefaultThreshold(), // Use settings default if not provided
       filters: params.filters,
       // Use the provided useGraphBoost parameter if available, otherwise use the backlinksEnabled setting
       useGraphBoost: params.useGraphBoost !== undefined ? params.useGraphBoost : this.getBacklinksEnabledSetting(),
-      graphBoostFactor: params.graphBoostFactor,
+      graphBoostFactor: params.graphBoostFactor ?? this.getGraphBoostFactor(), // Use settings default if not provided
       graphMaxDistance: params.graphMaxDistance,
       seedNotes: params.seedNotes,
-      collectionName: params.collectionName
+      // IMPORTANT: Default to file_embeddings collection if not specified
+      collectionName: params.collectionName || 'file_embeddings'
     };
+    
+    console.log('[VectorMode] Search options:', JSON.stringify({
+      query: params.query,
+      collectionName: searchOptions.collectionName,
+      threshold: searchOptions.threshold,
+      limit: searchOptions.limit
+    }));
     
     let result;
     
@@ -376,10 +417,12 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         searchOptions
       );
     } else if (params.query) {
+      console.log('[VectorMode] Calling semanticSearch');
       result = await this.searchService.semanticSearch(
         params.query,
-        { ...searchOptions, skipEmbeddingGeneration: true }
+        searchOptions
       );
+      console.log('[VectorMode] Got', result.matches?.length || 0, 'matches');
     } else {
       throw new Error('No valid search parameters');
     }
@@ -387,10 +430,12 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     // Process and return the result with proper error handling
     // If the result is already in the expected format, return it directly
     if (result.matches) {
+      // Enrich matches with frontmatter and file context
+      const enrichedMatches = await this.enrichMatchesWithFileContext(result.matches || []);
       return this.prepareResult(
         result.success !== false,
         {
-          matches: result.matches || []
+          matches: enrichedMatches
         },
         result.error
       );
@@ -398,10 +443,12 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
     
     // Otherwise, for direct query results from queryCollection, convert the format
     if (result && result.ids && result.ids.length > 0) {
+      const formattedMatches = this.formatCollectionQueryResults(result);
+      const enrichedMatches = await this.enrichMatchesWithFileContext(formattedMatches);
       return this.prepareResult(
         true,
         {
-          matches: this.formatCollectionQueryResults(result)
+          matches: enrichedMatches
         }
       );
     }
@@ -413,6 +460,135 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         matches: []
       }
     );
+  }
+  
+  /**
+   * Enrich search results with frontmatter and file context
+   * @param matches Array of search matches to enrich
+   * @returns Promise resolving to enriched matches
+   */
+  private async enrichMatchesWithFileContext(matches: Array<{
+    similarity: number;
+    content: string;
+    filePath: string;
+    lineStart?: number;
+    lineEnd?: number;
+    metadata?: any;
+  }>): Promise<Array<{
+    similarity: number;
+    content: string;
+    filePath: string;
+    lineStart?: number;
+    lineEnd?: number;
+    metadata?: any;
+  }>> {
+    const enrichedMatches = [];
+    
+    for (const match of matches) {
+      try {
+        // Get the file from Obsidian
+        const file = this.app.vault.getFileByPath(match.filePath);
+        if (!file) {
+          // If file doesn't exist, return match as-is
+          enrichedMatches.push(match);
+          continue;
+        }
+        
+        // Read the file content
+        const fileContent = await this.app.vault.read(file);
+        
+        // Extract frontmatter
+        const frontmatterMatch = fileContent.match(/^---\n([\s\S]*?)\n---\n/);
+        let frontmatter: Record<string, any> = {};
+        
+        if (frontmatterMatch) {
+          try {
+            // Parse YAML frontmatter
+            const yaml = require('js-yaml');
+            frontmatter = yaml.load(frontmatterMatch[1]) || {};
+          } catch (yamlError) {
+            console.warn('Failed to parse frontmatter for', match.filePath, yamlError);
+          }
+        }
+        
+        // Check if chunk already has frontmatter from first chunk
+        let finalFrontmatter = frontmatter;
+        if (match.metadata?.frontmatter) {
+          // Use stored frontmatter if available (from first chunk)
+          finalFrontmatter = match.metadata.frontmatter;
+        }
+        
+        // Enhance the content with file context if it's just a chunk
+        let enhancedContent = match.content;
+        
+        // If this is a chunk (not full document), optionally add some file context
+        const isChunk = match.metadata && ('chunkIndex' in match.metadata || match.lineStart !== undefined);
+        if (isChunk && Object.keys(finalFrontmatter).length > 0) {
+          // Add frontmatter context to the beginning
+          const frontmatterText = Object.entries(finalFrontmatter)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(', ');
+          enhancedContent = `[File: ${match.filePath}] [${frontmatterText}]\n\n${match.content}`;
+        } else if (isChunk) {
+          // Just add file path context
+          enhancedContent = `[File: ${match.filePath}]\n\n${match.content}`;
+        }
+        
+        // Create enriched match
+        enrichedMatches.push({
+          ...match,
+          content: enhancedContent,
+          metadata: {
+            ...match.metadata,
+            frontmatter: finalFrontmatter,
+            tags: match.metadata?.tags || this.extractTagsFromContent(fileContent)
+          }
+        });
+        
+      } catch (error) {
+        console.warn('Failed to enrich match with file context:', match.filePath, error);
+        // Return original match if enrichment fails
+        enrichedMatches.push(match);
+      }
+    }
+    
+    return enrichedMatches;
+  }
+  
+  /**
+   * Extract tags from file content
+   * @param content File content
+   * @returns Array of tags found in the content
+   */
+  private extractTagsFromContent(content: string): string[] {
+    const tags: string[] = [];
+    
+    // Extract hashtags from content
+    const hashtagMatches = content.match(/#[\w\-\/]+/g);
+    if (hashtagMatches) {
+      tags.push(...hashtagMatches.map(tag => tag.slice(1))); // Remove # prefix
+    }
+    
+    // Extract tags from frontmatter if any
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
+    if (frontmatterMatch) {
+      try {
+        const yaml = require('js-yaml');
+        const frontmatter = yaml.load(frontmatterMatch[1]);
+        if (frontmatter?.tags) {
+          if (Array.isArray(frontmatter.tags)) {
+            tags.push(...frontmatter.tags);
+          } else if (typeof frontmatter.tags === 'string') {
+            tags.push(frontmatter.tags);
+          }
+        }
+      } catch (error) {
+        // Ignore YAML parsing errors
+      }
+    }
+    
+    // Remove duplicates and return
+    return [...new Set(tags)];
   }
   
   /**
@@ -497,6 +673,9 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
       
       // Convert distance to similarity score (ChromaDB distances are dissimilarity)
       const similarity = distance !== null ? 1 - distance : 1;
+      
+      // Debug logging
+      console.log(`[VectorMode formatCollectionQueryResults] ChromaDB distance: ${distance}, converted similarity: ${similarity}`);
       
       matches.push({
         similarity,
@@ -634,8 +813,9 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         },
         threshold: {
           type: 'number',
-          description: 'Similarity threshold (0-1)',
-          default: 0.3
+          description: 'Similarity threshold (0-1). Defaults to the value configured in settings.',
+          minimum: 0,
+          maximum: 1
         },
         filters: {
           type: 'object',
@@ -671,8 +851,9 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         },
         graphBoostFactor: {
           type: 'number',
-          description: 'Graph boost factor (0-1)',
-          default: 0.3
+          description: 'Graph boost factor (0-1). Defaults to the value configured in settings.',
+          minimum: 0,
+          maximum: 1
         },
         graphMaxDistance: {
           type: 'number',

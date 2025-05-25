@@ -44,6 +44,11 @@ export interface ChromaQueryParams {
   include?: string[];
 }
 
+export interface ChromaBatchGetParams {
+  ids: string[];
+  include?: string[];
+}
+
 export interface ChromaDeleteParams {
   ids?: string[];
   where?: Record<string, any>;
@@ -85,6 +90,13 @@ export interface Collection {
   count(): Promise<number>;
   // Optional metadata method that some collections might have
   metadata?(): Promise<Record<string, any>>;
+  // Batch operations
+  batchGet?(params: ChromaBatchGetParams): Promise<{
+    ids: string[];
+    embeddings?: number[][];
+    metadatas?: Record<string, any>[];
+    documents?: string[];
+  }>;
 }
 
 // In-memory implementations for when ChromaDB is not available
@@ -375,6 +387,53 @@ class InMemoryCollection implements Collection {
 
   async count(): Promise<number> {
     return this.items.size;
+  }
+
+  async batchGet(params: ChromaBatchGetParams): Promise<{
+    ids: string[];
+    embeddings?: number[][];
+    metadatas?: Record<string, any>[];
+    documents?: string[];
+  }> {
+    const { ids, include = ['embeddings', 'metadatas', 'documents'] } = params;
+    const foundIds: string[] = [];
+    const embeddings: number[][] = [];
+    const metadatas: Record<string, any>[] = [];
+    const documents: string[] = [];
+
+    // Get specific items by IDs
+    for (const id of ids) {
+      const item = this.items.get(id);
+      if (item) {
+        foundIds.push(id);
+        if (include.includes('embeddings')) {
+          embeddings.push(item.embedding);
+        }
+        if (include.includes('metadatas')) {
+          metadatas.push(item.metadata);
+        }
+        if (include.includes('documents')) {
+          documents.push(item.document);
+        }
+      }
+    }
+
+    // Construct the result object
+    const result: any = { ids: foundIds };
+    
+    if (include.includes('embeddings')) {
+      result.embeddings = embeddings;
+    }
+    
+    if (include.includes('metadatas')) {
+      result.metadatas = metadatas;
+    }
+    
+    if (include.includes('documents')) {
+      result.documents = documents;
+    }
+    
+    return result;
   }
 }
 
@@ -1091,6 +1150,11 @@ class PersistentChromaClient extends InMemoryChromaClient {
         await this.saveCollectionToDisk(collection.name);
       }
     };
+
+    // Add batchGet if the underlying collection supports it
+    if ('batchGet' in collection && collection.batchGet) {
+      collection.batchGet = collection.batchGet.bind(collection);
+    }
     
     // Mark as wrapped to avoid re-wrapping
     (collection as any).__isPersistenceWrapped = true;

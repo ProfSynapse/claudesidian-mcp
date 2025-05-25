@@ -15,6 +15,7 @@ import { MemoryService } from './database/services/MemoryService';
 import { EventManager } from './services/EventManager';
 import { FileEventManager } from './services/FileEventManager';
 import { UsageStatsService } from './database/services/UsageStatsService';
+import { CacheManager } from './database/services/CacheManager';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
@@ -32,6 +33,7 @@ export default class ClaudesidianPlugin extends Plugin {
     public fileEventManager!: FileEventManager;
     public eventManager!: EventManager;
     public usageStatsService!: UsageStatsService;
+    public cacheManager!: CacheManager;
     
     // Event handlers
     private fileCreatedHandler!: (file: TAbstractFile) => void;
@@ -40,6 +42,7 @@ export default class ClaudesidianPlugin extends Plugin {
     private idleTimer: NodeJS.Timeout | null = null;
     private pendingFiles: Set<string> = new Set();
     private isProcessingFiles: boolean = false;
+    private isReindexing: boolean = false;
     
     // Service registry
     public services!: {
@@ -51,6 +54,7 @@ export default class ClaudesidianPlugin extends Plugin {
         eventManager: EventManager;
         fileEventManager: FileEventManager;
         usageStatsService: UsageStatsService;
+        cacheManager: CacheManager;
     };
     
     async onload() {
@@ -284,6 +288,14 @@ export default class ClaudesidianPlugin extends Plugin {
             this.eventManager  // Pass the existing event manager
         );
         
+        // Initialize the cache manager
+        this.cacheManager = new CacheManager(
+            this.app.vault,
+            this.workspaceService,
+            this.memoryService
+        );
+        await this.cacheManager.initialize();
+        
         // Expose services
         this.services = {
             embeddingService: this.embeddingService,
@@ -293,7 +305,8 @@ export default class ClaudesidianPlugin extends Plugin {
             vectorStore: this.vectorStore,
             eventManager: this.eventManager,
             fileEventManager: this.fileEventManager,
-            usageStatsService: this.usageStatsService
+            usageStatsService: this.usageStatsService,
+            cacheManager: this.cacheManager
         };
         
         // Initialize file watchers based on embedding strategy
@@ -301,6 +314,13 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Handle startup embedding if configured
         this.handleStartupEmbedding();
+        
+        // Warm the cache with active workspace (if any)
+        try {
+            await this.warmCache();
+        } catch (error) {
+            console.warn('Failed to warm cache:', error);
+        }
         
         // Initialize connector with settings
         this.connector = new MCPConnector(this.app, this);
@@ -425,9 +445,7 @@ export default class ClaudesidianPlugin extends Plugin {
         }
         
         // Clean up services
-        if (this.embeddingService && typeof this.embeddingService.onunload === 'function') {
-            this.embeddingService.onunload();
-        }
+        // EmbeddingService doesn't need explicit cleanup
         
         // Close the vector store connection
         if (this.vectorStore) {
@@ -688,7 +706,7 @@ export default class ClaudesidianPlugin extends Plugin {
      * Process the queue of pending files
      */
     private async processFileQueue(): Promise<void> {
-        if (this.isProcessingFiles || this.pendingFiles.size === 0) {
+        if (this.isProcessingFiles || this.pendingFiles.size === 0 || this.isReindexing) {
             return;
         }
         
@@ -702,10 +720,10 @@ export default class ClaudesidianPlugin extends Plugin {
             // Clear the queue
             this.pendingFiles.clear();
             
-            // Process files in batches with the embedding service's batch method
-            await this.embeddingService.batchIndexFiles(filePaths);
+            // Use the new update method that only updates changed chunks
+            await this.embeddingService.updateFileEmbeddings(filePaths);
             
-            console.log("Completed processing pending files");
+            console.log("Completed updating pending files");
         } catch (error) {
             console.error("Error processing file queue:", error);
             new Notice(`Error generating embeddings: ${(error as Error).message}`);
@@ -796,6 +814,31 @@ export default class ClaudesidianPlugin extends Plugin {
             await this.searchService.deleteFileEmbedding(filePath);
         } catch (error) {
             console.error(`Error deleting embedding for file ${filePath}:`, error);
+        }
+    }
+    
+    /**
+     * Warm the cache with commonly accessed data
+     */
+    private async warmCache(): Promise<void> {
+        console.log('Warming cache on plugin startup...');
+        
+        try {
+            // Get the most recently accessed workspace
+            const workspaces = await this.workspaceService.getWorkspaces();
+            if (workspaces.length > 0) {
+                // Sort by last accessed time
+                const sortedWorkspaces = workspaces.sort((a, b) => 
+                    (b.lastAccessed || 0) - (a.lastAccessed || 0)
+                );
+                
+                // Warm cache with the most recently accessed workspace
+                const activeWorkspace = sortedWorkspaces[0];
+                console.log(`Warming cache with workspace: ${activeWorkspace.name}`);
+                await this.cacheManager.warmCache(activeWorkspace.id);
+            }
+        } catch (error) {
+            console.error('Error warming cache:', error);
         }
     }
 }

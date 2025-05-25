@@ -9,6 +9,7 @@ import { MemoryService } from '../../../../database/services/MemoryService';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 import { SearchOperations } from '../../../../database/utils/SearchOperations';
 import { sanitizePath } from '../../../../utils/pathUtils';
+import { CacheManager } from '../../../../database/services/CacheManager';
 
 /**
  * Mode to load a workspace as the active context
@@ -18,6 +19,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   private plugin: Plugin;
   private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
+  private cacheManager: CacheManager | null = null;
   private searchOperations: SearchOperations;
   
   /**
@@ -45,6 +47,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         if (pluginWithServices.services.memoryService) {
           this.memoryService = pluginWithServices.services.memoryService;
         }
+        if (pluginWithServices.services.cacheManager) {
+          this.cacheManager = pluginWithServices.services.cacheManager;
+        }
       }
     }
   }
@@ -64,6 +69,15 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Validate parameters
       if (!params.id) {
         return this.prepareResult(false, undefined, 'Workspace ID is required');
+      }
+      
+      // Try to preload the workspace into cache
+      if (this.cacheManager) {
+        try {
+          await this.cacheManager.preloadWorkspace(params.id);
+        } catch (error) {
+          console.warn('Failed to preload workspace into cache:', error);
+        }
       }
       
       // Get the target workspace
@@ -260,6 +274,13 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     rootFolder: string;
     id: string;
   }): Promise<string[]> {
+    // Try to use cached file index if available
+    if (this.cacheManager) {
+      const recentFiles = this.cacheManager.getRecentFiles(10, workspace.rootFolder);
+      if (recentFiles.length > 0) {
+        return recentFiles.map(f => f.path);
+      }
+    }
     const recentFiles: Array<{ path: string; timestamp: number }> = [];
     
     // 1. Get files from workspace activity history
@@ -363,6 +384,16 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     rootFolder: string;
     id: string;
   }): Promise<string[]> {
+    // Try to use cached file index if available
+    if (this.cacheManager) {
+      const keyFiles = this.cacheManager.getKeyFiles();
+      const workspaceKeyFiles = keyFiles.filter(f => 
+        f.path.startsWith(workspace.rootFolder)
+      );
+      if (workspaceKeyFiles.length > 0) {
+        return workspaceKeyFiles.map(f => f.path);
+      }
+    }
     const keyFiles: string[] = [];
     
     try {
@@ -463,25 +494,34 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       
       // 3. Add files in workspace's root folder
       
-      // Normalize the workspace root folder for consistent matching
-      const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
-      const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
-        normalizedRootFolder : normalizedRootFolder + '/';
-      
-      // Get all markdown files in the workspace's root folder
-      const files = this.app.vault.getMarkdownFiles()
-        .filter(file => {
-          // Normalize file path for consistent comparison
-          const normalizedFilePath = sanitizePath(file.path, false);
-          
-          // Check if file belongs to workspace
-          return normalizedFilePath === normalizedRootFolder || 
-                 normalizedFilePath.startsWith(rootFolderWithSlash);
-        });
-      
-      // Add each file to the associated notes
-      for (const file of files) {
-        associatedNotes.add(file.path);
+      // Try to use cached file index if available
+      if (this.cacheManager) {
+        const folderFiles = this.cacheManager.getFilesInFolder(workspace.rootFolder, true);
+        for (const file of folderFiles) {
+          associatedNotes.add(file.path);
+        }
+      } else {
+        // Fallback to vault scan
+        // Normalize the workspace root folder for consistent matching
+        const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
+        const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
+          normalizedRootFolder : normalizedRootFolder + '/';
+        
+        // Get all markdown files in the workspace's root folder
+        const files = this.app.vault.getMarkdownFiles()
+          .filter(file => {
+            // Normalize file path for consistent comparison
+            const normalizedFilePath = sanitizePath(file.path, false);
+            
+            // Check if file belongs to workspace
+            return normalizedFilePath === normalizedRootFolder || 
+                   normalizedFilePath.startsWith(rootFolderWithSlash);
+          });
+        
+        // Add each file to the associated notes
+        for (const file of files) {
+          associatedNotes.add(file.path);
+        }
       }
       
       // 4. Add files from related folders if specified
@@ -489,22 +529,31 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         for (const folderPath of workspace.relatedFolders) {
           if (!folderPath) continue;
           
-          // Normalize the folder path
-          const normalizedFolderPath = sanitizePath(folderPath, false);
-          const folderWithSlash = normalizedFolderPath.endsWith('/') ? 
-            normalizedFolderPath : normalizedFolderPath + '/';
-          
-          // Find files in this related folder
-          const relatedFiles = this.app.vault.getMarkdownFiles()
-            .filter(file => {
-              const normalizedFilePath = sanitizePath(file.path, false);
-              return normalizedFilePath === normalizedFolderPath || 
-                     normalizedFilePath.startsWith(folderWithSlash);
-            });
-          
-          // Add each file to the associated notes
-          for (const file of relatedFiles) {
-            associatedNotes.add(file.path);
+          if (this.cacheManager) {
+            // Use cached file index
+            const relatedFiles = this.cacheManager.getFilesInFolder(folderPath, true);
+            for (const file of relatedFiles) {
+              associatedNotes.add(file.path);
+            }
+          } else {
+            // Fallback to vault scan
+            // Normalize the folder path
+            const normalizedFolderPath = sanitizePath(folderPath, false);
+            const folderWithSlash = normalizedFolderPath.endsWith('/') ? 
+              normalizedFolderPath : normalizedFolderPath + '/';
+            
+            // Find files in this related folder
+            const relatedFiles = this.app.vault.getMarkdownFiles()
+              .filter(file => {
+                const normalizedFilePath = sanitizePath(file.path, false);
+                return normalizedFilePath === normalizedFolderPath || 
+                       normalizedFilePath.startsWith(folderWithSlash);
+              });
+            
+            // Add each file to the associated notes
+            for (const file of relatedFiles) {
+              associatedNotes.add(file.path);
+            }
           }
         }
       }

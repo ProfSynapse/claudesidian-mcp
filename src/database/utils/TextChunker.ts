@@ -17,10 +17,10 @@ export interface ChunkOptions {
   overlap?: number;
   
   /**
-   * Strategy for chunking: paragraph, sentence, or fixed
+   * Strategy for chunking
    * Default: paragraph
    */
-  strategy?: 'paragraph' | 'sentence' | 'fixed';
+  strategy?: 'paragraph' | 'sentence' | 'fixed' | 'heading' | 'sliding-window' | 'full-document';
   
   /**
    * When using fixed strategy, the number of characters per chunk
@@ -105,8 +105,22 @@ export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[]
   // Estimate token count of full text
   const estimatedTokens = estimateTokenCount(text);
   
-  // If the text is already within limits, return it as a single chunk
-  if (estimatedTokens <= maxTokens) {
+  // For full-document strategy, always return the whole document
+  if (strategy === 'full-document') {
+    return [{
+      content: text,
+      metadata: {
+        chunkIndex: 0,
+        totalChunks: 1,
+        startPosition: 0,
+        endPosition: text.length,
+        tokenCount: estimatedTokens
+      }
+    }];
+  }
+  
+  // For fixed-size strategy, if the text is already within limits, return it as a single chunk
+  if (strategy === 'fixed' && estimatedTokens <= maxTokens) {
     return [{
       content: text,
       metadata: {
@@ -122,7 +136,7 @@ export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[]
   let chunks: TextChunk[] = [];
   
   // Choose chunking strategy based on options
-  switch (strategy) {
+  switch (strategy as string) {
     case 'paragraph':
       chunks = chunkByParagraph(text, maxTokens, overlap);
       break;
@@ -131,6 +145,29 @@ export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[]
       break;
     case 'fixed':
       chunks = chunkByFixedSize(text, chunkSize, overlap);
+      break;
+    case 'fixed-size':
+      chunks = chunkByFixedSize(text, chunkSize, overlap);
+      break;
+    case 'heading':
+      // TODO: Implement heading-based chunking
+      // For now, fallback to paragraph chunking
+      chunks = chunkByParagraph(text, maxTokens, overlap);
+      break;
+    case 'sliding-window':
+      // Sliding window is similar to fixed size with overlap
+      chunks = chunkByFixedSize(text, chunkSize, overlap);
+      break;
+    case 'full-document':
+      // This case should have been handled above
+      chunks = [{
+        content: text,
+        metadata: {
+          chunkIndex: 0,
+          totalChunks: 1,
+          tokenCount: estimatedTokens
+        }
+      }];
       break;
     default:
       chunks = chunkByParagraph(text, maxTokens, overlap);
@@ -162,91 +199,155 @@ export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[]
 
 /**
  * Split text into chunks by paragraph boundaries
+ * Each paragraph becomes its own chunk, unless it exceeds the token limit
  * @param text Text to split
  * @param maxTokens Maximum tokens per chunk
- * @param overlap Token overlap between chunks
+ * @param overlap Token overlap between chunks (only used when splitting large paragraphs)
  * @returns Array of text chunks
  */
 function chunkByParagraph(text: string, maxTokens: number, overlap: number): TextChunk[] {
-  // Split by paragraphs (double newlines)
+  // Split by paragraphs (double newlines, but preserve single newlines within paragraphs)
+  // This regex handles various paragraph separators while preserving list items
   const paragraphs = text.split(/\n\s*\n/);
   const chunks: TextChunk[] = [];
-  
-  let currentChunk = '';
-  let currentTokens = 0;
   let chunkIndex = 0;
   
   for (const paragraph of paragraphs) {
-    const paragraphTokens = estimateTokenCount(paragraph);
-    
-    // If a single paragraph exceeds the token limit, split it further
-    if (paragraphTokens > maxTokens) {
-      // If we have content in the current chunk, add it first
-      if (currentTokens > 0) {
-        chunks.push({
-          content: currentChunk,
-          metadata: {
-            chunkIndex: chunkIndex++,
-            totalChunks: 0, // Will update later
-            tokenCount: currentTokens
-          }
-        });
-        currentChunk = '';
-        currentTokens = 0;
-      }
-      
-      // Split the large paragraph by sentences
-      const sentenceChunks = chunkBySentence(paragraph, maxTokens, overlap);
-      chunks.push(...sentenceChunks);
+    // Skip empty paragraphs
+    if (!paragraph.trim()) {
       continue;
     }
     
-    // Check if adding this paragraph would exceed the limit
-    if (currentTokens + paragraphTokens > maxTokens) {
-      // Add the current chunk to the result and start a new one
+    const paragraphTokens = estimateTokenCount(paragraph);
+    
+    // If a single paragraph exceeds the token limit, we need to split it
+    if (paragraphTokens > maxTokens) {
+      // For very long paragraphs (like code blocks), try different strategies:
+      
+      // 1. First, check if this is a code block (starts with ``` or has consistent indentation)
+      const isCodeBlock = paragraph.trim().startsWith('```') || 
+                         paragraph.split('\n').every(line => line.startsWith('    ') || line.startsWith('\t') || !line.trim());
+      
+      // 2. Check if this is a list (lines start with -, *, +, or numbers)
+      const listItemRegex = /^[\s]*[-*+][\s]+|^[\s]*\d+\.[\s]+/;
+      const lines = paragraph.split('\n');
+      const isList = lines.some(line => listItemRegex.test(line));
+      
+      if (isCodeBlock) {
+        // For code blocks, try to split at logical boundaries (empty lines within the code)
+        const codeLines = paragraph.split('\n');
+        let currentCodeChunk: string[] = [];
+        let currentCodeTokens = 0;
+        
+        for (const line of codeLines) {
+          const lineTokens = estimateTokenCount(line + '\n');
+          
+          if (currentCodeTokens + lineTokens > maxTokens && currentCodeChunk.length > 0) {
+            // Save current chunk
+            chunks.push({
+              content: currentCodeChunk.join('\n'),
+              metadata: {
+                chunkIndex: chunkIndex++,
+                totalChunks: 0, // Will update later
+                tokenCount: currentCodeTokens
+              }
+            });
+            
+            // Start new chunk with overlap if specified
+            if (overlap > 0 && currentCodeChunk.length > 0) {
+              // Take last few lines as overlap
+              const overlapLines = Math.ceil(overlap / 10); // Rough estimate
+              currentCodeChunk = currentCodeChunk.slice(-overlapLines);
+              currentCodeChunk.push(line);
+              currentCodeTokens = estimateTokenCount(currentCodeChunk.join('\n'));
+            } else {
+              currentCodeChunk = [line];
+              currentCodeTokens = lineTokens;
+            }
+          } else {
+            currentCodeChunk.push(line);
+            currentCodeTokens += lineTokens;
+          }
+        }
+        
+        // Add remaining code
+        if (currentCodeChunk.length > 0) {
+          chunks.push({
+            content: currentCodeChunk.join('\n'),
+            metadata: {
+              chunkIndex: chunkIndex++,
+              totalChunks: 0,
+              tokenCount: currentCodeTokens
+            }
+          });
+        }
+      } else if (isList) {
+        // For lists, try to keep list items together
+        let currentListChunk: string[] = [];
+        let currentListTokens = 0;
+        
+        for (const line of lines) {
+          const lineTokens = estimateTokenCount(line + '\n');
+          const isListItem = listItemRegex.test(line);
+          
+          // If this is a list item and adding it would exceed the limit, create a chunk
+          if (isListItem && currentListTokens + lineTokens > maxTokens && currentListChunk.length > 0) {
+            chunks.push({
+              content: currentListChunk.join('\n'),
+              metadata: {
+                chunkIndex: chunkIndex++,
+                totalChunks: 0,
+                tokenCount: currentListTokens
+              }
+            });
+            
+            currentListChunk = [line];
+            currentListTokens = lineTokens;
+          } else {
+            currentListChunk.push(line);
+            currentListTokens += lineTokens;
+          }
+        }
+        
+        // Add remaining list items
+        if (currentListChunk.length > 0) {
+          chunks.push({
+            content: currentListChunk.join('\n'),
+            metadata: {
+              chunkIndex: chunkIndex++,
+              totalChunks: 0,
+              tokenCount: currentListTokens
+            }
+          });
+        }
+      } else {
+        // For regular long paragraphs, fall back to sentence splitting
+        const sentenceChunks = chunkBySentence(paragraph, maxTokens, overlap);
+        // Update the chunk indices for the sentence chunks
+        for (const sentenceChunk of sentenceChunks) {
+          chunks.push({
+            ...sentenceChunk,
+            metadata: {
+              ...sentenceChunk.metadata,
+              chunkIndex: chunkIndex++
+            }
+          });
+        }
+      }
+    } else {
+      // Normal paragraph that fits within the token limit - add it as its own chunk
       chunks.push({
-        content: currentChunk,
+        content: paragraph,
         metadata: {
           chunkIndex: chunkIndex++,
           totalChunks: 0, // Will update later
-          tokenCount: currentTokens
+          tokenCount: paragraphTokens
         }
       });
-      
-      // Start new chunk with overlap from the previous chunk
-      if (overlap > 0 && currentChunk.length > 0) {
-        // Get the last ~200 tokens (overlap) from the previous chunk
-        const overlapText = getOverlapText(currentChunk, overlap);
-        currentChunk = overlapText + '\n\n' + paragraph;
-        currentTokens = estimateTokenCount(currentChunk);
-      } else {
-        currentChunk = paragraph;
-        currentTokens = paragraphTokens;
-      }
-    } else {
-      // Add to the current chunk
-      if (currentChunk.length > 0) {
-        currentChunk += '\n\n' + paragraph;
-      } else {
-        currentChunk = paragraph;
-      }
-      currentTokens += paragraphTokens;
     }
   }
   
-  // Add the last chunk if it has content
-  if (currentChunk.length > 0) {
-    chunks.push({
-      content: currentChunk,
-      metadata: {
-        chunkIndex: chunkIndex++,
-        totalChunks: 0, // Will update after
-        tokenCount: currentTokens
-      }
-    });
-  }
-  
-  // Update total chunks
+  // Update total chunks count
   return chunks.map(chunk => ({
     ...chunk,
     metadata: {

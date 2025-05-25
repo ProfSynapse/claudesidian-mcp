@@ -17,22 +17,18 @@ export const logger = {
      * Log system warnings that don't prevent functionality but indicate issues
      */
     systemWarn(message: string, context?: string) {
-        if (process.env.NODE_ENV !== 'production') {
-            console.warn(
-                `SYSTEM WARNING${context ? ` [${context}]` : ''}: ${message}`
-            );
-        }
+        console.warn(
+            `SYSTEM WARNING${context ? ` [${context}]` : ''}: ${message}`
+        );
     },
     
     /**
      * Log informational messages during development
      */
     systemLog(message: string, context?: string) {
-        if (process.env.NODE_ENV !== 'production') {
-            console.log(
-                `SYSTEM INFO${context ? ` [${context}]` : ''}: ${message}`
-            );
-        }
+        console.log(
+            `SYSTEM INFO${context ? ` [${context}]` : ''}: ${message}`
+        );
     }
     
     // operationError function removed to eliminate unnecessary console logs

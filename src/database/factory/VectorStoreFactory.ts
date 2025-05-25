@@ -35,15 +35,29 @@ export class VectorStoreFactory {
   
   /**
    * Create an embedding provider
-   * @param dimension Embedding dimension
-   * @param embeddingFunction Optional custom embedding function
+   * @param apiKey Optional OpenAI API key
+   * @param model Optional embedding model
    * @returns Embedding provider instance
    */
   static createEmbeddingProvider(
-    dimension: number = 1536,
-    embeddingFunction?: (texts: string[]) => Promise<number[][]>
+    apiKey?: string,
+    model?: string
   ): IEmbeddingProvider {
-    return new ChromaEmbeddingProvider(embeddingFunction, dimension);
+    // If API key is provided, create OpenAI provider
+    if (apiKey) {
+      const OpenAIProvider = require('../providers/openai-provider').OpenAIProvider;
+      const settings = {
+        openaiApiKey: apiKey,
+        embeddingModel: model || 'text-embedding-3-small',
+        dimensions: 1536,
+        apiRateLimitPerMinute: 3000,
+        embeddingsEnabled: true
+      };
+      return new OpenAIProvider(settings);
+    }
+    
+    // Otherwise create default Chroma provider
+    return new ChromaEmbeddingProvider(undefined, 1536);
   }
   
   /**

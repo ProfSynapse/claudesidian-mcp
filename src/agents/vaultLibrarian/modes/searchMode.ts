@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   SearchContentArgs, 
@@ -13,7 +13,7 @@ import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 /**
  * Search type for unified search mode
  */
-export type SearchType = 'content' | 'tag' | 'property';
+export type SearchType = 'content' | 'tag' | 'property' | 'folder';
 
 /**
  * Unified search parameters
@@ -119,10 +119,18 @@ export interface UnifiedSearchResult extends CommonResult {
     }>;
     total: number;
   };
+
+  /**
+   * Folder search results (if type is 'folder')
+   */
+  folderResults?: {
+    folders: string[];
+    total: number;
+  };
 }
 
 /**
- * Mode for unified searching in the vault (content, tags, properties)
+ * Mode for unified searching in the vault (content, tags, properties, folders)
  */
 export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResult> {
   private app: App;
@@ -136,7 +144,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     super(
       'search',
       'Search',
-      'Unified search for content, tags, or properties in the vault',
+      'Unified search for content, tags, properties, or folders in the vault',
       '1.0.0'
     );
     
@@ -145,23 +153,38 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
   }
   
   /**
+   * Get memory settings from plugin
+   * @returns Memory settings object or null if not available
+   */
+  private getMemorySettings(): any {
+    try {
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      if (plugin && plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
+        return plugin.settings.settings.memory;
+      }
+    } catch (error) {
+      console.warn('Failed to get memory settings:', error);
+    }
+    return null;
+  }
+
+  /**
    * Get the backlinkEnabled setting value from plugin settings
    * Used to determine the default value for useGraphBoost
    * @returns Whether backlink boost is enabled in settings
    */
   private getBacklinksEnabledSetting(): boolean {
-    // Try to get the plugin settings
-    try {
-      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-      if (plugin && plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
-        return plugin.settings.settings.memory.backlinksEnabled === true;
-      }
-    } catch (error) {
-      console.warn('Failed to get backlinksEnabled setting:', error);
-    }
-    
-    // Default to true if setting can't be retrieved
-    return true;
+    const settings = this.getMemorySettings();
+    return settings?.backlinksEnabled ?? true;
+  }
+
+  /**
+   * Get the graph boost factor from plugin settings
+   * @returns Graph boost factor
+   */
+  private getGraphBoostFactor(): number {
+    const settings = this.getMemorySettings();
+    return settings?.graphBoostFactor ?? 0.3;
   }
   
   /**
@@ -189,6 +212,8 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
           return await this.executeTagSearch(params);
         case 'property':
           return await this.executePropertySearch(params);
+        case 'folder':
+          return await this.executeFolderSearch(params);
         default:
           throw new Error(`Unsupported search type: ${type}`);
       }
@@ -222,9 +247,9 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
       searchFields: params.searchFields,
       weights: params.weights,
       includeContent: true, // Always include content to separate frontmatter from snippet
-      // Pass through graph boost parameters or use backlinksEnabled setting as default
+      // Pass through graph boost parameters or use settings defaults
       useGraphBoost: params.useGraphBoost !== undefined ? params.useGraphBoost : this.getBacklinksEnabledSetting(),
-      graphBoostFactor: params.graphBoostFactor,
+      graphBoostFactor: params.graphBoostFactor ?? this.getGraphBoostFactor(),
       graphMaxDistance: params.graphMaxDistance,
       seedNotes: params.seedNotes
     };
@@ -431,6 +456,96 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
   }
   
   /**
+   * Execute folder search
+   * @param params Search parameters
+   * @returns Promise that resolves with folder search results
+   */
+  private async executeFolderSearch(params: UnifiedSearchParams): Promise<UnifiedSearchResult> {
+    if (!params.query) {
+      throw new Error('Missing required parameter: query');
+    }
+    
+    try {
+      // Get all folders in the vault recursively
+      const allFolders: string[] = [];
+      
+      // Recursive function to collect all folders
+      const collectAllFolders = (path: string) => {
+        const { folders } = this.searchOperations.listFolder(path, false, true, false);
+        for (const folder of folders) {
+          allFolders.push(folder);
+          // Recursively collect subfolders
+          collectAllFolders(folder);
+        }
+      };
+      
+      // Start from root
+      collectAllFolders('');
+      
+      // Search for folders matching the query
+      const searchTerms = params.query.toLowerCase().split(/\s+/);
+      const matchingFolders: string[] = [];
+      
+      for (const folderPath of allFolders) {
+        const folderName = folderPath.split('/').pop()?.toLowerCase() || '';
+        const fullPath = folderPath.toLowerCase();
+        
+        // Check if any search term matches the folder name or path
+        const matches = searchTerms.some(term => 
+          folderName.includes(term) || fullPath.includes(term)
+        );
+        
+        if (matches) {
+          matchingFolders.push(folderPath);
+        }
+      }
+      
+      // Apply path filter if specified
+      let filteredFolders = matchingFolders;
+      if (params.paths && params.paths.length > 0) {
+        filteredFolders = matchingFolders.filter(folder => 
+          params.paths!.some(path => folder.startsWith(path))
+        );
+      }
+      
+      // Sort folders by relevance (prefer exact matches and shorter paths)
+      filteredFolders.sort((a, b) => {
+        const aName = a.split('/').pop()?.toLowerCase() || '';
+        const bName = b.split('/').pop()?.toLowerCase() || '';
+        const queryLower = params.query?.toLowerCase() || '';
+        const aExactMatch = aName === queryLower;
+        const bExactMatch = bName === queryLower;
+        
+        if (aExactMatch && !bExactMatch) return -1;
+        if (!aExactMatch && bExactMatch) return 1;
+        
+        // Prefer shorter paths (fewer nested folders)
+        return a.split('/').length - b.split('/').length;
+      });
+      
+      // Apply limit if specified
+      if (params.limit) {
+        filteredFolders = filteredFolders.slice(0, params.limit);
+      }
+      
+      return {
+        success: true,
+        type: 'folder',
+        folderResults: {
+          folders: filteredFolders,
+          total: filteredFolders.length
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        type: 'folder',
+        error: createErrorMessage('Folder search error: ', error)
+      };
+    }
+  }
+  
+  /**
    * Calculate the average score of search results
    * @param results Search results
    * @returns Average score
@@ -463,12 +578,12 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         },
         type: {
           type: 'string',
-          enum: ['content', 'tag', 'property'],
+          enum: ['content', 'tag', 'property', 'folder'],
           description: 'Type of search to perform (REQUIRED)'
         },
         query: {
           type: 'string',
-          description: 'Query to search for (required for content search)'
+          description: 'Query to search for (required for content and folder search)'
         },
         tag: {
           type: 'string',
@@ -561,9 +676,19 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
           then: {
             required: ['key']
           }
+        },
+        {
+          if: {
+            properties: {
+              type: { enum: ['folder'] }
+            }
+          },
+          then: {
+            required: ['query']
+          }
         }
       ],
-      description: 'Unified search for content, tags, or properties in the vault'
+      description: 'Unified search for content, tags, properties, or folders in the vault'
     };
   }
 
@@ -585,7 +710,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         },
         type: {
           type: 'string',
-          enum: ['content', 'tag', 'property'],
+          enum: ['content', 'tag', 'property', 'folder'],
           description: 'Type of search performed'
         },
         contentResults: {
@@ -682,6 +807,23 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
             }
           },
           description: 'Property search results'
+        },
+        folderResults: {
+          type: 'object',
+          properties: {
+            folders: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              description: 'Array of folder paths matching the search query'
+            },
+            total: {
+              type: 'number',
+              description: 'Total number of results'
+            }
+          },
+          description: 'Folder search results'
         }
       },
       required: ['success', 'type'],

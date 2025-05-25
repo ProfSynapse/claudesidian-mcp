@@ -20,6 +20,7 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
                 .addOption('heading', 'By Heading')
                 .addOption('fixed-size', 'Fixed Size')
                 .addOption('sliding-window', 'Sliding Window')
+                .addOption('full-document', 'Full Document')
                 .setValue(this.settings.chunkStrategy)
                 .onChange(async (value: any) => {
                     this.settings.chunkStrategy = value;
@@ -52,6 +53,7 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
                     await this.saveSettings();
                 })
             );
+
             
         new Setting(containerEl)
             .setName('Include Frontmatter')
