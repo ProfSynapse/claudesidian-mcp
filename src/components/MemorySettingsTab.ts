@@ -254,10 +254,10 @@ export class MemorySettingsTab {
             this.vaultLibrarian.updateSettings?.(this.settings);
         }
         
-        // Get plugin reference to trigger embedding strategy update
+        // Get plugin reference to update file event manager configuration
         const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
-        if (plugin && typeof plugin.initializeEmbeddingStrategy === 'function') {
-            plugin.initializeEmbeddingStrategy();
+        if (plugin && plugin.fileEventManager && typeof plugin.fileEventManager.reloadConfiguration === 'function') {
+            plugin.fileEventManager.reloadConfiguration();
         }
         
         // Update settings in all tab components

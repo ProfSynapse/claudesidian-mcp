@@ -264,8 +264,20 @@ export class MemoryService {
    * @param trace Memory trace data
    */
   async storeMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id' | 'embedding'>): Promise<string> {
-    // Generate embedding for the content
-    const embedding = await this.embeddingService.getEmbedding(trace.content) || [];
+    // Only generate embeddings for memory traces if explicitly needed
+    // Skip embeddings for automated file event traces to prevent excessive API usage
+    let embedding: number[] = [];
+    
+    // Check if this is an automated file event trace
+    const isFileEventTrace = trace.metadata?.tool === 'FileEventManager';
+    
+    // Only generate embeddings if:
+    // 1. Embeddings are enabled globally
+    // 2. This is not a file event trace OR it's an important file event (importance >= 0.8)
+    if (this.embeddingService.areEmbeddingsEnabled() && 
+        (!isFileEventTrace || trace.importance >= 0.8)) {
+      embedding = await this.embeddingService.getEmbedding(trace.content) || [];
+    }
     
     // Create the trace with embedding
     const newTrace = await this.memoryTraces.createMemoryTrace({
