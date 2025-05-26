@@ -3,6 +3,8 @@
  * Handles splitting text content into chunks that fit within embedding token limits
  */
 
+import * as crypto from 'crypto';
+
 export interface ChunkOptions {
   /**
    * Maximum number of tokens per chunk
@@ -69,7 +71,57 @@ export interface TextChunk {
      * Estimated token count in this chunk
      */
     tokenCount: number;
+    
+    /**
+     * Content hash for identifying this chunk
+     */
+    contentHash?: string;
+    
+    /**
+     * Semantic boundary type (paragraph, heading, code-block, list)
+     */
+    semanticBoundary?: 'paragraph' | 'heading' | 'code-block' | 'list' | 'unknown';
   };
+}
+
+/**
+ * Generate a content hash for a chunk
+ * @param content The chunk content
+ * @returns MD5 hash of the content
+ */
+export function generateChunkHash(content: string): string {
+  return crypto.createHash('md5').update(content.trim()).digest('hex');
+}
+
+/**
+ * Detect the semantic boundary type of a text chunk
+ * @param content The chunk content
+ * @returns The detected boundary type
+ */
+export function detectSemanticBoundary(content: string): 'paragraph' | 'heading' | 'code-block' | 'list' | 'unknown' {
+  const trimmed = content.trim();
+  
+  // Check for headings (Markdown style)
+  if (/^#{1,6}\s+/.test(trimmed)) {
+    return 'heading';
+  }
+  
+  // Check for code blocks
+  if (trimmed.startsWith('```') || /^(\s{4}|\t)/.test(trimmed.split('\n')[0])) {
+    return 'code-block';
+  }
+  
+  // Check for lists
+  if (/^[\s]*[-*+]\s+|^[\s]*\d+\.\s+/.test(trimmed)) {
+    return 'list';
+  }
+  
+  // Check if it looks like a regular paragraph
+  if (trimmed.length > 50 && !trimmed.includes('\n\n')) {
+    return 'paragraph';
+  }
+  
+  return 'unknown';
 }
 
 /**
@@ -114,7 +166,9 @@ export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[]
         totalChunks: 1,
         startPosition: 0,
         endPosition: text.length,
-        tokenCount: estimatedTokens
+        tokenCount: estimatedTokens,
+        contentHash: generateChunkHash(text),
+        semanticBoundary: detectSemanticBoundary(text)
       }
     }];
   }
@@ -128,7 +182,9 @@ export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[]
         totalChunks: 1,
         startPosition: 0,
         endPosition: text.length,
-        tokenCount: estimatedTokens
+        tokenCount: estimatedTokens,
+        contentHash: generateChunkHash(text),
+        semanticBoundary: detectSemanticBoundary(text)
       }
     }];
   }
@@ -165,7 +221,9 @@ export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[]
         metadata: {
           chunkIndex: 0,
           totalChunks: 1,
-          tokenCount: estimatedTokens
+          tokenCount: estimatedTokens,
+          contentHash: generateChunkHash(text),
+          semanticBoundary: detectSemanticBoundary(text)
         }
       }];
       break;
@@ -244,12 +302,15 @@ function chunkByParagraph(text: string, maxTokens: number, overlap: number): Tex
           
           if (currentCodeTokens + lineTokens > maxTokens && currentCodeChunk.length > 0) {
             // Save current chunk
+            const chunkContent = currentCodeChunk.join('\n');
             chunks.push({
-              content: currentCodeChunk.join('\n'),
+              content: chunkContent,
               metadata: {
                 chunkIndex: chunkIndex++,
                 totalChunks: 0, // Will update later
-                tokenCount: currentCodeTokens
+                tokenCount: currentCodeTokens,
+                contentHash: generateChunkHash(chunkContent),
+                semanticBoundary: 'code-block'
               }
             });
             
@@ -272,12 +333,15 @@ function chunkByParagraph(text: string, maxTokens: number, overlap: number): Tex
         
         // Add remaining code
         if (currentCodeChunk.length > 0) {
+          const chunkContent = currentCodeChunk.join('\n');
           chunks.push({
-            content: currentCodeChunk.join('\n'),
+            content: chunkContent,
             metadata: {
               chunkIndex: chunkIndex++,
               totalChunks: 0,
-              tokenCount: currentCodeTokens
+              tokenCount: currentCodeTokens,
+              contentHash: generateChunkHash(chunkContent),
+              semanticBoundary: 'code-block'
             }
           });
         }
@@ -292,12 +356,15 @@ function chunkByParagraph(text: string, maxTokens: number, overlap: number): Tex
           
           // If this is a list item and adding it would exceed the limit, create a chunk
           if (isListItem && currentListTokens + lineTokens > maxTokens && currentListChunk.length > 0) {
+            const chunkContent = currentListChunk.join('\n');
             chunks.push({
-              content: currentListChunk.join('\n'),
+              content: chunkContent,
               metadata: {
                 chunkIndex: chunkIndex++,
                 totalChunks: 0,
-                tokenCount: currentListTokens
+                tokenCount: currentListTokens,
+                contentHash: generateChunkHash(chunkContent),
+                semanticBoundary: 'list'
               }
             });
             
@@ -311,12 +378,15 @@ function chunkByParagraph(text: string, maxTokens: number, overlap: number): Tex
         
         // Add remaining list items
         if (currentListChunk.length > 0) {
+          const chunkContent = currentListChunk.join('\n');
           chunks.push({
-            content: currentListChunk.join('\n'),
+            content: chunkContent,
             metadata: {
               chunkIndex: chunkIndex++,
               totalChunks: 0,
-              tokenCount: currentListTokens
+              tokenCount: currentListTokens,
+              contentHash: generateChunkHash(chunkContent),
+              semanticBoundary: 'list'
             }
           });
         }
@@ -341,7 +411,9 @@ function chunkByParagraph(text: string, maxTokens: number, overlap: number): Tex
         metadata: {
           chunkIndex: chunkIndex++,
           totalChunks: 0, // Will update later
-          tokenCount: paragraphTokens
+          tokenCount: paragraphTokens,
+          contentHash: generateChunkHash(paragraph),
+          semanticBoundary: 'paragraph'
         }
       });
     }
@@ -385,7 +457,9 @@ function chunkBySentence(text: string, maxTokens: number, overlap: number): Text
           metadata: {
             chunkIndex: chunkIndex++,
             totalChunks: 0, // Will update later
-            tokenCount: currentTokens
+            tokenCount: currentTokens,
+            contentHash: generateChunkHash(currentChunk),
+            semanticBoundary: detectSemanticBoundary(currentChunk)
           }
         });
         currentChunk = '';
@@ -406,7 +480,9 @@ function chunkBySentence(text: string, maxTokens: number, overlap: number): Text
         metadata: {
           chunkIndex: chunkIndex++,
           totalChunks: 0, // Will update later
-          tokenCount: currentTokens
+          tokenCount: currentTokens,
+          contentHash: generateChunkHash(currentChunk),
+          semanticBoundary: detectSemanticBoundary(currentChunk)
         }
       });
       
@@ -438,7 +514,9 @@ function chunkBySentence(text: string, maxTokens: number, overlap: number): Text
       metadata: {
         chunkIndex: chunkIndex++,
         totalChunks: 0, // Will update later
-        tokenCount: currentTokens
+        tokenCount: currentTokens,
+        contentHash: generateChunkHash(currentChunk),
+        semanticBoundary: detectSemanticBoundary(currentChunk)
       }
     });
   }
@@ -469,7 +547,9 @@ function chunkByFixedSize(text: string, chunkSize: number, overlap: number): Tex
       metadata: {
         chunkIndex: 0,
         totalChunks: 1,
-        tokenCount: estimateTokenCount(text)
+        tokenCount: estimateTokenCount(text),
+        contentHash: generateChunkHash(text),
+        semanticBoundary: detectSemanticBoundary(text)
       }
     }];
   }
@@ -486,7 +566,9 @@ function chunkByFixedSize(text: string, chunkSize: number, overlap: number): Tex
       metadata: {
         chunkIndex: chunkIndex++,
         totalChunks: 0, // Will update later
-        tokenCount: estimateTokenCount(chunk)
+        tokenCount: estimateTokenCount(chunk),
+        contentHash: generateChunkHash(chunk),
+        semanticBoundary: detectSemanticBoundary(chunk)
       }
     });
     

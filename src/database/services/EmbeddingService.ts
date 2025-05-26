@@ -7,6 +7,8 @@ import { getErrorMessage } from '../../utils/errorUtils';
 import { FileEmbedding } from '../workspace-types';
 import { TextChunk, chunkText } from '../utils/TextChunker';
 import { IndexingStateManager } from './IndexingStateManager';
+import { ChunkMatcher } from '../utils/ChunkMatcher';
+import * as crypto from 'crypto';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {
@@ -89,21 +91,14 @@ export class EmbeddingService {
       
       const embeddingsWereEnabled = pluginSettings.embeddingsEnabled;
       
-      // Validate settings
-      if (embeddingsWereEnabled && (!pluginSettings.openaiApiKey || pluginSettings.openaiApiKey.trim() === "")) {
-        this.settings.embeddingsEnabled = false;
-        console.warn("OpenAI API key is required but not provided. Embeddings will be disabled.");
+      // Initialize provider only if we have valid settings
+      if (this.settings.embeddingsEnabled && this.settings.openaiApiKey && this.settings.openaiApiKey.trim() !== "") {
+        this.initializeProvider();
+      } else if (this.settings.embeddingsEnabled) {
+        console.warn("OpenAI API key is required but not provided. Provider will not be initialized.");
       }
-      
-      // Initialize provider
-      this.initializeProvider();
       
       this.initialized = true;
-      
-      // Save if modified
-      if (embeddingsWereEnabled !== this.settings.embeddingsEnabled) {
-        this.saveSettings();
-      }
     } catch (error) {
       console.error("Failed to initialize EmbeddingService settings:", error);
       this.settings = { ...DEFAULT_MEMORY_SETTINGS, embeddingsEnabled: false };
@@ -239,15 +234,17 @@ export class EmbeddingService {
   async updateSettings(settings: MemorySettings): Promise<void> {
     this.settings = settings;
     
-    // Validate API key if embeddings are enabled
+    // Only validate API key if embeddings are being enabled
+    // Don't silently reset the setting - let the UI handle validation
     if (settings.embeddingsEnabled && (!settings.openaiApiKey || settings.openaiApiKey.trim() === "")) {
-      // API key is required but not provided, disable embeddings
-      console.warn("OpenAI API key is required but not provided. Embeddings will be disabled.");
-      this.settings.embeddingsEnabled = false;
+      console.warn("OpenAI API key is required but not provided. Provider will not be initialized.");
+      // Don't modify the embeddingsEnabled setting here - leave it for UI to handle
     }
     
-    // Reinitialize provider
-    await this.initializeProvider();
+    // Reinitialize provider only if we have valid settings
+    if (settings.embeddingsEnabled && settings.openaiApiKey && settings.openaiApiKey.trim() !== "") {
+      await this.initializeProvider();
+    }
     
     // Save the settings
     this.saveSettings();
@@ -328,6 +325,196 @@ export class EmbeddingService {
   }
   
   /**
+   * Update only the changed chunks of a file based on content diff
+   * @param filePath File path to update
+   * @param oldContent Previous file content
+   * @param newContent New file content
+   * @param workspaceId Optional workspace ID
+   * @returns Promise resolving to array of updated embedding IDs
+   */
+  async updateChangedChunks(filePath: string, oldContent: string, newContent: string, workspaceId?: string): Promise<string[]> {
+    if (!this.settings.embeddingsEnabled) {
+      throw new Error('Embeddings are disabled in settings');
+    }
+
+    // Get plugin and vector store
+    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'] as any;
+    if (!plugin || !plugin.vectorStore) {
+      throw new Error('Vector store not available');
+    }
+
+    // Mark this as a system operation to prevent file event loops
+    plugin.vectorStore.startSystemOperation();
+
+    try {
+      const vectorStore = plugin.vectorStore;
+      
+      // Get the chunking settings
+      const chunkMaxTokens = this.settings.maxTokensPerChunk || 8000;
+      const chunkStrategy = this.settings.chunkStrategy || 'paragraph';
+      
+      // Extract frontmatter from both versions
+      const extractContent = (content: string) => {
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
+        return frontmatterMatch ? content.slice(frontmatterMatch[0].length) : content;
+      };
+      
+      const oldMainContent = extractContent(oldContent);
+      const newMainContent = extractContent(newContent);
+      
+      // Chunk both versions
+      const oldChunks = chunkText(oldMainContent, {
+        maxTokens: chunkMaxTokens,
+        strategy: chunkStrategy as any,
+        includeMetadata: true
+      });
+      
+      const newChunks = chunkText(newMainContent, {
+        maxTokens: chunkMaxTokens,
+        strategy: chunkStrategy as any,
+        includeMetadata: true
+      });
+      
+      // Get existing embeddings for this file
+      const queryResult = await vectorStore.query('file_embeddings', {
+        where: { filePath: { $eq: filePath } },
+        include: ['metadatas', 'documents'],
+        nResults: 1000 // Get all chunks for this file
+      });
+      
+      // Transform the query result to a flat array format
+      const existingEmbeddings: any[] = [];
+      if (queryResult.ids && queryResult.ids.length > 0) {
+        for (let i = 0; i < queryResult.ids[0].length; i++) {
+          existingEmbeddings.push({
+            id: queryResult.ids[0][i],
+            metadata: queryResult.metadatas?.[0]?.[i] || {},
+            document: queryResult.documents?.[0]?.[i] || ''
+          });
+        }
+      }
+      
+      // Map old chunks to their embedding IDs
+      const oldEmbeddingIds: string[] = [];
+      for (const oldChunk of oldChunks) {
+        const embedding = existingEmbeddings.find((e: any) => 
+          e.metadata?.chunkIndex === oldChunk.metadata.chunkIndex
+        );
+        oldEmbeddingIds.push(embedding?.id || '');
+      }
+      
+      // Use ChunkMatcher to find the best matches
+      const matchResults = ChunkMatcher.findBestMatches(oldChunks, newChunks, oldEmbeddingIds);
+      
+      console.log(`[EmbeddingService] File ${filePath} chunk analysis:
+        - Total chunks: ${newChunks.length}
+        - Exact matches: ${matchResults.filter(r => r.matchType === 'exact').length}
+        - Similar matches: ${matchResults.filter(r => r.matchType === 'similar').length}
+        - New chunks: ${matchResults.filter(r => r.matchType === 'new').length}`);
+      
+      const updatedIds: string[] = [];
+      const embeddingsToDelete: string[] = [];
+      
+      // Process each match result
+      for (const result of matchResults) {
+        if (result.matchType === 'exact' && result.oldEmbeddingId) {
+          // Reuse existing embedding - just update the metadata if needed
+          updatedIds.push(result.oldEmbeddingId);
+        } else {
+          // Need new embedding for 'similar' or 'new' chunks
+          if (result.oldEmbeddingId) {
+            embeddingsToDelete.push(result.oldEmbeddingId);
+          }
+        }
+      }
+      
+      // Delete old embeddings for changed chunks
+      if (embeddingsToDelete.length > 0) {
+        console.log(`[EmbeddingService] Deleting ${embeddingsToDelete.length} old embeddings`);
+        for (const id of embeddingsToDelete) {
+          await vectorStore.deleteItems('file_embeddings', [id]);
+        }
+      }
+      
+      // Get chunks that need new embeddings
+      const chunksNeedingEmbedding = ChunkMatcher.getChunksNeedingEmbedding(matchResults);
+      
+      if (chunksNeedingEmbedding.length === 0) {
+        console.log(`[EmbeddingService] No chunks need re-embedding for file ${filePath}`);
+        return updatedIds;
+      }
+      
+      // Generate embeddings for chunks that need them
+      for (const result of chunksNeedingEmbedding) {
+        const chunk = result.newChunk;
+        
+        // Generate embedding for the chunk content
+        const embedding = await this.getEmbedding(chunk.content);
+        if (!embedding) {
+          console.warn(`Failed to generate embedding for chunk ${chunk.metadata.chunkIndex} of file: ${filePath}`);
+          continue;
+        }
+        
+        // Create new embedding for this chunk
+        const id = uuidv4();
+        const fileEmbedding: FileEmbedding = {
+          id,
+          filePath,
+          timestamp: Date.now(),
+          workspaceId: workspaceId || 'default',
+          vector: embedding,
+          content: chunk.content,
+          chunkIndex: chunk.metadata.chunkIndex,
+          totalChunks: chunk.metadata.totalChunks,
+          chunkHash: chunk.metadata.contentHash,
+          semanticBoundary: chunk.metadata.semanticBoundary,
+          metadata: {
+            chunkIndex: chunk.metadata.chunkIndex,
+            totalChunks: chunk.metadata.totalChunks,
+            fileSize: newContent.length,
+            indexedAt: new Date().toISOString(),
+            tokenCount: chunk.metadata.tokenCount,
+            startPosition: chunk.metadata.startPosition,
+            endPosition: chunk.metadata.endPosition,
+            contentHash: chunk.metadata.contentHash,
+            semanticBoundary: chunk.metadata.semanticBoundary
+          }
+        };
+        
+        // Add the new embedding
+        await vectorStore.addItems('file_embeddings', {
+          ids: [id],
+          embeddings: [fileEmbedding.vector],
+          metadatas: [fileEmbedding.metadata],
+          documents: [fileEmbedding.content]
+        });
+        updatedIds.push(id);
+        
+        console.log(`[EmbeddingService] Created embedding for chunk ${chunk.metadata.chunkIndex}/${chunk.metadata.totalChunks} of file ${filePath} (${result.matchType})`);
+      }
+      
+      // Clean up orphaned embeddings (chunks that no longer exist)
+      const allCurrentChunkIndices = new Set(newChunks.map(c => c.metadata.chunkIndex));
+      const orphanedEmbeddings = existingEmbeddings.filter((e: any) => 
+        !allCurrentChunkIndices.has(e.metadata?.chunkIndex || e.chunkIndex || -1)
+      );
+      
+      if (orphanedEmbeddings.length > 0) {
+        console.log(`[EmbeddingService] Cleaning up ${orphanedEmbeddings.length} orphaned embeddings`);
+        for (const orphan of orphanedEmbeddings) {
+          await vectorStore.deleteItems('file_embeddings', [orphan.id]);
+        }
+      }
+      
+      console.log(`[EmbeddingService] Chunk-level update complete for ${filePath}: ${updatedIds.length} embeddings updated`);
+      return updatedIds;
+      
+    } finally {
+      plugin.vectorStore.endSystemOperation();
+    }
+  }
+
+  /**
    * Incrementally update embeddings for specific files without purging the entire collection
    * @param filePaths Array of file paths to update
    * @param progressCallback Optional callback for progress updates
@@ -382,15 +569,15 @@ export class EmbeddingService {
           try {
             // First, delete any existing embeddings for this file
             try {
-              const existingEmbeddings = await vectorStore.query('file_embeddings', {
+              const queryResult = await vectorStore.query('file_embeddings', {
                 where: { filePath: { $eq: filePath } },
-                limit: 1000 // Get all chunks for this file
+                nResults: 1000 // Get all chunks for this file
               });
               
-              if (existingEmbeddings && existingEmbeddings.length > 0) {
-                const existingIds = existingEmbeddings.map((e: any) => e.id);
+              if (queryResult.ids && queryResult.ids.length > 0 && queryResult.ids[0].length > 0) {
+                const existingIds = queryResult.ids[0]; // ids is an array of arrays
                 console.log(`Deleting ${existingIds.length} existing embeddings for file: ${filePath}`);
-                await vectorStore.delete('file_embeddings', existingIds);
+                await vectorStore.deleteItems('file_embeddings', existingIds);
               }
             } catch (deleteError) {
               console.warn(`Error deleting existing embeddings for ${filePath}:`, deleteError);
@@ -453,10 +640,17 @@ export class EmbeddingService {
                 content: chunk.content,
                 chunkIndex: chunk.metadata.chunkIndex,
                 totalChunks: chunk.metadata.totalChunks,
+                chunkHash: chunk.metadata.contentHash,
+                semanticBoundary: chunk.metadata.semanticBoundary,
                 metadata: {
                   frontmatter: i === 0 ? frontmatter : undefined,
                   chunkSize: chunk.content.length,
-                  indexedAt: new Date().toISOString()
+                  indexedAt: new Date().toISOString(),
+                  tokenCount: chunk.metadata.tokenCount,
+                  startPosition: chunk.metadata.startPosition,
+                  endPosition: chunk.metadata.endPosition,
+                  contentHash: chunk.metadata.contentHash,
+                  semanticBoundary: chunk.metadata.semanticBoundary
                 }
               };
               
@@ -548,6 +742,15 @@ export class EmbeddingService {
     } catch (error) {
       console.error('Error unloading embedding service:', error);
     }
+  }
+  
+  /**
+   * Generate a hash of content for comparison
+   * @param content The content to hash
+   * @returns A hash string
+   */
+  private hashContent(content: string): string {
+    return crypto.createHash('sha256').update(content).digest('hex');
   }
   
   /**

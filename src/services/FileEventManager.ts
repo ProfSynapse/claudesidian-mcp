@@ -5,6 +5,7 @@ import { EmbeddingService } from '../database/services/EmbeddingService';
 import { EventManager } from './EventManager';
 import { HierarchyType } from '../database/workspace-types';
 import { sanitizePath } from '../utils/pathUtils';
+import { ContentCache } from '../database/utils/ContentCache';
 
 /**
  * File operation types
@@ -67,6 +68,8 @@ export class FileEventManager {
   private fileCreatedHandler: (file: TAbstractFile) => void;
   private fileModifiedHandler: (file: TAbstractFile) => void;
   private fileDeletedHandler: (file: TAbstractFile) => void;
+  private fileOpenHandler: any;
+  private activeLeafChangeHandler: any;
   private sessionCreateHandler: (data: any) => void;
   private sessionEndHandler: (data: any) => void;
   
@@ -100,9 +103,16 @@ export class FileEventManager {
   private excludePaths: string[] = [];
   private isInitialized: boolean = false;
   
-  // Track plugin startup to ignore initial file events
-  private pluginStartTime: number = Date.now();
-  private startupGracePeriod: number = 5000; // 5 seconds grace period
+  // Track vault loading state to ignore startup file events
+  private vaultIsReady: boolean = false;
+  private startupFileEventCount: number = 0;
+  private startupCheckTimer: NodeJS.Timeout | null = null;
+  
+  // Content cache for tracking old content before modifications
+  private contentCache: ContentCache;
+  
+  // Periodic caching timer
+  private contentCachingTimer: NodeJS.Timeout | null = null;
   
   constructor(
     app: App,
@@ -119,13 +129,16 @@ export class FileEventManager {
     this.embeddingService = embeddingService;
     this.eventManager = eventManager;
     
-    // Reset startup time on construction
-    this.pluginStartTime = Date.now();
+    // Initialize vault ready state
+    this.vaultIsReady = false;
+    this.startupFileEventCount = 0;
     
     // Initialize handlers
     this.fileCreatedHandler = this.handleFileCreated.bind(this);
     this.fileModifiedHandler = this.handleFileModified.bind(this);
     this.fileDeletedHandler = this.handleFileDeleted.bind(this);
+    this.fileOpenHandler = this.handleFileOpen.bind(this);
+    this.activeLeafChangeHandler = this.handleActiveLeafChange.bind(this);
     this.sessionCreateHandler = this.handleSessionCreate.bind(this);
     this.sessionEndHandler = this.handleSessionEnd.bind(this);
     
@@ -134,6 +147,9 @@ export class FileEventManager {
     
     // Setup debounced processing based on strategy
     this.setupProcessingStrategy();
+    
+    // Initialize content cache (10MB max size, 5 minute TTL)
+    this.contentCache = new ContentCache(10 * 1024 * 1024, 5 * 60 * 1000);
   }
   
   /**
@@ -151,10 +167,17 @@ export class FileEventManager {
     // Register event listeners
     this.registerEventListeners();
     
-    // Handle startup embedding if configured
+    // Start monitoring for vault ready state
+    this.startVaultReadyDetection();
+    
+    // Handle startup embedding if configured (but only after vault is ready)
     if (this.embeddingStrategy.type === 'startup') {
+      await this.waitForVaultReady();
       await this.handleStartupEmbedding();
     }
+    
+    // Start periodic content caching for existing files
+    this.startContentCaching();
     
     this.isInitialized = true;
     console.log('[FileEventManager] Initialization complete');
@@ -165,6 +188,18 @@ export class FileEventManager {
    */
   unload(): void {
     console.log('[FileEventManager] Unloading');
+    
+    // Clear startup detection timer
+    if (this.startupCheckTimer) {
+      clearTimeout(this.startupCheckTimer);
+      this.startupCheckTimer = null;
+    }
+    
+    // Clear content caching timer
+    if (this.contentCachingTimer) {
+      clearInterval(this.contentCachingTimer);
+      this.contentCachingTimer = null;
+    }
     
     // Process any remaining events
     if (this.fileQueue.size > 0) {
@@ -180,7 +215,62 @@ export class FileEventManager {
     this.completedFiles.clear();
     this.fileWorkspaceCache.clear();
     this.workspaceRoots.clear();
+    this.contentCache.clear();
     this.activeSessions = {};
+  }
+  
+  /**
+   * Start monitoring for vault ready state
+   */
+  private startVaultReadyDetection(): void {
+    console.log('[FileEventManager] Starting vault ready detection');
+    
+    // Monitor file event frequency to detect when startup loading is complete
+    this.startupFileEventCount = 0;
+    
+    // Check if vault is ready after initial file events settle
+    this.startupCheckTimer = setTimeout(() => {
+      this.checkVaultReady();
+    }, 2000); // Initial check after 2 seconds
+  }
+  
+  /**
+   * Check if vault loading has completed by monitoring file event patterns
+   */
+  private checkVaultReady(): void {
+    const currentEventCount = this.startupFileEventCount;
+    
+    // Wait a bit more and check if events have stopped
+    setTimeout(() => {
+      if (this.startupFileEventCount === currentEventCount) {
+        // No new file events in the last second, vault is likely ready
+        this.vaultIsReady = true;
+        console.log(`[FileEventManager] Vault ready detected after ${this.startupFileEventCount} startup file events`);
+      } else {
+        // Still receiving events, check again
+        console.log(`[FileEventManager] Still receiving startup events (${this.startupFileEventCount} total), checking again...`);
+        this.startupCheckTimer = setTimeout(() => this.checkVaultReady(), 1000);
+      }
+    }, 1000);
+  }
+  
+  /**
+   * Wait for vault to be ready
+   */
+  private async waitForVaultReady(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.vaultIsReady) {
+        resolve();
+        return;
+      }
+      
+      const checkInterval = setInterval(() => {
+        if (this.vaultIsReady) {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 100);
+    });
   }
   
   /**
@@ -233,6 +323,10 @@ export class FileEventManager {
     // @ts-ignore
     this.app.vault.on('delete', this.fileDeletedHandler);
     
+    // Workspace events - cache content when files are opened
+    this.app.workspace.on('file-open', this.fileOpenHandler);
+    this.app.workspace.on('active-leaf-change', this.activeLeafChangeHandler);
+    
     // Session events
     this.eventManager.on('session:create', this.sessionCreateHandler);
     this.eventManager.on('session:end', this.sessionEndHandler);
@@ -249,6 +343,10 @@ export class FileEventManager {
     // @ts-ignore
     this.app.vault.off('delete', this.fileDeletedHandler);
     
+    // Workspace events
+    this.app.workspace.off('file-open', this.fileOpenHandler);
+    this.app.workspace.off('active-leaf-change', this.activeLeafChangeHandler);
+    
     this.eventManager.off('session:create', this.sessionCreateHandler);
     this.eventManager.off('session:end', this.sessionEndHandler);
   }
@@ -256,19 +354,30 @@ export class FileEventManager {
   /**
    * Handle file creation
    */
-  private handleFileCreated(file: TAbstractFile): void {
+  private async handleFileCreated(file: TAbstractFile): Promise<void> {
     if (!this.shouldProcessFile(file)) return;
     
-    // Skip events during startup grace period to avoid processing existing files
-    const timeSinceStartup = Date.now() - this.pluginStartTime;
-    if (timeSinceStartup < this.startupGracePeriod) {
-      console.log(`[FileEventManager] Skipping startup file event for ${file.path} (${timeSinceStartup}ms since startup)`);
+    // Skip events during vault startup loading
+    if (!this.vaultIsReady) {
+      this.startupFileEventCount++;
+      console.log(`[FileEventManager] Skipping startup file event for ${file.path} (${this.startupFileEventCount} events so far)`);
       return;
     }
     
     // Store initial modification time
     const modTime = (file as TFile).stat?.mtime || Date.now();
     this.fileModificationTimes.set(file.path, modTime);
+    
+    // Cache the initial content for newly created files
+    try {
+      const content = await this.app.vault.read(file as TFile);
+      this.contentCache.set(file.path, content);
+      console.log(`[FileEventManager] Cached initial content for new file ${file.path}`);
+    } catch (err) {
+      // Ignore errors reading file content
+    }
+    
+    console.log(`[FileEventManager] File created: ${file.path}`);
     
     this.queueFileEvent({
       path: file.path,
@@ -283,8 +392,15 @@ export class FileEventManager {
   /**
    * Handle file modification
    */
-  private handleFileModified(file: TAbstractFile): void {
+  private async handleFileModified(file: TAbstractFile): Promise<void> {
     if (!this.shouldProcessFile(file)) return;
+    
+    // Skip events during vault startup loading
+    if (!this.vaultIsReady) {
+      this.startupFileEventCount++;
+      console.log(`[FileEventManager] Skipping startup file event for ${file.path} (${this.startupFileEventCount} events so far)`);
+      return;
+    }
     
     // Check if file has actually been modified (not just touched)
     const currentModTime = (file as TFile).stat?.mtime || Date.now();
@@ -312,13 +428,47 @@ export class FileEventManager {
   }
   
   /**
+   * Handle file open event - cache content when a file is opened
+   */
+  private async handleFileOpen(file: TFile | null): Promise<void> {
+    if (!file || file.extension !== 'md') return;
+    
+    try {
+      const content = await this.app.vault.read(file);
+      this.contentCache.set(file.path, content);
+      console.log(`[FileEventManager] Cached content for opened file: ${file.path}`);
+    } catch (err) {
+      console.warn(`[FileEventManager] Failed to cache content for opened file ${file.path}:`, err);
+    }
+  }
+  
+  /**
+   * Handle active leaf change - cache content when switching to a file
+   */
+  private async handleActiveLeafChange(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile) {
+      await this.handleFileOpen(activeFile);
+    }
+  }
+  
+  /**
    * Handle file deletion
    */
   private handleFileDeleted(file: TAbstractFile): void {
     if (!this.shouldProcessFile(file)) return;
     
+    // Skip events during vault startup loading
+    if (!this.vaultIsReady) {
+      this.startupFileEventCount++;
+      console.log(`[FileEventManager] Skipping startup file event for ${file.path} (${this.startupFileEventCount} events so far)`);
+      return;
+    }
+    
     // Clean up modification time tracking
     this.fileModificationTimes.delete(file.path);
+    
+    console.log(`[FileEventManager] File deleted: ${file.path}`);
     
     this.queueFileEvent({
       path: file.path,
@@ -518,20 +668,118 @@ export class FileEventManager {
   }
   
   /**
+   * Start periodic content caching
+   */
+  private startContentCaching(): void {
+    // Cache the currently open file immediately
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile) {
+      this.handleFileOpen(activeFile);
+    }
+    
+    // Cache content every 60 seconds for recently modified files
+    this.contentCachingTimer = setInterval(() => {
+      this.cacheActiveFileContents();
+    }, 60000); // 60 seconds
+  }
+  
+  /**
+   * Cache contents of recently accessed files
+   */
+  private async cacheActiveFileContents(): Promise<void> {
+    try {
+      // Get all markdown files
+      const markdownFiles = this.app.vault.getMarkdownFiles();
+      
+      // Cache contents for files that have been recently accessed or modified
+      const now = Date.now();
+      const recentThreshold = 5 * 60 * 1000; // 5 minutes
+      
+      let cachedCount = 0;
+      for (const file of markdownFiles) {
+        // Skip excluded paths
+        if (this.isExcludedPath(file.path)) continue;
+        
+        // Skip if already cached recently (check cache freshness)
+        if (this.contentCache.get(file.path)) continue;
+        
+        // Check if file was recently modified
+        const modTime = file.stat.mtime;
+        if (now - modTime < recentThreshold) {
+          try {
+            const content = await this.app.vault.read(file);
+            this.contentCache.set(file.path, content);
+            cachedCount++;
+          } catch (err) {
+            // Ignore errors
+          }
+        }
+      }
+      
+      if (cachedCount > 0) {
+        console.log(`[FileEventManager] Pre-cached content for ${cachedCount} recently modified files`);
+      }
+    } catch (error) {
+      console.error('[FileEventManager] Error caching file contents:', error);
+    }
+  }
+  
+  /**
    * Batch process embeddings for multiple files
    */
   private async batchProcessEmbeddings(events: FileEvent[]): Promise<void> {
-    const filePaths = events.map(e => e.path);
-    
-    console.log(`[FileEventManager] Batch processing embeddings for ${filePaths.length} files`);
-    console.log('[FileEventManager] Files to embed:', filePaths);
+    console.log(`[FileEventManager] Batch processing embeddings for ${events.length} files`);
     
     // Mark as system operation to prevent loops
     this.startSystemOperation();
     
     try {
-      // Use the embedding service's incremental update
-      await this.embeddingService.updateFileEmbeddings(filePaths);
+      // Process each file individually to use chunk-level updates when possible
+      for (const event of events) {
+        try {
+          // Get the current file
+          const file = this.app.vault.getAbstractFileByPath(event.path);
+          if (!(file instanceof TFile)) continue;
+          
+          // For modify operations, try to get old content from cache
+          let oldContent = this.contentCache.get(event.path);
+          
+          // Read current content
+          const newContent = await this.app.vault.read(file);
+          
+          // If we don't have old content cached, try to read it from the existing embeddings
+          if (!oldContent && event.operation === 'modify') {
+            // As a fallback, cache the current content for next time
+            this.contentCache.set(event.path, newContent);
+            console.log(`[FileEventManager] No cached content for ${event.path}, caching current content for next modification`);
+          }
+          
+          // If we have old content and it's a modify operation, use chunk-level update
+          if (oldContent && event.operation === 'modify' && oldContent !== newContent) {
+            console.log(`[FileEventManager] Using chunk-level update for ${event.path} (old: ${oldContent.length} chars, new: ${newContent.length} chars)`);
+            await this.embeddingService.updateChangedChunks(
+              event.path, 
+              oldContent, 
+              newContent
+            );
+            // Update the cache with new content for next time
+            this.contentCache.set(event.path, newContent);
+          } else {
+            // Otherwise, use full file embedding
+            if (event.operation === 'modify' && !oldContent) {
+              console.log(`[FileEventManager] No old content cached for ${event.path}, using full file embedding`);
+            } else {
+              console.log(`[FileEventManager] Using full file embedding for ${event.path} (operation: ${event.operation})`);
+            }
+            await this.embeddingService.updateFileEmbeddings([event.path]);
+            // Cache the content for next time
+            this.contentCache.set(event.path, newContent);
+          }
+          
+        } catch (error) {
+          console.error(`[FileEventManager] Error processing embeddings for ${event.path}:`, error);
+        }
+      }
       
       // Mark all as successfully embedded
       for (const event of events) {
@@ -817,8 +1065,8 @@ export class FileEventManager {
   reloadConfiguration(): void {
     console.log('[FileEventManager] Reloading configuration');
     
-    // Extend startup grace period to prevent processing existing files
-    this.pluginStartTime = Date.now();
+    // Temporarily mark vault as not ready to prevent processing files during config reload
+    this.vaultIsReady = false;
     
     // Clear any pending queue to prevent processing stale events
     this.fileQueue.clear();
@@ -830,9 +1078,17 @@ export class FileEventManager {
     // Re-setup processing strategy
     this.setupProcessingStrategy();
     
+    // Restart vault ready detection after a brief delay
+    setTimeout(() => {
+      this.startupFileEventCount = 0;
+      this.startVaultReadyDetection();
+    }, 500);
+    
     // If strategy changed to startup and we haven't run it yet, do it now
     if (this.embeddingStrategy.type === 'startup' && this.isInitialized) {
-      this.handleStartupEmbedding();
+      this.waitForVaultReady().then(() => {
+        this.handleStartupEmbedding();
+      });
     }
   }
   

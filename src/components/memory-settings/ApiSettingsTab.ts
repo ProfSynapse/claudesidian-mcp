@@ -142,13 +142,50 @@ export class ApiSettingsTab extends BaseSettingsTab {
                             this.settings.openaiApiKey = value;
                             await this.saveSettings();
                             
-                            // If embeddings are enabled but provider not initialized, update it
-                            if (this.settings.embeddingsEnabled && this.embeddingService) {
+                            // If we just added a valid API key, auto-enable embeddings for better UX
+                            if (value && value.trim() !== "" && !this.settings.embeddingsEnabled) {
+                                this.settings.embeddingsEnabled = true;
+                                await this.saveSettings();
+                                
+                                // Update the embedding service
+                                if (this.embeddingService) {
+                                    try {
+                                        await this.embeddingService.updateSettings(this.settings);
+                                        console.log('Embedding service updated with new API key and auto-enabled');
+                                    } catch (error) {
+                                        console.error('Error updating embedding service with new API key:', error);
+                                    }
+                                }
+                                
+                                // Show success notice to user
+                                new Notice('API key saved successfully! Embeddings have been automatically enabled.', 3000);
+                                
+                                // Trigger a refresh of the parent settings to update the toggle
+                                if (this.onSettingsChanged) {
+                                    this.onSettingsChanged();
+                                }
+                            } else if (this.settings.embeddingsEnabled && this.embeddingService) {
+                                // Embeddings were already enabled, just update the service
                                 try {
                                     await this.embeddingService.updateSettings(this.settings);
                                     console.log('Embedding service updated with new API key');
+                                    
+                                    // Show success notice to user
+                                    new Notice('API key saved successfully. Embeddings are now enabled!', 3000);
                                 } catch (error) {
                                     console.error('Error updating embedding service with new API key:', error);
+                                }
+                            } else if (!value || value.trim() === "") {
+                                // API key was removed, disable embeddings
+                                if (this.settings.embeddingsEnabled) {
+                                    this.settings.embeddingsEnabled = false;
+                                    await this.saveSettings();
+                                    new Notice('API key removed. Embeddings have been disabled.', 3000);
+                                    
+                                    // Trigger a refresh of the parent settings to update the toggle
+                                    if (this.onSettingsChanged) {
+                                        this.onSettingsChanged();
+                                    }
                                 }
                             }
                         });
@@ -182,11 +219,21 @@ export class ApiSettingsTab extends BaseSettingsTab {
                 .onChange(async (value) => {
                     this.settings.embeddingModel = value as 'text-embedding-3-small' | 'text-embedding-3-large';
                     
-                    // Update default dimensions based on model
-                    if (value === 'text-embedding-3-small' && this.settings.dimensions > 1536) {
-                        this.settings.dimensions = 1536;
-                    } else if (value === 'text-embedding-3-large' && this.settings.dimensions === 1536) {
-                        this.settings.dimensions = 3072;
+                    // Update dimensions based on model constraints
+                    if (value === 'text-embedding-3-small') {
+                        // Ensure dimensions are within valid range for small model
+                        if (this.settings.dimensions > 1536 || this.settings.dimensions < 512) {
+                            this.settings.dimensions = 1536; // Default to max for small model
+                        }
+                        // Ensure it's a multiple of 64
+                        this.settings.dimensions = Math.round(this.settings.dimensions / 64) * 64;
+                    } else if (value === 'text-embedding-3-large') {
+                        // Ensure dimensions are within valid range for large model
+                        if (this.settings.dimensions > 3072 || this.settings.dimensions < 1024) {
+                            this.settings.dimensions = 3072; // Default to max for large model
+                        }
+                        // Ensure it's a multiple of 64
+                        this.settings.dimensions = Math.round(this.settings.dimensions / 64) * 64;
                     }
                     
                     await this.saveSettings();
@@ -286,18 +333,25 @@ export class ApiSettingsTab extends BaseSettingsTab {
         } else {
             // Normal slider for when no embeddings exist
             dimensionSetting.addSlider(slider => slider
-                .setLimits(256, maxDimensions, 256)
+                .setLimits(
+                    this.settings.embeddingModel === 'text-embedding-3-small' ? 512 : 1024, 
+                    maxDimensions, 
+                    64
+                )
                 .setValue(this.settings.dimensions)
                 .setDynamicTooltip()
                 .onChange(async (value) => {
-                    this.settings.dimensions = value;
+                    // Ensure value is a multiple of 64
+                    const alignedValue = Math.round(value / 64) * 64;
+                    this.settings.dimensions = alignedValue;
                     await this.saveSettings();
                 })
             );
             
             // Add info text to explain locking behavior
+            const minDimensions = this.settings.embeddingModel === 'text-embedding-3-small' ? 512 : 1024;
             dimensionSetting.setDesc(
-                `Dimension size for embeddings (max ${maxDimensions}). NOTE: This setting will be locked once you create embeddings.`
+                `Dimension size for embeddings (${minDimensions}-${maxDimensions}, must be multiple of 64). NOTE: This setting will be locked once you create embeddings.`
             );
         }
             

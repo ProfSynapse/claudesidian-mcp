@@ -168,7 +168,7 @@ export interface MemorySettings {
 // Default settings for Memory Manager
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     enabled: true,
-    embeddingsEnabled: true, // Embeddings enabled by default
+    embeddingsEnabled: false, // Embeddings disabled by default until API key is set
     apiProvider: 'openai',
     openaiApiKey: '',
     embeddingModel: 'text-embedding-3-small',

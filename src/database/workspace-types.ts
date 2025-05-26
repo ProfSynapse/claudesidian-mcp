@@ -45,6 +45,16 @@ export interface FileEmbedding {
   totalChunks?: number;
   
   /**
+   * Content hash for identifying this chunk
+   */
+  chunkHash?: string;
+  
+  /**
+   * Semantic boundary type (paragraph, heading, code-block, list)
+   */
+  semanticBoundary?: 'paragraph' | 'heading' | 'code-block' | 'list' | 'unknown';
+  
+  /**
    * Additional metadata
    */
   metadata?: any;

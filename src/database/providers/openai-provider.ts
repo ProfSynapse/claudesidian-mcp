@@ -137,6 +137,25 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
     private readonly MAX_TOKEN_LIMIT = 8192;
     
     /**
+     * Check if we should include dimensions parameter in the API request
+     * Only include if it's a valid dimension for the model
+     */
+    private shouldIncludeDimensions(): boolean {
+        // For text-embedding-3-small: dimensions must be between 512 and 1536 (in steps of 64)
+        if (this.model === 'text-embedding-3-small') {
+            return this.dimensions >= 512 && this.dimensions <= 1536 && this.dimensions % 64 === 0;
+        }
+        
+        // For text-embedding-3-large: dimensions must be between 1024 and 3072 (in steps of 64)
+        if (this.model === 'text-embedding-3-large') {
+            return this.dimensions >= 1024 && this.dimensions <= 3072 && this.dimensions % 64 === 0;
+        }
+        
+        // For older models, don't include dimensions parameter
+        return false;
+    }
+    
+    /**
      * Get a precise token count for OpenAI models using gpt-tokenizer
      * @param text The text to count tokens for
      */
@@ -333,6 +352,23 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
             // Count tokens for usage tracking - get precise count with gpt-tokenizer
             const tokenCount = this.getTokenCount(text);
             
+            const requestBody = {
+                input: text,
+                model: this.model,
+                ...(this.shouldIncludeDimensions() ? { dimensions: this.dimensions } : {})
+            };
+            
+            // Debug logging
+            console.log('[OpenAI Debug] API Request:', {
+                url: this.apiUrl,
+                model: this.model,
+                dimensions: this.dimensions,
+                shouldIncludeDimensions: this.shouldIncludeDimensions(),
+                requestBody: requestBody,
+                apiKeyPrefix: this.apiKey.substring(0, 7) + '...',
+                organization: this.organization
+            });
+            
             const response = await requestUrl({
                 url: this.apiUrl,
                 method: 'POST',
@@ -341,11 +377,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
                     'Content-Type': 'application/json',
                     ...(this.organization ? { 'OpenAI-Organization': this.organization } : {})
                 },
-                body: JSON.stringify({
-                    input: text,
-                    model: this.model,
-                    dimensions: this.dimensions
-                })
+                body: JSON.stringify(requestBody)
             });
             
             // Update rate limiting tracker
@@ -439,6 +471,14 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
                     throw new Error('Invalid response format from OpenAI API');
                 }
             } else {
+                console.error('[OpenAI Debug] API Error Response:', {
+                    status: response.status,
+                    statusText: response.status === 404 ? 'Not Found' : 'Unknown',
+                    responseText: response.text,
+                    headers: response.headers,
+                    url: this.apiUrl,
+                    model: this.model
+                });
                 throw new Error(`OpenAI API error: ${response.status} ${response.text}`);
             }
         } catch (error) {
@@ -486,7 +526,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
                     body: JSON.stringify({
                         input: chunk,
                         model: this.model,
-                        dimensions: this.dimensions
+                        ...(this.shouldIncludeDimensions() ? { dimensions: this.dimensions } : {})
                     })
                 });
                 

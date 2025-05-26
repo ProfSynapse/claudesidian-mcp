@@ -1,4 +1,4 @@
-import { App, Setting } from 'obsidian';
+import { App, Notice, Setting } from 'obsidian';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../types';
 import { Settings } from '../settings';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
@@ -139,27 +139,68 @@ export class MemorySettingsTab {
             .addToggle(toggle => toggle
                 .setValue(this.settings.embeddingsEnabled)
                 .onChange(async (value) => {
+                    // Check if trying to enable embeddings without API key
+                    if (value && (!this.settings.openaiApiKey || this.settings.openaiApiKey.trim() === "")) {
+                        // Show user feedback and direct them to API tab
+                        new Notice('OpenAI API Key is required to enable embeddings. Please set your API key in the API tab first.', 4000);
+                        
+                        // Reset toggle to false
+                        toggle.setValue(false);
+                        
+                        // Switch to API tab to help user
+                        if (this.tabs.api) {
+                            // Remove active class from all tabs and contents
+                            Object.values(this.tabs).forEach(t => t.removeClass('active'));
+                            Object.values(this.contents).forEach(c => c.removeClass('active'));
+                            
+                            // Add active class to API tab
+                            this.tabs.api.addClass('active');
+                            this.contents.api.addClass('active');
+                            this.activeTabKey = 'api';
+                        }
+                        
+                        return; // Don't proceed with enabling
+                    }
+                    
                     this.settings.embeddingsEnabled = value;
                     await this.saveSettings();
                     
-                    // Directly update the EmbeddingService with the new setting
+                    // Only update the EmbeddingService if we have a valid API key or are disabling
                     if (this.embeddingService) {
                         try {
                             await this.embeddingService.updateSettings(this.settings);
-                            console.log(`Embedding service settings updated. embeddingsEnabled: ${value}`);
                         } catch (error) {
                             console.error('Error updating embedding service:', error);
                         }
                     }
                     
-                    // Update plugin embedding strategy
+                    // Update plugin configuration
                     const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
-                    if (plugin && typeof plugin.initializeEmbeddingStrategy === 'function') {
-                        plugin.initializeEmbeddingStrategy();
+                    if (plugin && typeof plugin.reloadConfiguration === 'function') {
+                        plugin.reloadConfiguration();
                     }
                     
-                    // Refresh UI to reflect the new state
-                    this.display();
+                    // Update the disabled class on the content container
+                    if (this.settings.embeddingsEnabled) {
+                        this.contentContainer.removeClass('embeddings-disabled');
+                    } else {
+                        this.contentContainer.addClass('embeddings-disabled');
+                    }
+                    
+                    // Update the info notice
+                    const infoEl = this.containerEl.querySelector('.memory-info-notice');
+                    if (infoEl) {
+                        infoEl.empty();
+                        if (this.settings.embeddingsEnabled) {
+                            infoEl.createEl('p', { text: 'Memory Manager is always enabled. You can control when embeddings are created in the Embedding tab under "Indexing Schedule".' });
+                            infoEl.createEl('p', { text: 'Set to "Only Manually" if you want to control exactly when embeddings are created.' });
+                        } else {
+                            infoEl.createEl('p', { 
+                                cls: 'embeddings-disabled-notice',
+                                text: 'Embeddings are currently disabled. Semantic search and embedding creation will not be available when using Claude desktop app.'
+                            });
+                        }
+                    }
                 })
             );
 
@@ -254,10 +295,10 @@ export class MemorySettingsTab {
             this.vaultLibrarian.updateSettings?.(this.settings);
         }
         
-        // Get plugin reference to update file event manager configuration
+        // Get plugin reference to trigger configuration reload
         const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
-        if (plugin && plugin.fileEventManager && typeof plugin.fileEventManager.reloadConfiguration === 'function') {
-            plugin.fileEventManager.reloadConfiguration();
+        if (plugin && typeof plugin.reloadConfiguration === 'function') {
+            plugin.reloadConfiguration();
         }
         
         // Update settings in all tab components

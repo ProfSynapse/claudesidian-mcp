@@ -4,8 +4,8 @@ import { FindReplaceContentParams, FindReplaceContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
-import { parseWorkspaceContext } from '../../../utils/contextUtils';
-import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
+import { EmbeddingUpdateHelper } from '../utils/EmbeddingUpdateHelper';
+import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for find and replace operations in a file
@@ -14,6 +14,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
   private app: App;
   private embeddingService: EmbeddingService | null = null;
   private searchService: ChromaSearchService | null = null;
+  private embeddingUpdateHelper: EmbeddingUpdateHelper;
   
   /**
    * Create a new FindReplaceContentMode
@@ -36,6 +37,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
     this.app = app;
     this.embeddingService = embeddingService || null;
     this.searchService = searchService || null;
+    this.embeddingUpdateHelper = new EmbeddingUpdateHelper(app, embeddingService, searchService);
   }
   
   /**
@@ -57,6 +59,14 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
         sessionId 
       } = params;
       
+      // Get the original content before modification for diff-based embedding updates
+      let oldContent: string | undefined;
+      try {
+        oldContent = await ContentOperations.readContent(this.app, filePath);
+      } catch (error) {
+        console.warn(`Could not read original content for ${filePath}:`, error);
+      }
+      
       const replacements = await ContentOperations.findReplaceContent(
         this.app,
         filePath,
@@ -69,7 +79,13 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
       
       // Update embeddings for the file if available and replacements were made
       if (replacements > 0) {
-        await this.updateEmbeddingsWithChromaDB(filePath, workspaceContext, sessionId);
+        await this.embeddingUpdateHelper.updateFileEmbeddings(
+          filePath,
+          workspaceContext,
+          sessionId,
+          oldContent,
+          'findReplaceContent'
+        );
       }
       
       const response = this.prepareResult(
@@ -92,105 +108,6 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
       return response;
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error in find and replace: ', error), params.workspaceContext);
-    }
-  }
-  
-  /**
-   * Update the file embeddings using ChromaDB if available
-   * @param filePath Path to the file
-   * @param workspaceContext Workspace context
-   * @param sessionId Session ID for activity recording
-   */
-  private async updateEmbeddingsWithChromaDB(
-    filePath: string,
-    workspaceContext?: any,
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      // Skip if no ChromaDB services available
-      if (!this.searchService && !this.embeddingService) {
-        return;
-      }
-      
-      // Parse workspace context for workspace ID
-      const parsedContext = parseWorkspaceContext(workspaceContext);
-      const workspaceId = parsedContext?.workspaceId;
-      
-      // Update file index with ChromaDB if searchService is available
-      if (this.searchService) {
-        await this.searchService.indexFile(
-          filePath,
-          workspaceId,
-          { 
-            force: true, // Force reindexing since content changed
-            sessionId: sessionId
-          }
-        );
-      } 
-      // Fallback to using EmbeddingService directly
-      else if (this.embeddingService) {
-        // First, get the updated file content
-        const updatedContent = await ContentOperations.readContent(this.app, filePath);
-        
-        // Generate embedding for updated file content
-        const embedding = await this.embeddingService.getEmbedding(updatedContent);
-        
-        if (embedding) {
-          // Store embedding directly in ChromaDB via FileEmbeddingCollection
-          // Skip direct storage as this should be handled by searchService
-          console.log('Embedding generated for updated content in findReplaceContentMode, but not stored directly.');
-          // The searchService handles this via indexFile method
-          // No action needed here as the architecture uses services
-        }
-      }
-      
-      // Record memory trace for file modification to track activity
-      // This is critical for workspace recent files and associated notes
-      if (workspaceId && sessionId) {
-        try {
-          // Get the memoryService from the plugin
-          const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-          const memoryService = plugin?.services?.memoryService;
-          
-          if (memoryService) {
-            // Store a memory trace with the file path in relatedFiles
-            await memoryService.storeMemoryTrace({
-              workspaceId,
-              workspacePath: parsedContext?.workspacePath || [workspaceId],
-              contextLevel: 'workspace',
-              activityType: 'research',
-              content: `Find and replace operation in file: ${filePath}`,
-              metadata: {
-                tool: 'contentManager.findReplaceContent',
-                params: { filePath },
-                result: { success: true },
-                relatedFiles: [filePath]  // This is critical for tracking recent files
-              },
-              sessionId: sessionId,
-              timestamp: Date.now(),
-              importance: 0.6,
-              tags: ['file-modification', 'find-replace']
-            });
-            
-            // Optionally record in workspace activity history if available
-            const workspaceService = plugin?.services?.workspaceService;
-            if (workspaceService) {
-              await workspaceService.recordActivity(workspaceId, {
-                action: 'edit',
-                timestamp: Date.now(),
-                hierarchyPath: [filePath]
-              });
-            }
-          }
-        } catch (error) {
-          console.warn('Error recording memory trace for find and replace operation:', getErrorMessage(error));
-          // Don't throw - this is supplementary tracking
-        }
-      }
-    } catch (error) {
-      console.error('Error updating embeddings with ChromaDB:', getErrorMessage(error));
-      // Don't throw error - embedding update is a secondary operation
-      // and should not prevent the primary operation from succeeding
     }
   }
   

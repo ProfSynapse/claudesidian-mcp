@@ -470,6 +470,21 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
+     * Reload configuration for all services after settings change
+     * Called when memory settings are updated to ensure immediate effect
+     */
+    reloadConfiguration(): void {
+        console.log('[ClaudesidianPlugin] Reloading configuration after settings change');
+        
+        // Reload FileEventManager configuration (handles embedding strategy)
+        if (this.fileEventManager && typeof this.fileEventManager.reloadConfiguration === 'function') {
+            this.fileEventManager.reloadConfiguration();
+        }
+        
+        console.log('[ClaudesidianPlugin] Configuration reload complete');
+    }
+    
+    /**
      * Validate that collections are properly loaded and accessible
      * This runs after service initialization to ensure everything is working correctly
      */
@@ -572,6 +587,12 @@ export default class ClaudesidianPlugin extends Plugin {
         console.log('Warming cache on plugin startup...');
         
         try {
+            // Check if cache manager is initialized before using it
+            if (!this.cacheManager || !this.cacheManager.isReady()) {
+                console.log('CacheManager not ready, skipping cache warming');
+                return;
+            }
+            
             // Get the most recently accessed workspace
             const workspaces = await this.workspaceService.getWorkspaces();
             if (workspaces.length > 0) {
