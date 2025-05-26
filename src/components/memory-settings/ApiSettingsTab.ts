@@ -45,6 +45,61 @@ export class ApiSettingsTab extends BaseSettingsTab {
                 this.embeddingsExist = true;
             }
         }
+        
+        // Add the embeddings toggle at the top (moved from MemorySettingsTab)
+        new Setting(containerEl)
+            .setName('Enable Embeddings')
+            .setDesc('Enable or disable embeddings functionality. When disabled, semantic search and embedding creation will not be available.')
+            .addToggle(toggle => toggle
+                .setValue(this.settings.embeddingsEnabled)
+                .onChange(async (value) => {
+                    // Check if trying to enable embeddings without API key
+                    if (value && (!this.settings.openaiApiKey || this.settings.openaiApiKey.trim() === "")) {
+                        // Show user feedback
+                        new Notice('OpenAI API Key is required to enable embeddings. Please set your API key below.', 4000);
+                        
+                        // Reset toggle to false
+                        toggle.setValue(false);
+                        
+                        return; // Don't proceed with enabling
+                    }
+                    
+                    this.settings.embeddingsEnabled = value;
+                    await this.saveSettings();
+                    
+                    // Only update the EmbeddingService if we have a valid API key or are disabling
+                    if (this.embeddingService) {
+                        try {
+                            await this.embeddingService.updateSettings(this.settings);
+                        } catch (error) {
+                            console.error('Error updating embedding service:', error);
+                        }
+                    }
+                    
+                    // Update plugin configuration
+                    const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+                    if (plugin && typeof plugin.reloadConfiguration === 'function') {
+                        plugin.reloadConfiguration();
+                    }
+                    
+                    // Refresh the display to update the info notice
+                    containerEl.empty();
+                    await this.display(containerEl);
+                })
+            );
+
+        // Note about embedding creation (moved from MemorySettingsTab)
+        const infoEl = containerEl.createEl('div', { cls: 'memory-info-notice' });
+        if (this.settings.embeddingsEnabled) {
+            infoEl.createEl('p', { text: 'Memory Manager is always enabled. You can control when embeddings are created in the Embedding tab under "Indexing Schedule".' });
+            infoEl.createEl('p', { text: 'Set to "Only Manually" if you want to control exactly when embeddings are created.' });
+        } else {
+            infoEl.createEl('p', { 
+                cls: 'embeddings-disabled-notice',
+                text: 'Embeddings are currently disabled. Semantic search and embedding creation will not be available when using Claude desktop app.'
+            });
+        }
+        
         containerEl.createEl('h3', { text: 'API Configuration' });
         
         // Status section

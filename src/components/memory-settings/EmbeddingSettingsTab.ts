@@ -3,7 +3,7 @@ import { BaseSettingsTab } from './BaseSettingsTab';
 
 /**
  * Embedding Settings tab component
- * Handles content chunking, indexing schedules, and performance settings
+ * Handles content chunking, indexing schedules, performance settings, filtering, and advanced database settings
  */
 export class EmbeddingSettingsTab extends BaseSettingsTab {
     /**
@@ -183,6 +183,123 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
                 .setDynamicTooltip()
                 .onChange(async (value) => {
                     this.settings.processingDelay = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        // Filter Settings section (moved from FilterSettingsTab)
+        containerEl.createEl('h3', { text: 'Exclude Patterns' });
+        
+        const excludePatternsSetting = new Setting(containerEl)
+            .setName('Exclude Patterns')
+            .setDesc('Exclude files matching these patterns (glob format, one per line)');
+            
+        const excludeTextarea = excludePatternsSetting.controlEl.createEl('textarea', {
+            cls: 'memory-settings-textarea',
+            attr: {
+                rows: '4'
+            }
+        });
+        
+        excludeTextarea.value = this.settings.excludePaths.join('\n');
+        excludeTextarea.addEventListener('change', async () => {
+            const patterns = excludeTextarea.value.split('\n')
+                .map(p => p.trim())
+                .filter(p => p.length > 0);
+            
+            this.settings.excludePaths = patterns;
+            await this.saveSettings();
+        });
+        
+        containerEl.createEl('h3', { text: 'Search Preferences' });
+        
+        new Setting(containerEl)
+            .setName('Default Result Limit')
+            .setDesc('Default number of results to return')
+            .addSlider(slider => slider
+                .setLimits(1, 50, 1)
+                .setValue(this.settings.defaultResultLimit)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                    this.settings.defaultResultLimit = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        new Setting(containerEl)
+            .setName('Default Similarity Threshold')
+            .setDesc('Minimum similarity score (0-1) for search results')
+            .addSlider(slider => slider
+                .setLimits(0, 1, 0.05)
+                .setValue(this.settings.defaultThreshold)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                    this.settings.defaultThreshold = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        new Setting(containerEl)
+            .setName('Enable Backlink Boost')
+            .setDesc('Boost results from files with backlinks to/from high-scoring results')
+            .addToggle(toggle => toggle
+                .setValue(this.settings.backlinksEnabled)
+                .onChange(async (value) => {
+                    this.settings.backlinksEnabled = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        new Setting(containerEl)
+            .setName('Graph Boost Factor')
+            .setDesc('How much to boost results based on connections (0-1)')
+            .addSlider(slider => slider
+                .setLimits(0, 1, 0.05)
+                .setValue(this.settings.graphBoostFactor)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                    this.settings.graphBoostFactor = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        // Database Settings section (moved from AdvancedSettingsTab)
+        containerEl.createEl('h3', { text: 'Database Settings' });
+            
+        new Setting(containerEl)
+            .setName('Maximum Database Size')
+            .setDesc('Maximum size of the database in MB')
+            .addSlider(slider => slider
+                .setLimits(100, 2000, 100)
+                .setValue(this.settings.maxDbSize)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                    this.settings.maxDbSize = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        new Setting(containerEl)
+            .setName('Clean Orphaned Embeddings')
+            .setDesc('Automatically clean up embeddings for deleted files')
+            .addToggle(toggle => toggle
+                .setValue(this.settings.autoCleanOrphaned)
+                .onChange(async (value) => {
+                    this.settings.autoCleanOrphaned = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        new Setting(containerEl)
+            .setName('Pruning Strategy')
+            .setDesc('Strategy for removing embeddings when database is full')
+            .addDropdown(dropdown => dropdown
+                .addOption('oldest', 'Oldest Embeddings')
+                .addOption('least-used', 'Least Used Embeddings')
+                .addOption('manual', 'Manual Cleanup Only')
+                .setValue(this.settings.pruningStrategy)
+                .onChange(async (value: any) => {
+                    this.settings.pruningStrategy = value;
                     await this.saveSettings();
                 })
             );

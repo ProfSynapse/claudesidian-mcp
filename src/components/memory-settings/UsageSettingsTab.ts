@@ -1,18 +1,20 @@
 import { Notice, Setting } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
 import { UsageStatsComponent } from './UsageStatsComponent';
+import { DeleteCollectionComponent } from './DeleteCollectionComponent';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 
 /**
  * Usage Settings Tab component
- * Handles usage limits and displays usage statistics
+ * Handles usage limits, displays usage statistics, and manages collections
  */
 export class UsageSettingsTab extends BaseSettingsTab {
     private embeddingManager: EmbeddingManager | null;
     private vaultLibrarian: VaultLibrarianAgent | null;
     private usageStatsComponent: UsageStatsComponent | null = null;
+    private deleteCollectionComponent: DeleteCollectionComponent | null = null;
     private usageStatsService: UsageStatsService | null = null;
     private vectorStore: any = null;
     
@@ -173,21 +175,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
                 })
             );
             
-        new Setting(containerEl)
-            .setName('Database Size Limit')
-            .setDesc('Maximum size of the embedding database in MB')
-            .addText((text: any) => text
-                .setPlaceholder('1000')
-                .setValue(String(this.settings.maxDbSize))
-                .onChange(async (value: string) => {
-                    const numValue = Number(value);
-                    if (!isNaN(numValue) && numValue > 0) {
-                        this.settings.maxDbSize = numValue;
-                        await this.saveSettings();
-                    }
-                })
-            );
-            
         // Ensure cost per thousand tokens is set with the correct values
         if (!this.settings.costPerThousandTokens) {
             this.settings.costPerThousandTokens = {
@@ -231,6 +218,38 @@ export class UsageSettingsTab extends BaseSettingsTab {
         }
         
         this.usageStatsComponent.display(usageStatsContainer);
+        
+        // Collection Management Section (moved from EmbeddingSettingsTab)
+        const collectionManagementContainer = containerEl.createDiv({ cls: 'collection-management-container' });
+        
+        // Only display if we have a vector store and usage stats service
+        if (this.vectorStore && this.usageStatsService) {
+            // Create and display the DeleteCollectionComponent
+            if (!this.deleteCollectionComponent) {
+                this.deleteCollectionComponent = new DeleteCollectionComponent(
+                    collectionManagementContainer,
+                    this.vectorStore,
+                    this.usageStatsService,
+                    this.settings
+                );
+            } else {
+                // If already created, just set the container and refresh
+                this.deleteCollectionComponent = new DeleteCollectionComponent(
+                    collectionManagementContainer,
+                    this.vectorStore,
+                    this.usageStatsService,
+                    this.settings
+                );
+            }
+            
+            // Initialize the component with collections
+            this.deleteCollectionComponent.refresh();
+        } else {
+            collectionManagementContainer.createEl('div', { 
+                text: 'Collection management is not available. Vector store or usage stats service not initialized.',
+                cls: 'collection-management-error'
+            });
+        }
     }
     
     /**
@@ -269,7 +288,11 @@ export class UsageSettingsTab extends BaseSettingsTab {
                 console.warn('UsageSettingsTab: No UsageStatsComponent available for refresh');
             }
             
-            // DeleteCollectionComponent has been moved to AdvancedSettingsTab
+            // Refresh the DeleteCollectionComponent
+            if (this.deleteCollectionComponent) {
+                console.log('UsageSettingsTab: Refreshing DeleteCollectionComponent');
+                await this.deleteCollectionComponent.refresh();
+            }
             
             // Force localStorage events for other components
             try {

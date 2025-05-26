@@ -7,8 +7,6 @@ import { EmbeddingService } from '../database/services/EmbeddingService';
 import {
     ApiSettingsTab,
     EmbeddingSettingsTab, 
-    FilterSettingsTab,
-    AdvancedSettingsTab,
     UsageStatsComponent,
     UsageSettingsTab
 } from './memory-settings';
@@ -30,8 +28,6 @@ export class MemorySettingsTab {
     // Component tabs
     private apiSettingsTab: ApiSettingsTab;
     private embeddingSettingsTab: EmbeddingSettingsTab;
-    private filterSettingsTab: FilterSettingsTab;
-    private advancedSettingsTab: AdvancedSettingsTab;
     private usageSettingsTab: UsageSettingsTab;
     private usageStatsComponent: UsageStatsComponent;
     
@@ -86,8 +82,6 @@ export class MemorySettingsTab {
             this.embeddingService || undefined
         );
         this.embeddingSettingsTab = new EmbeddingSettingsTab(this.settings, this.settingsManager, this.app);
-        this.filterSettingsTab = new FilterSettingsTab(this.settings, this.settingsManager, this.app);
-        this.advancedSettingsTab = new AdvancedSettingsTab(this.settings, this.settingsManager, this.app);
         this.usageSettingsTab = new UsageSettingsTab(
             this.settings, 
             this.settingsManager, 
@@ -132,98 +126,12 @@ export class MemorySettingsTab {
         const memorySection = this.containerEl.createEl('div', { cls: 'mcp-section memory-settings-container' });
         memorySection.createEl('h2', { text: 'Memory Manager Settings' });
 
-        // Add the embeddings toggle at the top level
-        new Setting(memorySection)
-            .setName('Enable Embeddings')
-            .setDesc('Enable or disable embeddings functionality. When disabled, semantic search and embedding creation will not be available.')
-            .addToggle(toggle => toggle
-                .setValue(this.settings.embeddingsEnabled)
-                .onChange(async (value) => {
-                    // Check if trying to enable embeddings without API key
-                    if (value && (!this.settings.openaiApiKey || this.settings.openaiApiKey.trim() === "")) {
-                        // Show user feedback and direct them to API tab
-                        new Notice('OpenAI API Key is required to enable embeddings. Please set your API key in the API tab first.', 4000);
-                        
-                        // Reset toggle to false
-                        toggle.setValue(false);
-                        
-                        // Switch to API tab to help user
-                        if (this.tabs.api) {
-                            // Remove active class from all tabs and contents
-                            Object.values(this.tabs).forEach(t => t.removeClass('active'));
-                            Object.values(this.contents).forEach(c => c.removeClass('active'));
-                            
-                            // Add active class to API tab
-                            this.tabs.api.addClass('active');
-                            this.contents.api.addClass('active');
-                            this.activeTabKey = 'api';
-                        }
-                        
-                        return; // Don't proceed with enabling
-                    }
-                    
-                    this.settings.embeddingsEnabled = value;
-                    await this.saveSettings();
-                    
-                    // Only update the EmbeddingService if we have a valid API key or are disabling
-                    if (this.embeddingService) {
-                        try {
-                            await this.embeddingService.updateSettings(this.settings);
-                        } catch (error) {
-                            console.error('Error updating embedding service:', error);
-                        }
-                    }
-                    
-                    // Update plugin configuration
-                    const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
-                    if (plugin && typeof plugin.reloadConfiguration === 'function') {
-                        plugin.reloadConfiguration();
-                    }
-                    
-                    // Update the disabled class on the content container
-                    if (this.settings.embeddingsEnabled) {
-                        this.contentContainer.removeClass('embeddings-disabled');
-                    } else {
-                        this.contentContainer.addClass('embeddings-disabled');
-                    }
-                    
-                    // Update the info notice
-                    const infoEl = this.containerEl.querySelector('.memory-info-notice');
-                    if (infoEl) {
-                        infoEl.empty();
-                        if (this.settings.embeddingsEnabled) {
-                            infoEl.createEl('p', { text: 'Memory Manager is always enabled. You can control when embeddings are created in the Embedding tab under "Indexing Schedule".' });
-                            infoEl.createEl('p', { text: 'Set to "Only Manually" if you want to control exactly when embeddings are created.' });
-                        } else {
-                            infoEl.createEl('p', { 
-                                cls: 'embeddings-disabled-notice',
-                                text: 'Embeddings are currently disabled. Semantic search and embedding creation will not be available when using Claude desktop app.'
-                            });
-                        }
-                    }
-                })
-            );
-
-        // Note about embedding creation
-        const infoEl = memorySection.createEl('div', { cls: 'memory-info-notice' });
-        if (this.settings.embeddingsEnabled) {
-            infoEl.createEl('p', { text: 'Memory Manager is always enabled. You can control when embeddings are created in the Embedding tab under "Indexing Schedule".' });
-            infoEl.createEl('p', { text: 'Set to "Only Manually" if you want to control exactly when embeddings are created.' });
-        } else {
-            infoEl.createEl('p', { 
-                cls: 'embeddings-disabled-notice',
-                text: 'Embeddings are currently disabled. Semantic search and embedding creation will not be available when using Claude desktop app.'
-            });
-        }
-
         // Create tabs for organization
         this.tabContainer = memorySection.createDiv({ cls: 'memory-settings-tabs' });
         
         this.tabs = {
             api: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'API' }),
             embedding: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Embedding' }),
-            filters: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Filters' }),
-            advanced: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Advanced' }),
             usage: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Usage' })
         };
 
@@ -233,8 +141,6 @@ export class MemorySettingsTab {
         this.contents = {
             api: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
             embedding: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
-            filters: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
-            advanced: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
             usage: this.contentContainer.createDiv({ cls: 'memory-tab-pane' })
         };
 
@@ -257,8 +163,6 @@ export class MemorySettingsTab {
         // Render each tab's content using the specialized components
         this.apiSettingsTab.display(this.contents.api);
         this.embeddingSettingsTab.display(this.contents.embedding);
-        this.filterSettingsTab.display(this.contents.filters);
-        this.advancedSettingsTab.display(this.contents.advanced);
         this.usageSettingsTab.display(this.contents.usage);
         
         // Activate the previously active tab (or default to API)
@@ -270,11 +174,6 @@ export class MemorySettingsTab {
             this.tabs.api.addClass('active');
             this.contents.api.addClass('active');
             this.activeTabKey = 'api';
-        }
-        
-        // Add disabled class to the embedding settings container if embeddings are disabled
-        if (!this.settings.embeddingsEnabled) {
-            this.contentContainer.addClass('embeddings-disabled');
         }
     }
 
@@ -304,8 +203,6 @@ export class MemorySettingsTab {
         // Update settings in all tab components
         this.apiSettingsTab.updateSettings(this.settings);
         this.embeddingSettingsTab.updateSettings(this.settings);
-        this.filterSettingsTab.updateSettings(this.settings);
-        this.advancedSettingsTab.updateSettings(this.settings);
         this.usageSettingsTab.updateSettings(this.settings);
         this.usageStatsComponent.updateSettings(this.settings);
     }
