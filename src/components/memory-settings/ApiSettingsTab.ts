@@ -2,6 +2,7 @@ import { Notice, Setting } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { ClaudesidianMCPPlugin } from '../../types';
 
 /**
  * API Settings tab component
@@ -23,9 +24,10 @@ export class ApiSettingsTab extends BaseSettingsTab {
         settingsManager: any, 
         app: any,
         embeddingManager?: EmbeddingManager,
-        embeddingService?: EmbeddingService
+        embeddingService?: EmbeddingService,
+        plugin?: ClaudesidianMCPPlugin
     ) {
-        super(settings, settingsManager, app);
+        super(settings, settingsManager, app, plugin);
         this.embeddingManager = embeddingManager || null;
         this.embeddingService = embeddingService || null;
     }
@@ -77,7 +79,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                     }
                     
                     // Update plugin configuration
-                    const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+                    const plugin = this.plugin || (window as any).app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
                     if (plugin && typeof plugin.reloadConfiguration === 'function') {
                         plugin.reloadConfiguration();
                     }
@@ -128,7 +130,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                     startButton.textContent = 'Indexing in progress...';
                     
                     try {
-                        const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+                        const plugin = this.plugin || this.app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
                         if (!plugin) {
                             throw new Error('Plugin not found');
                         }
@@ -343,7 +345,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                                 new Notice('Deleting all embeddings. This may take a moment...');
                                 
                                 // Get the vector store directly from the plugin
-                                const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+                                const plugin = this.plugin || this.app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
                                 if (!plugin) {
                                     throw new Error('Claudesidian plugin not found');
                                 }
@@ -440,7 +442,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
         
         // If the service didn't work or isn't available, try a direct check
         try {
-            const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+            const plugin = this.plugin || this.app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
             if (plugin && plugin.vectorStore) {
                 const collections = await plugin.vectorStore.listCollections();
                 

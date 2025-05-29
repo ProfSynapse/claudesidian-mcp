@@ -1,5 +1,5 @@
-import { App, Notice, Setting } from 'obsidian';
-import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../types';
+import { App, Notice, Setting, Plugin } from 'obsidian';
+import { MemorySettings, DEFAULT_MEMORY_SETTINGS, ClaudesidianMCPPlugin } from '../types';
 import { Settings } from '../settings';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../database/services/embeddingManager';
@@ -23,6 +23,7 @@ export class MemorySettingsTab {
     private settings: MemorySettings;
     private settingsManager: Settings;
     private app: App;
+    private plugin: ClaudesidianMCPPlugin | null = null;
     private activeTabKey: string = 'api'; // Track the active tab
     
     // Component tabs
@@ -46,6 +47,9 @@ export class MemorySettingsTab {
      * @param app Obsidian app instance
      * @param embeddingManager EmbeddingManager for embedding provider management
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
+     * @param embeddingService EmbeddingService instance
+     * @param searchService Search service instance
+     * @param plugin Plugin instance for context
      */
     constructor(
         private containerEl: HTMLElement,
@@ -54,22 +58,31 @@ export class MemorySettingsTab {
         embeddingManager?: EmbeddingManager,
         vaultLibrarian?: VaultLibrarianAgent,
         embeddingService?: EmbeddingService,
-        private searchService?: any
+        private searchService?: any,
+        plugin?: ClaudesidianMCPPlugin
     ) {
         this.settingsManager = settingsManager;
         this.app = app || (vaultLibrarian?.app || (window as any).app);
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
         this.embeddingService = embeddingService || null;
+        this.plugin = plugin || null;
         this.settings = this.settingsManager.settings.memory || { ...DEFAULT_MEMORY_SETTINGS };
         
         // Try to get searchService from the plugin if not provided
-        if (!this.searchService) {
-            const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
-            if (plugin?.services?.searchService) {
-                this.searchService = plugin.services.searchService;
-            } else if (plugin?.searchService) {
-                this.searchService = plugin.searchService;
+        if (!this.searchService && this.plugin) {
+            if (this.plugin.services?.searchService) {
+                this.searchService = this.plugin.services.searchService;
+            } else if (this.plugin.searchService) {
+                this.searchService = this.plugin.searchService;
+            }
+        } else if (!this.searchService) {
+            // Fall back to global access if no plugin instance
+            const globalPlugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+            if (globalPlugin?.services?.searchService) {
+                this.searchService = globalPlugin.services.searchService;
+            } else if (globalPlugin?.searchService) {
+                this.searchService = globalPlugin.searchService;
             }
         }
         
@@ -79,15 +92,22 @@ export class MemorySettingsTab {
             this.settingsManager, 
             this.app,
             this.embeddingManager || undefined,
-            this.embeddingService || undefined
+            this.embeddingService || undefined,
+            this.plugin || undefined
         );
-        this.embeddingSettingsTab = new EmbeddingSettingsTab(this.settings, this.settingsManager, this.app);
+        this.embeddingSettingsTab = new EmbeddingSettingsTab(
+            this.settings, 
+            this.settingsManager, 
+            this.app,
+            this.plugin || undefined
+        );
         this.usageSettingsTab = new UsageSettingsTab(
             this.settings, 
             this.settingsManager, 
             this.app, 
             this.embeddingManager || undefined,
-            this.vaultLibrarian || undefined
+            this.vaultLibrarian || undefined,
+            this.plugin || undefined
         );
         this.usageStatsComponent = new UsageStatsComponent(
             this.settings, 
@@ -96,7 +116,8 @@ export class MemorySettingsTab {
             this.embeddingManager || undefined,
             this.vaultLibrarian || undefined,
             this.searchService || undefined,
-            this.embeddingService || undefined
+            this.embeddingService || undefined,
+            this.plugin || undefined
         );
         
         // Register refresh callbacks

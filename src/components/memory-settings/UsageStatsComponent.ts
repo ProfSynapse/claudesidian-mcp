@@ -6,6 +6,7 @@ import { IndexingComponent } from './IndexingComponent';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { ClaudesidianMCPPlugin } from '../../types';
 
 /**
  * Usage Statistics Component
@@ -38,9 +39,10 @@ export class UsageStatsComponent extends BaseSettingsTab {
         embeddingManager?: EmbeddingManager,
         vaultLibrarian?: VaultLibrarianAgent,
         searchService?: any,
-        embeddingService?: EmbeddingService
+        embeddingService?: EmbeddingService,
+        plugin?: ClaudesidianMCPPlugin
     ) {
-        super(settings, settingsManager, app);
+        super(settings, settingsManager, app, plugin);
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
         this.searchService = searchService || null;
@@ -48,7 +50,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
         
         // Try to get embedding service if not provided
         if (!this.embeddingService) {
-            const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+            const plugin = this.plugin || (window as any).app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
             if (plugin?.services?.embeddingService) {
                 this.embeddingService = plugin.services.embeddingService;
             } else if (plugin?.embeddingService) {
@@ -90,7 +92,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
             }
             
             this.usageStatsService = new UsageStatsService(
-                this.embeddingService || null,
+                this.embeddingService?.getProvider() || null,
                 vectorStore,
                 this.settings,
                 pluginObj?.eventManager // Pass the plugin's event manager if available

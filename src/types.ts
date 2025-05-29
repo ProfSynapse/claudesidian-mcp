@@ -2,6 +2,50 @@ import { App, TFile, PluginManifest } from 'obsidian';
 import { IAgent } from './agents/interfaces/IAgent';
 import { WorkspaceContext } from './utils/contextUtils';
 
+// Forward declaration for the main plugin class
+export interface ClaudesidianMCPPlugin {
+    app: App;
+    manifest: PluginManifest;
+    settings: MCPSettings;
+    vectorStore?: any;
+    embeddingService?: any;
+    memoryService?: any;
+    searchService?: any;
+    services?: {
+        embeddingService?: any;
+        searchService?: any;
+        workspaceService?: any;
+        memoryService?: any;
+        vectorStore?: any;
+        eventManager?: any;
+        fileEventManager?: any;
+        usageStatsService?: any;
+        cacheManager?: any;
+    };
+    getPluginContext?(): PluginContext;
+}
+
+/**
+ * Plugin context for vault-specific isolation
+ * Provides a way to pass plugin instance and vault context through components
+ */
+export interface PluginContext {
+    /**
+     * The plugin ID from manifest.json
+     */
+    pluginId: string;
+    
+    /**
+     * Unique vault identifier derived from vault path
+     */
+    vaultId: string;
+    
+    /**
+     * Reference to the plugin instance
+     */
+    plugin: ClaudesidianMCPPlugin;
+}
+
 /**
  * Mode call definition for chaining to another agent/mode
  */

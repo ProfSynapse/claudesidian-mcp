@@ -51,3 +51,21 @@ export function enhanceContextWithSessionInstructions(
     }
     return `${instructions}\n\n${contextString}`;
 }
+
+/**
+ * Create default session data with auto-generated values
+ * @param workspaceId The workspace ID for the session
+ * @param id Optional session ID (generates one if not provided)
+ * @returns Session data object
+ */
+export function createDefaultSessionData(workspaceId: string, id?: string) {
+  return {
+    id: id || generateSessionId(),
+    workspaceId,
+    name: `Session ${new Date().toLocaleString()}`,
+    description: 'Auto-created session',
+    startTime: Date.now(),
+    isActive: true,
+    toolCalls: 0
+  };
+}

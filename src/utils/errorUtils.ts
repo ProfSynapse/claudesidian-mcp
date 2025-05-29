@@ -32,3 +32,16 @@ export function getErrorMessage(error: unknown): string {
 export function createErrorMessage(prefix: string, error: unknown): string {
   return `${prefix}${getErrorMessage(error)}`;
 }
+
+/**
+ * Handles operation errors with consistent logging and error creation
+ * @param operation Name of the operation that failed
+ * @param entityId ID of the entity involved in the operation
+ * @param error The error that occurred
+ * @throws Error with formatted message
+ */
+export function handleOperationError(operation: string, entityId: string, error: unknown): never {
+  const errorMessage = `Failed to ${operation} ${entityId}`;
+  console.error(`${errorMessage}:`, error);
+  throw new Error(createErrorMessage(`${errorMessage}: `, error));
+}

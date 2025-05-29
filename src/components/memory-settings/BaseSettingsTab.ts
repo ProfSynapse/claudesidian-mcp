@@ -1,4 +1,4 @@
-import { MemorySettings } from '../../types';
+import { MemorySettings, PluginContext, ClaudesidianMCPPlugin } from '../../types';
 import { Settings } from '../../settings';
 import { App } from 'obsidian';
 
@@ -28,6 +28,8 @@ export abstract class BaseSettingsTab implements IMemorySettingsTab {
     protected settings: MemorySettings;
     protected settingsManager: Settings;
     protected app: App;
+    protected plugin?: ClaudesidianMCPPlugin;
+    protected pluginContext?: PluginContext;
     
     /**
      * Create a new settings tab component
@@ -35,11 +37,14 @@ export abstract class BaseSettingsTab implements IMemorySettingsTab {
      * @param settings Memory settings
      * @param settingsManager Settings manager
      * @param app Obsidian app instance
+     * @param plugin Optional plugin instance for direct access
      */
-    constructor(settings: MemorySettings, settingsManager: Settings, app: App) {
+    constructor(settings: MemorySettings, settingsManager: Settings, app: App, plugin?: ClaudesidianMCPPlugin) {
         this.settings = settings;
         this.settingsManager = settingsManager;
         this.app = app;
+        this.plugin = plugin;
+        this.pluginContext = plugin?.getPluginContext?.();
     }
     
     /**
@@ -65,8 +70,8 @@ export abstract class BaseSettingsTab implements IMemorySettingsTab {
         this.settingsManager.settings.memory = this.settings;
         await this.settingsManager.saveSettings();
         
-        // Get plugin reference to trigger configuration reload
-        const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+        // Use plugin instance if available, otherwise fall back to global access
+        const plugin = this.plugin || (window as any).app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
         if (plugin && typeof plugin.reloadConfiguration === 'function') {
             plugin.reloadConfiguration();
         }

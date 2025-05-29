@@ -6,6 +6,7 @@ import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
+import { Plugin } from 'obsidian';
 
 /**
  * Memory Management accordion component
@@ -24,6 +25,9 @@ export class MemoryManagementAccordion extends Accordion {
     // Agent (for backward compatibility)
     private vaultLibrarian: VaultLibrarianAgent | undefined;
     
+    // Plugin reference
+    private plugin: Plugin | undefined;
+    
     private memorySettingsTab: MemorySettingsTab | null = null;
     
     /**
@@ -35,6 +39,7 @@ export class MemoryManagementAccordion extends Accordion {
      * @param memoryService MemoryService for memory traces and sessions
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
      * @param embeddingManager EmbeddingManager for managing embedding providers (optional)
+     * @param plugin Plugin instance for access to plugin context
      */
     constructor(
         containerEl: HTMLElement, 
@@ -43,7 +48,8 @@ export class MemoryManagementAccordion extends Accordion {
         chromaSearchService?: ChromaSearchService,
         memoryService?: MemoryService,
         vaultLibrarian?: VaultLibrarianAgent,
-        embeddingManager?: EmbeddingManager
+        embeddingManager?: EmbeddingManager,
+        plugin?: Plugin
     ) {
         super(containerEl, 'Memory Management', false);
         this.settings = settings;
@@ -52,6 +58,7 @@ export class MemoryManagementAccordion extends Accordion {
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
         this.embeddingManager = embeddingManager;
+        this.plugin = plugin;
         
         const contentEl = this.getContentEl();
         
@@ -116,7 +123,8 @@ export class MemoryManagementAccordion extends Accordion {
             this.embeddingManager,
             this.vaultLibrarian,
             this.embeddingService,
-            this.chromaSearchService
+            this.chromaSearchService,
+            this.plugin as any // Cast to match the expected type
         );
         
         // Display settings

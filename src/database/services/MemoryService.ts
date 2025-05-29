@@ -1,5 +1,7 @@
 import { Plugin } from 'obsidian';
 import { IVectorStore } from '../interfaces/IVectorStore';
+import { ICollectionService, CollectionMetadata, CollectionItems } from '../interfaces/ICollectionService';
+import { CollectionService } from './CollectionService';
 import { MemoryTraceCollection } from '../collections/MemoryTraceCollection';
 import { SessionCollection } from '../collections/SessionCollection';
 import { SnapshotCollection } from '../collections/SnapshotCollection';
@@ -7,8 +9,11 @@ import { WorkspaceMemoryTrace, WorkspaceSession, WorkspaceStateSnapshot } from '
 import { VectorStoreFactory } from '../factory/VectorStoreFactory';
 import { EmbeddingService } from './EmbeddingService';
 import { ChromaCollectionManager } from '../providers/chroma/ChromaCollectionManager';
-import { getErrorMessage } from '../../utils/errorUtils';
-import { generateSessionId } from '../../utils/sessionUtils';
+import { getErrorMessage, handleOperationError } from '../../utils/errorUtils';
+import { generateSessionId, createDefaultSessionData } from '../../utils/sessionUtils';
+import { safeInitialize } from '../../utils/serviceUtils';
+import { getOrCreateDefaultWorkspace } from '../../utils/workspaceUtils';
+import { MemorySettings } from '../../types';
 
 /**
  * Service for managing memory traces, sessions, snapshots, and ChromaDB collections
@@ -30,6 +35,11 @@ export class MemoryService {
    * ChromaDB collection manager
    */
   private collectionManager: ChromaCollectionManager;
+  
+  /**
+   * Collection service for generic collection operations
+   */
+  private collectionService: ICollectionService;
   
   /**
    * Plugin instance
@@ -55,34 +65,25 @@ export class MemoryService {
     // Create collection manager for direct ChromaDB access
     this.collectionManager = new ChromaCollectionManager(vectorStore);
     
+    // Create collection service for generic collection operations
+    this.collectionService = new CollectionService(vectorStore, (plugin as any).eventManager);
+    
     // Create specialized collections
     this.memoryTraces = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
     this.sessions = VectorStoreFactory.createSessionCollection(vectorStore);
     this.snapshots = VectorStoreFactory.createSnapshotCollection(vectorStore);
   }
-  
-  /**
+    /**
    * Initialize the memory service
    */
   async initialize(): Promise<void> {
     try {
-      // Initialize the collection manager
-      await this.collectionManager.initialize().catch(error => {
-        console.warn(`Failed to initialize collection manager: ${error.message}`);
-      });
-      
-      // Initialize each collection separately to better handle individual failures
-      await this.memoryTraces.initialize().catch(error => {
-        console.warn(`Failed to initialize memory traces collection: ${error.message}`);
-      });
-      
-      await this.sessions.initialize().catch(error => {
-        console.warn(`Failed to initialize sessions collection: ${error.message}`);
-      });
-      
-      await this.snapshots.initialize().catch(error => {
-        console.warn(`Failed to initialize snapshots collection: ${error.message}`);
-      });
+      // Initialize each collection with proper error handling
+      await safeInitialize(this.collectionService, "collection service");
+      await safeInitialize(this.collectionManager, "collection manager");
+      await safeInitialize(this.memoryTraces, "memory traces collection");
+      await safeInitialize(this.sessions, "sessions collection");
+      await safeInitialize(this.snapshots, "snapshots collection");
       
       console.log("Memory service collections initialized");
     } catch (error) {
@@ -90,11 +91,10 @@ export class MemoryService {
       // Don't throw the error - let the plugin continue loading
     }
   }
-  
-  //#region ChromaDB Collection Management
+    //#region ChromaDB Collection Management - Delegated to ChromaCollectionManager
   
   /**
-   * Get the raw ChromaDB collection manager
+   * Get the raw ChromaDB collection manager for direct collection operations
    * @returns ChromaCollectionManager instance
    */
   getCollectionManager(): ChromaCollectionManager {
@@ -109,152 +109,81 @@ export class MemoryService {
     return this.vectorStore;
   }
   
-  /**
-   * Create a new collection in ChromaDB
-   * @param name Collection name
-   * @param metadata Optional collection metadata
-   * @returns The created collection
-   */
-  async createCollection(name: string, metadata?: Record<string, any>): Promise<any> {
-    return this.collectionManager.createCollection(name, metadata);
-  }
+  //#endregion
+  
+  //#region Generic Collection Operations - Delegated to CollectionService
   
   /**
-   * Get a collection from ChromaDB
+   * Check if a collection exists
    * @param name Collection name
-   * @returns The collection or null if not found
-   */
-  async getCollection(name: string): Promise<any> {
-    return this.collectionManager.getCollection(name);
-  }
-  
-  /**
-   * Get or create a collection in ChromaDB
-   * @param name Collection name
-   * @param metadata Optional collection metadata
-   * @returns The collection
-   */
-  async getOrCreateCollection(name: string, metadata?: Record<string, any>): Promise<any> {
-    return this.collectionManager.getOrCreateCollection(name, metadata);
-  }
-  
-  /**
-   * Check if a collection exists in ChromaDB
-   * @param name Collection name
-   * @returns Whether the collection exists
+   * @returns True if collection exists
    */
   async hasCollection(name: string): Promise<boolean> {
-    return this.collectionManager.hasCollection(name);
-  }
-  
-  /**
-   * List all collections in ChromaDB
-   * @returns Array of collection names
-   */
-  async listCollections(): Promise<string[]> {
-    return this.collectionManager.listCollections();
-  }
-  
-  /**
-   * Get detailed information about all collections
-   * @returns Array of collection details
-   */
-  async getCollectionDetails(): Promise<Array<{ name: string; metadata?: Record<string, any> }>> {
-    return this.collectionManager.getCollectionDetails();
-  }
-  
-  /**
-   * Delete a collection from ChromaDB
-   * @param name Collection name
-   */
-  async deleteCollection(name: string): Promise<void> {
-    return this.collectionManager.deleteCollection(name);
-  }
-  
-  /**
-   * Add items to a collection in ChromaDB
-   * @param name Collection name
-   * @param items Items to add
-   */
-  async addItems(name: string, items: {
-    ids: string[];
-    embeddings?: number[][];
-    metadatas?: Record<string, any>[];
-    documents?: string[];
-  }): Promise<void> {
-    return this.collectionManager.addItems(name, items);
+    return await this.collectionService.hasCollection(name);
   }
 
   /**
-   * Query a collection in ChromaDB
+   * Create a new collection
    * @param name Collection name
-   * @param queryEmbedding Query embedding
-   * @param options Query options
+   * @param metadata Optional metadata
+   * @returns Created collection reference
    */
-  async query(name: string, queryEmbedding: number[], options?: {
-    nResults?: number;
-    where?: Record<string, any>;
-    include?: string[];
-  }): Promise<{
-    ids: string[][];
-    embeddings?: number[][][];
-    metadatas?: Record<string, any>[][];
-    documents?: string[][];
-    distances?: number[][];
-  }> {
-    return this.collectionManager.query(name, {
-      queryEmbeddings: [queryEmbedding],
-      nResults: options?.nResults || 10,
-      where: options?.where,
-      include: options?.include || ['embeddings', 'metadatas', 'documents', 'distances']
-    });
+  async createCollection(name: string, metadata?: CollectionMetadata): Promise<any> {
+    return await this.collectionService.createCollection(name, metadata);
   }
-  
+
   /**
-   * Get items from a collection in ChromaDB
+   * Delete a collection
    * @param name Collection name
-   * @param ids IDs of items to get
-   * @param include What to include in the response
    */
-  async getItems(name: string, ids: string[], include?: string[]): Promise<any> {
-    return this.collectionManager.getItems(name, { 
-      ids,
-      include: include || ['embeddings', 'metadatas', 'documents']
-    });
+  async deleteCollection(name: string): Promise<void> {
+    return await this.collectionService.deleteCollection(name);
   }
-  
+
   /**
-   * Update items in a collection in ChromaDB
+   * List all collections
+   * @returns Array of collection names
+   */
+  async listCollections(): Promise<string[]> {
+    return await this.collectionService.listCollections();
+  }
+
+  /**
+   * Get a collection by name
    * @param name Collection name
-   * @param items Items to update
+   * @returns Collection reference
    */
-  async updateItems(name: string, items: {
-    ids: string[];
-    embeddings?: number[][];
-    metadatas?: Record<string, any>[];
-    documents?: string[];
-  }): Promise<void> {
-    return this.collectionManager.updateItems(name, items);
+  async getCollection(name: string): Promise<any> {
+    return await this.collectionService.getCollection(name);
   }
-  
+
   /**
-   * Delete items from a collection in ChromaDB
-   * @param name Collection name
-   * @param ids IDs of items to delete
-   */
-  async deleteItems(name: string, ids: string[]): Promise<void> {
-    return this.collectionManager.deleteItems(name, { ids });
-  }
-  
-  /**
-   * Get the number of items in a collection
+   * Count items in a collection
    * @param name Collection name
    * @returns Number of items
    */
   async countItems(name: string): Promise<number> {
-    return this.collectionManager.count(name);
+    return await this.collectionService.countItems(name);
   }
-  
+
+  /**
+   * Add items to a collection
+   * @param name Collection name
+   * @param items Items to add
+   */
+  async addItems(name: string, items: CollectionItems): Promise<void> {
+    return await this.collectionService.addItems(name, items);
+  }
+
+  /**
+   * Delete items from a collection
+   * @param name Collection name
+   * @param ids Item IDs to delete
+   */
+  async deleteItems(name: string, ids: string[]): Promise<void> {
+    return await this.collectionService.deleteItems(name, ids);
+  }
+
   //#endregion
   
   //#region Memory Traces
@@ -264,6 +193,9 @@ export class MemoryService {
    * @param trace Memory trace data
    */
   async storeMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id' | 'embedding'>): Promise<string> {
+    // Check memory trace size limit before adding new trace
+    await this.checkAndPruneMemoryTraces();
+    
     // Only generate embeddings for memory traces if explicitly needed
     // Skip embeddings for automated file event traces to prevent excessive API usage
     let embedding: number[] = [];
@@ -366,7 +298,15 @@ export class MemoryService {
   async updateSession(id: string, updates: Partial<WorkspaceSession>): Promise<void> {
     await this.sessions.update(id, updates);
   }
-  
+    /**
+   * Get workspace service from plugin
+   * @returns WorkspaceService instance or undefined if not available
+   */
+  private getWorkspaceService() {
+    const plugin = this.plugin as any;
+    return plugin.services?.workspaceService;
+  }
+
   /**
    * Get a session by ID, auto-creating it if it doesn't exist
    * @param id Session ID
@@ -388,72 +328,23 @@ export class MemoryService {
         return undefined;
       }
       
-      // Session doesn't exist and auto-create is enabled, create a new one
       console.log(`Auto-creating session with ID: ${id}`);
       
-      // Try to get the default workspace
+      // Get workspace ID using the utility function
       let workspaceId: string;
-      try {
-        const plugin = this.plugin as any;
-        const workspaceService = plugin.services?.workspaceService;
-        
-        if (workspaceService) {
-          const workspaces = await workspaceService.getWorkspaces({ 
-            sortBy: 'lastAccessed', 
-            sortOrder: 'desc', 
-          });
-          
-          if (workspaces && workspaces.length > 0) {
-            workspaceId = workspaces[0].id;
-          } else {
-            // Create a default workspace if none exists
-            const defaultWorkspace = await workspaceService.createWorkspace({
-              name: 'Default Workspace',
-              description: 'Automatically created default workspace',
-              rootFolder: '/',
-              hierarchyType: 'workspace',
-              created: Date.now(),
-              lastAccessed: Date.now(),
-              childWorkspaces: [],
-              path: [],
-              relatedFolders: [],
-              relevanceSettings: {
-                folderProximityWeight: 0.5,
-                recencyWeight: 0.7,
-                frequencyWeight: 0.3
-              },
-              activityHistory: [],
-              completionStatus: {},
-              status: 'active'
-            });
-            workspaceId = defaultWorkspace.id;
-          }
-        } else {
-          // No workspace service, use a default ID
-          workspaceId = 'default-workspace';
-        }
-      } catch (error) {
-        // Fallback to a default workspace ID
-        console.warn(`Error getting default workspace: ${getErrorMessage(error)}`);
+      const workspaceService = this.getWorkspaceService();
+      
+      if (workspaceService) {
+        workspaceId = await getOrCreateDefaultWorkspace(workspaceService);
+      } else {
+        // No workspace service, use a default ID
         workspaceId = 'default-workspace';
       }
-      
-      // Create a session object but pass the id parameter separately
-      // Since createSession expects Omit<WorkspaceSession, "id">, we can't include id directly
-      const sessionData = {
-        workspaceId: workspaceId,
-        name: `Session ${new Date().toLocaleString()}`,
-        description: 'Auto-created session',
-        startTime: Date.now(),
-        isActive: true,
-        toolCalls: 0
-      };
+        // Create a session object
+      const sessionData = createDefaultSessionData(workspaceId, id);
       
       // The createSession method will handle the id correctly
-      const newSession = await this.sessions.createSession({
-        ...sessionData,
-        id: id || generateSessionId() // This is handled properly by SessionCollection
-      });
+      const newSession = await this.sessions.createSession(sessionData);
       
       return newSession;
     } catch (error) {
@@ -509,8 +400,7 @@ export class MemoryService {
   async getSessionTraces(sessionId: string, limit?: number): Promise<WorkspaceMemoryTrace[]> {
     return this.memoryTraces.getTracesBySession(sessionId, limit);
   }
-  
-  /**
+    /**
    * Delete memory traces by session ID
    * @param sessionId Session ID
    * @returns Number of traces deleted
@@ -526,8 +416,7 @@ export class MemoryService {
       
       return traces.length;
     } catch (error) {
-      console.error(`Failed to delete memory traces for session ${sessionId}:`, error);
-      throw new Error(`Failed to delete memory traces: ${error instanceof Error ? error.message : String(error)}`);
+      handleOperationError('delete memory traces for session', sessionId, error);
     }
   }
   
@@ -818,5 +707,80 @@ export class MemoryService {
       importance: 0.6,
       tags: ['tool-activity', traceData.type]
     });
+  }
+
+  /**
+   * Check memory trace size and prune if necessary
+   * Only affects memory traces, not file embeddings
+   */
+  private async checkAndPruneMemoryTraces(): Promise<void> {
+    try {
+      // Get memory settings from plugin
+      const memorySettings = (this.plugin as any).settings?.settings?.memory as MemorySettings;
+      if (!memorySettings) {
+        return;
+      }
+
+      // Skip if pruning strategy is manual
+      if (memorySettings.pruningStrategy === 'manual') {
+        return;
+      }
+
+      // Get current memory trace collection size
+      const diagnostics = await this.vectorStore.getDiagnostics();
+      const memoryTraceCollection = diagnostics.collections?.find(
+        (c: any) => c.name === 'memory_traces'
+      );
+
+      if (!memoryTraceCollection) {
+        return;
+      }
+
+      // Calculate size in MB (rough estimate: 1 embedding ≈ 6KB)
+      const estimatedSizeMB = (memoryTraceCollection.itemCount * 6) / 1024;
+
+      // Check if we've exceeded the limit
+      if (estimatedSizeMB < memorySettings.maxDbSize) {
+        return;
+      }
+
+      console.log(`Memory trace size (${estimatedSizeMB.toFixed(2)} MB) exceeds limit (${memorySettings.maxDbSize} MB). Pruning...`);
+
+      // Calculate how many traces to delete (remove 10% to create some headroom)
+      const tracesToDelete = Math.ceil(memoryTraceCollection.itemCount * 0.1);
+
+      if (memorySettings.pruningStrategy === 'oldest') {
+        // Get oldest traces
+        const allTraces = await this.memoryTraces.getAll({
+          sortBy: 'timestamp',
+          sortOrder: 'asc',
+          limit: tracesToDelete
+        });
+
+        // Delete oldest traces
+        for (const trace of allTraces) {
+          await this.memoryTraces.delete(trace.id);
+        }
+
+        console.log(`Pruned ${allTraces.length} oldest memory traces`);
+      } else if (memorySettings.pruningStrategy === 'least-used') {
+        // Get traces sorted by importance (least important first)
+        const allTraces = await this.memoryTraces.getAll({
+          sortBy: 'importance',
+          sortOrder: 'asc',
+          limit: tracesToDelete
+        });
+
+        // Delete least important traces
+        for (const trace of allTraces) {
+          await this.memoryTraces.delete(trace.id);
+        }
+
+        console.log(`Pruned ${allTraces.length} least-used memory traces`);
+      }
+    } catch (error) {
+      console.error('Error checking/pruning memory traces:', error);
+      // Don't throw - we don't want to prevent storing new traces
+    }
   }
 }

@@ -69,7 +69,7 @@ export class CollectionStatsComponent {
         
         // Database size
         this.containerEl.createEl('div', {
-            text: `Database size: ${(stats.dbSizeMB).toFixed(2)} MB / ${this.settings.maxDbSize} MB`
+            text: `Memory trace size: ${(stats.dbSizeMB).toFixed(2)} MB / ${this.settings.maxDbSize} MB`
         });
         
         if (stats.lastIndexedDate) {

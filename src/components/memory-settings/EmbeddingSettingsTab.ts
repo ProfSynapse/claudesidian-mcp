@@ -1,11 +1,24 @@
 import { Setting } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
+import { ClaudesidianMCPPlugin } from '../../types';
 
 /**
  * Embedding Settings tab component
  * Handles content chunking, indexing schedules, performance settings, filtering, and advanced database settings
  */
 export class EmbeddingSettingsTab extends BaseSettingsTab {
+    /**
+     * Create a new embedding settings tab
+     */
+    constructor(
+        settings: any,
+        settingsManager: any,
+        app: any,
+        plugin?: ClaudesidianMCPPlugin
+    ) {
+        super(settings, settingsManager, app, plugin);
+    }
+    
     /**
      * Display the embedding settings tab
      */
@@ -264,11 +277,11 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
             );
             
         // Database Settings section (moved from AdvancedSettingsTab)
-        containerEl.createEl('h3', { text: 'Database Settings' });
+        containerEl.createEl('h3', { text: 'Memory Trace Settings' });
             
         new Setting(containerEl)
-            .setName('Maximum Database Size')
-            .setDesc('Maximum size of the database in MB')
+            .setName('Maximum Memory Trace Size')
+            .setDesc('Maximum size of memory traces in MB (does not include file embeddings)')
             .addSlider(slider => slider
                 .setLimits(100, 2000, 100)
                 .setValue(this.settings.maxDbSize)
@@ -291,8 +304,8 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
             );
             
         new Setting(containerEl)
-            .setName('Pruning Strategy')
-            .setDesc('Strategy for removing embeddings when database is full')
+            .setName('Memory Trace Deletion Strategy')
+            .setDesc('Strategy for removing memory traces when the memory trace storage is full')
             .addDropdown(dropdown => dropdown
                 .addOption('oldest', 'Oldest Embeddings')
                 .addOption('least-used', 'Least Used Embeddings')

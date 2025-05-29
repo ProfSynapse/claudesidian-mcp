@@ -1,6 +1,7 @@
 import { normalizePath } from "obsidian";
 import { WorkspaceService } from "../database/services/WorkspaceService";
 import { ProjectWorkspace } from "../database/workspace-types";
+import { getErrorMessage } from "./errorUtils";
 
 /**
  * Utility functions for working with workspaces and files
@@ -168,5 +169,51 @@ export async function updateWorkspaceActivityForFile(
     } catch (error) {
       console.error(`Error updating activity for workspace ${workspaceId}:`, error);
     }
+  }
+}
+
+/**
+ * Get or create a default workspace for sessions
+ * @param workspaceService WorkspaceService instance
+ * @returns Promise resolving to the default workspace ID
+ */
+export async function getOrCreateDefaultWorkspace(workspaceService: WorkspaceService): Promise<string> {
+  try {
+    // Try to get existing workspaces, sorted by last accessed
+    const workspaces = await workspaceService.getWorkspaces({ 
+      sortBy: 'lastAccessed', 
+      sortOrder: 'desc', 
+    });
+    
+    if (workspaces && workspaces.length > 0) {
+      return workspaces[0].id;
+    }
+    
+    // Create a default workspace if none exists
+    const defaultWorkspace = await workspaceService.createWorkspace({
+      name: 'Default Workspace',
+      description: 'Automatically created default workspace',
+      rootFolder: '/',
+      hierarchyType: 'workspace',
+      created: Date.now(),
+      lastAccessed: Date.now(),
+      childWorkspaces: [],
+      path: [],
+      relatedFolders: [],
+      relevanceSettings: {
+        folderProximityWeight: 0.5,
+        recencyWeight: 0.7,
+        frequencyWeight: 0.3
+      },
+      activityHistory: [],
+      completionStatus: {},
+      status: 'active'
+    });
+    
+    return defaultWorkspace.id;
+  } catch (error) {
+    console.warn(`Error getting/creating default workspace: ${getErrorMessage(error)}`);
+    // Fallback to a default workspace ID
+    return 'default-workspace';
   }
 }

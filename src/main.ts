@@ -4,10 +4,12 @@ import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { SettingsTab } from './components/SettingsTab';
 import { ConfigModal } from './components/ConfigModal';
+import { PluginContext } from './types';
 
 // Import new ChromaDB services
 import { EmbeddingService } from './database/services/EmbeddingService';
 import { ChromaSearchService } from './database/services/ChromaSearchService';
+import { CollectionManager } from './database/services/CollectionManager';
 import { IVectorStore } from './database/interfaces/IVectorStore';
 import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 import { WorkspaceService } from './database/services/WorkspaceService';
@@ -21,6 +23,9 @@ export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
     private connector!: MCPConnector;
     private settingsTab!: SettingsTab;
+    
+    // Plugin context for vault isolation
+    private pluginContext!: PluginContext;
     
     // ChromaDB infrastructure
     public vectorStore!: IVectorStore;
@@ -55,6 +60,9 @@ export default class ClaudesidianPlugin extends Plugin {
         // Initialize settings
         this.settings = new Settings(this);
         await this.settings.loadSettings();
+        
+        // Initialize plugin context for vault isolation
+        this.initializePluginContext();
         
         // Ensure data directories exist before initialization
         try {
@@ -228,7 +236,8 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Initialize services
         this.embeddingService = new EmbeddingService(this);
-        this.searchService = new ChromaSearchService(this, this.vectorStore, this.embeddingService);
+        const collectionManager = new CollectionManager(this.vectorStore);
+        this.searchService = new ChromaSearchService(collectionManager, this.embeddingService);
         this.workspaceService = new WorkspaceService(this, this.vectorStore);
         this.memoryService = new MemoryService(this, this.vectorStore, this.embeddingService);
         this.eventManager = new EventManager();
@@ -277,7 +286,7 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Initialize the usage stats service
         this.usageStatsService = new UsageStatsService(
-            this.embeddingService,
+            this.embeddingService.getProvider(),
             this.vectorStore,
             this.settings.settings.memory,
             this.eventManager  // Pass the existing event manager
@@ -609,5 +618,54 @@ export default class ClaudesidianPlugin extends Plugin {
         } catch (error) {
             console.error('Error warming cache:', error);
         }
+    }
+    
+    /**
+     * Initialize plugin context for vault-specific isolation
+     */
+    private initializePluginContext(): void {
+        // Get vault ID from vault path
+        let vaultId = 'default';
+        try {
+            if (this.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
+                const basePath = (this.app.vault.adapter as any).getBasePath();
+                // Create a vault ID from the path - use last folder name and hash
+                const pathParts = basePath.split(/[/\\]/);
+                const vaultName = pathParts[pathParts.length - 1] || 'vault';
+                // Simple hash to ensure uniqueness even if vault names collide
+                const hash = this.simpleHash(basePath);
+                vaultId = `${vaultName}_${hash}`;
+            }
+        } catch (error) {
+            console.error('Error generating vault ID:', error);
+        }
+        
+        this.pluginContext = {
+            pluginId: this.manifest.id,
+            vaultId: vaultId,
+            plugin: this as any // Cast to match interface
+        };
+        
+        console.log(`Plugin context initialized - Plugin ID: ${this.pluginContext.pluginId}, Vault ID: ${this.pluginContext.vaultId}`);
+    }
+    
+    /**
+     * Get the plugin context for passing to components
+     */
+    public getPluginContext(): PluginContext {
+        return this.pluginContext;
+    }
+    
+    /**
+     * Simple hash function for generating unique vault IDs
+     */
+    private simpleHash(str: string): string {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash).toString(16);
     }
 }

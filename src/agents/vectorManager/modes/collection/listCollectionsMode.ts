@@ -69,7 +69,7 @@ export class ListCollectionsMode extends BaseMode<ListCollectionsParams, Collect
       let filteredCollections = collections;
       if (params.pattern) {
         const regex = new RegExp(params.pattern, 'i');
-        filteredCollections = collections.filter(collectionName => regex.test(collectionName));
+        filteredCollections = collections.filter((collectionName: string) => regex.test(collectionName));
       }
 
       // Get collection details
@@ -78,7 +78,7 @@ export class ListCollectionsMode extends BaseMode<ListCollectionsParams, Collect
       
       // Get item count for each collection
       const collectionDetails = await Promise.all(
-        filteredCollections.map(async collectionName => {
+        filteredCollections.map(async (collectionName: string) => {
           try {
             const count = await memoryService.countItems(collectionName);
             // Find metadata for this collection

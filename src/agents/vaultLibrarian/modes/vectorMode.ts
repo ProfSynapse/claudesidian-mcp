@@ -295,10 +295,9 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         if (plugin.vectorStore) {
           console.log('Found vector store directly on plugin');
           
-          // If we have searchService, connect the vectorStore
+          // If we have searchService, try again
           if (this.searchService) {
-            console.log('Connecting vector store to existing search service');
-            this.searchService.vectorStore = plugin.vectorStore;
+            console.log('Retrying with existing search service');
             
             // Try again with the connected service
             const result = await this.executeWithChromaDB(params);

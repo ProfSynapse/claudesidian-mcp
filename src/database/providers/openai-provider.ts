@@ -2,8 +2,10 @@ import { Notice, requestUrl } from 'obsidian';
 import { MemorySettings } from '../../types';
 import { BaseEmbeddingProvider } from './embeddings-provider';
 import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
-import * as gptTokenizer from 'gpt-tokenizer';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { OpenAITokenManager } from './base/TokenManager';
+import { RateLimiter } from './base/RateLimiter';
+import { UsageTracker, IEventEmitter } from './base/UsageTracker';
 
 /**
  * OpenAI provider for generating embeddings
@@ -15,15 +17,12 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
     private organization?: string;
     private model: string;
     private dimensions: number;
-    private rateLimitPerMinute: number;
-    private requestsThisMinute: number = 0;
-    private lastRequestMinute: number = 0;
     private apiUrl: string = 'https://api.openai.com/v1/embeddings';
-    private costPerThousandTokens: {[key: string]: number};
-    private modelUsage: {[key: string]: number} = {
-        'text-embedding-3-small': 0,
-        'text-embedding-3-large': 0
-    };
+    
+    // Composed components following SRP
+    private tokenManager: OpenAITokenManager;
+    private rateLimiter: RateLimiter;
+    private usageTracker: UsageTracker;
     
     /**
      * Create a new OpenAI provider
@@ -35,39 +34,43 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
         this.organization = settings.openaiOrganization;
         this.model = settings.embeddingModel;
         this.dimensions = settings.dimensions;
-        this.rateLimitPerMinute = settings.apiRateLimitPerMinute;
-        this.costPerThousandTokens = settings.costPerThousandTokens || {
-            // Convert per million token costs to per thousand token costs
-            // $0.02 per million = $0.00002 per thousand for text-embedding-3-small
-            // $0.13 per million = $0.00013 per thousand for text-embedding-3-large
-            'text-embedding-3-small': 0.00002,
-            'text-embedding-3-large': 0.00013
-        };
-        
-        // Load saved model usage from localStorage if available
-        try {
-            if (typeof localStorage !== 'undefined') {
-                const savedUsage = localStorage.getItem('claudesidian-tokens-used');
-                if (savedUsage) {
-                    const parsedUsage = JSON.parse(savedUsage);
-                    // Validate that it's an object with model keys
-                    if (typeof parsedUsage === 'object' && parsedUsage !== null) {
-                        this.modelUsage = {
-                            'text-embedding-3-small': parsedUsage['text-embedding-3-small'] || 0,
-                            'text-embedding-3-large': parsedUsage['text-embedding-3-large'] || 0
-                        };
-                    }
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load token usage from localStorage:', error);
-            // Continue with default model usage
-        }
         
         // Validate API key
         if (!this.apiKey) {
             throw new Error('OpenAI API key is required');
         }
+        
+        // Initialize composed components
+        this.tokenManager = new OpenAITokenManager();
+        
+        this.rateLimiter = new RateLimiter({
+            requestsPerMinute: settings.apiRateLimitPerMinute,
+            showNotifications: true
+        });
+        
+        // Create event emitter for plugin integration
+        const eventEmitter: IEventEmitter = {
+            emit: (event: string, data: any) => {
+                try {
+                    const app = (window as any).app;
+                    const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+                    if (plugin?.eventManager?.emit) {
+                        plugin.eventManager.emit(event, data);
+                    }
+                } catch (error) {
+                    console.warn('Failed to emit event:', error);
+                }
+            }
+        };
+        
+        this.usageTracker = new UsageTracker({
+            costPerThousandTokens: settings.costPerThousandTokens || {
+                'text-embedding-3-small': 0.00002,
+                'text-embedding-3-large': 0.00013
+            },
+            storageKey: 'claudesidian-tokens-used',
+            eventEmitter
+        });
     }
     
     // IEmbeddingProvider implementation
@@ -130,11 +133,6 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
         return this.dimensions;
     }
     
-    /**
-     * Maximum token limit for the embedding models
-     * OpenAI's text-embedding-3 models have an 8192 token limit
-     */
-    private readonly MAX_TOKEN_LIMIT = 8192;
     
     /**
      * Check if we should include dimensions parameter in the API request
@@ -156,20 +154,11 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
     }
     
     /**
-     * Get a precise token count for OpenAI models using gpt-tokenizer
+     * Get a precise token count for OpenAI models
      * @param text The text to count tokens for
      */
     getTokenCount(text: string): number {
-        try {
-            // Use cl100k_base encoding which is used by text-embedding-3 models
-            return gptTokenizer.encode(text, { allowedSpecial: 'all' }).length;
-        } catch (error) {
-            console.warn('Error using gpt-tokenizer, falling back to regex approximation', error);
-            // Fall back to regex approximation if tokenizer fails
-            const tokenRegex = /(['"].*?['"]|\S+)/g;
-            const matches = text.match(tokenRegex);
-            return matches ? matches.length : 0;
-        }
+        return this.tokenManager.getTokenCount(text);
     }
     
     /**
@@ -178,155 +167,17 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
      * @returns True if the text exceeds token limit, false otherwise
      */
     private exceedsTokenLimit(text: string): boolean {
-        const tokenCount = this.getTokenCount(text);
-        return tokenCount > this.MAX_TOKEN_LIMIT;
+        return this.tokenManager.exceedsTokenLimit(text);
     }
     
     /**
      * Split text into chunks that fit within token limits
      * @param text Text to split
-     * @param maxTokens Maximum tokens per chunk (defaults to MAX_TOKEN_LIMIT)
-     * @returns Array of text chunks
-     */
-    private splitTextByTokenLimit(text: string, maxTokens: number = this.MAX_TOKEN_LIMIT): string[] {
-        if (!this.exceedsTokenLimit(text)) {
-            return [text]; // No splitting needed
-        }
-        
-        const chunks: string[] = [];
-        
-        // Try splitting by paragraphs first (most natural boundaries)
-        const paragraphs = text.split(/\n\s*\n/);
-        
-        let currentChunk = "";
-        let currentChunkTokens = 0;
-        
-        for (const paragraph of paragraphs) {
-            const paragraphTokens = this.getTokenCount(paragraph);
-            
-            // If a single paragraph exceeds the limit, we'll need to split it further
-            if (paragraphTokens > maxTokens) {
-                // If we have content in the current chunk, add it first
-                if (currentChunkTokens > 0) {
-                    chunks.push(currentChunk);
-                    currentChunk = "";
-                    currentChunkTokens = 0;
-                }
-                
-                // Split the large paragraph by sentences
-                const sentenceChunks = this.splitLargeParagraph(paragraph, maxTokens);
-                chunks.push(...sentenceChunks);
-                continue;
-            }
-            
-            // Check if adding this paragraph would exceed the limit
-            if (currentChunkTokens + paragraphTokens + 1 > maxTokens) { // +1 for the newline
-                // Add the current chunk to the result and start a new one
-                chunks.push(currentChunk);
-                currentChunk = paragraph;
-                currentChunkTokens = paragraphTokens;
-            } else {
-                // Add to the current chunk
-                if (currentChunk.length > 0) {
-                    currentChunk += "\n\n" + paragraph;
-                    currentChunkTokens += paragraphTokens + 2; // +2 for the newlines
-                } else {
-                    currentChunk = paragraph;
-                    currentChunkTokens = paragraphTokens;
-                }
-            }
-        }
-        
-        // Add the last chunk if it has content
-        if (currentChunk.length > 0) {
-            chunks.push(currentChunk);
-        }
-        
-        return chunks;
-    }
-    
-    /**
-     * Split a large paragraph into smaller chunks by sentences
-     * @param paragraph Large paragraph to split
      * @param maxTokens Maximum tokens per chunk
      * @returns Array of text chunks
      */
-    private splitLargeParagraph(paragraph: string, maxTokens: number): string[] {
-        const chunks: string[] = [];
-        
-        // Split by sentences - try to be smarter about sentence boundaries
-        const sentences = paragraph.match(/[^.!?]+[.!?]+/g) || [paragraph];
-        
-        let currentChunk = "";
-        let currentChunkTokens = 0;
-        
-        for (const sentence of sentences) {
-            const sentenceTokens = this.getTokenCount(sentence);
-            
-            // If a single sentence exceeds the limit, we'll need to split it further by words
-            if (sentenceTokens > maxTokens) {
-                // If we have content in the current chunk, add it first
-                if (currentChunkTokens > 0) {
-                    chunks.push(currentChunk);
-                    currentChunk = "";
-                    currentChunkTokens = 0;
-                }
-                
-                // Split the large sentence by words
-                const words = sentence.split(/\s+/);
-                let wordChunk = "";
-                let wordChunkTokens = 0;
-                
-                for (const word of words) {
-                    const wordTokens = this.getTokenCount(word);
-                    
-                    if (wordChunkTokens + wordTokens + 1 > maxTokens) { // +1 for the space
-                        chunks.push(wordChunk);
-                        wordChunk = word;
-                        wordChunkTokens = wordTokens;
-                    } else {
-                        if (wordChunk.length > 0) {
-                            wordChunk += " " + word;
-                            wordChunkTokens += wordTokens + 1; // +1 for the space
-                        } else {
-                            wordChunk = word;
-                            wordChunkTokens = wordTokens;
-                        }
-                    }
-                }
-                
-                // Add the last word chunk if it has content
-                if (wordChunk.length > 0) {
-                    chunks.push(wordChunk);
-                }
-                
-                continue;
-            }
-            
-            // Check if adding this sentence would exceed the limit
-            if (currentChunkTokens + sentenceTokens + 1 > maxTokens) { // +1 for the space
-                // Add the current chunk to the result and start a new one
-                chunks.push(currentChunk);
-                currentChunk = sentence;
-                currentChunkTokens = sentenceTokens;
-            } else {
-                // Add to the current chunk
-                if (currentChunk.length > 0) {
-                    currentChunk += " " + sentence;
-                    currentChunkTokens += sentenceTokens + 1; // +1 for the space
-                } else {
-                    currentChunk = sentence;
-                    currentChunkTokens = sentenceTokens;
-                }
-            }
-        }
-        
-        // Add the last chunk if it has content
-        if (currentChunk.length > 0) {
-            chunks.push(currentChunk);
-        }
-        
-        return chunks;
+    private splitTextByTokenLimit(text: string, maxTokens?: number): string[] {
+        return this.tokenManager.splitTextByTokenLimit(text, maxTokens);
     }
     
     /**
@@ -346,7 +197,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
         }
         
         // Apply rate limiting
-        await this.checkRateLimit();
+        await this.rateLimiter.checkRateLimit();
         
         try {
             // Count tokens for usage tracking - get precise count with gpt-tokenizer
@@ -381,85 +232,15 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
             });
             
             // Update rate limiting tracker
-            this.trackRequest();
+            this.rateLimiter.trackRequest();
             
             if (response.status === 200) {
                 const data = response.json;
                 
-                // Track token usage (if vaultLibrarian is available)
+                // Track token usage
                 try {
-                    // Get actual token usage from response if available
                     const actualTokenCount = data.usage?.prompt_tokens || tokenCount;
-                    
-                    // Track model-specific usage
-                    this.modelUsage[this.model] = (this.modelUsage[this.model] || 0) + actualTokenCount;
-                    
-                    // Save to local storage for persistence
-                    try {
-                        if (typeof localStorage !== 'undefined') {
-                            localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
-                            
-                            // Dispatch a storage event to notify other components
-                            // This is needed because localStorage events don't fire in the same window
-                            try {
-                                if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
-                                    window.dispatchEvent(new StorageEvent('storage', {
-                                        key: 'claudesidian-tokens-used',
-                                        newValue: JSON.stringify(this.modelUsage),
-                                        storageArea: localStorage
-                                    }));
-                                    console.log('Dispatched storage event for token usage update');
-                                } else {
-                                    console.log('StorageEvent not supported in this browser, skipping dispatch');
-                                }
-                            } catch (dispatchError) {
-                                console.warn('Failed to dispatch storage event:', dispatchError);
-                            }
-                            
-                            // Try to emit event using the plugin's EventManager if available
-                            try {
-                                const app = (window as any).app;
-                                const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
-                                
-                                if (plugin?.eventManager?.emit) {
-                                    plugin.eventManager.emit('token-usage-updated', {
-                                        modelUsage: this.modelUsage,
-                                        tokensThisMonth: this.getTokensThisMonth(),
-                                        estimatedCost: this.getTotalCost()
-                                    });
-                                    console.log('Emitted token-usage-updated event');
-                                }
-                            } catch (emitError) {
-                                console.warn('Failed to emit token usage event:', emitError);
-                            }
-                        }
-                    } catch (storageError) {
-                        console.warn('Failed to save token usage to localStorage:', storageError);
-                    }
-                    
-                    // Calculate cost
-                    const cost = (actualTokenCount / 1000) * (this.costPerThousandTokens[this.model] || 0);
-                    
-                    const app = (window as any).app;
-                    if (app) {
-                        const plugin = app.plugins.getPlugin('claudesidian-mcp');
-                        if (plugin) {
-                            // First try to use VectorManager which is the correct agent for embedding operations
-                            const vectorManager = plugin.connector?.getVectorManager?.();
-                            if (vectorManager && vectorManager.trackTokenUsage) {
-                                // Track token usage with detailed info
-                                vectorManager.trackTokenUsage(actualTokenCount, {
-                                    model: this.model,
-                                    cost: cost,
-                                    modelUsage: this.modelUsage
-                                });
-                            } else {
-                                console.warn('VectorManager not available for token tracking, updating stats directly');
-                                // If VectorManager is not available, update stats directly
-                                this.updateUsageStats(actualTokenCount);
-                            }
-                        }
-                    }
+                    await this.usageTracker.trackUsage(actualTokenCount, this.model);
                 } catch (usageError) {
                     console.warn('Failed to track token usage:', usageError);
                 }
@@ -507,7 +288,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
         for (const chunk of chunks) {
             try {
                 // Apply rate limiting
-                await this.checkRateLimit();
+                await this.rateLimiter.checkRateLimit();
                 
                 // Skip empty chunks
                 if (!chunk || chunk.trim().length === 0) continue;
@@ -531,7 +312,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
                 });
                 
                 // Update rate limiting tracker
-                this.trackRequest();
+                this.rateLimiter.trackRequest();
                 
                 if (response.status === 200) {
                     const data = response.json;
@@ -539,69 +320,7 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
                     // Track token usage
                     try {
                         const actualTokenCount = data.usage?.prompt_tokens || tokenCount;
-                        this.modelUsage[this.model] = (this.modelUsage[this.model] || 0) + actualTokenCount;
-                        
-                        // Save to local storage for persistence
-                        try {
-                            if (typeof localStorage !== 'undefined') {
-                                localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
-                                
-                                // Dispatch a storage event to notify other components
-                                // This is needed because localStorage events don't fire in the same window
-                                try {
-                                    window.dispatchEvent(new StorageEvent('storage', {
-                                        key: 'claudesidian-tokens-used',
-                                        newValue: JSON.stringify(this.modelUsage),
-                                        storageArea: localStorage
-                                    }));
-                                    console.log('Dispatched storage event for token usage update');
-                                } catch (dispatchError) {
-                                    console.warn('Failed to dispatch storage event:', dispatchError);
-                                }
-                                
-                                // Try to emit event using the plugin's EventManager if available
-                                try {
-                                    const app = (window as any).app;
-                                    const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
-                                    
-                                    if (plugin?.eventManager?.emit) {
-                                        plugin.eventManager.emit('token-usage-updated', {
-                                            modelUsage: this.modelUsage,
-                                            tokensThisMonth: this.getTokensThisMonth(),
-                                            estimatedCost: this.getTotalCost()
-                                        });
-                                        console.log('Emitted token-usage-updated event');
-                                    }
-                                } catch (emitError) {
-                                    console.warn('Failed to emit token usage event:', emitError);
-                                }
-                            }
-                        } catch (storageError) {
-                            console.warn('Failed to save token usage to localStorage:', storageError);
-                        }
-                        
-                        const cost = (actualTokenCount / 1000) * (this.costPerThousandTokens[this.model] || 0);
-                        
-                        const app = (window as any).app;
-                        if (app) {
-                            const plugin = app.plugins.getPlugin('claudesidian-mcp');
-                            if (plugin) {
-                                // First try to use VectorManager which is the correct agent for embedding operations
-                                const vectorManager = plugin.connector?.getVectorManager?.();
-                                if (vectorManager && vectorManager.trackTokenUsage) {
-                                    // Track token usage with detailed info
-                                    vectorManager.trackTokenUsage(actualTokenCount, {
-                                        model: this.model,
-                                        cost: cost,
-                                        modelUsage: this.modelUsage
-                                    });
-                                } else {
-                                    console.warn('VectorManager not available for token tracking, updating stats directly');
-                                    // If VectorManager is not available, update stats directly
-                                    this.updateUsageStats(actualTokenCount);
-                                }
-                            }
-                        }
+                        await this.usageTracker.trackUsage(actualTokenCount, this.model);
                     } catch (usageError) {
                         console.warn('Failed to track token usage:', usageError);
                     }
@@ -684,51 +403,34 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
      * Get the cost per token for the current model
      */
     getCostPerToken(): number {
-        return (this.costPerThousandTokens[this.model] || 0) / 1000;
+        // Get cost breakdown to calculate per-token cost
+        const breakdown = this.usageTracker.getCostBreakdown();
+        const modelInfo = breakdown[this.model];
+        if (modelInfo && modelInfo.tokens > 0) {
+            return modelInfo.cost / modelInfo.tokens;
+        }
+        return 0; // No usage recorded yet
     }
     
     /**
      * Get the total cost incurred for this provider instance
      */
     getTotalCost(): number {
-        let totalCost = 0;
-        
-        // Iterate through each model in the usage stats
-        for (const model in this.modelUsage) {
-            // Get the token count for this model
-            const tokens = this.modelUsage[model];
-            
-            // Ensure the model has a cost defined
-            const costPerThousand = this.costPerThousandTokens[model] || 0;
-            
-            // Calculate the cost for this model and add to the total
-            // (tokens / 1000) * cost per thousand tokens
-            const modelCost = (tokens / 1000) * costPerThousand;
-            totalCost += modelCost;
-            
-            console.log(`Cost calculation for ${model}: ${tokens} tokens at $${costPerThousand} per 1k = $${modelCost.toFixed(6)}`);
-        }
-        
-        console.log(`Total cost calculated: $${totalCost.toFixed(6)}`);
-        return totalCost;
+        return this.usageTracker.getTotalCost();
     }
     
     /**
      * Get model usage stats
      */
     getModelUsage(): {[key: string]: number} {
-        return { ...this.modelUsage };
+        return this.usageTracker.getModelUsage();
     }
     
     /**
      * Get total tokens used this month
      */
     getTokensThisMonth(): number {
-        let total = 0;
-        for (const model in this.modelUsage) {
-            total += this.modelUsage[model];
-        }
-        return total;
+        return this.usageTracker.getTokensThisMonth();
     }
     
     /**
@@ -737,108 +439,15 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
      * @param model Optional model name (defaults to current model)
      */
     async updateUsageStats(tokenCount: number, model?: string): Promise<void> {
-        // Add to the specified model's usage count, or create a new entry if it doesn't exist
         const modelToUpdate = model || this.model;
-        const currentUsage = this.modelUsage[modelToUpdate] || 0;
-        this.modelUsage[modelToUpdate] = currentUsage + tokenCount;
-        
-        console.log(`Updated token usage for ${modelToUpdate}: ${currentUsage} + ${tokenCount} = ${this.modelUsage[modelToUpdate]}`);
-        
-        // Save to localStorage for persistence
-        try {
-            // Use localStorage if available (in Obsidian environment)
-            if (typeof localStorage !== 'undefined') {
-                localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
-                console.log(`Saved updated token usage to localStorage: `, this.modelUsage);
-                
-                // Dispatch a storage event to notify other components
-                try {
-                    if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
-                        window.dispatchEvent(new StorageEvent('storage', {
-                            key: 'claudesidian-tokens-used',
-                            newValue: JSON.stringify(this.modelUsage),
-                            storageArea: localStorage
-                        }));
-                        console.log('Dispatched storage event for manual token usage update');
-                    } else {
-                        console.log('StorageEvent not supported in this browser, skipping dispatch');
-                    }
-                } catch (dispatchError) {
-                    console.warn('Failed to dispatch storage event:', dispatchError);
-                }
-                
-                // Try to emit event using the plugin's EventManager if available
-                try {
-                    const app = (window as any).app;
-                    const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
-                    
-                    if (plugin?.eventManager?.emit) {
-                        plugin.eventManager.emit('token-usage-updated', {
-                            modelUsage: this.modelUsage,
-                            tokensThisMonth: this.getTokensThisMonth(),
-                            estimatedCost: this.getTotalCost()
-                        });
-                        console.log('Emitted token-usage-updated event for manual update');
-                    }
-                } catch (emitError) {
-                    console.warn('Failed to emit token usage event:', emitError);
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to save token usage to localStorage:', error);
-        }
+        await this.usageTracker.trackUsage(tokenCount, modelToUpdate);
     }
     
     /**
      * Reset usage stats
      */
     async resetUsageStats(): Promise<void> {
-        // Reset all model usage to zero
-        for (const model in this.modelUsage) {
-            this.modelUsage[model] = 0;
-        }
-        
-        // Save to local storage for persistence
-        try {
-            if (typeof localStorage !== 'undefined') {
-                localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
-                
-                // Dispatch a storage event to notify other components
-                try {
-                    if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
-                        window.dispatchEvent(new StorageEvent('storage', {
-                            key: 'claudesidian-tokens-used',
-                            newValue: JSON.stringify(this.modelUsage),
-                            storageArea: localStorage
-                        }));
-                        console.log('Dispatched storage event for token usage reset');
-                    } else {
-                        console.log('StorageEvent not supported in this browser, skipping dispatch');
-                    }
-                } catch (dispatchError) {
-                    console.warn('Failed to dispatch storage event:', dispatchError);
-                }
-                
-                // Try to emit event using the plugin's EventManager if available
-                try {
-                    const app = (window as any).app;
-                    const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
-                    
-                    if (plugin?.eventManager?.emit) {
-                        plugin.eventManager.emit('token-usage-reset', {
-                            modelUsage: this.modelUsage,
-                            tokensThisMonth: 0,
-                            estimatedCost: 0
-                        });
-                        console.log('Emitted token-usage-reset event');
-                    }
-                } catch (emitError) {
-                    console.warn('Failed to emit token usage event:', emitError);
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to save token usage to localStorage:', error);
-        }
+        await this.usageTracker.resetUsageStats();
     }
     
     // Implement generateEmbeddings from IEmbeddingProvider
@@ -862,51 +471,5 @@ export class OpenAIProvider extends BaseEmbeddingProvider implements ITokenTrack
         }
         
         return results;
-    }
-    
-    /**
-     * Track API requests for rate limiting
-     */
-    private trackRequest(): void {
-        const now = new Date();
-        const currentMinute = now.getMinutes();
-        
-        if (currentMinute !== this.lastRequestMinute) {
-            // Reset counter for a new minute
-            this.requestsThisMinute = 1;
-            this.lastRequestMinute = currentMinute;
-        } else {
-            // Increment counter
-            this.requestsThisMinute++;
-        }
-    }
-    
-    /**
-     * Check rate limit before making a request
-     * Implements delay if approaching limit
-     */
-    private async checkRateLimit(): Promise<void> {
-        const now = new Date();
-        const currentMinute = now.getMinutes();
-        
-        // Reset counter if we're in a new minute
-        if (currentMinute !== this.lastRequestMinute) {
-            this.requestsThisMinute = 0;
-            this.lastRequestMinute = currentMinute;
-            return;
-        }
-        
-        // If we're approaching the limit, delay the request
-        if (this.requestsThisMinute >= this.rateLimitPerMinute) {
-            const secondsToNextMinute = 60 - now.getSeconds();
-            // Add a small buffer to ensure we're in the next minute
-            const delayMs = (secondsToNextMinute + 1) * 1000;
-            
-            new Notice(`Rate limit approached. Waiting ${secondsToNextMinute} seconds...`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-            
-            // Reset after delay
-            this.requestsThisMinute = 0;
-        }
     }
 }

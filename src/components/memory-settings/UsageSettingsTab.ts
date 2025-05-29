@@ -5,6 +5,7 @@ import { DeleteCollectionComponent } from './DeleteCollectionComponent';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
+import { ClaudesidianMCPPlugin } from '../../types';
 
 /**
  * Usage Settings Tab component
@@ -31,9 +32,10 @@ export class UsageSettingsTab extends BaseSettingsTab {
         settingsManager: any, 
         app: any,
         embeddingManager?: EmbeddingManager,
-        vaultLibrarian?: VaultLibrarianAgent
+        vaultLibrarian?: VaultLibrarianAgent,
+        plugin?: ClaudesidianMCPPlugin
     ) {
-        super(settings, settingsManager, app);
+        super(settings, settingsManager, app, plugin);
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
         
@@ -62,7 +64,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
      * Initialize the UsageStatsService and VectorStore
      */
     private initializeUsageStatsService(): void {
-        const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+        const plugin = this.plugin || (window as any).app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
         if (!plugin) {
             console.warn('Plugin not found for UsageStatsService');
             return;
@@ -196,7 +198,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
         // Create and display the UsageStatsComponent
         if (!this.usageStatsComponent) {
             // Get necessary dependencies for the component
-            const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+            const plugin = this.plugin || (window as any).app.plugins.plugins[this.pluginContext?.pluginId || 'claudesidian-mcp'];
             const embeddingService = plugin?.services?.embeddingService || plugin?.embeddingService;
             const searchService = plugin?.services?.searchService || plugin?.searchService || 
                 (this.vaultLibrarian && (this.vaultLibrarian as any).searchService);

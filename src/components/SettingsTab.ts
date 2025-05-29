@@ -200,7 +200,8 @@ export class SettingsTab extends PluginSettingTab {
             this.searchService,
             this.memoryService,
             this.vaultLibrarian,
-            embeddingManager
+            embeddingManager,
+            this.plugin
         );
 
         // Setup Instructions accordion

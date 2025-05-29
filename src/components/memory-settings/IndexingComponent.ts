@@ -1,6 +1,7 @@
 import { Notice } from 'obsidian';
 import { ProgressBar } from '../ProgressBar';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
+import { updateProgress } from '../../utils/progressHandlerUtils';
 
 /**
  * Component for handling indexing operations
@@ -54,7 +55,11 @@ export class IndexingComponent {
         const indexingProgressContainer = this.containerEl.createDiv({ cls: 'memory-indexing-progress' });
         
         // Initialize progress bar
-        if (this.app) {
+        if (this.plugin && this.plugin.getPluginContext) {
+            // Pass plugin context if available
+            new ProgressBar(indexingProgressContainer, this.plugin.getPluginContext());
+        } else if (this.app) {
+            // Fall back to app for backward compatibility
             new ProgressBar(indexingProgressContainer, this.app);
         }
         
@@ -199,26 +204,23 @@ export class IndexingComponent {
             }
             
             // Initialize progress bar immediately
-            if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.updateProgress) {
-                (window as any).mcpProgressHandlers.updateProgress({
-                    total: filePaths.length,
-                    processed: 0,
-                    remaining: filePaths.length,
-                    operationId: 'batch-index'
-                });
-            }
+            const pluginContext = this.plugin?.getPluginContext?.();
+            updateProgress({
+                total: filePaths.length,
+                processed: 0,
+                remaining: filePaths.length,
+                operationId: 'batch-index'
+            }, pluginContext);
             
             // Track progress with an update function that updates the progress bar
             const progressTracker = (current: number, total: number) => {
-                // Update the progress bar using the global handler if available
-                if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.updateProgress) {
-                    (window as any).mcpProgressHandlers.updateProgress({
-                        total: total,
-                        processed: current,
-                        remaining: total - current,
-                        operationId: 'batch-index'
-                    });
-                }
+                // Update the progress bar using the progress handler utility
+                updateProgress({
+                    total: total,
+                    processed: current,
+                    remaining: total - current,
+                    operationId: 'batch-index'
+                }, pluginContext);
             };
             
             // Try to use embeddingService (direct injection preferred)
@@ -384,6 +386,7 @@ export class IndexingComponent {
      * @param resumeButton The resume button element
      */
     private async handleResumeOperation(resumeButton: HTMLButtonElement): Promise<void> {
+        const pluginContext = this.plugin?.getPluginContext?.();
         try {
             // Disable the button to prevent multiple clicks
             resumeButton.setAttribute('disabled', 'true');
@@ -391,15 +394,13 @@ export class IndexingComponent {
             
             // Track progress with an update function that updates the progress bar
             const progressTracker = (current: number, total: number) => {
-                // Update the progress bar using the global handler if available
-                if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.updateProgress) {
-                    (window as any).mcpProgressHandlers.updateProgress({
-                        total: total,
-                        processed: current,
-                        remaining: total - current,
-                        operationId: 'batch-index'
-                    });
-                }
+                // Update the progress bar using the progress handler utility
+                updateProgress({
+                    total: total,
+                    processed: current,
+                    remaining: total - current,
+                    operationId: 'batch-index'
+                }, pluginContext);
             };
             
             // Try to use embeddingService (direct injection preferred)

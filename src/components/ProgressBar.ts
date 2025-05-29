@@ -1,4 +1,6 @@
 import { type App } from 'obsidian';
+import { PluginContext } from '../types';
+import { getProgressHandlerKey } from '../utils/progressHandlerUtils';
 
 /**
  * Interface for progress update data
@@ -37,7 +39,7 @@ export class ProgressBar {
     private progressBar: HTMLElement;
     private progressText: HTMLElement;
     private cancelButton: HTMLElement;
-    // app instance not used but kept for future use
+    private pluginContext?: PluginContext;
     
     private progress: number = 0;
     private total: number = 0;
@@ -51,10 +53,13 @@ export class ProgressBar {
      * Create a new progress bar component
      * 
      * @param containerEl Container element to append to
-     * @param app Obsidian app instance for event handling
+     * @param appOrContext Obsidian app instance or PluginContext for event handling
      */
-    constructor(containerEl: HTMLElement, _app: App) {
-        // App parameter marked with underscore as it's not currently used
+    constructor(containerEl: HTMLElement, appOrContext: App | PluginContext) {
+        // Handle both App and PluginContext for backward compatibility
+        if ('pluginId' in appOrContext) {
+            this.pluginContext = appOrContext;
+        }
         
         // Create the container
         this.container = containerEl.createDiv({ cls: 'mcp-progress-container' });
@@ -142,8 +147,11 @@ export class ProgressBar {
         };
         
         // Expose handlers as global methods to be called from other components
+        // Use namespaced key if plugin context is available
+        const handlerKey = getProgressHandlerKey(this.pluginContext);
+            
         // @ts-ignore - Adding methods to window for inter-component communication
-        window.mcpProgressHandlers = {
+        window[handlerKey] = {
             updateProgress: this.onProgressHandler,
             completeProgress: this.onCompleteHandler,
             cancelProgress: onCancelHandler
@@ -182,11 +190,14 @@ export class ProgressBar {
      * Trigger cancel operation event
      */
     private triggerCancel(): void {
+        // Get the namespaced handler key
+        const handlerKey = getProgressHandlerKey(this.pluginContext);
+            
         // Call global cancel handler if available
         // @ts-ignore - Using global methods for inter-component communication
-        if (window.mcpProgressHandlers && window.mcpProgressHandlers.cancelProgress) {
+        if (window[handlerKey] && window[handlerKey].cancelProgress) {
             // @ts-ignore
-            window.mcpProgressHandlers.cancelProgress({
+            window[handlerKey].cancelProgress({
                 operationId: this.operationId
             });
         }

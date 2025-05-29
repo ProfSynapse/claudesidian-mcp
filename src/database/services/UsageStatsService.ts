@@ -1,7 +1,6 @@
-import { EmbeddingService } from './EmbeddingService';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { EventManager } from '../../services/EventManager';
-import { ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
+import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
 
 /**
  * Type definition for model cost map
@@ -64,10 +63,10 @@ export class UsageStatsService {
             typeof provider.getTokensThisMonth === 'function' &&
             typeof provider.updateUsageStats === 'function' &&
             typeof provider.resetUsageStats === 'function'
-        );
-    }
-    // We make this private based on constructor parameter
-    private embeddingService: EmbeddingService;
+        );    }
+    
+    // Replace circular dependency with direct provider reference
+    private embeddingProvider: IEmbeddingProvider | null;
     private vectorStore: IVectorStore;
     private settings: any;
     private eventManager: EventManager;
@@ -100,27 +99,21 @@ export class UsageStatsService {
         '#6C3483', '#117A65', '#A04000', '#839192', // Dark variations
         '#85C1E9', '#EC7063', '#ABEBC6', '#FAD7A0', // Light variations
         '#BB8FCE', '#76D7C4', '#F0B27A', '#BFC9CA'  // Soft variations
-    ];
-
-    /**
+    ];    /**
      * Create a new UsageStatsService
-     * @param embeddingService Embedding service for provider access
+     * @param embeddingProvider Embedding provider for token tracking
      * @param vectorStore Vector store for collection stats
      * @param settings Settings for cost calculations
      * @param eventManager Optional event manager instance
      */
     constructor(
-        embeddingService: EmbeddingService | null, 
+        embeddingProvider: IEmbeddingProvider | null, 
         vectorStore: IVectorStore, 
         settings: any,
         eventManager?: EventManager
     ) {
-        // Ensure embeddingService is not null
-        if (!embeddingService) {
-            console.warn('UsageStatsService initialized with null embeddingService');
-        }
-        // Cast null to EmbeddingService to satisfy TypeScript, we'll check it in methods
-        this.embeddingService = embeddingService as unknown as EmbeddingService;
+        // Initialize provider
+        this.embeddingProvider = embeddingProvider;
         this.vectorStore = vectorStore;
         this.settings = settings;
         
@@ -238,13 +231,12 @@ export class UsageStatsService {
         try {
             // Always check localStorage first for most recent values
             this.loadTokenStatsFromLocalStorage(stats);
-            
-            // Check if provider exists and log detailed info for debugging
-            console.log('EmbeddingService available:', !!this.embeddingService);
+              // Check if provider exists and log detailed info for debugging
+            console.log('EmbeddingProvider available:', !!this.embeddingProvider);
             
             // Try to get from the embedding provider if available
-            if (this.embeddingService && this.embeddingService.getProvider()) {
-                const provider = this.embeddingService.getProvider();
+            if (this.embeddingProvider) {
+                const provider = this.embeddingProvider;
                 console.log('Provider type:', provider ? provider.constructor.name : 'null');
                 
                 if (provider) {
@@ -448,15 +440,11 @@ export class UsageStatsService {
             const diagnostics = await this.vectorStore.getDiagnostics();
             console.log('Vector store diagnostics:', diagnostics);
             
-            // Update database size if available
-            if (diagnostics.dbSizeMB) {
-                stats.dbSizeMB = diagnostics.dbSizeMB;
-            }
-            
             // Check for collections data in diagnostics
             if (diagnostics.collections && diagnostics.collections.length > 0) {
                 stats.collectionStats = [];
                 let totalEmbeddings = 0;
+                let memoryTraceSizeMB = 0;
                 
                 diagnostics.collections.forEach((collection: any, index: number) => {
                     if (collection.name && collection.itemCount !== undefined) {
@@ -466,11 +454,18 @@ export class UsageStatsService {
                             color: this.colors[index % this.colors.length]
                         });
                         totalEmbeddings += collection.itemCount;
+                        
+                        // Calculate memory trace size separately (1 embedding ≈ 6KB)
+                        if (collection.name === 'memory_traces') {
+                            memoryTraceSizeMB = (collection.itemCount * 6) / 1024;
+                        }
                     }
                 });
                 
+                // Set dbSizeMB to only include memory traces
+                stats.dbSizeMB = memoryTraceSizeMB;
                 stats.totalEmbeddings = totalEmbeddings;
-                console.log('Updated stats with collection data, total embeddings:', stats.totalEmbeddings);
+                console.log('Updated stats with collection data, total embeddings:', stats.totalEmbeddings, 'memory trace size MB:', memoryTraceSizeMB);
             } else {
                 // Fallback to manual collection stats gathering if diagnostics doesn't have them
                 await this.getManualCollectionStats(stats);
@@ -496,6 +491,7 @@ export class UsageStatsService {
             
             stats.collectionStats = [];
             let totalEmbeddings = 0;
+            let memoryTraceSizeMB = 0;
             
             // Get count for each collection
             for (let i = 0; i < collections.length; i++) {
@@ -508,13 +504,20 @@ export class UsageStatsService {
                         color: this.colors[i % this.colors.length]
                     });
                     totalEmbeddings += count;
+                    
+                    // Calculate memory trace size separately (1 embedding ≈ 6KB)
+                    if (name === 'memory_traces') {
+                        memoryTraceSizeMB = (count * 6) / 1024;
+                    }
                 } catch (countError) {
                     console.error(`Error getting count for collection ${name}:`, countError);
                 }
             }
             
+            // Set dbSizeMB to only include memory traces
+            stats.dbSizeMB = memoryTraceSizeMB;
             stats.totalEmbeddings = totalEmbeddings;
-            console.log('Updated stats with manual collection data, total embeddings:', stats.totalEmbeddings);
+            console.log('Updated stats with manual collection data, total embeddings:', stats.totalEmbeddings, 'memory trace size MB:', memoryTraceSizeMB);
         } catch (error) {
             console.error('Error getting manual collection stats:', error);
         }
@@ -524,10 +527,9 @@ export class UsageStatsService {
      * Reset usage statistics 
      */
     async resetUsageStats(): Promise<void> {
-        try {
-            // Try to reset through the embedding provider
-            if (this.embeddingService && this.embeddingService.getProvider()) {
-                const provider = this.embeddingService.getProvider();
+        try {            // Try to reset through the embedding provider
+            if (this.embeddingProvider) {
+                const provider = this.embeddingProvider;
                 
                 if (this.isTokenTrackingProvider(provider)) {
                     // Use the standard interface
@@ -558,10 +560,9 @@ export class UsageStatsService {
      * @param model Optional specific model to update
      */
     async updateUsageStats(tokenCount: number, model?: string): Promise<void> {
-        try {
-            // Try to update through the embedding provider
-            if (this.embeddingService && this.embeddingService.getProvider()) {
-                const provider = this.embeddingService.getProvider();
+        try {            // Try to update through the embedding provider
+            if (this.embeddingProvider) {
+                const provider = this.embeddingProvider;
                 
                 if (this.isTokenTrackingProvider(provider)) {
                     // Use the standard interface
