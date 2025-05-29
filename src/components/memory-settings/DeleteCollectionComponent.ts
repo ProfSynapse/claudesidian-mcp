@@ -1,6 +1,9 @@
 import { Notice, Setting, ButtonComponent } from 'obsidian';
 import { UsageStatsService, USAGE_EVENTS } from '../../database/services/UsageStatsService';
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
+import { PluginContext } from '../../types';
+import { setStorageValue, dispatchStorageEvent } from '../../utils/storageUtils';
+import { STORAGE_KEYS } from '../../constants/storageKeys';
 
 /**
  * Component for deleting collections in the memory settings
@@ -11,6 +14,7 @@ export class DeleteCollectionComponent {
     private vectorStore: IVectorStore;
     private usageStatsService: UsageStatsService;
     private settings: any;
+    private pluginContext?: PluginContext;
     private deleteButtons: Map<string, ButtonComponent> = new Map();
     private collections: string[] = [];
 
@@ -20,17 +24,19 @@ export class DeleteCollectionComponent {
      * @param vectorStore Vector store instance
      * @param usageStatsService Usage stats service instance
      * @param settings Settings object
+     * @param pluginContext Optional plugin context for vault isolation
      */
     // Flag to prevent recursive refreshes
     private isRefreshing: boolean = false;
     // Track last refresh time to limit frequency
     private lastRefreshTime: number = 0;
     
-    constructor(containerEl: HTMLElement, vectorStore: IVectorStore, usageStatsService: UsageStatsService, settings: any) {
+    constructor(containerEl: HTMLElement, vectorStore: IVectorStore, usageStatsService: UsageStatsService, settings: any, pluginContext?: PluginContext) {
         this.containerEl = containerEl;
         this.vectorStore = vectorStore;
         this.usageStatsService = usageStatsService;
         this.settings = settings;
+        this.pluginContext = pluginContext;
         
         // Set up event listeners for collection updates - we're not using these to avoid cycles
         // Instead, we'll rely on explicit refresh calls from the parent component
@@ -216,23 +222,15 @@ export class DeleteCollectionComponent {
                                 
                                 // Then, set a flag in localStorage that our collection was deleted
                                 // to notify other components
-                                localStorage.setItem('claudesidian-collection-deleted', JSON.stringify({
+                                const deleteInfo = {
                                     collection: collection,
                                     timestamp: Date.now()
-                                }));
+                                };
+                                setStorageValue(STORAGE_KEYS.COLLECTION_DELETED, deleteInfo, this.pluginContext);
                                 console.log(`Collection deleted and usage stats refreshed: ${collection}`);
                                 
                                 // Dispatch a storage event to ensure all components update
-                                if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
-                                    window.dispatchEvent(new StorageEvent('storage', {
-                                        key: 'claudesidian-collection-deleted',
-                                        newValue: JSON.stringify({
-                                            collection: collection,
-                                            timestamp: Date.now()
-                                        }),
-                                        storageArea: localStorage
-                                    }));
-                                }
+                                dispatchStorageEvent(STORAGE_KEYS.COLLECTION_DELETED, deleteInfo, this.pluginContext);
                             } catch (storageError) {
                                 console.warn('Failed to update usage stats or set collection deletion marker:', storageError);
                             }
@@ -313,23 +311,15 @@ export class DeleteCollectionComponent {
                             await this.usageStatsService.refreshStats();
                             
                             // Then, set a flag in localStorage to notify other components
-                            localStorage.setItem('claudesidian-collections-purged', JSON.stringify({
+                            const purgeInfo = {
                                 timestamp: Date.now(),
                                 count: successCount
-                            }));
+                            };
+                            setStorageValue(STORAGE_KEYS.COLLECTIONS_PURGED, purgeInfo, this.pluginContext);
                             console.log(`Collections purged and usage stats refreshed: ${successCount} collections`);
                             
                             // Dispatch a storage event to ensure all components update
-                            if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
-                                window.dispatchEvent(new StorageEvent('storage', {
-                                    key: 'claudesidian-collections-purged',
-                                    newValue: JSON.stringify({
-                                        timestamp: Date.now(),
-                                        count: successCount
-                                    }),
-                                    storageArea: localStorage
-                                }));
-                            }
+                            dispatchStorageEvent(STORAGE_KEYS.COLLECTIONS_PURGED, purgeInfo, this.pluginContext);
                         } catch (storageError) {
                             console.warn('Failed to update usage stats or set collections purged marker:', storageError);
                         }

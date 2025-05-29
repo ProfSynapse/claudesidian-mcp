@@ -1,6 +1,9 @@
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { EventManager } from '../../services/EventManager';
 import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
+import { PluginContext } from '../../types';
+import { isMatchingStorageKey } from '../../utils/storageUtils';
+import { STORAGE_KEYS } from '../../constants/storageKeys';
 
 /**
  * Type definition for model cost map
@@ -70,6 +73,7 @@ export class UsageStatsService {
     private vectorStore: IVectorStore;
     private settings: any;
     private eventManager: EventManager;
+    private pluginContext?: PluginContext;
     
     private defaultStats: UsageStats = {
         tokensThisMonth: 0,
@@ -105,17 +109,20 @@ export class UsageStatsService {
      * @param vectorStore Vector store for collection stats
      * @param settings Settings for cost calculations
      * @param eventManager Optional event manager instance
+     * @param pluginContext Optional plugin context for vault isolation
      */
     constructor(
         embeddingProvider: IEmbeddingProvider | null, 
         vectorStore: IVectorStore, 
         settings: any,
-        eventManager?: EventManager
+        eventManager?: EventManager,
+        pluginContext?: PluginContext
     ) {
         // Initialize provider
         this.embeddingProvider = embeddingProvider;
         this.vectorStore = vectorStore;
         this.settings = settings;
+        this.pluginContext = pluginContext;
         
         // Use provided event manager or create a new one
         this.eventManager = eventManager || new EventManager();
@@ -135,7 +142,10 @@ export class UsageStatsService {
             
             // We'll just listen for explicit collection deletion/purge events
             window.addEventListener('storage', (event) => {
-                if (event.key === 'claudesidian-collection-deleted' || event.key === 'claudesidian-collections-purged') {
+                if (event.key && (
+                    isMatchingStorageKey(event.key, STORAGE_KEYS.COLLECTION_DELETED, this.pluginContext) ||
+                    isMatchingStorageKey(event.key, STORAGE_KEYS.COLLECTIONS_PURGED, this.pluginContext)
+                )) {
                     console.log(`Collection change event detected: ${event.key}`);
                     // We'll use a long timeout to ensure we're not in a refresh cycle
                     setTimeout(() => {
@@ -151,7 +161,8 @@ export class UsageStatsService {
         // Set up listeners for custom events from the OpenAIProvider or other components
         try {
             const app = (window as any).app;
-            const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+            const pluginId = this.pluginContext?.pluginId || 'claudesidian-mcp';
+            const plugin = this.pluginContext?.plugin || app?.plugins?.getPlugin(pluginId);
             
             if (plugin?.eventManager) {
                 // Listen for token usage reset event only - this is important enough to always process

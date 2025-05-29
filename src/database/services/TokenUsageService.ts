@@ -2,6 +2,9 @@ import { ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
 import { ITokenUsageService } from '../interfaces/ITokenUsageService';
 import { ModelCostMap } from '../interfaces/IUsageStatsService';
 import { EventManager } from '../../services/EventManager';
+import { PluginContext } from '../../types';
+import { getStorageValue, setStorageValue, removeStorageValue, dispatchStorageEvent } from '../../utils/storageUtils';
+import { STORAGE_KEYS } from '../../constants/storageKeys';
 
 /**
  * Token usage tracking and cost calculation
@@ -22,6 +25,7 @@ export class TokenUsageService implements ITokenUsageService {
   private eventManager: EventManager;
   private settings: any;
   private plugin: any;
+  private pluginContext?: PluginContext;
 
   private defaultTokenUsage: TokenUsageData = {
     tokensThisMonth: 0,
@@ -38,6 +42,11 @@ export class TokenUsageService implements ITokenUsageService {
     this.settings = settings;
     this.eventManager = eventManager;
     this.plugin = plugin;
+    
+    // Get plugin context if available
+    if (plugin && 'getPluginContext' in plugin && typeof plugin.getPluginContext === 'function') {
+      this.pluginContext = plugin.getPluginContext();
+    }
   }
 
   /**
@@ -86,23 +95,11 @@ export class TokenUsageService implements ITokenUsageService {
       }
 
       // Get current all-time stats
-      const allTimeUsageStr = localStorage.getItem('claudesidian-tokens-all-time');
-      let allTimeStats = {
+      let allTimeStats = getStorageValue<any>(STORAGE_KEYS.TOKENS_ALL_TIME, this.pluginContext) || {
         tokensAllTime: 0,
         estimatedCostAllTime: 0,
         lastUpdated: new Date().toISOString()
       };
-      
-      if (allTimeUsageStr) {
-        try {
-          const parsed = JSON.parse(allTimeUsageStr);
-          if (typeof parsed === 'object' && parsed !== null) {
-            allTimeStats = parsed;
-          }
-        } catch (parseError) {
-          console.warn('Failed to parse all-time token usage:', parseError);
-        }
-      }
       
       // Add new tokens and cost
       allTimeStats.tokensAllTime += tokens;
@@ -110,17 +107,11 @@ export class TokenUsageService implements ITokenUsageService {
       allTimeStats.lastUpdated = new Date().toISOString();
       
       // Save updated stats
-      localStorage.setItem('claudesidian-tokens-all-time', JSON.stringify(allTimeStats));
+      setStorageValue(STORAGE_KEYS.TOKENS_ALL_TIME, allTimeStats, this.pluginContext);
       console.log(`Updated all-time token usage: +${tokens} tokens, +$${cost.toFixed(6)} cost`);
       
       // Dispatch storage event
-      if (typeof window !== 'undefined' && typeof StorageEvent === 'function') {
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'claudesidian-tokens-all-time',
-          newValue: JSON.stringify(allTimeStats),
-          storageArea: localStorage
-        }));
-      }
+      dispatchStorageEvent(STORAGE_KEYS.TOKENS_ALL_TIME, allTimeStats, this.pluginContext);
     } catch (error) {
       console.error('Error updating all-time stats:', error);
     }
@@ -189,9 +180,9 @@ export class TokenUsageService implements ITokenUsageService {
 
       // Reset localStorage stats
       if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('claudesidian-tokens-used');
-        localStorage.removeItem('claudesidian-token-usage');
-        localStorage.removeItem('claudesidian-tokens-all-time');
+        removeStorageValue(STORAGE_KEYS.TOKENS_USED, this.pluginContext);
+        removeStorageValue(STORAGE_KEYS.TOKEN_USAGE, this.pluginContext);
+        removeStorageValue(STORAGE_KEYS.TOKENS_ALL_TIME, this.pluginContext);
         console.log('Reset localStorage token usage stats');
       }
 
@@ -263,35 +254,19 @@ export class TokenUsageService implements ITokenUsageService {
       }
 
       // Try different localStorage keys for monthly usage
-      const possibleMonthlyKeys = ['claudesidian-tokens-used', 'claudesidian-token-usage'];
+      const possibleMonthlyKeys = [STORAGE_KEYS.TOKENS_USED, STORAGE_KEYS.TOKEN_USAGE];
       let parsedMonthlyUsage: any = null;
       
       for (const key of possibleMonthlyKeys) {
-        const savedUsage = localStorage.getItem(key);
-        if (savedUsage) {
-          try {
-            const parsed = JSON.parse(savedUsage);
-            if (typeof parsed === 'object' && parsed !== null) {
-              parsedMonthlyUsage = parsed;
-              break;
-            }
-          } catch (parseError) {
-            console.warn(`Failed to parse localStorage key '${key}':`, parseError);
-          }
+        const savedUsage = getStorageValue(key, this.pluginContext);
+        if (savedUsage && typeof savedUsage === 'object') {
+          parsedMonthlyUsage = savedUsage;
+          break;
         }
       }
       
       // Load all-time usage stats
-      const allTimeUsage = localStorage.getItem('claudesidian-tokens-all-time');
-      let parsedAllTimeUsage: any = null;
-      
-      if (allTimeUsage) {
-        try {
-          parsedAllTimeUsage = JSON.parse(allTimeUsage);
-        } catch (parseError) {
-          console.warn('Failed to parse all-time token usage:', parseError);
-        }
-      }
+      const parsedAllTimeUsage = getStorageValue(STORAGE_KEYS.TOKENS_ALL_TIME, this.pluginContext);
       
       // Update usage with monthly data
       if (parsedMonthlyUsage) {
