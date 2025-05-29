@@ -128,6 +128,21 @@ export class MCPConnector {
                 console.warn("Will continue without vector manager");
                 vectorManagerAgent = null;
             }
+            // Get plugin context if available
+            let pluginContext;
+            if (this.plugin && 'getPluginContext' in this.plugin && typeof this.plugin.getPluginContext === 'function') {
+                pluginContext = this.plugin.getPluginContext();
+            }
+            
+            // Set plugin context on all agents if available
+            if (pluginContext) {
+                contentManagerAgent.setPluginContext(pluginContext);
+                commandManagerAgent.setPluginContext(pluginContext);
+                projectManagerAgent.setPluginContext(pluginContext);
+                vaultManagerAgent.setPluginContext(pluginContext);
+                vaultLibrarianAgent.setPluginContext(pluginContext);
+            }
+            
             this.agentManager.registerAgent(contentManagerAgent);
             this.agentManager.registerAgent(commandManagerAgent);
             this.agentManager.registerAgent(projectManagerAgent);
@@ -136,11 +151,17 @@ export class MCPConnector {
             
             // Only register memory manager if it was created successfully
             if (memoryManagerAgent) {
+                if (pluginContext) {
+                    memoryManagerAgent.setPluginContext(pluginContext);
+                }
                 this.agentManager.registerAgent(memoryManagerAgent);
             }
             
             // Only register vector manager if it was created successfully
             if (vectorManagerAgent) {
+                if (pluginContext) {
+                    vectorManagerAgent.setPluginContext(pluginContext);
+                }
                 this.agentManager.registerAgent(vectorManagerAgent);
             }
             

@@ -1,6 +1,6 @@
 import { IAgent } from './interfaces/IAgent';
 import { IMode } from './interfaces/IMode';
-import { CommonParameters, CommonResult, ModeCall, ModeCallResult } from '../types';
+import { CommonParameters, CommonResult, ModeCall, ModeCallResult, PluginContext } from '../types';
 import { 
   parseWorkspaceContext, 
   mergeWorkspaceContexts, 
@@ -18,6 +18,7 @@ export abstract class BaseAgent implements IAgent {
   description: string;
   version: string;
   protected modes: Map<string, IMode> = new Map();
+  protected pluginContext?: PluginContext;
   
   // Reference to agent manager for handoffs
   protected agentManager?: {
@@ -42,6 +43,14 @@ export abstract class BaseAgent implements IAgent {
    */
   setAgentManager(manager: { getAgent(agentName: string): IAgent | undefined }): void {
     this.agentManager = manager;
+  }
+  
+  /**
+   * Set the plugin context for vault-specific isolation
+   * @param context Plugin context
+   */
+  setPluginContext(context: PluginContext): void {
+    this.pluginContext = context;
   }
   
   /**

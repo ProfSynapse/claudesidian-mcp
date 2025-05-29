@@ -1,7 +1,20 @@
+import { PluginContext } from '../../types';
+import { getProgressHandlers } from '../../utils/progressHandlerUtils';
+
 /**
  * Tracks progress for long-running operations
  */
 export class ProgressTracker {
+  private pluginContext?: PluginContext;
+  
+  /**
+   * Create a new progress tracker
+   * @param pluginContext Optional plugin context for namespacing
+   */
+  constructor(pluginContext?: PluginContext) {
+    this.pluginContext = pluginContext;
+  }
+  
   /**
    * Update progress
    */
@@ -11,9 +24,10 @@ export class ProgressTracker {
     remaining: number;
     operationId: string | null;
   }): void {
-    // Use global handler if available
-    if ((window as any).mcpProgressHandlers?.updateProgress) {
-      (window as any).mcpProgressHandlers.updateProgress(data);
+    // Use namespaced handler if available
+    const handlers = getProgressHandlers(this.pluginContext);
+    if (handlers?.updateProgress) {
+      handlers.updateProgress(data);
     }
   }
 
@@ -27,9 +41,10 @@ export class ProgressTracker {
     error?: string;
     operationId: string;
   }): void {
-    // Use global handler if available
-    if ((window as any).mcpProgressHandlers?.completeProgress) {
-      (window as any).mcpProgressHandlers.completeProgress(data);
+    // Use namespaced handler if available
+    const handlers = getProgressHandlers(this.pluginContext);
+    if (handlers?.completeProgress) {
+      handlers.completeProgress(data);
     }
   }
 
@@ -39,9 +54,10 @@ export class ProgressTracker {
   cancelProgress(data: {
     operationId: string;
   }): void {
-    // Use global handler if available
-    if ((window as any).mcpProgressHandlers?.cancelProgress) {
-      (window as any).mcpProgressHandlers.cancelProgress(data);
+    // Use namespaced handler if available
+    const handlers = getProgressHandlers(this.pluginContext);
+    if (handlers?.cancelProgress) {
+      handlers.cancelProgress(data);
     }
   }
 }

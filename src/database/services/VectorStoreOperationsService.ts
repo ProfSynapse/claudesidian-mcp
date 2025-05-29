@@ -18,9 +18,15 @@ export class VectorStoreOperationsService implements IVectorStoreOperationsServi
   private isSystemOperation: boolean = false;
 
   constructor(private plugin: Plugin) {
-    // Get vector store from plugin
-    const claudesidianPlugin = this.plugin.app.plugins.plugins['claudesidian-mcp'] as any;
-    this.vectorStore = claudesidianPlugin?.vectorStore;
+    // Get vector store from plugin - check if it's the main plugin with vectorStore
+    if ('vectorStore' in this.plugin) {
+      this.vectorStore = (this.plugin as any).vectorStore;
+    } else {
+      // Fall back to global access using plugin manifest ID
+      const pluginId = this.plugin.manifest?.id || 'claudesidian-mcp';
+      const claudesidianPlugin = this.plugin.app.plugins.plugins[pluginId] as any;
+      this.vectorStore = claudesidianPlugin?.vectorStore;
+    }
     
     if (!this.vectorStore) {
       throw new Error('Vector store not available');
@@ -149,16 +155,18 @@ export class VectorStoreOperationsService implements IVectorStoreOperationsServi
    * @returns Result of the operation
    */
   async withSystemOperation<T>(operation: () => Promise<T>): Promise<T> {
-    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'] as any;
+    // Use the plugin's vectorStore if available, otherwise get from global
+    const vectorStore = 'vectorStore' in this.plugin ? (this.plugin as any).vectorStore : 
+      this.plugin.app.plugins.plugins[this.plugin.manifest?.id || 'claudesidian-mcp']?.vectorStore;
     
     // Mark this as a system operation to prevent file event loops
-    plugin.vectorStore?.startSystemOperation();
+    vectorStore?.startSystemOperation();
     
     try {
       return await operation();
     } finally {
       // Always clear the system operation flag
-      plugin.vectorStore?.endSystemOperation();
+      vectorStore?.endSystemOperation();
     }
   }
 

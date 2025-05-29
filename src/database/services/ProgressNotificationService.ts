@@ -5,12 +5,23 @@ import {
   ProgressNotice, 
   ProgressEventData 
 } from '../interfaces/IProgressNotificationService';
+import { PluginContext } from '../../types';
+import { updateProgress, completeProgress } from '../../utils/progressHandlerUtils';
 
 /**
  * Service for managing UI notifications and progress tracking
  * Centralizes all notification logic to eliminate duplication
  */
 export class ProgressNotificationService implements IProgressNotificationService {
+  private pluginContext?: PluginContext;
+  
+  /**
+   * Create a new progress notification service
+   * @param pluginContext Optional plugin context for namespacing
+   */
+  constructor(pluginContext?: PluginContext) {
+    this.pluginContext = pluginContext;
+  }
   
   /**
    * Show progress notification for batch operations
@@ -76,25 +87,21 @@ export class ProgressNotificationService implements IProgressNotificationService
     try {
       if (data.success !== undefined) {
         // Complete progress event
-        if ((window as any).mcpProgressHandlers?.completeProgress) {
-          (window as any).mcpProgressHandlers.completeProgress({
-            success: data.success,
-            processed: data.processed,
-            failed: data.failed || 0,
-            error: data.error,
-            operationId: data.operationId
-          });
-        }
+        completeProgress({
+          success: data.success,
+          processed: data.processed,
+          failed: data.failed || 0,
+          error: data.error,
+          operationId: data.operationId
+        }, this.pluginContext);
       } else {
         // Update progress event
-        if ((window as any).mcpProgressHandlers?.updateProgress) {
-          (window as any).mcpProgressHandlers.updateProgress({
-            processed: data.processed,
-            total: data.total,
-            remaining: data.remaining,
-            operationId: data.operationId
-          });
-        }
+        updateProgress({
+          processed: data.processed,
+          total: data.total,
+          remaining: data.remaining,
+          operationId: data.operationId
+        }, this.pluginContext);
       }
     } catch (error) {
       console.warn('Failed to emit progress event:', error);
@@ -136,7 +143,8 @@ export class ProgressNotificationService implements IProgressNotificationService
     // Emit event for token usage updates
     try {
       const app = (window as any).app;
-      const plugin = app?.plugins?.getPlugin('claudesidian-mcp');
+      const pluginId = this.pluginContext?.pluginId || 'claudesidian-mcp';
+      const plugin = this.pluginContext?.plugin || app?.plugins?.getPlugin(pluginId);
       
       if (plugin?.eventManager?.emit) {
         plugin.eventManager.emit('batch-embedding-completed', {
