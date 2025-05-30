@@ -234,3 +234,64 @@ export interface MoveFolderResult {
    */
   error?: string;
 }
+
+/**
+ * Arguments for duplicating a note
+ */
+export interface DuplicateNoteArgs extends CommonParameters {
+  /**
+   * Path to the source note to duplicate
+   */
+  sourcePath: string;
+  
+  /**
+   * Path for the duplicate note
+   */
+  targetPath: string;
+  
+  /**
+   * Whether to overwrite if a note already exists at the target path
+   */
+  overwrite?: boolean;
+  
+  /**
+   * Whether to auto-increment the filename if target exists (e.g., "note copy.md", "note copy 2.md")
+   * This takes precedence over overwrite when both are true
+   */
+  autoIncrement?: boolean;
+}
+
+/**
+ * Result of duplicating a note
+ */
+export interface DuplicateNoteResult {
+  /**
+   * Original path of the source note
+   */
+  sourcePath: string;
+  
+  /**
+   * Final path of the duplicated note
+   */
+  targetPath: string;
+  
+  /**
+   * Whether the note was duplicated successfully
+   */
+  success: boolean;
+  
+  /**
+   * Error message if duplication failed
+   */
+  error?: string;
+  
+  /**
+   * Whether the target path was auto-incremented due to conflicts
+   */
+  wasAutoIncremented?: boolean;
+  
+  /**
+   * Whether an existing file was overwritten
+   */
+  wasOverwritten?: boolean;
+}

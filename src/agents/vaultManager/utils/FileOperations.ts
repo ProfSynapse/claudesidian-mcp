@@ -254,4 +254,96 @@ export class FileOperations {
     
     await app.vault.rename(folder, normalizedNewPath);
   }
+  
+  /**
+   * Duplicate a note
+   * @param app Obsidian app instance
+   * @param sourcePath Path to the source note
+   * @param targetPath Path for the duplicate note
+   * @param overwrite Whether to overwrite if target exists
+   * @param autoIncrement Whether to auto-increment filename if target exists
+   * @returns Promise that resolves with duplication details
+   * @throws Error if duplication fails
+   */
+  static async duplicateNote(
+    app: App,
+    sourcePath: string,
+    targetPath: string,
+    overwrite: boolean = false,
+    autoIncrement: boolean = false
+  ): Promise<{
+    sourcePath: string;
+    targetPath: string;
+    wasAutoIncremented: boolean;
+    wasOverwritten: boolean;
+  }> {
+    // Normalize paths to remove any leading slashes
+    const normalizedSourcePath = this.normalizePath(sourcePath);
+    const normalizedTargetPath = this.normalizePath(targetPath);
+
+    // Check if source file exists
+    const sourceFile = app.vault.getAbstractFileByPath(normalizedSourcePath);
+    if (!sourceFile) {
+      throw new Error(`Source file not found: ${sourcePath}`);
+    }
+
+    if (!(sourceFile instanceof TFile)) {
+      throw new Error(`Source path is not a file: ${sourcePath}`);
+    }
+
+    // Read source content
+    const sourceContent = await app.vault.read(sourceFile);
+    
+    let finalTargetPath = normalizedTargetPath;
+    let wasAutoIncremented = false;
+    let wasOverwritten = false;
+
+    // Handle existing target file
+    let existingTarget = app.vault.getAbstractFileByPath(finalTargetPath);
+    
+    if (existingTarget) {
+      if (autoIncrement) {
+        // Auto-increment filename until we find an available one
+        let counter = 1;
+        const pathParts = finalTargetPath.split('.');
+        const extension = pathParts.length > 1 ? `.${pathParts.pop()}` : '';
+        const basePath = pathParts.join('.');
+        
+        do {
+          const suffix = counter === 1 ? ' copy' : ` copy ${counter}`;
+          finalTargetPath = `${basePath}${suffix}${extension}`;
+          existingTarget = app.vault.getAbstractFileByPath(finalTargetPath);
+          counter++;
+        } while (existingTarget && counter < 1000); // Safety limit
+        
+        if (counter >= 1000) {
+          throw new Error('Too many duplicates - unable to find available filename');
+        }
+        
+        wasAutoIncremented = counter > 1;
+      } else if (overwrite) {
+        // Delete existing file
+        await app.vault.delete(existingTarget);
+        wasOverwritten = true;
+      } else {
+        throw new Error(`Target file already exists: ${targetPath}`);
+      }
+    }
+
+    // Ensure target directory exists
+    const targetFolderPath = finalTargetPath.substring(0, finalTargetPath.lastIndexOf('/'));
+    if (targetFolderPath) {
+      await FileOperations.ensureFolder(app, targetFolderPath);
+    }
+
+    // Create the duplicate
+    await app.vault.create(finalTargetPath, sourceContent);
+
+    return {
+      sourcePath: normalizedSourcePath,
+      targetPath: finalTargetPath,
+      wasAutoIncremented,
+      wasOverwritten
+    };
+  }
 }
