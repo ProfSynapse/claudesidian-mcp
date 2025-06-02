@@ -69,7 +69,7 @@ export class WhatIsClaudesidianAccordion {
         this.createAgentDescription(
             agentsContainer,
             'Vault Manager',
-            'Manages files and folders in your vault with operations for listing, creating, editing, deleting, and moving files and folders. Provides comprehensive file system management for your vault structure.'
+            'Manages vault organization with operations for listing files/folders, creating/editing/deleting folders, and moving/duplicating notes. Provides comprehensive file system management for your vault structure.'
         );
         
         this.createAgentDescription(

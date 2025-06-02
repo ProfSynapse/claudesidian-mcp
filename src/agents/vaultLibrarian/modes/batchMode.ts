@@ -204,6 +204,7 @@ export interface BatchModeResult extends CommonResult {
  * Mode for executing batch operations combining search and vector approaches
  */
 export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
+  private app: App;
   private searchMode: SearchMode;
   private vectorMode: VectorMode;
   private batchParams: BatchModeParams | null = null;
@@ -228,10 +229,46 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
       '1.0.0'
     );
     
+    this.app = app;
     
     // Initialize the search modes
     this.searchMode = new SearchMode(app);
     this.vectorMode = new VectorMode(app, memoryService, searchService, embeddingService);
+  }
+  
+  /**
+   * Get memory settings from plugin
+   * @returns Memory settings object or null if not available
+   */
+  private getMemorySettings(): any {
+    try {
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+      if (plugin && plugin.settings && plugin.settings.settings && plugin.settings.settings.memory) {
+        return plugin.settings.settings.memory;
+      }
+    } catch (error) {
+      console.warn('Failed to get memory settings:', error);
+    }
+    return null;
+  }
+  
+  /**
+   * Get the backlinkEnabled setting value from plugin settings
+   * Used to determine the default value for useGraphBoost
+   * @returns Whether backlink boost is enabled in settings
+   */
+  private getBacklinksEnabledSetting(): boolean {
+    const settings = this.getMemorySettings();
+    return settings?.backlinksEnabled ?? true;
+  }
+
+  /**
+   * Get the graph boost factor from plugin settings
+   * @returns Graph boost factor
+   */
+  private getGraphBoostFactor(): number {
+    const settings = this.getMemorySettings();
+    return settings?.graphBoostFactor ?? 0.3;
   }
   
   /**
@@ -569,13 +606,13 @@ export class BatchMode extends BaseMode<BatchModeParams, BatchModeResult> {
         // Graph boost parameters (shared across operations)
         useGraphBoost: {
           type: 'boolean',
-          description: 'Whether to use graph-based relevance boosting (applied to all operations)',
-          default: false
+          description: 'Whether to use graph-based relevance boosting (applied to all operations). Defaults to the value of backlinksEnabled in settings.',
+          default: this.getBacklinksEnabledSetting()
         },
         graphBoostFactor: {
           type: 'number',
-          description: 'Graph boost factor (0-1) (applied to all operations)',
-          default: 0.3
+          description: 'Graph boost factor (0-1) (applied to all operations). Defaults to the value configured in settings.',
+          default: this.getGraphBoostFactor()
         },
         graphMaxDistance: {
           type: 'number',

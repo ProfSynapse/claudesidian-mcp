@@ -631,8 +631,8 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         },
         graphBoostFactor: {
           type: 'number',
-          description: 'Graph boost factor (0-1)',
-          default: 0.3
+          description: 'Graph boost factor (0-1). Defaults to the value configured in settings.',
+          default: this.getGraphBoostFactor()
         },
         graphMaxDistance: {
           type: 'number',

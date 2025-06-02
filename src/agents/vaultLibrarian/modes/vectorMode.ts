@@ -808,14 +808,15 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results to return',
-          default: 10
+          description: 'Maximum number of results to return. Defaults to the value configured in settings.',
+          default: this.getMemorySettings()?.defaultResultLimit ?? 10
         },
         threshold: {
           type: 'number',
           description: 'Similarity threshold (0-1). Defaults to the value configured in settings.',
           minimum: 0,
-          maximum: 1
+          maximum: 1,
+          default: this.getDefaultThreshold()
         },
         filters: {
           type: 'object',
@@ -853,7 +854,8 @@ export class VectorMode extends BaseMode<VectorSearchParams, VectorSearchResult>
           type: 'number',
           description: 'Graph boost factor (0-1). Defaults to the value configured in settings.',
           minimum: 0,
-          maximum: 1
+          maximum: 1,
+          default: this.getGraphBoostFactor()
         },
         graphMaxDistance: {
           type: 'number',
