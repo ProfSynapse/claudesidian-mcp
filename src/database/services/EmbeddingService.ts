@@ -8,6 +8,7 @@ import { FileEmbedding } from '../workspace-types';
 import { TextChunk, chunkText } from '../utils/TextChunker';
 import { OpenAIProvider } from '../providers/openai-provider';
 import { LocalEmbeddingProvider } from '../providers/local-provider';
+import { LocalEmbeddingProvider as NewLocalEmbeddingProvider } from '../providers/local-embedding-provider';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {
@@ -160,6 +161,33 @@ export class EmbeddingService {
           } else {
             throw new Error(`Local provider initialization failed: ${errorMsg}`);
           }
+        }
+      }
+      else if (this.settings.apiProvider === 'local') {
+        // Use the new improved local embedding provider
+        try {
+          console.log("Attempting to initialize new local embedding provider...");
+          const newLocalProvider = new NewLocalEmbeddingProvider({
+            model: 'all-MiniLM-L6-v2',
+            maxBatchSize: this.settings.batchSize || 32,
+            maxConcurrency: this.settings.concurrentRequests || 2,
+            enableGPU: false // Conservative default
+          });
+          
+          // Initialize with timeout
+          const initPromise = newLocalProvider.initialize();
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("Local provider initialization timed out after 30 seconds")), 30000);
+          });
+          
+          await Promise.race([initPromise, timeoutPromise]);
+          
+          this.embeddingProvider = newLocalProvider;
+          console.log("New local embedding provider initialized successfully");
+        } catch (localError) {
+          console.error("Error initializing new local provider:", localError);
+          const errorMsg = getErrorMessage(localError);
+          throw new Error(`New local provider initialization failed: ${errorMsg}`);
         }
       } 
       else {

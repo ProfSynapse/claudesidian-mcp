@@ -117,13 +117,14 @@ export class ApiSettingsTab extends BaseSettingsTab {
             .setDesc('Select the API provider for generating embeddings')
             .addDropdown(dropdown => dropdown
                 .addOption('openai', 'OpenAI (Cloud API)')
-                .addOption('local-minilm', 'Local - MiniLM (Free, Privacy-focused)')
+                .addOption('local-minilm', 'Local - MiniLM (Legacy)')
+                .addOption('local', 'Local - Enhanced (Free, Privacy-focused)')
                 .setValue(this.settings.apiProvider)
                 .onChange(async (value) => {
-                    this.settings.apiProvider = value as 'openai' | 'local-minilm';
+                    this.settings.apiProvider = value as 'openai' | 'local-minilm' | 'local';
                     
                     // Set appropriate model based on provider
-                    if (value === 'local-minilm') {
+                    if (value === 'local-minilm' || value === 'local') {
                         this.settings.embeddingModel = 'all-MiniLM-L6-v2';
                         this.settings.dimensions = 384; // MiniLM fixed dimensions
                     }
@@ -231,6 +232,63 @@ export class ApiSettingsTab extends BaseSettingsTab {
                 text: 'The model will be downloaded automatically the first time you use it (approximately 50MB).',
                 cls: 'model-download-notice'
             });
+        } else if (this.settings.apiProvider === 'local') {
+            // For enhanced local provider, show model info and configuration options
+            const modelInfoContainer = containerEl.createDiv({ cls: 'local-model-info' });
+            
+            modelInfoContainer.createEl('p', { 
+                text: 'Using enhanced local model: all-MiniLM-L6-v2',
+                cls: 'setting-item-name'
+            });
+            
+            modelInfoContainer.createEl('p', { 
+                text: 'Enhanced local embedding provider with improved performance and reliability.',
+                cls: 'setting-item-description'
+            });
+            
+            modelInfoContainer.createEl('ul', { cls: 'model-features' })
+                .append(
+                    createEl('li', { text: '384 dimensions' }),
+                    createEl('li', { text: 'No cost or API usage' }),
+                    createEl('li', { text: 'Complete privacy (no data leaves your device)' }),
+                    createEl('li', { text: 'Optimized batch processing' }),
+                    createEl('li', { text: 'Smart concurrency management' })
+                );
+                
+            // Add a notice about model download
+            modelInfoContainer.createEl('p', { 
+                text: 'The model will be downloaded automatically the first time you use it (approximately 90MB).',
+                cls: 'model-download-notice'
+            });
+            
+            // Add performance configuration settings
+            containerEl.createEl('h4', { text: 'Performance Settings' });
+            
+            new Setting(containerEl)
+                .setName('Batch Size')
+                .setDesc('Number of texts to process in each batch (higher = faster but more memory)')
+                .addSlider(slider => slider
+                    .setLimits(1, 64, 1)
+                    .setValue(this.settings.batchSize || 32)
+                    .setDynamicTooltip()
+                    .onChange(async (value) => {
+                        this.settings.batchSize = value;
+                        await this.saveSettings();
+                    })
+                );
+            
+            new Setting(containerEl)
+                .setName('Concurrent Requests')
+                .setDesc('Number of simultaneous embedding requests (higher = faster but more CPU usage)')
+                .addSlider(slider => slider
+                    .setLimits(1, 4, 1)
+                    .setValue(this.settings.concurrentRequests || 2)
+                    .setDynamicTooltip()
+                    .onChange(async (value) => {
+                        this.settings.concurrentRequests = value;
+                        await this.saveSettings();
+                    })
+                );
         }
         
         // Get max dimensions based on model

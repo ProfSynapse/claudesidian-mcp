@@ -41,3 +41,32 @@ export function sanitizeVaultName(vaultName: string): string {
         .replace(/\s+/g, '-')     // Replace spaces with hyphens
         .replace(/-+/g, '-');     // Replace multiple consecutive hyphens with a single one
 }
+
+/**
+ * Builds a vault-specific tool name by appending the vault identifier
+ * 
+ * @param agentName - The base agent name
+ * @param vaultName - The vault name to append
+ * @returns Vault-specific tool name
+ */
+export function buildVaultToolName(agentName: string, vaultName: string): string {
+    const sanitizedVaultName = sanitizeVaultName(vaultName);
+    return `${agentName}_${sanitizedVaultName}`;
+}
+
+/**
+ * Extracts the base agent name from a vault-specific tool name
+ * 
+ * @param fullToolName - Full tool name that may include vault suffix
+ * @returns Base agent name
+ */
+export function extractAgentName(fullToolName: string): string {
+    // Split on the last underscore to handle vault names with underscores
+    const parts = fullToolName.split('_');
+    if (parts.length <= 1) {
+        return fullToolName; // No vault suffix
+    }
+    
+    // Return all parts except the last one (which should be the vault name)
+    return parts.slice(0, -1).join('_');
+}
