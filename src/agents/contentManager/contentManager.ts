@@ -25,7 +25,6 @@ import { ChromaSearchService } from '../../database/services/ChromaSearchService
  */
 export class ContentManagerAgent extends BaseAgent {
   protected app: App;
-  protected agentManager: AgentManager;
   protected plugin: ClaudesidianPlugin | null = null;
   
   // ChromaDB services
@@ -37,10 +36,9 @@ export class ContentManagerAgent extends BaseAgent {
   /**
    * Create a new ContentManagerAgent
    * @param app Obsidian app instance
-   * @param agentManager Agent manager for cross-agent operations
    * @param plugin Claudesidian plugin instance
    */
-  constructor(app: App, agentManager: AgentManager, plugin?: ClaudesidianPlugin) {
+  constructor(app: App, plugin?: ClaudesidianPlugin) {
     super(
       ContentManagerConfig.name,
       ContentManagerConfig.description,
@@ -48,7 +46,6 @@ export class ContentManagerAgent extends BaseAgent {
     );
     
     this.app = app;
-    this.agentManager = agentManager;
     
     // Store plugin reference if provided
     if (plugin) {
@@ -84,9 +81,6 @@ export class ContentManagerAgent extends BaseAgent {
     this.registerMode(new DeleteContentMode(app, this.embeddingService, this.searchService));
     this.registerMode(new FindReplaceContentMode(app, this.embeddingService, this.searchService));
     this.registerMode(new BatchContentMode(app, this.embeddingService, this.searchService, this.memoryService));
-    
-    // Set agent manager reference for handoff capability
-    this.setAgentManager(agentManager);
   }
   
   /**

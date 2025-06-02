@@ -5,7 +5,6 @@ import {
   ListCommandsMode,
   ExecuteCommandMode
 } from './modes';
-import { AgentManager } from '../../services/AgentManager';
 import { MemoryService } from '../../database/services/MemoryService';
 
 /**
@@ -18,11 +17,6 @@ export class CommandManagerAgent extends BaseAgent {
   private app: App;
   
   /**
-   * Agent manager for cross-agent operations
-   */
-  protected agentManager: AgentManager;
-  
-  /**
    * Memory service for activity recording
    */
   private memoryService: MemoryService | null = null;
@@ -30,10 +24,9 @@ export class CommandManagerAgent extends BaseAgent {
   /**
    * Create a new CommandManagerAgent
    * @param app Obsidian app instance
-   * @param agentManager Agent manager for cross-agent operations
    * @param memoryService Optional memory service for activity recording
    */
-  constructor(app: App, agentManager: AgentManager, memoryService?: MemoryService) {
+  constructor(app: App, memoryService?: MemoryService) {
     super(
       CommandManagerConfig.name,
       CommandManagerConfig.description,
@@ -41,11 +34,7 @@ export class CommandManagerAgent extends BaseAgent {
     );
     
     this.app = app;
-    this.agentManager = agentManager;
     this.memoryService = memoryService || null;
-    
-    // Set agent manager reference for handoff capability
-    this.setAgentManager(agentManager);
     
     // Register modes
     this.registerMode(new ListCommandsMode(app));

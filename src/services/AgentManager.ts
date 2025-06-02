@@ -36,6 +36,9 @@ export class AgentManager {
     }
     
     this.agents.set(agent.name, agent);
+    
+    // Set the agent manager reference to enable handoff functionality
+    agent.setAgentManager(this);
   }
   
   /**

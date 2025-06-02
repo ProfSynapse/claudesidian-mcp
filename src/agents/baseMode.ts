@@ -1,5 +1,5 @@
 import { IMode } from './interfaces/IMode';
-import { CommonParameters, CommonResult, ModeCall, ModeCallResult } from '../types';
+import { CommonParameters, CommonResult } from '../types';
 import { 
   getCommonParameterSchema, 
   getCommonResultSchema, 

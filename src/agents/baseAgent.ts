@@ -220,7 +220,7 @@ export abstract class BaseAgent implements IAgent {
       // If returning here, pass any updated workspace context from the handoff result
       // back to the original result
       if (handoff.returnHere) {
-        let resultWithHandoff = {
+        const resultWithHandoff = {
           ...originalResult,
           handoffResult
         };

@@ -78,13 +78,11 @@ export class MCPConnector {
             // Always register these agents (no vector database dependency)
             const contentManagerAgent = new ContentManagerAgent(
                 this.app, 
-                this.agentManager,
                 this.plugin as ClaudesidianPlugin
             );
             
             const commandManagerAgent = new CommandManagerAgent(
                 this.app, 
-                this.agentManager,
                 memoryService
             );
             
