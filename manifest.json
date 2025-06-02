@@ -1,15 +1,12 @@
 {
     "id": "claudesidian-mcp",
     "name": "Claudesidian MCP",
-    "version": "2.3.1",
+    "version": "2.3.2",
     "minAppVersion": "0.15.0",
     "description": "MCP server integration for Obsidian",
     "author": "Synaptic Labs",
     "authorUrl": "https://github.com/ProfSynapse",
     "isDesktopOnly": true,
-    "fundingUrl": {
-      "GitHub": "https://github.com/sponsors/yourusername"
-    },
     "mcp": {
         "enabled": true,
         "server": true
