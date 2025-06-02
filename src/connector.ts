@@ -69,7 +69,13 @@ export class MCPConnector {
             // Get vector store for initialization
             const vectorStore = services.vectorStore;
             
-            // Create all agents with services
+            // Get memory settings to determine what to enable
+            const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
+            const isMemoryEnabled = memorySettings?.enabled && memorySettings?.embeddingsEnabled;
+            
+            console.log(`Memory/embeddings enabled: ${isMemoryEnabled}`);
+            
+            // Always register these agents (no vector database dependency)
             const contentManagerAgent = new ContentManagerAgent(
                 this.app, 
                 this.agentManager,
@@ -82,19 +88,6 @@ export class MCPConnector {
                 memoryService
             );
             
-            const vaultLibrarianAgent = new VaultLibrarianAgent(
-                this.app
-            );
-            
-            // Initialize searchService immediately if we have vectorStore
-            if (vaultLibrarianAgent && vectorStore) {
-                console.log('Setting vector store in VaultLibrarian during initialization');
-                vaultLibrarianAgent.initializeSearchService().catch(error => 
-                    console.error('Error initializing VaultLibrarian search service:', error)
-                );
-            }
-            
-            // Create project manager with services
             const projectManagerAgent = new ProjectManagerAgent(
                 this.app, 
                 this.plugin
@@ -104,52 +97,61 @@ export class MCPConnector {
                 this.app
             );
             
-            // Initialize memory manager with error handling
-            let memoryManagerAgent;
-            try {
-                memoryManagerAgent = new MemoryManagerAgent(
-                    this.app,
-                    this.plugin
+            // Always register VaultLibrarian (has non-vector modes like search)
+            const vaultLibrarianAgent = new VaultLibrarianAgent(
+                this.app,
+                isMemoryEnabled  // Pass memory enabled status to control mode registration
+            );
+            
+            // If memory is enabled, initialize vector capabilities
+            if (isMemoryEnabled && vectorStore) {
+                console.log('Setting vector store in VaultLibrarian during initialization');
+                vaultLibrarianAgent.initializeSearchService().catch(error => 
+                    console.error('Error initializing VaultLibrarian search service:', error)
                 );
-            } catch (error) {
-                console.error("Error creating MemoryManagerAgent:", error);
-                console.warn("Will continue without memory manager");
-                memoryManagerAgent = null;
+                
+                // Update VaultLibrarian with memory settings
+                if (memorySettings) {
+                    vaultLibrarianAgent.updateSettings(memorySettings);
+                }
             }
             
-            // Initialize vector manager with error handling
-            let vectorManagerAgent;
-            try {
-                vectorManagerAgent = new VectorManagerAgent(
-                    this.plugin
-                );
-            } catch (error) {
-                console.error("Error creating VectorManagerAgent:", error);
-                console.warn("Will continue without vector manager");
-                vectorManagerAgent = null;
-            }
+            // Register core agents
             this.agentManager.registerAgent(contentManagerAgent);
             this.agentManager.registerAgent(commandManagerAgent);
             this.agentManager.registerAgent(projectManagerAgent);
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
             
-            // Only register memory manager if it was created successfully
-            if (memoryManagerAgent) {
-                this.agentManager.registerAgent(memoryManagerAgent);
-            }
-            
-            // Only register vector manager if it was created successfully
-            if (vectorManagerAgent) {
-                this.agentManager.registerAgent(vectorManagerAgent);
-            }
-            
-            // Initialize VaultLibrarian with current settings if available
-            if (this.plugin && (this.plugin as any).settings) {
-                const memorySettings = (this.plugin as any).settings?.settings?.memory;
-                if (memorySettings) {
-                    vaultLibrarianAgent.updateSettings(memorySettings);
+            // Conditionally register memory-only agents
+            if (isMemoryEnabled) {
+                
+                // Initialize memory manager with error handling
+                let memoryManagerAgent;
+                try {
+                    memoryManagerAgent = new MemoryManagerAgent(
+                        this.app,
+                        this.plugin
+                    );
+                    this.agentManager.registerAgent(memoryManagerAgent);
+                } catch (error) {
+                    console.error("Error creating MemoryManagerAgent:", error);
+                    console.warn("Will continue without memory manager");
                 }
+                
+                // Initialize vector manager with error handling
+                let vectorManagerAgent;
+                try {
+                    vectorManagerAgent = new VectorManagerAgent(
+                        this.plugin
+                    );
+                    this.agentManager.registerAgent(vectorManagerAgent);
+                } catch (error) {
+                    console.error("Error creating VectorManagerAgent:", error);
+                    console.warn("Will continue without vector manager");
+                }
+            } else {
+                console.log("Memory/embeddings disabled - skipping vector-dependent agents (VaultLibrarian, MemoryManager, VectorManager)");
             }
             
             // Register all agents from the agent manager with the server

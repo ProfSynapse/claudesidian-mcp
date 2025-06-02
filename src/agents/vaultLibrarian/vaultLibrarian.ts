@@ -27,8 +27,9 @@ export class VaultLibrarianAgent extends BaseAgent {
   /**
    * Create a new VaultLibrarianAgent
    * @param app Obsidian app instance
+   * @param enableVectorModes Whether to enable vector-based modes (requires memory/embeddings)
    */
-  constructor(app: App) {
+  constructor(app: App, enableVectorModes: boolean = false) {
     super(
       VaultLibrarianConfig.name,
       VaultLibrarianConfig.description,
@@ -81,22 +82,28 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.embeddingProvider = null;
     }
     
-    // Register all modes - only vector mode requires embeddings to be enabled
+    // Always register SearchMode (no vector database dependency)
     this.registerMode(new SearchMode(app));
-    this.registerMode(new BatchMode(
-      app, 
-      this.memoryService, 
-      this.searchService, 
-      this.embeddingService
-    ));
     
-    // Add vector mode - this mode depends on embeddings but will handle disabled state gracefully
-    this.registerMode(new VectorMode(
-      app, 
-      this.memoryService, 
-      this.searchService, 
-      this.embeddingService
-    ));
+    // Conditionally register vector-dependent modes
+    if (enableVectorModes) {
+      console.log('Registering vector-dependent modes for VaultLibrarian');
+      this.registerMode(new BatchMode(
+        app, 
+        this.memoryService, 
+        this.searchService, 
+        this.embeddingService
+      ));
+      
+      this.registerMode(new VectorMode(
+        app, 
+        this.memoryService, 
+        this.searchService, 
+        this.embeddingService
+      ));
+    } else {
+      console.log('Skipping vector-dependent modes for VaultLibrarian (memory disabled)');
+    }
     
   }
   
