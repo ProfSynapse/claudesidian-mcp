@@ -51,7 +51,7 @@ export class WhatIsClaudesidianAccordion {
         this.createAgentDescription(
             agentsContainer,
             'Content Manager',
-            'Manages note content with read, create, append, prepend, replace, delete, and batch operations. Combines functionality of the previous Note Reader and Note Editor agents into a single unified interface for all content operations.'
+            'Manages note content with read, create, append, prepend, replace, delete, find-replace, and batch operations. Combines functionality of the previous Note Reader and Note Editor agents into a single unified interface for all content operations.'
         );
         
         this.createAgentDescription(
@@ -69,7 +69,7 @@ export class WhatIsClaudesidianAccordion {
         this.createAgentDescription(
             agentsContainer,
             'Vault Manager',
-            'Manages vault organization with operations for listing files/folders, creating/editing/deleting folders, and moving/duplicating notes. Provides comprehensive file system management for your vault structure.'
+            'Manages vault organization with operations for listing files/folders, creating/editing/deleting folders, moving notes, and duplicating notes. Provides comprehensive file system management for your vault structure.'
         );
         
         this.createAgentDescription(

@@ -197,6 +197,7 @@ The ContentManager agent provides operations for reading and editing notes in th
 | replaceContent    | Replace content in a note           | path, search, replace, replaceAll              |
 | replaceByLine     | Replace content by line numbers     | path, startLine, endLine, content              |
 | deleteContent     | Delete content from a note          | path, startPosition, endPosition               |
+| findReplaceContent| Find and replace content with regex | path, findPattern, replacePattern, flags      |
 | batchContent      | Perform multiple content operations | operations[]                                   |
 
 #### 2. CommandManager Agent
@@ -229,6 +230,7 @@ The VaultManager agent provides operations for managing files and folders in the
 | deleteFolder | Delete a folder                 | path, recursive                                |
 | moveNote     | Move a note to a new location   | path, newPath, overwrite                       |
 | moveFolder   | Move a folder to a new location | path, newPath, overwrite                       |
+| duplicateNote| Create a duplicate of a note    | sourcePath, targetPath, overwrite             |
 
 #### 5. VaultLibrarian Agent
 The VaultLibrarian agent provides operations for searching and navigating the vault.
