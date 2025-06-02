@@ -2,6 +2,8 @@
 
 Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system. The plugin uses an Agent-Mode Architecture that organizes functionality into logical domains (agents) with specific operations (modes) within each domain.
 
+> 🧪 Note that this is an experimental Obsidian Plugin. The _Memory_ Functionality in particular is relatively untested, so be sure you know enough about embeddings and vector databases to understand what you are doing, and always watch those API costs!
+
 ## Features
 
 - 🔌 MCP Server Integration
