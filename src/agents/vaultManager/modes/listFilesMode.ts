@@ -2,6 +2,7 @@ import { App, TFile, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
 
 /**
  * Parameters for list files mode
@@ -91,8 +92,7 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
       
       // Apply additional filter if provided
       if (params.filter) {
-        const filterRegex = new RegExp(params.filter, 'i');
-        files = files.filter(file => filterRegex.test(file.name));
+        files = filterByName(files, params.filter);
       }
       
       // Map files to required format
@@ -129,7 +129,7 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
         },
         filter: {
           type: 'string',
-          description: 'Optional filter pattern for files'
+          description: FILTER_DESCRIPTION
         },
         ...commonSchema
       },

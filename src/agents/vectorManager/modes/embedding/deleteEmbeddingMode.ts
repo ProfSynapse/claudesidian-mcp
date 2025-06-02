@@ -58,19 +58,33 @@ export class DeleteEmbeddingMode extends BaseMode<DeleteEmbeddingsParams, Embedd
    * @returns Result of the delete operation
    */
   async execute(params: DeleteEmbeddingsParams): Promise<EmbeddingResult> {
-    // Get the memory service from the agent
-    const memoryService = (this.agent as VectorManagerAgent).getMemoryService();
+    // Get the vector store from the agent
+    const vectorStore = (this.agent as VectorManagerAgent).getVectorStore();
     
     try {
       try {
-        // Attempt to delete the items - this will throw if collection doesn't exist
-        await memoryService.deleteItems(params.collectionName, params.ids);
+        // First check which items actually exist
+        const existingItems = await vectorStore.getItems(params.collectionName, params.ids, ['documents']);
+        const existingIds = existingItems?.ids || [];
+        
+        if (existingIds.length === 0) {
+          return {
+            success: true,
+            data: {
+              collectionName: params.collectionName,
+              deleted: 0
+            }
+          };
+        }
+        
+        // Only delete the items that actually exist
+        await vectorStore.deleteItems(params.collectionName, existingIds);
         
         return {
           success: true,
           data: {
             collectionName: params.collectionName,
-            deleted: params.ids.length
+            deleted: existingIds.length
           }
         };
       } catch (error) {

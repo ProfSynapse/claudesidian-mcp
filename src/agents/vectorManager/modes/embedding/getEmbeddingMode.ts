@@ -58,30 +58,25 @@ export class GetEmbeddingMode extends BaseMode<GetEmbeddingsParams, EmbeddingRes
    * @returns Result of the get operation
    */
   async execute(params: GetEmbeddingsParams): Promise<EmbeddingResult> {
-    // Get the search service from the agent
-    const searchService = (this.agent as VectorManagerAgent).getSearchService();
+    // Get the vector store from the agent
+    const vectorStore = (this.agent as VectorManagerAgent).getVectorStore();
     
     try {
-      // Get necessary services (no need to directly use vectorStore anymore)
-      
-      // Try to access the collection directly instead of just checking if it exists
+      // Try to get the items by their IDs
       try {
-        // Prepare the query
-        const query = {
-          ids: params.ids,
-          include: [
-            'documents',
-            'metadatas'
-          ] as string[]
-        };
+        // Prepare the include parameter
+        const include = [
+          'documents',
+          'metadatas'
+        ] as string[];
         
         // Include embeddings if requested
         if (params.includeEmbeddings) {
-          query.include.push('embeddings');
+          include.push('embeddings');
         }
         
-        // Try to query the collection directly
-        const results = await searchService.queryCollection(params.collectionName, query);
+        // Use getItems method to get specific items by ID
+        const results = await vectorStore.getItems(params.collectionName, params.ids, include);
         
         // Process results
         if (!results || !results.ids || results.ids.length === 0) {
@@ -102,21 +97,22 @@ export class GetEmbeddingMode extends BaseMode<GetEmbeddingsParams, EmbeddingRes
           embedding?: number[];
         }> = [];
         
-        for (let i = 0; i < results.ids[0].length; i++) {
+        // getItems returns flat arrays (not nested like query)
+        for (let i = 0; i < results.ids.length; i++) {
           const item: {
             id: string;
             text?: string;
             metadata?: Record<string, any>;
             embedding?: number[];
           } = {
-            id: results.ids[0][i],
-            text: results.documents?.[0]?.[i],
-            metadata: results.metadatas?.[0]?.[i]
+            id: results.ids[i],
+            text: results.documents?.[i],
+            metadata: results.metadatas?.[i]
           };
           
           // Add embedding if requested
           if (params.includeEmbeddings && results.embeddings) {
-            item.embedding = results.embeddings[0][i];
+            item.embedding = results.embeddings[i];
           }
           
           items.push(item);

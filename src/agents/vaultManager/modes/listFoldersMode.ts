@@ -2,6 +2,7 @@ import { App, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
 
 /**
  * Parameters for list folders mode
@@ -97,8 +98,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       
       // Apply additional filter if provided
       if (params.filter) {
-        const filterRegex = new RegExp(params.filter, 'i');
-        folders = folders.filter(folder => filterRegex.test(folder.name));
+        folders = filterByName(folders, params.filter);
       }
       
       // Map folders to required format
@@ -132,7 +132,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
         },
         filter: {
           type: 'string',
-          description: 'Optional filter pattern for folders'
+          description: FILTER_DESCRIPTION
         },
         ...commonSchema
       },

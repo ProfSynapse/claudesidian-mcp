@@ -62,6 +62,20 @@ export class CreateCollectionMode extends BaseMode<CreateCollectionParams, Colle
     const memoryService = (this.agent as VectorManagerAgent).getMemoryService();
     
     try {
+      // First check if collection already exists
+      const existingCollection = await memoryService.getCollection(params.name);
+      
+      if (existingCollection) {
+        return {
+          success: true,
+          data: {
+            name: params.name,
+            created: false,
+            metadata: params.metadata
+          }
+        };
+      }
+      
       // Create a new collection with the given name and metadata
       await memoryService.createCollection(params.name, params.metadata);
       

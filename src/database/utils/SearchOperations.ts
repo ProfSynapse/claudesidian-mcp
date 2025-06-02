@@ -129,6 +129,44 @@ export class SearchOperations {
         return new SearchOperations(app).listProperties(key, limit);
     }
 
+    /**
+     * Search for files with a specific tag (static version)
+     * @param app Obsidian app instance
+     * @param tag Tag to search for
+     * @param options Search options
+     * @returns Promise that resolves with files containing the tag
+     */
+    static async searchByTag(
+        app: App,
+        tag: string,
+        options: {
+            path?: string;
+            limit?: number;
+            debug?: boolean;
+        } = {}
+    ): Promise<TFile[]> {
+        return new SearchOperations(app).searchByTag(tag, options);
+    }
+
+    /**
+     * Search for files with a specific tag (static alternative version)
+     * @param app Obsidian app instance
+     * @param tag Tag to search for
+     * @param options Search options
+     * @returns Promise that resolves with files containing the tag
+     */
+    static async searchByTagAlternative(
+        app: App,
+        tag: string,
+        options: {
+            path?: string;
+            limit?: number;
+            debug?: boolean;
+        } = {}
+    ): Promise<TFile[]> {
+        return new SearchOperations(app).searchByTagAlternative(tag, options);
+    }
+
     private static DEFAULT_WEIGHTS: SearchWeights = {
         fuzzyMatch: 1.0,
         exactMatch: 1.5,
@@ -506,8 +544,9 @@ export class SearchOperations {
     } = {}): Promise<TFile[]> {
         const { path, limit } = options;
         
-        // Ensure tag starts with #
-        const searchTag = tag.startsWith('#') ? tag : '#' + tag;
+        // Normalize the search tag - remove # if present, we'll check both formats
+        const normalizedTag = tag.startsWith('#') ? tag.slice(1) : tag;
+        const searchTagWithHash = '#' + normalizedTag;
         
         // Get files to search
         const files = this.app.vault.getMarkdownFiles()
@@ -519,11 +558,33 @@ export class SearchOperations {
             const cache = this.app.metadataCache.getFileCache(file);
             if (!cache) continue;
             
-            const tags = getAllTags(cache);
-            if (!tags) continue;
+            // Get all tags using Obsidian's utility
+            const allTags = getAllTags(cache);
             
-            // Check both with and without '#' prefix
-            if (tags.includes(searchTag) || tags.includes(tag)) {
+            if (!allTags || allTags.length === 0) continue;
+            
+            // Check multiple formats for tag matching
+            let foundMatch = false;
+            
+            // Check all possible tag formats
+            for (const tagFromCache of allTags) {
+                const cleanTag = tagFromCache.startsWith('#') ? tagFromCache.slice(1) : tagFromCache;
+                
+                // Match if the clean tag equals our normalized search tag
+                if (cleanTag === normalizedTag) {
+                    foundMatch = true;
+                    break;
+                }
+            }
+            
+            // Also check original getAllTags result for exact matches
+            if (!foundMatch) {
+                if (allTags.includes(normalizedTag) || allTags.includes(searchTagWithHash)) {
+                    foundMatch = true;
+                }
+            }
+            
+            if (foundMatch) {
                 results.push(file);
                 
                 // Limit results if specified
@@ -531,6 +592,103 @@ export class SearchOperations {
                     break;
                 }
             }
+        }
+        
+        return results;
+    }
+
+    /**
+     * Search for files with a specific tag (alternative implementation)
+     * This method checks frontmatter and inline tags separately for debugging
+     * @param tag Tag to search for
+     * @param options Search options
+     * @returns Promise that resolves with files containing the tag
+     */
+    async searchByTagAlternative(tag: string, options: {
+        path?: string;
+        limit?: number;
+        debug?: boolean;
+    } = {}): Promise<TFile[]> {
+        const { path, limit, debug = false } = options;
+        
+        // Normalize the search tag
+        const normalizedTag = tag.startsWith('#') ? tag.slice(1) : tag;
+        
+        if (debug) {
+            console.log(`Alternative search for tag: "${normalizedTag}"`);
+        }
+        
+        // Get files to search
+        const files = this.app.vault.getMarkdownFiles()
+            .filter(file => !path || file.path.startsWith(path));
+        
+        const results: TFile[] = [];
+        
+        for (const file of files) {
+            const cache = this.app.metadataCache.getFileCache(file);
+            if (!cache) continue;
+            
+            let foundMatch = false;
+            
+            // Check frontmatter tags
+            if (cache.frontmatter?.tags) {
+                const frontmatterTags = cache.frontmatter.tags;
+                
+                if (debug) {
+                    console.log(`\nFile: ${file.path}`);
+                    console.log(`Frontmatter tags:`, frontmatterTags);
+                }
+                
+                // Handle array format: tags: [tag1, tag2]
+                if (Array.isArray(frontmatterTags)) {
+                    for (const fmTag of frontmatterTags) {
+                        const cleanFmTag = String(fmTag).startsWith('#') ? String(fmTag).slice(1) : String(fmTag);
+                        if (cleanFmTag === normalizedTag) {
+                            foundMatch = true;
+                            if (debug) console.log(`MATCH in frontmatter array: "${cleanFmTag}"`);
+                            break;
+                        }
+                    }
+                }
+                // Handle string format: tags: tag1
+                else if (typeof frontmatterTags === 'string') {
+                    const cleanFmTag = frontmatterTags.startsWith('#') ? frontmatterTags.slice(1) : frontmatterTags;
+                    if (cleanFmTag === normalizedTag) {
+                        foundMatch = true;
+                        if (debug) console.log(`MATCH in frontmatter string: "${cleanFmTag}"`);
+                    }
+                }
+            }
+            
+            // Check inline tags if no frontmatter match
+            if (!foundMatch && cache.tags) {
+                if (debug) {
+                    console.log(`Inline tags:`, cache.tags.map(t => t.tag));
+                }
+                
+                for (const tagObj of cache.tags) {
+                    const cleanInlineTag = tagObj.tag.startsWith('#') ? tagObj.tag.slice(1) : tagObj.tag;
+                    if (cleanInlineTag === normalizedTag) {
+                        foundMatch = true;
+                        if (debug) console.log(`MATCH in inline tags: "${cleanInlineTag}"`);
+                        break;
+                    }
+                }
+            }
+            
+            if (foundMatch) {
+                results.push(file);
+                
+                // Limit results if specified
+                if (limit && results.length >= limit) {
+                    break;
+                }
+            }
+        }
+        
+        if (debug) {
+            console.log(`\nAlternative search results: ${results.length} files found`);
+            results.forEach(f => console.log(`- ${f.path}`));
         }
         
         return results;

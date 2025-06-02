@@ -3,6 +3,7 @@ import { VectorManagerAgent } from '../../vectorManager';
 import * as JsonSchema from 'json-schema';
 import { ListCollectionsParams, CollectionResult } from '../../types';
 import { getErrorMessage, createErrorMessage } from '../../../../utils/errorUtils';
+import { createFilterRegex, FILTER_DESCRIPTION } from '../../../../utils/filterUtils';
 
 /**
  * Mode for listing vector collections
@@ -68,7 +69,7 @@ export class ListCollectionsMode extends BaseMode<ListCollectionsParams, Collect
       // Filter by pattern if specified
       let filteredCollections = collections;
       if (params.pattern) {
-        const regex = new RegExp(params.pattern, 'i');
+        const regex = createFilterRegex(params.pattern);
         filteredCollections = collections.filter(collectionName => regex.test(collectionName));
       }
 
@@ -123,7 +124,7 @@ export class ListCollectionsMode extends BaseMode<ListCollectionsParams, Collect
       properties: {
         pattern: {
           type: 'string',
-          description: 'Optional pattern to filter collection names (regular expression)'
+          description: FILTER_DESCRIPTION
         }
       }
     };

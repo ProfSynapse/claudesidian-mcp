@@ -1,4 +1,4 @@
-import { App, TFolder } from 'obsidian';
+import { App, TFolder, prepareFuzzySearch } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { 
   SearchContentArgs, 
@@ -466,41 +466,79 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
     }
     
     try {
-      // Get all folders in the vault recursively
+      // Get all folders in the vault using a more direct approach
       const allFolders: string[] = [];
       
-      // Recursive function to collect all folders
-      const collectAllFolders = (path: string) => {
-        const { folders } = this.searchOperations.listFolder(path, false, true, false);
-        for (const folder of folders) {
-          allFolders.push(folder);
-          // Recursively collect subfolders
-          collectAllFolders(folder);
+      // Use Obsidian's vault API to get all folders directly
+      const vaultRoot = this.app.vault.getRoot();
+      
+      // Recursive function to collect all folders using Obsidian API
+      const collectAllFolders = (folder: TFolder) => {
+        // Add current folder path (skip root folder which has empty path)
+        if (folder.path !== '') {
+          allFolders.push(folder.path);
+        }
+        
+        // Recursively process subfolders
+        for (const child of folder.children) {
+          if (child instanceof TFolder) {
+            collectAllFolders(child);
+          }
         }
       };
       
       // Start from root
-      collectAllFolders('');
+      collectAllFolders(vaultRoot);
       
-      // Search for folders matching the query
-      const searchTerms = params.query.toLowerCase().split(/\s+/);
-      const matchingFolders: string[] = [];
+      // Use fuzzy search similar to Obsidian's note search
+      const fuzzySearch = prepareFuzzySearch(params.query);
+      
+      // Create folder candidates for fuzzy matching
+      interface FolderCandidate {
+        path: string;
+        name: string;
+        score: number;
+      }
+      
+      const folderCandidates: FolderCandidate[] = [];
       
       for (const folderPath of allFolders) {
-        const folderName = folderPath.split('/').pop()?.toLowerCase() || '';
-        const fullPath = folderPath.toLowerCase();
+        const folderName = folderPath.split('/').pop() || '';
         
-        // Check if any search term matches the folder name or path
-        const matches = searchTerms.some(term => 
-          folderName.includes(term) || fullPath.includes(term)
-        );
+        // Try fuzzy matching on both folder name and full path
+        const nameMatch = fuzzySearch(folderName);
+        const pathMatch = fuzzySearch(folderPath);
         
-        if (matches) {
-          matchingFolders.push(folderPath);
+        // Take the best match (highest score)
+        let bestMatch = null;
+        let bestScore = -1;
+        
+        if (nameMatch) {
+          bestMatch = nameMatch;
+          bestScore = nameMatch.score;
+        }
+        
+        if (pathMatch && pathMatch.score > bestScore) {
+          bestMatch = pathMatch;
+          bestScore = pathMatch.score;
+        }
+        
+        if (bestMatch) {
+          folderCandidates.push({
+            path: folderPath,
+            name: folderName,
+            score: bestScore
+          });
         }
       }
       
-      // Apply path filter if specified
+      // Sort by score (higher is better)
+      folderCandidates.sort((a, b) => b.score - a.score);
+      
+      // Extract just the paths for the final result
+      const matchingFolders = folderCandidates.map(candidate => candidate.path);
+      
+      // Apply path filter if specified  
       let filteredFolders = matchingFolders;
       if (params.paths && params.paths.length > 0) {
         filteredFolders = matchingFolders.filter(folder => 
@@ -508,20 +546,7 @@ export class SearchMode extends BaseMode<UnifiedSearchParams, UnifiedSearchResul
         );
       }
       
-      // Sort folders by relevance (prefer exact matches and shorter paths)
-      filteredFolders.sort((a, b) => {
-        const aName = a.split('/').pop()?.toLowerCase() || '';
-        const bName = b.split('/').pop()?.toLowerCase() || '';
-        const queryLower = params.query?.toLowerCase() || '';
-        const aExactMatch = aName === queryLower;
-        const bExactMatch = bName === queryLower;
-        
-        if (aExactMatch && !bExactMatch) return -1;
-        if (!aExactMatch && bExactMatch) return 1;
-        
-        // Prefer shorter paths (fewer nested folders)
-        return a.split('/').length - b.split('/').length;
-      });
+      // Folders are already sorted by fuzzy search score (no additional sorting needed)
       
       // Apply limit if specified
       if (params.limit) {
