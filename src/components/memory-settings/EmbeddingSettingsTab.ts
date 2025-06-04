@@ -266,18 +266,78 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
         // Database Settings section (moved from AdvancedSettingsTab)
         containerEl.createEl('h3', { text: 'Database Settings' });
             
-        new Setting(containerEl)
+        const dbSizeSetting = new Setting(containerEl)
             .setName('Maximum Database Size')
-            .setDesc('Maximum size of the database in MB')
-            .addSlider(slider => slider
-                .setLimits(100, 2000, 100)
-                .setValue(this.settings.maxDbSize)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.settings.maxDbSize = value;
-                    await this.saveSettings();
-                })
-            );
+            .setDesc('Maximum size of the memory traces and snapshots database in MB (minimum: 100 MB)');
+            
+        let dbSizeInput: HTMLInputElement;
+        let errorEl: HTMLElement;
+        
+        dbSizeSetting
+            .addText(text => {
+                dbSizeInput = text.inputEl;
+                text
+                    .setPlaceholder('500')
+                    .setValue(String(this.settings.maxDbSize))
+                    .onChange(async (value) => {
+                        const numValue = Number(value);
+                        
+                        // Clear previous error styling
+                        dbSizeInput.style.borderColor = '';
+                        if (errorEl) {
+                            errorEl.remove();
+                        }
+                        
+                        if (value.trim() === '') {
+                            // Empty value, show error
+                            dbSizeInput.style.borderColor = 'var(--text-error)';
+                            errorEl = dbSizeSetting.settingEl.createDiv({
+                                text: 'Database size is required',
+                                cls: 'setting-error'
+                            });
+                            return;
+                        }
+                        
+                        if (isNaN(numValue)) {
+                            // Invalid number, show error
+                            dbSizeInput.style.borderColor = 'var(--text-error)';
+                            errorEl = dbSizeSetting.settingEl.createDiv({
+                                text: 'Please enter a valid number',
+                                cls: 'setting-error'
+                            });
+                            return;
+                        }
+                        
+                        if (numValue < 100) {
+                            // Below minimum, show error
+                            dbSizeInput.style.borderColor = 'var(--text-error)';
+                            errorEl = dbSizeSetting.settingEl.createDiv({
+                                text: 'Minimum database size is 100 MB',
+                                cls: 'setting-error'
+                            });
+                            return;
+                        }
+                        
+                        if (numValue > 10000) {
+                            // Above reasonable maximum, show warning
+                            dbSizeInput.style.borderColor = 'var(--text-warning)';
+                            errorEl = dbSizeSetting.settingEl.createDiv({
+                                text: 'Warning: Very large database size may impact performance',
+                                cls: 'setting-warning'
+                            });
+                        }
+                        
+                        // Valid value, save it
+                        this.settings.maxDbSize = numValue;
+                        await this.saveSettings();
+                        
+                        // Show success feedback briefly
+                        dbSizeInput.style.borderColor = 'var(--text-success)';
+                        setTimeout(() => {
+                            dbSizeInput.style.borderColor = '';
+                        }, 1000);
+                    });
+            });
             
         new Setting(containerEl)
             .setName('Clean Orphaned Embeddings')

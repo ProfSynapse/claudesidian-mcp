@@ -6,3 +6,4 @@ export * from './deleteFolderMode';
 export * from './moveNoteMode';
 export * from './moveFolderMode';
 export * from './duplicateNoteMode';
+export * from './openNoteMode';

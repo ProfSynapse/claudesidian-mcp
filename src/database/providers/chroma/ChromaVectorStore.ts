@@ -58,6 +58,66 @@ export class ChromaVectorStore extends BaseVectorStore {
       return 0;
     }
   }
+
+  /**
+   * Calculate the database size for memory-related collections only
+   * @returns Size in MB for memory traces, sessions, and snapshots
+   */
+  private async calculateMemoryDatabaseSize(): Promise<number> {
+    if (!this.config.persistentPath) {
+      return 0;
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const { promisify } = require('util');
+    const readdirAsync = promisify(fs.readdir);
+    const statAsync = promisify(fs.stat);
+    
+    const memoryCollections = ['memory_traces', 'sessions', 'snapshots'];
+    let totalSize = 0;
+
+    try {
+      const collectionsDir = path.join(this.config.persistentPath, 'collections');
+      
+      if (!fs.existsSync(collectionsDir)) {
+        return 0;
+      }
+
+      const calculateSize = async (dirPath: string): Promise<number> => {
+        let size = 0;
+        const items = await readdirAsync(dirPath);
+        
+        for (const item of items) {
+          const itemPath = path.join(dirPath, item);
+          const stats = await statAsync(itemPath);
+          
+          if (stats.isDirectory()) {
+            size += await calculateSize(itemPath);
+          } else {
+            size += stats.size;
+          }
+        }
+        
+        return size;
+      };
+
+      for (const collectionName of memoryCollections) {
+        const collectionPath = path.join(collectionsDir, collectionName);
+        
+        if (fs.existsSync(collectionPath)) {
+          const sizeInBytes = await calculateSize(collectionPath);
+          totalSize += sizeInBytes;
+        }
+      }
+
+      return totalSize / (1024 * 1024); // Convert to MB
+    } catch (error) {
+      console.error('Error calculating memory database size:', error);
+      return 0;
+    }
+  }
+
   /**
    * ChromaDB client
    */
@@ -816,6 +876,7 @@ export class ChromaVectorStore extends BaseVectorStore {
       let filePermissionsOk = true;
       let fsError = null;
       let dbSizeMB = 0;
+      let memoryDbSizeMB = 0;
       
       try {
         const fs = require('fs');
@@ -836,6 +897,14 @@ export class ChromaVectorStore extends BaseVectorStore {
               console.log(`Calculated database size: ${dbSizeMB.toFixed(2)} MB`);
             } catch (sizeError) {
               console.warn('Failed to calculate database size:', sizeError);
+            }
+
+            // Calculate memory-specific database size
+            try {
+              memoryDbSizeMB = await this.calculateMemoryDatabaseSize();
+              console.log(`Calculated memory database size: ${memoryDbSizeMB.toFixed(2)} MB`);
+            } catch (sizeError) {
+              console.warn('Failed to calculate memory database size:', sizeError);
             }
             
             // Try to write a test file to check permissions
@@ -886,7 +955,8 @@ export class ChromaVectorStore extends BaseVectorStore {
         fsError: fsError ? String(fsError) : null,
         totalCollections: this.collections.size,
         collections: collectionDetails,
-        dbSizeMB: dbSizeMB
+        dbSizeMB: dbSizeMB,
+        memoryDbSizeMB: memoryDbSizeMB
       };
     } catch (error) {
       return {

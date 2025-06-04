@@ -67,9 +67,15 @@ export class CollectionStatsComponent {
         
         const stats = this.displayedStats;
         
-        // Database size
+        // Memory database size (only traces, sessions, snapshots)
         this.containerEl.createEl('div', {
-            text: `Database size: ${(stats.dbSizeMB).toFixed(2)} MB / ${this.settings.maxDbSize} MB`
+            text: `Memory database size: ${(stats.memoryDbSizeMB || 0).toFixed(2)} MB / ${this.settings.maxDbSize} MB`
+        });
+        
+        // Total database size (all collections) - for reference
+        this.containerEl.createEl('div', {
+            text: `Total database size: ${(stats.dbSizeMB).toFixed(2)} MB`,
+            cls: 'memory-stats-secondary'
         });
         
         if (stats.lastIndexedDate) {

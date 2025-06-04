@@ -42,15 +42,22 @@ export class MemoryService {
   private embeddingService: EmbeddingService;
   
   /**
+   * Plugin settings
+   */
+  private settings: any;
+  
+  /**
    * Create a new memory service
    * @param plugin Plugin instance
    * @param vectorStore Vector store instance
    * @param embeddingService Embedding service
+   * @param settings Plugin settings
    */
-  constructor(plugin: Plugin, vectorStore: IVectorStore, embeddingService: EmbeddingService) {
+  constructor(plugin: Plugin, vectorStore: IVectorStore, embeddingService: EmbeddingService, settings: any) {
     this.plugin = plugin;
     this.vectorStore = vectorStore;
     this.embeddingService = embeddingService;
+    this.settings = settings;
     
     // Create collection manager for direct ChromaDB access
     this.collectionManager = new ChromaCollectionManager(vectorStore);
@@ -88,6 +95,111 @@ export class MemoryService {
     } catch (error) {
       console.error("Failed to initialize MemoryService collections:", error);
       // Don't throw the error - let the plugin continue loading
+    }
+  }
+  
+  //#region Database Size Management
+  
+  /**
+   * Check if the memory database is within size limits
+   * @returns true if within limits, false if over limit
+   */
+  private async isWithinSizeLimit(): Promise<boolean> {
+    try {
+      const diagnostics = await this.vectorStore.getDiagnostics();
+      const currentSize = diagnostics.memoryDbSizeMB || 0;
+      const maxSize = this.settings.maxDbSize || 500;
+      
+      console.log(`Memory database size: ${currentSize.toFixed(2)} MB / ${maxSize} MB`);
+      return currentSize <= maxSize;
+    } catch (error) {
+      console.error('Error checking memory database size:', error);
+      return true; // Allow operation if we can't check
+    }
+  }
+  
+  /**
+   * Enforce database size limits before adding new memory data
+   * Prunes old data if necessary based on the pruning strategy
+   */
+  private async enforceDbSizeLimit(): Promise<void> {
+    try {
+      if (await this.isWithinSizeLimit()) {
+        return; // Within limits, no action needed
+      }
+      
+      const pruningStrategy = this.settings.pruningStrategy || 'oldest';
+      console.log(`Memory database over limit, applying pruning strategy: ${pruningStrategy}`);
+      
+      switch (pruningStrategy) {
+        case 'oldest':
+          await this.pruneOldestEntries();
+          break;
+        case 'least-used':
+          await this.pruneLeastUsedEntries();
+          break;
+        case 'manual':
+          console.warn('Memory database over limit but manual pruning strategy selected. Data may be lost.');
+          break;
+        default:
+          await this.pruneOldestEntries();
+      }
+    } catch (error) {
+      console.error('Error enforcing database size limit:', error);
+    }
+  }
+  
+  /**
+   * Prune oldest entries to free up space
+   */
+  private async pruneOldestEntries(): Promise<void> {
+    try {
+      console.log('Pruning oldest memory entries...');
+      
+      // Delete oldest memory traces
+      const memoryTraces = await this.memoryTraces.getAll({ sortBy: 'timestamp', sortOrder: 'asc' });
+      
+      // Remove oldest 10% of traces
+      const tracesToRemove = Math.ceil(memoryTraces.length * 0.1);
+      if (tracesToRemove > 0) {
+        const tracesToDelete = memoryTraces.slice(0, tracesToRemove);
+        const traceIds = tracesToDelete.map((trace: any) => trace.id);
+        if (traceIds.length > 0) {
+          await this.memoryTraces.deleteBatch(traceIds);
+        }
+      }
+      
+      // Delete oldest sessions
+      const sessions = await this.sessions.getAll({ sortBy: 'created', sortOrder: 'asc' });
+      
+      // Remove oldest 10% of sessions
+      const sessionsToRemove = Math.ceil(sessions.length * 0.1);
+      if (sessionsToRemove > 0) {
+        const sessionsToDelete = sessions.slice(0, sessionsToRemove);
+        const sessionIds = sessionsToDelete.map((session: any) => session.id);
+        if (sessionIds.length > 0) {
+          await this.sessions.deleteBatch(sessionIds);
+        }
+      }
+      
+      console.log(`Pruned ${tracesToRemove} memory traces and ${sessionsToRemove} sessions`);
+    } catch (error) {
+      console.error('Error pruning oldest entries:', error);
+    }
+  }
+  
+  /**
+   * Prune least used entries to free up space
+   */
+  private async pruneLeastUsedEntries(): Promise<void> {
+    try {
+      console.log('Pruning least used memory entries...');
+      
+      // For now, fall back to oldest entries since we don't track usage
+      // TODO: Implement usage tracking for more sophisticated pruning
+      await this.pruneOldestEntries();
+    } catch (error) {
+      console.error('Error pruning least used entries:', error);
     }
   }
   
@@ -264,6 +376,9 @@ export class MemoryService {
    * @param trace Memory trace data
    */
   async storeMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id' | 'embedding'>): Promise<string> {
+    // Enforce database size limits before adding new data
+    await this.enforceDbSizeLimit();
+    
     // Only generate embeddings for memory traces if explicitly needed
     // Skip embeddings for automated file event traces to prevent excessive API usage
     let embedding: number[] = [];
@@ -355,6 +470,9 @@ export class MemoryService {
    * @param session Session data
    */
   async createSession(session: Omit<WorkspaceSession, 'id'>): Promise<WorkspaceSession> {
+    // Enforce database size limits before adding new data
+    await this.enforceDbSizeLimit();
+    
     return this.sessions.createSession(session);
   }
   
@@ -596,6 +714,9 @@ export class MemoryService {
    * @param snapshot Snapshot data
    */
   async createSnapshot(snapshot: Omit<WorkspaceStateSnapshot, 'id'>): Promise<WorkspaceStateSnapshot> {
+    // Enforce database size limits before adding new data
+    await this.enforceDbSizeLimit();
+    
     return this.snapshots.createSnapshot(snapshot);
   }
   

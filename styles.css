@@ -856,3 +856,25 @@ a:hover {
 .mcp-tab-content.hidden {
     display: none;
 }
+
+/* Memory Stats Styles */
+.memory-stats-secondary {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    margin-top: 0.25rem;
+}
+
+/* Settings Validation Styles */
+.setting-error {
+    color: var(--text-error);
+    font-size: 0.8em;
+    margin-top: 0.25rem;
+    font-weight: 500;
+}
+
+.setting-warning {
+    color: var(--text-warning);
+    font-size: 0.8em;
+    margin-top: 0.25rem;
+    font-weight: 500;
+}

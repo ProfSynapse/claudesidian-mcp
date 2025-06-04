@@ -29,6 +29,7 @@ export type UsageStats = {
     tokensThisMonth: number;
     totalEmbeddings: number;
     dbSizeMB: number;
+    memoryDbSizeMB: number;
     lastIndexedDate: string;
     indexingInProgress: boolean;
     estimatedCost?: number;
@@ -76,6 +77,7 @@ export class UsageStatsService {
         tokensThisMonth: 0,
         totalEmbeddings: 0,
         dbSizeMB: 0,
+        memoryDbSizeMB: 0,
         lastIndexedDate: '',
         indexingInProgress: false,
         estimatedCost: 0,
@@ -453,6 +455,11 @@ export class UsageStatsService {
                 stats.dbSizeMB = diagnostics.dbSizeMB;
             }
             
+            // Update memory-specific database size if available
+            if (diagnostics.memoryDbSizeMB !== undefined) {
+                stats.memoryDbSizeMB = diagnostics.memoryDbSizeMB;
+            }
+            
             // Check for collections data in diagnostics
             if (diagnostics.collections && diagnostics.collections.length > 0) {
                 stats.collectionStats = [];
@@ -666,6 +673,7 @@ export class UsageStatsService {
                 tokensThisMonth: 0,
                 totalEmbeddings: 0,
                 dbSizeMB: 0,
+                memoryDbSizeMB: 0,
                 lastIndexedDate: '',
                 indexingInProgress: false,
                 estimatedCost: 0,
@@ -730,6 +738,7 @@ export class UsageStatsService {
                 tokensThisMonth: 0,
                 totalEmbeddings: 0,
                 dbSizeMB: 0,
+                memoryDbSizeMB: 0,
                 lastIndexedDate: '',
                 indexingInProgress: false,
                 estimatedCost: 0,
