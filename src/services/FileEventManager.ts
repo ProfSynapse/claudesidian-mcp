@@ -171,6 +171,8 @@ export class FileEventManager {
     this.startVaultReadyDetection();
     
     // Handle startup embedding if configured (but only after vault is ready)
+    // Note: The 'startup' strategy automatically indexes all non-indexed files when Obsidian starts
+    // This ensures that new files created outside of Obsidian are indexed on the next launch
     if (this.embeddingStrategy.type === 'startup') {
       await this.waitForVaultReady();
       await this.handleStartupEmbedding();
@@ -996,7 +998,21 @@ export class FileEventManager {
   }
   
   /**
-   * Handle startup embedding
+   * Handle startup embedding - index all non-indexed files
+   * 
+   * This method is called when the embedding strategy is set to 'startup'.
+   * It performs the following actions on plugin/vault startup:
+   * 1. Retrieves all markdown files in the vault
+   * 2. Checks which files already have embeddings in the database
+   * 3. Filters out excluded paths based on user settings
+   * 4. Indexes any files that don't have embeddings yet
+   * 
+   * This is useful for:
+   * - Indexing files that were created outside of Obsidian
+   * - Catching up on files that failed to index previously
+   * - Ensuring comprehensive coverage of vault content
+   * 
+   * The operation is marked as a system operation to prevent recursive file events
    */
   private async handleStartupEmbedding(): Promise<void> {
     console.log('[FileEventManager] Running startup embedding');
@@ -1007,11 +1023,11 @@ export class FileEventManager {
     if (!searchService) return;
     
     try {
-      // Get existing embeddings
+      // Get existing embeddings from the database
       const existingEmbeddings = await searchService.getAllFileEmbeddings();
       const indexedPaths = new Set(existingEmbeddings.map((e: any) => e.filePath));
       
-      // Find files that need indexing
+      // Find files that need indexing (not in database and not excluded)
       const filesToIndex = markdownFiles
         .filter(file => !indexedPaths.has(file.path))
         .filter(file => !this.isExcludedPath(file.path))
@@ -1020,6 +1036,7 @@ export class FileEventManager {
       if (filesToIndex.length > 0) {
         console.log(`[FileEventManager] Found ${filesToIndex.length} files to index on startup`);
         
+        // Mark as system operation to prevent file event loops
         this.startSystemOperation();
         try {
           await this.embeddingService.batchIndexFiles(filesToIndex);

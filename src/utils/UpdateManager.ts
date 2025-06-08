@@ -74,10 +74,9 @@ export class UpdateManager {
                 );
             }
 
-            // Update the manifest in memory with the latest version
-            this.plugin.manifest.version = latestVersion;
-            
             // Update settings to reflect the latest version
+            // Note: The manifest.json file has already been written to disk above
+            // The in-memory manifest will be updated when Obsidian restarts
             await this.updateVersionInSettings(latestVersion);
 
             new Notice(`Plugin updated successfully to version ${latestVersion}! Please refresh Obsidian to apply changes.`);

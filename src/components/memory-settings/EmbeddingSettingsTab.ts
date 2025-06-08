@@ -106,7 +106,7 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
             .addDropdown(dropdown => dropdown
                 .addOption('manual', 'Manual Only (No auto-embedding)')
                 .addOption('idle', 'Idle (Embed after period of inactivity)')
-                .addOption('startup', 'Startup (Embed non-indexed files on startup)')
+                .addOption('startup', 'Startup (Embed non-indexed files on restart)')
                 .setValue(this.settings.embeddingStrategy || 'manual')
                 .onChange(async (value) => {
                     this.settings.embeddingStrategy = value as 'manual' | 'idle' | 'startup';
@@ -120,24 +120,85 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
             
         // Show idle threshold setting only when idle strategy is selected
         if (this.settings.embeddingStrategy === 'idle') {
-            new Setting(containerEl)
+            const idleTimeSetting = new Setting(containerEl)
                 .setName('Idle Time Threshold')
-                .setDesc('How long to wait (in seconds) after the last change before embedding')
-                .addSlider(slider => slider
-                    .setLimits(5, 300, 5)
-                    .setValue(this.settings.idleTimeThreshold ? this.settings.idleTimeThreshold / 1000 : 60) // Convert from ms to seconds
-                    .setDynamicTooltip()
-                    .onChange(async (value) => {
-                        this.settings.idleTimeThreshold = value * 1000; // Convert to ms for storage
-                        await this.saveSettings();
-                    })
-                )
+                .setDesc('How long to wait (in seconds) after the last change before embedding (minimum: 5 seconds)');
+            
+            let idleTimeInput: HTMLInputElement;
+            let errorEl: HTMLElement;
+            
+            idleTimeSetting
+                .addText(text => {
+                    idleTimeInput = text.inputEl;
+                    text
+                        .setPlaceholder('60')
+                        .setValue(String(this.settings.idleTimeThreshold ? this.settings.idleTimeThreshold / 1000 : 60)) // Convert from ms to seconds
+                        .onChange(async (value) => {
+                            const numValue = Number(value);
+                            
+                            // Clear previous error styling
+                            idleTimeInput.style.borderColor = '';
+                            if (errorEl) {
+                                errorEl.remove();
+                            }
+                            
+                            if (value.trim() === '') {
+                                // Empty value, show error
+                                idleTimeInput.style.borderColor = 'var(--text-error)';
+                                errorEl = idleTimeSetting.settingEl.createDiv({
+                                    text: 'Idle time is required',
+                                    cls: 'setting-error'
+                                });
+                                return;
+                            }
+                            
+                            if (isNaN(numValue)) {
+                                // Invalid number, show error
+                                idleTimeInput.style.borderColor = 'var(--text-error)';
+                                errorEl = idleTimeSetting.settingEl.createDiv({
+                                    text: 'Please enter a valid number',
+                                    cls: 'setting-error'
+                                });
+                                return;
+                            }
+                            
+                            if (numValue < 5) {
+                                // Below minimum, show error
+                                idleTimeInput.style.borderColor = 'var(--text-error)';
+                                errorEl = idleTimeSetting.settingEl.createDiv({
+                                    text: 'Minimum idle time is 5 seconds',
+                                    cls: 'setting-error'
+                                });
+                                return;
+                            }
+                            
+                            if (numValue > 3600) {
+                                // Above reasonable maximum (1 hour), show warning
+                                idleTimeInput.style.borderColor = 'var(--text-warning)';
+                                errorEl = idleTimeSetting.settingEl.createDiv({
+                                    text: 'Warning: Very long idle times may delay embedding',
+                                    cls: 'setting-warning'
+                                });
+                            }
+                            
+                            // Valid value, save it
+                            this.settings.idleTimeThreshold = numValue * 1000; // Convert to ms for storage
+                            await this.saveSettings();
+                            
+                            // Show success feedback briefly
+                            idleTimeInput.style.borderColor = 'var(--text-success)';
+                            setTimeout(() => {
+                                idleTimeInput.style.borderColor = '';
+                            }, 1000);
+                        });
+                })
                 .addExtraButton(button => {
                     button
                         .setIcon('reset')
                         .setTooltip('Reset to default (60 seconds)')
                         .onClick(async () => {
                             this.settings.idleTimeThreshold = 60000;
+                            idleTimeInput.value = '60';
                             await this.saveSettings();
                             if (this.onSettingsChanged) {
                                 this.onSettingsChanged();
