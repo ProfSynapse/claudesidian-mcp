@@ -456,6 +456,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     rootFolder: string;
     id: string;
     relatedFolders?: string[];
+    relatedFiles?: string[];
   }): Promise<string[]> {
     const associatedNotes = new Set<string>();
     
@@ -554,6 +555,22 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             for (const file of relatedFiles) {
               associatedNotes.add(file.path);
             }
+          }
+        }
+      }
+      
+      // 5. Add individual related files if specified
+      if (workspace.relatedFiles && workspace.relatedFiles.length > 0) {
+        for (const filePath of workspace.relatedFiles) {
+          if (!filePath) continue;
+          
+          // Normalize the file path
+          const normalizedFilePath = sanitizePath(filePath, false);
+          
+          // Check if the file exists in the vault
+          const file = this.app.vault.getAbstractFileByPath(normalizedFilePath);
+          if (file && file.path.endsWith('.md')) {
+            associatedNotes.add(file.path);
           }
         }
       }

@@ -68,6 +68,7 @@ export class FileEventManager {
   private fileCreatedHandler: (file: TAbstractFile) => void;
   private fileModifiedHandler: (file: TAbstractFile) => void;
   private fileDeletedHandler: (file: TAbstractFile) => void;
+  private fileRenamedHandler: (file: TAbstractFile, oldPath: string) => void;
   private fileOpenHandler: any;
   private activeLeafChangeHandler: any;
   private sessionCreateHandler: (data: any) => void;
@@ -95,6 +96,10 @@ export class FileEventManager {
   // Track file modification times to detect actual changes
   private fileModificationTimes: Map<string, number> = new Map();
   
+  // Track last embedding update times to prevent rapid re-processing
+  private lastEmbeddingUpdateTimes: Map<string, number> = new Map();
+  private embeddingUpdateCooldown: number = 10000; // 10 seconds cooldown
+  
   // Rate limiting
   private lastActivityTimes: Record<string, number> = {};
   private activityRateLimit: number = 5000; // 5 seconds
@@ -105,6 +110,7 @@ export class FileEventManager {
   
   // Track vault loading state to ignore startup file events
   private vaultIsReady: boolean = false;
+  private vaultReadyTimestamp: number = 0;
   private startupFileEventCount: number = 0;
   private startupCheckTimer: NodeJS.Timeout | null = null;
   
@@ -122,6 +128,8 @@ export class FileEventManager {
     embeddingService: EmbeddingService,
     eventManager: EventManager
   ) {
+    console.log('[FileEventManager] ========== CONSTRUCTOR CALLED ==========');
+    console.log('[FileEventManager] FileEventManager is being created/recreated');
     this.app = app;
     this.plugin = plugin;
     this.memoryService = memoryService;
@@ -137,13 +145,16 @@ export class FileEventManager {
     this.fileCreatedHandler = this.handleFileCreated.bind(this);
     this.fileModifiedHandler = this.handleFileModified.bind(this);
     this.fileDeletedHandler = this.handleFileDeleted.bind(this);
+    this.fileRenamedHandler = this.handleFileRenamed.bind(this);
     this.fileOpenHandler = this.handleFileOpen.bind(this);
     this.activeLeafChangeHandler = this.handleActiveLeafChange.bind(this);
     this.sessionCreateHandler = this.handleSessionCreate.bind(this);
     this.sessionEndHandler = this.handleSessionEnd.bind(this);
     
     // Load configuration
+    console.log('[FileEventManager] Loading configuration...');
     this.loadConfiguration();
+    console.log(`[FileEventManager] Configuration loaded - Strategy: ${this.embeddingStrategy.type}`);
     
     // Setup debounced processing based on strategy
     this.setupProcessingStrategy();
@@ -156,33 +167,62 @@ export class FileEventManager {
    * Initialize the file event manager
    */
   async initialize(): Promise<void> {
+    console.log('[FileEventManager] ========== INITIALIZATION START ==========');
     console.log('[FileEventManager] Initializing unified file event system');
     
+    // Load any persisted queue from previous session FIRST
+    console.log('[FileEventManager] Step 1: Loading persisted queue...');
+    await this.loadPersistedQueue();
+    console.log(`[FileEventManager] Step 1 Complete: Queue loaded - Size: ${this.fileQueue.size}, Contents: ${Array.from(this.fileQueue.keys())}`);
+    
     // Load workspace roots for faster lookups
+    console.log('[FileEventManager] Step 2: Loading workspace roots...');
     await this.refreshWorkspaceRoots();
+    console.log('[FileEventManager] Step 2 Complete: Workspace roots loaded');
     
     // Load active sessions
+    console.log('[FileEventManager] Step 3: Loading active sessions...');
     await this.refreshActiveSessions();
+    console.log('[FileEventManager] Step 3 Complete: Active sessions loaded');
     
     // Register event listeners
+    console.log('[FileEventManager] Step 4: Registering event listeners...');
     this.registerEventListeners();
+    console.log('[FileEventManager] Step 4 Complete: Event listeners registered');
     
     // Start monitoring for vault ready state
+    console.log('[FileEventManager] Step 5: Starting vault ready detection...');
     this.startVaultReadyDetection();
+    console.log('[FileEventManager] Step 5 Complete: Vault ready detection started');
     
-    // Handle startup embedding if configured (but only after vault is ready)
-    // Note: The 'startup' strategy automatically indexes all non-indexed files when Obsidian starts
-    // This ensures that new files created outside of Obsidian are indexed on the next launch
-    if (this.embeddingStrategy.type === 'startup') {
-      await this.waitForVaultReady();
-      await this.handleStartupEmbedding();
+    // Handle startup embedding if configured - simple approach like idle strategy
+    console.log(`[FileEventManager] Step 6: Checking startup embedding conditions...`);
+    console.log(`[FileEventManager] - Strategy: ${this.embeddingStrategy.type}`);
+    console.log(`[FileEventManager] - Queue size: ${this.fileQueue.size}`);
+    console.log(`[FileEventManager] - Queue contents: ${Array.from(this.fileQueue.keys())}`);
+    
+    if (this.embeddingStrategy.type === 'startup' && this.fileQueue.size > 0) {
+      console.log(`[FileEventManager] ✓ Strategy is 'startup' with ${this.fileQueue.size} queued files - processing after short delay`);
+      
+      // Use the same simple approach as idle strategy - just with a startup delay instead of idle timeout
+      setTimeout(() => {
+        console.log(`[FileEventManager] Processing startup queue after delay...`);
+        this.processQueue();
+      }, 3000); // 3 second delay to let Obsidian finish loading
+      
+    } else if (this.embeddingStrategy.type === 'startup') {
+      console.log(`[FileEventManager] ✓ Strategy is 'startup' but no files queued - nothing to do`);
+    } else {
+      console.log(`[FileEventManager] ✗ Strategy is '${this.embeddingStrategy.type}', skipping startup embedding`);
     }
     
     // Start periodic content caching for existing files
+    console.log('[FileEventManager] Step 7: Starting content caching...');
     this.startContentCaching();
+    console.log('[FileEventManager] Step 7 Complete: Content caching started');
     
     this.isInitialized = true;
-    console.log('[FileEventManager] Initialization complete');
+    console.log('[FileEventManager] ========== INITIALIZATION COMPLETE ==========');
   }
   
   /**
@@ -218,6 +258,8 @@ export class FileEventManager {
     this.fileWorkspaceCache.clear();
     this.workspaceRoots.clear();
     this.contentCache.clear();
+    this.fileModificationTimes.clear();
+    this.lastEmbeddingUpdateTimes.clear();
     this.activeSessions = {};
   }
   
@@ -231,9 +273,10 @@ export class FileEventManager {
     this.startupFileEventCount = 0;
     
     // Check if vault is ready after initial file events settle
+    // Give more time for initial file events to arrive
     this.startupCheckTimer = setTimeout(() => {
       this.checkVaultReady();
-    }, 2000); // Initial check after 2 seconds
+    }, 5000); // Initial check after 5 seconds
   }
   
   /**
@@ -247,6 +290,7 @@ export class FileEventManager {
       if (this.startupFileEventCount === currentEventCount) {
         // No new file events in the last second, vault is likely ready
         this.vaultIsReady = true;
+        this.vaultReadyTimestamp = Date.now();
         console.log(`[FileEventManager] Vault ready detected after ${this.startupFileEventCount} startup file events`);
       } else {
         // Still receiving events, check again
@@ -324,6 +368,8 @@ export class FileEventManager {
     this.app.vault.on('modify', this.fileModifiedHandler);
     // @ts-ignore
     this.app.vault.on('delete', this.fileDeletedHandler);
+    // @ts-ignore
+    this.app.vault.on('rename', this.fileRenamedHandler);
     
     // Workspace events - cache content when files are opened
     this.app.workspace.on('file-open', this.fileOpenHandler);
@@ -344,6 +390,8 @@ export class FileEventManager {
     this.app.vault.off('modify', this.fileModifiedHandler);
     // @ts-ignore
     this.app.vault.off('delete', this.fileDeletedHandler);
+    // @ts-ignore
+    this.app.vault.off('rename', this.fileRenamedHandler);
     
     // Workspace events
     this.app.workspace.off('file-open', this.fileOpenHandler);
@@ -366,6 +414,35 @@ export class FileEventManager {
       return;
     }
     
+    // For startup strategy: Filter out false "create" events for existing files
+    // Obsidian fires "create" events for ALL existing files during vault loading
+    if (this.embeddingStrategy.type === 'startup') {
+      const timeSinceVaultReady = Date.now() - (this.vaultReadyTimestamp || 0);
+      const isInStartupWindow = timeSinceVaultReady < 30000; // 30 seconds after vault ready
+      
+      if (isInStartupWindow) {
+        // During startup window, check if file already has embeddings
+        const searchService = (this.plugin as any).searchService;
+        if (searchService) {
+          try {
+            const existingEmbeddings = await searchService.getAllFileEmbeddings();
+            const isAlreadyIndexed = existingEmbeddings.some((e: any) => e.filePath === file.path);
+            if (isAlreadyIndexed) {
+              console.log(`[FileEventManager] STARTUP FILTER: Ignoring "create" event for already-indexed file: ${file.path}`);
+              return;
+            } else {
+              console.log(`[FileEventManager] STARTUP FILTER: File not indexed, allowing create event: ${file.path}`);
+            }
+          } catch (error) {
+            console.warn(`[FileEventManager] Could not check if file is already indexed: ${file.path}`, error);
+            // If we can't check, allow the event to be safe
+          }
+        }
+      } else {
+        console.log(`[FileEventManager] STARTUP FILTER: Outside startup window, allowing create event: ${file.path}`);
+      }
+    }
+    
     // Store initial modification time
     const modTime = (file as TFile).stat?.mtime || Date.now();
     this.fileModificationTimes.set(file.path, modTime);
@@ -379,13 +456,17 @@ export class FileEventManager {
       // Ignore errors reading file content
     }
     
-    console.log(`[FileEventManager] File created: ${file.path}`);
+    // Check both FileEventManager and vector store system operation flags
+    const vectorStore = (this.plugin as any).vectorStore;
+    const isSystemOp = this.isSystemOperation || (vectorStore && vectorStore.isSystemOperation);
+    
+    console.log(`[FileEventManager] File created: ${file.path}, isSystemOperation: ${isSystemOp} (FEM: ${this.isSystemOperation}, VS: ${vectorStore?.isSystemOperation})`);
     
     this.queueFileEvent({
       path: file.path,
       operation: 'create',
       timestamp: Date.now(),
-      isSystemOperation: this.isSystemOperation,
+      isSystemOperation: isSystemOp,
       source: 'vault',
       priority: 'normal'
     });
@@ -395,6 +476,9 @@ export class FileEventManager {
    * Handle file modification
    */
   private async handleFileModified(file: TAbstractFile): Promise<void> {
+    // Log all file modifications for debugging
+    console.log(`[FileEventManager] File modification detected: ${file.path}`);
+    
     if (!this.shouldProcessFile(file)) return;
     
     // Skip events during vault startup loading
@@ -404,6 +488,7 @@ export class FileEventManager {
       return;
     }
     
+    
     // Check if file has actually been modified (not just touched)
     const currentModTime = (file as TFile).stat?.mtime || Date.now();
     const lastModTime = this.fileModificationTimes.get(file.path);
@@ -411,19 +496,24 @@ export class FileEventManager {
     // Update the modification time
     this.fileModificationTimes.set(file.path, currentModTime);
     
-    // Skip if modification time hasn't changed (file was just touched, not actually modified)
-    if (lastModTime && Math.abs(currentModTime - lastModTime) < 1000) {
-      console.log(`[FileEventManager] Skipping file ${file.path} - no actual content change detected`);
+    // Skip if modification time hasn't changed significantly (file was just touched, not actually modified)
+    // Increased threshold to 2 seconds to avoid false positives
+    if (lastModTime && Math.abs(currentModTime - lastModTime) < 2000) {
+      console.log(`[FileEventManager] Skipping file ${file.path} - modification time too close (${currentModTime - lastModTime}ms)`);
       return;
     }
     
-    console.log(`[FileEventManager] File modified: ${file.path}, isSystemOperation: ${this.isSystemOperation}`);
+    // Check both FileEventManager and vector store system operation flags
+    const vectorStore = (this.plugin as any).vectorStore;
+    const isSystemOp = this.isSystemOperation || (vectorStore && vectorStore.isSystemOperation);
+    
+    console.log(`[FileEventManager] File modified: ${file.path}, isSystemOperation: ${isSystemOp} (FEM: ${this.isSystemOperation}, VS: ${vectorStore?.isSystemOperation})`);
     
     this.queueFileEvent({
       path: file.path,
       operation: 'modify',
       timestamp: Date.now(),
-      isSystemOperation: this.isSystemOperation,
+      isSystemOperation: isSystemOp,
       source: 'vault',
       priority: 'normal'
     });
@@ -470,16 +560,98 @@ export class FileEventManager {
     // Clean up modification time tracking
     this.fileModificationTimes.delete(file.path);
     
-    console.log(`[FileEventManager] File deleted: ${file.path}`);
+    // Check both FileEventManager and vector store system operation flags
+    const vectorStore = (this.plugin as any).vectorStore;
+    const isSystemOp = this.isSystemOperation || (vectorStore && vectorStore.isSystemOperation);
+    
+    console.log(`[FileEventManager] File deleted: ${file.path}, isSystemOperation: ${isSystemOp} (FEM: ${this.isSystemOperation}, VS: ${vectorStore?.isSystemOperation})`);
+    
+    // Remove from persisted queue if it was queued for startup embedding
+    if (this.embeddingStrategy.type === 'startup' && this.fileQueue.has(file.path)) {
+      this.fileQueue.delete(file.path);
+      this.persistQueue().catch(error => {
+        console.warn('[FileEventManager] Failed to update persisted queue after deletion:', error);
+      });
+      console.log(`[FileEventManager] Removed deleted file from startup queue: ${file.path}`);
+    }
     
     this.queueFileEvent({
       path: file.path,
       operation: 'delete',
       timestamp: Date.now(),
-      isSystemOperation: this.isSystemOperation,
+      isSystemOperation: isSystemOp,
       source: 'vault',
       priority: 'high' // Delete operations are high priority
     });
+  }
+  
+  /**
+   * Handle file rename
+   */
+  private async handleFileRenamed(file: TAbstractFile, oldPath: string): Promise<void> {
+    if (!this.shouldProcessFile(file)) return;
+    
+    console.log(`[FileEventManager] File renamed: ${oldPath} -> ${file.path}`);
+    
+    // For startup strategy, update the queue with the new path
+    if (this.embeddingStrategy.type === 'startup') {
+      console.log(`[FileEventManager] Checking queue for rename - Queue size before: ${this.fileQueue.size}`);
+      console.log(`[FileEventManager] Queue contents:`, Array.from(this.fileQueue.keys()));
+      
+      if (this.fileQueue.has(oldPath)) {
+        const oldEvent = this.fileQueue.get(oldPath);
+        if (oldEvent) {
+          // Remove old path
+          this.fileQueue.delete(oldPath);
+          // Add new path with same event data (unless it already exists)
+          if (!this.fileQueue.has(file.path)) {
+            this.fileQueue.set(file.path, {
+              ...oldEvent,
+              path: file.path,
+              timestamp: Date.now()
+            });
+            console.log(`[FileEventManager] Updated queued file path from ${oldPath} to ${file.path}`);
+          } else {
+            console.log(`[FileEventManager] New path ${file.path} already in queue, removed old path ${oldPath}`);
+          }
+          
+          console.log(`[FileEventManager] Queue size after rename: ${this.fileQueue.size}`);
+          console.log(`[FileEventManager] Queue contents after:`, Array.from(this.fileQueue.keys()));
+          
+          // Persist the updated queue
+          this.persistQueue().catch(error => {
+            console.warn('[FileEventManager] Failed to update persisted queue after rename:', error);
+          });
+        }
+      } else {
+        console.log(`[FileEventManager] Old path ${oldPath} not found in queue during rename`);
+      }
+    }
+    
+    // Update embeddings with the new path
+    const searchService = (this.plugin as any).searchService;
+    if (searchService && typeof searchService.updateFilePath === 'function') {
+      try {
+        await searchService.updateFilePath(oldPath, file.path);
+        console.log(`[FileEventManager] Updated embeddings path from ${oldPath} to ${file.path}`);
+      } catch (error) {
+        console.error(`[FileEventManager] Error updating embeddings path:`, error);
+      }
+    }
+    
+    // Update content cache with new path
+    const oldContent = this.contentCache.get(oldPath);
+    if (oldContent) {
+      this.contentCache.delete(oldPath);
+      this.contentCache.set(file.path, oldContent);
+    }
+    
+    // Update modification time tracking
+    if (this.fileModificationTimes.has(oldPath)) {
+      const modTime = this.fileModificationTimes.get(oldPath);
+      this.fileModificationTimes.delete(oldPath);
+      this.fileModificationTimes.set(file.path, modTime!);
+    }
   }
   
   /**
@@ -488,21 +660,25 @@ export class FileEventManager {
   private shouldProcessFile(file: TAbstractFile): boolean {
     // Only process markdown files
     if (!(file instanceof TFile) || file.extension !== 'md') {
+      console.log(`[FileEventManager] Skipping non-markdown file: ${file.path} (extension: ${(file as TFile).extension || 'folder'})`);
       return false;
     }
     
     // Skip if not initialized
     if (!this.isInitialized) {
+      console.log(`[FileEventManager] Skipping - not initialized: ${file.path}`);
       return false;
     }
     
     // Skip excluded paths
     if (this.isExcludedPath(file.path)) {
+      // Already logged in isExcludedPath
       return false;
     }
     
     // Skip if already processing
     if (this.processingFiles.has(file.path)) {
+      console.log(`[FileEventManager] Skipping - already processing: ${file.path}`);
       return false;
     }
     
@@ -514,19 +690,32 @@ export class FileEventManager {
    */
   private isExcludedPath(path: string): boolean {
     const lowerPath = path.toLowerCase();
+    const normalizedPath = path.replace(/\\/g, '/'); // Normalize path separators
     
     // Always exclude system paths
-    if (lowerPath.includes('chroma-db') || 
-        lowerPath.includes('.obsidian') ||
-        lowerPath.includes('/data/') ||
-        lowerPath.includes('/collection')) {
+    // Check for .obsidian directory first (most common)
+    if (lowerPath.includes('.obsidian')) {
+      console.log(`[FileEventManager] Excluding .obsidian path: ${path}`);
+      return true;
+    }
+    
+    // Check for plugin data directories
+    if (normalizedPath.includes('/.obsidian/plugins/') ||
+        normalizedPath.includes('/plugins/claudesidian-mcp/data/') ||
+        normalizedPath.includes('/chroma-db/') ||
+        lowerPath.includes('chroma-db')) {
+      console.log(`[FileEventManager] Excluding plugin data path: ${path}`);
       return true;
     }
     
     // Check configured exclude paths
     return this.excludePaths.some(pattern => {
       // Simple pattern matching (could be enhanced with glob)
-      return path.includes(pattern.replace('/**/*', ''));
+      const isExcluded = path.includes(pattern.replace('/**/*', ''));
+      if (isExcluded) {
+        console.log(`[FileEventManager] Excluding configured path: ${path} (pattern: ${pattern})`);
+      }
+      return isExcluded;
     });
   }
   
@@ -540,7 +729,15 @@ export class FileEventManager {
       return;
     }
     
-    console.log(`[FileEventManager] Queueing file event: ${event.operation} ${event.path} (system: ${event.isSystemOperation})`);
+    console.log(`[FileEventManager] Queueing file event: ${event.operation} ${event.path} (system: ${event.isSystemOperation}, source: ${event.source})`);
+    
+    // For startup strategy, track what gets queued to debug the issue
+    if (this.embeddingStrategy.type === 'startup') {
+      console.log(`[FileEventManager] STARTUP QUEUE DEBUG: Adding ${event.path} (${event.operation}) - Queue size before: ${this.fileQueue.size}`);
+      console.log(`[FileEventManager] STARTUP QUEUE DEBUG: Vault ready state: ${this.vaultIsReady}, startup event count: ${this.startupFileEventCount}`);
+    }
+    
+    console.log(`[FileEventManager] Current queue before adding:`, Array.from(this.fileQueue.keys()));
     
     // Deduplicate by keeping the latest event for each file
     const existingEvent = this.fileQueue.get(event.path);
@@ -550,13 +747,18 @@ export class FileEventManager {
           (event.priority === 'normal' && existingEvent.priority === 'low')) {
         existingEvent.priority = event.priority;
       }
-      // Update operation (delete takes precedence)
+      // Update operation (delete takes precedence, then modify, then create)
       if (event.operation === 'delete') {
         existingEvent.operation = 'delete';
+      } else if (event.operation === 'modify' && existingEvent.operation === 'create') {
+        // Keep create operation if file was just created - no need to change to modify
+        existingEvent.operation = 'create';
       }
       existingEvent.timestamp = event.timestamp;
+      console.log(`[FileEventManager] Updated existing queue entry for ${event.path} (operation: ${existingEvent.operation})`);
     } else {
       this.fileQueue.set(event.path, event);
+      console.log(`[FileEventManager] Added new queue entry for ${event.path} (operation: ${event.operation})`);
     }
     
     console.log(`[FileEventManager] Queue size: ${this.fileQueue.size}, Strategy: ${this.embeddingStrategy.type}`);
@@ -569,6 +771,14 @@ export class FileEventManager {
       // Use debounced processing for idle strategy
       console.log(`[FileEventManager] Triggering debounced processing (${this.embeddingStrategy.idleTimeThreshold}ms)`);
       this.processQueueDebounced();
+    } else if (this.embeddingStrategy.type === 'startup') {
+      // For startup strategy, only queue files - don't process until next startup
+      console.log(`[FileEventManager] Queued file for next startup embedding: ${event.path}`);
+      // Persist the queue so it survives plugin restart
+      this.persistQueue().catch(error => {
+        console.warn('[FileEventManager] Failed to persist queue:', error);
+      });
+      // Don't trigger processing - files will be processed on next startup
     }
   }
   
@@ -596,8 +806,7 @@ export class FileEventManager {
         return a.timestamp - b.timestamp;
       });
       
-      // Clear the queue
-      this.fileQueue.clear();
+      // DON'T clear the queue here - we'll remove items as they're processed
       
       // Group events by operation for batch processing
       const deleteEvents = events.filter(e => e.operation === 'delete');
@@ -607,19 +816,47 @@ export class FileEventManager {
       // Process deletes first (they're usually high priority)
       for (const event of deleteEvents) {
         await this.processFileEvent(event);
+        // Remove from queue after successful processing
+        this.fileQueue.delete(event.path);
+        console.log(`[FileEventManager] Removed processed delete event from queue: ${event.path}`);
+        
+        // Update persisted queue for startup strategy
+        if (this.embeddingStrategy.type === 'startup') {
+          await this.persistQueue().catch(error => {
+            console.warn('[FileEventManager] Failed to update persisted queue after delete:', error);
+          });
+        }
       }
       
       // Process creates and modifies based on embedding strategy
       const eventsToEmbed = [...createEvents, ...modifyEvents];
       
       if (this.embeddingStrategy.type !== 'manual' && eventsToEmbed.length > 0) {
-        // Batch process embeddings
-        await this.batchProcessEmbeddings(eventsToEmbed);
+        // Batch process embeddings with incremental queue updates
+        await this.batchProcessEmbeddingsIncremental(eventsToEmbed);
+      } else {
+        // For manual strategy, just remove from queue since we're not processing
+        for (const event of eventsToEmbed) {
+          this.fileQueue.delete(event.path);
+          console.log(`[FileEventManager] Removed manual strategy event from queue: ${event.path}`);
+        }
       }
       
-      // Record activities for all events
+      // Record activities for remaining events and remove them from queue
       for (const event of eventsToEmbed) {
-        await this.recordFileActivity(event);
+        // Only process if still in queue (might have been removed by batch processing)
+        if (this.fileQueue.has(event.path)) {
+          await this.recordFileActivity(event);
+          this.fileQueue.delete(event.path);
+          console.log(`[FileEventManager] Removed activity-recorded event from queue: ${event.path}`);
+        }
+      }
+      
+      // Final persist of empty/updated queue
+      if (this.embeddingStrategy.type === 'startup') {
+        await this.persistQueue().catch(error => {
+          console.warn('[FileEventManager] Failed to persist final queue state:', error);
+        });
       }
       
     } catch (error) {
@@ -631,6 +868,7 @@ export class FileEventManager {
       // If new events were added during processing, schedule another run
       if (this.fileQueue.size > 0) {
         console.log(`[FileEventManager] ${this.fileQueue.size} new events queued during processing`);
+        console.log('[FileEventManager] New queued files:', Array.from(this.fileQueue.keys()));
         this.processQueueDebounced();
       }
     }
@@ -727,21 +965,155 @@ export class FileEventManager {
   }
   
   /**
-   * Batch process embeddings for multiple files
+   * Batch process embeddings for multiple files with incremental queue updates
    */
-  private async batchProcessEmbeddings(events: FileEvent[]): Promise<void> {
-    console.log(`[FileEventManager] Batch processing embeddings for ${events.length} files`);
+  private async batchProcessEmbeddingsIncremental(events: FileEvent[]): Promise<void> {
+    console.log(`[FileEventManager] Batch processing embeddings for ${events.length} notes with incremental queue updates`);
+    console.log('[FileEventManager] Notes to process:', events.map(e => e.path));
+    
+    // Show a shared notice for the batch operation
+    const batchNotice = new Notice(`Embedding 0/${events.length} notes`, 0);
     
     // Mark as system operation to prevent loops
     this.startSystemOperation();
+    console.log('[FileEventManager] System operation started');
     
     try {
-      // Process each file individually to use chunk-level updates when possible
-      for (const event of events) {
+      let processedCount = 0;
+      
+      // Process each file individually to allow incremental queue updates
+      for (let i = 0; i < events.length; i++) {
+        const event = events[i];
+        
         try {
+          // Update progress notice with current note name
+          const fileName = event.path.split('/').pop() || event.path;
+          batchNotice.setMessage(`Embedding "${fileName}" (${processedCount + 1}/${events.length} notes)`);
+          
+          // Check if this file was recently processed
+          const lastUpdate = this.lastEmbeddingUpdateTimes.get(event.path);
+          if (lastUpdate && Date.now() - lastUpdate < this.embeddingUpdateCooldown) {
+            console.log(`[FileEventManager] Skipping ${event.path} - recently updated (${Date.now() - lastUpdate}ms ago)`);
+          } else {
+            // Get the current file
+            const file = this.app.vault.getAbstractFileByPath(event.path);
+            if (!(file instanceof TFile)) {
+              console.warn(`[FileEventManager] File not found or is folder: ${event.path}`);
+            } else {
+              // For modify operations, try to get old content from cache
+              let oldContent = this.contentCache.get(event.path);
+              
+              // Read current content
+              const newContent = await this.app.vault.read(file);
+              
+              // If we don't have old content cached, try to read it from the existing embeddings
+              if (!oldContent && event.operation === 'modify') {
+                // As a fallback, cache the current content for next time
+                this.contentCache.set(event.path, newContent);
+                console.log(`[FileEventManager] No cached content for ${event.path}, caching current content for next modification`);
+              }
+              
+              // If we have old content and it's a modify operation, use chunk-level update
+              if (oldContent && event.operation === 'modify' && oldContent !== newContent) {
+                console.log(`[FileEventManager] Using chunk-level update for ${event.path} (old: ${oldContent.length} chars, new: ${newContent.length} chars)`);
+                await this.embeddingService.updateChangedChunks(
+                  event.path, 
+                  oldContent, 
+                  newContent
+                );
+                // Update the cache with new content for next time
+                this.contentCache.set(event.path, newContent);
+                // Mark this file as recently updated
+                this.lastEmbeddingUpdateTimes.set(event.path, Date.now());
+              } else if (event.operation === 'modify' && oldContent === newContent) {
+                console.log(`[FileEventManager] Content unchanged for ${event.path}, skipping embedding update`);
+              } else {
+                // Otherwise, use full file embedding
+                console.log(`[FileEventManager] Using full file embedding for ${event.path} (operation: ${event.operation})`);
+                
+                // Use the embedding service but suppress its individual notices during batch processing
+                await this.embeddingService.updateFileEmbeddingsSilent([event.path]);
+                // Cache the content for next time
+                this.contentCache.set(event.path, newContent);
+              }
+              
+              // Mark this file as recently updated
+              this.lastEmbeddingUpdateTimes.set(event.path, Date.now());
+            }
+          }
+          
+          // Remove from queue after successful processing
+          this.fileQueue.delete(event.path);
+          console.log(`[FileEventManager] Removed processed embedding event from queue: ${event.path}`);
+          
+          // Update persisted queue for startup strategy after each file
+          if (this.embeddingStrategy.type === 'startup') {
+            await this.persistQueue().catch(error => {
+              console.warn(`[FileEventManager] Failed to update persisted queue after processing ${event.path}:`, error);
+            });
+          }
+          
+          processedCount++;
+          
+        } catch (error) {
+          console.error(`[FileEventManager] Error processing embeddings for ${event.path}:`, error);
+          // Don't remove from queue on error - it will be retried next time
+        }
+      }
+      
+      // Update final notice
+      batchNotice.setMessage(`Embedded ${processedCount} notes successfully`);
+      setTimeout(() => batchNotice.hide(), 3000);
+      
+    } catch (error) {
+      console.error('[FileEventManager] Error batch processing embeddings:', error);
+      batchNotice.setMessage(`Error embedding notes: ${error instanceof Error ? error.message : String(error)}`);
+      setTimeout(() => batchNotice.hide(), 5000);
+    } finally {
+      console.log('[FileEventManager] System operation ended');
+      this.endSystemOperation();
+    }
+  }
+
+  /**
+   * Batch process embeddings for multiple files (legacy method for non-incremental processing)
+   */
+  private async batchProcessEmbeddings(events: FileEvent[]): Promise<void> {
+    console.log(`[FileEventManager] Batch processing embeddings for ${events.length} notes`);
+    console.log('[FileEventManager] Notes to process:', events.map(e => e.path));
+    
+    // Show a shared notice for the batch operation
+    const batchNotice = new Notice(`Embedding 0/${events.length} notes`, 0);
+    
+    // Mark as system operation to prevent loops
+    this.startSystemOperation();
+    console.log('[FileEventManager] System operation started');
+    
+    try {
+      let processedCount = 0;
+      
+      // Process each file individually to use chunk-level updates when possible
+      for (let i = 0; i < events.length; i++) {
+        const event = events[i];
+        try {
+          // Update progress notice with current note name
+          const fileName = event.path.split('/').pop() || event.path;
+          batchNotice.setMessage(`Embedding "${fileName}" (${processedCount + 1}/${events.length} notes)`);
+          
+          // Check if this file was recently processed
+          const lastUpdate = this.lastEmbeddingUpdateTimes.get(event.path);
+          if (lastUpdate && Date.now() - lastUpdate < this.embeddingUpdateCooldown) {
+            console.log(`[FileEventManager] Skipping ${event.path} - recently updated (${Date.now() - lastUpdate}ms ago)`);
+            processedCount++;
+            continue;
+          }
+          
           // Get the current file
           const file = this.app.vault.getAbstractFileByPath(event.path);
-          if (!(file instanceof TFile)) continue;
+          if (!(file instanceof TFile)) {
+            processedCount++;
+            continue;
+          }
           
           // For modify operations, try to get old content from cache
           let oldContent = this.contentCache.get(event.path);
@@ -759,6 +1131,7 @@ export class FileEventManager {
           // If we have old content and it's a modify operation, use chunk-level update
           if (oldContent && event.operation === 'modify' && oldContent !== newContent) {
             console.log(`[FileEventManager] Using chunk-level update for ${event.path} (old: ${oldContent.length} chars, new: ${newContent.length} chars)`);
+            console.log(`[FileEventManager] Content changed: ${oldContent === newContent ? 'NO' : 'YES'}`);
             await this.embeddingService.updateChangedChunks(
               event.path, 
               oldContent, 
@@ -766,20 +1139,33 @@ export class FileEventManager {
             );
             // Update the cache with new content for next time
             this.contentCache.set(event.path, newContent);
+            // Mark this file as recently updated
+            this.lastEmbeddingUpdateTimes.set(event.path, Date.now());
           } else {
             // Otherwise, use full file embedding
             if (event.operation === 'modify' && !oldContent) {
               console.log(`[FileEventManager] No old content cached for ${event.path}, using full file embedding`);
+            } else if (event.operation === 'modify' && oldContent === newContent) {
+              console.log(`[FileEventManager] Content unchanged for ${event.path}, skipping embedding update`);
+              processedCount++;
+              continue; // Skip this file as content hasn't changed
             } else {
               console.log(`[FileEventManager] Using full file embedding for ${event.path} (operation: ${event.operation})`);
             }
-            await this.embeddingService.updateFileEmbeddings([event.path]);
+            
+            // Use the embedding service but suppress its individual notices during batch processing
+            await this.embeddingService.updateFileEmbeddingsSilent([event.path]);
             // Cache the content for next time
             this.contentCache.set(event.path, newContent);
           }
           
+          // Mark this file as recently updated
+          this.lastEmbeddingUpdateTimes.set(event.path, Date.now());
+          processedCount++;
+          
         } catch (error) {
           console.error(`[FileEventManager] Error processing embeddings for ${event.path}:`, error);
+          processedCount++;
         }
       }
       
@@ -789,10 +1175,18 @@ export class FileEventManager {
         result.embeddingCreated = true;
         this.completedFiles.set(event.path, result);
       }
+      
+      // Update final notice
+      batchNotice.setMessage(`Embedded ${processedCount} notes successfully`);
+      setTimeout(() => batchNotice.hide(), 3000);
+      
     } catch (error) {
       console.error('[FileEventManager] Error batch processing embeddings:', error);
+      batchNotice.setMessage(`Error embedding notes: ${error instanceof Error ? error.message : String(error)}`);
+      setTimeout(() => batchNotice.hide(), 5000);
       // Don't throw - activities can still be recorded
     } finally {
+      console.log('[FileEventManager] System operation ended');
       this.endSystemOperation();
     }
   }
@@ -997,57 +1391,6 @@ export class FileEventManager {
     }
   }
   
-  /**
-   * Handle startup embedding - index all non-indexed files
-   * 
-   * This method is called when the embedding strategy is set to 'startup'.
-   * It performs the following actions on plugin/vault startup:
-   * 1. Retrieves all markdown files in the vault
-   * 2. Checks which files already have embeddings in the database
-   * 3. Filters out excluded paths based on user settings
-   * 4. Indexes any files that don't have embeddings yet
-   * 
-   * This is useful for:
-   * - Indexing files that were created outside of Obsidian
-   * - Catching up on files that failed to index previously
-   * - Ensuring comprehensive coverage of vault content
-   * 
-   * The operation is marked as a system operation to prevent recursive file events
-   */
-  private async handleStartupEmbedding(): Promise<void> {
-    console.log('[FileEventManager] Running startup embedding');
-    
-    const markdownFiles = this.app.vault.getMarkdownFiles();
-    const searchService = (this.plugin as any).searchService;
-    
-    if (!searchService) return;
-    
-    try {
-      // Get existing embeddings from the database
-      const existingEmbeddings = await searchService.getAllFileEmbeddings();
-      const indexedPaths = new Set(existingEmbeddings.map((e: any) => e.filePath));
-      
-      // Find files that need indexing (not in database and not excluded)
-      const filesToIndex = markdownFiles
-        .filter(file => !indexedPaths.has(file.path))
-        .filter(file => !this.isExcludedPath(file.path))
-        .map(file => file.path);
-      
-      if (filesToIndex.length > 0) {
-        console.log(`[FileEventManager] Found ${filesToIndex.length} files to index on startup`);
-        
-        // Mark as system operation to prevent file event loops
-        this.startSystemOperation();
-        try {
-          await this.embeddingService.batchIndexFiles(filesToIndex);
-        } finally {
-          this.endSystemOperation();
-        }
-      }
-    } catch (error) {
-      console.error('[FileEventManager] Error during startup embedding:', error);
-    }
-  }
   
   /**
    * Mark the start of a system operation
@@ -1085,9 +1428,13 @@ export class FileEventManager {
     // Temporarily mark vault as not ready to prevent processing files during config reload
     this.vaultIsReady = false;
     
-    // Clear any pending queue to prevent processing stale events
-    this.fileQueue.clear();
-    console.log('[FileEventManager] Cleared pending file queue');
+    // Only clear the queue if we're already initialized - preserve it during initial startup
+    if (this.isInitialized) {
+      this.fileQueue.clear();
+      console.log('[FileEventManager] Cleared pending file queue (post-initialization)');
+    } else {
+      console.log('[FileEventManager] Preserving file queue during initial startup');
+    }
     
     // Load new configuration
     this.loadConfiguration();
@@ -1095,18 +1442,11 @@ export class FileEventManager {
     // Re-setup processing strategy
     this.setupProcessingStrategy();
     
-    // Restart vault ready detection after a brief delay
-    setTimeout(() => {
-      this.startupFileEventCount = 0;
-      this.startVaultReadyDetection();
-    }, 500);
-    
-    // If strategy changed to startup and we haven't run it yet, do it now
-    if (this.embeddingStrategy.type === 'startup' && this.isInitialized) {
-      this.waitForVaultReady().then(() => {
-        this.handleStartupEmbedding();
-      });
-    }
+    // Mark vault as ready again since it was already ready before config change
+    // Note: We do NOT trigger startup embedding here even if strategy changed to 'startup'
+    // because startup embedding should only run on actual plugin startup, not on settings change
+    this.vaultIsReady = true;
+    this.vaultReadyTimestamp = Date.now();
   }
   
   /**
@@ -1124,6 +1464,110 @@ export class FileEventManager {
       completedFiles: this.completedFiles.size,
       cachedWorkspaces: this.workspaceRoots.size
     };
+  }
+  
+  /**
+   * Load persisted queue from plugin data
+   */
+  private async loadPersistedQueue(): Promise<void> {
+    console.log('[FileEventManager] ========== LOAD PERSISTED QUEUE START ==========');
+    console.log('[FileEventManager] loadPersistedQueue() called');
+    try {
+      const plugin = this.plugin as any;
+      if (!plugin.loadData) {
+        console.log('[FileEventManager] ✗ No loadData method available on plugin');
+        console.log('[FileEventManager] ========== LOAD PERSISTED QUEUE END (NO METHOD) ==========');
+        return;
+      }
+      
+      console.log('[FileEventManager] Calling plugin.loadData()...');
+      const data = await plugin.loadData();
+      console.log('[FileEventManager] Plugin data loaded:', data ? 'data exists' : 'no data');
+      console.log('[FileEventManager] Raw plugin data keys:', data ? Object.keys(data) : 'no data');
+      
+      const queueData = data?.fileEventQueue;
+      console.log('[FileEventManager] Queue data found:', queueData ? `${queueData.length} items` : 'none');
+      console.log('[FileEventManager] Queue data type:', typeof queueData);
+      console.log('[FileEventManager] Queue data is array:', Array.isArray(queueData));
+      
+      if (queueData && Array.isArray(queueData)) {
+        console.log(`[FileEventManager] ✓ Loading ${queueData.length} persisted queue items`);
+        console.log('[FileEventManager] Raw queue data:', queueData);
+        
+        for (const item of queueData) {
+          console.log('[FileEventManager] Processing queue item:', item);
+          if (item.path && item.operation && item.timestamp) {
+            this.fileQueue.set(item.path, {
+              path: item.path,
+              operation: item.operation,
+              timestamp: item.timestamp,
+              isSystemOperation: item.isSystemOperation || false,
+              source: item.source || 'vault',
+              priority: item.priority || 'normal'
+            });
+            console.log(`[FileEventManager] ✓ Restored queue item: ${item.path}`);
+          } else {
+            console.warn('[FileEventManager] ✗ Invalid queue item (missing required fields):', item);
+          }
+        }
+        
+        console.log(`[FileEventManager] ✓ Restored ${this.fileQueue.size} items to queue`);
+        console.log(`[FileEventManager] Final queue contents:`, Array.from(this.fileQueue.keys()));
+        console.log('[FileEventManager] ========== LOAD PERSISTED QUEUE END (SUCCESS) ==========');
+      } else {
+        console.log('[FileEventManager] ✗ No valid queue data to restore');
+        console.log('[FileEventManager] ========== LOAD PERSISTED QUEUE END (NO DATA) ==========');
+      }
+    } catch (error) {
+      console.error('[FileEventManager] ✗ Failed to load persisted queue:', error);
+      console.error('[FileEventManager] Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : typeof error
+      });
+      console.log('[FileEventManager] ========== LOAD PERSISTED QUEUE END (ERROR) ==========');
+    }
+  }
+  
+  /**
+   * Persist queue to plugin data
+   */
+  private async persistQueue(): Promise<void> {
+    try {
+      const plugin = this.plugin as any;
+      if (!plugin.loadData || !plugin.saveData) return;
+      
+      // Only persist startup strategy queues
+      if (this.embeddingStrategy.type !== 'startup') return;
+      
+      const data = await plugin.loadData() || {};
+      const queueArray = Array.from(this.fileQueue.values());
+      
+      data.fileEventQueue = queueArray;
+      await plugin.saveData(data);
+      
+      console.log(`[FileEventManager] Persisted ${queueArray.length} queue items`);
+    } catch (error) {
+      console.warn('[FileEventManager] Failed to persist queue:', error);
+    }
+  }
+  
+  /**
+   * Clear persisted queue from plugin data
+   */
+  private async clearPersistedQueue(): Promise<void> {
+    try {
+      const plugin = this.plugin as any;
+      if (!plugin.loadData || !plugin.saveData) return;
+      
+      const data = await plugin.loadData() || {};
+      delete data.fileEventQueue;
+      await plugin.saveData(data);
+      
+      console.log('[FileEventManager] Cleared persisted queue');
+    } catch (error) {
+      console.warn('[FileEventManager] Failed to clear persisted queue:', error);
+    }
   }
   
   /**
@@ -1145,6 +1589,14 @@ export class FileEventManager {
     }
     
     // Process immediately
+    await this.processQueue();
+  }
+  
+  /**
+   * Manually trigger startup embedding for testing
+   */
+  async triggerStartupEmbedding(): Promise<void> {
+    console.log('[FileEventManager] Manually triggering startup embedding for testing...');
     await this.processQueue();
   }
 }

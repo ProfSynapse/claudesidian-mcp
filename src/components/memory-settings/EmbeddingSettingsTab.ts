@@ -81,32 +81,16 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
                 })
             );
             
-        containerEl.createEl('h3', { text: 'Indexing Schedule' });
+        containerEl.createEl('h3', { text: 'Automatic Embedding' });
         
-        new Setting(containerEl)
-            .setName('When to Index')
-            .setDesc('When should notes be indexed')
-            .addDropdown(dropdown => dropdown
-                .addOption('on-save', 'When Notes are Saved')
-                .addOption('manual', 'Only Manually')
-                // Future options to be implemented
-                // .addOption('daily', 'Daily')
-                // .addOption('weekly', 'Weekly')
-                .setValue(this.settings.indexingSchedule)
-                .onChange(async (value: any) => {
-                    this.settings.indexingSchedule = value;
-                    await this.saveSettings();
-                })
-            );
-            
         // Add Embedding Strategy dropdown
         new Setting(containerEl)
-            .setName('Embedding Strategy')
-            .setDesc('How should new or modified notes be automatically embedded')
+            .setName('Automatic Indexing')
+            .setDesc('Controls when new or modified notes are automatically indexed and embedded for search')
             .addDropdown(dropdown => dropdown
-                .addOption('manual', 'Manual Only (No auto-embedding)')
-                .addOption('idle', 'Idle (Embed after period of inactivity)')
-                .addOption('startup', 'Startup (Embed non-indexed files on restart)')
+                .addOption('manual', 'Manual Only - No automatic indexing')
+                .addOption('idle', 'Idle Mode - Index when Obsidian is inactive')
+                .addOption('startup', 'Startup Mode - Index missing files on restart')
                 .setValue(this.settings.embeddingStrategy || 'manual')
                 .onChange(async (value) => {
                     this.settings.embeddingStrategy = value as 'manual' | 'idle' | 'startup';

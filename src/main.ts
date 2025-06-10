@@ -155,7 +155,6 @@ export default class ClaudesidianPlugin extends Plugin {
                     includeFrontmatter: true,
                     excludePaths: ['.obsidian/**/*'],
                     minContentLength: 50,
-                    indexingSchedule: 'on-save',
                     embeddingStrategy: 'manual',
                     idleTimeThreshold: 60000,
                     batchSize: 10,
@@ -218,6 +217,14 @@ export default class ClaudesidianPlugin extends Plugin {
             console.log(`ChromaDB diagnostics: ${diagnostics.totalCollections} collections found`);
             console.log(`Storage mode: ${diagnostics.storageMode}, path: ${diagnostics.persistentPath}`);
             
+            // Check if file_embeddings collection has any data
+            try {
+                const embeddingCount = await this.vectorStore.count('file_embeddings');
+                console.log(`[Main] file_embeddings collection contains ${embeddingCount} embeddings at startup`);
+            } catch (countError) {
+                console.log(`[Main] Could not count file_embeddings (collection may not exist yet):`, countError);
+            }
+            
             // Clear system operation flag
             this.vectorStore.endSystemOperation();
         } catch (error) {
@@ -265,6 +272,7 @@ export default class ClaudesidianPlugin extends Plugin {
         }
         
         // Initialize the file event manager with all required services
+        console.log('[Main] Creating FileEventManager...');
         this.fileEventManager = new FileEventManager(
             this.app,
             this,
@@ -273,7 +281,14 @@ export default class ClaudesidianPlugin extends Plugin {
             this.embeddingService,
             this.eventManager
         );
-        await this.fileEventManager.initialize();
+        console.log('[Main] FileEventManager created, calling initialize...');
+        try {
+            await this.fileEventManager.initialize();
+            console.log('[Main] FileEventManager initialization completed successfully');
+        } catch (error) {
+            console.error('[Main] FileEventManager initialization failed:', error);
+            throw error;
+        }
         
         // Initialize the usage stats service
         this.usageStatsService = new UsageStatsService(

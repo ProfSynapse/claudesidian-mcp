@@ -74,6 +74,7 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       if (params.description !== undefined) updates.description = params.description;
       if (params.rootFolder !== undefined) updates.rootFolder = params.rootFolder;
       if (params.relatedFolders !== undefined) updates.relatedFolders = params.relatedFolders;
+      if (params.relatedFiles !== undefined) updates.relatedFiles = params.relatedFiles;
       if (params.status !== undefined) updates.status = params.status as WorkspaceStatus;
       
       // Merge preferences if provided
@@ -205,6 +206,11 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
           type: 'array',
           items: { type: 'string' },
           description: 'New related folders'
+        },
+        relatedFiles: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'New individual files to include in workspace context (paths relative to vault root)'
         },
         preferences: {
           type: 'object',

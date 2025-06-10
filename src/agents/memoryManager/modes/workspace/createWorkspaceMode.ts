@@ -183,6 +183,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         // Context boundaries
         rootFolder: params.rootFolder,
         relatedFolders: params.relatedFolders || [],
+        relatedFiles: params.relatedFiles || [],
         
         // Instructions for key files
         keyFileInstructions: params.keyFileInstructions || defaultKeyFileInstructions,
@@ -277,6 +278,11 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
           type: 'array',
           items: { type: 'string' },
           description: 'Additional related folders'
+        },
+        relatedFiles: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Additional individual files to include in workspace context (paths relative to vault root)'
         },
         keyFileInstructions: {
           type: 'string',

@@ -137,6 +137,12 @@ export interface ProjectWorkspace {
   relatedFolders: string[];
   
   /**
+   * Additional individual files to include in workspace context
+   * These files are included regardless of their folder location
+   */
+  relatedFiles?: string[];
+  
+  /**
    * Instructions for key file designation within workspace
    * Explains how to mark files as key files in frontmatter or by filename
    */
@@ -494,6 +500,7 @@ export interface CreateWorkspaceParameters extends WorkspaceParameters {
   description?: string;
   rootFolder: string;
   relatedFolders?: string[];
+  relatedFiles?: string[];
   preferences?: Record<string, any>;
   hierarchyType?: HierarchyType;
   parentId?: string;
@@ -523,6 +530,7 @@ export interface EditWorkspaceParameters extends WorkspaceParameters {
   description?: string;
   rootFolder?: string;
   relatedFolders?: string[];
+  relatedFiles?: string[];
   preferences?: Record<string, any>;
   status?: WorkspaceStatus;
   parentId?: string;

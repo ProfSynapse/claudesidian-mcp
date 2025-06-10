@@ -31,6 +31,16 @@ export function fileIsInWorkspace(filePath: string, workspace: ProjectWorkspace)
     }
   }
   
+  // Check individual related files
+  if (workspace.relatedFiles) {
+    for (const file of workspace.relatedFiles) {
+      const normalizedFile = normalizePath(file);
+      if (normalizedFilePath === normalizedFile) {
+        return true;
+      }
+    }
+  }
+  
   return false;
 }
 

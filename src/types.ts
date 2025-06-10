@@ -113,10 +113,6 @@ export interface MemorySettings {
     maxTokensPerChunk?: number;  // Maximum tokens per chunk
     ignorePatterns?: string[];   // Patterns to ignore when indexing
     
-    // Processing schedule
-    indexingSchedule: 'manual' | 'on-save' | 'daily' | 'weekly';
-    indexingTime?: string;
-    
     // Embedding strategy
     embeddingStrategy: 'manual' | 'idle' | 'startup';
     idleTimeThreshold?: number; // Time in ms to wait before considering the system idle
@@ -182,7 +178,6 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     excludePaths: ['.obsidian/**/*', 'node_modules/**/*'],
     minContentLength: 50,
     maxTokensPerChunk: 8000, // Default to 8000 tokens (just under OpenAI's 8192 limit)
-    indexingSchedule: 'on-save',
     embeddingStrategy: 'manual',
     idleTimeThreshold: 60000, // 1 minute of idle time before indexing
     batchSize: 10,

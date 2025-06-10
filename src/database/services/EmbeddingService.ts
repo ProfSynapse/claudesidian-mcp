@@ -325,6 +325,17 @@ export class EmbeddingService {
   }
   
   /**
+   * Update file embeddings silently without showing progress notices
+   * Used for batch processing where the parent handles progress display
+   * @param filePaths Array of file paths to update
+   * @returns Promise resolving to an array of updated embedding IDs
+   */
+  async updateFileEmbeddingsSilent(filePaths: string[]): Promise<string[]> {
+    // Use incremental update but suppress the notice
+    return await this.incrementalIndexFilesSilent(filePaths);
+  }
+  
+  /**
    * Update only the changed chunks of a file based on content diff
    * @param filePath File path to update
    * @param oldContent Previous file content
@@ -550,7 +561,7 @@ export class EmbeddingService {
       const batchSize = this.settings.batchSize || 5;
       const processingDelay = this.settings.processingDelay || 1000;
       
-      const notice = new Notice(`Updating embeddings: 0/${filePaths.length} files`, 0);
+      const notice = new Notice(`Embedding 0/${filePaths.length} notes`, 0);
       
       const ids: string[] = [];
       let processedCount = 0;
@@ -586,8 +597,13 @@ export class EmbeddingService {
             
             // Read file content
             const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
-            if (!file || !('children' in file === false)) { // Not a folder
-              console.warn(`File not found or is a folder: ${filePath}`);
+            
+            if (!file) {
+              console.warn(`File not found: ${filePath}`);
+              return null;
+            }
+            if ('children' in file) { // Check if it's a folder (TFolder has children)
+              console.warn(`Path is a folder, not a file: ${filePath}`);
               return null;
             }
             
@@ -675,7 +691,7 @@ export class EmbeddingService {
         processedCount += batch.length;
         
         // Update notice
-        notice.setMessage(`Updating embeddings: ${processedCount}/${filePaths.length} files`);
+        notice.setMessage(`Embedding ${processedCount}/${filePaths.length} notes`);
         
         // Call progress callback if provided
         if (progressCallback) {
@@ -714,7 +730,7 @@ export class EmbeddingService {
       }
       
       // Update the notice with completion message
-      notice.setMessage(`Updated embeddings for ${processedCount} files (${totalTokensProcessed} tokens)`);
+      notice.setMessage(`Embedded ${processedCount} notes (${totalTokensProcessed} tokens)`);
       
       // Automatically hide notice after 3 seconds
       setTimeout(() => notice.hide(), 3000);
@@ -726,6 +742,203 @@ export class EmbeddingService {
       // Create a new notice for error display
       const errorNotice = new Notice(`Error updating embeddings: ${getErrorMessage(error)}`);
       setTimeout(() => errorNotice.hide(), 3000);
+      throw error;
+    } finally {
+      // Always clear the system operation flag
+      plugin.vectorStore.endSystemOperation();
+    }
+  }
+
+  /**
+   * Incrementally update embeddings for specific files without showing notices
+   * @param filePaths Array of file paths to update
+   * @returns Promise resolving to an array of updated embedding IDs
+   */
+  async incrementalIndexFilesSilent(filePaths: string[]): Promise<string[]> {
+    if (!this.settings.embeddingsEnabled) {
+      throw new Error('Embeddings are disabled in settings');
+    }
+    
+    if (!filePaths || filePaths.length === 0) {
+      return [];
+    }
+    
+    // Get plugin and vector store
+    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'] as any;
+    if (!plugin || !plugin.vectorStore) {
+      throw new Error('Vector store not available');
+    }
+    
+    // Mark this as a system operation to prevent file event loops
+    plugin.vectorStore.startSystemOperation();
+    
+    try {
+      // Get collections
+      const fileEmbeddings = VectorStoreFactory.createFileEmbeddingCollection(plugin.vectorStore);
+      const vectorStore = plugin.vectorStore;
+      
+      console.log(`[EmbeddingService] Silently updating embeddings for ${filePaths.length} files`);
+      
+      // Get settings for batching
+      const batchSize = this.settings.batchSize || 5;
+      const processingDelay = this.settings.processingDelay || 1000;
+      
+      // No notice for silent operation
+      
+      const ids: string[] = [];
+      let processedCount = 0;
+      let totalTokensProcessed = 0;
+      
+      // Process files in batches
+      for (let i = 0; i < filePaths.length; i += batchSize) {
+        const batch = filePaths.slice(i, i + batchSize);
+        
+        // Process batch in parallel
+        const results = await Promise.allSettled(batch.map(async (filePath) => {
+          try {
+            // First, delete any existing embeddings for this file
+            try {
+              const queryResult = await vectorStore.query('file_embeddings', {
+                where: { filePath: { $eq: filePath } },
+                nResults: 1000 // Get all chunks for this file
+              });
+              
+              if (queryResult.ids && queryResult.ids.length > 0) {
+                const flatIds = queryResult.ids.flat();
+                if (flatIds.length > 0) {
+                  await vectorStore.deleteItems('file_embeddings', flatIds);
+                  console.log(`[EmbeddingService] Deleted ${flatIds.length} existing embeddings for ${filePath}`);
+                }
+              }
+            } catch (deleteError) {
+              console.warn(`[EmbeddingService] Error deleting existing embeddings for ${filePath}:`, deleteError);
+            }
+            
+            // Read file content
+            const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+            if (!file || 'children' in file) { // Check if it's a folder (TFolder has children)
+              console.warn(`File not found or is a folder: ${filePath}`);
+              return null;
+            }
+            
+            const content = await this.plugin.app.vault.read(file as TFile);
+            if (!content || content.trim().length === 0) {
+              console.warn(`File is empty: ${filePath}`);
+              return null;
+            }
+            
+            // Get the chunking settings from plugin settings
+            const chunkMaxTokens = this.settings.maxTokensPerChunk || 8000;
+            const chunkStrategy = this.settings.chunkStrategy || 'paragraph';
+            
+            // Extract frontmatter and main content separately
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
+            const frontmatter = frontmatterMatch ? frontmatterMatch[1] : '';
+            const mainContent = frontmatterMatch ? content.slice(frontmatterMatch[0].length) : content;
+            
+            // Chunk only the main content
+            const chunks = chunkText(mainContent, {
+              maxTokens: chunkMaxTokens,
+              strategy: chunkStrategy as any,
+              includeMetadata: true
+            });
+            
+            const chunkIds: string[] = [];
+            let totalTokensInFile = 0;
+            
+            // Process each chunk
+            for (let i = 0; i < chunks.length; i++) {
+              const chunk = chunks[i];
+              
+              totalTokensInFile += chunk.metadata.tokenCount;
+              
+              // Generate embedding for the chunk content
+              const embedding = await this.getEmbedding(chunk.content);
+              if (!embedding) {
+                console.warn(`Failed to generate embedding for chunk ${i+1}/${chunks.length} of file: ${filePath}`);
+                continue;
+              }
+              
+              // Create new embedding for this chunk
+              const id = uuidv4();
+              const fileEmbedding: FileEmbedding = {
+                id,
+                filePath,
+                timestamp: Date.now(),
+                workspaceId: 'default',
+                vector: embedding,
+                content: chunk.content,
+                chunkIndex: chunk.metadata.chunkIndex,
+                totalChunks: chunk.metadata.totalChunks,
+                chunkHash: chunk.metadata.contentHash,
+                semanticBoundary: chunk.metadata.semanticBoundary,
+                metadata: {
+                  frontmatter: i === 0 ? frontmatter : undefined,
+                  chunkSize: chunk.content.length,
+                  indexedAt: new Date().toISOString(),
+                  tokenCount: chunk.metadata.tokenCount,
+                  startPosition: chunk.metadata.startPosition,
+                  endPosition: chunk.metadata.endPosition,
+                  contentHash: chunk.metadata.contentHash,
+                  semanticBoundary: chunk.metadata.semanticBoundary
+                }
+              };
+              
+              await fileEmbeddings.add(fileEmbedding);
+              chunkIds.push(id);
+            }
+            
+            totalTokensProcessed += totalTokensInFile;
+            
+            return {
+              ids: chunkIds,
+              tokens: totalTokensInFile,
+              chunks: chunks.length
+            };
+          } catch (error) {
+            console.error(`Error updating embeddings for file ${filePath}:`, error);
+            return null;
+          }
+        }));
+        
+        // Update progress count
+        processedCount += batch.length;
+        
+        // Add successful IDs to the result
+        results.forEach(result => {
+          if (result.status === 'fulfilled' && result.value) {
+            if (Array.isArray(result.value.ids)) {
+              ids.push(...result.value.ids);
+            }
+          }
+        });
+        
+        // Add a small delay between batches
+        if (i + batchSize < filePaths.length) {
+          await new Promise(resolve => setTimeout(resolve, processingDelay));
+        }
+      }
+      
+      // Update token usage stats
+      if (totalTokensProcessed > 0) {
+        try {
+          const embeddingModel = this.settings.embeddingModel || 'text-embedding-3-small';
+          const provider = this.embeddingProvider;
+          
+          if (this.isTokenTrackingProvider(provider)) {
+            const trackingProvider = provider as ITokenTrackingProvider;
+            await trackingProvider.updateUsageStats(totalTokensProcessed, embeddingModel);
+            console.log(`Updated token usage stats: +${totalTokensProcessed} tokens for ${embeddingModel}`);
+          }
+        } catch (statsError) {
+          console.error('Error updating token usage stats:', statsError);
+        }
+      }
+      
+      console.log(`Silent incremental update completed: ${ids.length} embeddings created/updated for ${processedCount} files`);
+      
+      return ids;
+    } catch (error) {
       throw error;
     } finally {
       // Always clear the system operation flag
@@ -825,7 +1038,7 @@ export class EmbeddingService {
     const processingDelay = this.settings.processingDelay || 1000;
     
     // Show a single notice for the batch operation
-    const notice = new Notice(`Generating embeddings: 0/${filePaths.length} files`, 0);
+    const notice = new Notice(`Embedding 0/${filePaths.length} notes`, 0);
     
     const ids: string[] = [];
     let processedCount = 0;
@@ -941,7 +1154,7 @@ export class EmbeddingService {
         processedCount += batch.length;
         
         // Update notice
-        notice.setMessage(`Generating embeddings: ${processedCount}/${filePaths.length} files`);
+        notice.setMessage(`Embedding ${processedCount}/${filePaths.length} notes`);
         
         // Call progress callback if provided
         if (progressCallback) {
