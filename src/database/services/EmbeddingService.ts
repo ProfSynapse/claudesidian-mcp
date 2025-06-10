@@ -113,55 +113,23 @@ export class EmbeddingService {
    * Initialize the embedding provider
    */
   private async initializeProvider(): Promise<void> {
-    const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
-    if (this.settings.embeddingsEnabled && currentProvider?.apiKey) {
-      try {
-        // Use a custom embedding function for OpenAI
-        const openAiEmbedFunc = async (texts: string[]): Promise<number[][]> => {
-          try {
-            // Make OpenAI API call
-            const response = await fetch('https://api.openai.com/v1/embeddings', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${currentProvider.apiKey}`
-              },
-              body: JSON.stringify({
-                input: texts,
-                model: currentProvider.model || 'text-embedding-3-small'
-              })
-            });
-            
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(`OpenAI API error: ${errorData.error?.message || response.statusText}`);
-            }
-            
-            const data = await response.json();
-            return data.data.map((item: any) => item.embedding);
-          } catch (error) {
-            console.error('Error calling OpenAI API:', error);
-            throw error;
-          }
-        };
-        
-        // Create a new provider with the OpenAI function
-        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
-        await this.embeddingProvider.initialize();
-        
-        console.log("OpenAI embedding provider initialized successfully");
-      } catch (providerError) {
-        console.error("Error initializing OpenAI provider:", providerError);
-        this.settings.embeddingsEnabled = false;
-        
-        // Fall back to default provider
-        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
-      }
-    } else {
-      // Use the default provider in disabled mode
+    try {
+      // Use the factory to create the embedding provider with the current settings
       this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
+      await this.embeddingProvider.initialize();
       
-      console.log("Embeddings are disabled - using default provider");
+      const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+      if (this.settings.embeddingsEnabled && currentProvider?.apiKey) {
+        console.log(`${this.settings.apiProvider} embedding provider initialized successfully`);
+      } else {
+        console.log("Embeddings are disabled - using default provider");
+      }
+    } catch (providerError) {
+      console.error("Error initializing embedding provider:", providerError);
+      this.settings.embeddingsEnabled = false;
+      
+      // Fall back to default provider
+      this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
     }
   }
   
@@ -234,6 +202,87 @@ export class EmbeddingService {
    * @param settings Memory settings
    */
   async updateSettings(settings: MemorySettings): Promise<void> {
+    const oldProvider = this.settings.apiProvider;
+    const oldProviderSettings = this.settings.providerSettings[oldProvider];
+    const newProvider = settings.apiProvider;
+    const newProviderSettings = settings.providerSettings[newProvider];
+    
+    // Check if we're switching to a provider with different dimensions
+    const dimensionsChanged = oldProviderSettings?.dimensions !== newProviderSettings?.dimensions;
+    const providerChanged = oldProvider !== newProvider;
+    
+    // If provider or dimensions changed, check for existing embeddings
+    if ((providerChanged || dimensionsChanged) && settings.embeddingsEnabled) {
+      const hasExistingEmbeddings = await this.hasExistingEmbeddings();
+      
+      if (hasExistingEmbeddings) {
+        console.warn(`⚠️  Provider dimension conflict detected!
+          Previous: ${oldProvider} (${oldProviderSettings?.dimensions} dims)
+          New: ${newProvider} (${newProviderSettings?.dimensions} dims)
+          
+          ChromaDB requires all embeddings in a collection to have the same dimensions.
+          Existing embeddings must be reindexed with the new provider.`);
+        
+        // Check if there are active indexing operations
+        const hasResumableIndexing = await this.stateManager.hasResumableIndexing();
+        if (hasResumableIndexing) {
+          throw new Error(`Cannot switch embedding providers while indexing is in progress. Please wait for current indexing to complete or clear the indexing state before switching providers.`);
+        }
+        
+        // Get plugin and set reindexing flag to prevent conflicts
+        const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'] as any;
+        if (plugin) {
+          plugin.isReindexing = true;
+        }
+        
+        try {
+          // Clear existing embeddings since they're incompatible
+          const vectorStore = plugin?.vectorStore;
+          if (vectorStore) {
+            console.log('🔄 Clearing existing embeddings due to provider/dimension change...');
+            
+            // Delete and recreate file_embeddings collection
+            try {
+              await vectorStore.deleteCollection('file_embeddings');
+              await vectorStore.createCollection('file_embeddings', { 
+                providerChange: true,
+                previousProvider: oldProvider,
+                newProvider: newProvider,
+                previousDimensions: oldProviderSettings?.dimensions,
+                newDimensions: newProviderSettings?.dimensions,
+                clearedAt: new Date().toISOString()
+              });
+              console.log('✅ File embeddings collection cleared for new provider');
+            } catch (error) {
+              console.error('Error clearing file embeddings collection:', error);
+            }
+            
+            // Also clear other embedding-dependent collections if they exist
+            const embeddingCollections = ['memory_traces', 'sessions', 'snapshots'];
+            for (const collectionName of embeddingCollections) {
+              try {
+                const hasCollection = await vectorStore.hasCollection(collectionName);
+                if (hasCollection) {
+                  await vectorStore.deleteCollection(collectionName);
+                  await vectorStore.createCollection(collectionName, { 
+                    providerChange: true,
+                    clearedAt: new Date().toISOString()
+                  });
+                  console.log(`✅ ${collectionName} collection cleared for new provider`);
+                }
+              } catch (error) {
+                console.warn(`Error clearing ${collectionName} collection:`, error);
+              }
+            }
+          }
+        } finally {
+          if (plugin) {
+            plugin.isReindexing = false;
+          }
+        }
+      }
+    }
+    
     this.settings = settings;
     
     // Only validate API key if embeddings are being enabled

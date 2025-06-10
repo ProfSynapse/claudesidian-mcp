@@ -193,9 +193,11 @@ export class IndexingComponent {
                 }
             }
             
-            // Also check if the API key is present
-            if (!this.plugin.settings?.settings?.memory?.openaiApiKey) {
-                throw new Error('OpenAI API key is required but not provided. Add your API key in the API tab.');
+            // Also check if the API key is present for the current provider
+            const memorySettings = this.plugin.settings?.settings?.memory;
+            const currentProvider = memorySettings?.providerSettings?.[memorySettings?.apiProvider];
+            if (!currentProvider?.apiKey) {
+                throw new Error(`${memorySettings?.apiProvider || 'API'} key is required but not provided. Add your API key in the API tab.`);
             }
             
             // Initialize progress bar immediately
