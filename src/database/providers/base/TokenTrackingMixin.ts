@@ -4,16 +4,60 @@
  * consistent token usage tracking across different provider implementations.
  */
 export class TokenTrackingMixin {
-    protected modelUsage: {[key: string]: number} = {
-        'text-embedding-3-small': 0,
-        'text-embedding-3-large': 0
-    };
+    protected modelUsage: {[key: string]: number} = {};
     
     protected costPerThousandTokens: {[key: string]: number} = {
-        // $0.02 per million = $0.00002 per thousand for text-embedding-3-small
-        'text-embedding-3-small': 0.00002,
-        // $0.13 per million = $0.00013 per thousand for text-embedding-3-large
-        'text-embedding-3-large': 0.00013
+        // OpenAI models (2025 pricing)
+        'text-embedding-3-small': 0.00002,      // $0.02/million tokens
+        'text-embedding-3-large': 0.00013,      // $0.13/million tokens  
+        'text-embedding-ada-002': 0.0001,       // $0.10/million tokens
+        
+        // Mistral models (2025 pricing)
+        'mistral-embed': 0.00001,               // $0.01/million tokens
+        'codestral-embed-2505': 0.00015,        // $0.15/million tokens
+        
+        // Cohere models (2025 pricing) 
+        'embed-english-v3.0': 0.0001,           // $0.10/million tokens
+        'embed-multilingual-v3.0': 0.0001,      // $0.10/million tokens
+        'embed-english-light-v3.0': 0.0001,     // $0.10/million tokens
+        'embed-multilingual-light-v3.0': 0.0001, // $0.10/million tokens
+        'embed-english-v2.0': 0.0001,           // $0.10/million tokens
+        'embed-multilingual-v2.0': 0.0001,      // $0.10/million tokens
+        
+        // VoyageAI models (2025 pricing)
+        'voyage-3-large': 0.00006,              // $0.06/million tokens
+        'voyage-3.5': 0.00006,                  // $0.06/million tokens
+        'voyage-3': 0.00006,                    // $0.06/million tokens
+        'voyage-3.5-lite': 0.00002,             // $0.02/million tokens
+        'voyage-3-lite': 0.00002,               // $0.02/million tokens
+        'voyage-large-2-instruct': 0.00006,     // $0.06/million tokens (estimated)
+        'voyage-code-2': 0.00006,               // $0.06/million tokens (estimated)
+        'voyage-multilingual-2': 0.00006,       // $0.06/million tokens (estimated)
+        
+        // Google Gemini models (2025 pricing)
+        'models/text-embedding-004': 0,         // Free
+        'models/embedding-001': 0,              // Free
+        'models/gemini-embedding-001': 0,       // Free
+        'models/gemini-embedding-exp-03-07': 0, // Free
+        
+        // Jina AI models (2025 pricing - estimated based on competitive pricing)
+        'jina-embeddings-v3': 0.0001,           // $0.10/million tokens (estimated)
+        'jina-embeddings-v2-base-en': 0.00005,  // $0.05/million tokens (estimated)
+        'jina-embeddings-v2-base-zh': 0.00005,  // $0.05/million tokens (estimated)
+        'jina-embeddings-v2-base-de': 0.00005,  // $0.05/million tokens (estimated)
+        'jina-embeddings-v2-base-es': 0.00005,  // $0.05/million tokens (estimated)
+        'jina-embeddings-v2-base-code': 0.00005, // $0.05/million tokens (estimated)
+        'jina-embeddings-v2-small-en': 0.00002, // $0.02/million tokens (estimated)
+        
+        // Ollama models (local - free)
+        'nomic-embed-text': 0,                  // Free (local)
+        'nomic-embed-text:latest': 0,           // Free (local)
+        'mxbai-embed-large': 0,                 // Free (local)
+        'all-minilm': 0,                        // Free (local)
+        'snowflake-arctic-embed': 0,            // Free (local)
+        
+        // Default fallback cost
+        'default': 0.0001
     };
     
     /**
@@ -27,10 +71,7 @@ export class TokenTrackingMixin {
                     const parsedUsage = JSON.parse(savedUsage);
                     // Validate that it's an object with model keys
                     if (typeof parsedUsage === 'object' && parsedUsage !== null) {
-                        this.modelUsage = {
-                            'text-embedding-3-small': parsedUsage['text-embedding-3-small'] || 0,
-                            'text-embedding-3-large': parsedUsage['text-embedding-3-large'] || 0
-                        };
+                        this.modelUsage = { ...parsedUsage };
                         console.log('Loaded token usage from localStorage:', this.modelUsage);
                     }
                 }
@@ -147,8 +188,8 @@ export class TokenTrackingMixin {
             // Get the token count for this model
             const tokens = this.modelUsage[model];
             
-            // Ensure the model has a cost defined
-            const costPerThousand = this.costPerThousandTokens[model] || 0;
+            // Ensure the model has a cost defined, use default if not found
+            const costPerThousand = this.costPerThousandTokens[model] || this.costPerThousandTokens['default'] || 0;
             
             // Calculate the cost for this model and add to the total
             // (tokens / 1000) * cost per thousand tokens
@@ -164,9 +205,7 @@ export class TokenTrackingMixin {
      */
     async resetUsageStats(): Promise<void> {
         // Reset all model usage to zero
-        for (const model in this.modelUsage) {
-            this.modelUsage[model] = 0;
-        }
+        this.modelUsage = {};
         
         // Save to localStorage
         this.saveToLocalStorage();

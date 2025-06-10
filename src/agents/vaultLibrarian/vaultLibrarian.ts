@@ -7,7 +7,7 @@ import {
   BatchMode
 } from './modes';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
-import { OpenAIProvider } from '../../database/providers/openai-provider';
+import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
@@ -18,7 +18,7 @@ import { getErrorMessage } from '../../utils/errorUtils';
  */
 export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
-  private embeddingProvider: OpenAIProvider | null = null;
+  private embeddingProvider: any | null = null;
   private embeddingService: EmbeddingService | null = null;
   private memoryService: MemoryService | null = null;
   private searchService: ChromaSearchService | null = null;
@@ -53,9 +53,12 @@ export class VaultLibrarianAgent extends BaseAgent {
           // Safely access settings
           const pluginAny = plugin as any;
           const memorySettings = pluginAny.settings?.settings?.memory;
-          if (memorySettings?.embeddingsEnabled && memorySettings.openaiApiKey) {
-            this.settings = memorySettings;
-            this.embeddingProvider = new OpenAIProvider(this.settings);
+          if (memorySettings?.embeddingsEnabled) {
+            const currentProvider = memorySettings.providerSettings[memorySettings.apiProvider];
+            if (currentProvider?.apiKey) {
+              this.settings = memorySettings;
+              // Provider will be initialized in updateSettings if needed
+            }
           }
           
           // Safely access services
@@ -111,7 +114,7 @@ export class VaultLibrarianAgent extends BaseAgent {
    * Get the embedding provider
    * @returns The current embedding provider or null if embeddings are disabled
    */
-  getProvider(): OpenAIProvider | null {
+  getProvider(): any | null {
     return this.embeddingProvider;
   }
   
@@ -119,7 +122,7 @@ export class VaultLibrarianAgent extends BaseAgent {
    * Update the agent settings
    * @param settings New memory settings
    */
-  updateSettings(settings: MemorySettings): void {
+  async updateSettings(settings: MemorySettings): Promise<void> {
     this.settings = settings;
     
     // Clean up existing provider
@@ -129,9 +132,11 @@ export class VaultLibrarianAgent extends BaseAgent {
     }
     
     // Create new provider if enabled
-    if (settings.embeddingsEnabled && settings.openaiApiKey) {
+    const currentProvider = settings.providerSettings[settings.apiProvider];
+    if (settings.embeddingsEnabled && currentProvider?.apiKey) {
       try {
-        this.embeddingProvider = new OpenAIProvider(settings);
+        // Use VectorStoreFactory to create provider with new architecture
+        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(settings);
       } catch (error) {
         console.error('Error initializing embedding provider:', getErrorMessage(error));
         this.embeddingProvider = null;

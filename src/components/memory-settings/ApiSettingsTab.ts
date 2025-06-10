@@ -2,6 +2,7 @@ import { Notice, Setting } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { EmbeddingProviderRegistry } from '../../database/providers/registry/EmbeddingProviderRegistry';
 
 /**
  * API Settings tab component
@@ -34,6 +35,11 @@ export class ApiSettingsTab extends BaseSettingsTab {
      * Display the API settings tab
      */
     async display(containerEl: HTMLElement): Promise<void> {
+        // Ensure providerSettings exists
+        if (!this.settings.providerSettings) {
+            this.settings.providerSettings = {};
+        }
+        
         // Check if embeddings exist
         if (this.embeddingService) {
             try {
@@ -53,10 +59,20 @@ export class ApiSettingsTab extends BaseSettingsTab {
             .addToggle(toggle => toggle
                 .setValue(this.settings.embeddingsEnabled)
                 .onChange(async (value) => {
-                    // Check if trying to enable embeddings without API key
-                    if (value && (!this.settings.openaiApiKey || this.settings.openaiApiKey.trim() === "")) {
+                    // Check if trying to enable embeddings without API key (except for Ollama)
+                    const currentProvider = this.settings.apiProvider;
+                    
+                    // Ensure providerSettings exists
+                    if (!this.settings.providerSettings) {
+                        this.settings.providerSettings = {};
+                    }
+                    
+                    const providerSettings = this.settings.providerSettings?.[currentProvider];
+                    const provider = EmbeddingProviderRegistry.getProvider(currentProvider);
+                    
+                    if (value && provider?.requiresApiKey && (!providerSettings?.apiKey || providerSettings.apiKey.trim() === "")) {
                         // Show user feedback
-                        new Notice('OpenAI API Key is required to enable embeddings. Please set your API key below.', 4000);
+                        new Notice(`API Key is required to enable embeddings. Please set your ${currentProvider} API key below.`, 4000);
                         
                         // Reset toggle to false
                         toggle.setValue(false);
@@ -167,35 +183,80 @@ export class ApiSettingsTab extends BaseSettingsTab {
         }
         
         // API Provider dropdown
-        new Setting(containerEl)
+        const providerSetting = new Setting(containerEl)
             .setName('Embedding Provider')
-            .setDesc('Select the API provider for generating embeddings')
-            .addDropdown(dropdown => dropdown
-                .addOption('openai', 'OpenAI')
-                .setValue(this.settings.apiProvider)
+            .setDesc('Select the API provider for generating embeddings');
+            
+        const dropdown = providerSetting.addDropdown(dropdown => {
+            // Add all registered providers
+            const providers = EmbeddingProviderRegistry.getProviders();
+            providers.forEach(provider => {
+                dropdown.addOption(provider.id, provider.name);
+            });
+            
+            dropdown.setValue(this.settings.apiProvider)
                 .onChange(async (value) => {
-                    this.settings.apiProvider = value as 'openai';
-                    await this.saveSettings();
-                    // Trigger re-render if needed
-                    if (this.onSettingsChanged) {
-                        this.onSettingsChanged();
+                    this.settings.apiProvider = value;
+                    
+                    // Ensure providerSettings exists
+                    if (!this.settings.providerSettings) {
+                        this.settings.providerSettings = {};
                     }
-                })
-            );
+                    
+                    // Initialize provider settings if not exists
+                    if (!this.settings.providerSettings[value]) {
+                        const provider = EmbeddingProviderRegistry.getProvider(value);
+                        if (provider && provider.models.length > 0) {
+                            this.settings.providerSettings[value] = {
+                                apiKey: '',
+                                model: provider.models[0].id,
+                                dimensions: provider.models[0].dimensions
+                            };
+                        }
+                    }
+                    
+                    await this.saveSettings();
+                    // Trigger re-render to show provider-specific settings
+                    containerEl.empty();
+                    await this.display(containerEl);
+                });
+        });
 
-        // OpenAI Settings
-        if (this.settings.apiProvider === 'openai') {
-            new Setting(containerEl)
-                .setName('OpenAI API Key')
-                .setDesc('Your OpenAI API key for embeddings (securely stored in your vault)')
-                .addText(text => {
-                    text.inputEl.type = 'password';
-                    return text
-                        .setPlaceholder('sk-...')
-                        .setValue(this.settings.openaiApiKey)
-                        .onChange(async (value) => {
-                            this.settings.openaiApiKey = value;
-                            await this.saveSettings();
+        // Provider-specific settings
+        const currentProvider = EmbeddingProviderRegistry.getProvider(this.settings.apiProvider);
+        
+        // Ensure providerSettings exists
+        if (!this.settings.providerSettings) {
+            this.settings.providerSettings = {};
+        }
+        
+        const providerSettings = this.settings.providerSettings[this.settings.apiProvider] || {
+            apiKey: '',
+            model: currentProvider?.models[0]?.id || '',
+            dimensions: currentProvider?.models[0]?.dimensions || 1536
+        };
+        
+        if (currentProvider) {
+            // API Key setting (not needed for Ollama)
+            if (currentProvider.requiresApiKey) {
+                new Setting(containerEl)
+                    .setName(`${currentProvider.name} API Key`)
+                    .setDesc(`Your ${currentProvider.name} API key for embeddings (securely stored in your vault)`)
+                    .addText(text => {
+                        text.inputEl.type = 'password';
+                        return text
+                            .setPlaceholder('Enter API key...')
+                            .setValue(providerSettings.apiKey || '')
+                            .onChange(async (value) => {
+                                if (!this.settings.providerSettings[this.settings.apiProvider]) {
+                                    this.settings.providerSettings[this.settings.apiProvider] = {
+                                        apiKey: '',
+                                        model: currentProvider.models[0]?.id || '',
+                                        dimensions: currentProvider.models[0]?.dimensions || 1536
+                                    };
+                                }
+                                this.settings.providerSettings[this.settings.apiProvider].apiKey = value;
+                                await this.saveSettings();
                             
                             // If we just added a valid API key, auto-enable embeddings for better UX
                             if (value && value.trim() !== "" && !this.settings.embeddingsEnabled) {
@@ -245,169 +306,252 @@ export class ApiSettingsTab extends BaseSettingsTab {
                             }
                         });
                 });
+            } else if (this.settings.apiProvider === 'ollama') {
+                // Ollama-specific settings and setup instructions
+                containerEl.createEl('h4', { text: 'Ollama Setup Instructions' });
+                
+                const setupInstructions = containerEl.createDiv({ cls: 'ollama-setup-instructions' });
+                setupInstructions.innerHTML = `
+                    <div class="ollama-step">
+                        <h5>Step 1: Install Ollama</h5>
+                        <p><strong>Windows:</strong></p>
+                        <ul>
+                            <li>Visit <a href="https://ollama.com/download/windows" target="_blank">ollama.com/download/windows</a></li>
+                            <li>Download and run <code>OllamaSetup.exe</code></li>
+                            <li>Follow the installer (no admin rights required)</li>
+                        </ul>
+                        <p><strong>Mac/Linux:</strong> Follow instructions at <a href="https://ollama.com" target="_blank">ollama.com</a></p>
+                    </div>
+                    
+                    <div class="ollama-step">
+                        <h5>Step 2: Start Ollama Service</h5>
+                        <p>Open Command Prompt/Terminal and run:</p>
+                        <code>ollama serve</code>
+                        <p><strong>Keep this window open</strong> - Ollama needs to run in the background</p>
+                        <p><em>Note: If you get a "port already in use" error, Ollama may already be running as a service.</em></p>
+                    </div>
+                    
+                    <div class="ollama-step">
+                        <h5>Step 3: Download Embedding Model</h5>
+                        <p>In a <strong>new</strong> terminal window, run:</p>
+                        <ul>
+                            <li><code>ollama pull nomic-embed-text</code> (Recommended - 274MB, 768 dims)</li>
+                            <li><code>ollama pull mxbai-embed-large</code> (Large model - 669MB, 1024 dims)</li>
+                            <li><code>ollama pull all-minilm</code> (Lightweight - 46MB, 384 dims)</li>
+                        </ul>
+                        <p>Wait for the download to complete (may take a few minutes)</p>
+                    </div>
+                    
+                    <div class="ollama-step">
+                        <h5>Step 4: Verify Setup</h5>
+                        <p>Check installed models:</p>
+                        <code>ollama list</code>
+                        <p>You should see your embedding model listed. Then use the "Test Connection" button below.</p>
+                    </div>
+                    
+                    <div class="ollama-step">
+                        <h5>Troubleshooting</h5>
+                        <ul>
+                            <li><strong>Port 11434 already in use:</strong> Ollama may already be running. Check Task Manager (Windows) or Activity Monitor (Mac)</li>
+                            <li><strong>Command not found:</strong> Restart your terminal or log out/in again</li>
+                            <li><strong>Connection failed:</strong> Make sure <code>ollama serve</code> is running and showing "Listening on 127.0.0.1:11434"</li>
+                        </ul>
+                    </div>
+                `;
+                
+                // Ollama URL setting
+                new Setting(containerEl)
+                    .setName('Ollama Server URL')
+                    .setDesc('URL where your Ollama server is running (default: http://127.0.0.1:11434/)')
+                    .addText(text => {
+                        return text
+                            .setPlaceholder('http://127.0.0.1:11434/')
+                            .setValue(providerSettings.customSettings?.url || 'http://127.0.0.1:11434/')
+                            .onChange(async (value) => {
+                                if (!this.settings.providerSettings[this.settings.apiProvider]) {
+                                    this.settings.providerSettings[this.settings.apiProvider] = {
+                                        apiKey: '',
+                                        model: currentProvider.models[0]?.id || '',
+                                        dimensions: currentProvider.models[0]?.dimensions || 768,
+                                        customSettings: {}
+                                    };
+                                }
+                                if (!this.settings.providerSettings[this.settings.apiProvider].customSettings) {
+                                    this.settings.providerSettings[this.settings.apiProvider].customSettings = {};
+                                }
+                                this.settings.providerSettings[this.settings.apiProvider].customSettings!.url = value || 'http://127.0.0.1:11434/';
+                                await this.saveSettings();
+                            });
+                    });
+                
+                // Test connection button
+                new Setting(containerEl)
+                    .setName('Test Ollama Connection')
+                    .setDesc('Verify that Ollama is running and accessible')
+                    .addButton(button => {
+                        button.setButtonText('Test Connection')
+                            .onClick(async () => {
+                                const ollamaUrl = providerSettings.customSettings?.url || 'http://127.0.0.1:11434/';
+                                try {
+                                    button.setButtonText('Testing...');
+                                    button.setDisabled(true);
+                                    
+                                    const response = await fetch(`${ollamaUrl}api/tags`);
+                                    if (response.ok) {
+                                        const data = await response.json();
+                                        const models = data.models || [];
+                                        const embeddingModels = models.filter((m: any) => 
+                                            m.name.includes('embed') || 
+                                            m.name.includes('nomic') || 
+                                            m.name.includes('mxbai') ||
+                                            m.name.includes('all-minilm')
+                                        );
+                                        
+                                        if (embeddingModels.length > 0) {
+                                            new Notice(`✅ Ollama connected! Found ${embeddingModels.length} embedding model(s): ${embeddingModels.map((m: any) => m.name).join(', ')}`);
+                                        } else {
+                                            new Notice('⚠️ Ollama connected but no embedding models found. Please run: ollama pull nomic-embed-text');
+                                        }
+                                    } else {
+                                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                                    }
+                                } catch (error) {
+                                    console.error('Ollama connection test failed:', error);
+                                    new Notice(`❌ Failed to connect to Ollama: ${(error as Error).message || String(error)}. Make sure Ollama is running.`);
+                                } finally {
+                                    button.setButtonText('Test Connection');
+                                    button.setDisabled(false);
+                                }
+                            });
+                    });
+            }
             
-            new Setting(containerEl)
-                .setName('Organization ID (Optional)')
-                .setDesc('Your OpenAI organization ID if applicable')
-                .addText(text => {
-                    text.inputEl.type = 'password';
-                    return text
-                        .setPlaceholder('org-...')
-                        .setValue(this.settings.openaiOrganization || '')
-                        .onChange(async (value) => {
-                            this.settings.openaiOrganization = value || undefined;
-                            await this.saveSettings();
-                        });
-                });
+            // Organization ID for providers that support it (skip for OpenAI as we removed it)
+            if (this.settings.apiProvider !== 'openai' && providerSettings.organization !== undefined) {
+                new Setting(containerEl)
+                    .setName('Organization ID (Optional)')
+                    .setDesc(`Your ${currentProvider.name} organization ID if applicable`)
+                    .addText(text => {
+                        text.inputEl.type = 'password';
+                        return text
+                            .setPlaceholder('Enter organization ID...')
+                            .setValue(providerSettings.organization || '')
+                            .onChange(async (value) => {
+                                if (this.settings.providerSettings[this.settings.apiProvider]) {
+                                    this.settings.providerSettings[this.settings.apiProvider].organization = value || undefined;
+                                    await this.saveSettings();
+                                }
+                            });
+                    });
+            }
         }
         
         // Model settings
         containerEl.createEl('h3', { text: 'Model Configuration' });
         
-        new Setting(containerEl)
-            .setName('Embedding Model')
-            .setDesc('Select the embedding model to use')
-            .addDropdown(dropdown => dropdown
-                .addOption('text-embedding-3-small', 'text-embedding-3-small (1536 dims, cheaper)')
-                .addOption('text-embedding-3-large', 'text-embedding-3-large (3072 dims, more accurate)')
-                .setValue(this.settings.embeddingModel)
-                .onChange(async (value) => {
-                    this.settings.embeddingModel = value as 'text-embedding-3-small' | 'text-embedding-3-large';
-                    
-                    // Update dimensions based on model constraints
-                    if (value === 'text-embedding-3-small') {
-                        // Ensure dimensions are within valid range for small model
-                        if (this.settings.dimensions > 1536 || this.settings.dimensions < 512) {
-                            this.settings.dimensions = 1536; // Default to max for small model
-                        }
-                        // Ensure it's a multiple of 64
-                        this.settings.dimensions = Math.round(this.settings.dimensions / 64) * 64;
-                    } else if (value === 'text-embedding-3-large') {
-                        // Ensure dimensions are within valid range for large model
-                        if (this.settings.dimensions > 3072 || this.settings.dimensions < 1024) {
-                            this.settings.dimensions = 3072; // Default to max for large model
-                        }
-                        // Ensure it's a multiple of 64
-                        this.settings.dimensions = Math.round(this.settings.dimensions / 64) * 64;
-                    }
-                    
-                    await this.saveSettings();
-                    if (this.onSettingsChanged) {
-                        this.onSettingsChanged();
-                    }
-                })
-            );
-        
-        const maxDimensions = this.settings.embeddingModel === 'text-embedding-3-small' ? 1536 : 3072;
-        
-        const dimensionSetting = new Setting(containerEl)
-            .setName('Embedding Dimensions')
-            .setDesc(`Dimension size for embeddings (max ${maxDimensions})`);
-            
-        // Add a warning if embeddings exist
-        if (this.embeddingsExist) {
-            dimensionSetting.setDesc(
-                `Dimension size for embeddings (max ${maxDimensions}). ⚠️ LOCKED: Embeddings already exist with ${this.settings.dimensions} dimensions. Changing this requires removing all existing embeddings.`
-            );
-            
-            // Add a disabled slider that shows the current value but doesn't allow changes
-            dimensionSetting.addSlider(slider => {
-                slider
-                    .setLimits(256, maxDimensions, 256)
-                    .setValue(this.settings.dimensions)
-                    .setDynamicTooltip();
-                
-                // Disable the slider
-                slider.sliderEl.disabled = true;
-                slider.sliderEl.style.opacity = '0.6';
-                
-                return slider;
-            });
-            
-            // Add a button to force reset if needed
-            dimensionSetting.addExtraButton(button => {
-                button
-                    .setIcon('reset')
-                    .setTooltip('Reset embeddings (deletes all existing embeddings)')
-                    .onClick(async () => {
-                        // Confirm with the user first
-                        const confirmed = confirm(
-                            'WARNING: This will delete ALL existing embeddings. ' +
-                            'You will need to regenerate all embeddings after changing this setting. ' +
-                            'This operation cannot be undone. Continue?'
-                        );
-                        
-                        if (confirmed) {
-                            try {
-                                // Show a notice to the user
-                                new Notice('Deleting all embeddings. This may take a moment...');
-                                
-                                // Get the vector store directly from the plugin
-                                const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-                                if (!plugin) {
-                                    throw new Error('Claudesidian plugin not found');
-                                }
-                                
-                                // Get the vector store
-                                const vectorStore = plugin.vectorStore;
-                                if (!vectorStore) {
-                                    throw new Error('Vector store not found on plugin');
-                                }
-                                
-                                // Delete the collections that contain embeddings
-                                const embeddingCollections = [
-                                    'file_embeddings', 
-                                    'memory_traces', 
-                                    'sessions',
-                                    'snapshots',
-                                    'workspaces'
-                                ];
-                                
-                                for (const collectionName of embeddingCollections) {
-                                    if (await vectorStore.hasCollection(collectionName)) {
-                                        await vectorStore.deleteCollection(collectionName);
-                                    }
-                                }
-                                
-                                // Mark embeddings as not existing
-                                this.embeddingsExist = false;
-                                
-                                // Unlock the setting and re-render
-                                new Notice('All embeddings have been deleted. You can now change the dimension size.');
-                                
-                                // Redraw the entire tab
-                                containerEl.empty();
-                                await this.display(containerEl);
-                            } catch (error) {
-                                console.error('Error deleting embeddings:', error);
-                                new Notice('Error deleting embeddings: ' + error);
-                            }
-                        }
+        if (currentProvider && providerSettings) {
+            new Setting(containerEl)
+                .setName('Embedding Model')
+                .setDesc('Select the embedding model to use')
+                .addDropdown(dropdown => {
+                    // Add all available models for the current provider
+                    currentProvider.models.forEach(model => {
+                        const desc = `${model.name} (${model.dimensions} dims)`;
+                        dropdown.addOption(model.id, desc);
                     });
-            });
-        } else {
-            // Normal slider for when no embeddings exist
-            dimensionSetting.addSlider(slider => slider
-                .setLimits(
-                    this.settings.embeddingModel === 'text-embedding-3-small' ? 512 : 1024, 
-                    maxDimensions, 
-                    64
-                )
-                .setValue(this.settings.dimensions)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    // Ensure value is a multiple of 64
-                    const alignedValue = Math.round(value / 64) * 64;
-                    this.settings.dimensions = alignedValue;
-                    await this.saveSettings();
-                })
-            );
+                    
+                    dropdown.setValue(providerSettings.model || currentProvider.models[0]?.id || '')
+                        .onChange(async (value) => {
+                            if (this.settings.providerSettings[this.settings.apiProvider]) {
+                                this.settings.providerSettings[this.settings.apiProvider].model = value;
+                                
+                                // Update dimensions based on selected model
+                                const selectedModel = currentProvider.models.find(m => m.id === value);
+                                if (selectedModel) {
+                                    this.settings.providerSettings[this.settings.apiProvider].dimensions = selectedModel.dimensions;
+                                }
+                                
+                                await this.saveSettings();
+                                
+                                if (this.onSettingsChanged) {
+                                    this.onSettingsChanged();
+                                }
+                            }
+                        });
+                });
             
-            // Add info text to explain locking behavior
-            const minDimensions = this.settings.embeddingModel === 'text-embedding-3-small' ? 512 : 1024;
-            dimensionSetting.setDesc(
-                `Dimension size for embeddings (${minDimensions}-${maxDimensions}, must be multiple of 64). NOTE: This setting will be locked once you create embeddings.`
-            );
+            // Check for dimension mismatch and handle embedding reset if needed
+            const selectedModel = currentProvider.models.find(m => m.id === providerSettings.model);
+            const maxDimensions = selectedModel?.dimensions || 1536;
+            
+            // Add a warning if embeddings exist with different dimensions
+            if (this.embeddingsExist && providerSettings.dimensions !== maxDimensions) {
+                const warningContainer = containerEl.createDiv({ cls: 'dimension-warning-container' });
+                
+                const warningText = warningContainer.createEl('p', {
+                    text: `⚠️ WARNING: Existing embeddings use ${providerSettings.dimensions} dimensions. ` +
+                          `The selected model uses ${maxDimensions} dimensions. You need to delete all embeddings to switch models.`,
+                    cls: 'dimension-warning-text'
+                });
+                
+                const resetButton = warningContainer.createEl('button', {
+                    text: 'Delete All Embeddings',
+                    cls: 'mod-warning'
+                });
+                
+                resetButton.addEventListener('click', async () => {
+                    const confirmed = confirm(
+                        'WARNING: This will delete ALL existing embeddings. ' +
+                        'You will need to regenerate all embeddings after changing models. ' +
+                        'This operation cannot be undone. Continue?'
+                    );
+                    
+                    if (confirmed) {
+                        try {
+                            new Notice('Deleting all embeddings...');
+                            
+                            const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+                            if (!plugin) {
+                                throw new Error('Claudesidian plugin not found');
+                            }
+                            
+                            const vectorStore = plugin.vectorStore;
+                            if (!vectorStore) {
+                                throw new Error('Vector store not found');
+                            }
+                            
+                            const embeddingCollections = [
+                                'file_embeddings', 
+                                'memory_traces', 
+                                'sessions',
+                                'snapshots',
+                                'workspaces'
+                            ];
+                            
+                            for (const collectionName of embeddingCollections) {
+                                if (await vectorStore.hasCollection(collectionName)) {
+                                    await vectorStore.deleteCollection(collectionName);
+                                }
+                            }
+                            
+                            this.embeddingsExist = false;
+                            new Notice('All embeddings deleted. You can now use the new model.');
+                            
+                            // Update dimensions to match the new model
+                            if (this.settings.providerSettings[this.settings.apiProvider]) {
+                                this.settings.providerSettings[this.settings.apiProvider].dimensions = maxDimensions;
+                                await this.saveSettings();
+                            }
+                            
+                            containerEl.empty();
+                            await this.display(containerEl);
+                        } catch (error) {
+                            console.error('Error deleting embeddings:', error);
+                            new Notice('Error deleting embeddings: ' + error);
+                        }
+                    }
+                });
+            }
         }
             
         // API Rate limit

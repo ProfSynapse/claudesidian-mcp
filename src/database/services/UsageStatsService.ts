@@ -83,10 +83,7 @@ export class UsageStatsService {
         estimatedCost: 0,
         tokensAllTime: 0,
         estimatedCostAllTime: 0,
-        modelUsage: {
-            'text-embedding-3-small': 0,
-            'text-embedding-3-large': 0
-        },
+        modelUsage: {},
         collectionStats: []
     };
 
@@ -357,10 +354,7 @@ export class UsageStatsService {
                 
                 // Initialize modelUsage if not present
                 if (!stats.modelUsage) {
-                    stats.modelUsage = {
-                        'text-embedding-3-small': 0,
-                        'text-embedding-3-large': 0
-                    };
+                    stats.modelUsage = {};
                 }
                 
                 // Get the cost per thousand tokens
@@ -677,10 +671,7 @@ export class UsageStatsService {
                 lastIndexedDate: '',
                 indexingInProgress: false,
                 estimatedCost: 0,
-                modelUsage: {
-                    'text-embedding-3-small': 0,
-                    'text-embedding-3-large': 0
-                },
+                modelUsage: {},
                 collectionStats: []
             };
             
@@ -742,10 +733,7 @@ export class UsageStatsService {
                 lastIndexedDate: '',
                 indexingInProgress: false,
                 estimatedCost: 0,
-                modelUsage: {
-                    'text-embedding-3-small': 0,
-                    'text-embedding-3-large': 0
-                },
+                modelUsage: {},
                 collectionStats: []
             };
             

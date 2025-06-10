@@ -1,15 +1,15 @@
 {
     "name": "claudesidian-mcp",
-    "version": "2.3.4",
+    "version": "2.3.5",
     "description": "Model Context Protocol (MCP) integration for Obsidian",
     "main": "main.js",
     "scripts": {
         "dev": "node esbuild.config.mjs",
-        "build": "tsc --noEmit && node esbuild.config.mjs production && tsc connector.ts --outDir . --esModuleInterop true --module commonjs",
+        "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production && tsc connector.ts --outDir . --esModuleInterop true --module commonjs --skipLibCheck",
         "version": "node version-bump.mjs && git add manifest.json versions.json",
         "test": "jest",
         "lint": "eslint . --ext .ts",
-        "build-connector": "tsc connector.ts --outDir . --esModuleInterop true --module commonjs",
+        "build-connector": "tsc connector.ts --outDir . --esModuleInterop true --module commonjs --skipLibCheck",
         "deploy": "npm run build && powershell.exe -ExecutionPolicy Bypass -File .\\postbuild.ps1"
     },
     "engines": {
@@ -24,10 +24,14 @@
     "author": "",
     "license": "MIT",
     "devDependencies": {
+        "@types/babel__generator": "^7.27.0",
+        "@types/babel__template": "^7.4.4",
         "@types/diff-match-patch": "^1.0.36",
+        "@types/istanbul-lib-report": "^3.0.3",
         "@types/jest": "^29.5.14",
         "@types/node": "^16.18.0",
         "@types/request": "^2.48.8",
+        "@types/yargs-parser": "^21.0.3",
         "@typescript-eslint/eslint-plugin": "^5.47.0",
         "@typescript-eslint/parser": "^5.47.0",
         "builtin-modules": "^3.3.0",
@@ -40,7 +44,7 @@
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.9.0",
-        "chromadb": "^2.4.4",
+        "chromadb": "^3.0.0",
         "diff-match-patch": "^1.0.5",
         "gpt-tokenizer": "^2.9.0",
         "tough-cookie": "^4.1.3",

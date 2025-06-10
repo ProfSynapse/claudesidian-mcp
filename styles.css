@@ -878,3 +878,60 @@ a:hover {
     margin-top: 0.25rem;
     font-weight: 500;
 }
+
+/* Ollama Setup Instructions Styling */
+.ollama-setup-instructions {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 16px;
+    margin: 16px 0;
+}
+
+.ollama-step {
+    margin-bottom: 16px;
+}
+
+.ollama-step:last-child {
+    margin-bottom: 0;
+}
+
+.ollama-step h5 {
+    color: var(--text-accent);
+    margin: 0 0 8px 0;
+    font-weight: 600;
+}
+
+.ollama-step p {
+    margin: 8px 0;
+    color: var(--text-normal);
+}
+
+.ollama-step ul {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.ollama-step li {
+    margin: 4px 0;
+    color: var(--text-normal);
+}
+
+.ollama-step code {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: var(--font-monospace);
+    font-size: 0.9em;
+    color: var(--text-normal);
+}
+
+.ollama-step a {
+    color: var(--text-accent);
+    text-decoration: none;
+}
+
+.ollama-step a:hover {
+    text-decoration: underline;
+}

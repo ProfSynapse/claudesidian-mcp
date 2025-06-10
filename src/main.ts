@@ -144,9 +144,13 @@ export default class ClaudesidianPlugin extends Plugin {
                     enabled: true,
                     embeddingsEnabled: true,
                     apiProvider: 'openai',
-                    openaiApiKey: '',
-                    embeddingModel: 'text-embedding-3-small',
-                    dimensions: 1536,
+                    providerSettings: {
+                        openai: {
+                            apiKey: '',
+                            model: 'text-embedding-3-small',
+                            dimensions: 1536
+                        }
+                    },
                     maxTokensPerMonth: 1000000,
                     apiRateLimitPerMinute: 500,
                     chunkStrategy: 'paragraph',

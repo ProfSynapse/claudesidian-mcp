@@ -1,13 +1,14 @@
 import { App, Notice } from 'obsidian';
 import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
-import { OpenAIProvider } from '../providers/openai-provider';
+import { VectorStoreFactory } from '../factory/VectorStoreFactory';
+import { IEmbeddingProvider } from '../interfaces/IEmbeddingProvider';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Manages embedding providers and settings
  */
 export class EmbeddingManager {
-  private embeddingProvider: EmbeddingProvider | null = null;
+  private embeddingProvider: IEmbeddingProvider | null = null;
   private settings: MemorySettings;
   private app: App;
 
@@ -29,14 +30,17 @@ export class EmbeddingManager {
       const embeddingsWereEnabled = pluginSettings.embeddingsEnabled;
       
       // Validate settings
-      if (embeddingsWereEnabled && (!pluginSettings.openaiApiKey || pluginSettings.openaiApiKey.trim() === "")) {
+      const currentProvider = pluginSettings.providerSettings[pluginSettings.apiProvider];
+      if (embeddingsWereEnabled && (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
         this.settings.embeddingsEnabled = false;
-        console.warn("OpenAI API key is required but not provided. Embeddings will be disabled.");
-        new Notice("Embeddings are disabled until you provide a valid OpenAI API key in settings.");
+        console.warn(`${pluginSettings.apiProvider} API key is required but not provided. Embeddings will be disabled.`);
+        new Notice(`Embeddings are disabled until you provide a valid ${pluginSettings.apiProvider} API key in settings.`);
       }
       
       // Initialize provider
-      this.initializeProvider();
+      this.initializeProvider().catch(error => {
+        console.error('Failed to initialize provider:', error);
+      });
       
       // Save if modified
       if (embeddingsWereEnabled !== this.settings.embeddingsEnabled) {
@@ -52,13 +56,14 @@ export class EmbeddingManager {
   /**
    * Initialize the embedding provider based on settings
    */
-  private initializeProvider(): void {
-    if (this.settings.embeddingsEnabled && this.settings.openaiApiKey) {
+  private async initializeProvider(): Promise<void> {
+    const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+    if (this.settings.embeddingsEnabled && currentProvider?.apiKey) {
       try {
-        this.embeddingProvider = new OpenAIProvider(this.settings);
-        console.log("OpenAI embedding provider initialized successfully");
+        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
+        console.log(`${this.settings.apiProvider} embedding provider initialized successfully`);
       } catch (providerError) {
-        console.error("Error initializing OpenAI provider:", providerError);
+        console.error(`Error initializing ${this.settings.apiProvider} provider:`, providerError);
         this.settings.embeddingsEnabled = false;
         this.embeddingProvider = null;
         new Notice(`Error initializing embeddings: ${getErrorMessage(providerError)}`);
@@ -72,7 +77,7 @@ export class EmbeddingManager {
   /**
    * Get the embedding provider
    */
-  getProvider(): EmbeddingProvider | null {
+  getProvider(): IEmbeddingProvider | null {
     return this.embeddingProvider;
   }
 
@@ -85,7 +90,9 @@ export class EmbeddingManager {
     }
     
     try {
-      return await this.embeddingProvider.getEmbedding(text);
+      // IEmbeddingProvider uses generateEmbeddings which takes an array
+      const embeddings = await this.embeddingProvider.generateEmbeddings([text]);
+      return embeddings.length > 0 ? embeddings[0] : null;
     } catch (error) {
       console.error('Error generating embedding:', error);
       return null;
@@ -110,45 +117,41 @@ export class EmbeddingManager {
    * Update settings and initialize the appropriate embedding provider
    * @param settings Memory settings
    */
-  updateSettings(settings: MemorySettings): void {
+  async updateSettings(settings: MemorySettings): Promise<void> {
     const prevSettings = this.settings;
     this.settings = settings;
     
+    const currentProvider = settings.providerSettings[settings.apiProvider];
+    
     // Validate API key if embeddings are enabled
-    if (settings.embeddingsEnabled && (!settings.openaiApiKey || settings.openaiApiKey.trim() === "")) {
+    if (settings.embeddingsEnabled && (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
       // API key is required but not provided, disable embeddings
-      console.warn("OpenAI API key is required but not provided. Embeddings will be disabled.");
+      console.warn(`${settings.apiProvider} API key is required but not provided. Embeddings will be disabled.`);
       this.settings.embeddingsEnabled = false;
       
       // Show notice to user
-      new Notice("Embeddings are disabled until you provide a valid OpenAI API key in settings.");
+      new Notice(`Embeddings are disabled until you provide a valid ${settings.apiProvider} API key in settings.`);
     }
     
     // Clean up existing provider if needed
-    if (this.embeddingProvider && typeof this.embeddingProvider.close === 'function') {
-      this.embeddingProvider.close();
+    if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
+      (this.embeddingProvider as any).close();
       this.embeddingProvider = null;
     }
     
     // Initialize the appropriate provider based on settings
     try {
       // Only initialize a provider if embeddings are enabled and we have a key
-      if (settings.embeddingsEnabled && settings.openaiApiKey) {
-        if (settings.apiProvider === 'openai') {
-          // Use OpenAI provider with API key
-          this.embeddingProvider = new OpenAIProvider(settings);
-          console.log(`Initialized OpenAI embedding provider (${settings.embeddingModel})`);
-        } else if (settings.apiProvider === 'local') {
-          // Local provider not yet implemented
-          new Notice('Local embedding provider not yet implemented. Using OpenAI provider.');
-          this.embeddingProvider = new OpenAIProvider(settings);
-        }
+      if (settings.embeddingsEnabled && currentProvider?.apiKey) {
+        // Use VectorStoreFactory to create provider with new architecture
+        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
+        console.log(`Initialized ${settings.apiProvider} embedding provider (${currentProvider.model})`);
       } else {
         // Embeddings are disabled or no API key
         this.embeddingProvider = null;
         
         // If embeddings were enabled before but now disabled due to API key, show notice
-        if (prevSettings && prevSettings.embeddingsEnabled && settings.embeddingsEnabled && !settings.openaiApiKey) {
+        if (prevSettings && prevSettings.embeddingsEnabled && settings.embeddingsEnabled && !currentProvider?.apiKey) {
           new Notice('Embeddings are enabled but require an OpenAI API key. Please add your key in settings.');
         }
       }
@@ -189,8 +192,8 @@ export class EmbeddingManager {
   onunload(): void {
     try {
       // Close any open database connections
-      if (this.embeddingProvider && typeof this.embeddingProvider.close === 'function') {
-        this.embeddingProvider.close();
+      if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
+        (this.embeddingProvider as any).close();
       }
       
       console.log('Embedding manager unloaded successfully');

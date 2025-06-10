@@ -87,13 +87,18 @@ export interface MemorySettings {
     // Core settings
     enabled: boolean;
     embeddingsEnabled: boolean; // Toggle for enabling/disabling embeddings functionality
-    apiProvider: 'openai' | 'local';
-    openaiApiKey: string;
-    openaiOrganization?: string;
+    apiProvider: string; // Dynamic provider ID (e.g., 'openai', 'gemini', 'cohere')
     
-    // Model settings
-    embeddingModel: 'text-embedding-3-small' | 'text-embedding-3-large';
-    dimensions: number;
+    // Provider-specific settings
+    providerSettings: {
+        [providerId: string]: {
+            apiKey: string;
+            model: string;
+            dimensions: number;
+            organization?: string; // For providers that support organizations
+            customSettings?: Record<string, any>; // Provider-specific additional settings
+        };
+    };
     
     // Rate limiting
     maxTokensPerMonth: number;
@@ -166,9 +171,48 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     enabled: true,
     embeddingsEnabled: false, // Embeddings disabled by default until API key is set
     apiProvider: 'openai',
-    openaiApiKey: '',
-    embeddingModel: 'text-embedding-3-small',
-    dimensions: 1536,
+    
+    // Provider-specific settings
+    providerSettings: {
+        openai: {
+            apiKey: '',
+            model: 'text-embedding-3-small',
+            dimensions: 1536
+        },
+        gemini: {
+            apiKey: '',
+            model: 'models/text-embedding-004',
+            dimensions: 768
+        },
+        cohere: {
+            apiKey: '',
+            model: 'embed-multilingual-v3.0',
+            dimensions: 1024
+        },
+        mistral: {
+            apiKey: '',
+            model: 'mistral-embed',
+            dimensions: 1024
+        },
+        voyageai: {
+            apiKey: '',
+            model: 'voyage-3.5-lite',
+            dimensions: 1024
+        },
+        jina: {
+            apiKey: '',
+            model: 'jina-embeddings-v3',
+            dimensions: 1024
+        },
+        ollama: {
+            apiKey: '', // Not used for local models
+            model: 'nomic-embed-text',
+            dimensions: 768,
+            customSettings: {
+                url: 'http://127.0.0.1:11434/'
+            }
+        }
+    },
     maxTokensPerMonth: 1000000,
     apiRateLimitPerMinute: 500,
     chunkStrategy: 'paragraph',

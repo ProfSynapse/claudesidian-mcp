@@ -152,6 +152,77 @@ Claudesidian MCP offers multiple strategies for embedding your notes, giving you
 3. If you're concerned about API token usage, use "Manual" or "Startup" strategy
 4. Configure exclusion patterns to skip folders you don't want to index (like images, attachments, etc.)
 
+## Setting Up Ollama for Local Embeddings
+
+Ollama provides a way to run embedding models locally, offering complete privacy and eliminating API costs. Claudesidian MCP has built-in support for Ollama embedding models.
+
+### Installing Ollama on Windows
+
+1. **Download Ollama**:
+   - Visit https://ollama.com/download/windows
+   - Download the `OllamaSetup.exe` installer
+   - Run the installer and follow the setup wizard (no admin rights required)
+
+2. **Start Ollama Service**:
+   - Open Command Prompt or PowerShell
+   - Run: `ollama serve`
+   - Keep this terminal window open (Ollama runs in the background)
+
+3. **Download an Embedding Model**:
+   - Open a new terminal window
+   - Run: `ollama pull nomic-embed-text`
+   - Wait for the model to download (this may take a few minutes)
+
+4. **Verify Installation**:
+   - Test with: `ollama list`
+   - You should see `nomic-embed-text` in the list
+
+### Configuring Claudesidian for Ollama
+
+1. **Open Obsidian Settings**:
+   - Go to Settings → Claudesidian MCP → Memory tab
+
+2. **Select Ollama Provider**:
+   - Set "API Provider" to "Ollama (Local)"
+   - Set "Embedding Model" to "nomic-embed-text"
+   - Dimensions will automatically set to 768
+
+3. **Restart Obsidian** to apply the changes
+
+### Supported Ollama Models
+
+Claudesidian supports several Ollama embedding models:
+
+| Model | Dimensions | Description |
+|-------|------------|-------------|
+| `nomic-embed-text` | 768 | High-quality general-purpose embeddings |
+| `nomic-embed-text:latest` | 768 | Latest version of Nomic Embed Text |
+| `mxbai-embed-large` | 1024 | MixedBread AI's large embedding model |
+| `all-minilm` | 384 | Lightweight, fast embeddings |
+| `snowflake-arctic-embed` | 768 | Snowflake's Arctic embedding model |
+
+### Benefits of Local Ollama Embeddings
+
+- **Privacy**: All data stays on your machine
+- **Cost**: No API fees or token limits
+- **Speed**: Fast local processing
+- **Offline**: Works without internet connection
+- **Control**: Full control over model versions and updates
+
+### Troubleshooting Ollama Setup
+
+- **"Ollama not found"**: Ensure Ollama is installed and added to your system PATH
+- **Connection issues**: Make sure `ollama serve` is running and accessible at `http://127.0.0.1:11434`
+- **Model not found**: Verify the model was downloaded with `ollama list`
+- **Performance issues**: Ensure you have sufficient RAM for the embedding model
+
+### System Requirements
+
+- **Windows**: Windows 10/11 (64-bit)
+- **RAM**: At least 4GB free for embedding models
+- **Storage**: Additional space for models (nomic-embed-text is ~274MB)
+- **CPU**: Modern multi-core processor recommended
+
 ## Security
 
 - The plugin runs an MCP server that only accepts local connections

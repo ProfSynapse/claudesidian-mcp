@@ -70,8 +70,8 @@ export class EmbeddingService {
     this.plugin = plugin;
     this.settings = { ...DEFAULT_MEMORY_SETTINGS };
     
-    // Create a default embedding provider
-    this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
+    // Create a default embedding provider - will be properly initialized in initializeSettings
+    this.embeddingProvider = null as any; // Temporary placeholder
     
     // Initialize state manager
     this.stateManager = new IndexingStateManager(plugin);
@@ -92,10 +92,13 @@ export class EmbeddingService {
       const embeddingsWereEnabled = pluginSettings.embeddingsEnabled;
       
       // Initialize provider only if we have valid settings
-      if (this.settings.embeddingsEnabled && this.settings.openaiApiKey && this.settings.openaiApiKey.trim() !== "") {
-        this.initializeProvider();
+      const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+      if (this.settings.embeddingsEnabled && currentProvider?.apiKey && currentProvider.apiKey.trim() !== "") {
+        this.initializeProvider().catch(error => {
+          console.error('Failed to initialize provider:', error);
+        });
       } else if (this.settings.embeddingsEnabled) {
-        console.warn("OpenAI API key is required but not provided. Provider will not be initialized.");
+        console.warn(`${this.settings.apiProvider} API key is required but not provided. Provider will not be initialized.`);
       }
       
       this.initialized = true;
@@ -110,7 +113,8 @@ export class EmbeddingService {
    * Initialize the embedding provider
    */
   private async initializeProvider(): Promise<void> {
-    if (this.settings.embeddingsEnabled && this.settings.openaiApiKey) {
+    const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+    if (this.settings.embeddingsEnabled && currentProvider?.apiKey) {
       try {
         // Use a custom embedding function for OpenAI
         const openAiEmbedFunc = async (texts: string[]): Promise<number[][]> => {
@@ -120,11 +124,11 @@ export class EmbeddingService {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.settings.openaiApiKey}`
+                'Authorization': `Bearer ${currentProvider.apiKey}`
               },
               body: JSON.stringify({
                 input: texts,
-                model: this.settings.embeddingModel || 'text-embedding-ada-002'
+                model: currentProvider.model || 'text-embedding-3-small'
               })
             });
             
@@ -142,7 +146,7 @@ export class EmbeddingService {
         };
         
         // Create a new provider with the OpenAI function
-        this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider(this.settings.openaiApiKey, this.settings.embeddingModel);
+        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
         await this.embeddingProvider.initialize();
         
         console.log("OpenAI embedding provider initialized successfully");
@@ -151,13 +155,11 @@ export class EmbeddingService {
         this.settings.embeddingsEnabled = false;
         
         // Fall back to default provider
-        this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
-        await this.embeddingProvider.initialize();
+        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
       }
     } else {
       // Use the default provider in disabled mode
-      this.embeddingProvider = VectorStoreFactory.createEmbeddingProvider();
-      await this.embeddingProvider.initialize();
+      this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
       
       console.log("Embeddings are disabled - using default provider");
     }
@@ -236,13 +238,14 @@ export class EmbeddingService {
     
     // Only validate API key if embeddings are being enabled
     // Don't silently reset the setting - let the UI handle validation
-    if (settings.embeddingsEnabled && (!settings.openaiApiKey || settings.openaiApiKey.trim() === "")) {
-      console.warn("OpenAI API key is required but not provided. Provider will not be initialized.");
+    const currentProvider = settings.providerSettings[settings.apiProvider];
+    if (settings.embeddingsEnabled && (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
+      console.warn(`${settings.apiProvider} API key is required but not provided. Provider will not be initialized.`);
       // Don't modify the embeddingsEnabled setting here - leave it for UI to handle
     }
     
     // Reinitialize provider only if we have valid settings
-    if (settings.embeddingsEnabled && settings.openaiApiKey && settings.openaiApiKey.trim() !== "") {
+    if (settings.embeddingsEnabled && currentProvider?.apiKey && currentProvider.apiKey.trim() !== "") {
       await this.initializeProvider();
     }
     
@@ -716,7 +719,8 @@ export class EmbeddingService {
       // Update token usage stats
       if (totalTokensProcessed > 0) {
         try {
-          const embeddingModel = this.settings.embeddingModel || 'text-embedding-3-small';
+          const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+          const embeddingModel = currentProvider?.model || 'text-embedding-3-small';
           const provider = this.embeddingProvider;
           
           if (this.isTokenTrackingProvider(provider)) {
@@ -922,7 +926,8 @@ export class EmbeddingService {
       // Update token usage stats
       if (totalTokensProcessed > 0) {
         try {
-          const embeddingModel = this.settings.embeddingModel || 'text-embedding-3-small';
+          const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+          const embeddingModel = currentProvider?.model || 'text-embedding-3-small';
           const provider = this.embeddingProvider;
           
           if (this.isTokenTrackingProvider(provider)) {
@@ -1184,7 +1189,8 @@ export class EmbeddingService {
       if (totalTokensProcessed > 0) {
         try {
           // Update token usage
-          const embeddingModel = this.settings.embeddingModel || 'text-embedding-3-small';
+          const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+          const embeddingModel = currentProvider?.model || 'text-embedding-3-small';
           const provider = this.embeddingProvider;
           
           // Log important info for debugging
@@ -1240,7 +1246,7 @@ export class EmbeddingService {
                 'text-embedding-3-large': 0.00013
               };
               
-              const costPerThousand = costPerThousandTokens[embeddingModel] || 0.00002;
+              const costPerThousand = (costPerThousandTokens as any)[embeddingModel] || 0.00002;
               const cost = (totalTokensProcessed / 1000) * costPerThousand;
               
               // Add cost to all-time cost

@@ -5,6 +5,8 @@ import { IStorageOptions } from '../interfaces/IStorageOptions';
 import { ChromaVectorStore } from '../providers/chroma/ChromaVectorStore';
 import { ChromaEmbeddingProvider } from '../providers/chroma/ChromaEmbedding';
 import { VectorStoreConfig } from '../models/VectorStoreConfig';
+import { EmbeddingProviderRegistry } from '../providers/registry/EmbeddingProviderRegistry';
+import { MemorySettings } from '../../types';
 import { 
   WorkspaceCollection,
   MemoryTraceCollection,
@@ -12,6 +14,9 @@ import {
   SnapshotCollection,
   FileEmbeddingCollection
 } from '../collections';
+
+// Import provider registrations
+import '../providers/registry/providers';
 
 /**
  * Factory class for creating vector store instances and related services
@@ -24,46 +29,114 @@ export class VectorStoreFactory {
    * @returns Vector store instance
    */
   static createVectorStore(plugin: Plugin, options?: Partial<IStorageOptions>): IVectorStore {
-    // Use default config if none provided
     const config = options ? 
       new VectorStoreConfig(options) : 
       VectorStoreConfig.getDefaultConfig(`${plugin.manifest.dir}`);
     
-    // Create the vector store
     return new ChromaVectorStore(plugin, config);
   }
   
   /**
-   * Create an embedding provider
-   * @param apiKey Optional OpenAI API key
-   * @param model Optional embedding model
+   * Create an embedding provider based on memory settings
+   * @param settings Memory settings containing provider configuration
    * @returns Embedding provider instance
    */
-  static createEmbeddingProvider(
-    apiKey?: string,
-    model?: string
-  ): IEmbeddingProvider {
-    // If API key is provided, create OpenAI provider
-    if (apiKey) {
-      const OpenAIProvider = require('../providers/openai-provider').OpenAIProvider;
-      const settings = {
-        openaiApiKey: apiKey,
-        embeddingModel: model || 'text-embedding-3-small',
-        dimensions: 1536,
-        apiRateLimitPerMinute: 3000,
-        embeddingsEnabled: true
-      };
-      return new OpenAIProvider(settings);
+  static async createEmbeddingProvider(settings: MemorySettings): Promise<IEmbeddingProvider> {
+    const providerId = settings.apiProvider;
+    const providerSettings = settings.providerSettings?.[providerId];
+    
+    if (!providerSettings || !providerSettings.apiKey) {
+      console.log('No API key configured, using default ChromaDB embedding provider');
+      return new ChromaEmbeddingProvider(undefined, 1536);
     }
     
-    // Otherwise create default Chroma provider
-    return new ChromaEmbeddingProvider(undefined, 1536);
+    // Try to create provider using the registry
+    const embeddingFunction = await EmbeddingProviderRegistry.createEmbeddingFunction(
+      providerId,
+      providerSettings
+    );
+    
+    if (embeddingFunction) {
+      // Wrap the Chroma embedding function in our IEmbeddingProvider interface
+      return new ChromaEmbeddingProvider(
+        embeddingFunction.generate.bind(embeddingFunction),
+        providerSettings.dimensions,
+        providerSettings.model
+      );
+    }
+    
+    // Fallback to default provider
+    console.warn(`Failed to create ${providerId} provider, falling back to default`);
+    return new ChromaEmbeddingProvider(undefined, providerSettings.dimensions || 1536);
+  }
+  
+  /**
+   * Create an embedding provider from legacy settings (for migration)
+   * @param apiKey API key
+   * @param model Model name
+   * @returns Embedding provider instance
+   * @deprecated Use createEmbeddingProvider with MemorySettings instead
+   */
+  static async createLegacyEmbeddingProvider(
+    apiKey?: string,
+    model?: string
+  ): Promise<IEmbeddingProvider> {
+    if (!apiKey) {
+      return new ChromaEmbeddingProvider(undefined, 1536);
+    }
+    
+    // Create a temporary settings object for the legacy provider
+    const settings: MemorySettings = {
+      enabled: true,
+      embeddingsEnabled: true,
+      apiProvider: 'openai',
+      providerSettings: {
+        openai: {
+          apiKey,
+          model: model || 'text-embedding-3-small',
+          dimensions: 1536
+        }
+      },
+      maxTokensPerMonth: 1000000,
+      apiRateLimitPerMinute: 3000,
+      chunkStrategy: 'paragraph',
+      chunkSize: 512,
+      chunkOverlap: 50,
+      includeFrontmatter: true,
+      excludePaths: [],
+      minContentLength: 50,
+      embeddingStrategy: 'manual',
+      batchSize: 10,
+      concurrentRequests: 3,
+      processingDelay: 1000,
+      dbStoragePath: '',
+      autoCleanOrphaned: true,
+      maxDbSize: 500,
+      pruningStrategy: 'least-used',
+      defaultResultLimit: 10,
+      includeNeighbors: true,
+      graphBoostFactor: 0.3,
+      backlinksEnabled: true,
+      backlinksWeight: 0.5,
+      useFilters: true,
+      defaultThreshold: 0.3,
+      autoCreateSessions: true,
+      sessionNaming: 'timestamp',
+      autoCheckpoint: false,
+      checkpointInterval: 30,
+      maxStates: 10,
+      statePruningStrategy: 'oldest',
+      costPerThousandTokens: {
+        'text-embedding-3-small': 0.00002,
+        'text-embedding-3-large': 0.00013
+      }
+    };
+    
+    return this.createEmbeddingProvider(settings);
   }
   
   /**
    * Create workspace collection
-   * @param vectorStore Vector store
-   * @returns Workspace collection
    */
   static createWorkspaceCollection(vectorStore: IVectorStore): WorkspaceCollection {
     return new WorkspaceCollection(vectorStore);
@@ -71,8 +144,6 @@ export class VectorStoreFactory {
   
   /**
    * Create memory trace collection
-   * @param vectorStore Vector store
-   * @returns Memory trace collection
    */
   static createMemoryTraceCollection(vectorStore: IVectorStore): MemoryTraceCollection {
     return new MemoryTraceCollection(vectorStore);
@@ -80,8 +151,6 @@ export class VectorStoreFactory {
   
   /**
    * Create session collection
-   * @param vectorStore Vector store
-   * @returns Session collection
    */
   static createSessionCollection(vectorStore: IVectorStore): SessionCollection {
     return new SessionCollection(vectorStore);
@@ -89,8 +158,6 @@ export class VectorStoreFactory {
   
   /**
    * Create snapshot collection
-   * @param vectorStore Vector store
-   * @returns Snapshot collection
    */
   static createSnapshotCollection(vectorStore: IVectorStore): SnapshotCollection {
     return new SnapshotCollection(vectorStore);
@@ -98,8 +165,6 @@ export class VectorStoreFactory {
   
   /**
    * Create file embedding collection
-   * @param vectorStore Vector store
-   * @returns File embedding collection
    */
   static createFileEmbeddingCollection(vectorStore: IVectorStore): FileEmbeddingCollection {
     return new FileEmbeddingCollection(vectorStore);
@@ -107,8 +172,6 @@ export class VectorStoreFactory {
   
   /**
    * Create all standard collections
-   * @param vectorStore Vector store
-   * @returns Collection map
    */
   static createAllCollections(vectorStore: IVectorStore): {
     workspaces: WorkspaceCollection;
