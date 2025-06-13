@@ -27,6 +27,25 @@ import {
 } from '../utils/parameterHintUtils';
 
 /**
+ * Extract the agent name from a tool name that may have a vault name suffix
+ * @param toolName The full tool name (e.g., "vaultLibrarian_vault-name")
+ * @returns The agent name without vault suffix (e.g., "vaultLibrarian")
+ */
+function extractAgentName(toolName: string): string {
+    // Tool names with vault suffix follow the pattern: agentName_vaultName
+    // Find the last underscore and split there
+    const lastUnderscoreIndex = toolName.lastIndexOf('_');
+    
+    if (lastUnderscoreIndex === -1) {
+        // No underscore found, return the tool name as-is (single vault or legacy format)
+        return toolName;
+    }
+    
+    // Extract everything before the last underscore as the agent name
+    return toolName.substring(0, lastUnderscoreIndex);
+}
+
+/**
  * Request handler implementations for the MCP server
  * This module contains all the request handlers for various MCP operations
  * including resource management, prompts, and tool execution.
@@ -137,11 +156,13 @@ interface AgentSchema {
  *
  * @param agents Map of agent names to agent instances
  * @param isVaultEnabled Boolean indicating if vault access is enabled
+ * @param vaultName Optional vault name to add as suffix to tool names for multi-vault support
  * @returns Promise resolving to an object containing the tools list
  */
 export async function handleToolList(
     agents: Map<string, IAgent>,
-    isVaultEnabled: boolean
+    isVaultEnabled: boolean,
+    vaultName?: string
 ): Promise<{ tools: any[] }> {
     try {
         // Return empty list immediately if vault access is disabled
@@ -250,9 +271,12 @@ export async function handleToolList(
                 }
             }
             
+            // Create tool name with vault name suffix for multi-vault support
+            const toolName = vaultName ? `${agent.name}_${vaultName}` : agent.name;
+            
             // Register tool with complete schema
             tools.push({
-                name: agent.name,
+                name: toolName,
                 description: agent.description,
                 inputSchema: agentSchema
             });
@@ -481,7 +505,8 @@ export async function handleToolHelp(
     parsedArgs: any
 ): Promise<{ content: { type: string, text: string }[] }> {
     try {
-        const { name: agentName } = request.params;
+        const { name: fullToolName } = request.params;
+        const agentName = extractAgentName(fullToolName);
         const { mode } = parsedArgs as { mode: string };
         
         if (!mode) {
@@ -562,8 +587,8 @@ export async function handleToolExecution(
     try {
         const { name: fullToolName } = request.params;
         
-        // Use the full tool name directly as the agent name (for testing)
-        const agentName = fullToolName;
+        // Extract the agent name from the tool name (handles vault name suffixes)
+        const agentName = extractAgentName(fullToolName);
         
         // Extract the mode from the arguments
         if (!parsedArgs) {

@@ -163,8 +163,18 @@ export class MCPServer implements IMCPServer {
         // Handle tool listing - using handleToolList from requestHandlers.ts
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             try {
-                // Use the handleToolList function from requestHandlers.ts for complete schema generation
-                return await handleToolList(this.agents, true);
+                // Get sanitized vault name for multi-vault tool naming
+                let sanitizedVaultName = "";
+                try {
+                    const vaultName = this.app.vault.getName();
+                    sanitizedVaultName = sanitizeVaultName(vaultName);
+                } catch (error) {
+                    // If vault name extraction fails, proceed without suffix
+                    logger.systemWarn(`Failed to get vault name for tool naming: ${getErrorMessage(error)}`);
+                }
+                
+                // Use the handleToolList function with vault name for unique tool naming
+                return await handleToolList(this.agents, true, sanitizedVaultName);
             } catch (error) {
                 console.error("Error in tool list handler:", error);
                 logger.systemError(error as Error, 'Tool List Handler');
