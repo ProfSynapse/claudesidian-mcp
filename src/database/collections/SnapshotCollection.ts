@@ -1,18 +1,23 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceStateSnapshot } from '../workspace-types';
+import { EmbeddingService } from '../services/EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Collection manager for workspace state snapshots
  */
 export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnapshot> {
+  private embeddingService?: EmbeddingService;
+
   /**
    * Create a new snapshot collection
    * @param vectorStore Vector store instance
+   * @param embeddingService Optional embedding service for real embeddings
    */
-  constructor(vectorStore: IVectorStore) {
+  constructor(vectorStore: IVectorStore, embeddingService?: EmbeddingService) {
     super(vectorStore, 'snapshots');
+    this.embeddingService = embeddingService;
   }
   
   /**
@@ -29,12 +34,12 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
    * @param snapshot Snapshot object
    * @returns Storage object
    */
-  protected itemToStorage(snapshot: WorkspaceStateSnapshot): {
+  protected async itemToStorage(snapshot: WorkspaceStateSnapshot): Promise<{
     id: string;
     embedding: number[];
     metadata: Record<string, any>;
     document: string;
-  } {
+  }> {
     // Create a text representation for embedding
     const document = this.snapshotToDocument(snapshot);
     
@@ -56,8 +61,18 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
       isSnapshot: true,
     };
     
-    // Generate a simple embedding from the document
-    const embedding = this.generateSimpleEmbedding(document);
+    // Generate real embedding if service is available, otherwise use placeholder
+    let embedding: number[];
+    if (this.embeddingService && this.embeddingService.areEmbeddingsEnabled()) {
+      try {
+        embedding = await this.embeddingService.getEmbedding(document) || [];
+      } catch (error) {
+        console.warn('Failed to generate embedding for snapshot, using placeholder:', error);
+        embedding = this.generateSimpleEmbedding(document);
+      }
+    } else {
+      embedding = this.generateSimpleEmbedding(document);
+    }
     
     return {
       id: snapshot.id,

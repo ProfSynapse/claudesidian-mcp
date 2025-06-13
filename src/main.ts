@@ -240,7 +240,7 @@ export default class ClaudesidianPlugin extends Plugin {
         // Initialize services
         this.embeddingService = new EmbeddingService(this);
         this.searchService = new ChromaSearchService(this, this.vectorStore, this.embeddingService);
-        this.workspaceService = new WorkspaceService(this, this.vectorStore);
+        this.workspaceService = new WorkspaceService(this, this.vectorStore, this.embeddingService);
         this.memoryService = new MemoryService(this, this.vectorStore, this.embeddingService, this.settings);
         this.eventManager = new EventManager();
         

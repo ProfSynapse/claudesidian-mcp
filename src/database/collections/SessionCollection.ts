@@ -1,18 +1,23 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceSession } from '../workspace-types';
+import { EmbeddingService } from '../services/EmbeddingService';
 import { generateSessionId } from '../../utils/sessionUtils';
 
 /**
  * Collection manager for workspace sessions
  */
 export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
+  private embeddingService?: EmbeddingService;
+
   /**
    * Create a new session collection
    * @param vectorStore Vector store instance
+   * @param embeddingService Optional embedding service for real embeddings
    */
-  constructor(vectorStore: IVectorStore) {
+  constructor(vectorStore: IVectorStore, embeddingService?: EmbeddingService) {
     super(vectorStore, 'sessions');
+    this.embeddingService = embeddingService;
   }
   
   /**
@@ -29,12 +34,12 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
    * @param session Session object
    * @returns Storage object
    */
-  protected itemToStorage(session: WorkspaceSession): {
+  protected async itemToStorage(session: WorkspaceSession): Promise<{
     id: string;
     embedding: number[];
     metadata: Record<string, any>;
     document: string;
-  } {
+  }> {
     // Create a text representation for embedding
     const document = this.sessionToDocument(session);
     
@@ -53,8 +58,18 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
       isSession: true,
     };
     
-    // Generate a simple embedding from the document
-    const embedding = this.generateSimpleEmbedding(document);
+    // Generate real embedding if service is available, otherwise use placeholder
+    let embedding: number[];
+    if (this.embeddingService && this.embeddingService.areEmbeddingsEnabled()) {
+      try {
+        embedding = await this.embeddingService.getEmbedding(document) || [];
+      } catch (error) {
+        console.warn('Failed to generate embedding for session, using placeholder:', error);
+        embedding = this.generateSimpleEmbedding(document);
+      }
+    } else {
+      embedding = this.generateSimpleEmbedding(document);
+    }
     
     return {
       id: session.id,

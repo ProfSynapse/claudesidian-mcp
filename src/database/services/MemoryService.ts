@@ -64,8 +64,8 @@ export class MemoryService {
     
     // Create specialized collections
     this.memoryTraces = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
-    this.sessions = VectorStoreFactory.createSessionCollection(vectorStore);
-    this.snapshots = VectorStoreFactory.createSnapshotCollection(vectorStore);
+    this.sessions = VectorStoreFactory.createSessionCollection(vectorStore, embeddingService);
+    this.snapshots = VectorStoreFactory.createSnapshotCollection(vectorStore, embeddingService);
   }
   
   /**

@@ -7,6 +7,7 @@ import { ChromaEmbeddingProvider } from '../providers/chroma/ChromaEmbedding';
 import { VectorStoreConfig } from '../models/VectorStoreConfig';
 import { EmbeddingProviderRegistry } from '../providers/registry/EmbeddingProviderRegistry';
 import { MemorySettings } from '../../types';
+import { EmbeddingService } from '../services/EmbeddingService';
 import { 
   WorkspaceCollection,
   MemoryTraceCollection,
@@ -137,9 +138,11 @@ export class VectorStoreFactory {
   
   /**
    * Create workspace collection
+   * @param vectorStore Vector store instance
+   * @param embeddingService Optional embedding service for real embeddings
    */
-  static createWorkspaceCollection(vectorStore: IVectorStore): WorkspaceCollection {
-    return new WorkspaceCollection(vectorStore);
+  static createWorkspaceCollection(vectorStore: IVectorStore, embeddingService?: EmbeddingService): WorkspaceCollection {
+    return new WorkspaceCollection(vectorStore, embeddingService);
   }
   
   /**
@@ -151,16 +154,20 @@ export class VectorStoreFactory {
   
   /**
    * Create session collection
+   * @param vectorStore Vector store instance
+   * @param embeddingService Optional embedding service for real embeddings
    */
-  static createSessionCollection(vectorStore: IVectorStore): SessionCollection {
-    return new SessionCollection(vectorStore);
+  static createSessionCollection(vectorStore: IVectorStore, embeddingService?: EmbeddingService): SessionCollection {
+    return new SessionCollection(vectorStore, embeddingService);
   }
   
   /**
    * Create snapshot collection
+   * @param vectorStore Vector store instance
+   * @param embeddingService Optional embedding service for real embeddings
    */
-  static createSnapshotCollection(vectorStore: IVectorStore): SnapshotCollection {
-    return new SnapshotCollection(vectorStore);
+  static createSnapshotCollection(vectorStore: IVectorStore, embeddingService?: EmbeddingService): SnapshotCollection {
+    return new SnapshotCollection(vectorStore, embeddingService);
   }
   
   /**
@@ -172,8 +179,10 @@ export class VectorStoreFactory {
   
   /**
    * Create all standard collections
+   * @param vectorStore Vector store instance
+   * @param embeddingService Optional embedding service for real embeddings
    */
-  static createAllCollections(vectorStore: IVectorStore): {
+  static createAllCollections(vectorStore: IVectorStore, embeddingService?: EmbeddingService): {
     workspaces: WorkspaceCollection;
     memoryTraces: MemoryTraceCollection;
     sessions: SessionCollection;
@@ -181,10 +190,10 @@ export class VectorStoreFactory {
     fileEmbeddings: FileEmbeddingCollection;
   } {
     return {
-      workspaces: this.createWorkspaceCollection(vectorStore),
+      workspaces: this.createWorkspaceCollection(vectorStore, embeddingService),
       memoryTraces: this.createMemoryTraceCollection(vectorStore),
-      sessions: this.createSessionCollection(vectorStore),
-      snapshots: this.createSnapshotCollection(vectorStore),
+      sessions: this.createSessionCollection(vectorStore, embeddingService),
+      snapshots: this.createSnapshotCollection(vectorStore, embeddingService),
       fileEmbeddings: this.createFileEmbeddingCollection(vectorStore)
     };
   }

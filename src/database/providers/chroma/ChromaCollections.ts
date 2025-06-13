@@ -65,7 +65,12 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
     embedding: number[];
     metadata: Record<string, any>;
     document?: string;
-  };
+  } | Promise<{
+    id: string;
+    embedding: number[];
+    metadata: Record<string, any>;
+    document?: string;
+  }>;
   
   /**
    * Convert from storage format to item
@@ -85,7 +90,7 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
    * @returns ID of the added item
    */
   async add(item: T): Promise<string> {
-    const storage = this.itemToStorage(item);
+    const storage = await this.itemToStorage(item);
     
     await this.vectorStore.addItems(this.collectionName, {
       ids: [storage.id],
@@ -107,7 +112,7 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
       return [];
     }
     
-    const storageItems = items.map(item => this.itemToStorage(item));
+    const storageItems = await Promise.all(items.map(item => this.itemToStorage(item)));
     
     await this.vectorStore.addItems(this.collectionName, {
       ids: storageItems.map(item => item.id),
@@ -188,7 +193,7 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
     const updatedItem = { ...currentItem, ...updates } as T;
     
     // Convert to storage format
-    const storage = this.itemToStorage(updatedItem);
+    const storage = await this.itemToStorage(updatedItem);
     
     // Update in vector store
     await this.vectorStore.updateItems(this.collectionName, {

@@ -3,6 +3,7 @@ import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceCollection } from '../collections/WorkspaceCollection';
 import { ProjectWorkspace, HierarchyType, WorkspaceStatus, ItemStatus } from '../workspace-types';
 import { VectorStoreFactory } from '../factory/VectorStoreFactory';
+import { EmbeddingService } from './EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -33,9 +34,10 @@ export class WorkspaceService {
    * Create a new workspace service
    * @param _plugin Plugin instance (unused but kept for API compatibility)
    * @param vectorStore Vector store instance
+   * @param embeddingService Embedding service for real embeddings
    */
-  constructor(_plugin: Plugin, vectorStore: IVectorStore) {
-    this.collection = VectorStoreFactory.createWorkspaceCollection(vectorStore);
+  constructor(_plugin: Plugin, vectorStore: IVectorStore, embeddingService: EmbeddingService) {
+    this.collection = VectorStoreFactory.createWorkspaceCollection(vectorStore, embeddingService);
   }
   
   /**

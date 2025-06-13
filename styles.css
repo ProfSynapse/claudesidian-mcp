@@ -935,3 +935,35 @@ a:hover {
 .ollama-step a:hover {
     text-decoration: underline;
 }
+
+/* Dimension Warning Styles */
+.dimension-info-container {
+    background-color: var(--background-secondary);
+    border: 1px solid var(--interactive-accent);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 16px 0;
+    border-left: 4px solid var(--interactive-accent);
+}
+
+.dimension-info-text {
+    color: var(--text-normal);
+    margin: 0;
+    font-weight: 500;
+}
+
+.dimension-warning-container {
+    background-color: var(--background-modifier-error-rgb);
+    border: 1px solid var(--text-error);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 16px 0;
+    border-left: 4px solid var(--text-error);
+}
+
+.dimension-warning-text {
+    color: var(--text-error);
+    margin: 0 0 12px 0;
+    font-weight: 500;
+    line-height: 1.4;
+}

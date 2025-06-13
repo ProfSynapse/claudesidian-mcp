@@ -1,18 +1,23 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { ProjectWorkspace } from '../workspace-types';
+import { EmbeddingService } from '../services/EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Collection manager for project workspaces
  */
 export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> {
+  private embeddingService?: EmbeddingService;
+
   /**
    * Create a new workspace collection
    * @param vectorStore Vector store instance
+   * @param embeddingService Optional embedding service for real embeddings
    */
-  constructor(vectorStore: IVectorStore) {
+  constructor(vectorStore: IVectorStore, embeddingService?: EmbeddingService) {
     super(vectorStore, 'workspaces');
+    this.embeddingService = embeddingService;
   }
   
   /**
@@ -29,12 +34,12 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
    * @param workspace Workspace object
    * @returns Storage object
    */
-  protected itemToStorage(workspace: ProjectWorkspace): {
+  protected async itemToStorage(workspace: ProjectWorkspace): Promise<{
     id: string;
     embedding: number[];
     metadata: Record<string, any>;
     document: string;
-  } {
+  }> {
     // For workspaces, we'll create a simple text representation for embedding
     const document = this.workspaceToDocument(workspace);
     
@@ -59,9 +64,18 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       isWorkspace: true,
     };
     
-    // Generate a simple embedding from the document
-    // In production, this should be replaced with a proper embedding generation
-    const embedding = this.generateSimpleEmbedding(document);
+    // Generate real embedding if service is available, otherwise use placeholder
+    let embedding: number[];
+    if (this.embeddingService && this.embeddingService.areEmbeddingsEnabled()) {
+      try {
+        embedding = await this.embeddingService.getEmbedding(document) || [];
+      } catch (error) {
+        console.warn('Failed to generate embedding for workspace, using placeholder:', error);
+        embedding = this.generateSimpleEmbedding(document);
+      }
+    } else {
+      embedding = this.generateSimpleEmbedding(document);
+    }
     
     return {
       id: workspace.id,

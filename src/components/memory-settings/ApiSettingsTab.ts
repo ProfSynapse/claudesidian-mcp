@@ -182,6 +182,15 @@ export class ApiSettingsTab extends BaseSettingsTab {
             });
         }
         
+        // Add dimension locking warning if this is first setup
+        if (!this.embeddingsExist) {
+            const infoContainer = containerEl.createDiv({ cls: 'dimension-info-container' });
+            infoContainer.createEl('p', {
+                text: '💡 IMPORTANT: Once you create embeddings, you cannot change dimensions without deleting all existing data. Choose your embedding model carefully.',
+                cls: 'dimension-info-text'
+            });
+        }
+
         // API Provider dropdown
         const providerSetting = new Setting(containerEl)
             .setName('Embedding Provider')
@@ -490,7 +499,8 @@ export class ApiSettingsTab extends BaseSettingsTab {
                 
                 const warningText = warningContainer.createEl('p', {
                     text: `⚠️ WARNING: Existing embeddings use ${providerSettings.dimensions} dimensions. ` +
-                          `The selected model uses ${maxDimensions} dimensions. You need to delete all embeddings to switch models.`,
+                          `The selected model uses ${maxDimensions} dimensions. ` +
+                          `You must delete ALL embeddings (files, workspaces, sessions, snapshots, and memory traces) to switch dimensions.`,
                     cls: 'dimension-warning-text'
                 });
                 
@@ -501,8 +511,13 @@ export class ApiSettingsTab extends BaseSettingsTab {
                 
                 resetButton.addEventListener('click', async () => {
                     const confirmed = confirm(
-                        'WARNING: This will delete ALL existing embeddings. ' +
-                        'You will need to regenerate all embeddings after changing models. ' +
+                        'WARNING: This will delete ALL existing embeddings including:\n' +
+                        '• File embeddings\n' +
+                        '• Workspace data\n' +
+                        '• Session memory\n' +
+                        '• Snapshots\n' +
+                        '• Memory traces\n\n' +
+                        'You will need to regenerate ALL data after changing dimensions. ' +
                         'This operation cannot be undone. Continue?'
                     );
                     
