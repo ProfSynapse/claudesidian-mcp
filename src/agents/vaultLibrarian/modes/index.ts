@@ -1,4 +1,3 @@
-// Export the new unified modes
+// Export the universal search modes
 export * from './searchMode';
-export * from './vectorMode';
 export * from './batchMode';

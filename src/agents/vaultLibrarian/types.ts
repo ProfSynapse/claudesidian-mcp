@@ -1,231 +1,7 @@
-import { SearchWeights } from '../../database/utils/SearchOperations';
 import { CommonParameters, CommonResult } from '../../types';
 
-/**
- * Search content arguments
- */
-export interface SearchContentArgs extends CommonParameters, GraphBoostOptions {
-  /**
-   * Query to search for
-   */
-  query: string;
-  
-  /**
-   * Paths to search in (optional)
-   */
-  paths?: string[];
-  
-  /**
-   * Maximum number of results to return (optional)
-   */
-  limit?: number;
-
-  /**
-   * Whether to include metadata in the search (optional, default: true)
-   */
-  includeMetadata?: boolean;
-
-  /**
-   * Fields to search in (optional, default: ["title", "content", "tags"])
-   */
-  searchFields?: string[];
-
-  /**
-   * Custom weights for different search factors (optional)
-   */
-  weights?: Partial<SearchWeights>;
-
-  /**
-   * Whether to include content in the results (optional, default: false)
-   */
-  includeContent?: boolean;
-}
-
-/**
- * Search content result
- */
-export interface SearchContentResult extends CommonResult {
-  /**
-   * List of search results
-   */
-  results: SearchResultItem[];
-  
-  /**
-   * Total number of results
-   */
-  total: number;
-  
-  /**
-   * Average score of results (optional)
-   */
-  averageScore?: number;
-  
-  /**
-   * Path to the top result (optional)
-   */
-  topResult?: string;
-}
-
-/**
- * Search result item (individual search match)
- */
-export interface SearchResultItem {
-  /**
-   * Path to the file
-   */
-  path: string;
-  
-  /**
-   * Content snippet
-   */
-  snippet: string;
-  
-  /**
-   * Line number
-   */
-  line: number;
-  
-  /**
-   * Character position
-   */
-  position: number;
-  
-  /**
-   * Result score (optional)
-   */
-  score?: number;
-}
-
-/**
- * Search result (collection of search results with status)
- */
-export interface SearchResult extends CommonResult {
-  /**
-   * List of search result items
-   */
-  results?: SearchResultItem[];
-}
-
-/**
- * Search tag arguments
- */
-export interface SearchTagArgs extends CommonParameters {
-  /**
-   * Tag to search for
-   */
-  tag: string;
-  
-  /**
-   * Paths to search in (optional)
-   */
-  paths?: string[];
-  
-  /**
-   * Maximum number of results to return (optional)
-   */
-  limit?: number;
-}
-
-/**
- * Search tag result
- */
-export interface SearchTagResult extends CommonResult {
-  /**
-   * List of files with the tag
-   */
-  files: string[];
-  
-  /**
-   * Total number of files
-   */
-  total: number;
-}
-
-/**
- * Search property arguments
- */
-export interface SearchPropertyArgs extends CommonParameters {
-  /**
-   * Property key
-   */
-  key: string;
-  
-  /**
-   * Property value (optional)
-   */
-  value?: string;
-  
-  /**
-   * Paths to search in (optional)
-   */
-  paths?: string[];
-  
-  /**
-   * Maximum number of results to return (optional)
-   */
-  limit?: number;
-}
-
-/**
- * Search property result
- */
-export interface SearchPropertyResult extends CommonResult {
-  /**
-   * List of files with the property
-   */
-  files: PropertyMatch[];
-  
-  /**
-   * Total number of files
-   */
-  total: number;
-}
-
-/**
- * Property match
- */
-export interface PropertyMatch {
-  /**
-   * Path to the file
-   */
-  path: string;
-  
-  /**
-   * Property value
-   */
-  value: string;
-}
 
 
-/**
- * Batch search arguments
- */
-export interface BatchSearchArgs extends CommonParameters {
-  /**
-   * Array of search queries
-   */
-  queries: SearchContentArgs[];
-}
-
-/**
- * Batch search result
- */
-export interface BatchSearchResult extends CommonResult {
-  /**
-   * Array of search results
-   */
-  results: SearchContentResult[];
-  
-  /**
-   * Total number of queries processed
-   */
-  total: number;
-  
-  /**
-   * Any errors that occurred during processing
-   */
-  errors?: Record<string, string>;
-}
 
 
 /**
@@ -253,153 +29,237 @@ export interface GraphBoostOptions {
   seedNotes?: string[];
 }
 
+
 /**
- * Semantic search parameters
+ * Universal search category types
  */
-export interface SemanticSearchParams extends CommonParameters, GraphBoostOptions {
+export type CategoryType = 
+  | 'files'
+  | 'folders' 
+  | 'content'
+  | 'workspaces'
+  | 'sessions'
+  | 'snapshots'
+  | 'memory_traces'
+  | 'tags'
+  | 'properties';
+
+/**
+ * Universal search parameters
+ */
+export interface UniversalSearchParams extends CommonParameters, GraphBoostOptions {
   /**
-   * The query to search for
+   * Search query across all content types
    */
   query: string;
   
   /**
-   * Maximum number of results to return
+   * Maximum number of results per category (default: 5)
    */
   limit?: number;
   
   /**
-   * Similarity threshold (0-1)
+   * Categories to exclude from search
    */
-  threshold?: number;
-}
-
-/**
- * Combined search parameters (combines semantic search with metadata filtering)
- */
-export interface CombinedSearchParams extends SemanticSearchParams {
-  /**
-   * Optional filters to apply to the search
-   */
-  filters?: {
-    /**
-     * Filter by file tags
-     */
-    tags?: string[];
-    
-    /**
-     * Filter by file paths
-     */
-    paths?: string[];
-    
-    /**
-     * Filter by frontmatter properties
-     */
-    properties?: Record<string, any>;
-    
-    /**
-     * Filter by date range
-     */
-    dateRange?: {
-      start?: string;
-      end?: string;
-    };
-    
-    /**
-     * Graph boosting options
-     */
-    graphOptions?: {
-      /**
-       * Whether to use graph-based relevance boosting
-       */
-      useGraphBoost?: boolean;
-      
-      /**
-       * Graph boost factor (0-1)
-       */
-      boostFactor?: number;
-      
-      /**
-       * Maximum distance for graph connections
-       */
-      maxDistance?: number;
-      
-      /**
-       * List of seed note paths to prioritize in results
-       */
-      seedNotes?: string[];
-    };
-  };
-}
-
-/**
- * Semantic search result
- */
-export interface SemanticSearchResult extends CommonResult {
-  data?: {
-    matches: Array<{
-      similarity: number;
-      content: string;
-      filePath: string;
-      lineStart: number;
-      lineEnd: number;
-      metadata?: any;
-    }>;
-  };
-}
-
-/**
- * Create embeddings parameters
- */
-export interface CreateEmbeddingsParams extends CommonParameters {
-  /**
-   * Path to the file to index
-   */
-  filePath: string;
+  excludeCategories?: CategoryType[];
   
   /**
-   * Whether to force re-indexing even if the file has not changed
+   * Categories to prioritize (return more results)
    */
-  force?: boolean;
+  prioritizeCategories?: CategoryType[];
+  
+  /**
+   * Paths to restrict search to
+   */
+  paths?: string[];
+  
+  /**
+   * Whether to include content snippets in results (default: true)
+   */
+  includeContent?: boolean;
+  
+  /**
+   * Force semantic search even if traditional might be better (default: auto-detect)
+   */
+  forceSemanticSearch?: boolean;
+  
+  /**
+   * Similarity threshold for semantic search (0-1, default: 0.7)
+   */
+  semanticThreshold?: number;
 }
 
 /**
- * Create embeddings result
+ * Search result item for any category
  */
-export interface CreateEmbeddingsResult extends CommonResult {
-  data?: {
-    filePath: string;
-    chunks?: number;
+export interface UniversalSearchResultItem {
+  /**
+   * Item identifier (file path, workspace id, etc.)
+   */
+  id: string;
+  
+  /**
+   * Display title/name
+   */
+  title: string;
+  
+  /**
+   * Content snippet or description
+   */
+  snippet?: string;
+  
+  /**
+   * Search relevance score (0-1)
+   */
+  score: number;
+  
+  /**
+   * Search method used for this result
+   */
+  searchMethod: 'semantic' | 'fuzzy' | 'exact' | 'hybrid';
+  
+  /**
+   * Category-specific metadata
+   */
+  metadata?: Record<string, any>;
+  
+  /**
+   * Full content (if includeContent is true)
+   */
+  content?: string;
+}
+
+/**
+ * Search results for a specific category
+ */
+export interface SearchResultCategory {
+  /**
+   * Total number of results found in this category
+   */
+  count: number;
+  
+  /**
+   * Top results (up to limit)
+   */
+  results: UniversalSearchResultItem[];
+  
+  /**
+   * Whether more results are available beyond the limit
+   */
+  hasMore: boolean;
+  
+  /**
+   * Primary search method used for this category
+   */
+  searchMethod: 'semantic' | 'fuzzy' | 'exact' | 'hybrid';
+  
+  /**
+   * Whether semantic search was available for this category
+   */
+  semanticAvailable: boolean;
+}
+
+/**
+ * Universal search results organized by category
+ */
+export interface UniversalSearchResult extends CommonResult {
+  /**
+   * Original search query
+   */
+  query: string;
+  
+  /**
+   * Total number of results across all categories
+   */
+  totalResults: number;
+  
+  /**
+   * Search execution time in milliseconds
+   */
+  executionTime: number;
+  
+  /**
+   * Results organized by category
+   */
+  categories: {
+    files?: SearchResultCategory;
+    folders?: SearchResultCategory;
+    content?: SearchResultCategory;
+    workspaces?: SearchResultCategory;
+    sessions?: SearchResultCategory;
+    snapshots?: SearchResultCategory;
+    memory_traces?: SearchResultCategory;
+    tags?: SearchResultCategory;
+    properties?: SearchResultCategory;
+  };
+  
+  /**
+   * Overall search strategy information
+   */
+  searchStrategy: {
+    semanticAvailable: boolean;
+    categoriesSearched: CategoryType[];
+    categoriesExcluded: CategoryType[];
+    fallbacksUsed: CategoryType[];
   };
 }
 
 /**
- * Batch create embeddings parameters
+ * Batch universal search parameters
  */
-export interface BatchCreateEmbeddingsParams extends CommonParameters {
+export interface BatchUniversalSearchParams extends CommonParameters {
   /**
-   * Paths to the files to index
+   * Array of universal search queries to execute
    */
-  filePaths: string[];
+  searches: UniversalSearchParams[];
   
   /**
-   * Whether to force re-indexing even if files have not changed
+   * Whether to merge all results into a single response
    */
-  force?: boolean;
+  mergeResults?: boolean;
+  
+  /**
+   * Maximum concurrent searches to execute (default: 5)
+   */
+  maxConcurrency?: number;
 }
 
 /**
- * Batch create embeddings result
+ * Batch universal search results
  */
-export interface BatchCreateEmbeddingsResult extends CommonResult {
-  data?: {
-    results: Array<{
-      success: boolean;
-      filePath: string;
-      chunks?: number;
-      error?: string;
-    }>;
-    processed: number;
-    failed: number;
+export interface BatchUniversalSearchResult extends CommonResult {
+  /**
+   * Individual search results (if mergeResults is false)
+   */
+  searches?: UniversalSearchResult[];
+  
+  /**
+   * Merged search results (if mergeResults is true)
+   */
+  merged?: {
+    totalQueries: number;
+    totalResults: number;
+    combinedCategories: {
+      files?: SearchResultCategory;
+      folders?: SearchResultCategory;
+      content?: SearchResultCategory;
+      workspaces?: SearchResultCategory;
+      sessions?: SearchResultCategory;
+      snapshots?: SearchResultCategory;
+      memory_traces?: SearchResultCategory;
+      tags?: SearchResultCategory;
+      properties?: SearchResultCategory;
+    };
+  };
+  
+  /**
+   * Execution statistics
+   */
+  stats: {
+    totalExecutionTime: number;
+    queriesExecuted: number;
+    queriesFailed: number;
+    avgExecutionTime: number;
   };
 }
 

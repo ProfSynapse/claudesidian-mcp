@@ -3,7 +3,6 @@ import { BaseAgent } from '../baseAgent';
 import { VaultLibrarianConfig } from './config';
 import {
   SearchMode,
-  VectorMode,
   BatchMode
 } from './modes';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
@@ -11,6 +10,7 @@ import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { ChromaSearchService } from '../../database/services/ChromaSearchService';
+import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
@@ -22,6 +22,7 @@ export class VaultLibrarianAgent extends BaseAgent {
   private embeddingService: EmbeddingService | null = null;
   private memoryService: MemoryService | null = null;
   private searchService: ChromaSearchService | null = null;
+  private workspaceService: WorkspaceService | null = null;
   private settings: MemorySettings;
   
   /**
@@ -45,9 +46,10 @@ export class VaultLibrarianAgent extends BaseAgent {
     this.settings.embeddingsEnabled = false; // Disable by default until API key is provided
     
     // Define plugin using safe type check
+    let plugin: any = null;
     try {
       if (app.plugins) {
-        const plugin = app.plugins.getPlugin('claudesidian-mcp');
+        plugin = app.plugins.getPlugin('claudesidian-mcp');
         if (plugin) {
           // Plugin instance found
           // Safely access settings
@@ -77,6 +79,10 @@ export class VaultLibrarianAgent extends BaseAgent {
             if (services.searchService) {
               this.searchService = services.searchService;
             }
+            
+            if (services.workspaceService) {
+              this.workspaceService = services.workspaceService;
+            }
           }
         }
       }
@@ -85,27 +91,28 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.embeddingProvider = null;
     }
     
-    // Always register SearchMode (no vector database dependency)
-    this.registerMode(new SearchMode(app));
+    // Always register SearchMode (universal search with intelligent fallbacks)
+    this.registerMode(new SearchMode(
+      plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
+      this.searchService || undefined,
+      this.embeddingService || undefined, 
+      this.memoryService || undefined,
+      this.workspaceService || undefined
+    ));
     
-    // Conditionally register vector-dependent modes
+    // Always register BatchMode (supports both semantic and non-semantic users)
+    this.registerMode(new BatchMode(
+      plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
+      this.searchService || undefined,
+      this.embeddingService || undefined,
+      this.memoryService || undefined,
+      this.workspaceService || undefined
+    ));
+    
     if (enableVectorModes) {
-      console.log('Registering vector-dependent modes for VaultLibrarian');
-      this.registerMode(new BatchMode(
-        app, 
-        this.memoryService, 
-        this.searchService, 
-        this.embeddingService
-      ));
-      
-      this.registerMode(new VectorMode(
-        app, 
-        this.memoryService, 
-        this.searchService, 
-        this.embeddingService
-      ));
+      console.log('VaultLibrarian initialized with semantic search capabilities');
     } else {
-      console.log('Skipping vector-dependent modes for VaultLibrarian (memory disabled)');
+      console.log('VaultLibrarian initialized with traditional search (memory disabled)');
     }
     
   }
