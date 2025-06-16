@@ -114,6 +114,18 @@ export class MCPConnector {
                 }
             }
             
+            // Initialize memory manager (always available for basic workspace management)
+            let memoryManagerAgent;
+            try {
+                memoryManagerAgent = new MemoryManagerAgent(
+                    this.app,
+                    this.plugin
+                );
+            } catch (error) {
+                console.error("Error creating MemoryManagerAgent:", error);
+                console.warn("Will continue without memory manager");
+            }
+            
             // Register core agents
             this.agentManager.registerAgent(contentManagerAgent);
             this.agentManager.registerAgent(commandManagerAgent);
@@ -121,21 +133,13 @@ export class MCPConnector {
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
             
-            // Conditionally register memory-only agents
+            // Register memory manager if created successfully
+            if (memoryManagerAgent) {
+                this.agentManager.registerAgent(memoryManagerAgent);
+            }
+            
+            // Conditionally register vector-only agents
             if (isMemoryEnabled) {
-                
-                // Initialize memory manager with error handling
-                let memoryManagerAgent;
-                try {
-                    memoryManagerAgent = new MemoryManagerAgent(
-                        this.app,
-                        this.plugin
-                    );
-                    this.agentManager.registerAgent(memoryManagerAgent);
-                } catch (error) {
-                    console.error("Error creating MemoryManagerAgent:", error);
-                    console.warn("Will continue without memory manager");
-                }
                 
                 // Initialize vector manager with error handling
                 let vectorManagerAgent;

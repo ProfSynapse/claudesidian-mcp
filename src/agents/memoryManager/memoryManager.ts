@@ -61,6 +61,7 @@ export class MemoryManagerAgent extends BaseAgent {
     this.registerMode(new Modes.DeleteStateMode(this));
     
     // Register workspace modes
+    this.registerMode(new Modes.AddFilesToWorkspaceMode(this.app));
     this.registerMode(new Modes.CreateWorkspaceMode(this.app));
     this.registerMode(new Modes.DeleteWorkspaceMode(this.app));
     this.registerMode(new Modes.EditWorkspaceMode(this.app));

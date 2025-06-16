@@ -10,6 +10,7 @@ import { ClaudesidianPlugin } from '../utils/pluginTypes';
 import { SearchOperations } from '../../../../database/utils/SearchOperations';
 import { sanitizePath } from '../../../../utils/pathUtils';
 import { CacheManager } from '../../../../database/services/CacheManager';
+import { DirectoryTreeBuilder, DirectoryTreeUtils } from '../../../../utils/directoryTreeUtils';
 
 /**
  * Mode to load a workspace as the active context
@@ -21,6 +22,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   private memoryService: MemoryService | null = null;
   private cacheManager: CacheManager | null = null;
   private searchOperations: SearchOperations;
+  private directoryTreeBuilder: DirectoryTreeBuilder;
   
   /**
    * Create a new LoadWorkspaceMode
@@ -36,6 +38,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     this.app = app;
     this.plugin = app.plugins.getPlugin('claudesidian-mcp');
     this.searchOperations = new SearchOperations(app);
+    this.directoryTreeBuilder = new DirectoryTreeBuilder(app);
     
     // Safely access the plugin services
     if (this.plugin) {
@@ -169,6 +172,25 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         "1. Add 'key: true' to the file's YAML frontmatter\n" +
         "2. Use a standard filename like readme.md, index.md, summary.md, or moc.md";
       
+      // Generate directory structure if requested
+      let directoryStructure = undefined;
+      if (params.includeDirectoryStructure !== false) { // Default to true
+        try {
+          console.log('[LoadWorkspaceMode] Generating directory structure for workspace:', workspace.id);
+          directoryStructure = await this.generateDirectoryStructure(workspace, params);
+          console.log('[LoadWorkspaceMode] Directory structure generated successfully');
+        } catch (error) {
+          console.error('[LoadWorkspaceMode] Error generating directory structure:', error);
+          // Continue without directory structure rather than failing
+          directoryStructure = {
+            rootTree: undefined,
+            relatedTrees: undefined,
+            stats: { totalFiles: 0, totalFolders: 0, keyFiles: 0, relatedFiles: 0, maxDepth: 0 },
+            textView: `Error: ${(error as Error).message}`
+          };
+        }
+      }
+      
       // Prepare result
       return this.prepareResult(
         true,
@@ -188,9 +210,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             recentFiles,
             keyFiles,
             keyFileInstructions, // Include in context for direct access
+            relatedConcepts: [], // TODO: Implement concept extraction
+            allFiles: associatedNotes, // Use associated notes as all files for now
             associatedNotes,
             sessions,
-            states
+            states,
+            directoryStructure
           }
         },
         undefined,
@@ -212,9 +237,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             recentFiles: [],
             keyFiles: [],
             keyFileInstructions: defaultKeyFileInstructions,
+            relatedConcepts: [],
+            allFiles: [],
             associatedNotes: [],
             sessions: [],
-            states: []
+            states: [],
+            directoryStructure: undefined
           }
         },
         `Failed to load workspace: ${error.message}`
@@ -653,6 +681,143 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   }
   
   /**
+   * Generate directory structure for the workspace
+   */
+  private async generateDirectoryStructure(workspace: {
+    rootFolder: string;
+    relatedFolders?: string[];
+    relatedFiles?: string[];
+  }, params: LoadWorkspaceParameters): Promise<any> {
+    try {
+      const maxDepth = params.directoryTreeMaxDepth || 0; // 0 = unlimited
+      
+      // Build the root directory tree
+      const rootTree = await this.directoryTreeBuilder.buildTree(workspace.rootFolder, {
+        maxDepth,
+        includeMetadata: true,
+        markKeyFiles: true,
+        relatedFiles: workspace.relatedFiles || [],
+        includeExtensions: ['md'] // Focus on markdown files for Obsidian
+      });
+      
+      // Build trees for related folders
+      const relatedTrees = [];
+      if (workspace.relatedFolders && workspace.relatedFolders.length > 0) {
+        for (const folderPath of workspace.relatedFolders) {
+          const tree = await this.directoryTreeBuilder.buildTree(folderPath, {
+            maxDepth,
+            includeMetadata: true,
+            markKeyFiles: true,
+            relatedFiles: workspace.relatedFiles || [],
+            includeExtensions: ['md']
+          });
+          if (tree) {
+            relatedTrees.push(tree);
+          }
+        }
+      }
+      
+      // Calculate statistics
+      let totalStats = {
+        totalFiles: 0,
+        totalFolders: 0,
+        keyFiles: 0,
+        relatedFiles: 0,
+        maxDepth: 0
+      };
+      
+      if (rootTree) {
+        const rootStats = DirectoryTreeUtils.getTreeStats(rootTree);
+        totalStats.totalFiles += rootStats.totalFiles;
+        totalStats.totalFolders += rootStats.totalFolders;
+        totalStats.keyFiles += rootStats.keyFiles;
+        totalStats.relatedFiles += rootStats.relatedFiles;
+        totalStats.maxDepth = Math.max(totalStats.maxDepth, rootStats.maxDepth);
+      }
+      
+      for (const tree of relatedTrees) {
+        const stats = DirectoryTreeUtils.getTreeStats(tree);
+        totalStats.totalFiles += stats.totalFiles;
+        totalStats.totalFolders += stats.totalFolders;
+        totalStats.keyFiles += stats.keyFiles;
+        totalStats.relatedFiles += stats.relatedFiles;
+        totalStats.maxDepth = Math.max(totalStats.maxDepth, stats.maxDepth);
+      }
+      
+      // Generate text representation
+      let textView = '';
+      if (rootTree) {
+        textView += `📁 Root Folder: ${workspace.rootFolder}\n`;
+        textView += DirectoryTreeUtils.treeToText(rootTree, '  ');
+      }
+      
+      if (relatedTrees.length > 0) {
+        textView += '\n📂 Related Folders:\n';
+        for (const tree of relatedTrees) {
+          textView += `\n📁 ${tree.path}\n`;
+          textView += DirectoryTreeUtils.treeToText(tree, '  ');
+        }
+      }
+      
+      // Add related files that are not in any of the trees
+      if (workspace.relatedFiles && workspace.relatedFiles.length > 0) {
+        const filesInTrees = new Set<string>();
+        
+        // Collect all file paths from trees
+        const collectFilePaths = (node: any) => {
+          if (node.type === 'file') {
+            filesInTrees.add(node.path);
+          }
+          if (node.children) {
+            for (const child of node.children) {
+              collectFilePaths(child);
+            }
+          }
+        };
+        
+        if (rootTree) collectFilePaths(rootTree);
+        for (const tree of relatedTrees) {
+          collectFilePaths(tree);
+        }
+        
+        // Find related files not in trees
+        const isolatedFiles = workspace.relatedFiles.filter(filePath => 
+          !filesInTrees.has(filePath)
+        );
+        
+        if (isolatedFiles.length > 0) {
+          textView += '\n🔗 Additional Related Files:\n';
+          for (const filePath of isolatedFiles) {
+            textView += `  📄 ${filePath}\n`;
+          }
+        }
+      }
+      
+      return {
+        rootTree,
+        relatedTrees: relatedTrees.length > 0 ? relatedTrees : undefined,
+        stats: totalStats,
+        textView
+      };
+      
+    } catch (error) {
+      console.warn('Error generating directory structure:', error);
+      return {
+        rootTree: undefined,
+        relatedTrees: undefined,
+        stats: {
+          totalFiles: 0,
+          totalFolders: 0,
+          keyFiles: 0,
+          relatedFiles: 0,
+          maxDepth: 0
+        },
+        textView: `Error generating directory structure: ${(error as Error).message}`
+      };
+    }
+  }
+  
+  /**
    * Get the parameter schema
    */
   getParameterSchema(): Record<string, any> {
@@ -677,6 +842,14 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         specificPhaseId: {
           type: 'string',
           description: 'Load a specific phase/task instead of whole workspace'
+        },
+        includeDirectoryStructure: {
+          type: 'boolean',
+          description: 'Whether to include hierarchical directory structure (default: true)'
+        },
+        directoryTreeMaxDepth: {
+          type: 'number',
+          description: 'Maximum depth for directory tree traversal (0 = unlimited, default: 0)'
         },
         ...commonSchema
       },
@@ -751,6 +924,16 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               type: 'string',
               description: 'Instructions for how to designate key files within this workspace (duplicate of workspace.keyFileInstructions for convenience)'
             },
+            relatedConcepts: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Related concepts and topics extracted from workspace content'
+            },
+            allFiles: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'All files associated with this workspace'
+            },
             associatedNotes: {
               type: 'array',
               items: { type: 'string' },
@@ -781,9 +964,39 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                 }
               },
               description: 'Saved states associated with this workspace'
+            },
+            directoryStructure: {
+              type: 'object',
+              properties: {
+                rootTree: {
+                  type: 'object',
+                  description: 'Hierarchical directory tree of the root folder'
+                },
+                relatedTrees: {
+                  type: 'array',
+                  items: { type: 'object' },
+                  description: 'Directory trees for related folders'
+                },
+                stats: {
+                  type: 'object',
+                  properties: {
+                    totalFiles: { type: 'number', description: 'Total number of files' },
+                    totalFolders: { type: 'number', description: 'Total number of folders' },
+                    keyFiles: { type: 'number', description: 'Number of key files' },
+                    relatedFiles: { type: 'number', description: 'Number of related files' },
+                    maxDepth: { type: 'number', description: 'Maximum depth of directory tree' }
+                  },
+                  description: 'Statistics about the directory structure'
+                },
+                textView: {
+                  type: 'string',
+                  description: 'Human-readable text representation of the directory tree'
+                }
+              },
+              description: 'Complete directory structure information'
             }
           },
-          required: ['recentFiles', 'keyFiles', 'keyFileInstructions', 'associatedNotes', 'sessions', 'states']
+          required: ['recentFiles', 'keyFiles', 'keyFileInstructions', 'relatedConcepts', 'allFiles', 'associatedNotes', 'sessions', 'states']
         }
       }
     };
