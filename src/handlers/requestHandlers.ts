@@ -663,33 +663,6 @@ export async function handleToolExecution(
                     );
                 }
             }
-        } else if (agentName === 'vaultLibrarian') {
-            if (mode === 'search') {
-                if (!params.type) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: type for search mode (must be one of: content, tag, property)`
-                    );
-                }
-                
-                // Additional validations based on search type
-                if (params.type === 'content' && !params.query) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: query for content search`
-                    );
-                } else if (params.type === 'tag' && !params.tag) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: tag for tag search`
-                    );
-                } else if (params.type === 'property' && !params.key) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: key for property search`
-                    );
-                }
-            }
         }
         
         // Execute the agent with the specified mode
