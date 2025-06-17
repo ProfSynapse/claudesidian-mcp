@@ -204,10 +204,6 @@ export async function handleToolList(
                     // Get the parameter schema for this mode
                     const modeSchema = mode.getParameterSchema();
                     
-                    // Add debug logging for VaultLibrarian search mode
-                    if (agent.name === 'vaultLibrarian' && mode.slug === 'search') {
-                        console.log(`DEBUG: VaultLibrarian search mode schema:`, JSON.stringify(modeSchema, null, 2));
-                    }
                     
                     if (modeSchema && typeof modeSchema === 'object') {
                         // Create a copy of the schema to avoid modifying the original
@@ -697,19 +693,9 @@ export async function handleToolExecution(
             logger.systemWarn(`Failed to get parameter schema for mode ${mode}: ${getErrorMessage(error)}`);
         }
         
-        // Add debug logging for VaultLibrarian search validation
-        if (agentName === 'vaultLibrarian' && mode === 'search') {
-            console.log(`DEBUG: VaultLibrarian search - Raw params:`, JSON.stringify(params, null, 2));
-            console.log(`DEBUG: VaultLibrarian search - Param schema:`, JSON.stringify(paramSchema, null, 2));
-        }
         
         // Validate common parameters with enhanced schema-based validation
         const enhancedParams = validateToolParams(params, paramSchema);
-        
-        // Add debug logging after validation
-        if (agentName === 'vaultLibrarian' && mode === 'search') {
-            console.log(`DEBUG: VaultLibrarian search - Enhanced params:`, JSON.stringify(enhancedParams, null, 2));
-        }
         
         // Validate session ID if SessionContextManager is available
         let originalSessionId = params.sessionId;
