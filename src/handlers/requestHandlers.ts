@@ -620,29 +620,7 @@ export async function handleToolExecution(
         }
         
         // Additional validation for specific modes
-        if (agentName === 'projectManager') {
-            if (mode === 'createWorkspace') {
-                if (!params.name) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: name for createWorkspace mode`
-                    );
-                }
-                if (!params.rootFolder) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: rootFolder for createWorkspace mode`
-                    );
-                }
-            } else if (mode === 'loadWorkspace') {
-                if (!params.id) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
-                        `Missing required parameter: id for loadWorkspace mode`
-                    );
-                }
-            }
-        } else if (agentName === 'memoryManager') {
+        if (agentName === 'memoryManager') {
             if (mode === 'createState') {
                 if (!params.name) {
                     throw new McpError(

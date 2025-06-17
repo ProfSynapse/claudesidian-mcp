@@ -256,7 +256,7 @@ flowchart TD
 
 ### Available Agents and Their Modes
 
-The plugin features seven specialized agents, each handling a specific domain of functionality:
+The plugin features six specialized agents, each handling a specific domain of functionality:
 
 #### 1. ContentManager Agent
 The ContentManager agent provides operations for reading and editing notes in the vault (combines functionality of the previous NoteEditor and NoteReader agents).
@@ -281,17 +281,7 @@ The CommandManager agent provides operations for executing commands from the com
 | listCommands   | List available commands           | filter (optional)                              |
 | executeCommand | Execute a command by ID           | id                                             |
 
-#### 3. ProjectManager Agent
-The ProjectManager agent provides operations for managing projects.
-
-| Mode         | Description                     | Parameters                                     |
-|--------------|---------------------------------|------------------------------------------------|
-| projectPlan  | Generate a project plan         | primaryGoal, subgoals, path                    |
-| askQuestion  | Ask a question about a project  | context, questions                             |
-| checkpoint   | Create a project checkpoint     | description, progressSummary, checkpointReason, nextStep, projectPath |
-| completion   | Record project completion       | summary, projectPath                          |
-
-#### 4. VaultManager Agent
+#### 3. VaultManager Agent
 The VaultManager agent provides operations for managing files and folders in the vault.
 
 | Mode         | Description                     | Parameters                                     |
@@ -305,7 +295,7 @@ The VaultManager agent provides operations for managing files and folders in the
 | moveFolder   | Move a folder to a new location | path, newPath, overwrite                       |
 | duplicateNote| Create a duplicate of a note    | sourcePath, targetPath, overwrite             |
 
-#### 5. VaultLibrarian Agent
+#### 4. VaultLibrarian Agent
 The VaultLibrarian agent provides operations for searching and navigating the vault.
 
 | Mode       | Description                       | Parameters                                     |
@@ -314,7 +304,7 @@ The VaultLibrarian agent provides operations for searching and navigating the va
 | vector     | Perform semantic vector search    | query, limit, filter, includeContent          |
 | batch      | Perform batch operations          | operations[]                                   |
 
-#### 6. MemoryManager Agent
+#### 5. MemoryManager Agent
 The MemoryManager agent provides operations for managing sessions, states, and workspaces.
 
 | Mode            | Description                         | Parameters                                    |
@@ -335,20 +325,6 @@ The MemoryManager agent provides operations for managing sessions, states, and w
 | deleteWorkspace | Delete a workspace                  | workspaceId, deleteAll                        |
 | loadWorkspace   | Load a workspace                    | workspaceId                                   |
 
-#### 7. VectorManager Agent
-The VectorManager agent provides operations for managing vector collections and embeddings.
-
-| Mode               | Description                              | Parameters                                    |
-|--------------------|------------------------------------------|-----------------------------------------------|
-| createCollection   | Create a new vector collection           | name, metadata                                |
-| listCollections    | List available vector collections        | pattern                                       |
-| getCollection      | Get details about a collection           | name, includeStats                            |
-| deleteCollection   | Delete a vector collection               | name, force                                   |
-| collectionAddItems | Add items to a collection                | collectionName, ids, embeddings, metadatas    |
-| createEmbedding    | Create embeddings from text              | collectionName, items                         |
-| getEmbedding       | Get embeddings by ID                     | collectionName, ids, includeEmbeddings        |
-| deleteEmbedding    | Delete embeddings from a collection      | collectionName, ids                           |
-| batchEmbedding     | Perform batch operations on embeddings   | collectionName, operation, items              |
 
 ```mermaid
 flowchart LR
@@ -361,29 +337,27 @@ flowchart LR
         subgraph "Agent Registry"
             ContentManager[Content Manager]
             CommandManager[Command Manager]
-            ProjectManager[Project Manager]
             VaultManager[Vault Manager]
             VaultLibrarian[Vault Librarian]
             MemoryManager[Memory Manager]
-            VectorManager[Vector Manager]
         end
         
-        subgraph "Example: Vector Manager Modes"
-            CreateCollection[Create Collection]
-            ListCollections[List Collections]
-            GetCollection[Get Collection]
-            CreateEmbedding[Create Embedding]
-            BatchEmbedding[Batch Embedding]
+        subgraph "Example: Memory Manager Modes"
+            CreateSession[Create Session]
+            ListSessions[List Sessions]
+            CreateWorkspace[Create Workspace]
+            LoadWorkspace[Load Workspace]
+            CreateState[Create State]
         end
     end
     
     Client -->|executeMode| MCPServer
-    MCPServer -->|routes request| VectorManager
-    VectorManager -->|executes| CreateCollection
-    VectorManager -->|executes| ListCollections
-    VectorManager -->|executes| GetCollection
-    VectorManager -->|executes| CreateEmbedding
-    VectorManager -->|executes| BatchEmbedding
+    MCPServer -->|routes request| MemoryManager
+    MemoryManager -->|executes| CreateSession
+    MemoryManager -->|executes| ListSessions
+    MemoryManager -->|executes| CreateWorkspace
+    MemoryManager -->|executes| LoadWorkspace
+    MemoryManager -->|executes| CreateState
 ```
 
 ## Key Extensibility Features:

@@ -7,11 +7,9 @@ import { SessionContextManager, WorkspaceContext } from './services/SessionConte
 import {
     ContentManagerAgent,
     CommandManagerAgent,
-    ProjectManagerAgent,
     VaultManagerAgent,
     VaultLibrarianAgent,
-    MemoryManagerAgent,
-    VectorManagerAgent
+    MemoryManagerAgent
 } from './agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
@@ -86,10 +84,6 @@ export class MCPConnector {
                 memoryService
             );
             
-            const projectManagerAgent = new ProjectManagerAgent(
-                this.app, 
-                this.plugin
-            );
             
             const vaultManagerAgent = new VaultManagerAgent(
                 this.app
@@ -129,7 +123,6 @@ export class MCPConnector {
             // Register core agents
             this.agentManager.registerAgent(contentManagerAgent);
             this.agentManager.registerAgent(commandManagerAgent);
-            this.agentManager.registerAgent(projectManagerAgent);
             this.agentManager.registerAgent(vaultManagerAgent);
             this.agentManager.registerAgent(vaultLibrarianAgent);
             
@@ -141,19 +134,8 @@ export class MCPConnector {
             // Conditionally register vector-only agents
             if (isMemoryEnabled) {
                 
-                // Initialize vector manager with error handling
-                let vectorManagerAgent;
-                try {
-                    vectorManagerAgent = new VectorManagerAgent(
-                        this.plugin
-                    );
-                    this.agentManager.registerAgent(vectorManagerAgent);
-                } catch (error) {
-                    console.error("Error creating VectorManagerAgent:", error);
-                    console.warn("Will continue without vector manager");
-                }
             } else {
-                console.log("Memory/embeddings disabled - skipping vector-dependent agents (VaultLibrarian, MemoryManager, VectorManager)");
+                console.log("Memory/embeddings disabled - skipping vector-dependent agents (VaultLibrarian, MemoryManager)");
             }
             
             // Register all agents from the agent manager with the server
@@ -351,16 +333,6 @@ export class MCPConnector {
         }
     }
     
-    /**
-     * Get the vector manager instance
-     */
-    getVectorManager(): VectorManagerAgent | null {
-        try {
-            return this.agentManager.getAgent('vectorManager') as VectorManagerAgent;
-        } catch (error) {
-            return null;
-        }
-    }
     
     /**
      * Get the session context manager instance

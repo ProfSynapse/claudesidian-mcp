@@ -60,11 +60,6 @@ export class WhatIsClaudesidianAccordion {
             'Executes Obsidian commands on your behalf using the command palette (Control+P/Cmd+P). Can list available commands and execute them, enabling access to any functionality in the command palette, automating tasks, and triggering plugin features.'
         );
         
-        this.createAgentDescription(
-            agentsContainer,
-            'Project Manager',
-            'Manages projects with planning, checkpointing, question-answering, and completion tracking capabilities. Helps organize complex tasks, create project plans, track progress, and maintain project context across sessions.'
-        );
         
         this.createAgentDescription(
             agentsContainer,
@@ -84,11 +79,6 @@ export class WhatIsClaudesidianAccordion {
             'Manages workspace sessions, state snapshots, and persistent memory across conversations. Provides operations for creating, listing, editing, and deleting sessions and snapshot states.'
         );
         
-        this.createAgentDescription(
-            agentsContainer,
-            'Vector Manager',
-            'Manages vector collections and embeddings with operations for creating, retrieving, updating, and deleting collections and embeddings. Enables powerful semantic search and knowledge organization through vector embeddings.'
-        );
 
         // Example Interactions section within intro
         const examplesSection = content.createEl('div', { cls: 'mcp-section' });

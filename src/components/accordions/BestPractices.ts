@@ -141,8 +141,5 @@ Please work through this systematically, creating the structure and initializing
         commandsList.createEl('li', {
             text: '/search - "Search vault content using VaultLibrarian"'
         });
-        commandsList.createEl('li', {
-            text: '/vector - "Perform semantic search with VectorManager"'
-        });
     }
 }
