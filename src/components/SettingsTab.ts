@@ -98,6 +98,19 @@ export class SettingsTab extends PluginSettingTab {
             text: `Current version: ${this.plugin.manifest.version}` 
         });
         
+        // Display available update notification if there's an update
+        if (this.settings.settings.availableUpdateVersion) {
+            const updateAlert = updateSection.createEl('div', { 
+                cls: 'mcp-update-alert',
+                attr: { style: 'background-color: var(--interactive-accent); color: var(--text-on-accent); padding: 10px; border-radius: 5px; margin: 10px 0;' }
+            });
+            updateAlert.createEl('strong', { text: '🎉 Update Available!' });
+            updateAlert.createEl('br');
+            updateAlert.createEl('span', { 
+                text: `Version ${this.settings.settings.availableUpdateVersion} is ready to install.` 
+            });
+        }
+        
         // Display last update info if available
         if (this.settings.settings.lastUpdateVersion && this.settings.settings.lastUpdateDate) {
             const lastUpdateDate = new Date(this.settings.settings.lastUpdateDate);
@@ -109,27 +122,62 @@ export class SettingsTab extends PluginSettingTab {
             });
         }
         
+        // Display last check date if available
+        if (this.settings.settings.lastUpdateCheckDate) {
+            const lastCheckDate = new Date(this.settings.settings.lastUpdateCheckDate);
+            const formattedCheckDate = lastCheckDate.toLocaleDateString() + ' ' + 
+                                     lastCheckDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            updateSection.createEl('p', {
+                text: `Last checked: ${formattedCheckDate}`,
+                attr: { style: 'color: var(--text-muted); font-size: 0.9em;' }
+            });
+        }
+        
         // Add update button
         new Setting(updateSection)
-            .setName('Check for Updates')
+            .setName('Manual Update Check')
             .setDesc('Check for and install the latest version')
             .addButton((button: ButtonComponent) => {
-                button.setButtonText('Update Plugin')
+                // Change button text based on whether an update is available
+                const buttonText = this.settings.settings.availableUpdateVersion 
+                    ? `Install v${this.settings.settings.availableUpdateVersion}` 
+                    : 'Check for Updates';
+                
+                button.setButtonText(buttonText)
                     .onClick(async () => {
                         button.setDisabled(true);
                         try {
                             const updateManager = new UpdateManager(this.plugin);
                             const hasUpdate = await updateManager.checkForUpdate();
                             
-                            if (!hasUpdate) {
-                                new Notice('You are already on the latest version!');
-                                return;
-                            }
-
-                            await updateManager.updatePlugin();
+                            // Update the check date and available version
+                            this.settings.settings.lastUpdateCheckDate = new Date().toISOString();
                             
-                            // Refresh the settings display to show the updated version
+                            if (hasUpdate) {
+                                // Get the latest version info
+                                const release = await (updateManager as any).fetchLatestRelease();
+                                const availableVersion = release.tag_name.replace('v', '');
+                                this.settings.settings.availableUpdateVersion = availableVersion;
+                                
+                                await updateManager.updatePlugin();
+                                
+                                // Clear the available update after successful installation
+                                this.settings.settings.availableUpdateVersion = undefined;
+                                
+                                // Refresh the settings display to show the updated version
+                                this.display();
+                            } else {
+                                // Clear any stored available update version
+                                this.settings.settings.availableUpdateVersion = undefined;
+                                new Notice('You are already on the latest version!');
+                            }
+                            
+                            await this.settings.saveSettings();
+                            
+                            // Refresh display to update UI
                             this.display();
+                            
                         } catch (error) {
                             new Notice(`Update failed: ${(error as Error).message}`);
                         } finally {

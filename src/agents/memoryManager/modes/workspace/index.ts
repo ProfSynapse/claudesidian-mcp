@@ -4,6 +4,7 @@ import { DeleteWorkspaceMode } from './deleteWorkspaceMode';
 import { EditWorkspaceMode } from './editWorkspaceMode';
 import { ListWorkspacesMode } from './listWorkspacesMode';
 import { LoadWorkspaceMode } from './loadWorkspaceMode';
+import { ManageAssociatedNotesMode } from './manageAssociatedNotesMode';
 
 export {
   AddFilesToWorkspaceMode,
@@ -11,5 +12,6 @@ export {
   DeleteWorkspaceMode,
   EditWorkspaceMode,
   ListWorkspacesMode,
-  LoadWorkspaceMode
+  LoadWorkspaceMode,
+  ManageAssociatedNotesMode
 };

@@ -204,6 +204,11 @@ export async function handleToolList(
                     // Get the parameter schema for this mode
                     const modeSchema = mode.getParameterSchema();
                     
+                    // Add debug logging for VaultLibrarian search mode
+                    if (agent.name === 'vaultLibrarian' && mode.slug === 'search') {
+                        console.log(`DEBUG: VaultLibrarian search mode schema:`, JSON.stringify(modeSchema, null, 2));
+                    }
+                    
                     if (modeSchema && typeof modeSchema === 'object') {
                         // Create a copy of the schema to avoid modifying the original
                         const modeSchemaCopy = JSON.parse(JSON.stringify(modeSchema));
@@ -274,6 +279,13 @@ export async function handleToolList(
             // Create tool name with vault name suffix for multi-vault support
             const toolName = vaultName ? `${agent.name}_${vaultName}` : agent.name;
             
+            // Add debug logging for VaultLibrarian final schema
+            if (agent.name === 'vaultLibrarian') {
+                console.log(`DEBUG: Final VaultLibrarian agent schema:`, JSON.stringify(agentSchema, null, 2));
+                console.log(`DEBUG: VaultLibrarian required fields:`, agentSchema.required);
+                console.log(`DEBUG: VaultLibrarian allOf conditions:`, JSON.stringify(agentSchema.allOf, null, 2));
+            }
+            
             // Register tool with complete schema
             tools.push({
                 name: toolName,
@@ -331,6 +343,10 @@ function validateToolParams(params: any, schema?: any): any {
     if (schema) {
         const validationErrors = validateParams(enhancedParams, schema);
         if (validationErrors.length > 0) {
+            // Add debug logging for validation errors
+            console.log('DEBUG: Validation errors found:', JSON.stringify(validationErrors, null, 2));
+            console.log('DEBUG: Schema used for validation:', JSON.stringify(schema, null, 2));
+            console.log('DEBUG: Params being validated:', JSON.stringify(enhancedParams, null, 2));
             // Generate more detailed parameter hints for the validation errors
             const hints = generateHintsForErrors(validationErrors, schema);
             
@@ -681,8 +697,19 @@ export async function handleToolExecution(
             logger.systemWarn(`Failed to get parameter schema for mode ${mode}: ${getErrorMessage(error)}`);
         }
         
+        // Add debug logging for VaultLibrarian search validation
+        if (agentName === 'vaultLibrarian' && mode === 'search') {
+            console.log(`DEBUG: VaultLibrarian search - Raw params:`, JSON.stringify(params, null, 2));
+            console.log(`DEBUG: VaultLibrarian search - Param schema:`, JSON.stringify(paramSchema, null, 2));
+        }
+        
         // Validate common parameters with enhanced schema-based validation
         const enhancedParams = validateToolParams(params, paramSchema);
+        
+        // Add debug logging after validation
+        if (agentName === 'vaultLibrarian' && mode === 'search') {
+            console.log(`DEBUG: VaultLibrarian search - Enhanced params:`, JSON.stringify(enhancedParams, null, 2));
+        }
         
         // Validate session ID if SessionContextManager is available
         let originalSessionId = params.sessionId;

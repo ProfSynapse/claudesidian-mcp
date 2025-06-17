@@ -149,9 +149,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       const contextDepth = params.contextDepth || 'standard';
       
       // Get key context items - adjust limits based on context depth
-      const recentFiles = await this.getRecentFiles(workspace);
+      const recentFilesLimit = params.recentFilesLimit || 5;
+      const recentFiles = await this.getRecentFiles(workspace, recentFilesLimit);
       const keyFiles = await this.getKeyFiles(workspace);
-      const associatedNotes = await this.getAssociatedNotes(workspace);
+      
+      // Get persisted associated notes directly from workspace
+      const associatedNotes = workspace.associatedNotes || [];
       
       // Get sessions and states if requested depth allows
       const sessions = contextDepth !== 'minimal' ? 
@@ -209,9 +212,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           context: {
             recentFiles,
             keyFiles,
-            keyFileInstructions, // Include in context for direct access
             relatedConcepts: [], // TODO: Implement concept extraction
-            allFiles: associatedNotes, // Use associated notes as all files for now
             associatedNotes,
             sessions,
             states,
@@ -301,7 +302,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   private async getRecentFiles(workspace: {
     rootFolder: string;
     id: string;
-  }): Promise<string[]> {
+  }, limit: number = 5): Promise<string[]> {
     // Try to use cached file index if available
     if (this.cacheManager) {
       const recentFiles = this.cacheManager.getRecentFiles(10, workspace.rootFolder);
@@ -400,7 +401,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     const result = Array.from(uniquePaths.entries())
       .sort((a, b) => b[1] - a[1])
       .map(entry => entry[0])
-      .slice(0, 10); // Limit to 10 most recent files
+      .slice(0, limit);
     
     return result;
   }
@@ -415,11 +416,11 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     // Try to use cached file index if available
     if (this.cacheManager) {
       const keyFiles = this.cacheManager.getKeyFiles();
-      const workspaceKeyFiles = keyFiles.filter(f => 
+      const workspaceKeyFiles = keyFiles.filter((f: any) => 
         f.path.startsWith(workspace.rootFolder)
       );
       if (workspaceKeyFiles.length > 0) {
-        return workspaceKeyFiles.map(f => f.path);
+        return workspaceKeyFiles.map((f: any) => f.path);
       }
     }
     const keyFiles: string[] = [];
@@ -477,138 +478,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     return keyFiles;
   }
   
-  /**
-   * Get associated notes for the workspace
-   */
-  private async getAssociatedNotes(workspace: {
-    rootFolder: string;
-    id: string;
-    relatedFolders?: string[];
-    relatedFiles?: string[];
-  }): Promise<string[]> {
-    const associatedNotes = new Set<string>();
-    
-    try {
-      // 1. Get files mentioned in workspace sessions
-      if (this.memoryService) {
-        const sessions = await this.memoryService.getSessions(workspace.id);
-        
-        for (const session of sessions) {
-          const traces = await this.memoryService.getSessionTraces(session.id);
-          
-          for (const trace of traces) {
-            if (trace.metadata && trace.metadata.relatedFiles) {
-              for (const filePath of trace.metadata.relatedFiles) {
-                if (filePath) {
-                  associatedNotes.add(filePath);
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      // 2. Add workspace state snapshots
-      if (this.memoryService) {
-        const snapshots = await this.memoryService.getSnapshots(workspace.id);
-        
-        for (const snapshot of snapshots) {
-          if (snapshot.state && snapshot.state.contextFiles) {
-            for (const filePath of snapshot.state.contextFiles) {
-              associatedNotes.add(filePath);
-            }
-          }
-        }
-      }
-      
-      // 3. Add files in workspace's root folder
-      
-      // Try to use cached file index if available
-      if (this.cacheManager) {
-        const folderFiles = this.cacheManager.getFilesInFolder(workspace.rootFolder, true);
-        for (const file of folderFiles) {
-          associatedNotes.add(file.path);
-        }
-      } else {
-        // Fallback to vault scan
-        // Normalize the workspace root folder for consistent matching
-        const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
-        const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
-          normalizedRootFolder : normalizedRootFolder + '/';
-        
-        // Get all markdown files in the workspace's root folder
-        const files = this.app.vault.getMarkdownFiles()
-          .filter(file => {
-            // Normalize file path for consistent comparison
-            const normalizedFilePath = sanitizePath(file.path, false);
-            
-            // Check if file belongs to workspace
-            return normalizedFilePath === normalizedRootFolder || 
-                   normalizedFilePath.startsWith(rootFolderWithSlash);
-          });
-        
-        // Add each file to the associated notes
-        for (const file of files) {
-          associatedNotes.add(file.path);
-        }
-      }
-      
-      // 4. Add files from related folders if specified
-      if (workspace.relatedFolders && workspace.relatedFolders.length > 0) {
-        for (const folderPath of workspace.relatedFolders) {
-          if (!folderPath) continue;
-          
-          if (this.cacheManager) {
-            // Use cached file index
-            const relatedFiles = this.cacheManager.getFilesInFolder(folderPath, true);
-            for (const file of relatedFiles) {
-              associatedNotes.add(file.path);
-            }
-          } else {
-            // Fallback to vault scan
-            // Normalize the folder path
-            const normalizedFolderPath = sanitizePath(folderPath, false);
-            const folderWithSlash = normalizedFolderPath.endsWith('/') ? 
-              normalizedFolderPath : normalizedFolderPath + '/';
-            
-            // Find files in this related folder
-            const relatedFiles = this.app.vault.getMarkdownFiles()
-              .filter(file => {
-                const normalizedFilePath = sanitizePath(file.path, false);
-                return normalizedFilePath === normalizedFolderPath || 
-                       normalizedFilePath.startsWith(folderWithSlash);
-              });
-            
-            // Add each file to the associated notes
-            for (const file of relatedFiles) {
-              associatedNotes.add(file.path);
-            }
-          }
-        }
-      }
-      
-      // 5. Add individual related files if specified
-      if (workspace.relatedFiles && workspace.relatedFiles.length > 0) {
-        for (const filePath of workspace.relatedFiles) {
-          if (!filePath) continue;
-          
-          // Normalize the file path
-          const normalizedFilePath = sanitizePath(filePath, false);
-          
-          // Check if the file exists in the vault
-          const file = this.app.vault.getAbstractFileByPath(normalizedFilePath);
-          if (file && file.path.endsWith('.md')) {
-            associatedNotes.add(file.path);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Error getting associated notes:', error);
-    }
-    
-    const result = Array.from(associatedNotes);
-    return result;
-  }
   
   /**
    * Get workspace sessions
@@ -695,7 +564,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       const rootTree = await this.directoryTreeBuilder.buildTree(workspace.rootFolder, {
         maxDepth,
         includeMetadata: true,
-        markKeyFiles: true,
         relatedFiles: workspace.relatedFiles || [],
         includeExtensions: ['md'] // Focus on markdown files for Obsidian
       });
@@ -707,8 +575,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           const tree = await this.directoryTreeBuilder.buildTree(folderPath, {
             maxDepth,
             includeMetadata: true,
-            markKeyFiles: true,
-            relatedFiles: workspace.relatedFiles || [],
+                relatedFiles: workspace.relatedFiles || [],
             includeExtensions: ['md']
           });
           if (tree) {
@@ -721,7 +588,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       let totalStats = {
         totalFiles: 0,
         totalFolders: 0,
-        keyFiles: 0,
         relatedFiles: 0,
         maxDepth: 0
       };
@@ -730,7 +596,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         const rootStats = DirectoryTreeUtils.getTreeStats(rootTree);
         totalStats.totalFiles += rootStats.totalFiles;
         totalStats.totalFolders += rootStats.totalFolders;
-        totalStats.keyFiles += rootStats.keyFiles;
         totalStats.relatedFiles += rootStats.relatedFiles;
         totalStats.maxDepth = Math.max(totalStats.maxDepth, rootStats.maxDepth);
       }
@@ -739,7 +604,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         const stats = DirectoryTreeUtils.getTreeStats(tree);
         totalStats.totalFiles += stats.totalFiles;
         totalStats.totalFolders += stats.totalFolders;
-        totalStats.keyFiles += stats.keyFiles;
         totalStats.relatedFiles += stats.relatedFiles;
         totalStats.maxDepth = Math.max(totalStats.maxDepth, stats.maxDepth);
       }
@@ -851,6 +715,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           type: 'number',
           description: 'Maximum depth for directory tree traversal (0 = unlimited, default: 0)'
         },
+        recentFilesLimit: {
+          type: 'number',
+          description: 'Maximum number of recent files to return (default: 5)'
+        },
         ...commonSchema
       },
       required: ['id', 'sessionId', 'context']
@@ -920,19 +788,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               items: { type: 'string' },
               description: 'Files marked with key: true in frontmatter or matching common patterns like readme.md'
             },
-            keyFileInstructions: {
-              type: 'string',
-              description: 'Instructions for how to designate key files within this workspace (duplicate of workspace.keyFileInstructions for convenience)'
-            },
             relatedConcepts: {
               type: 'array',
               items: { type: 'string' },
               description: 'Related concepts and topics extracted from workspace content'
-            },
-            allFiles: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'All files associated with this workspace'
             },
             associatedNotes: {
               type: 'array',
@@ -996,7 +855,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               description: 'Complete directory structure information'
             }
           },
-          required: ['recentFiles', 'keyFiles', 'keyFileInstructions', 'relatedConcepts', 'allFiles', 'associatedNotes', 'sessions', 'states']
+          required: ['recentFiles', 'keyFiles', 'relatedConcepts', 'associatedNotes', 'sessions', 'states']
         }
       }
     };

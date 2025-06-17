@@ -198,7 +198,7 @@ export class CacheManager {
         // Preload key files metadata
         if (this.vaultFileIndex) {
             const keyFiles = this.getKeyFiles();
-            const keyFilePaths = keyFiles.map(f => f.path);
+            const keyFilePaths = keyFiles.map((f: any) => f.path);
             await this.vaultFileIndex.warmup(keyFilePaths);
         }
 

@@ -210,9 +210,35 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
         tags: ['read', 'content']
       });
       
-      // Use the FileEventManager to record the activity across all relevant workspaces
+      // Auto-track external files as associated notes
       try {
         const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const workspaceService = plugin?.services?.workspaceService;
+        
+        if (workspaceService && parsedContext.workspaceId) {
+          // Get the current workspace to check if this file is outside the workspace folder
+          const workspace = await workspaceService.getWorkspace(parsedContext.workspaceId);
+          
+          if (workspace) {
+            // Normalize paths for comparison
+            const { sanitizePath } = await import('../../../utils/pathUtils');
+            const normalizedFilePath = sanitizePath(params.filePath, false);
+            const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
+            const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
+              normalizedRootFolder : normalizedRootFolder + '/';
+            
+            // Check if file is outside workspace folder
+            const isOutsideWorkspace = normalizedFilePath !== normalizedRootFolder && 
+                                     !normalizedFilePath.startsWith(rootFolderWithSlash);
+            
+            if (isOutsideWorkspace) {
+              // Add to workspace's associatedNotes
+              await workspaceService.addAssociatedNote(parsedContext.workspaceId, params.filePath);
+            }
+          }
+        }
+        
+        // Also use the FileEventManager to record the activity across all relevant workspaces
         const fileEventManager = plugin?.services?.fileEventManager;
         
         if (fileEventManager) {
@@ -222,9 +248,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
             'view'
           );
         } else {
-          // Fallback to direct workspace service if file event manager is not available
-          const workspaceService = plugin?.services?.workspaceService;
-          
+          // Fallback to direct workspace service if file event manager is not available          
           if (workspaceService && parsedContext.workspaceId) {
             await workspaceService.recordActivity(parsedContext.workspaceId, {
               action: 'view',

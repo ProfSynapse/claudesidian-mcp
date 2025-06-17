@@ -87,6 +87,7 @@ export class VaultFileIndex extends EventEmitter {
             await this.indexFile(file, false);
         }
 
+
         // Second pass: Process metadata for key files (lazy load for others)
         const keyFiles = Array.from(this.fileIndex.values()).filter(f => f.isKeyFile);
         await Promise.all(keyFiles.map(f => this.loadFileMetadata(f.path)));
@@ -224,6 +225,7 @@ export class VaultFileIndex extends EventEmitter {
     getKeyFiles(): IndexedFile[] {
         return Array.from(this.fileIndex.values()).filter(f => f.isKeyFile);
     }
+
 
     getFilesInFolder(folderPath: string, recursive = false): IndexedFile[] {
         if (!recursive) {

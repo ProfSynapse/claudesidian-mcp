@@ -67,6 +67,7 @@ export class MemoryManagerAgent extends BaseAgent {
     this.registerMode(new Modes.EditWorkspaceMode(this.app));
     this.registerMode(new Modes.ListWorkspacesMode(this.app));
     this.registerMode(new Modes.LoadWorkspaceMode(this.app));
+    this.registerMode(new Modes.ManageAssociatedNotesMode(this.app));
   }
   
   /**

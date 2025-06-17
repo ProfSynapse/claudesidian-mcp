@@ -184,6 +184,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         rootFolder: params.rootFolder,
         relatedFolders: params.relatedFolders || [],
         relatedFiles: params.relatedFiles || [],
+        associatedNotes: [], // Initialize empty array for automatically tracked external files
         
         // Instructions for key files
         keyFileInstructions: params.keyFileInstructions || defaultKeyFileInstructions,

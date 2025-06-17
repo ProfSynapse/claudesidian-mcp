@@ -439,4 +439,69 @@ export class WorkspaceService {
   async updateLastAccessed(id: string): Promise<void> {
     await this.collection.updateLastAccessed(id);
   }
+  
+  /**
+   * Add an associated note to a workspace (files outside workspace folder that have been accessed)
+   * @param workspaceId Workspace ID
+   * @param filePath Path to the external file
+   */
+  async addAssociatedNote(workspaceId: string, filePath: string): Promise<void> {
+    const workspace = await this.collection.get(workspaceId);
+    
+    if (!workspace) {
+      console.warn(`[WorkspaceService] Cannot add associated note - workspace ${workspaceId} not found`);
+      return;
+    }
+    
+    // Initialize associatedNotes if it doesn't exist (for existing workspaces)
+    const associatedNotes = workspace.associatedNotes || [];
+    
+    // Only add if not already present
+    if (!associatedNotes.includes(filePath)) {
+      await this.collection.update(workspaceId, {
+        associatedNotes: [...associatedNotes, filePath],
+        lastAccessed: Date.now()
+      });
+      
+      console.log(`[WorkspaceService] Added associated note ${filePath} to workspace ${workspaceId}`);
+    }
+  }
+  
+  /**
+   * Remove an associated note from a workspace
+   * @param workspaceId Workspace ID
+   * @param filePath Path to the file to remove
+   */
+  async removeAssociatedNote(workspaceId: string, filePath: string): Promise<void> {
+    const workspace = await this.collection.get(workspaceId);
+    
+    if (!workspace) {
+      throw new Error(`Workspace with ID ${workspaceId} not found`);
+    }
+    
+    const associatedNotes = workspace.associatedNotes || [];
+    const updatedNotes = associatedNotes.filter(note => note !== filePath);
+    
+    await this.collection.update(workspaceId, {
+      associatedNotes: updatedNotes,
+      lastAccessed: Date.now()
+    });
+    
+    console.log(`[WorkspaceService] Removed associated note ${filePath} from workspace ${workspaceId}`);
+  }
+  
+  /**
+   * Get all associated notes for a workspace
+   * @param workspaceId Workspace ID
+   * @returns Array of file paths
+   */
+  async getAssociatedNotes(workspaceId: string): Promise<string[]> {
+    const workspace = await this.collection.get(workspaceId);
+    
+    if (!workspace) {
+      throw new Error(`Workspace with ID ${workspaceId} not found`);
+    }
+    
+    return workspace.associatedNotes || [];
+  }
 }

@@ -144,6 +144,13 @@ export interface ProjectWorkspace {
   relatedFiles?: string[];
   
   /**
+   * Associated notes that are automatically tracked when accessed during workspace sessions
+   * These are files OUTSIDE the workspace folder that have been read/accessed while this workspace was active
+   * Persisted permanently with the workspace (unlike session-derived associated notes)
+   */
+  associatedNotes?: string[];
+  
+  /**
    * Instructions for key file designation within workspace
    * Explains how to mark files as key files in frontmatter or by filename
    */
@@ -567,6 +574,10 @@ export interface LoadWorkspaceParameters extends WorkspaceParameters {
    * Maximum depth for directory tree traversal (0 = unlimited)
    */
   directoryTreeMaxDepth?: number;
+  /**
+   * Maximum number of recent files to return (default: 5)
+   */
+  recentFilesLimit?: number;
 }
 
 /**
@@ -593,12 +604,28 @@ export interface LoadWorkspaceResult extends CommonResult {
       recentFiles: string[];
       keyFiles: string[];
       relatedConcepts: string[];
-      allFiles: string[];
       /**
-       * Instructions for how to create/identify key files
-       * Added for convenience to avoid accessing it via workspace object
+       * Files associated with the workspace that are OUTSIDE the workspace root folder
        */
-      keyFileInstructions?: string;
+      associatedNotes: string[];
+      /**
+       * Sessions associated with this workspace
+       */
+      sessions: Array<{
+        id: string;
+        name: string;
+        isActive: boolean;
+        startTime: number;
+        endTime?: number;
+      }>;
+      /**
+       * Saved states associated with this workspace
+       */
+      states: Array<{
+        id: string;
+        name: string;
+        timestamp: number;
+      }>;
       /**
        * Hierarchical directory structure of the workspace
        * Provides a complete tree view of folders and files

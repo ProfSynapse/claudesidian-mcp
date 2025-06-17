@@ -40,6 +40,14 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
    */
   async execute(params: UniversalSearchParams): Promise<UniversalSearchResult> {
     try {
+      // Add debug logging to track received parameters
+      console.log('SearchMode.execute() - Received parameters:', JSON.stringify(params, null, 2));
+      console.log('SearchMode.execute() - Parameter keys:', Object.keys(params || {}));
+      
+      // Check if there's a 'type' parameter that shouldn't be there
+      if (params && 'type' in params) {
+        console.warn('SearchMode.execute() - WARNING: Unexpected "type" parameter found!', (params as any).type);
+      }
       // Validate required parameters
       if (!params.query || params.query.trim().length === 0) {
         return {
@@ -74,7 +82,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
    * Get parameter schema for MCP tool definition
    */
   getParameterSchema() {
-    return {
+    const schema = {
       type: 'object',
       title: 'Universal Search Parameters',
       description: 'Search across ALL content types in one unified search. This replaces the old separate search modes (content/tag/property) with a single intelligent search that automatically handles all categories. Only the query parameter is required.',
@@ -176,6 +184,12 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
       required: ['query'],
       additionalProperties: false
     };
+    
+    // Add debug logging to track schema generation
+    console.log('SearchMode.getParameterSchema() - Generated schema:', JSON.stringify(schema, null, 2));
+    console.log('SearchMode.getParameterSchema() - Required fields:', schema.required);
+    
+    return schema;
   }
 
   /**

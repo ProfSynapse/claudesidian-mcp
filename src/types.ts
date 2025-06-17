@@ -80,6 +80,8 @@ export interface MCPSettings {
     memory?: MemorySettings;
     lastUpdateVersion?: string;
     lastUpdateDate?: string;
+    availableUpdateVersion?: string;
+    lastUpdateCheckDate?: string;
 }
 
 // Memory Manager Settings
@@ -264,7 +266,11 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
 export const DEFAULT_SETTINGS: MCPSettings = {
     enabledVault: true,
     configFilePath: undefined,
-    memory: DEFAULT_MEMORY_SETTINGS
+    memory: DEFAULT_MEMORY_SETTINGS,
+    lastUpdateVersion: undefined,
+    lastUpdateDate: undefined,
+    availableUpdateVersion: undefined,
+    lastUpdateCheckDate: undefined
 };
 
 /**

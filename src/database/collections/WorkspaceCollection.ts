@@ -60,6 +60,17 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       // Store child IDs as a string for filtering
       childWorkspaces: workspace.childWorkspaces.join(','),
       
+      // Store associated notes
+      associatedNotes: workspace.associatedNotes ? workspace.associatedNotes.join(',') : '',
+      
+      // Store other complex fields as JSON
+      relatedFiles: workspace.relatedFiles ? JSON.stringify(workspace.relatedFiles) : '',
+      relevanceSettings: JSON.stringify(workspace.relevanceSettings),
+      activityHistory: JSON.stringify(workspace.activityHistory),
+      preferences: workspace.preferences ? JSON.stringify(workspace.preferences) : '',
+      checkpoints: workspace.checkpoints ? JSON.stringify(workspace.checkpoints) : '',
+      completionStatus: JSON.stringify(workspace.completionStatus),
+      
       // Metadata field for searching
       isWorkspace: true,
     };
@@ -134,6 +145,10 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       rootFolder: storage.metadata.rootFolder,
       relatedFolders: storage.metadata.relatedFolders ? 
         JSON.parse(storage.metadata.relatedFolders) : [],
+      relatedFiles: storage.metadata.relatedFiles ? 
+        JSON.parse(storage.metadata.relatedFiles) : undefined,
+      associatedNotes: storage.metadata.associatedNotes ? 
+        storage.metadata.associatedNotes.split(',').filter((note: string) => note) : undefined,
       relevanceSettings: storage.metadata.relevanceSettings ? 
         JSON.parse(storage.metadata.relevanceSettings) : {
           folderProximityWeight: 0.3,

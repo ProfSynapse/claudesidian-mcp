@@ -333,6 +333,10 @@ export default class ClaudesidianPlugin extends Plugin {
             console.warn('Failed to warm cache:', error);
         }
         
+        // Check for updates on startup in background
+        // Run update check in background without blocking startup
+        this.checkForUpdatesOnStartup();
+        
         // Initialize connector with settings
         this.connector = new MCPConnector(this.app, this);
         await this.connector.start();
@@ -503,6 +507,57 @@ export default class ClaudesidianPlugin extends Plugin {
         console.log('[ClaudesidianPlugin] Configuration reload complete');
     }
     
+    /**
+     * Check for updates on startup in background
+     * This runs asynchronously without blocking plugin initialization
+     */
+    private async checkForUpdatesOnStartup(): Promise<void> {
+        try {
+            // Don't check more than once per day
+            const lastCheck = this.settings.settings.lastUpdateCheckDate;
+            if (lastCheck) {
+                const lastCheckTime = new Date(lastCheck);
+                const now = new Date();
+                const daysDiff = (now.getTime() - lastCheckTime.getTime()) / (1000 * 60 * 60 * 24);
+                if (daysDiff < 1) {
+                    console.log('Update check skipped - last checked less than 24 hours ago');
+                    return;
+                }
+            }
+
+            console.log('Checking for updates on startup...');
+            const updateManager = new UpdateManager(this);
+            const hasUpdate = await updateManager.checkForUpdate();
+            
+            // Update the last check date
+            this.settings.settings.lastUpdateCheckDate = new Date().toISOString();
+            
+            if (hasUpdate) {
+                // Get the latest version info
+                const release = await (updateManager as any).fetchLatestRelease();
+                const availableVersion = release.tag_name.replace('v', '');
+                
+                // Store the available update version
+                this.settings.settings.availableUpdateVersion = availableVersion;
+                console.log(`Update available: ${availableVersion}`);
+                
+                // Show a subtle notification
+                new Notice(`Plugin update available: v${availableVersion}. Check settings to update.`, 8000);
+            } else {
+                // Clear any stored available update version
+                this.settings.settings.availableUpdateVersion = undefined;
+                console.log('Plugin is up to date');
+            }
+            
+            // Save the updated settings
+            await this.settings.saveSettings();
+            
+        } catch (error) {
+            console.error('Failed to check for updates on startup:', error);
+            // Don't throw error to avoid blocking plugin startup
+        }
+    }
+
     /**
      * Validate that collections are properly loaded and accessible
      * This runs after service initialization to ensure everything is working correctly

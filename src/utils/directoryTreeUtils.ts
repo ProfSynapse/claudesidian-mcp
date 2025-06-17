@@ -40,15 +40,16 @@ export interface DirectoryTreeNode {
    */
   size?: number;
   
-  /**
-   * Whether this file is marked as a key file
-   */
-  isKeyFile?: boolean;
   
   /**
    * Whether this file is in the workspace's related files
    */
   isRelatedFile?: boolean;
+  
+  /**
+   * Description from frontmatter (only for markdown files)
+   */
+  description?: string;
 }
 
 /**
@@ -75,10 +76,6 @@ export interface DirectoryTreeOptions {
    */
   excludeExtensions?: string[];
   
-  /**
-   * Whether to mark key files
-   */
-  markKeyFiles?: boolean;
   
   /**
    * List of related files to mark
@@ -164,17 +161,31 @@ export class DirectoryTreeBuilder {
     // Add metadata if requested
     if (options.includeMetadata && file.stat) {
       node.lastModified = file.stat.mtime;
-      node.size = file.stat.size;
     }
     
-    // Mark as key file if requested
-    if (options.markKeyFiles) {
-      node.isKeyFile = await this.isKeyFile(file);
-    }
     
     // Mark as related file if in the list
     if (options.relatedFiles && options.relatedFiles.includes(file.path)) {
       node.isRelatedFile = true;
+    }
+    
+    // Get description from frontmatter for markdown files
+    if (file.extension === 'md') {
+      try {
+        const content = await this.app.vault.read(file);
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        
+        if (frontmatterMatch) {
+          const frontmatter = frontmatterMatch[1];
+          // Look for description field
+          const descMatch = frontmatter.match(/description\s*:\s*["']?([^\n"']+)["']?/);
+          if (descMatch) {
+            node.description = descMatch[1].trim();
+          }
+        }
+      } catch (error) {
+        // Ignore errors reading file
+      }
     }
     
     return node;
@@ -222,54 +233,30 @@ export class DirectoryTreeBuilder {
       }
     }
     
-    // Sort children: folders first, then files, both alphabetically
+    // Sort children: folders first by name, then files by last modified (newest first)
     node.children!.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === 'folder' ? -1 : 1;
+      // Folders come before files
+      if (a.type === 'folder' && b.type === 'file') return -1;
+      if (a.type === 'file' && b.type === 'folder') return 1;
+      
+      // Between folders, sort alphabetically
+      if (a.type === 'folder' && b.type === 'folder') {
+        return a.name.localeCompare(b.name);
       }
-      return a.name.localeCompare(b.name);
+      
+      // Between files, sort by last modified (newest first)
+      if (a.type === 'file' && b.type === 'file') {
+        const aTime = a.lastModified || 0;
+        const bTime = b.lastModified || 0;
+        return bTime - aTime;
+      }
+      
+      return 0;
     });
     
     return node;
   }
   
-  /**
-   * Check if a file is a key file based on frontmatter or filename patterns
-   */
-  private async isKeyFile(file: TFile): Promise<boolean> {
-    // Check filename patterns first (faster)
-    const commonKeyFilePatterns = [
-      /readme\.md$/i, 
-      /index\.md$/i, 
-      /summary\.md$/i, 
-      /moc\.md$/i, 
-      /map(?:\s|_|-)*of(?:\s|_|-)*contents\.md$/i
-    ];
-    
-    for (const pattern of commonKeyFilePatterns) {
-      if (pattern.test(file.path)) {
-        return true;
-      }
-    }
-    
-    // Check frontmatter for key: true
-    try {
-      const content = await this.app.vault.read(file);
-      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      
-      if (frontmatterMatch) {
-        const frontmatter = frontmatterMatch[1];
-        // Simple check for key: true (could be enhanced with YAML parsing)
-        if (/key\s*:\s*true/i.test(frontmatter)) {
-          return true;
-        }
-      }
-    } catch (error) {
-      console.warn(`Failed to read file ${file.path} for key file check:`, error);
-    }
-    
-    return false;
-  }
   
   /**
    * Flatten a directory tree into a list of file paths
@@ -311,22 +298,6 @@ export class DirectoryTreeBuilder {
     return null;
   }
   
-  /**
-   * Get all files marked as key files in the tree
-   */
-  getKeyFiles(tree: DirectoryTreeNode): string[] {
-    const keyFiles: string[] = [];
-    
-    if (tree.type === 'file' && tree.isKeyFile) {
-      keyFiles.push(tree.path);
-    } else if (tree.children) {
-      for (const child of tree.children) {
-        keyFiles.push(...this.getKeyFiles(child));
-      }
-    }
-    
-    return keyFiles;
-  }
   
   /**
    * Get all files marked as related files in the tree
@@ -358,10 +329,11 @@ export class DirectoryTreeUtils {
     const isLast = true; // We'll handle this in the caller
     
     const prefix = tree.type === 'folder' ? '📁 ' : '📄 ';
-    const keyIndicator = tree.isKeyFile ? ' ⭐' : '';
+    const keyIndicator = '';
     const relatedIndicator = tree.isRelatedFile ? ' 🔗' : '';
+    const description = tree.description ? ` - ${tree.description}` : '';
     
-    result += `${indent}${prefix}${tree.name}${keyIndicator}${relatedIndicator}\n`;
+    result += `${indent}${prefix}${tree.name}${keyIndicator}${relatedIndicator}${description}\n`;
     
     if (tree.children && tree.children.length > 0) {
       for (let i = 0; i < tree.children.length; i++) {
@@ -383,14 +355,12 @@ export class DirectoryTreeUtils {
   static getTreeStats(tree: DirectoryTreeNode): {
     totalFiles: number;
     totalFolders: number;
-    keyFiles: number;
     relatedFiles: number;
     maxDepth: number;
   } {
     const stats = {
       totalFiles: 0,
       totalFolders: 0,
-      keyFiles: 0,
       relatedFiles: 0,
       maxDepth: 0
     };
@@ -409,7 +379,6 @@ export class DirectoryTreeUtils {
     
     if (node.type === 'file') {
       stats.totalFiles++;
-      if (node.isKeyFile) stats.keyFiles++;
       if (node.isRelatedFile) stats.relatedFiles++;
     } else {
       stats.totalFolders++;
