@@ -25,14 +25,7 @@ import { logger } from './utils/logger';
 import { getErrorMessage } from './utils/errorUtils';
 import { generateModeHelp, formatModeHelp } from './utils/parameterHintUtils';
 import { sanitizeVaultName } from './utils/vaultUtils';
-import {
-    handleResourceList,
-    handleResourceRead,
-    handlePromptsList,
-    handleToolList,
-    handleToolExecution,
-    handleToolHelp
-} from './handlers/requestHandlers';
+import { RequestRouter } from './handlers/RequestRouter';
 
 /**
  * MCP Server implementation
@@ -53,6 +46,7 @@ export class MCPServer implements IMCPServer {
     private server: MCPSDKServer;
     private stdioTransport: StdioServerTransport | null = null;
     private ipcServer: NetServer | null = null;
+    private requestRouter!: RequestRouter;
     
     constructor(
         private app: App,
@@ -103,6 +97,9 @@ export class MCPServer implements IMCPServer {
             throw error;
         }
 
+        // Initialize request router
+        this.initializeRequestRouter();
+        
         // Initialize request handlers
         this.initializeHandlers();
     }
@@ -139,42 +136,58 @@ export class MCPServer implements IMCPServer {
     }
     
     /**
+     * Initialize the request router with dependencies
+     */
+    private initializeRequestRouter(): void {
+        try {
+            // Get sanitized vault name for multi-vault support
+            let sanitizedVaultName = "";
+            try {
+                const vaultName = this.app.vault.getName();
+                sanitizedVaultName = sanitizeVaultName(vaultName);
+            } catch (error) {
+                logger.systemWarn(`Failed to get vault name for request router: ${getErrorMessage(error)}`);
+            }
+            
+            this.requestRouter = new RequestRouter(
+                this.app,
+                this.agents,
+                true, // isVaultEnabled
+                sanitizedVaultName,
+                this.sessionContextManager
+            );
+        } catch (error) {
+            logger.systemError(error as Error, 'Request Router Initialization');
+            throw error;
+        }
+    }
+    
+    /**
      * Initialize request handlers for resources and tools
      */
     private initializeHandlers(): void {
         
-        // Set up request handlers
+        // Set up request handlers using the new RequestRouter
         
         // Handle resource listing
-        this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-            return await handleResourceList(this.app);
+        this.server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+            return await this.requestRouter.handleRequest('resources/list', request);
         });
 
         // Handle resource reading
         this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-            return await handleResourceRead(this.app, request);
+            return await this.requestRouter.handleRequest('resources/read', request);
         });
 
         // Handle prompts listing
-        this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
-            return await handlePromptsList();
+        this.server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
+            return await this.requestRouter.handleRequest('prompts/list', request);
         });
 
-        // Handle tool listing - using handleToolList from requestHandlers.ts
-        this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+        // Handle tool listing
+        this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
             try {
-                // Get sanitized vault name for multi-vault tool naming
-                let sanitizedVaultName = "";
-                try {
-                    const vaultName = this.app.vault.getName();
-                    sanitizedVaultName = sanitizeVaultName(vaultName);
-                } catch (error) {
-                    // If vault name extraction fails, proceed without suffix
-                    logger.systemWarn(`Failed to get vault name for tool naming: ${getErrorMessage(error)}`);
-                }
-                
-                // Use the handleToolList function with vault name for unique tool naming
-                return await handleToolList(this.agents, true, sanitizedVaultName);
+                return await this.requestRouter.handleRequest('tools/list', request);
             } catch (error) {
                 console.error("Error in tool list handler:", error);
                 logger.systemError(error as Error, 'Tool List Handler');
@@ -190,20 +203,23 @@ export class MCPServer implements IMCPServer {
             // Check if this is a help request
             if (parsedArgs && parsedArgs.help === true) {
                 // This is a help request
-                return await handleToolHelp(
-                    (agentName: string) => this.getAgent(agentName),
-                    request,
-                    parsedArgs
-                );
+                return await this.requestRouter.handleRequest('tools/help', {
+                    ...request,
+                    params: {
+                        ...request.params,
+                        arguments: parsedArgs
+                    }
+                });
             }
             
             // Normal execution
-            return await handleToolExecution(
-                (agentName: string) => this.getAgent(agentName), 
-                request, 
-                parsedArgs,
-                this.sessionContextManager
-            );
+            return await this.requestRouter.handleRequest('tools/call', {
+                ...request,
+                params: {
+                    ...request.params,
+                    arguments: parsedArgs
+                }
+            });
         });
         
         // All handlers initialized

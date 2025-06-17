@@ -10,7 +10,7 @@ export const CONFIG = {
     /**
      * Plugin version
      */
-    VERSION: '2.3.5',
+    VERSION: '2.5.1',
     
     /**
      * Default port for the MCP server

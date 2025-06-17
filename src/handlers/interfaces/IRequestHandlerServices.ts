@@ -1,0 +1,87 @@
+import { IAgent } from '../../agents/interfaces/IAgent';
+import { SessionContextManager } from '../../services/SessionContextManager';
+import { ModeCall, ModeCallResult } from '../../types';
+
+export interface IValidationService {
+    validateToolParams(params: any, schema?: any): Promise<any>;
+    validateSessionId(sessionId: string): Promise<string>;
+    validateBatchOperations(operations: any[]): Promise<void>;
+    validateBatchPaths(paths: any[]): Promise<void>;
+}
+
+export interface ISessionService {
+    processSessionId(sessionId: string): Promise<{
+        sessionId: string;
+        isNewSession: boolean;
+        isNonStandardId: boolean;
+        originalSessionId?: string;
+    }>;
+    generateSessionId(): string;
+    isStandardSessionId(sessionId: string): boolean;
+    shouldInjectInstructions(sessionId: string, sessionContextManager?: SessionContextManager): boolean;
+}
+
+export interface IToolExecutionService {
+    executeAgent(
+        agent: IAgent,
+        mode: string,
+        params: any
+    ): Promise<any>;
+}
+
+export interface IHandoffProcessor {
+    processHandoff(
+        result: any,
+        getAgent: (name: string) => IAgent,
+        sessionId: string,
+        sessionContextManager?: SessionContextManager
+    ): Promise<any>;
+    processSingleHandoff(
+        handoff: ModeCall,
+        getAgent: (name: string) => IAgent,
+        sessionId: string,
+        workspaceContext?: any,
+        sessionContextManager?: SessionContextManager
+    ): Promise<any>;
+    processMultiHandoff(
+        handoffs: ModeCall[],
+        result: any,
+        sessionId: string,
+        sessionContextManager?: SessionContextManager
+    ): Promise<any>;
+}
+
+export interface IResponseFormatter {
+    formatToolExecutionResponse(result: any, sessionInfo?: any): any;
+    formatSessionInstructions(sessionId: string, result: any): any;
+    formatHandoffResponse(result: any, handoffResult: any, returnHere: boolean): any;
+    formatErrorResponse(error: Error): any;
+}
+
+export interface IToolListService {
+    generateToolList(
+        agents: Map<string, IAgent>,
+        isVaultEnabled: boolean,
+        vaultName?: string
+    ): Promise<{ tools: any[] }>;
+    buildAgentSchema(agent: IAgent): any;
+    mergeModeSchemasIntoAgent(agent: IAgent, agentSchema: any): any;
+}
+
+export interface IRequestContext {
+    agentName: string;
+    mode: string;
+    params: any;
+    sessionId: string;
+    fullToolName: string;
+    sessionContextManager?: SessionContextManager;
+}
+
+export interface IRequestHandlerDependencies {
+    validationService: IValidationService;
+    sessionService: ISessionService;
+    toolExecutionService: IToolExecutionService;
+    handoffProcessor: IHandoffProcessor;
+    responseFormatter: IResponseFormatter;
+    toolListService: IToolListService;
+}
