@@ -99,6 +99,13 @@ export class FileEventManagerModular {
     }
 
     /**
+     * Process all queued files for startup embedding strategy
+     */
+    async processStartupQueue(): Promise<void> {
+        await this.coordinator.processStartupQueue();
+    }
+
+    /**
      * End a system operation
      */
     endSystemOperation(): void {

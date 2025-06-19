@@ -380,8 +380,16 @@ class StrictPersistentCollection implements Collection {
       if (where) {
         filteredItems = allItems.filter(([_, item]) => {
           for (const [key, value] of Object.entries(where)) {
-            if (item.metadata[key] !== value) {
-              return false;
+            // Handle $eq operator format: { field: { $eq: value } }
+            if (typeof value === 'object' && value !== null && '$eq' in value) {
+              if (item.metadata[key] !== value.$eq) {
+                return false;
+              }
+            } else {
+              // Handle direct value format: { field: value }
+              if (item.metadata[key] !== value) {
+                return false;
+              }
             }
           }
           return true;
@@ -534,8 +542,16 @@ class StrictPersistentCollection implements Collection {
       if (where) {
         filteredItems = filteredItems.filter((item: DatabaseItem) => {
           for (const [key, value] of Object.entries(where)) {
-            if (item.metadata[key] !== value) {
-              return false;
+            // Handle $eq operator format: { field: { $eq: value } }
+            if (typeof value === 'object' && value !== null && '$eq' in value) {
+              if (item.metadata[key] !== value.$eq) {
+                return false;
+              }
+            } else {
+              // Handle direct value format: { field: value }
+              if (item.metadata[key] !== value) {
+                return false;
+              }
             }
           }
           return true;

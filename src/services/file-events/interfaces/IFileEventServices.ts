@@ -50,6 +50,7 @@ export interface IEmbeddingScheduler {
     shouldProcessEmbedding(event: FileEvent): boolean;
     scheduleEmbedding(events: FileEvent[]): Promise<void>;
     batchProcessEmbeddings(events: FileEvent[]): Promise<ProcessingResult[]>;
+    forceProcessEmbeddings(events: FileEvent[]): Promise<void>;
 }
 
 export interface IActivityTracker {

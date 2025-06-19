@@ -28,13 +28,13 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
 
         switch (this.strategy.type) {
             case 'manual':
-                return false; // Manual strategy never auto-processes
+                return false; // Queue but never auto-process
                 
             case 'idle':
-                return this.isIdleMode;
+                return this.isIdleMode; // Queue and process when idle
                 
             case 'startup':
-                return true; // Startup strategy processes all events
+                return false; // Queue but NEVER process live (only on startup)
                 
             default:
                 return false;
@@ -45,8 +45,13 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
         const eventsToProcess = events.filter(event => this.shouldProcessEmbedding(event));
         
         if (eventsToProcess.length === 0) {
+            if (events.length > 0) {
+                console.log(`[EmbeddingScheduler] Skipped ${events.length} events (strategy: ${this.strategy.type})`);
+            }
             return;
         }
+
+        console.log(`[EmbeddingScheduler] Processing ${eventsToProcess.length}/${events.length} events (strategy: ${this.strategy.type})`);
 
 
         if (this.strategy.type === 'idle') {
@@ -55,6 +60,14 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
         }
 
         await this.batchProcessEmbeddings(eventsToProcess);
+    }
+
+    /**
+     * Force process embeddings regardless of strategy - used for startup processing
+     */
+    async forceProcessEmbeddings(events: FileEvent[]): Promise<void> {
+        console.log(`[EmbeddingScheduler] Force processing ${events.length} events (startup queue)`);
+        await this.batchProcessEmbeddings(events);
     }
 
     async batchProcessEmbeddings(events: FileEvent[]): Promise<ProcessingResult[]> {
@@ -165,6 +178,7 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
     getLastActivityTime(): number {
         return this.lastActivityTime;
     }
+
 
     // Cleanup method
     cleanup(): void {

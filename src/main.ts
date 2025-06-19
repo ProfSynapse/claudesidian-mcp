@@ -14,6 +14,8 @@ import { WorkspaceService } from './database/services/WorkspaceService';
 import { MemoryService } from './database/services/MemoryService';
 import { EventManager } from './services/EventManager';
 import { FileEventManagerModular } from './services/file-events/FileEventManagerModular';
+import { SimpleFileEventManager } from './services/SimpleFileEventManager';
+import { ToEmbedService } from './services/ToEmbedService';
 import { UsageStatsService } from './database/services/UsageStatsService';
 import { CacheManager } from './database/services/CacheManager';
 
@@ -266,6 +268,9 @@ export default class ClaudesidianPlugin extends Plugin {
             batchSize: this.settings?.settings?.memory?.batchSize || 10,
             processingDelay: 1000 // Default processing delay
         };
+
+        // Diagnostic: Log the actual embedding strategy being used
+        console.log(`[Main] Embedding strategy initialized: ${embeddingStrategy.type} (from settings: ${this.settings?.settings?.memory?.embeddingStrategy})`);
         
         this.fileEventManager = new FileEventManagerModular(
             this.app,
@@ -278,6 +283,15 @@ export default class ClaudesidianPlugin extends Plugin {
         );
         try {
             await this.fileEventManager.initialize();
+            
+            // Process startup queue if using startup embedding strategy
+            if (embeddingStrategy.type === 'startup') {
+                console.log('[Main] Processing startup embedding queue...');
+                // Add a short delay to ensure vault is fully ready
+                setTimeout(async () => {
+                    await this.fileEventManager.processStartupQueue();
+                }, 1000); // 1 second delay
+            }
         } catch (error) {
             console.error('[Main] FileEventManager initialization failed:', error);
             throw error;

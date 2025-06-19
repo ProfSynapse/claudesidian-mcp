@@ -88,8 +88,17 @@ export class FileEventQueue implements IFileEventQueue {
             const queueData = JSON.parse(data);
             
             this.queue.clear();
+            
+            // Restore all events - let the embedding strategy decide what to process
+            let restoredCount = 0;
+            
             for (const item of queueData) {
                 this.queue.set(item.path, item.event);
+                restoredCount++;
+            }
+            
+            if (restoredCount > 0) {
+                console.log(`[FileEventQueue] Restored ${restoredCount} events for processing`);
             }
             
         } catch (error) {
@@ -106,6 +115,14 @@ export class FileEventQueue implements IFileEventQueue {
     ): 'high' | 'normal' | 'low' {
         const priorityOrder = { high: 3, normal: 2, low: 1 };
         return priorityOrder[priority1] >= priorityOrder[priority2] ? priority1 : priority2;
+    }
+
+    private async clearPersistedQueue(): Promise<void> {
+        try {
+            await fs.unlink(this.persistencePath);
+        } catch (error) {
+            console.warn('[FileEventQueue] Failed to clear persisted queue:', error);
+        }
     }
 
     // Debug methods

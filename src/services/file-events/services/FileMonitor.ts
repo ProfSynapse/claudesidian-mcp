@@ -126,9 +126,15 @@ export class FileMonitor implements IFileMonitor {
             const cachedContent = this.contentCache.get(file.path);
             
             if (cachedContent === undefined) {
-                // No cached content, cache current and consider it changed
+                // No cached content - check if this file already has embeddings
+                // to avoid re-embedding on startup
+                const alreadyEmbedded = await this.checkIfFileAlreadyEmbedded(file.path);
+                
+                // Cache current content
                 this.contentCache.set(file.path, currentContent);
-                return true;
+                
+                // Only consider it "changed" if it's not already embedded
+                return !alreadyEmbedded;
             }
             
             const contentChanged = currentContent !== cachedContent;
@@ -142,6 +148,77 @@ export class FileMonitor implements IFileMonitor {
             console.warn(`[FileMonitor] Error checking content change for ${file.path}:`, error);
             return true; // Assume changed if we can't read
         }
+    }
+
+    // Check if a file already has UP-TO-DATE embeddings in the vector store
+    private async checkIfFileAlreadyEmbedded(filePath: string): Promise<boolean> {
+        try {
+            // Get the plugin instance to access vector store and embedding service
+            const plugin = (this.app as any).plugins?.plugins?.['claudesidian-mcp'];
+            if (!plugin?.vectorStore || !plugin?.embeddingService) {
+                return false;
+            }
+
+            // Use the same logic as EmbeddingService to check if file needs embedding
+            const needsEmbedding = await this.checkIfFileNeedsEmbeddingInternal(filePath, plugin.vectorStore, plugin.embeddingService);
+            
+            if (!needsEmbedding) {
+                return true; // Has up-to-date embeddings
+            }
+            
+            return false; // Needs embedding (either no embeddings or outdated)
+        } catch (error) {
+            console.warn(`[FileMonitor] Error checking embeddings for ${filePath}:`, error);
+            return false; // If we can't check, assume not embedded
+        }
+    }
+
+    // Shared logic for checking if a file needs embedding (matches EmbeddingService logic)
+    private async checkIfFileNeedsEmbeddingInternal(filePath: string, vectorStore: any, embeddingService: any): Promise<boolean> {
+        try {
+            // Read current file content and generate hash
+            const file = this.app.vault.getAbstractFileByPath(filePath);
+            if (!file || 'children' in file) {
+                return false; // Skip if file doesn't exist or is a folder
+            }
+
+            const content = await this.app.vault.read(file as any);
+            const currentHash = this.hashContent(content);
+
+            // Query for existing embeddings for this file
+            const queryResult = await vectorStore.query('file_embeddings', {
+                where: { filePath: { $eq: filePath } },
+                nResults: 1, // Just need one to check metadata
+                include: ['metadatas']
+            });
+
+            // If no embeddings exist, we need to create them
+            if (!queryResult.ids || queryResult.ids.length === 0 || queryResult.ids[0].length === 0) {
+                return true;
+            }
+
+            // Check if any chunk has different content hash
+            const existingMetadata = queryResult.metadatas?.[0]?.[0];
+            if (!existingMetadata || !existingMetadata.contentHash) {
+                // No content hash in metadata - this is a legacy embedding
+                // For FileMonitor purposes, treat legacy embeddings as up-to-date to avoid re-embedding
+                // The EmbeddingService will handle migration when actually processing
+                return false; // Don't re-embed legacy embeddings through FileMonitor
+            }
+
+            // Compare content hash - if different, needs re-embedding
+            return existingMetadata.contentHash !== currentHash;
+
+        } catch (error) {
+            console.warn(`[FileMonitor] Error checking if file needs embedding for ${filePath}:`, error);
+            return true; // If we can't check, assume it needs embedding
+        }
+    }
+
+    // Content hashing method (same as EmbeddingService)
+    private hashContent(content: string): string {
+        const crypto = require('crypto');
+        return crypto.createHash('sha256').update(content).digest('hex');
     }
 
     // Utility methods

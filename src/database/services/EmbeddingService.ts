@@ -442,9 +442,10 @@ export class EmbeddingService {
         includeMetadata: true
       });
       
-      // Get existing embeddings for this file
+      // Get existing embeddings for this file using normalized path
+      const normalizedPath = filePath.replace(/\\/g, '/');
       const queryResult = await vectorStore.query('file_embeddings', {
-        where: { filePath: { $eq: filePath } },
+        where: { filePath: { $eq: normalizedPath } },
         include: ['metadatas', 'documents'],
         nResults: 1000 // Get all chunks for this file
       });
@@ -526,7 +527,7 @@ export class EmbeddingService {
         const id = uuidv4();
         const fileEmbedding: FileEmbedding = {
           id,
-          filePath,
+          filePath: filePath.replace(/\\/g, '/'), // Normalize path to forward slashes
           timestamp: Date.now(),
           workspaceId: workspaceId || 'default',
           vector: embedding,
@@ -610,8 +611,7 @@ export class EmbeddingService {
       const fileEmbeddings = VectorStoreFactory.createFileEmbeddingCollection(plugin.vectorStore);
       const vectorStore = plugin.vectorStore;
       
-      console.log(`[EmbeddingService] Incrementally updating embeddings for ${filePaths.length} files`);
-      console.log('[EmbeddingService] Files to update:', filePaths);
+      console.log(`[EmbeddingService] Checking ${filePaths.length} files for embedding updates`);
       
       // Get settings for batching
       const batchSize = this.settings.batchSize || 5;
@@ -634,10 +634,18 @@ export class EmbeddingService {
         // Process batch in parallel
         const results = await Promise.allSettled(batch.map(async (filePath) => {
           try {
+            // Check if file needs re-embedding by comparing content hash
+            const needsEmbedding = await this.checkIfFileNeedsEmbedding(filePath, vectorStore);
+            if (!needsEmbedding) {
+              return { ids: [], tokens: 0, chunks: 0, skipped: true };
+            }
+            
+            console.log(`[EmbeddingService] Processing ${filePath} - needs embedding`);
+
             // First, delete any existing embeddings for this file
             try {
               const queryResult = await vectorStore.query('file_embeddings', {
-                where: { filePath: { $eq: filePath } },
+                where: { filePath: { $eq: filePath.replace(/\\/g, '/') } },
                 nResults: 1000 // Get all chunks for this file
               });
               
@@ -705,7 +713,7 @@ export class EmbeddingService {
               const id = uuidv4();
               const fileEmbedding: FileEmbedding = {
                 id,
-                filePath,
+                filePath: filePath.replace(/\\/g, '/'), // Normalize path to forward slashes
                 timestamp: Date.now(),
                 workspaceId: 'default',
                 vector: embedding,
@@ -721,7 +729,8 @@ export class EmbeddingService {
                   tokenCount: chunk.metadata.tokenCount,
                   startPosition: chunk.metadata.startPosition,
                   endPosition: chunk.metadata.endPosition,
-                  contentHash: chunk.metadata.contentHash,
+                  contentHash: this.hashContent(content), // File content hash for change detection
+                  chunkHash: chunk.metadata.contentHash, // Chunk-specific hash
                   semanticBoundary: chunk.metadata.semanticBoundary
                 }
               };
@@ -754,14 +763,23 @@ export class EmbeddingService {
           progressCallback(processedCount, filePaths.length);
         }
         
-        // Add successful IDs to the result
+        // Add successful IDs to the result and adjust counts for skipped files
+        let skippedCount = 0;
         results.forEach(result => {
           if (result.status === 'fulfilled' && result.value) {
             if (Array.isArray(result.value.ids)) {
               ids.push(...result.value.ids);
             }
+            if (result.value.skipped) {
+              skippedCount++;
+            }
           }
         });
+        
+        // Log summary of processing results
+        if (skippedCount > 0) {
+          console.log(`[EmbeddingService] Batch ${Math.floor(i/batchSize) + 1}: processed ${batch.length - skippedCount}, skipped ${skippedCount} (up-to-date)`);
+        }
         
         // Add a small delay between batches
         if (i + batchSize < filePaths.length) {
@@ -853,10 +871,18 @@ export class EmbeddingService {
         // Process batch in parallel
         const results = await Promise.allSettled(batch.map(async (filePath) => {
           try {
+            // Check if file needs re-embedding by comparing content hash
+            const needsEmbedding = await this.checkIfFileNeedsEmbedding(filePath, vectorStore);
+            if (!needsEmbedding) {
+              return { ids: [], tokens: 0, chunks: 0, skipped: true };
+            }
+            
+            console.log(`[EmbeddingService] Processing ${filePath} - needs embedding`);
+
             // First, delete any existing embeddings for this file
             try {
               const queryResult = await vectorStore.query('file_embeddings', {
-                where: { filePath: { $eq: filePath } },
+                where: { filePath: { $eq: filePath.replace(/\\/g, '/') } },
                 nResults: 1000 // Get all chunks for this file
               });
               
@@ -920,7 +946,7 @@ export class EmbeddingService {
               const id = uuidv4();
               const fileEmbedding: FileEmbedding = {
                 id,
-                filePath,
+                filePath: filePath.replace(/\\/g, '/'), // Normalize path to forward slashes
                 timestamp: Date.now(),
                 workspaceId: 'default',
                 vector: embedding,
@@ -936,7 +962,8 @@ export class EmbeddingService {
                   tokenCount: chunk.metadata.tokenCount,
                   startPosition: chunk.metadata.startPosition,
                   endPosition: chunk.metadata.endPosition,
-                  contentHash: chunk.metadata.contentHash,
+                  contentHash: this.hashContent(content), // File content hash for change detection
+                  chunkHash: chunk.metadata.contentHash, // Chunk-specific hash
                   semanticBoundary: chunk.metadata.semanticBoundary
                 }
               };
@@ -961,14 +988,23 @@ export class EmbeddingService {
         // Update progress count
         processedCount += batch.length;
         
-        // Add successful IDs to the result
+        // Add successful IDs to the result and track skipped files
+        let skippedCount = 0;
         results.forEach(result => {
           if (result.status === 'fulfilled' && result.value) {
             if (Array.isArray(result.value.ids)) {
               ids.push(...result.value.ids);
             }
+            if (result.value.skipped) {
+              skippedCount++;
+            }
           }
         });
+        
+        // Log summary of silent processing results
+        if (skippedCount > 0) {
+          console.log(`[EmbeddingService] Silent batch ${Math.floor(i/batchSize) + 1}: processed ${batch.length - skippedCount}, skipped ${skippedCount} (up-to-date)`);
+        }
         
         // Add a small delay between batches
         if (i + batchSize < filePaths.length) {
@@ -1170,7 +1206,7 @@ export class EmbeddingService {
               const id = uuidv4();
               const fileEmbedding: FileEmbedding = {
                 id,
-                filePath, // Still need this to identify which file the chunk belongs to
+                filePath: filePath.replace(/\\/g, '/'), // Normalize path to forward slashes
                 timestamp: Date.now(),
                 workspaceId: 'default',
                 vector: embedding,
@@ -1396,6 +1432,152 @@ export class EmbeddingService {
     } finally {
       // Clear reindexing flag
       plugin.isReindexing = false;
+    }
+  }
+
+  /**
+   * Check if a file needs re-embedding by comparing content hash
+   * @param filePath Path to the file
+   * @param vectorStore Vector store instance
+   * @returns Promise resolving to true if file needs embedding
+   */
+  private async checkIfFileNeedsEmbedding(filePath: string, vectorStore: any): Promise<boolean> {
+    try {
+      // Read current file content and generate hash
+      const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+      if (!file || 'children' in file) {
+        console.log(`[EmbeddingService] ${filePath} - file not found or is folder`);
+        return false; // Skip if file doesn't exist or is a folder
+      }
+
+      const content = await this.plugin.app.vault.read(file as any);
+      const currentHash = this.hashContent(content);
+
+      // First check if the collection exists and has items
+      const collectionExists = await vectorStore.hasCollection('file_embeddings');
+      if (!collectionExists) {
+        console.log(`[EmbeddingService] ${filePath} - file_embeddings collection does not exist`);
+        return true;
+      }
+
+      const collectionCount = await vectorStore.count('file_embeddings');
+
+      // Normalize the file path to match database format (forward slashes)
+      const normalizedPath = filePath.replace(/\\/g, '/');
+
+      // Query for existing embeddings for this file
+      const queryResult = await vectorStore.query('file_embeddings', {
+        where: { filePath: { $eq: normalizedPath } },
+        nResults: 1, // Just need one to check metadata
+        include: ['metadatas']
+      });
+
+      // Log result only if useful for debugging
+      if (queryResult.ids?.[0]?.length === 0 && collectionCount > 0) {
+        console.log(`[EmbeddingService] ${filePath} - query found no embeddings despite collection having ${collectionCount} items`);
+      }
+
+      // Debug: Let's see what file paths are actually in the database
+      if (queryResult.ids?.[0]?.length === 0) {
+        // Query a few random items to see what file paths look like
+        const sampleQuery = await vectorStore.query('file_embeddings', {
+          nResults: 5,
+          include: ['metadatas']
+        });
+        
+        const samplePaths = sampleQuery.metadatas?.[0]?.map((m: any) => m.filePath || 'no-filePath').slice(0, 5) || [];
+        console.log(`[EmbeddingService] ${filePath} - sample stored file paths: ${samplePaths.join(', ')}`);
+        console.log(`[EmbeddingService] ${filePath} - looking for exact match: "${normalizedPath}" (normalized from "${filePath}")`);
+        
+        // Test a direct query for a known path from the sample
+        if (samplePaths.length > 0) {
+          const testPath = samplePaths[0];
+          console.log(`[EmbeddingService] Testing query for known path: "${testPath}"`);
+          const testQuery = await vectorStore.query('file_embeddings', {
+            where: { filePath: { $eq: testPath } },
+            nResults: 1,
+            include: ['metadatas']
+          });
+          console.log(`[EmbeddingService] Test query returned ${testQuery.ids?.[0]?.length || 0} results`);
+        }
+      }
+
+      // If no embeddings exist, we need to create them
+      if (!queryResult.ids || queryResult.ids.length === 0 || queryResult.ids[0].length === 0) {
+        console.log(`[EmbeddingService] ${filePath} - no existing embeddings found`);
+        return true;
+      }
+
+      // Check if any chunk has different content hash
+      const existingMetadata = queryResult.metadatas?.[0]?.[0];
+      if (!existingMetadata || !existingMetadata.contentHash) {
+        console.log(`[EmbeddingService] ${filePath} - legacy embedding without content hash`);
+        // No content hash in metadata - this might be a legacy embedding
+        // Let's try to update the metadata rather than re-embedding everything
+        const updated = await this.addContentHashToLegacyEmbedding(filePath, currentHash, vectorStore);
+        if (updated) {
+          console.log(`[EmbeddingService] Updated legacy embedding metadata for ${filePath}`);
+          return false; // No re-embedding needed after metadata update
+        }
+        
+        // If we couldn't update metadata, assume needs re-embedding
+        console.log(`[EmbeddingService] ${filePath} - failed to update legacy metadata, needs re-embedding`);
+        return true;
+      }
+
+      // Compare content hash - if different, needs re-embedding
+      const hashesMatch = existingMetadata.contentHash === currentHash;
+      if (!hashesMatch) {
+        console.log(`[EmbeddingService] ${filePath} - content changed, needs re-embedding`);
+      }
+      return !hashesMatch;
+
+    } catch (error) {
+      console.warn(`[EmbeddingService] Error checking if file needs embedding for ${filePath}:`, error);
+      return true; // If we can't check, assume it needs embedding
+    }
+  }
+
+  /**
+   * Add content hash metadata to legacy embeddings that don't have it
+   * @param filePath Path to the file
+   * @param contentHash Current content hash to add
+   * @param vectorStore Vector store instance
+   * @returns Promise resolving to true if metadata was successfully added
+   */
+  private async addContentHashToLegacyEmbedding(filePath: string, contentHash: string, vectorStore: any): Promise<boolean> {
+    try {
+      // Get all embeddings for this file using normalized path
+      const normalizedPath = filePath.replace(/\\/g, '/');
+      const queryResult = await vectorStore.query('file_embeddings', {
+        where: { filePath: { $eq: normalizedPath } },
+        nResults: 1000, // Get all chunks
+        include: ['metadatas', 'documents']
+      });
+
+      if (!queryResult.ids || queryResult.ids.length === 0 || queryResult.ids[0].length === 0) {
+        return false;
+      }
+
+      const ids = queryResult.ids[0];
+      const metadatas = queryResult.metadatas?.[0] || [];
+      
+      // Update metadata for each chunk to include file content hash
+      const updatedMetadatas = metadatas.map((metadata: any) => ({
+        ...metadata,
+        contentHash: contentHash // Add file-level content hash
+      }));
+
+      // Update the embeddings with new metadata
+      await vectorStore.updateItems('file_embeddings', {
+        ids: ids,
+        metadatas: updatedMetadatas
+      });
+
+      return true;
+    } catch (error) {
+      console.warn(`[EmbeddingService] Failed to add content hash to legacy embedding for ${filePath}:`, error);
+      return false;
     }
   }
 

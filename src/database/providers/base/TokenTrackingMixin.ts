@@ -92,8 +92,6 @@ export class TokenTrackingMixin {
         const currentUsage = this.modelUsage[model] || 0;
         this.modelUsage[model] = currentUsage + tokenCount;
         
-        console.log(`Updated token usage for ${model}: ${currentUsage} + ${tokenCount} = ${this.modelUsage[model]}`);
-        
         // Save to localStorage for persistence
         this.saveToLocalStorage();
         
@@ -108,7 +106,6 @@ export class TokenTrackingMixin {
         try {
             if (typeof localStorage !== 'undefined') {
                 localStorage.setItem('claudesidian-tokens-used', JSON.stringify(this.modelUsage));
-                console.log('Saved updated token usage to localStorage:', this.modelUsage);
                 
                 // Dispatch a storage event to notify other components
                 try {
@@ -118,7 +115,6 @@ export class TokenTrackingMixin {
                             newValue: JSON.stringify(this.modelUsage),
                             storageArea: localStorage
                         }));
-                        console.log('Dispatched storage event for token usage update');
                     }
                 } catch (dispatchError) {
                     console.warn('Failed to dispatch storage event:', dispatchError);
@@ -137,7 +133,6 @@ export class TokenTrackingMixin {
         // We've completely disabled automatic token usage event emission
         // to prevent recursion issues. Token usage is now updated
         // manually via refresh buttons in the UI.
-        console.log('Token usage updated (events disabled to prevent recursion)');
         
         // DISABLED code below to prevent event loops:
         /*

@@ -9,6 +9,8 @@ import {
 export class FileEventCoordinator implements IFileEventCoordinator {
     private isProcessingQueue: boolean = false;
     private processQueueDebounced!: () => void;
+    private isStartupPhase: boolean = true;
+    private startupTimeout: NodeJS.Timeout | null = null;
 
     // Event handlers
     private fileCreatedHandler!: (file: TAbstractFile) => void;
@@ -37,6 +39,12 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             // Register vault event handlers
             this.registerVaultEventHandlers();
             
+            // End startup phase after 5 seconds to allow initial vault events to settle
+            this.startupTimeout = setTimeout(() => {
+                this.isStartupPhase = false;
+                console.log('[FileEventCoordinator] Startup phase ended - now monitoring for new file changes');
+            }, 5000);
+            
             // Start processing any existing queue
             if (this.dependencies.fileEventQueue.size() > 0) {
                 this.processQueueDebounced();
@@ -51,6 +59,12 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     async shutdown(): Promise<void> {
         try {
             console.log('[FileEventCoordinator] Shutting down...');
+            
+            // Clear startup timeout
+            if (this.startupTimeout) {
+                clearTimeout(this.startupTimeout);
+                this.startupTimeout = null;
+            }
             
             // Unregister event handlers
             this.unregisterVaultEventHandlers();
@@ -75,10 +89,15 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             return;
         }
 
+        // Ignore events during startup phase (these are existing files, not new ones)
+        if (this.isStartupPhase) {
+            return;
+        }
+
         // Check if this is a system operation
         const isSystemOp = this.dependencies.fileMonitor.isSystemOperation();
         
-        
+        console.log(`[FileEventCoordinator] New file created: ${file.path}`);
         this.queueFileEvent({
             path: file.path,
             operation: 'create',
@@ -90,11 +109,15 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     }
 
     async handleFileModified(file: TAbstractFile): Promise<void> {
-        
         if (!this.dependencies.fileMonitor.shouldProcessFile(file)) return;
         
         if (!this.dependencies.fileMonitor.isVaultReady()) {
             this.dependencies.fileMonitor.incrementStartupEventCount();
+            return;
+        }
+
+        // Ignore events during startup phase
+        if (this.isStartupPhase) {
             return;
         }
 
@@ -113,7 +136,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
         const isSystemOp = this.dependencies.fileMonitor.isSystemOperation();
         
-        
+        console.log(`[FileEventCoordinator] File modified: ${file.path}`);
         this.queueFileEvent({
             path: file.path,
             operation: 'modify',
@@ -186,13 +209,26 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
             // Handle embeddings for create/modify events
             if (createModifyEvents.length > 0) {
-                await this.dependencies.embeddingScheduler.scheduleEmbedding(createModifyEvents);
+                // Check if we should process embeddings now or just queue them
+                const strategy = this.dependencies.embeddingScheduler.getStrategy();
                 
-                // Process remaining events for activity tracking
+                if (strategy.type === 'startup') {
+                    // For startup strategy, just queue events - don't process them
+                    console.log(`[FileEventCoordinator] Queuing ${createModifyEvents.length} events for startup processing`);
+                } else {
+                    // For other strategies, process immediately
+                    await this.dependencies.embeddingScheduler.scheduleEmbedding(createModifyEvents);
+                }
+                
+                // Process remaining events for activity tracking (but keep them in queue for startup strategy)
                 for (const event of createModifyEvents) {
                     if (!this.dependencies.fileEventProcessor.isProcessing(event.path)) {
                         await this.dependencies.activityTracker.recordFileActivity(event);
-                        this.dependencies.fileEventQueue.removeEvent(event.path);
+                        
+                        // Only remove from queue if not using startup strategy
+                        if (strategy.type !== 'startup') {
+                            this.dependencies.fileEventQueue.removeEvent(event.path);
+                        }
                     }
                 }
             }
@@ -219,6 +255,59 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
     setSystemOperation(isSystem: boolean): void {
         this.dependencies.fileMonitor.setSystemOperation(isSystem);
+    }
+
+    /**
+     * Process all queued files for startup embedding strategy
+     */
+    async processStartupQueue(): Promise<void> {
+        const queuedEvents = this.dependencies.fileEventQueue.getEvents();
+        if (queuedEvents.length > 0) {
+            console.log(`[FileEventCoordinator] Found ${queuedEvents.length} queued events to validate:`);
+            queuedEvents.forEach(event => {
+                console.log(`  - ${event.path} (${event.operation}, ${event.timestamp})`);
+            });
+            
+            // Filter out files that no longer exist or aren't processable
+            const validEvents = queuedEvents.filter(event => {
+                // Skip delete events - they don't need to exist
+                if (event.operation === 'delete') {
+                    console.log(`[FileEventCoordinator] Keeping delete event for ${event.path}`);
+                    return true;
+                }
+                
+                const file = this.app.vault.getAbstractFileByPath(event.path);
+                
+                // Use the same validation logic as FileMonitor.shouldProcessFile
+                let isProcessableFile = false;
+                if (file && !('children' in file)) {
+                    isProcessableFile = this.dependencies.fileMonitor.shouldProcessFile(file);
+                }
+                
+                if (!isProcessableFile) {
+                    console.log(`[FileEventCoordinator] Invalid file: ${event.path} (file exists: ${!!file}, is not folder: ${file ? !('children' in file) : 'N/A'}, should process: ${isProcessableFile})`);
+                }
+                
+                return isProcessableFile;
+            });
+            
+            const invalidCount = queuedEvents.length - validEvents.length;
+            if (invalidCount > 0) {
+                console.log(`[FileEventCoordinator] Removed ${invalidCount} non-existent files from queue`);
+            }
+            
+            if (validEvents.length > 0) {
+                console.log(`[FileEventCoordinator] Processing ${validEvents.length} valid queued files on startup`);
+                await this.dependencies.embeddingScheduler.forceProcessEmbeddings(validEvents);
+            } else {
+                console.log(`[FileEventCoordinator] No valid files to process in queue`);
+            }
+            
+            this.dependencies.fileEventQueue.clear(); // Clear after processing
+            await this.dependencies.fileEventQueue.persist(); // Save empty queue
+        } else {
+            console.log(`[FileEventCoordinator] No queued files to process on startup`);
+        }
     }
 
     // Private helper methods
