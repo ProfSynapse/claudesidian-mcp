@@ -11,9 +11,9 @@ describe('contextUtils', () => {
       const parsed = parseWorkspaceContext(stringContext);
       
       expect(parsed).not.toBeNull();
-      expect(parsed!.workspaceId).toBe('test-workspace-123');
-      expect(parsed!.workspacePath).toEqual(['project', 'phase1']);
-      expect(parsed!.activeWorkspace).toBe(true);
+      expect(parsed?.workspaceId).toBe('test-workspace-123');
+      expect(parsed?.workspacePath).toEqual(['project', 'phase1']);
+      expect(parsed?.activeWorkspace).toBe(true);
     });
     
     it('should handle object representation of workspace context', () => {
@@ -25,8 +25,8 @@ describe('contextUtils', () => {
       const parsed = parseWorkspaceContext(objContext);
       
       expect(parsed).not.toBeNull();
-      expect(parsed!.workspaceId).toBe('test-workspace-456');
-      expect(parsed!.workspacePath).toEqual(['project', 'phase2']);
+      expect(parsed?.workspaceId).toBe('test-workspace-456');
+      expect(parsed?.workspacePath).toEqual(['project', 'phase2']);
     });
     
     it('should handle undefined or null workspace context', () => {
