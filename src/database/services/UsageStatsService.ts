@@ -137,7 +137,6 @@ export class UsageStatsService {
         if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
             // We're completely disabling auto-refresh on storage events to break the cycle
             // Token updates will be reflected when the user manually interacts with the UI
-            console.log('Token usage auto-refresh is disabled to prevent recursion');
             
             // We'll just listen for explicit collection deletion/purge events
             window.addEventListener('storage', (event) => {
@@ -170,7 +169,6 @@ export class UsageStatsService {
                     }, 2000); // Delay refresh to avoid conflicts
                 });
                 
-                console.log('UsageStatsService: Set up limited plugin event listeners');
             }
         } catch (error) {
             console.warn('Failed to set up plugin event listeners:', error);
@@ -244,18 +242,10 @@ export class UsageStatsService {
             // Try to get from the embedding provider if available
             if (this.embeddingService && this.embeddingService.getProvider()) {
                 const provider = this.embeddingService.getProvider();
-                console.log('Provider type:', provider ? provider.constructor.name : 'null');
                 
                 if (provider) {
                     // Check if provider implements ITokenTrackingProvider interface
                     const isTokenTrackingProvider = this.isTokenTrackingProvider(provider);
-                    console.log('Provider methods:', {
-                        isTokenTrackingProvider: isTokenTrackingProvider,
-                        hasTotalCost: typeof (provider as any).getTotalCost === 'function',
-                        hasModelUsage: typeof (provider as any).getModelUsage === 'function',
-                        hasTokensThisMonth: typeof (provider as any).getTokensThisMonth === 'function',
-                        hasModelUsageObj: !!(provider as any).modelUsage
-                    });
                     
                     if (isTokenTrackingProvider) {
                         // Use the standard interface
@@ -264,10 +254,8 @@ export class UsageStatsService {
                         stats.modelUsage = trackingProvider.getModelUsage() || stats.modelUsage;
                         stats.tokensThisMonth = trackingProvider.getTokensThisMonth() || stats.tokensThisMonth;
                         
-                        console.log('Retrieved token stats using ITokenTrackingProvider interface');
                     } else {
                         // Fall back to any casting for backward compatibility
-                        console.log('Using fallback method for non-ITokenTrackingProvider');
                         
                         // Get total cost if the method exists
                         if (typeof (provider as any).getTotalCost === 'function') {
@@ -291,12 +279,6 @@ export class UsageStatsService {
                             stats.tokensThisMonth = Object.values(stats.modelUsage || {}).reduce((sum, count) => sum + count, 0);
                         }
                     }
-                    
-                    console.log('Loaded token usage stats from provider:', {
-                        tokensThisMonth: stats.tokensThisMonth,
-                        estimatedCost: stats.estimatedCost,
-                        modelUsage: stats.modelUsage
-                    });
                 }
             }
         } catch (error) {
@@ -533,7 +515,6 @@ export class UsageStatsService {
                 if (this.isTokenTrackingProvider(provider)) {
                     // Use the standard interface
                     await provider.resetUsageStats();
-                    console.log('Reset usage stats using ITokenTrackingProvider interface');
                 } else if (typeof (provider as any).resetUsageStats === 'function') {
                     // Fallback for backward compatibility
                     await (provider as any).resetUsageStats();
@@ -567,7 +548,6 @@ export class UsageStatsService {
                 if (this.isTokenTrackingProvider(provider)) {
                     // Use the standard interface
                     await provider.updateUsageStats(tokenCount, model);
-                    console.log(`Updated token usage stats using ITokenTrackingProvider interface: +${tokenCount} tokens`);
                 } else if (typeof (provider as any).updateUsageStats === 'function') {
                     // Fallback for backward compatibility
                     await (provider as any).updateUsageStats(tokenCount, model);

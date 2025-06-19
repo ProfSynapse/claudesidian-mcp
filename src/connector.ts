@@ -71,7 +71,6 @@ export class MCPConnector {
             const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
             const isMemoryEnabled = memorySettings?.enabled && memorySettings?.embeddingsEnabled;
             
-            console.log(`Memory/embeddings enabled: ${isMemoryEnabled}`);
             
             // Always register these agents (no vector database dependency)
             const contentManagerAgent = new ContentManagerAgent(
@@ -97,7 +96,6 @@ export class MCPConnector {
             
             // If memory is enabled, initialize vector capabilities
             if (isMemoryEnabled && vectorStore) {
-                console.log('Setting vector store in VaultLibrarian during initialization');
                 vaultLibrarianAgent.initializeSearchService().catch(error => 
                     console.error('Error initializing VaultLibrarian search service:', error)
                 );

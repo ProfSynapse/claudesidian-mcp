@@ -52,7 +52,6 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
     // Initialize token tracking
     this.tokenTracker.initializeTokenTracking();
     
-    console.log(`ChromaDB embedding provider initialized with dimension: ${this.dimension}, model: ${this.model}`);
     return Promise.resolve();
   }
   

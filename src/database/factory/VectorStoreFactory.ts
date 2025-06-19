@@ -47,7 +47,6 @@ export class VectorStoreFactory {
     const providerSettings = settings.providerSettings?.[providerId];
     
     if (!providerSettings || !providerSettings.apiKey) {
-      console.log('No API key configured, using default ChromaDB embedding provider');
       return new ChromaEmbeddingProvider(undefined, 1536);
     }
     

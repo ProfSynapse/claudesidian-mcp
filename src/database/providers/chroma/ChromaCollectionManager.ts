@@ -135,7 +135,6 @@ export class ChromaCollectionManager {
         }
       }
       
-      console.log(`Loaded ${this.collections.size} collections from ChromaDB (${loadedCollections.size} valid, ${failedCollections.size} recovered)`);
     } catch (error) {
       console.error('Failed to refresh ChromaDB collections:', error);
       throw new Error(`Collection refresh failed: ${getErrorMessage(error)}`);

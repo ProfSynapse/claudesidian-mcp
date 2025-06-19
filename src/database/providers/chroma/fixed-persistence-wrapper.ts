@@ -277,7 +277,7 @@ class StrictPersistentCollection implements Collection {
       // Load metadata if present
       if (data.metadata) {
         this.collectionMetadata = data.metadata;
-        console.log(`Loaded metadata for collection ${this.name}`);
+        // Loaded metadata for collection
       }
       
       // Check for items array
@@ -297,7 +297,7 @@ class StrictPersistentCollection implements Collection {
           }
         }
         
-        console.log(`Loaded ${this.items.size} items for collection ${this.name}`);
+        // Loaded items for collection
       } else {
         console.warn(`No items found in data file for collection ${this.name}`);
       }
@@ -668,7 +668,6 @@ export class StrictPersistenceChromaClient {
    * @param options Client options
    */
   constructor(options: ChromaClientOptions = {}) {
-    console.log('Creating StrictPersistenceChromaClient - GUARANTEES PERSISTENCE');
     
     try {
       // Use Node.js fs module
@@ -682,11 +681,9 @@ export class StrictPersistenceChromaClient {
         
         if (isAbsolutePath) {
           this.storagePath = options.path;
-          console.log(`StrictPersistenceChromaClient using absolute path: ${this.storagePath}`);
         } else {
           // Use the path as-is WITHOUT resolving
           this.storagePath = options.path;
-          console.log(`StrictPersistenceChromaClient using relative path directly: ${this.storagePath}`);
         }
         
         // Create the storage directory if it doesn't exist
@@ -724,7 +721,7 @@ export class StrictPersistenceChromaClient {
     }
     
     try {
-      console.log(`Loading collections from disk: ${this.storagePath}`);
+      // Loading collections from disk
       
       // Ensure storage directory exists
       if (!this.fs.existsSync(this.storagePath)) {
@@ -748,7 +745,7 @@ export class StrictPersistenceChromaClient {
         return this.fs.statSync(fullPath).isDirectory() && !item.startsWith('.');
       });
       
-      console.log(`Found ${collectionDirs.length} collection directories: ${collectionDirs.join(', ')}`);
+      // Found collection directories
       
       // Load each collection
       for (const collectionName of collectionDirs) {
@@ -767,7 +764,6 @@ export class StrictPersistenceChromaClient {
           
           // Store in our collections map
           this.collections.set(collectionName, collection);
-          console.log(`Successfully loaded collection: ${collectionName}`);
         } catch (error) {
           console.error(`Failed to load collection ${collectionName}:`, error);
           // Continue with other collections

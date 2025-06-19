@@ -3,6 +3,7 @@ import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../.
 import { VectorStoreFactory } from '../factory/VectorStoreFactory';
 import { IEmbeddingProvider } from '../interfaces/IEmbeddingProvider';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { EmbeddingProviderRegistry } from '../providers/registry/EmbeddingProviderRegistry';
 
 /**
  * Manages embedding providers and settings
@@ -29,9 +30,12 @@ export class EmbeddingManager {
       
       const embeddingsWereEnabled = pluginSettings.embeddingsEnabled;
       
-      // Validate settings
+      // Validate settings - only check API key if provider requires it
+      const providerConfig = EmbeddingProviderRegistry.getProvider(pluginSettings.apiProvider);
       const currentProvider = pluginSettings.providerSettings[pluginSettings.apiProvider];
-      if (embeddingsWereEnabled && (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
+      
+      if (embeddingsWereEnabled && providerConfig?.requiresApiKey && 
+          (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
         this.settings.embeddingsEnabled = false;
         console.warn(`${pluginSettings.apiProvider} API key is required but not provided. Embeddings will be disabled.`);
         new Notice(`Embeddings are disabled until you provide a valid ${pluginSettings.apiProvider} API key in settings.`);
@@ -57,11 +61,16 @@ export class EmbeddingManager {
    * Initialize the embedding provider based on settings
    */
   private async initializeProvider(): Promise<void> {
+    const providerConfig = EmbeddingProviderRegistry.getProvider(this.settings.apiProvider);
     const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
-    if (this.settings.embeddingsEnabled && currentProvider?.apiKey) {
+    
+    // Initialize if embeddings are enabled AND either:
+    // 1. Provider doesn't require API key, OR
+    // 2. Provider requires API key and one is provided
+    if (this.settings.embeddingsEnabled && 
+        (!providerConfig?.requiresApiKey || currentProvider?.apiKey)) {
       try {
         this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
-        console.log(`${this.settings.apiProvider} embedding provider initialized successfully`);
       } catch (providerError) {
         console.error(`Error initializing ${this.settings.apiProvider} provider:`, providerError);
         this.settings.embeddingsEnabled = false;
@@ -70,7 +79,6 @@ export class EmbeddingManager {
       }
     } else {
       this.embeddingProvider = null;
-      console.log("Embeddings are disabled - no provider initialized");
     }
   }
 
@@ -176,8 +184,11 @@ export class EmbeddingManager {
     
     const currentProvider = settings.providerSettings[settings.apiProvider];
     
-    // Validate API key if embeddings are enabled
-    if (settings.embeddingsEnabled && (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
+    // Validate API key if embeddings are enabled and provider requires it
+    const providerConfig = EmbeddingProviderRegistry.getProvider(settings.apiProvider);
+    
+    if (settings.embeddingsEnabled && providerConfig?.requiresApiKey && 
+        (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
       // API key is required but not provided, disable embeddings
       console.warn(`${settings.apiProvider} API key is required but not provided. Embeddings will be disabled.`);
       this.settings.embeddingsEnabled = false;
@@ -194,8 +205,11 @@ export class EmbeddingManager {
     
     // Initialize the appropriate provider based on settings
     try {
-      // Only initialize a provider if embeddings are enabled and we have a key
-      if (settings.embeddingsEnabled && currentProvider?.apiKey) {
+      // Only initialize a provider if embeddings are enabled and either:
+      // 1. Provider doesn't require API key, OR
+      // 2. Provider requires API key and one is provided
+      if (settings.embeddingsEnabled && 
+          (!providerConfig?.requiresApiKey || currentProvider?.apiKey)) {
         // Use VectorStoreFactory to create provider with new architecture
         this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
         console.log(`Initialized ${settings.apiProvider} embedding provider (${currentProvider.model})`);

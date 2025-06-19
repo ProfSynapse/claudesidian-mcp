@@ -118,13 +118,10 @@ export class IndexingComponent {
             if (embeddingService) {
                 const provider = embeddingService.getProvider();
                 if (provider) {
-                    console.log('Provider found:', provider.constructor.name);
                     
                     // Directly access and log the token usage
                     if ((provider as any).modelUsage) {
-                        console.log('Current model usage:', (provider as any).modelUsage);
                     } else {
-                        console.log('Provider has no modelUsage property');
                     }
                     
                     // Manually update localStorage to ensure data is saved

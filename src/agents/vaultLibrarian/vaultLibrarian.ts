@@ -110,7 +110,6 @@ export class VaultLibrarianAgent extends BaseAgent {
     ));
     
     if (enableVectorModes) {
-      console.log('VaultLibrarian initialized with semantic search capabilities');
     } else {
       console.log('VaultLibrarian initialized with traditional search (memory disabled)');
     }

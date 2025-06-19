@@ -9,6 +9,7 @@ import { TextChunk, chunkText } from '../utils/TextChunker';
 import { IndexingStateManager } from './IndexingStateManager';
 import { ChunkMatcher } from '../utils/ChunkMatcher';
 import * as crypto from 'crypto';
+import { EmbeddingProviderRegistry } from '../providers/registry/EmbeddingProviderRegistry';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {
@@ -29,9 +30,9 @@ export class EmbeddingService {
    * @param provider Embedding provider to check
    * @returns true if provider implements ITokenTrackingProvider
    */
-  private isTokenTrackingProvider(provider: IEmbeddingProvider): boolean {
+  private isTokenTrackingProvider(provider: IEmbeddingProvider | null): boolean {
     return (
-      provider &&
+      provider !== null &&
       typeof (provider as ITokenTrackingProvider).getTokensThisMonth === 'function' &&
       typeof (provider as ITokenTrackingProvider).updateUsageStats === 'function' &&
       typeof (provider as ITokenTrackingProvider).getTotalCost === 'function'
@@ -40,7 +41,7 @@ export class EmbeddingService {
   /**
    * Embedding provider instance
    */
-  private embeddingProvider: IEmbeddingProvider;
+  private embeddingProvider: IEmbeddingProvider | null;
   
   /**
    * Memory settings
@@ -71,7 +72,7 @@ export class EmbeddingService {
     this.settings = { ...DEFAULT_MEMORY_SETTINGS };
     
     // Create a default embedding provider - will be properly initialized in initializeSettings
-    this.embeddingProvider = null as any; // Temporary placeholder
+    this.embeddingProvider = null;
     
     // Initialize state manager
     this.stateManager = new IndexingStateManager(plugin);
@@ -92,12 +93,18 @@ export class EmbeddingService {
       const embeddingsWereEnabled = pluginSettings.embeddingsEnabled;
       
       // Initialize provider only if we have valid settings
+      const providerConfig = EmbeddingProviderRegistry.getProvider(this.settings.apiProvider);
       const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
-      if (this.settings.embeddingsEnabled && currentProvider?.apiKey && currentProvider.apiKey.trim() !== "") {
+      
+      // Initialize if embeddings are enabled AND either:
+      // 1. Provider doesn't require API key, OR
+      // 2. Provider requires API key and one is provided
+      if (this.settings.embeddingsEnabled && 
+          (!providerConfig?.requiresApiKey || (currentProvider?.apiKey && currentProvider.apiKey.trim() !== ""))) {
         this.initializeProvider().catch(error => {
           console.error('Failed to initialize provider:', error);
         });
-      } else if (this.settings.embeddingsEnabled) {
+      } else if (this.settings.embeddingsEnabled && providerConfig?.requiresApiKey) {
         console.warn(`${this.settings.apiProvider} API key is required but not provided. Provider will not be initialized.`);
       }
       
@@ -116,27 +123,21 @@ export class EmbeddingService {
     try {
       // Use the factory to create the embedding provider with the current settings
       this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
-      await this.embeddingProvider.initialize();
-      
-      const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
-      if (this.settings.embeddingsEnabled && currentProvider?.apiKey) {
-        console.log(`${this.settings.apiProvider} embedding provider initialized successfully`);
-      } else {
-        console.log("Embeddings are disabled - using default provider");
+      if (this.embeddingProvider) {
+        await this.embeddingProvider.initialize();
+        console.log(`Initialized ${this.settings.apiProvider} embedding provider successfully`);
       }
     } catch (providerError) {
       console.error("Error initializing embedding provider:", providerError);
-      this.settings.embeddingsEnabled = false;
-      
-      // Fall back to default provider
-      this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(this.settings);
+      this.embeddingProvider = null;
+      // Don't disable embeddings here - let the settings validation handle that
     }
   }
   
   /**
    * Get the embedding provider
    */
-  getProvider(): IEmbeddingProvider {
+  getProvider(): IEmbeddingProvider | null {
     return this.embeddingProvider;
   }
   
@@ -149,7 +150,7 @@ export class EmbeddingService {
       await this.initializeProvider();
     }
     
-    if (!this.settings.embeddingsEnabled) {
+    if (!this.settings.embeddingsEnabled || !this.embeddingProvider) {
       return null;
     }
     
@@ -171,7 +172,7 @@ export class EmbeddingService {
       await this.initializeProvider();
     }
     
-    if (!this.settings.embeddingsEnabled || texts.length === 0) {
+    if (!this.settings.embeddingsEnabled || !this.embeddingProvider || texts.length === 0) {
       return null;
     }
     
@@ -323,6 +324,9 @@ export class EmbeddingService {
    * @param embedding2 Second embedding
    */
   calculateSimilarity(embedding1: number[], embedding2: number[]): number {
+    if (!this.embeddingProvider) {
+      throw new Error('Embedding provider not initialized');
+    }
     return this.embeddingProvider.calculateSimilarity(embedding1, embedding2);
   }
   
@@ -1261,7 +1265,7 @@ export class EmbeddingService {
             const estimatedCost = trackingProvider.getTotalCost();
             console.log(`Current token usage: ${tokensThisMonth} tokens, estimated cost: $${estimatedCost.toFixed(6)}`);
           } else {
-            console.warn(`Provider ${provider.constructor.name} does not support token tracking. Stats won't be updated.`);
+            console.warn(`Provider ${provider ? provider.constructor.name : 'null'} does not support token tracking. Stats won't be updated.`);
           }
           
           // Also manually update all-time token usage in localStorage

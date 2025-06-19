@@ -39,7 +39,6 @@ export class EmbeddingProviderRegistry {
    */
   static registerProvider(provider: EmbeddingProviderConfig): void {
     this.providers.set(provider.id, provider);
-    console.log(`Registered embedding provider: ${provider.name} (${provider.id})`);
   }
   
   /**

@@ -13,7 +13,7 @@ import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 import { WorkspaceService } from './database/services/WorkspaceService';
 import { MemoryService } from './database/services/MemoryService';
 import { EventManager } from './services/EventManager';
-import { FileEventManager } from './services/FileEventManager';
+import { FileEventManagerModular } from './services/file-events/FileEventManagerModular';
 import { UsageStatsService } from './database/services/UsageStatsService';
 import { CacheManager } from './database/services/CacheManager';
 
@@ -30,7 +30,7 @@ export default class ClaudesidianPlugin extends Plugin {
     public searchService!: ChromaSearchService;
     public workspaceService!: WorkspaceService;
     public memoryService!: MemoryService;
-    public fileEventManager!: FileEventManager;
+    public fileEventManager!: FileEventManagerModular;
     public eventManager!: EventManager;
     public usageStatsService!: UsageStatsService;
     public cacheManager!: CacheManager;
@@ -46,7 +46,7 @@ export default class ClaudesidianPlugin extends Plugin {
         memoryService: MemoryService;
         vectorStore: IVectorStore;
         eventManager: EventManager;
-        fileEventManager: FileEventManager;
+        fileEventManager: FileEventManagerModular;
         usageStatsService: UsageStatsService;
         cacheManager: CacheManager;
     };
@@ -80,11 +80,7 @@ export default class ClaudesidianPlugin extends Plugin {
             const chromaDbDir = path.join(dataDir, 'chroma-db');
             const collectionsDir = path.join(chromaDbDir, 'collections');
             
-            // Log directory information for debugging
-            console.log(`Plugin directory (from manifest): ${pluginDir}`);
-            console.log(`Plugin ID: ${pluginId}`);
-            console.log(`Data directory path: ${dataDir}`);
-            console.log(`ChromaDB directory path: ${chromaDbDir}`);
+            // Directory information logged only for debugging when needed
             
             // Check and create the main data directory
             if (!fs.existsSync(dataDir)) {
@@ -96,8 +92,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 } else {
                     console.error(`Failed to verify data directory creation at: ${dataDir}`);
                 }
-            } else {
-                console.log(`Data directory exists at: ${dataDir}`);
             }
             
             // Check and create the ChromaDB directory
@@ -124,17 +118,9 @@ export default class ClaudesidianPlugin extends Plugin {
                 } else {
                     console.error(`Failed to verify collections directory creation at: ${collectionsDir}`);
                 }
-            } else {
-                console.log(`ChromaDB collections directory exists at: ${collectionsDir}`);
             }
             
-            // After creating all directories, list the contents for verification
-            console.log("Listing data directory contents:");
-            if (fs.existsSync(dataDir)) {
-                console.log(fs.readdirSync(dataDir));
-            } else {
-                console.log("Data directory still doesn't exist");
-            }
+            // Directory verification complete
             
             // Ensure memory settings exist before setting the path
             if (!this.settings.settings.memory) {
@@ -201,8 +187,7 @@ export default class ClaudesidianPlugin extends Plugin {
         const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.manifest.id);
         const dataDir = path.join(pluginDir, 'data', 'chroma-db');
         
-        console.log(`Plugin directory: ${pluginDir}`);
-        console.log(`Creating vector store with path: ${dataDir}`);
+        // Vector store initialization
         
         this.vectorStore = VectorStoreFactory.createVectorStore(this, {
             persistentPath: dataDir,
@@ -224,7 +209,6 @@ export default class ClaudesidianPlugin extends Plugin {
             // Check if file_embeddings collection has any data
             try {
                 const embeddingCount = await this.vectorStore.count('file_embeddings');
-                console.log(`[Main] file_embeddings collection contains ${embeddingCount} embeddings at startup`);
             } catch (countError) {
                 console.log(`[Main] Could not count file_embeddings (collection may not exist yet):`, countError);
             }
@@ -261,7 +245,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 console.warn(`Failed to initialize memory service: ${error.message}`);
             });
             
-            console.log("ChromaDB collections initialization complete");
             
             // Add a validation step to ensure collections are properly loaded
             this.validateCollections();
@@ -276,19 +259,25 @@ export default class ClaudesidianPlugin extends Plugin {
         }
         
         // Initialize the file event manager with all required services
-        console.log('[Main] Creating FileEventManager...');
-        this.fileEventManager = new FileEventManager(
+        // Get embedding strategy from settings
+        const embeddingStrategy = {
+            type: (this.settings?.settings?.memory?.embeddingStrategy || 'manual') as 'manual' | 'idle' | 'startup',
+            idleTimeThreshold: this.settings?.settings?.memory?.idleTimeThreshold || 60000,
+            batchSize: this.settings?.settings?.memory?.batchSize || 10,
+            processingDelay: 1000 // Default processing delay
+        };
+        
+        this.fileEventManager = new FileEventManagerModular(
             this.app,
             this,
             this.memoryService,
             this.workspaceService,
             this.embeddingService,
-            this.eventManager
+            this.eventManager,
+            embeddingStrategy
         );
-        console.log('[Main] FileEventManager created, calling initialize...');
         try {
             await this.fileEventManager.initialize();
-            console.log('[Main] FileEventManager initialization completed successfully');
         } catch (error) {
             console.error('[Main] FileEventManager initialization failed:', error);
             throw error;
@@ -520,7 +509,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 const now = new Date();
                 const daysDiff = (now.getTime() - lastCheckTime.getTime()) / (1000 * 60 * 60 * 24);
                 if (daysDiff < 1) {
-                    console.log('Update check skipped - last checked less than 24 hours ago');
                     return;
                 }
             }
@@ -563,7 +551,6 @@ export default class ClaudesidianPlugin extends Plugin {
      * This runs after service initialization to ensure everything is working correctly
      */
     private async validateCollections(): Promise<void> {
-        console.log("Starting post-initialization collection validation");
         
         // This should be running within a system operation context already,
         // but we'll ensure it here just in case it's called separately
@@ -633,7 +620,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 validationIssues.length > 0 ? `Found ${validationIssues.length} validation issues` : null,
             ].filter(Boolean).join('. ');
             
-            console.log(validationSummary);
             
             // Log detailed issues if any
             if (validationIssues.length > 0) {
@@ -658,12 +644,10 @@ export default class ClaudesidianPlugin extends Plugin {
      * Warm the cache with commonly accessed data
      */
     private async warmCache(): Promise<void> {
-        console.log('Warming cache on plugin startup...');
         
         try {
             // Check if cache manager is initialized before using it
             if (!this.cacheManager || !this.cacheManager.isReady()) {
-                console.log('CacheManager not ready, skipping cache warming');
                 return;
             }
             

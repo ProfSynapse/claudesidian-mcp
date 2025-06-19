@@ -160,8 +160,6 @@ export class ChromaVectorStore extends BaseVectorStore {
         console.log(`Creating directory: ${path}`);
         mkdirSync(path, { recursive: true });
         console.log(`Successfully created directory: ${path}`);
-      } else {
-        console.log(`Directory already exists: ${path}`);
       }
     } catch (error) {
       console.error(`Failed to create directory ${path}:`, error);
@@ -200,7 +198,6 @@ export class ChromaVectorStore extends BaseVectorStore {
       // Then ensure the chroma-db directory exists
       if (!this.config.inMemory && this.config.persistentPath) {
         this.ensureDirectoryExists(this.config.persistentPath);
-        console.log(`Ensured ChromaDB directory exists at: ${this.config.persistentPath}`);
       }
       
       // Create ChromaDB client
@@ -220,15 +217,13 @@ export class ChromaVectorStore extends BaseVectorStore {
         });
       } else {
         // Local persistent client
-        console.log(`Using StrictPersistence ChromaDB at: ${this.config.persistentPath}`);
         
         // Create new strict persistence client
         this.client = new ChromaClient({
           path: this.config.persistentPath
         });
         
-        // Log path info to confirm it's being used correctly
-        console.log(`ChromaDB storage path set to: ${this.config.persistentPath}`);
+        // ChromaDB storage path configured
         
         // Create the directory structure if needed (redundant but safer)
         const fs = require('fs');
@@ -376,7 +371,6 @@ export class ChromaVectorStore extends BaseVectorStore {
         `Cache contains ${this.collectionCache.size} collections`
       ].filter(Boolean).join('. ');
       
-      console.log(status);
     } catch (error) {
       console.error('Failed to refresh collections:', error);
       throw new Error(`Collection refresh failed: ${getErrorMessage(error)}`);

@@ -36,11 +36,7 @@ export class ToolListService implements IToolListService {
                 
                 const toolName = vaultName ? `${agent.name}_${vaultName}` : agent.name;
                 
-                if (agent.name === 'vaultLibrarian') {
-                    logger.systemLog(`DEBUG: Final VaultLibrarian agent schema: ${JSON.stringify(agentSchema, null, 2)}`);
-                    logger.systemLog(`DEBUG: VaultLibrarian required fields: ${JSON.stringify(agentSchema.required)}`);
-                    logger.systemLog(`DEBUG: VaultLibrarian allOf conditions: ${JSON.stringify(agentSchema.allOf, null, 2)}`);
-                }
+                // Removed verbose debug logging for VaultLibrarian schema
                 
                 tools.push({
                     name: toolName,

@@ -323,5 +323,4 @@ export const logProviderOperation = (
   textsCount: number,
   model?: string
 ): void => {
-  console.log(`${providerId} ${operation}: processing ${textsCount} text(s)${model ? ` with model ${model}` : ''}`);
 };

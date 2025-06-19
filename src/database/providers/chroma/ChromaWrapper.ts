@@ -762,7 +762,7 @@ class PersistentChromaClient extends InMemoryChromaClient {
     
     try {
       // Use the storage path directly without resolving
-      console.log(`Loading collections from disk path: ${this.storagePath}`);
+      // Loading collections from disk
       
       // Ensure the storage directory exists
       if (!this.fs.existsSync(this.storagePath)) {

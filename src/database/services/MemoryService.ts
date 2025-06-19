@@ -91,7 +91,6 @@ export class MemoryService {
         console.warn(`Failed to initialize snapshots collection: ${error.message}`);
       });
       
-      console.log("Memory service collections initialized");
     } catch (error) {
       console.error("Failed to initialize MemoryService collections:", error);
       // Don't throw the error - let the plugin continue loading
