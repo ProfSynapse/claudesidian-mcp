@@ -262,52 +262,36 @@ export class FileEventCoordinator implements IFileEventCoordinator {
      */
     async processStartupQueue(): Promise<void> {
         const queuedEvents = this.dependencies.fileEventQueue.getEvents();
-        if (queuedEvents.length > 0) {
-            console.log(`[FileEventCoordinator] Found ${queuedEvents.length} queued events to validate:`);
-            queuedEvents.forEach(event => {
-                console.log(`  - ${event.path} (${event.operation}, ${event.timestamp})`);
-            });
-            
-            // Filter out files that no longer exist or aren't processable
-            const validEvents = queuedEvents.filter(event => {
-                // Skip delete events - they don't need to exist
-                if (event.operation === 'delete') {
-                    console.log(`[FileEventCoordinator] Keeping delete event for ${event.path}`);
-                    return true;
-                }
-                
-                const file = this.app.vault.getAbstractFileByPath(event.path);
-                
-                // Use the same validation logic as FileMonitor.shouldProcessFile
-                let isProcessableFile = false;
-                if (file && !('children' in file)) {
-                    isProcessableFile = this.dependencies.fileMonitor.shouldProcessFile(file);
-                }
-                
-                if (!isProcessableFile) {
-                    console.log(`[FileEventCoordinator] Invalid file: ${event.path} (file exists: ${!!file}, is not folder: ${file ? !('children' in file) : 'N/A'}, should process: ${isProcessableFile})`);
-                }
-                
-                return isProcessableFile;
-            });
-            
-            const invalidCount = queuedEvents.length - validEvents.length;
-            if (invalidCount > 0) {
-                console.log(`[FileEventCoordinator] Removed ${invalidCount} non-existent files from queue`);
-            }
-            
-            if (validEvents.length > 0) {
-                console.log(`[FileEventCoordinator] Processing ${validEvents.length} valid queued files on startup`);
-                await this.dependencies.embeddingScheduler.forceProcessEmbeddings(validEvents);
-            } else {
-                console.log(`[FileEventCoordinator] No valid files to process in queue`);
-            }
-            
-            this.dependencies.fileEventQueue.clear(); // Clear after processing
-            await this.dependencies.fileEventQueue.persist(); // Save empty queue
-        } else {
-            console.log(`[FileEventCoordinator] No queued files to process on startup`);
+        if (queuedEvents.length === 0) {
+            return;
         }
+
+        console.log(`[FileEventCoordinator] Processing ${queuedEvents.length} queued events from startup`);
+        
+        // Filter out files that no longer exist or aren't processable
+        const validEvents = queuedEvents.filter(event => {
+            // Delete events don't need to exist
+            if (event.operation === 'delete') {
+                return true;
+            }
+            
+            const file = this.app.vault.getAbstractFileByPath(event.path);
+            return file && !('children' in file) && this.dependencies.fileMonitor.shouldProcessFile(file);
+        });
+        
+        const invalidCount = queuedEvents.length - validEvents.length;
+        if (invalidCount > 0) {
+            console.log(`[FileEventCoordinator] Filtered out ${invalidCount} invalid files from queue`);
+        }
+        
+        if (validEvents.length > 0) {
+            console.log(`[FileEventCoordinator] Processing ${validEvents.length} valid files for embedding`);
+            await this.dependencies.embeddingScheduler.forceProcessEmbeddings(validEvents);
+        }
+        
+        // Clear queue after processing
+        this.dependencies.fileEventQueue.clear();
+        await this.dependencies.fileEventQueue.persist();
     }
 
     // Private helper methods

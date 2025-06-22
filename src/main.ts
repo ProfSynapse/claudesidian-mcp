@@ -14,8 +14,6 @@ import { WorkspaceService } from './database/services/WorkspaceService';
 import { MemoryService } from './database/services/MemoryService';
 import { EventManager } from './services/EventManager';
 import { FileEventManagerModular } from './services/file-events/FileEventManagerModular';
-import { SimpleFileEventManager } from './services/SimpleFileEventManager';
-import { ToEmbedService } from './services/ToEmbedService';
 import { UsageStatsService } from './database/services/UsageStatsService';
 import { CacheManager } from './database/services/CacheManager';
 

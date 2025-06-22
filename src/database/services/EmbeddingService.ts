@@ -94,7 +94,7 @@ export class EmbeddingService {
       
       // Initialize provider only if we have valid settings
       const providerConfig = EmbeddingProviderRegistry.getProvider(this.settings.apiProvider);
-      const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+      const currentProvider = this.settings.providerSettings?.[this.settings.apiProvider];
       
       // Initialize if embeddings are enabled AND either:
       // 1. Provider doesn't require API key, OR
@@ -204,9 +204,9 @@ export class EmbeddingService {
    */
   async updateSettings(settings: MemorySettings): Promise<void> {
     const oldProvider = this.settings.apiProvider;
-    const oldProviderSettings = this.settings.providerSettings[oldProvider];
+    const oldProviderSettings = this.settings.providerSettings?.[oldProvider];
     const newProvider = settings.apiProvider;
-    const newProviderSettings = settings.providerSettings[newProvider];
+    const newProviderSettings = settings.providerSettings?.[newProvider];
     
     // Check if we're switching to a provider with different dimensions
     const dimensionsChanged = oldProviderSettings?.dimensions !== newProviderSettings?.dimensions;
@@ -288,7 +288,7 @@ export class EmbeddingService {
     
     // Only validate API key if embeddings are being enabled
     // Don't silently reset the setting - let the UI handle validation
-    const currentProvider = settings.providerSettings[settings.apiProvider];
+    const currentProvider = settings.providerSettings?.[settings.apiProvider];
     if (settings.embeddingsEnabled && (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
       console.warn(`${settings.apiProvider} API key is required but not provided. Provider will not be initialized.`);
       // Don't modify the embeddingsEnabled setting here - leave it for UI to handle
@@ -790,7 +790,7 @@ export class EmbeddingService {
       // Update token usage stats
       if (totalTokensProcessed > 0) {
         try {
-          const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+          const currentProvider = this.settings.providerSettings?.[this.settings.apiProvider];
           const embeddingModel = currentProvider?.model || 'text-embedding-3-small';
           const provider = this.embeddingProvider;
           
@@ -1015,7 +1015,7 @@ export class EmbeddingService {
       // Update token usage stats
       if (totalTokensProcessed > 0) {
         try {
-          const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+          const currentProvider = this.settings.providerSettings?.[this.settings.apiProvider];
           const embeddingModel = currentProvider?.model || 'text-embedding-3-small';
           const provider = this.embeddingProvider;
           
@@ -1278,7 +1278,7 @@ export class EmbeddingService {
       if (totalTokensProcessed > 0) {
         try {
           // Update token usage
-          const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+          const currentProvider = this.settings.providerSettings?.[this.settings.apiProvider];
           const embeddingModel = currentProvider?.model || 'text-embedding-3-small';
           const provider = this.embeddingProvider;
           

@@ -1,6 +1,7 @@
 import { Notice } from 'obsidian';
 import { ProgressBar } from '../ProgressBar';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
+import { EmbeddingProviderRegistry } from '../../database/providers/registry/EmbeddingProviderRegistry';
 
 /**
  * Component for handling indexing operations
@@ -190,10 +191,13 @@ export class IndexingComponent {
                 }
             }
             
-            // Also check if the API key is present for the current provider
+            // Check if the API key is present for providers that require it
             const memorySettings = this.plugin.settings?.settings?.memory;
+            const providerConfig = EmbeddingProviderRegistry.getProvider(memorySettings?.apiProvider);
             const currentProvider = memorySettings?.providerSettings?.[memorySettings?.apiProvider];
-            if (!currentProvider?.apiKey) {
+            
+            // Only check for API key if the provider requires it
+            if (providerConfig?.requiresApiKey && !currentProvider?.apiKey) {
                 throw new Error(`${memorySettings?.apiProvider || 'API'} key is required but not provided. Add your API key in the API tab.`);
             }
             

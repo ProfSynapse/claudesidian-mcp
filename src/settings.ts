@@ -22,7 +22,30 @@ export class Settings {
      * Load settings from plugin data
      */
     async loadSettings() {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.plugin.loadData());
+        const loadedData = await this.plugin.loadData();
+        
+        // Start with default settings (includes memory)
+        this.settings = Object.assign({}, DEFAULT_SETTINGS);
+        
+        // If we have loaded data, merge it properly
+        if (loadedData) {
+            // Shallow copy top-level properties except memory
+            const { memory, ...otherSettings } = loadedData;
+            Object.assign(this.settings, otherSettings);
+            
+            // Deep merge memory settings to ensure all required properties exist
+            if (memory && DEFAULT_SETTINGS.memory) {
+                this.settings.memory = {
+                    ...DEFAULT_SETTINGS.memory,
+                    ...memory,
+                    // Ensure providerSettings exists with all default providers
+                    providerSettings: {
+                        ...DEFAULT_SETTINGS.memory.providerSettings,
+                        ...(memory.providerSettings || {})
+                    }
+                };
+            }
+        }
     }
 
     /**

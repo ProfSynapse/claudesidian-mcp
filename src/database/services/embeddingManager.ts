@@ -32,7 +32,7 @@ export class EmbeddingManager {
       
       // Validate settings - only check API key if provider requires it
       const providerConfig = EmbeddingProviderRegistry.getProvider(pluginSettings.apiProvider);
-      const currentProvider = pluginSettings.providerSettings[pluginSettings.apiProvider];
+      const currentProvider = pluginSettings.providerSettings?.[pluginSettings.apiProvider];
       
       if (embeddingsWereEnabled && providerConfig?.requiresApiKey && 
           (!currentProvider?.apiKey || currentProvider.apiKey.trim() === "")) {
@@ -62,7 +62,7 @@ export class EmbeddingManager {
    */
   private async initializeProvider(): Promise<void> {
     const providerConfig = EmbeddingProviderRegistry.getProvider(this.settings.apiProvider);
-    const currentProvider = this.settings.providerSettings[this.settings.apiProvider];
+    const currentProvider = this.settings.providerSettings?.[this.settings.apiProvider];
     
     // Initialize if embeddings are enabled AND either:
     // 1. Provider doesn't require API key, OR
@@ -128,9 +128,9 @@ export class EmbeddingManager {
   async updateSettings(settings: MemorySettings): Promise<void> {
     const prevSettings = this.settings;
     const oldProvider = this.settings.apiProvider;
-    const oldProviderSettings = this.settings.providerSettings[oldProvider];
+    const oldProviderSettings = this.settings.providerSettings?.[oldProvider];
     const newProvider = settings.apiProvider;
-    const newProviderSettings = settings.providerSettings[newProvider];
+    const newProviderSettings = settings.providerSettings?.[newProvider];
     
     // Check if we're switching to a provider with different dimensions
     const dimensionsChanged = oldProviderSettings?.dimensions !== newProviderSettings?.dimensions;
@@ -182,7 +182,7 @@ export class EmbeddingManager {
     
     this.settings = settings;
     
-    const currentProvider = settings.providerSettings[settings.apiProvider];
+    const currentProvider = settings.providerSettings?.[settings.apiProvider];
     
     // Validate API key if embeddings are enabled and provider requires it
     const providerConfig = EmbeddingProviderRegistry.getProvider(settings.apiProvider);

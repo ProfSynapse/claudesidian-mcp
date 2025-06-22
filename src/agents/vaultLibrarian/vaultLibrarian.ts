@@ -138,7 +138,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     }
     
     // Create new provider if enabled
-    const currentProvider = settings.providerSettings[settings.apiProvider];
+    const currentProvider = settings.providerSettings?.[settings.apiProvider];
     if (settings.embeddingsEnabled && currentProvider?.apiKey) {
       try {
         // Use VectorStoreFactory to create provider with new architecture

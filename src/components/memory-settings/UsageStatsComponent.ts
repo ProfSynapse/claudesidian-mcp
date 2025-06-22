@@ -106,6 +106,9 @@ export class UsageStatsComponent extends BaseSettingsTab {
         // Store the container element for reference
         this.containerEl = containerEl;
         
+        // Clear existing content to prevent duplicates
+        containerEl.empty();
+        
         const section = containerEl.createEl('div', { cls: 'memory-usage-stats' });
         
         section.createEl('h3', { text: 'Usage Statistics' });
