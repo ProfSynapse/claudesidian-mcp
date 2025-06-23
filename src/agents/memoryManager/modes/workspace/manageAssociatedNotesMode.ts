@@ -191,7 +191,7 @@ export class ManageAssociatedNotesMode extends BaseMode<ManageAssociatedNotesPar
         },
         ...commonSchema
       },
-      required: ['workspaceId', 'action', 'sessionId', 'context']
+      required: ['workspaceId', 'action']
     };
   }
   

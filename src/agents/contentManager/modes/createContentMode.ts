@@ -90,7 +90,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
         },
         ...this.getCommonParameterSchema()
       },
-      required: ['filePath', 'content', 'sessionId', 'context']
+      required: ['filePath', 'content']
     };
   }
   

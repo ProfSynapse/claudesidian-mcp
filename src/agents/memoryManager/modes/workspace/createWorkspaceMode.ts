@@ -303,7 +303,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
           description: 'Parent workspace/phase ID if applicable'
         }
       },
-      required: ['name', 'rootFolder', 'sessionId', 'context']
+      required: ['name', 'rootFolder']
     };
     
     // Merge with common schema (workspace context and handoff)

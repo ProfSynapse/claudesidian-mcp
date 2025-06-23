@@ -136,7 +136,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
         },
         ...commonSchema
       },
-      required: ['path', 'sessionId', 'context']
+      required: ['path']
     };
   }
   

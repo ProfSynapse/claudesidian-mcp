@@ -758,7 +758,7 @@ ${contextSummary}`;
           description: 'Session ID for tracking this tool call (distinct from targetSessionId which is the session to create the state from)'
         }
       },
-      required: ['name', 'sessionId', 'context']
+      required: ['name']
     };
     
     // Merge with common schema

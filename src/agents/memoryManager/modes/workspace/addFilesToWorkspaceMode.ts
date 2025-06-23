@@ -527,7 +527,7 @@ export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParamet
         },
         ...commonSchema
       },
-      required: ['workspaceId', 'sessionId', 'context']
+      required: ['workspaceId']
     };
   }
   

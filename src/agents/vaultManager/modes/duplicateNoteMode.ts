@@ -201,7 +201,7 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
           default: false
         }
       },
-      required: ['sourcePath', 'targetPath', 'sessionId', 'context']
+      required: ['sourcePath', 'targetPath']
     };
     
     // Merge with common schema (workspace context and handoff)

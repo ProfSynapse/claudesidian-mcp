@@ -123,7 +123,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
           description: 'Path of the folder to create (REQUIRED)'
         }
       },
-      required: ['path', 'sessionId', 'context']
+      required: ['path']
     };
     
     // Merge with common schema (workspace context and handoff)
