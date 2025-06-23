@@ -1,4 +1,4 @@
-import { ChromaEmbeddingFunction } from '../chroma/ChromaWrapper';
+import { ChromaEmbeddingFunction } from '../chroma/PersistentChromaClient';
 
 /**
  * Configuration for an embedding provider

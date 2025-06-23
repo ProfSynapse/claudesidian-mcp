@@ -1,7 +1,6 @@
 import { Plugin, TFile } from 'obsidian';
 import { ChromaSearchService } from '../../../../database/services/ChromaSearchService';
 import { EmbeddingService } from '../../../../database/services/EmbeddingService';
-import { SearchOperations } from '../../../../database/utils/SearchOperations';
 import { UniversalSearchResultItem, GraphBoostOptions } from '../../types';
 import { SemanticFallbackService } from '../services/SemanticFallbackService';
 

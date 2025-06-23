@@ -2,8 +2,7 @@ import { Plugin } from 'obsidian';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { IEmbeddingProvider } from '../interfaces/IEmbeddingProvider';
 import { IStorageOptions } from '../interfaces/IStorageOptions';
-import { ChromaVectorStore } from '../providers/chroma/ChromaVectorStore';
-import { ChromaVectorStoreModular } from '../providers/chroma/ChromaVectorStoreModular';
+import { ChromaVectorStoreModular as ChromaVectorStore } from '../providers/chroma/ChromaVectorStoreModular';
 import { ChromaEmbeddingProvider } from '../providers/chroma/ChromaEmbedding';
 import { VectorStoreConfig } from '../models/VectorStoreConfig';
 import { EmbeddingProviderRegistry } from '../providers/registry/EmbeddingProviderRegistry';
@@ -25,48 +24,15 @@ import '../providers/registry/providers';
  */
 export class VectorStoreFactory {
   /**
-   * Create a vector store instance
+   * Create a vector store instance using the modular implementation
    * @param plugin Plugin instance
    * @param options Storage options
-   * @param useModular Whether to use the modular implementation (default: true)
    * @returns Vector store instance
    */
-  static createVectorStore(plugin: Plugin, options?: Partial<IStorageOptions>, useModular: boolean = true): IVectorStore {
-    const config = options ? 
-      new VectorStoreConfig(options) : 
-      VectorStoreConfig.getDefaultConfig(`${plugin.manifest.dir}`);
-    
-    if (useModular) {
-      return new ChromaVectorStoreModular(plugin, options);
-    } else {
-      // Keep legacy implementation for backwards compatibility
-      return new ChromaVectorStore(plugin, config);
-    }
+  static createVectorStore(plugin: Plugin, options?: Partial<IStorageOptions>): IVectorStore {
+    return new ChromaVectorStore(plugin, options);
   }
 
-  /**
-   * Create a modular vector store instance (new implementation)
-   * @param plugin Plugin instance
-   * @param options Storage options
-   * @returns Modular vector store instance
-   */
-  static createModularVectorStore(plugin: Plugin, options?: Partial<IStorageOptions>): ChromaVectorStoreModular {
-    return new ChromaVectorStoreModular(plugin, options);
-  }
-
-  /**
-   * Create a legacy vector store instance (for backwards compatibility)
-   * @param plugin Plugin instance
-   * @param options Storage options
-   * @returns Legacy vector store instance
-   */
-  static createLegacyVectorStore(plugin: Plugin, options?: Partial<IStorageOptions>): ChromaVectorStore {
-    const config = options ? 
-      new VectorStoreConfig(options) : 
-      VectorStoreConfig.getDefaultConfig(`${plugin.manifest.dir}`);
-    
-    return new ChromaVectorStore(plugin, config);
-  }
   
   /**
    * Create an embedding provider based on memory settings

@@ -1,0 +1,2 @@
+export { ScoringService, type SearchWeights, type ScoreResult, DEFAULT_SEARCH_WEIGHTS } from '../ScoringService';
+export { PropertySearchService, type PropertySearchOptions, type PropertySearchResult } from '../PropertySearchService';

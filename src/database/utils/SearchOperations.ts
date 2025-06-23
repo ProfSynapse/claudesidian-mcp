@@ -2,7 +2,21 @@ import { TFile, TFolder, prepareFuzzySearch, App, getAllTags } from 'obsidian';
 import { GraphOperations } from './graph/GraphOperations';
 
 /**
+ * @deprecated This file is deprecated and will be removed in a future version.
+ * 
+ * MIGRATION GUIDE:
+ * - For property searches: Use PropertySearchService from '../../services/PropertySearchService'
+ * - For file/folder listing: Use VaultFileIndex from '../../services/VaultFileIndex'
+ * - For content search: Use UniversalSearchService from '../../agents/vaultLibrarian/modes/services/UniversalSearchService'
+ * - For scoring: Use ScoringService from '../../services/ScoringService'
+ * - For tag search: Use VaultFileIndex.getFilesWithTag() instead
+ * 
+ * Modern services provide better performance, architecture, and maintainability.
+ */
+
+/**
  * Weights for different search factors
+ * @deprecated Use DEFAULT_SEARCH_WEIGHTS from ScoringService instead
  */
 export interface SearchWeights {
     fuzzyMatch: number;
@@ -57,6 +71,12 @@ export interface SearchResult {
 /**
  * Utility class for advanced search operations
  * Leverages Obsidian's API for improved search capabilities
+ * 
+ * @deprecated This class is deprecated. Use modern service alternatives:
+ * - PropertySearchService for property searches
+ * - VaultFileIndex for file/folder operations  
+ * - UniversalSearchService for content search
+ * - ScoringService for relevance scoring
  */
 export class SearchOperations {
     private static graphOperations = new GraphOperations();

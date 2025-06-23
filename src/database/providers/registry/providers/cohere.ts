@@ -1,5 +1,5 @@
 import { EmbeddingProviderConfig, ProviderSettings } from '../EmbeddingProviderRegistry';
-import { ChromaEmbeddingFunction } from '../../chroma/ChromaWrapper';
+import { ChromaEmbeddingFunction } from '../../chroma/PersistentChromaClient';
 import { 
   fetchWithRetry, 
   validateEmbeddingResponse, 

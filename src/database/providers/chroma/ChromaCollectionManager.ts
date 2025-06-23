@@ -3,7 +3,7 @@
  * Direct interface to ChromaDB collections with enhanced type safety
  */
 
-import { ChromaClient } from './ChromaWrapper';
+import { ChromaClient } from './PersistentChromaClient';
 import { IVectorStore } from '../../interfaces/IVectorStore';
 import { getErrorMessage } from '../../../utils/errorUtils';
 
