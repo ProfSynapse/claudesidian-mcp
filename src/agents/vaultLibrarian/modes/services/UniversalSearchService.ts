@@ -275,18 +275,24 @@ export class UniversalSearchService {
   private createSearchOptions(params: UniversalSearchParams) {
     const baseLimit = params.limit || 5;
     
+    // Get settings defaults
+    const settings = (this.plugin as any).settings?.settings?.memory;
+    const defaultThreshold = settings?.defaultThreshold || 0.7;
+    const backlinksEnabled = settings?.backlinksEnabled || false;
+    const graphBoostFactor = settings?.graphBoostFactor || 0.3;
+    
     return {
       limit: params.prioritizeCategories ? 
         (category: CategoryType) => params.prioritizeCategories!.includes(category) ? baseLimit * 2 : baseLimit :
         baseLimit,
       paths: params.paths,
       includeContent: params.includeContent !== false,
-      semanticThreshold: params.semanticThreshold || 0.7,
+      semanticThreshold: params.semanticThreshold || defaultThreshold,
       forceSemanticSearch: params.forceSemanticSearch,
       graphBoost: {
-        useGraphBoost: params.useGraphBoost,
-        graphBoostFactor: params.graphBoostFactor,
-        graphMaxDistance: params.graphMaxDistance,
+        useGraphBoost: params.useGraphBoost ?? backlinksEnabled,
+        graphBoostFactor: params.graphBoostFactor ?? graphBoostFactor,
+        graphMaxDistance: params.graphMaxDistance || 1,
         seedNotes: params.seedNotes
       }
     };

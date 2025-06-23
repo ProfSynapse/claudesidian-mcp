@@ -1,9 +1,18 @@
 /**
- * StrictPersistenceChromaClient
+ * PersistentChromaClient
  * 
- * This is a completely rewritten version of ChromaWrapper that prioritizes
- * persistent storage and eliminates all in-memory fallback options.
+ * A ChromaDB-compatible client implementation that prioritizes persistent storage
+ * and follows SOLID principles through service composition.
  */
+
+import { 
+  VectorCalculator, 
+  FilterEngine, 
+  PersistenceManager, 
+  CollectionRepository,
+  type FileSystemInterface,
+  type DatabaseItem 
+} from './services';
 
 // Interface definitions
 export interface ChromaClientOptions {
@@ -86,85 +95,30 @@ export interface Collection {
 }
 
 /**
- * A database item to store in persistent storage
- */
-interface DatabaseItem {
-  id: string;
-  embedding: number[];
-  metadata: Record<string, any>;
-  document: string;
-}
-
-// No need for this interface
-// export interface CollectionStorage {
-//   items: DatabaseItem[];
-//   metadata: Record<string, any>;
-// }
-
-/**
  * Collection implementation with strict persistence
+ * Refactored to use service composition following SOLID principles
  */
 class StrictPersistentCollection implements Collection {
-  private items: Map<string, DatabaseItem>;
   public name: string;
-  private storageDir: string;
-  private fs: any;
-  private collectionMetadata: Record<string, any>;
   private dataFilePath: string;
   private metaFilePath: string;
-  private saveDebounceMs: number = 250; // Save after 250ms of no activity
-  private saveTimeout: NodeJS.Timeout | null = null;
   
-  /**
-   * Calculate cosine distance between two vectors
-   * @param vecA First vector
-   * @param vecB Second vector
-   * @returns Cosine distance (1 - similarity)
-   */
-  private cosineDistance(vecA: number[], vecB: number[]): number {
-    if (vecA.length !== vecB.length) return 0.99; // High distance for mismatched dimensions
-    
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-    
-    for (let i = 0; i < vecA.length; i++) {
-      dotProduct += vecA[i] * vecB[i];
-      normA += vecA[i] * vecA[i];
-      normB += vecB[i] * vecB[i];
-    }
-    
-    if (normA === 0 || normB === 0) return 0.99; // High distance for zero vectors
-    
-    // Calculate cosine similarity and convert to distance
-    const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-    return 1 - similarity; // Convert to distance (0 = identical, 2 = opposite)
-  }
+  // Composed services following Dependency Injection principle
+  private repository: CollectionRepository;
+  private persistenceManager: PersistenceManager;
   
-  constructor(name: string, storageDir: string, fs: any, metadata: Record<string, any> = {}, _parent: StrictPersistenceChromaClient) {
+  constructor(name: string, storageDir: string, fs: FileSystemInterface, metadata: Record<string, any> = {}, _parent: StrictPersistenceChromaClient) {
     this.name = name;
-    this.items = new Map();
-    this.storageDir = storageDir;
-    this.fs = fs;
-    this.collectionMetadata = {
-      ...metadata,
-      createdAt: metadata.createdAt || new Date().toISOString()
-    };
     this.dataFilePath = `${storageDir}/${name}/items.json`;
     this.metaFilePath = `${storageDir}/${name}/metadata.json`;
-    // We don't need to use parent
+    
+    // Initialize services
+    this.repository = new CollectionRepository(metadata);
+    this.persistenceManager = new PersistenceManager(fs);
     
     // Create the collection directory if it doesn't exist
     const collectionDir = `${storageDir}/${name}`;
-    if (!this.fs.existsSync(collectionDir)) {
-      try {
-        console.log(`Creating collection directory: ${collectionDir}`);
-        this.fs.mkdirSync(collectionDir, { recursive: true });
-      } catch (error) {
-        console.error(`Failed to create collection directory ${collectionDir}:`, error);
-        throw new Error(`Failed to create collection directory: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    this.persistenceManager.ensureDirectory(collectionDir);
   }
   
   /**
@@ -172,138 +126,38 @@ class StrictPersistentCollection implements Collection {
    * This prevents excessive disk I/O when many operations happen in sequence
    */
   private queueSave(): void {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-    }
-    
-    this.saveTimeout = setTimeout(() => {
-      this.saveCollectionToDisk().catch(err => {
-        console.error(`Failed to save collection ${this.name} on queue:`, err);
-      });
-    }, this.saveDebounceMs);
+    this.persistenceManager.queueSave(this.name, () => this.saveCollectionToDisk());
   }
   
   /**
    * Save the collection to disk immediately
    */
   async saveCollectionToDisk(): Promise<void> {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-    }
+    this.persistenceManager.cancelQueuedSave(this.name);
     
-    try {
-      console.log(`Saving collection ${this.name} to disk at ${this.storageDir}...`);
-      
-      // Ensure the collection directory exists
-      const collectionDir = `${this.storageDir}/${this.name}`;
-      if (!this.fs.existsSync(collectionDir)) {
-        console.log(`Creating collection directory: ${collectionDir}`);
-        this.fs.mkdirSync(collectionDir, { recursive: true });
+    const collectionData = this.repository.getCollectionData();
+    const persistenceData = {
+      items: Array.from(collectionData.items.values()),
+      metadata: {
+        ...collectionData.metadata,
+        collectionName: this.name
       }
-      
-      // Collect items for storage
-      const items: DatabaseItem[] = Array.from(this.items.values());
-      
-      // Add timestamp to metadata
-      const metadata = {
-        ...this.collectionMetadata,
-        collectionName: this.name,
-        itemCount: items.length,
-        savedAt: new Date().toISOString(),
-        version: "1.0.0"
-      };
-      
-      // Save metadata to disk
-      console.log(`Writing metadata to ${this.metaFilePath}...`);
-      this.fs.writeFileSync(this.metaFilePath, JSON.stringify(metadata, null, 2));
-      
-      // Save items to disk using a temp file for atomicity
-      const tempFile = `${this.dataFilePath}.tmp`;
-      
-      // First write to temp file
-      console.log(`Writing ${items.length} items to temporary file ${tempFile}...`);
-      this.fs.writeFileSync(tempFile, JSON.stringify({ 
-        items,
-        metadata
-      }, null, 2));
-      
-      // Then rename to final file (more atomic operation)
-      console.log(`Moving temporary file to final location ${this.dataFilePath}...`);
-      if (this.fs.existsSync(this.dataFilePath)) {
-        // Create a backup of the previous file
-        const backupFile = `${this.dataFilePath}.bak`;
-        this.fs.renameSync(this.dataFilePath, backupFile);
-      }
-      
-      this.fs.renameSync(tempFile, this.dataFilePath);
-      
-      // Verify the file was written
-      if (this.fs.existsSync(this.dataFilePath)) {
-        const stats = this.fs.statSync(this.dataFilePath);
-        console.log(`Successfully saved collection ${this.name} with ${items.length} items to disk (size: ${stats.size} bytes)`);
-      } else {
-        console.error(`File write verification failed - file ${this.dataFilePath} doesn't exist after write`);
-      }
-    } catch (error) {
-      console.error(`Failed to save collection ${this.name} to disk:`, error);
-      throw error;
-    }
+    };
+    
+    await this.persistenceManager.saveToFile(this.dataFilePath, this.metaFilePath, persistenceData);
   }
   
   /**
    * Load collection data from disk
    */
   async loadFromDisk(): Promise<void> {
-    try {
-      // Check if the data file exists
-      if (!this.fs.existsSync(this.dataFilePath)) {
-        console.log(`No data file found for collection ${this.name}, starting with empty collection`);
-        return;
-      }
-      
-      console.log(`Loading collection ${this.name} from ${this.dataFilePath}...`);
-      
-      // Read the data file
-      const fileContents = this.fs.readFileSync(this.dataFilePath, 'utf8');
-      if (!fileContents || fileContents.trim().length === 0) {
-        console.log(`Data file for collection ${this.name} is empty`);
-        return;
-      }
-      
-      // Parse the JSON data
-      const data = JSON.parse(fileContents);
-      
-      // Load metadata if present
-      if (data.metadata) {
-        this.collectionMetadata = data.metadata;
-        // Loaded metadata for collection
-      }
-      
-      // Check for items array
-      if (data.items && Array.isArray(data.items)) {
-        // Clear existing items
-        this.items.clear();
-        
-        // Load items
-        for (const item of data.items) {
-          if (item && item.id) {
-            this.items.set(item.id, {
-              id: item.id,
-              embedding: item.embedding || [],
-              metadata: item.metadata || {},
-              document: item.document || ''
-            });
-          }
-        }
-        
-        // Loaded items for collection
-      } else {
-        console.warn(`No items found in data file for collection ${this.name}`);
-      }
-    } catch (error) {
-      console.error(`Failed to load collection ${this.name} from disk:`, error);
-      throw new Error(`Failed to load collection from disk: ${error instanceof Error ? error.message : String(error)}`);
+    const persistenceData = await this.persistenceManager.loadFromFile(this.dataFilePath);
+    
+    if (persistenceData) {
+      this.repository.loadCollectionData({
+        items: persistenceData.items as any, // Will be converted to Map in loadCollectionData
+        metadata: persistenceData.metadata
+      });
     }
   }
   
@@ -325,15 +179,8 @@ class StrictPersistentCollection implements Collection {
       ? params.documents as string[] 
       : [params.documents as string]) : [];
     
-    // Add each item to the collection
-    for (let i = 0; i < ids.length; i++) {
-      this.items.set(ids[i], {
-        id: ids[i],
-        embedding: embeddings[i] || [],
-        metadata: metadatas[i] || {},
-        document: documents[i] || '',
-      });
-    }
+    // Add items through the repository
+    this.repository.addItems(ids, embeddings, metadatas, documents);
     
     // Queue a save after adding items
     this.queueSave();
@@ -348,84 +195,26 @@ class StrictPersistentCollection implements Collection {
     metadatas?: Record<string, any>[];
     documents?: string[];
   }> {
-    const { ids = [], where, limit, offset, include = ['embeddings', 'metadatas', 'documents'] } = params;
-    const foundIds: string[] = [];
-    const embeddings: number[][] = [];
-    const metadatas: Record<string, any>[] = [];
-    const documents: string[] = [];
+    const { ids, where, limit, offset, include = ['embeddings', 'metadatas', 'documents'] } = params;
     
-    // If ids are provided, get those specific items
-    if (ids.length > 0) {
-      for (const id of ids) {
-        const item = this.items.get(id);
-        if (item) {
-          foundIds.push(id);
-          if (include.includes('embeddings')) {
-            embeddings.push(item.embedding);
-          }
-          if (include.includes('metadatas')) {
-            metadatas.push(item.metadata);
-          }
-          if (include.includes('documents')) {
-            documents.push(item.document);
-          }
-        }
-      }
-    } else {
-      // Otherwise, get all items subject to where/limit/offset
-      const allItems = Array.from(this.items.entries());
-      
-      // Filter by where clause if provided
-      let filteredItems = allItems;
-      if (where) {
-        filteredItems = allItems.filter(([_, item]) => {
-          for (const [key, value] of Object.entries(where)) {
-            // Handle $eq operator format: { field: { $eq: value } }
-            if (typeof value === 'object' && value !== null && '$eq' in value) {
-              if (item.metadata[key] !== value.$eq) {
-                return false;
-              }
-            } else {
-              // Handle direct value format: { field: value }
-              if (item.metadata[key] !== value) {
-                return false;
-              }
-            }
-          }
-          return true;
-        });
-      }
-      
-      // Apply offset and limit if provided
-      const paginatedItems = filteredItems.slice(offset || 0, limit ? (offset || 0) + limit : undefined);
-      
-      for (const [id, item] of paginatedItems) {
-        foundIds.push(id);
-        if (include.includes('embeddings')) {
-          embeddings.push(item.embedding);
-        }
-        if (include.includes('metadatas')) {
-          metadatas.push(item.metadata);
-        }
-        if (include.includes('documents')) {
-          documents.push(item.document);
-        }
-      }
-    }
+    // Get items through the repository
+    const items = this.repository.getItems(ids, where, limit, offset);
     
-    // Construct the result object
-    const result: any = { ids: foundIds };
+    // Build result based on included fields
+    const result: any = {
+      ids: items.map(item => item.id)
+    };
     
     if (include.includes('embeddings')) {
-      result.embeddings = embeddings;
+      result.embeddings = items.map(item => item.embedding);
     }
     
     if (include.includes('metadatas')) {
-      result.metadatas = metadatas;
+      result.metadatas = items.map(item => item.metadata);
     }
     
     if (include.includes('documents')) {
-      result.documents = documents;
+      result.documents = items.map(item => item.document);
     }
     
     return result;
@@ -437,26 +226,8 @@ class StrictPersistentCollection implements Collection {
   async update(params: ChromaUpdateParams): Promise<void> {
     const { ids, embeddings, metadatas, documents } = params;
     
-    for (let i = 0; i < ids.length; i++) {
-      const id = ids[i];
-      const item = this.items.get(id);
-      
-      if (item) {
-        if (embeddings && embeddings[i]) {
-          item.embedding = embeddings[i];
-        }
-        
-        if (metadatas && metadatas[i]) {
-          item.metadata = { ...item.metadata, ...metadatas[i] };
-        }
-        
-        if (documents && documents[i]) {
-          item.document = documents[i];
-        }
-        
-        this.items.set(id, item);
-      }
-    }
+    // Update items through the repository
+    this.repository.updateItems(ids, embeddings, metadatas, documents);
     
     // Queue a save after updating items
     this.queueSave();
@@ -468,26 +239,8 @@ class StrictPersistentCollection implements Collection {
   async delete(params: ChromaDeleteParams): Promise<void> {
     const { ids, where } = params;
     
-    if (ids) {
-      for (const id of ids) {
-        this.items.delete(id);
-      }
-    } else if (where) {
-      // Delete by where filter
-      for (const [id, item] of Array.from(this.items.entries())) {
-        let matches = true;
-        for (const [key, value] of Object.entries(where)) {
-          if (item.metadata[key] !== value) {
-            matches = false;
-            break;
-          }
-        }
-        
-        if (matches) {
-          this.items.delete(id);
-        }
-      }
-    }
+    // Delete items through the repository
+    this.repository.deleteItems(ids, where);
     
     // Queue a save after deleting items
     this.queueSave();
@@ -505,15 +258,12 @@ class StrictPersistentCollection implements Collection {
   }> {
     const { queryEmbeddings = [], nResults = 10, where, include = ['embeddings', 'metadatas', 'documents', 'distances'] } = params;
     
+    // Query items through the repository
+    const queryResults = this.repository.queryItems(queryEmbeddings, nResults, where);
+    
     // Initialize results
-    const results: {
-      ids: string[][];
-      embeddings?: number[][][];
-      metadatas?: Record<string, any>[][];
-      documents?: string[][];
-      distances?: number[][];
-    } = {
-      ids: [],
+    const results: any = {
+      ids: []
     };
     
     if (include.includes('embeddings')) {
@@ -532,79 +282,15 @@ class StrictPersistentCollection implements Collection {
       results.distances = [];
     }
     
-    // Use query embeddings, or just return top results if no query provided
-    const queries = queryEmbeddings.length > 0 ? queryEmbeddings : [[]]; // Empty query = return anything
-    
-    for (const queryEmbedding of queries) {
-      // Filter items by where clause if provided
-      let filteredItems = Array.from(this.items.values());
-      
-      if (where) {
-        filteredItems = filteredItems.filter((item: DatabaseItem) => {
-          for (const [key, value] of Object.entries(where)) {
-            // Handle $eq operator format: { field: { $eq: value } }
-            if (typeof value === 'object' && value !== null && '$eq' in value) {
-              if (item.metadata[key] !== value.$eq) {
-                return false;
-              }
-            } else {
-              // Handle direct value format: { field: value }
-              if (item.metadata[key] !== value) {
-                return false;
-              }
-            }
-          }
-          return true;
-        });
-      }
-      
-      // Calculate "distances" - compute actual cosine similarity
-      const itemsWithDistances = filteredItems.map(item => {
-        let distance = 0;
-        
-        // If we have a query embedding and the item has an embedding, compute cosine distance
-        if (queryEmbedding.length > 0 && item.embedding.length > 0) {
-          // Compute cosine distance (1 - similarity)
-          // Implemented directly here instead of using a separate method
-          let dotProduct = 0;
-          let normA = 0;
-          let normB = 0;
-          
-          for (let i = 0; i < queryEmbedding.length; i++) {
-            dotProduct += queryEmbedding[i] * item.embedding[i];
-            normA += queryEmbedding[i] * queryEmbedding[i];
-            normB += item.embedding[i] * item.embedding[i];
-          }
-          
-          if (normA === 0 || normB === 0) {
-            distance = 0.99; // High distance for zero vectors
-          } else {
-            // Calculate cosine similarity and convert to distance
-            const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-            distance = 1 - similarity; // Convert to distance (0 = identical, 2 = opposite)
-          }
-        } else {
-          // If no embeddings to compare, use a high distance
-          distance = 0.99;
-        }
-        
-        return { item, distance };
-      });
-      
-      // Sort by distance (lower is better)
-      itemsWithDistances.sort((a, b) => a.distance - b.distance);
-      
-      // Take the top N results
-      const topItems = itemsWithDistances.slice(0, Math.min(nResults, itemsWithDistances.length));
-      
-      // Process results
+    // Process each query result
+    for (const queryResult of queryResults) {
       const ids: string[] = [];
       const embeddings: number[][] = [];
       const metadatas: Record<string, any>[] = [];
       const documents: string[] = [];
       const distances: number[] = [];
       
-      for (const { item, distance } of topItems) {
+      for (const { item, distance } of queryResult) {
         ids.push(item.id);
         
         if (include.includes('embeddings')) {
@@ -628,19 +314,19 @@ class StrictPersistentCollection implements Collection {
       results.ids.push(ids);
       
       if (include.includes('embeddings')) {
-        results.embeddings!.push(embeddings);
+        results.embeddings.push(embeddings);
       }
       
       if (include.includes('metadatas')) {
-        results.metadatas!.push(metadatas);
+        results.metadatas.push(metadatas);
       }
       
       if (include.includes('documents')) {
-        results.documents!.push(documents);
+        results.documents.push(documents);
       }
       
       if (include.includes('distances')) {
-        results.distances!.push(distances);
+        results.distances.push(distances);
       }
     }
     
@@ -651,14 +337,14 @@ class StrictPersistentCollection implements Collection {
    * Count items in the collection
    */
   async count(): Promise<number> {
-    return this.items.size;
+    return this.repository.count();
   }
   
   /**
    * Get collection metadata
    */
   async metadata(): Promise<Record<string, any>> {
-    return this.collectionMetadata;
+    return this.repository.getMetadata();
   }
   
   /**
@@ -676,8 +362,9 @@ class StrictPersistentCollection implements Collection {
 export class StrictPersistenceChromaClient {
   private collections: Map<string, StrictPersistentCollection> = new Map();
   private storagePath: string | null = null;
-  private fs: any = null;
+  private fs: FileSystemInterface | null = null;
   private collectionsLoaded: boolean = false;
+  private persistenceManager: PersistenceManager | null = null;
   
   /**
    * Create a new StrictPersistenceChromaClient
@@ -702,18 +389,15 @@ export class StrictPersistenceChromaClient {
           this.storagePath = options.path;
         }
         
+        // Initialize persistence manager
+        this.persistenceManager = new PersistenceManager(this.fs as FileSystemInterface);
+        
         // Create the storage directory if it doesn't exist
-        if (!this.fs.existsSync(this.storagePath)) {
-          console.log(`Creating storage directory: ${this.storagePath}`);
-          this.fs.mkdirSync(this.storagePath, { recursive: true });
-        }
+        this.persistenceManager.ensureDirectory(this.storagePath);
         
         // Create the collections directory if it doesn't exist
         const collectionsDir = `${this.storagePath}/collections`;
-        if (!this.fs.existsSync(collectionsDir)) {
-          console.log(`Creating collections directory: ${collectionsDir}`);
-          this.fs.mkdirSync(collectionsDir, { recursive: true });
-        }
+        this.persistenceManager.ensureDirectory(collectionsDir);
         
         // Load collections (async but immediate)
         this.loadCollectionsFromDisk()
@@ -732,34 +416,17 @@ export class StrictPersistenceChromaClient {
    * Load collections from disk
    */
   private async loadCollectionsFromDisk(): Promise<void> {
-    if (!this.fs || !this.storagePath) {
+    if (!this.fs || !this.storagePath || !this.persistenceManager) {
       throw new Error('Cannot load collections: storage not configured');
     }
     
     try {
       // Loading collections from disk
       
-      // Ensure storage directory exists
-      if (!this.fs.existsSync(this.storagePath)) {
-        console.log(`Storage directory doesn't exist, creating: ${this.storagePath}`);
-        this.fs.mkdirSync(this.storagePath, { recursive: true });
-      }
-      
-      // Check for collections directory
       const collectionsDir = `${this.storagePath}/collections`;
-      if (!this.fs.existsSync(collectionsDir)) {
-        console.log(`Collections directory doesn't exist, creating: ${collectionsDir}`);
-        this.fs.mkdirSync(collectionsDir, { recursive: true });
-        this.collectionsLoaded = true;
-        return; // No collections to load yet
-      }
       
       // Read the collections directory
-      const dirContents = this.fs.readdirSync(collectionsDir);
-      const collectionDirs = dirContents.filter((item: string) => {
-        const fullPath = `${collectionsDir}/${item}`;
-        return this.fs.statSync(fullPath).isDirectory() && !item.startsWith('.');
-      });
+      const collectionDirs = this.persistenceManager.listSubdirectories(collectionsDir);
       
       // Found collection directories
       
@@ -878,11 +545,6 @@ export class StrictPersistenceChromaClient {
     const collectionsDir = `${this.storagePath}/collections`;
     
     try {
-      if (!this.fs.existsSync(collectionsDir)) {
-        console.log(`Creating collections directory: ${collectionsDir}`);
-        this.fs.mkdirSync(collectionsDir, { recursive: true });
-      }
-      
       // Create the collection
       const collection = new StrictPersistentCollection(
         name,
@@ -913,7 +575,7 @@ export class StrictPersistenceChromaClient {
     
     const { name } = params;
     
-    if (!this.fs || !this.storagePath) {
+    if (!this.fs || !this.storagePath || !this.persistenceManager) {
       throw new Error('Cannot delete collection: storage not configured');
     }
     
@@ -926,31 +588,7 @@ export class StrictPersistenceChromaClient {
     
     // Delete from disk
     const collectionDir = `${this.storagePath}/collections/${name}`;
-    if (this.fs.existsSync(collectionDir)) {
-      try {
-        const removeDir = (path: string) => {
-          if (!this.fs) return;
-          
-          if (this.fs.existsSync(path)) {
-            this.fs.readdirSync(path).forEach((file: string) => {
-              const curPath = `${path}/${file}`;
-              if (this.fs.statSync(curPath).isDirectory()) {
-                removeDir(curPath);
-              } else {
-                this.fs.unlinkSync(curPath);
-              }
-            });
-            this.fs.rmdirSync(path);
-          }
-        };
-        
-        removeDir(collectionDir);
-        console.log(`Removed collection ${name} directory from disk`);
-      } catch (error) {
-        console.error(`Failed to remove collection ${name} directory:`, error);
-        throw new Error(`Failed to delete collection: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    this.persistenceManager.removeDirectory(collectionDir);
   }
   
   /**
@@ -1085,6 +723,15 @@ export class StrictPersistenceChromaClient {
         repairedCollections: [],
         errors: [`Failed to repair collections: ${errorMsg}`]
       };
+    }
+  }
+  
+  /**
+   * Clean up resources
+   */
+  cleanup(): void {
+    if (this.persistenceManager) {
+      this.persistenceManager.cleanup();
     }
   }
 }

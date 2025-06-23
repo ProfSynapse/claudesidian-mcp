@@ -145,7 +145,6 @@ export interface MemorySettings {
     
     // Backlink integration
     backlinksEnabled: boolean;
-    backlinksWeight: number;
     
     // Advanced query settings
     useFilters: boolean;
@@ -237,7 +236,6 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     includeNeighbors: true,
     graphBoostFactor: 0.3,
     backlinksEnabled: true,
-    backlinksWeight: 0.5,
     useFilters: true,
     defaultThreshold: 0.3,
     

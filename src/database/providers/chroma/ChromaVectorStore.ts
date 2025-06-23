@@ -1,4 +1,4 @@
-import { ChromaClient, Collection } from './fixed-persistence-wrapper';
+import { ChromaClient, Collection } from './PersistentChromaClient';
 import { BaseVectorStore } from '../base/BaseVectorStore';
 import { IStorageOptions } from '../../interfaces/IStorageOptions';
 import { existsSync, mkdirSync } from 'fs';

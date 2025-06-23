@@ -1,5 +1,5 @@
 import { IChromaClientFactory } from './interfaces/IChromaClientFactory';
-import { ChromaClient } from '../fixed-persistence-wrapper';
+import { ChromaClient } from '../PersistentChromaClient';
 import { IStorageOptions } from '../../../interfaces/IStorageOptions';
 import { IDirectoryService } from './interfaces/IDirectoryService';
 import { Plugin } from 'obsidian';

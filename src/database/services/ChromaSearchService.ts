@@ -307,8 +307,8 @@ export class ChromaSearchService {
                 const metadata = results.metadatas?.[0]?.[i] || {};
                 const document = results.documents?.[0]?.[i] || '';
                 
-                // Convert distance to similarity
-                const similarity = 1 - distance;
+                // Convert cosine distance to similarity: similarity = 1 - distance
+                const similarity = Math.max(0, Math.min(1, 1 - distance));
                 
                 // Debug logging
                 console.log(`[semanticSearch direct] ChromaDB distance: ${distance}, converted similarity: ${similarity}, threshold: ${options?.threshold || 'none'}`);
@@ -578,8 +578,8 @@ export class ChromaSearchService {
           const metadata = results.metadatas?.[0]?.[i] || {};
           const document = results.documents?.[0]?.[i] || '';
           
-          // Convert distance to similarity
-          const similarity = 1 - distance;
+          // Convert cosine distance to similarity: similarity = 1 - distance
+          const similarity = Math.max(0, Math.min(1, 1 - distance));
           
           // Debug logging
           console.log(`[semanticSearchWithEmbedding] ChromaDB distance: ${distance}, converted similarity: ${similarity}, threshold: ${options?.threshold || 'none'}`);
@@ -666,8 +666,8 @@ export class ChromaSearchService {
         const metadata = results.metadatas?.[0]?.[i] || {};
         const document = results.documents?.[0]?.[i] || '';
         
-        // Convert distance to similarity
-        const similarity = 1 - distance;
+        // Convert cosine distance to similarity: similarity = 1 - distance
+        const similarity = Math.max(0, Math.min(1, 1 - distance));
         
         // Debug logging
         console.log(`[semanticSearchWithEmbedding 2] ChromaDB distance: ${distance}, converted similarity: ${similarity}, threshold: ${options?.threshold || 'none'}`);

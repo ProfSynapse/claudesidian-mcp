@@ -16,6 +16,7 @@ import { UniversalSearchService } from './services/UniversalSearchService';
  */
 export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchResult> {
   private universalSearchService: UniversalSearchService;
+  private plugin: Plugin;
 
   constructor(
     plugin: Plugin,
@@ -26,6 +27,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
   ) {
     super('search', 'Universal Search', 'Search across ALL content types in one unified operation. Searches: FILE NAMES (fuzzy), FOLDER NAMES (fuzzy), FILE CONTENT (semantic/text), workspaces, sessions, snapshots, memory traces, tags, and properties. Replaces old separate search modes. Only requires a query parameter.', '2.0.0');
     
+    this.plugin = plugin;
     this.universalSearchService = new UniversalSearchService(
       plugin,
       searchService,
@@ -49,12 +51,15 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
         } as UniversalSearchResult;
       }
 
+      // Get default threshold from plugin settings
+      const defaultThreshold = (this.plugin as any).settings?.settings?.memory?.defaultThreshold || 0.7;
+      
       // Set default values
       const searchParams: UniversalSearchParams = {
         ...params,
         limit: params.limit || 5,
         includeContent: params.includeContent !== false,
-        semanticThreshold: params.semanticThreshold || 0.7
+        semanticThreshold: params.semanticThreshold || defaultThreshold
       };
 
       // Execute the universal search
@@ -132,7 +137,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
         },
         includeContent: {
           type: 'boolean',
-          description: 'Whether to include full content in results (default: true)',
+          description: 'Whether to include contextual content around matches in results (default: true)',
           default: true
         },
         forceSemanticSearch: {
@@ -142,10 +147,9 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
         },
         semanticThreshold: {
           type: 'number',
-          description: 'Similarity threshold for semantic search (0-1, default: 0.7)',
+          description: 'Similarity threshold for semantic search (0-1, uses plugin settings default if not specified)',
           minimum: 0,
-          maximum: 1,
-          default: 0.7
+          maximum: 1
         },
         // Graph boost options
         useGraphBoost: {

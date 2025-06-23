@@ -1,5 +1,5 @@
 import { ICollectionManager } from './interfaces/ICollectionManager';
-import { Collection, ChromaClient } from '../fixed-persistence-wrapper';
+import { Collection, ChromaClient } from '../PersistentChromaClient';
 import { IDirectoryService } from './interfaces/IDirectoryService';
 import { getErrorMessage } from '../../../../utils/errorUtils';
 

@@ -2,7 +2,7 @@ import { IDiagnosticsService, RepairResult, ValidationResult } from './interface
 import { IDirectoryService } from './interfaces/IDirectoryService';
 import { ICollectionManager } from './interfaces/ICollectionManager';
 import { ISizeCalculatorService } from './interfaces/ISizeCalculatorService';
-import { ChromaClient } from '../fixed-persistence-wrapper';
+import { ChromaClient } from '../PersistentChromaClient';
 import { IStorageOptions } from '../../../interfaces/IStorageOptions';
 
 /**

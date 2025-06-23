@@ -39,7 +39,8 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
         // If not, create it - this will now handle "already exists" errors gracefully
         await this.vectorStore.createCollection(this.collectionName, {
           description: `Collection for ${this.collectionName} data`,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          'hnsw:space': 'cosine'  // Use cosine distance for better text embedding performance
         });
       }
     } catch (error) {

@@ -68,10 +68,23 @@ export class ContentSearchStrategy {
       throw new Error('Search service not available for semantic search');
     }
 
-    const searchResults = await this.searchService.searchFilesByText(query, {
+    // Use semanticSearch instead of searchFilesByText to support graph boost
+    const searchResult = await this.searchService.semanticSearch(query, {
       limit: options.limit || 10,
-      threshold: options.semanticThreshold || 0.7
+      threshold: options.semanticThreshold || 0.7,
+      useGraphBoost: options.graphBoost?.useGraphBoost,
+      graphBoostFactor: options.graphBoost?.graphBoostFactor
     });
+
+    const searchResults = searchResult.success && searchResult.matches ? 
+      searchResult.matches.map(match => ({
+        file: {
+          filePath: match.filePath,
+          id: match.metadata?.fileId || '',
+          timestamp: match.metadata?.timestamp || Date.now()
+        },
+        similarity: match.similarity
+      })) : [];
 
     const results: UniversalSearchResultItem[] = [];
     for (const result of searchResults) {
@@ -90,7 +103,8 @@ export class ContentSearchStrategy {
       };
       
       if (options.includeContent) {
-        item.content = await this.getFileContent(result.file.filePath);
+        const fullContent = await this.getFileContent(result.file.filePath);
+        item.content = fullContent ? this.createSnippet(fullContent, query, 400) : undefined;
       }
       
       results.push(item);
@@ -140,7 +154,7 @@ export class ContentSearchStrategy {
               fileSize: file.stat.size,
               modified: file.stat.mtime
             },
-            content: options.includeContent ? content : undefined
+            content: options.includeContent ? this.createSnippet(content, query, 400) : undefined
           });
         }
       } catch (error) {

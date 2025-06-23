@@ -1,4 +1,4 @@
-import { Collection } from '../../fixed-persistence-wrapper';
+import { Collection } from '../../PersistentChromaClient';
 
 /**
  * Interface for collection management operations

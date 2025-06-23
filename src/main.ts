@@ -157,7 +157,6 @@ export default class ClaudesidianPlugin extends Plugin {
                     includeNeighbors: true,
                     graphBoostFactor: 0.3,
                     backlinksEnabled: true,
-                    backlinksWeight: 0.5,
                     useFilters: true,
                     defaultThreshold: 0.7
                 };

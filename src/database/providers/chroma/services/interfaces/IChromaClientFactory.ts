@@ -1,4 +1,4 @@
-import { ChromaClient } from '../../fixed-persistence-wrapper';
+import { ChromaClient } from '../../PersistentChromaClient';
 import { IStorageOptions } from '../../../../interfaces/IStorageOptions';
 
 /**
