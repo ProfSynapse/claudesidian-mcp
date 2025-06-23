@@ -95,10 +95,59 @@ export class TokenTrackingMixin {
         // Save to localStorage for persistence
         this.saveToLocalStorage();
         
+        // Update all-time stats in real-time
+        this.updateAllTimeStats(tokenCount, model);
+        
         // Emit events
         this.emitTokenUsageEvents();
     }
     
+    /**
+     * Update all-time stats in real-time
+     * @param tokenCount Number of tokens to add
+     * @param model Model name used
+     */
+    protected updateAllTimeStats(tokenCount: number, model: string): void {
+        try {
+            if (typeof localStorage !== 'undefined') {
+                // Get current all-time stats
+                const allTimeKey = 'claudesidian-tokens-all-time';
+                const savedStats = localStorage.getItem(allTimeKey);
+                let allTimeStats = {
+                    tokensAllTime: 0,
+                    estimatedCostAllTime: 0,
+                    lastUpdated: new Date().toISOString()
+                };
+                
+                if (savedStats) {
+                    try {
+                        const parsed = JSON.parse(savedStats);
+                        if (typeof parsed === 'object' && parsed !== null) {
+                            allTimeStats = parsed;
+                        }
+                    } catch (error) {
+                        console.warn('Failed to parse all-time stats:', error);
+                    }
+                }
+                
+                // Calculate cost for this update
+                const costPerThousand = this.costPerThousandTokens[model] || this.costPerThousandTokens['default'] || 0.0001;
+                const cost = (tokenCount / 1000) * costPerThousand;
+                
+                // Update all-time stats
+                allTimeStats.tokensAllTime += tokenCount;
+                allTimeStats.estimatedCostAllTime += cost;
+                allTimeStats.lastUpdated = new Date().toISOString();
+                
+                // Save updated stats
+                localStorage.setItem(allTimeKey, JSON.stringify(allTimeStats));
+                console.log(`Updated all-time stats: +${tokenCount} tokens, +$${cost.toFixed(6)}. Total: ${allTimeStats.tokensAllTime} tokens, $${allTimeStats.estimatedCostAllTime.toFixed(6)}`);
+            }
+        } catch (error) {
+            console.warn('Failed to update all-time stats:', error);
+        }
+    }
+
     /**
      * Save current token usage to localStorage
      */
@@ -196,7 +245,7 @@ export class TokenTrackingMixin {
     }
     
     /**
-     * Reset usage stats to zero
+     * Reset usage stats to zero (monthly stats only, not all-time)
      */
     async resetUsageStats(): Promise<void> {
         // Reset all model usage to zero
@@ -204,6 +253,17 @@ export class TokenTrackingMixin {
         
         // Save to localStorage
         this.saveToLocalStorage();
+        
+        // Update the current month marker to prevent auto-reset
+        try {
+            if (typeof localStorage !== 'undefined') {
+                const now = new Date();
+                const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`;
+                localStorage.setItem('claudesidian-current-month', currentMonth);
+            }
+        } catch (error) {
+            console.warn('Failed to update month marker:', error);
+        }
         
         // Emit reset event
         try {

@@ -131,6 +131,7 @@ export interface MemorySettings {
     
     // Database settings
     dbStoragePath: string;
+    vectorStoreType: 'file-based' | 'chromadb-server';
     
     // Maintenance settings
     autoCleanOrphaned: boolean;
@@ -149,6 +150,7 @@ export interface MemorySettings {
     // Advanced query settings
     useFilters: boolean;
     defaultThreshold: number;
+    semanticThreshold: number;
     
     // Memory Manager session settings
     autoCreateSessions?: boolean;
@@ -229,6 +231,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     concurrentRequests: 3,
     processingDelay: 1000, // 1 second delay between batches
     dbStoragePath: '',
+    vectorStoreType: 'file-based',
     autoCleanOrphaned: true,
     maxDbSize: 500,
     pruningStrategy: 'least-used',
@@ -238,6 +241,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     backlinksEnabled: true,
     useFilters: true,
     defaultThreshold: 0.3,
+    semanticThreshold: 0.5,
     
     // Memory Manager session settings
     autoCreateSessions: true,

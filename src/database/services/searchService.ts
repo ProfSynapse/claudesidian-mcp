@@ -12,6 +12,7 @@ import { getErrorMessage } from '../../utils/errorUtils';
  */
 export class SearchService {
   private app: App;
+  private plugin: ClaudesidianPlugin;
   // The plugin property is used for initialization in the constructor
   private embeddingService: EmbeddingService;
   private semanticSearchService: SemanticSearchService;
@@ -19,11 +20,12 @@ export class SearchService {
 
   constructor(app: App, plugin: Plugin) {
     this.app = app;
+    this.plugin = plugin as ClaudesidianPlugin;
     
     // Get the new services from the plugin
-    this.embeddingService = (plugin as ClaudesidianPlugin).services?.embeddingService;
-    this.semanticSearchService = (plugin as ClaudesidianPlugin).services?.semanticSearchService;
-    this.memoryService = (plugin as ClaudesidianPlugin).services?.memoryService;
+    this.embeddingService = this.plugin.services?.embeddingService;
+    this.semanticSearchService = this.plugin.services?.semanticSearchService;
+    this.memoryService = this.plugin.services?.memoryService;
   }
 
   /**
@@ -40,7 +42,7 @@ export class SearchService {
   async semanticSearch(
     query: string, 
     limit: number = 10, 
-    threshold: number = 0.7,
+    threshold?: number,
     useGraphBoost: boolean = false,
     graphBoostFactor: number = 0.3,
     graphMaxDistance: number = 1,
@@ -99,6 +101,11 @@ export class SearchService {
       
       // Ensure limit is a positive number
       limit = Math.max(1, Math.min(50, limit));
+      
+      // Use semantic threshold from settings if not provided
+      if (threshold === undefined) {
+        threshold = this.plugin.settingsManager?.getSettings()?.memory?.semanticThreshold ?? 0.5;
+      }
       
       // Ensure threshold is between 0 and 1
       threshold = Math.max(0, Math.min(1, threshold));
@@ -276,7 +283,7 @@ export class SearchService {
       };
     } = {},
     limit: number = 10,
-    threshold: number = 0.7
+    threshold?: number
   ): Promise<{
     success: boolean;
     matches?: Array<{
@@ -290,6 +297,11 @@ export class SearchService {
     error?: string;
   }> {
     try {
+      // Use semantic threshold from settings if not provided
+      if (threshold === undefined) {
+        threshold = this.plugin.settingsManager?.getSettings()?.memory?.semanticThreshold ?? 0.5;
+      }
+      
       // Extract graph options
       const graphOptions = filters.graphOptions || {};
       

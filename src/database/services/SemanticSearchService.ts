@@ -611,7 +611,7 @@ export class SemanticSearchService {
       };
     } = {},
     limit: number = 10,
-    threshold: number = 0.7
+    threshold?: number
   ): Promise<{
     success: boolean;
     matches?: Array<{
@@ -625,6 +625,11 @@ export class SemanticSearchService {
     error?: string;
   }> {
     try {
+      // Use semantic threshold from settings if not provided
+      if (threshold === undefined) {
+        threshold = (this.plugin as any).settingsManager?.getSettings()?.memory?.semanticThreshold ?? 0.5;
+      }
+      
       // Perform semantic search first
       const semanticResults = await this.semanticSearch(query, {
         limit: limit * 2,

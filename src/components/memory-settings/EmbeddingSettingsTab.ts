@@ -285,6 +285,19 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
             );
             
         new Setting(containerEl)
+            .setName('Semantic Search Threshold')
+            .setDesc('Minimum similarity score (0-1) for vector similarity search (lower = more results)')
+            .addSlider(slider => slider
+                .setLimits(0, 1, 0.05)
+                .setValue(this.settings.semanticThreshold)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                    this.settings.semanticThreshold = value;
+                    await this.saveSettings();
+                })
+            );
+            
+        new Setting(containerEl)
             .setName('Enable Backlink Boost')
             .setDesc('Boost results from files with backlinks to/from high-scoring results')
             .addToggle(toggle => toggle
