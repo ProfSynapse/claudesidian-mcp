@@ -12,18 +12,20 @@ import { ToolExecutionService } from './services/ToolExecutionService';
 import { HandoffProcessor } from './services/HandoffProcessor';
 import { ResponseFormatter } from './services/ResponseFormatter';
 import { ToolListService } from './services/ToolListService';
+import { ResourceListService } from './services/ResourceListService';
+import { ResourceReadService } from './services/ResourceReadService';
+import { PromptsListService } from './services/PromptsListService';
+import { ToolHelpService } from './services/ToolHelpService';
 
 // Import strategies
 import { ToolExecutionStrategy } from './strategies/ToolExecutionStrategy';
 import { ToolListStrategy } from './strategies/ToolListStrategy';
+import { ResourceListStrategy } from './strategies/ResourceListStrategy';
+import { ResourceReadStrategy } from './strategies/ResourceReadStrategy';
+import { PromptsListStrategy } from './strategies/PromptsListStrategy';
+import { ToolHelpStrategy } from './strategies/ToolHelpStrategy';
 
-// Legacy handlers for non-tool requests
-import { 
-    handleResourceList, 
-    handleResourceRead, 
-    handlePromptsList,
-    handleToolHelp 
-} from './requestHandlers';
+// All requests now handled through modern strategy pattern
 
 export class RequestRouter {
     private dependencies!: IRequestHandlerDependencies;
@@ -47,7 +49,11 @@ export class RequestRouter {
             toolExecutionService: new ToolExecutionService(),
             handoffProcessor: new HandoffProcessor(),
             responseFormatter: new ResponseFormatter(),
-            toolListService: new ToolListService()
+            toolListService: new ToolListService(),
+            resourceListService: new ResourceListService(this.app),
+            resourceReadService: new ResourceReadService(this.app),
+            promptsListService: new PromptsListService(),
+            toolHelpService: new ToolHelpService()
         };
     }
 
@@ -63,40 +69,29 @@ export class RequestRouter {
                 this.dependencies,
                 this.getAgent.bind(this),
                 this.sessionContextManager
+            ),
+            new ResourceListStrategy(
+                this.dependencies,
+                this.app
+            ),
+            new ResourceReadStrategy(
+                this.dependencies,
+                this.app
+            ),
+            new PromptsListStrategy(
+                this.dependencies
+            ),
+            new ToolHelpStrategy(
+                this.dependencies,
+                this.getAgent.bind(this)
             )
         ];
     }
 
     async handleRequest(method: string, request: any): Promise<any> {
-        switch (method) {
-            case 'resources/list':
-                return await handleResourceList(this.app);
-                
-            case 'resources/read':
-                return await handleResourceRead(this.app, request);
-                
-            case 'prompts/list':
-                return await handlePromptsList();
-                
-            case 'tools/list':
-                return await this.handleWithStrategy({ method, ...request });
-                
-            case 'tools/call':
-                return await this.handleWithStrategy(request);
-                
-            case 'tools/help':
-                return await handleToolHelp(
-                    this.getAgent.bind(this),
-                    request,
-                    request.params.arguments
-                );
-                
-            default:
-                throw new McpError(
-                    ErrorCode.MethodNotFound,
-                    `Unknown method: ${method}`
-                );
-        }
+        // All requests now handled through strategy pattern
+        const requestWithMethod = { method, ...request };
+        return await this.handleWithStrategy(requestWithMethod);
     }
 
     private async handleWithStrategy(request: any): Promise<any> {

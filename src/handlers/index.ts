@@ -17,12 +17,4 @@ export type { IRequestStrategy } from './strategies/IRequestStrategy';
 export { ToolExecutionStrategy } from './strategies/ToolExecutionStrategy';
 export { ToolListStrategy } from './strategies/ToolListStrategy';
 
-// Legacy handlers (for backwards compatibility during transition)
-export {
-    handleResourceList,
-    handleResourceRead,
-    handlePromptsList,
-    handleToolHelp,
-    handleToolExecution,
-    handleToolList
-} from './requestHandlers';
+// All request handling is now done through RequestRouter using the strategy pattern

@@ -68,6 +68,40 @@ export interface IToolListService {
     mergeModeSchemasIntoAgent(agent: IAgent, agentSchema: any): any;
 }
 
+export interface IResourceListService {
+    listResources(): Promise<{ resources: Array<{ uri: string; name: string; mimeType: string }> }>;
+    listResourcesByPath(pathPrefix?: string): Promise<{ resources: Array<{ uri: string; name: string; mimeType: string }> }>;
+}
+
+export interface IResourceReadService {
+    readResource(uri: string): Promise<{ contents: Array<{ uri: string; text: string; mimeType: string }> }>;
+    readMultipleResources(uris: string[]): Promise<{ contents: Array<{ uri: string; text: string; mimeType: string }> }>;
+    resourceExists(uri: string): Promise<boolean>;
+}
+
+export interface IPromptsListService {
+    listPrompts(): Promise<{ prompts: Array<{ name: string; description?: string; arguments?: any[] }> }>;
+    listPromptsByCategory(category?: string): Promise<{ prompts: Array<{ name: string; description?: string; arguments?: any[] }> }>;
+    promptExists(name: string): Promise<boolean>;
+}
+
+export interface IToolHelpService {
+    generateToolHelp(
+        getAgent: (name: string) => IAgent,
+        toolName: string,
+        mode: string
+    ): Promise<{ content: Array<{ type: string; text: string }> }>;
+    generateAgentHelp(
+        getAgent: (name: string) => IAgent,
+        toolName: string
+    ): Promise<{ content: Array<{ type: string; text: string }> }>;
+    validateModeExists(
+        getAgent: (name: string) => IAgent,
+        toolName: string,
+        mode: string
+    ): Promise<boolean>;
+}
+
 export interface IRequestContext {
     agentName: string;
     mode: string;
@@ -84,4 +118,8 @@ export interface IRequestHandlerDependencies {
     handoffProcessor: IHandoffProcessor;
     responseFormatter: IResponseFormatter;
     toolListService: IToolListService;
+    resourceListService: IResourceListService;
+    resourceReadService: IResourceReadService;
+    promptsListService: IPromptsListService;
+    toolHelpService: IToolHelpService;
 }
