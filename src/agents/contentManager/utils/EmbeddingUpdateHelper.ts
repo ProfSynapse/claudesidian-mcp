@@ -1,27 +1,24 @@
 import { App } from 'obsidian';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
-import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { ContentOperations } from './ContentOperations';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { getErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Shared utility for updating embeddings after content modifications
- * Provides both chunk-level diff-based updates and full file reindexing fallbacks
+ * Provides chunk-level diff-based updates using EmbeddingService
+ * Updated to use only EmbeddingService instead of ChromaSearchService
  */
 export class EmbeddingUpdateHelper {
   private app: App;
   private embeddingService: EmbeddingService | null;
-  private searchService: ChromaSearchService | null;
 
   constructor(
     app: App,
-    embeddingService?: EmbeddingService | null,
-    searchService?: ChromaSearchService | null
+    embeddingService?: EmbeddingService | null
   ) {
     this.app = app;
     this.embeddingService = embeddingService || null;
-    this.searchService = searchService || null;
   }
 
   /**
@@ -40,9 +37,9 @@ export class EmbeddingUpdateHelper {
     operationType: string = 'content-modification'
   ): Promise<void> {
     try {
-      // Skip if no ChromaDB services available
-      if (!this.searchService && !this.embeddingService) {
-        console.log(`[EmbeddingUpdateHelper] No embedding services available for ${filePath}`);
+      // Skip if no embedding service available
+      if (!this.embeddingService) {
+        console.log(`[EmbeddingUpdateHelper] No embedding service available for ${filePath}`);
         return;
       }
 
@@ -85,37 +82,14 @@ export class EmbeddingUpdateHelper {
         console.log(`[EmbeddingUpdateHelper] No old content available for ${filePath}, using full reindex`);
       }
 
-      // Fallback to full file reindexing
-      if (this.searchService) {
+      // Fallback to full file reindexing using EmbeddingService
+      if (this.embeddingService) {
         console.log(`[EmbeddingUpdateHelper] Using full file reindexing for ${operationType} in file: ${filePath}`);
         
-        await this.searchService.indexFile(
-          filePath,
-          workspaceId,
-          { 
-            force: true, // Force reindexing since content changed
-            sessionId: sessionId
-          }
-        );
-        
-        // Record successful update
-        await this.recordMemoryTrace(
-          filePath,
-          workspaceContext,
-          sessionId,
-          operationType,
-          { method: 'full-reindex' }
-        );
-      }
-      // Last resort: EmbeddingService direct call
-      else if (this.embeddingService) {
-        console.log(`[EmbeddingUpdateHelper] Using EmbeddingService fallback for ${operationType} in file: ${filePath}`);
-        
-        // Generate embedding for updated file content
-        const embedding = await this.embeddingService.getEmbedding(updatedContent);
-
-        if (embedding) {
-          console.log(`[EmbeddingUpdateHelper] Generated embedding for ${operationType} in file: ${filePath}`);
+        try {
+          await this.embeddingService.incrementalIndexFilesSilent([filePath]);
+          
+          console.log(`[EmbeddingUpdateHelper] Successfully reindexed file: ${filePath}`);
           
           // Record successful update
           await this.recordMemoryTrace(
@@ -123,8 +97,11 @@ export class EmbeddingUpdateHelper {
             workspaceContext,
             sessionId,
             operationType,
-            { method: 'direct-embedding' }
+            { method: 'full-reindex' }
           );
+        } catch (indexError) {
+          console.warn(`[EmbeddingUpdateHelper] Failed to reindex file ${filePath}:`, indexError);
+          // Continue without throwing - embedding update is secondary
         }
       }
 

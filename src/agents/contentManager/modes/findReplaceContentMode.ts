@@ -2,9 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { FindReplaceContentParams, FindReplaceContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { EmbeddingService } from '../../../database/services/EmbeddingService';
-import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
-import { EmbeddingUpdateHelper } from '../utils/EmbeddingUpdateHelper';
+
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
@@ -12,21 +10,12 @@ import { createErrorMessage } from '../../../utils/errorUtils';
  */
 export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, FindReplaceContentResult> {
   private app: App;
-  private embeddingService: EmbeddingService | null = null;
-  private searchService: ChromaSearchService | null = null;
-  private embeddingUpdateHelper: EmbeddingUpdateHelper;
   
   /**
    * Create a new FindReplaceContentMode
    * @param app Obsidian app instance
-   * @param embeddingService Optional EmbeddingService for updating embeddings
-   * @param searchService Optional SearchService for updating embeddings
    */
-  constructor(
-    app: App,
-    embeddingService?: EmbeddingService | null,
-    searchService?: ChromaSearchService | null
-  ) {
+  constructor(app: App) {
     super(
       'findReplaceContent',
       'Find and Replace Content',
@@ -35,9 +24,6 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
     );
     
     this.app = app;
-    this.embeddingService = embeddingService || null;
-    this.searchService = searchService || null;
-    this.embeddingUpdateHelper = new EmbeddingUpdateHelper(app, embeddingService, searchService);
   }
   
   /**
@@ -77,16 +63,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
         wholeWord
       );
       
-      // Update embeddings for the file if available and replacements were made
-      if (replacements > 0) {
-        await this.embeddingUpdateHelper.updateFileEmbeddings(
-          filePath,
-          workspaceContext,
-          sessionId,
-          oldContent,
-          'findReplaceContent'
-        );
-      }
+      // File change detection and embedding updates are handled automatically by FileEventManager
       
       const response = this.prepareResult(
         true,

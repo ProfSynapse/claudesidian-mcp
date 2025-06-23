@@ -1,5 +1,5 @@
 import { Plugin } from 'obsidian';
-import { ChromaSearchService } from '../../../../database/services/ChromaSearchService';
+import { SemanticSearchService } from '../../../../database/services/SemanticSearchService';
 import { EmbeddingService } from '../../../../database/services/EmbeddingService';
 import { MemoryService } from '../../../../database/services/MemoryService';
 import { WorkspaceService } from '../../../../database/services/WorkspaceService';
@@ -18,6 +18,7 @@ import { CollectionSearchStrategy } from '../strategies/CollectionSearchStrategy
 
 /**
  * Universal search service that orchestrates searches across all content types
+ * Updated to use SemanticSearchService instead of ChromaSearchService
  */
 export class UniversalSearchService {
   private semanticFallback: SemanticFallbackService;
@@ -28,13 +29,13 @@ export class UniversalSearchService {
 
   constructor(
     private plugin: Plugin,
-    private searchService?: ChromaSearchService,
+    private semanticSearchService?: SemanticSearchService,
     private embeddingService?: EmbeddingService,
     private memoryService?: MemoryService,
     private workspaceService?: WorkspaceService
   ) {
     this.semanticFallback = new SemanticFallbackService(embeddingService);
-    this.contentStrategy = new ContentSearchStrategy(plugin, searchService, embeddingService, this.semanticFallback);
+    this.contentStrategy = new ContentSearchStrategy(plugin, semanticSearchService, embeddingService, this.semanticFallback);
     this.fileStrategy = new FileSearchStrategy(plugin);
     this.workspaceStrategy = new WorkspaceSearchStrategy(plugin, workspaceService, this.semanticFallback);
     this.collectionStrategy = new CollectionSearchStrategy(plugin, memoryService, this.semanticFallback);

@@ -14,24 +14,21 @@ import {
 } from './modes';
 import { AgentManager } from '../../services/AgentManager';
 import ClaudesidianPlugin from '../../main';
-import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { MemoryService } from '../../database/services/MemoryService';
-import { ChromaSearchService } from '../../database/services/ChromaSearchService';
 
 /**
  * Agent for content operations in the vault
  * Consolidates functionality from noteEditor and noteReader
+ * Embedding updates are handled automatically by FileEventManager
  */
 export class ContentManagerAgent extends BaseAgent {
   protected app: App;
   protected plugin: ClaudesidianPlugin | null = null;
   
   // ChromaDB services
-  private embeddingService: EmbeddingService | null = null;
   private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
-  private searchService: ChromaSearchService | null = null;
 
   /**
    * Create a new ContentManagerAgent
@@ -53,9 +50,6 @@ export class ContentManagerAgent extends BaseAgent {
       
       // Get ChromaDB services if available
       if (plugin.services) {
-        if (plugin.services.embeddingService) {
-          this.embeddingService = plugin.services.embeddingService;
-        }
         
         if (plugin.services.workspaceService) {
           this.workspaceService = plugin.services.workspaceService;
@@ -64,32 +58,21 @@ export class ContentManagerAgent extends BaseAgent {
         if (plugin.services.memoryService) {
           this.memoryService = plugin.services.memoryService;
         }
-        
-        if (plugin.services.searchService) {
-          this.searchService = plugin.services.searchService;
-        }
       }
     }
     
     // Register modes with access to ChromaDB services
     this.registerMode(new ReadContentMode(app, this.memoryService));
-    this.registerMode(new CreateContentMode(app, this.embeddingService, this.searchService));
-    this.registerMode(new AppendContentMode(app, this.embeddingService, this.searchService));
-    this.registerMode(new PrependContentMode(app, this.embeddingService, this.searchService));
-    this.registerMode(new ReplaceContentMode(app, this.embeddingService, this.searchService));
-    this.registerMode(new ReplaceByLineMode(app, this.embeddingService, this.searchService));
-    this.registerMode(new DeleteContentMode(app, this.embeddingService, this.searchService));
-    this.registerMode(new FindReplaceContentMode(app, this.embeddingService, this.searchService));
-    this.registerMode(new BatchContentMode(app, this.embeddingService, this.searchService, this.memoryService));
+    this.registerMode(new CreateContentMode(app));
+    this.registerMode(new AppendContentMode(app));
+    this.registerMode(new PrependContentMode(app));
+    this.registerMode(new ReplaceContentMode(app));
+    this.registerMode(new ReplaceByLineMode(app));
+    this.registerMode(new DeleteContentMode(app));
+    this.registerMode(new FindReplaceContentMode(app));
+    this.registerMode(new BatchContentMode(app, this.memoryService));
   }
   
-  /**
-   * Gets the ChromaDB embedding service
-   * @returns EmbeddingService instance or null
-   */
-  public getEmbeddingService(): EmbeddingService | null {
-    return this.embeddingService;
-  }
   
   /**
    * Gets the ChromaDB workspace service
@@ -107,11 +90,4 @@ export class ContentManagerAgent extends BaseAgent {
     return this.memoryService;
   }
   
-  /**
-   * Gets the ChromaDB search service
-   * @returns ChromaSearchService instance or null
-   */
-  public getSearchService(): ChromaSearchService | null {
-    return this.searchService;
-  }
 }

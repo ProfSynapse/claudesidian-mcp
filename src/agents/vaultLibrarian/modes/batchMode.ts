@@ -1,6 +1,6 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
+import { SemanticSearchService } from '../../../database/services/SemanticSearchService';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
@@ -14,13 +14,14 @@ import { UniversalSearchService } from './services/UniversalSearchService';
 
 /**
  * Batch mode for executing multiple universal searches concurrently
+ * Updated to use SemanticSearchService instead of ChromaSearchService
  */
 export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUniversalSearchResult> {
   private universalSearchService: UniversalSearchService;
 
   constructor(
     plugin: Plugin,
-    searchService?: ChromaSearchService,
+    semanticSearchService?: SemanticSearchService,
     embeddingService?: EmbeddingService,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService
@@ -29,7 +30,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
     
     this.universalSearchService = new UniversalSearchService(
       plugin,
-      searchService,
+      semanticSearchService,
       embeddingService,
       memoryService,
       workspaceService

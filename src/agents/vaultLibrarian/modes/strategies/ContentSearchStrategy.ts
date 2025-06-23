@@ -1,16 +1,17 @@
 import { Plugin, TFile } from 'obsidian';
-import { ChromaSearchService } from '../../../../database/services/ChromaSearchService';
+import { SemanticSearchService } from '../../../../database/services/SemanticSearchService';
 import { EmbeddingService } from '../../../../database/services/EmbeddingService';
 import { UniversalSearchResultItem, GraphBoostOptions } from '../../types';
 import { SemanticFallbackService } from '../services/SemanticFallbackService';
 
 /**
  * Strategy for searching file content using semantic and/or traditional search
+ * Updated to use SemanticSearchService instead of ChromaSearchService
  */
 export class ContentSearchStrategy {
   constructor(
     private plugin: Plugin,
-    private searchService?: ChromaSearchService,
+    private semanticSearchService?: SemanticSearchService,
     private embeddingService?: EmbeddingService,
     private semanticFallback: SemanticFallbackService = new SemanticFallbackService(embeddingService)
   ) {}
@@ -32,7 +33,7 @@ export class ContentSearchStrategy {
     const useSemanticSearch = this.semanticFallback.shouldUseSemanticSearch('content', options.forceSemanticSearch);
     
     try {
-      if (useSemanticSearch && this.searchService) {
+      if (useSemanticSearch && this.semanticSearchService) {
         return await this.searchSemantic(query, options);
       } else {
         return await this.searchTraditional(query, options);
@@ -63,12 +64,12 @@ export class ContentSearchStrategy {
       graphBoost?: GraphBoostOptions;
     }
   ): Promise<UniversalSearchResultItem[]> {
-    if (!this.searchService) {
-      throw new Error('Search service not available for semantic search');
+    if (!this.semanticSearchService) {
+      throw new Error('Semantic search service not available for semantic search');
     }
 
-    // Use semanticSearch instead of searchFilesByText to support graph boost
-    const searchResult = await this.searchService.semanticSearch(query, {
+    // Use semanticSearch to support graph boost
+    const searchResult = await this.semanticSearchService.semanticSearch(query, {
       limit: options.limit || 10,
       threshold: options.semanticThreshold || 0.7,
       useGraphBoost: options.graphBoost?.useGraphBoost,

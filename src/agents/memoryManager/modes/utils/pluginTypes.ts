@@ -1,7 +1,8 @@
 import { Plugin } from 'obsidian';
 import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 import { MemoryService } from '../../../../database/services/MemoryService';
-import { ChromaSearchService } from '../../../../database/services/ChromaSearchService';
+import { FileEmbeddingAccessService } from '../../../../database/services/FileEmbeddingAccessService';
+import { SemanticSearchService } from '../../../../database/services/SemanticSearchService';
 import { EmbeddingService } from '../../../../database/services/EmbeddingService';
 import { IVectorStore } from '../../../../database/interfaces/IVectorStore';
 
@@ -12,7 +13,8 @@ export interface ClaudesidianPlugin extends Plugin {
   services: {
     workspaceService: WorkspaceService;
     memoryService: MemoryService;
-    searchService: ChromaSearchService;
+    fileEmbeddingAccessService: FileEmbeddingAccessService;
+    semanticSearchService: SemanticSearchService;
     embeddingService: EmbeddingService;
     vectorStore: IVectorStore;
     [key: string]: any;

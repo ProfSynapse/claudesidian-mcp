@@ -7,7 +7,9 @@ import { ConfigModal } from './components/ConfigModal';
 
 // Import new ChromaDB services
 import { EmbeddingService } from './database/services/EmbeddingService';
-import { ChromaSearchService } from './database/services/ChromaSearchService';
+import { SemanticSearchService } from './database/services/SemanticSearchService';
+import { FileEmbeddingAccessService } from './database/services/FileEmbeddingAccessService';
+import { DirectCollectionService } from './database/services/DirectCollectionService';
 import { IVectorStore } from './database/interfaces/IVectorStore';
 import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 import { WorkspaceService } from './database/services/WorkspaceService';
@@ -27,7 +29,9 @@ export default class ClaudesidianPlugin extends Plugin {
     
     // Services
     public embeddingService!: EmbeddingService;
-    public searchService!: ChromaSearchService;
+    public semanticSearchService!: SemanticSearchService;
+    public fileEmbeddingAccessService!: FileEmbeddingAccessService;
+    public directCollectionService!: DirectCollectionService;
     public workspaceService!: WorkspaceService;
     public memoryService!: MemoryService;
     public fileEventManager!: FileEventManagerModular;
@@ -41,7 +45,9 @@ export default class ClaudesidianPlugin extends Plugin {
     // Service registry
     public services!: {
         embeddingService: EmbeddingService;
-        searchService: ChromaSearchService;
+        semanticSearchService: SemanticSearchService;
+        fileEmbeddingAccessService: FileEmbeddingAccessService;
+        directCollectionService: DirectCollectionService;
         workspaceService: WorkspaceService;
         memoryService: MemoryService;
         vectorStore: IVectorStore;
@@ -222,7 +228,9 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Initialize services
         this.embeddingService = new EmbeddingService(this);
-        this.searchService = new ChromaSearchService(this, this.vectorStore, this.embeddingService);
+        this.semanticSearchService = new SemanticSearchService(this, this.vectorStore, this.embeddingService);
+        this.fileEmbeddingAccessService = new FileEmbeddingAccessService(this, this.vectorStore);
+        this.directCollectionService = new DirectCollectionService(this, this.vectorStore);
         this.workspaceService = new WorkspaceService(this, this.vectorStore, this.embeddingService);
         this.memoryService = new MemoryService(this, this.vectorStore, this.embeddingService, this.settings);
         this.eventManager = new EventManager();
@@ -232,8 +240,14 @@ export default class ClaudesidianPlugin extends Plugin {
             // Mark as system operation to prevent file event handling
             this.vectorStore.startSystemOperation();
             
-            await this.searchService.initialize().catch(error => {
-                console.warn(`Failed to initialize search service: ${error.message}`);
+            // Legacy search service removed - using modern services instead
+            
+            await this.semanticSearchService.initialize().catch(error => {
+                console.warn(`Failed to initialize semantic search service: ${error.message}`);
+            });
+            
+            await this.fileEmbeddingAccessService.initialize().catch(error => {
+                console.warn(`Failed to initialize file embedding access service: ${error.message}`);
             });
             
             await this.workspaceService.initialize().catch(error => {
@@ -314,7 +328,9 @@ export default class ClaudesidianPlugin extends Plugin {
         // Expose services
         this.services = {
             embeddingService: this.embeddingService,
-            searchService: this.searchService,
+            semanticSearchService: this.semanticSearchService,
+            fileEmbeddingAccessService: this.fileEmbeddingAccessService,
+            directCollectionService: this.directCollectionService,
             workspaceService: this.workspaceService,
             memoryService: this.memoryService,
             vectorStore: this.vectorStore,

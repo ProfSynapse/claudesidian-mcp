@@ -15,7 +15,6 @@ import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 
 // Import services
 import { EmbeddingService } from '../database/services/EmbeddingService';
-import { ChromaSearchService } from '../database/services/ChromaSearchService';
 import { WorkspaceService } from '../database/services/WorkspaceService';
 import { MemoryService } from '../database/services/MemoryService';
 import { EmbeddingManager } from '../database/services/embeddingManager';
@@ -31,7 +30,6 @@ export class SettingsTab extends PluginSettingTab {
 
     // ChromaDB Services
     private embeddingService: EmbeddingService | undefined;
-    private searchService: ChromaSearchService | undefined;
     private memoryService: MemoryService | undefined;
     private embeddingManager: EmbeddingManager | undefined;
     
@@ -54,7 +52,6 @@ export class SettingsTab extends PluginSettingTab {
         private settingsManager: Settings,
         services?: {
             embeddingService?: EmbeddingService,
-            searchService?: ChromaSearchService,
             workspaceService?: WorkspaceService,
             memoryService?: MemoryService,
             vectorStore?: IVectorStore
@@ -69,7 +66,6 @@ export class SettingsTab extends PluginSettingTab {
         // Setup services
         if (services) {
             this.embeddingService = services.embeddingService;
-            this.searchService = services.searchService;
             // Removed assignment to unused property: this.workspaceService = services.workspaceService;
             this.memoryService = services.memoryService;
             // Removed assignment to unused property: this.vectorStore = services.vectorStore;
@@ -245,7 +241,8 @@ export class SettingsTab extends PluginSettingTab {
             containerEl, 
             this.settingsManager,
             this.embeddingService,
-            this.searchService,
+            undefined, // fileEmbeddingAccessService - not available in settings tab context
+            undefined, // semanticSearchService - not available in settings tab context
             this.memoryService,
             this.vaultLibrarian,
             embeddingManager

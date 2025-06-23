@@ -1,6 +1,6 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
+import { SemanticSearchService } from '../../../database/services/SemanticSearchService';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
@@ -13,6 +13,7 @@ import { UniversalSearchService } from './services/UniversalSearchService';
 
 /**
  * Universal search mode that searches across all content types intelligently
+ * Updated to use SemanticSearchService instead of ChromaSearchService
  */
 export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchResult> {
   private universalSearchService: UniversalSearchService;
@@ -20,7 +21,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
 
   constructor(
     plugin: Plugin,
-    searchService?: ChromaSearchService,
+    semanticSearchService?: SemanticSearchService,
     embeddingService?: EmbeddingService,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService
@@ -30,7 +31,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
     this.plugin = plugin;
     this.universalSearchService = new UniversalSearchService(
       plugin,
-      searchService,
+      semanticSearchService,
       embeddingService, 
       memoryService,
       workspaceService

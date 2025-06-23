@@ -9,19 +9,20 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
-import { ChromaSearchService } from '../../database/services/ChromaSearchService';
+import { SemanticSearchService } from '../../database/services/SemanticSearchService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Agent for searching and navigating the vault
+ * Updated to use SemanticSearchService instead of ChromaSearchService
  */
 export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
   private embeddingProvider: any | null = null;
   private embeddingService: EmbeddingService | null = null;
   private memoryService: MemoryService | null = null;
-  private searchService: ChromaSearchService | null = null;
+  private semanticSearchService: SemanticSearchService | null = null;
   private workspaceService: WorkspaceService | null = null;
   private settings: MemorySettings;
   
@@ -76,8 +77,8 @@ export class VaultLibrarianAgent extends BaseAgent {
               this.memoryService = services.memoryService;
             }
             
-            if (services.searchService) {
-              this.searchService = services.searchService;
+            if (services.semanticSearchService) {
+              this.semanticSearchService = services.semanticSearchService;
             }
             
             if (services.workspaceService) {
@@ -94,7 +95,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     // Always register SearchMode (universal search with intelligent fallbacks)
     this.registerMode(new SearchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.searchService || undefined,
+      this.semanticSearchService || undefined,
       this.embeddingService || undefined, 
       this.memoryService || undefined,
       this.workspaceService || undefined
@@ -103,7 +104,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     // Always register BatchMode (supports both semantic and non-semantic users)
     this.registerMode(new BatchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.searchService || undefined,
+      this.semanticSearchService || undefined,
       this.embeddingService || undefined,
       this.memoryService || undefined,
       this.workspaceService || undefined
@@ -165,34 +166,17 @@ export class VaultLibrarianAgent extends BaseAgent {
    * Initialize the search service if it doesn't have a vector store
    */
   async initializeSearchService(): Promise<void> {
-    if (!this.searchService) {
-      console.warn('Search service not available in VaultLibrarian');
+    if (!this.semanticSearchService) {
+      console.warn('Semantic search service not available in VaultLibrarian');
       return;
     }
     
-    // Try to connect the vector store from the plugin if needed
-    if (!this.searchService.vectorStore) {
-      try {
-        console.log('Attempting to get vector store from plugin');
-        const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
-        if (plugin && plugin.vectorStore) {
-          console.log('Found vector store in plugin, connecting to search service');
-          // Set the vector store property (public in ChromaSearchService)
-          this.searchService.vectorStore = plugin.vectorStore;
-          
-          // Initialize collections if needed
-          try {
-            await this.searchService.initialize();
-            console.log('Successfully initialized search service with plugin vector store');
-          } catch (initError) {
-            console.error('Error initializing search service collections:', initError);
-          }
-        } else {
-          console.warn('Plugin or vector store not found on plugin');
-        }
-      } catch (error) {
-        console.error('Error connecting vector store to search service:', error);
-      }
+    // Modern services handle their own vector store setup
+    try {
+      await this.semanticSearchService.initialize();
+      console.log('Successfully initialized semantic search service');
+    } catch (error) {
+      console.error('Error initializing semantic search service:', error);
     }
   }
   

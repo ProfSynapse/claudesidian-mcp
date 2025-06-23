@@ -1,19 +1,20 @@
 import { App, Plugin } from 'obsidian';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
 import { EmbeddingService } from './EmbeddingService';
-import { ChromaSearchService } from './ChromaSearchService';
+import { SemanticSearchService } from './SemanticSearchService';
 import { MemoryService } from './MemoryService';
 import ClaudesidianPlugin from '../../main';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Handles semantic and combined search operations using ChromaDB
+ * Updated to use the new SemanticSearchService instead of ChromaSearchService
  */
 export class SearchService {
   private app: App;
   // The plugin property is used for initialization in the constructor
   private embeddingService: EmbeddingService;
-  private chromaSearch: ChromaSearchService;
+  private semanticSearchService: SemanticSearchService;
   private memoryService: MemoryService;
 
   constructor(app: App, plugin: Plugin) {
@@ -21,7 +22,7 @@ export class SearchService {
     
     // Get the new services from the plugin
     this.embeddingService = (plugin as ClaudesidianPlugin).services?.embeddingService;
-    this.chromaSearch = (plugin as ClaudesidianPlugin).services?.searchService;
+    this.semanticSearchService = (plugin as ClaudesidianPlugin).services?.semanticSearchService;
     this.memoryService = (plugin as ClaudesidianPlugin).services?.memoryService;
   }
 
@@ -66,20 +67,20 @@ export class SearchService {
   }> {
     try {
       // Ensure ChromaDB services are available
-      if (!this.chromaSearch || !this.embeddingService) {
+      if (!this.semanticSearchService || !this.embeddingService) {
         // Try to get services from the plugin if not available
         const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
         if (plugin?.services) {
-          this.chromaSearch = plugin.services.searchService;
+          this.semanticSearchService = plugin.services.semanticSearchService;
           this.embeddingService = plugin.services.embeddingService;
           this.memoryService = plugin.services.memoryService;
         }
       }
       
-      if (!this.chromaSearch || !this.embeddingService) {
+      if (!this.semanticSearchService || !this.embeddingService) {
         return {
           success: false,
-          error: 'ChromaDB search services are not available. Please restart Obsidian.'
+          error: 'Semantic search services are not available. Please restart Obsidian.'
         };
       }
       
@@ -109,21 +110,25 @@ export class SearchService {
       // SessionId might be passed through params directly or through workspaceContext
       const sessionId = params?.sessionId || (params?.workspaceContext as any)?.sessionId;
       
-      // Use ChromaDB search service directly
+      // Use SemanticSearchService directly
       const searchParams = {
         query: query.trim(),
         workspaceId: workspaceId,
         sessionId: sessionId,
         limit: limit * (useGraphBoost ? 2 : 1), // Get more results when using graph boost
-        threshold: threshold
+        threshold: threshold,
+        useGraphBoost: useGraphBoost,
+        graphBoostFactor: graphBoostFactor
       };
       
       // Perform search
-      const searchResult = await this.chromaSearch.semanticSearch(searchParams.query, {
+      const searchResult = await this.semanticSearchService.semanticSearch(searchParams.query, {
         workspaceId: searchParams.workspaceId,
         sessionId: searchParams.sessionId,
         limit: searchParams.limit,
-        threshold: searchParams.threshold
+        threshold: searchParams.threshold,
+        useGraphBoost: searchParams.useGraphBoost,
+        graphBoostFactor: searchParams.graphBoostFactor
       });
       
       if (!searchResult.success || !searchResult.matches) {

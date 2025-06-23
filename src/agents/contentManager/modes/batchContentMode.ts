@@ -2,8 +2,6 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { BatchContentParams, BatchContentResult, ContentOperation } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { EmbeddingService } from '../../../database/services/EmbeddingService';
-import { ChromaSearchService } from '../../../database/services/ChromaSearchService';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
@@ -12,21 +10,15 @@ import { parseWorkspaceContext } from '../../../utils/contextUtils';
  */
 export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentResult> {
   private app: App;
-  private embeddingService: EmbeddingService | null = null;
-  private searchService: ChromaSearchService | null = null;
   private memoryService: MemoryService | null = null;
   
   /**
    * Create a new BatchContentMode
    * @param app Obsidian app instance
-   * @param embeddingService Optional EmbeddingService for updating embeddings
-   * @param searchService Optional SearchService for updating embeddings
    * @param memoryService Optional MemoryService for activity recording
    */
   constructor(
     app: App,
-    embeddingService?: EmbeddingService | null,
-    searchService?: ChromaSearchService | null,
     memoryService?: MemoryService | null
   ) {
     super(
@@ -37,8 +29,6 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
     );
     
     this.app = app;
-    this.embeddingService = embeddingService || null;
-    this.searchService = searchService || null;
     this.memoryService = memoryService || null;
   }
   
@@ -165,14 +155,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
             filePath: operation.params.filePath
           });
           
-          // For operations that modify content, update embeddings if available
-          if (['create', 'append', 'prepend', 'replace', 'replaceByLine', 'delete', 'findReplace'].includes(operation.type)) {
-            await this.updateEmbeddingsWithChromaDB(
-              operation.params.filePath,
-              workspaceContext,
-              sessionId
-            );
-          }
+          // File change detection and embedding updates are handled automatically by FileEventManager
         } catch (error: unknown) {
           results.push({
             success: false,
@@ -385,57 +368,6 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
   
   // This function was removed as it's not used
   
-  /**
-   * Update the file embeddings using ChromaDB if available
-   * @param filePath Path to the file
-   * @param workspaceContext Workspace context
-   * @param sessionId Session ID for activity recording
-   */
-  private async updateEmbeddingsWithChromaDB(
-    filePath: string,
-    workspaceContext?: any,
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      // Skip if no ChromaDB services available
-      if (!this.searchService && !this.embeddingService) {
-        return;
-      }
-      
-      // Parse workspace context for workspace ID
-      const parsedContext = parseWorkspaceContext(workspaceContext);
-      const workspaceId = parsedContext?.workspaceId;
-      
-      // Update file index with ChromaDB if searchService is available
-      if (this.searchService) {
-        await this.searchService.indexFile(
-          filePath,
-          workspaceId,
-          { 
-            force: true, // Force reindexing since content changed
-            sessionId: sessionId
-          }
-        );
-      } 
-      // Fallback to using EmbeddingService directly
-      else if (this.embeddingService) {
-        // First, get the updated file content
-        const updatedContent = await ContentOperations.readContent(this.app, filePath);
-        
-        // Generate embedding for updated file content
-        const embedding = await this.embeddingService.getEmbedding(updatedContent);
-        
-        if (embedding && workspaceId) {
-          // Since we're in the else if branch, we know searchService isn't available
-          console.log(`Generated embedding for ${filePath}, but searchService not available to store it`);
-        }
-      }
-    } catch (error) {
-      console.error('Error updating embeddings with ChromaDB:', error);
-      // Don't throw error - embedding update is a secondary operation
-      // and should not prevent the primary operation from succeeding
-    }
-  }
   
   /**
    * Record batch operation activity in workspace memory
