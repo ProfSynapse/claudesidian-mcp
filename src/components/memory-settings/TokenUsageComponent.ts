@@ -57,7 +57,7 @@ export class TokenUsageComponent {
             if (event.key === 'claudesidian-tokens-used' || 
                 event.key === 'claudesidian-token-usage' || 
                 event.key === 'claudesidian-tokens-all-time') {
-                console.log(`Token usage localStorage change detected (${event.key}), triggering debounced refresh`);
+                // console.log(`Token usage localStorage change detected (${event.key}), triggering debounced refresh`);
                 debouncedRefresh();
             }
         });

@@ -104,11 +104,11 @@ export class SearchService {
       
       // Use semantic threshold from settings if not provided
       if (threshold === undefined) {
-        threshold = this.plugin.settingsManager?.getSettings()?.memory?.semanticThreshold ?? 0.5;
+        threshold = this.plugin.settings?.settings?.memory?.semanticThreshold ?? 0.5;
       }
       
-      // Ensure threshold is between 0 and 1
-      threshold = Math.max(0, Math.min(1, threshold));
+      // Ensure threshold is between 0 and 1, and handle undefined case
+      threshold = Math.max(0, Math.min(1, threshold ?? 0.5));
       
       // Parse workspace context
       const workspaceContext = parseWorkspaceContext(params?.workspaceContext);
@@ -299,8 +299,11 @@ export class SearchService {
     try {
       // Use semantic threshold from settings if not provided
       if (threshold === undefined) {
-        threshold = this.plugin.settingsManager?.getSettings()?.memory?.semanticThreshold ?? 0.5;
+        threshold = this.plugin.settings?.settings?.memory?.semanticThreshold ?? 0.5;
       }
+      
+      // Ensure threshold is valid
+      threshold = threshold ?? 0.5;
       
       // Extract graph options
       const graphOptions = filters.graphOptions || {};

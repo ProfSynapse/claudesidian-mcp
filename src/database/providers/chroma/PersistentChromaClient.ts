@@ -113,7 +113,7 @@ class StrictPersistentCollection implements Collection {
     this.metaFilePath = `${storageDir}/${name}/metadata.json`;
     
     // Initialize services
-    this.repository = new CollectionRepository(metadata);
+    this.repository = new CollectionRepository(metadata, name);
     this.persistenceManager = new PersistenceManager(fs);
     
     // Create the collection directory if it doesn't exist

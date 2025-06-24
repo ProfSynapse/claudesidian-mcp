@@ -9,9 +9,9 @@ import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
  */
 interface ListFoldersParameters extends CommonParameters {
   /**
-   * Directory path to list folders from
+   * Directory path to list folders from (optional, defaults to root "/")
    */
-  path: string;
+  path?: string;
   
   /**
    * Optional filter pattern for folders
@@ -70,17 +70,15 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
    */
   async execute(params: ListFoldersParameters): Promise<ListFoldersResult> {
     try {
-      // Validate parameters
-      if (!params.path) {
-        return this.prepareResult(false, undefined, 'Path is required');
-      }
+      // Default to root path if not provided or empty
+      const path = params.path || '/';
       
       // Normalize the path to remove any leading slash
-      const normalizedPath = this.normalizePath(params.path);
+      const normalizedPath = this.normalizePath(path);
       
       // Get the folder - for root path, use the vault's root folder
       let parentFolder;
-      if (params.path === '/' || normalizedPath === '') {
+      if (path === '/' || normalizedPath === '') {
         parentFolder = this.app.vault.getRoot();
       } else {
         parentFolder = this.app.vault.getAbstractFileByPath(normalizedPath);
@@ -128,7 +126,8 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       properties: {
         path: {
           type: 'string',
-          description: 'Directory path to list folders from (REQUIRED)'
+          description: 'Directory path to list folders from (optional, defaults to root "/")',
+          default: '/'
         },
         filter: {
           type: 'string',
@@ -136,7 +135,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
         },
         ...commonSchema
       },
-      required: ['path']
+      required: []
     };
   }
   

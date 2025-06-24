@@ -149,27 +149,38 @@ export class ApiSettingsTab extends BaseSettingsTab {
                             throw new Error('Plugin not found');
                         }
                         
-                        if (plugin.searchService && typeof plugin.searchService.batchIndexFiles === 'function') {
+                        // Use embedding service for indexing (not search service)
+                        const embeddingService = plugin.embeddingService || plugin.services?.embeddingService;
+                        
+                        if (embeddingService && typeof embeddingService.batchIndexFiles === 'function') {
                             // Get all markdown files from the vault
                             const files = plugin.app.vault.getMarkdownFiles();
                             const filePaths = files.map((file: {path: string}) => file.path);
                             
-                            new Notice(`Starting indexing of ${filePaths.length} files...`);
+                            new Notice(`Starting indexing of ${filePaths.length} files...`, 3000);
                             
                             // Start the indexing process
-                            await plugin.searchService.batchIndexFiles(filePaths);
+                            await embeddingService.batchIndexFiles(filePaths);
                             
-                            new Notice(`Successfully indexed ${filePaths.length} files`);
+                            const successNotice = new Notice(`Successfully indexed ${filePaths.length} files`);
+                            // Auto-hide after 5 seconds
+                            setTimeout(() => {
+                                try {
+                                    successNotice.hide();
+                                } catch (e) {
+                                    // Ignore if already hidden
+                                }
+                            }, 5000);
                             
                             // Redisplay to hide the button
                             containerEl.empty();
                             await this.display(containerEl);
                         } else {
-                            throw new Error('Search service not available');
+                            throw new Error('Embedding service not available or batchIndexFiles method not found');
                         }
                     } catch (error) {
                         console.error('Error indexing content:', error);
-                        new Notice(`Error indexing: ${error instanceof Error ? error.message : String(error)}`);
+                        new Notice(`Error indexing: ${error instanceof Error ? error.message : String(error)}`, 5000);
                         startButton.disabled = false;
                         startButton.textContent = 'Start Initial Embedding';
                     }
@@ -417,16 +428,16 @@ export class ApiSettingsTab extends BaseSettingsTab {
                                         );
                                         
                                         if (embeddingModels.length > 0) {
-                                            new Notice(`✅ Ollama connected! Found ${embeddingModels.length} embedding model(s): ${embeddingModels.map((m: any) => m.name).join(', ')}`);
+                                            new Notice(`✅ Ollama connected! Found ${embeddingModels.length} embedding model(s): ${embeddingModels.map((m: any) => m.name).join(', ')}`, 4000);
                                         } else {
-                                            new Notice('⚠️ Ollama connected but no embedding models found. Please run: ollama pull nomic-embed-text');
+                                            new Notice('⚠️ Ollama connected but no embedding models found. Please run: ollama pull nomic-embed-text', 5000);
                                         }
                                     } else {
                                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                                     }
                                 } catch (error) {
                                     console.error('Ollama connection test failed:', error);
-                                    new Notice(`❌ Failed to connect to Ollama: ${(error as Error).message || String(error)}. Make sure Ollama is running.`);
+                                    new Notice(`❌ Failed to connect to Ollama: ${(error as Error).message || String(error)}. Make sure Ollama is running.`, 5000);
                                 } finally {
                                     button.setButtonText('Test Connection');
                                     button.setDisabled(false);
@@ -523,7 +534,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                     
                     if (confirmed) {
                         try {
-                            new Notice('Deleting all embeddings...');
+                            new Notice('Deleting all embeddings...', 3000);
                             
                             const plugin = this.app.plugins.plugins['claudesidian-mcp'];
                             if (!plugin) {
@@ -550,7 +561,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                             }
                             
                             this.embeddingsExist = false;
-                            new Notice('All embeddings deleted. You can now use the new model.');
+                            new Notice('All embeddings deleted. You can now use the new model.', 4000);
                             
                             // Update dimensions to match the new model
                             if (this.settings.providerSettings[this.settings.apiProvider]) {
@@ -562,7 +573,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                             await this.display(containerEl);
                         } catch (error) {
                             console.error('Error deleting embeddings:', error);
-                            new Notice('Error deleting embeddings: ' + error);
+                            new Notice('Error deleting embeddings: ' + error, 5000);
                         }
                     }
                 });

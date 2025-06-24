@@ -72,7 +72,7 @@ export class TokenTrackingMixin {
                     // Validate that it's an object with model keys
                     if (typeof parsedUsage === 'object' && parsedUsage !== null) {
                         this.modelUsage = { ...parsedUsage };
-                        console.log('Loaded token usage from localStorage:', this.modelUsage);
+                        // console.log('Loaded token usage from localStorage:', this.modelUsage);
                     }
                 }
             }
@@ -130,8 +130,24 @@ export class TokenTrackingMixin {
                     }
                 }
                 
-                // Calculate cost for this update
-                const costPerThousand = this.costPerThousandTokens[model] || this.costPerThousandTokens['default'] || 0.0001;
+                // Calculate cost for this update - with improved Ollama detection
+                let costPerThousand = this.costPerThousandTokens[model];
+                
+                // If not found, check if it's an Ollama model (local = free)
+                if (costPerThousand === undefined) {
+                    if (model.includes('ollama') || 
+                        model.includes('nomic') || 
+                        model.includes('mxbai') || 
+                        model.includes('minilm') || 
+                        model.includes('arctic') ||
+                        model.includes('local') ||
+                        model.startsWith('llama') ||
+                        model.includes('mistral') && model.includes('local')) {
+                        costPerThousand = 0; // Free for local models
+                    } else {
+                        costPerThousand = this.costPerThousandTokens['default'] || 0.0001;
+                    }
+                }
                 const cost = (tokenCount / 1000) * costPerThousand;
                 
                 // Update all-time stats
@@ -141,7 +157,10 @@ export class TokenTrackingMixin {
                 
                 // Save updated stats
                 localStorage.setItem(allTimeKey, JSON.stringify(allTimeStats));
-                console.log(`Updated all-time stats: +${tokenCount} tokens, +$${cost.toFixed(6)}. Total: ${allTimeStats.tokensAllTime} tokens, $${allTimeStats.estimatedCostAllTime.toFixed(6)}`);
+                // Only log when using paid models to reduce noise from free services
+                if (costPerThousand > 0) {
+                    console.log(`Updated stats: +${tokenCount} tokens, +$${cost.toFixed(6)}. Total: ${allTimeStats.tokensAllTime} tokens, $${allTimeStats.estimatedCostAllTime.toFixed(6)}`);
+                }
             }
         } catch (error) {
             console.warn('Failed to update all-time stats:', error);

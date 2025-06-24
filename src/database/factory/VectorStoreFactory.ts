@@ -116,6 +116,8 @@ export class VectorStoreFactory {
       backlinksEnabled: true,
       useFilters: true,
       defaultThreshold: 0.3,
+      semanticThreshold: 0.5,
+      vectorStoreType: 'file-based',
       autoCreateSessions: true,
       sessionNaming: 'timestamp',
       autoCheckpoint: false,

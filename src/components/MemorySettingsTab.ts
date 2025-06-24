@@ -110,16 +110,6 @@ export class MemorySettingsTab {
      * Display the Memory Manager settings tab
      */
     async display(): Promise<void> {
-        // Initialize VaultLibrarian search service if available
-        if (this.vaultLibrarian && typeof this.vaultLibrarian.initializeSearchService === 'function') {
-            console.log('Initializing VaultLibrarian search service in MemorySettingsTab');
-            try {
-                await this.vaultLibrarian.initializeSearchService();
-            } catch (error) {
-                console.warn('Error initializing VaultLibrarian search service:', error);
-            }
-        }
-        
         // Clear the container first to avoid duplication
         this.containerEl.empty();
         

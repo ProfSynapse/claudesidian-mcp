@@ -164,7 +164,9 @@ export default class ClaudesidianPlugin extends Plugin {
                     graphBoostFactor: 0.3,
                     backlinksEnabled: true,
                     useFilters: true,
-                    defaultThreshold: 0.7
+                    defaultThreshold: 0.7,
+                    semanticThreshold: 0.5,
+                    vectorStoreType: 'file-based'
                 };
             } else {
                 // Just update the dbStoragePath if memory settings already exist
