@@ -3,7 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 import { LoadStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { PropertySearchService } from '../../../../database/services/PropertySearchService';
+import { MetadataSearchService } from '../../../../database/services/MetadataSearchService';
 // Memory service is used indirectly through the agent
 // Workspace service is used indirectly through the agent
 
@@ -175,10 +175,10 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         try {
           const app = this.agent.getApp();
           if (app) {
-            const propertySearchService = new PropertySearchService(app);
+            const metadataSearchService = new MetadataSearchService(app);
             
             // Search for files with 'key: true' property
-            const keyFiles = await propertySearchService.searchByProperty('key', 'true', {
+            const keyFiles = await metadataSearchService.searchByProperty('key', 'true', {
               path: workspace.rootFolder,
               limit: 10
             });

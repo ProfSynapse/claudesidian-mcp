@@ -1,4 +1,4 @@
-import { Vault } from 'obsidian';
+import { Vault, App } from 'obsidian';
 import { EntityCache } from './EntityCache';
 import { VaultFileIndex } from './VaultFileIndex';
 import { WorkspaceService } from './WorkspaceService';
@@ -14,17 +14,19 @@ export interface CacheManagerOptions {
 }
 
 export class CacheManager {
+    private vault: Vault;
     private entityCache: EntityCache | null = null;
     private vaultFileIndex: VaultFileIndex | null = null;
     private prefetchManager: PrefetchManager | null = null;
     private isInitialized = false;
 
     constructor(
-        private vault: Vault,
+        private app: App,
         private workspaceService: WorkspaceService,
         private memoryService: MemoryService,
         private options: CacheManagerOptions = {}
     ) {
+        this.vault = app.vault;
         // Default options
         this.options.enableEntityCache = options.enableEntityCache ?? true;
         this.options.enableFileIndex = options.enableFileIndex ?? true;
@@ -54,7 +56,7 @@ export class CacheManager {
 
         // Initialize VaultFileIndex
         if (this.options.enableFileIndex) {
-            this.vaultFileIndex = new VaultFileIndex(this.vault);
+            this.vaultFileIndex = new VaultFileIndex(this.vault, this.app);
             await this.vaultFileIndex.initialize();
             console.log('VaultFileIndex initialized');
 
@@ -242,5 +244,30 @@ export class CacheManager {
         const entityCacheReady = !this.options.enableEntityCache || !!this.entityCache;
         const fileIndexReady = !this.options.enableFileIndex || this.vaultFileIndex?.isReady() || false;
         return this.isInitialized && entityCacheReady && fileIndexReady;
+    }
+
+    // Cleanup resources
+    cleanup(): void {
+        console.log('Cleaning up CacheManager...');
+        
+        // Cleanup VaultFileIndex and its metadata cache events
+        if (this.vaultFileIndex) {
+            this.vaultFileIndex.cleanup();
+            this.vaultFileIndex = null;
+        }
+
+        // Clear entity cache
+        if (this.entityCache) {
+            this.entityCache.clear();
+            this.entityCache = null;
+        }
+
+        // Reset prefetch manager
+        if (this.prefetchManager) {
+            this.prefetchManager = null;
+        }
+
+        this.isInitialized = false;
+        console.log('CacheManager cleanup complete');
     }
 }

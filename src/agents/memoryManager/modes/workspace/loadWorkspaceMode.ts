@@ -7,7 +7,7 @@ import {
 import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 import { MemoryService } from '../../../../database/services/MemoryService';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
-import { PropertySearchService } from '../../../../database/services/PropertySearchService';
+import { MetadataSearchService } from '../../../../database/services/MetadataSearchService';
 import { sanitizePath } from '../../../../utils/pathUtils';
 import { CacheManager } from '../../../../database/services/CacheManager';
 import { DirectoryTreeBuilder, DirectoryTreeUtils } from '../../../../utils/directoryTreeUtils';
@@ -21,7 +21,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
   private cacheManager: CacheManager | null = null;
-  private propertySearchService: PropertySearchService;
+  private metadataSearchService: MetadataSearchService;
   private directoryTreeBuilder: DirectoryTreeBuilder;
   
   /**
@@ -37,7 +37,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     );
     this.app = app;
     this.plugin = app.plugins.getPlugin('claudesidian-mcp');
-    this.propertySearchService = new PropertySearchService(app);
+    this.metadataSearchService = new MetadataSearchService(app);
     this.directoryTreeBuilder = new DirectoryTreeBuilder(app);
     
     // Safely access the plugin services
@@ -427,7 +427,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     
     try {
       // 1. Search for files with the "key: true" property
-      const propertyFiles = await this.propertySearchService.searchByProperty('key', 'true', {
+      const propertyFiles = await this.metadataSearchService.searchByProperty('key', 'true', {
         path: workspace.rootFolder,
         limit: 20
       });

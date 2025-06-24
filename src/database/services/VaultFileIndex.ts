@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { Vault, TFile, TFolder, FileStats } from 'obsidian';
+import { Vault, TFile, TFolder, FileStats, MetadataCache, App, EventRef } from 'obsidian';
 
 export interface IndexedFile {
     path: string;
@@ -47,8 +47,9 @@ export class VaultFileIndex extends EventEmitter {
 
     private isIndexing = false;
     private indexPromise: Promise<void> | null = null;
+    private metadataEventRefs: EventRef[] = [];
 
-    constructor(private vault: Vault) {
+    constructor(private vault: Vault, private app?: App) {
         super();
     }
 
@@ -65,6 +66,7 @@ export class VaultFileIndex extends EventEmitter {
             this.stats.lastUpdated = Date.now();
             this.isIndexing = false;
             this.indexPromise = null;
+            this.setupMetadataCacheEvents();
             this.emit('index:ready', this.stats);
         }).catch(error => {
             console.error('Error building file index:', error);
@@ -328,5 +330,93 @@ export class VaultFileIndex extends EventEmitter {
 
     isReady(): boolean {
         return !this.isIndexing && this.fileIndex.size > 0;
+    }
+
+    /**
+     * Set up metadata cache event listeners for real-time updates
+     */
+    private setupMetadataCacheEvents(): void {
+        if (!this.app?.metadataCache) {
+            console.warn('MetadataCache not available - metadata events will not be tracked');
+            return;
+        }
+
+        const metadataCache = this.app.metadataCache;
+
+        // Listen for metadata changes (tags, frontmatter, links)
+        const metadataChangedRef = metadataCache.on('changed', (file: TFile) => {
+            this.handleMetadataChanged(file);
+        });
+
+        // Listen for resolved metadata (when a file's metadata is fully processed)
+        const resolvedRef = metadataCache.on('resolved', () => {
+            this.handleMetadataResolved();
+        });
+
+        // Store references for cleanup
+        this.metadataEventRefs = [
+            metadataChangedRef,
+            resolvedRef
+        ];
+
+        console.log('[VaultFileIndex] Metadata cache events set up successfully');
+    }
+
+    /**
+     * Handle metadata cache changes for a specific file
+     */
+    private async handleMetadataChanged(file: TFile): Promise<void> {
+        const indexed = this.fileIndex.get(file.path);
+        if (!indexed) {
+            // File not in our index yet, add it
+            await this.indexFile(file, true);
+            return;
+        }
+
+        // Clear old tag index entries for this file
+        if (indexed.tags) {
+            indexed.tags.forEach(tag => {
+                const tagFiles = this.tagIndex.get(tag);
+                if (tagFiles) {
+                    const index = tagFiles.indexOf(file.path);
+                    if (index > -1) {
+                        tagFiles.splice(index, 1);
+                        if (tagFiles.length === 0) {
+                            this.tagIndex.delete(tag);
+                        }
+                    }
+                }
+            });
+        }
+
+        // Reload metadata and update index
+        await this.loadFileMetadata(file.path);
+        this.updateStats();
+        this.emit('metadata:updated', file.path, indexed);
+    }
+
+    /**
+     * Handle when metadata cache resolution is complete
+     */
+    private handleMetadataResolved(): void {
+        this.emit('metadata:resolved');
+    }
+
+    /**
+     * Clean up metadata cache event listeners
+     */
+    cleanup(): void {
+        // Remove all metadata event listeners
+        if (this.app?.metadataCache) {
+            this.metadataEventRefs.forEach(eventRef => {
+                this.app!.metadataCache.offref(eventRef);
+            });
+        }
+        this.metadataEventRefs = [];
+        
+        // Clear all data
+        this.clear();
+        
+        console.log('[VaultFileIndex] Cleaned up metadata cache events');
     }
 }

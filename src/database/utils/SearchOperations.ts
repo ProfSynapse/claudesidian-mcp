@@ -5,7 +5,7 @@ import { GraphOperations } from './graph/GraphOperations';
  * @deprecated This file is deprecated and will be removed in a future version.
  * 
  * MIGRATION GUIDE:
- * - For property searches: Use PropertySearchService from '../../services/PropertySearchService'
+ * - For property/tag searches: Use MetadataSearchService from '../../services/MetadataSearchService'
  * - For file/folder listing: Use VaultFileIndex from '../../services/VaultFileIndex'
  * - For content search: Use UniversalSearchService from '../../agents/vaultLibrarian/modes/services/UniversalSearchService'
  * - For scoring: Use ScoringService from '../../services/ScoringService'

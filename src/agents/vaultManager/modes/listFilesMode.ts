@@ -55,11 +55,16 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
   }
   
   /**
-   * Normalize path by removing leading slash
+   * Normalize path by removing leading slash and handling special cases
    * @param path Path to normalize
    * @returns Normalized path
    */
   private normalizePath(path: string): string {
+    // Handle special cases for root directory
+    if (!path || path === '/' || path === '.') {
+      return '';
+    }
+    // Remove leading slash if present
     return path.startsWith('/') ? path.slice(1) : path;
   }
 
@@ -78,10 +83,16 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
       // Normalize the path to remove any leading slash
       const normalizedPath = this.normalizePath(params.path);
       
-      // Get the folder
-      const parentFolder = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (!parentFolder || !(parentFolder instanceof TFolder)) {
-        return this.prepareResult(false, undefined, `Folder not found at path: ${normalizedPath}`);
+      // Get the folder - handle root folder case
+      let parentFolder;
+      if (normalizedPath === '') {
+        // Root folder case
+        parentFolder = this.app.vault.getRoot();
+      } else {
+        parentFolder = this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (!parentFolder || !(parentFolder instanceof TFolder)) {
+          return this.prepareResult(false, undefined, `Folder not found at path: ${normalizedPath}`);
+        }
       }
       
       // Get all children

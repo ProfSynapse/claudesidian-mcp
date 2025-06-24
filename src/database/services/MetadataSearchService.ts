@@ -1,16 +1,27 @@
 /**
- * PropertySearchService - Advanced frontmatter property search functionality
+ * MetadataSearchService - Advanced metadata search functionality for tags and properties
  * 
- * Provides specialized property search capabilities following SOLID principles
- * Applies Single Responsibility Principle for property-based file searches
+ * Provides specialized tag and property search capabilities following SOLID principles
+ * Applies Single Responsibility Principle for metadata-based file searches
+ * Uses official Obsidian API for tag access via getAllTags()
  */
 
-import { App, TFile, CachedMetadata } from 'obsidian';
+import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
 
 /**
- * Options for property search operations
+ * Filter criteria for property searches
  */
-export interface PropertySearchOptions {
+export interface PropertyFilter {
+    key: string;
+    value?: any;
+    caseSensitive?: boolean;
+    partialMatch?: boolean;
+}
+
+/**
+ * Options for metadata search operations
+ */
+export interface MetadataSearchOptions {
     /** Path prefix to limit search scope */
     path?: string;
     /** Maximum number of results to return */
@@ -19,6 +30,18 @@ export interface PropertySearchOptions {
     caseSensitive?: boolean;
     /** Support partial value matching */
     partialMatch?: boolean;
+}
+
+/**
+ * Combined search criteria for tags and properties
+ */
+export interface MetadataSearchCriteria {
+    /** Tags to filter by */
+    tags?: string[];
+    /** Property filters to apply */
+    properties?: PropertyFilter[];
+    /** Use AND logic (true) or OR logic (false) for combining criteria */
+    matchAll?: boolean;
 }
 
 /**
@@ -32,15 +55,106 @@ export interface PropertySearchResult {
 }
 
 /**
- * Service for searching files by frontmatter properties
- * Provides advanced property-based search capabilities extracted from SearchOperations
+ * Service for searching files by tags and frontmatter properties
+ * Provides advanced metadata-based search capabilities using official Obsidian API
  */
-export class PropertySearchService {
+export class MetadataSearchService {
     private app: App;
 
     constructor(app: App) {
         this.app = app;
     }
+
+    // ===== TAG SEARCH METHODS =====
+
+    /**
+     * Get all tags in the vault using official Obsidian API
+     * @param options Search configuration options
+     * @returns Promise resolving to array of unique tags
+     */
+    async getAllTags(options: MetadataSearchOptions = {}): Promise<string[]> {
+        const { path, limit } = options;
+        const files = this.getFilesToSearch(path);
+        const tags = new Set<string>();
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getFileCache(file);
+            if (!cache) continue;
+
+            const fileTags = getAllTags(cache);
+            if (fileTags) {
+                fileTags.forEach(tag => {
+                    // Remove # prefix for consistency
+                    tags.add(tag.replace(/^#/, ''));
+                });
+            }
+
+            if (limit && tags.size >= limit) break;
+        }
+
+        return Array.from(tags).sort();
+    }
+
+    /**
+     * Get files that contain a specific tag
+     * @param tag Tag to search for (with or without # prefix)
+     * @param options Search configuration options
+     * @returns Promise resolving to matching files
+     */
+    async getFilesWithTag(tag: string, options: MetadataSearchOptions = {}): Promise<TFile[]> {
+        const { path, limit } = options;
+        const normalizedTag = tag.replace(/^#/, '');
+        const files = this.getFilesToSearch(path);
+        const results: TFile[] = [];
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getFileCache(file);
+            if (!cache) continue;
+
+            const fileTags = getAllTags(cache);
+            if (fileTags && fileTags.some(t => t.replace(/^#/, '') === normalizedTag)) {
+                results.push(file);
+                if (limit && results.length >= limit) break;
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Get files that contain any of the specified tags
+     * @param tags Array of tags to search for
+     * @param options Search configuration options
+     * @returns Promise resolving to matching files
+     */
+    async getFilesWithTags(tags: string[], options: MetadataSearchOptions = {}): Promise<TFile[]> {
+        const { path, limit } = options;
+        const normalizedTags = tags.map(tag => tag.replace(/^#/, ''));
+        const files = this.getFilesToSearch(path);
+        const results: TFile[] = [];
+        const resultSet = new Set<string>();
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getFileCache(file);
+            if (!cache) continue;
+
+            const fileTags = getAllTags(cache);
+            if (fileTags) {
+                const normalizedFileTags = fileTags.map(t => t.replace(/^#/, ''));
+                const hasAnyTag = normalizedTags.some(tag => normalizedFileTags.includes(tag));
+                
+                if (hasAnyTag && !resultSet.has(file.path)) {
+                    results.push(file);
+                    resultSet.add(file.path);
+                    if (limit && results.length >= limit) break;
+                }
+            }
+        }
+
+        return results;
+    }
+
+    // ===== PROPERTY SEARCH METHODS =====
 
     /**
      * Search files by property key/value pairs
@@ -53,7 +167,7 @@ export class PropertySearchService {
     async searchByProperty(
         key: string,
         value?: string,
-        options: PropertySearchOptions = {}
+        options: MetadataSearchOptions = {}
     ): Promise<TFile[]> {
         const results = await this.searchByPropertyDetailed(key, value, options);
         return results.map(result => result.file);
@@ -69,7 +183,7 @@ export class PropertySearchService {
     async searchByPropertyDetailed(
         key: string,
         value?: string,
-        options: PropertySearchOptions = {}
+        options: MetadataSearchOptions = {}
     ): Promise<PropertySearchResult[]> {
         const { path, limit, caseSensitive = false, partialMatch = false } = options;
         
@@ -123,7 +237,7 @@ export class PropertySearchService {
      */
     async searchByAnyProperty(
         keys: string[],
-        options: PropertySearchOptions = {}
+        options: MetadataSearchOptions = {}
     ): Promise<TFile[]> {
         const { path, limit } = options;
         
@@ -162,7 +276,7 @@ export class PropertySearchService {
     async searchByPropertyPattern(
         key: string,
         pattern: RegExp,
-        options: PropertySearchOptions = {}
+        options: MetadataSearchOptions = {}
     ): Promise<PropertySearchResult[]> {
         const { path, limit } = options;
         
@@ -201,7 +315,7 @@ export class PropertySearchService {
      * @param options Search configuration options
      * @returns Promise resolving to array of unique property keys
      */
-    async getAllPropertyKeys(options: PropertySearchOptions = {}): Promise<string[]> {
+    async getAllPropertyKeys(options: MetadataSearchOptions = {}): Promise<string[]> {
         const { path, limit } = options;
         
         const files = this.getFilesToSearch(path);
@@ -231,7 +345,7 @@ export class PropertySearchService {
      */
     async getPropertyValues(
         key: string,
-        options: PropertySearchOptions = {}
+        options: MetadataSearchOptions = {}
     ): Promise<any[]> {
         const { path, limit } = options;
         
@@ -258,6 +372,104 @@ export class PropertySearchService {
         }
         
         return Array.from(values).sort();
+    }
+
+    // ===== COMBINED SEARCH METHODS =====
+
+    /**
+     * Search files matching combined tag and property criteria
+     * @param criteria Combined search criteria with tags and properties
+     * @param options Search configuration options
+     * @returns Promise resolving to files matching the criteria
+     */
+    async getFilesMatchingMetadata(
+        criteria: MetadataSearchCriteria,
+        options: MetadataSearchOptions = {}
+    ): Promise<TFile[]> {
+        const { tags = [], properties = [], matchAll = true } = criteria;
+        const { path, limit } = options;
+
+        if (tags.length === 0 && properties.length === 0) {
+            return []; // No criteria specified
+        }
+
+        const files = this.getFilesToSearch(path);
+        const results: TFile[] = [];
+        const resultSet = new Set<string>();
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getFileCache(file);
+            if (!cache) continue;
+
+            let meetsTagCriteria = tags.length === 0; // If no tags specified, consider as met
+            let meetsPropertyCriteria = properties.length === 0; // If no properties specified, consider as met
+
+            // Check tag criteria
+            if (tags.length > 0) {
+                const fileTags = getAllTags(cache);
+                if (fileTags) {
+                    const normalizedFileTags = fileTags.map(t => t.replace(/^#/, ''));
+                    if (matchAll) {
+                        meetsTagCriteria = tags.every(tag => 
+                            normalizedFileTags.includes(tag.replace(/^#/, ''))
+                        );
+                    } else {
+                        meetsTagCriteria = tags.some(tag => 
+                            normalizedFileTags.includes(tag.replace(/^#/, ''))
+                        );
+                    }
+                }
+            }
+
+            // Check property criteria
+            if (properties.length > 0) {
+                const frontmatter = cache.frontmatter;
+                if (frontmatter) {
+                    if (matchAll) {
+                        meetsPropertyCriteria = properties.every(prop => 
+                            this.matchesPropertyFilter(frontmatter, prop)
+                        );
+                    } else {
+                        meetsPropertyCriteria = properties.some(prop => 
+                            this.matchesPropertyFilter(frontmatter, prop)
+                        );
+                    }
+                }
+            }
+
+            // Combine criteria based on matchAll setting
+            const meetsCriteria = matchAll 
+                ? (meetsTagCriteria && meetsPropertyCriteria)
+                : (meetsTagCriteria || meetsPropertyCriteria);
+
+            if (meetsCriteria && !resultSet.has(file.path)) {
+                results.push(file);
+                resultSet.add(file.path);
+                if (limit && results.length >= limit) break;
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Check if frontmatter matches a property filter
+     * @param frontmatter The frontmatter object to check
+     * @param filter The property filter to apply
+     * @returns True if the frontmatter matches the filter
+     */
+    private matchesPropertyFilter(frontmatter: any, filter: PropertyFilter): boolean {
+        const { key, value, caseSensitive = false, partialMatch = false } = filter;
+        
+        if (frontmatter[key] === undefined) {
+            return false; // Property doesn't exist
+        }
+
+        if (value === undefined) {
+            return true; // Just checking for property existence
+        }
+
+        return this.matchesValue(frontmatter[key], value, caseSensitive, partialMatch);
     }
 
     /**

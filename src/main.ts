@@ -7,7 +7,7 @@ import { ConfigModal } from './components/ConfigModal';
 
 // Import new ChromaDB services
 import { EmbeddingService } from './database/services/EmbeddingService';
-import { SemanticSearchService } from './database/services/SemanticSearchService';
+import { HnswSearchService } from './database/providers/chroma/services/HnswSearchService';
 import { FileEmbeddingAccessService } from './database/services/FileEmbeddingAccessService';
 import { DirectCollectionService } from './database/services/DirectCollectionService';
 import { IVectorStore } from './database/interfaces/IVectorStore';
@@ -29,7 +29,7 @@ export default class ClaudesidianPlugin extends Plugin {
     
     // Services
     public embeddingService!: EmbeddingService;
-    public semanticSearchService!: SemanticSearchService;
+    public hnswSearchService!: HnswSearchService;
     public fileEmbeddingAccessService!: FileEmbeddingAccessService;
     public directCollectionService!: DirectCollectionService;
     public workspaceService!: WorkspaceService;
@@ -45,7 +45,7 @@ export default class ClaudesidianPlugin extends Plugin {
     // Service registry
     public services!: {
         embeddingService: EmbeddingService;
-        semanticSearchService: SemanticSearchService;
+        hnswSearchService: HnswSearchService;
         fileEmbeddingAccessService: FileEmbeddingAccessService;
         directCollectionService: DirectCollectionService;
         workspaceService: WorkspaceService;
@@ -230,7 +230,10 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Initialize services
         this.embeddingService = new EmbeddingService(this);
-        this.semanticSearchService = new SemanticSearchService(this, this.vectorStore, this.embeddingService);
+        
+        // Create HnswSearchService with vector store
+        this.hnswSearchService = new HnswSearchService(this.app, this.vectorStore, this.embeddingService);
+        
         this.fileEmbeddingAccessService = new FileEmbeddingAccessService(this, this.vectorStore);
         this.directCollectionService = new DirectCollectionService(this, this.vectorStore);
         this.workspaceService = new WorkspaceService(this, this.vectorStore, this.embeddingService);
@@ -244,12 +247,17 @@ export default class ClaudesidianPlugin extends Plugin {
             
             // Legacy search service removed - using modern services instead
             
-            await this.semanticSearchService.initialize().catch(error => {
+            await this.hnswSearchService.initialize().catch((error: any) => {
                 console.warn(`Failed to initialize semantic search service: ${error.message}`);
             });
             
             await this.fileEmbeddingAccessService.initialize().catch(error => {
                 console.warn(`Failed to initialize file embedding access service: ${error.message}`);
+            });
+            
+            // Load existing embeddings into HNSW index for high-performance search
+            await this.loadExistingEmbeddingsIntoHNSW().catch(error => {
+                console.warn(`Failed to load existing embeddings into HNSW: ${error.message}`);
             });
             
             await this.workspaceService.initialize().catch(error => {
@@ -320,7 +328,7 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Initialize the cache manager
         this.cacheManager = new CacheManager(
-            this.app.vault,
+            this.app,
             this.workspaceService,
             this.memoryService
         );
@@ -330,7 +338,7 @@ export default class ClaudesidianPlugin extends Plugin {
         // Expose services
         this.services = {
             embeddingService: this.embeddingService,
-            semanticSearchService: this.semanticSearchService,
+            hnswSearchService: this.hnswSearchService,
             fileEmbeddingAccessService: this.fileEmbeddingAccessService,
             directCollectionService: this.directCollectionService,
             workspaceService: this.workspaceService,
@@ -470,6 +478,11 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Clean up services
         // EmbeddingService doesn't need explicit cleanup
+        
+        // Clean up cache manager and metadata events
+        if (this.cacheManager) {
+            this.cacheManager.cleanup();
+        }
         
         // Close the vector store connection
         if (this.vectorStore) {
@@ -695,6 +708,51 @@ export default class ClaudesidianPlugin extends Plugin {
             }
         } catch (error) {
             console.error('Error warming cache:', error);
+        }
+    }
+
+    /**
+     * Load existing embeddings from ChromaDB into HNSW index for high-performance search
+     * Bridges the gap between persistent storage and in-memory HNSW optimization
+     */
+    private async loadExistingEmbeddingsIntoHNSW(): Promise<void> {
+        try {
+            console.log('[ClaudesidianPlugin] Loading existing embeddings into HNSW index...');
+            
+            // Get all existing file embeddings from ChromaDB
+            const fileEmbeddings = await this.fileEmbeddingAccessService.getAllFileEmbeddings();
+            
+            if (fileEmbeddings.length === 0) {
+                console.log('[ClaudesidianPlugin] No existing embeddings found - HNSW index will be empty');
+                return;
+            }
+            
+            // Convert FileEmbedding objects to DatabaseItem format required by HNSW
+            const databaseItems = fileEmbeddings.map(embedding => ({
+                id: embedding.id,
+                embedding: embedding.vector,
+                metadata: {
+                    filePath: embedding.filePath,
+                    fileName: embedding.filePath.split('/').pop() || embedding.filePath,
+                    timestamp: embedding.timestamp,
+                    workspaceId: embedding.workspaceId,
+                    chunkIndex: embedding.chunkIndex,
+                    totalChunks: embedding.totalChunks,
+                    contentHash: (embedding as any).contentHash,
+                    lastModified: (embedding as any).lastModified,
+                    fileSize: (embedding as any).fileSize
+                },
+                document: embedding.content || '' // Use content if available, otherwise empty string
+            }));
+            
+            // Load items into HNSW index for the file_embeddings collection
+            await this.hnswSearchService.indexCollection('file_embeddings', databaseItems);
+            
+            console.log(`[ClaudesidianPlugin] Successfully loaded ${databaseItems.length} embeddings into HNSW index`);
+            
+        } catch (error) {
+            console.error('[ClaudesidianPlugin] Failed to load existing embeddings into HNSW:', error);
+            throw error;
         }
     }
 }

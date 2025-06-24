@@ -7,10 +7,34 @@
 import { loadHnswlib } from 'hnswlib-wasm';
 import { DatabaseItem } from './FilterEngine';
 import { FilterEngine, WhereClause } from './FilterEngine';
+import { TFile, App } from 'obsidian';
+import { EmbeddingService } from '../../../services/EmbeddingService';
+import { IVectorStore } from '../../../interfaces/IVectorStore';
 
 export interface ItemWithDistance {
   item: DatabaseItem;
   distance: number;
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  snippet: string;
+  score: number;
+  searchMethod: 'semantic';
+  metadata: {
+    filePath: string;
+    similarity: number;
+    fileId: string;
+    timestamp: number;
+  };
+  content?: string;
+}
+
+export interface SearchOptions {
+  limit?: number;
+  threshold?: number;
+  includeContent?: boolean;
 }
 
 interface HnswIndex {
@@ -28,6 +52,15 @@ export class HnswSearchService {
   private indexes: Map<string, HnswIndex> = new Map();
   private isInitialized: boolean = false;
   private hnswLib: any = null;
+  private app?: App;
+  private vectorStore?: IVectorStore;
+  private embeddingService?: EmbeddingService;
+
+  constructor(app?: App, vectorStore?: IVectorStore, embeddingService?: EmbeddingService) {
+    this.app = app;
+    this.vectorStore = vectorStore;
+    this.embeddingService = embeddingService;
+  }
 
   /**
    * Initialize HNSW library
@@ -176,7 +209,8 @@ export class HnswSearchService {
       indexData.index.setEfSearch(Math.max(nResults * 2, 50));
       
       // Perform HNSW search - this is O(log n) instead of O(n)!
-      const searchResults = indexData.index.searchKnn(queryEmbedding, nResults * 3); // Get more to account for filtering
+      // searchKnn expects: (queryEmbedding, k, filter) where filter can be null
+      const searchResults = indexData.index.searchKnn(queryEmbedding, nResults * 3, null);
       
       // Convert HNSW results to our format
       const results: ItemWithDistance[] = [];
@@ -251,6 +285,189 @@ export class HnswSearchService {
       totalIndexes: this.indexes.size,
       totalItems
     };
+  }
+
+  // ===== ENHANCED SEARCH METHODS FOR UNIFIED SEARCH =====
+
+  /**
+   * Search content with metadata filtering using HNSW
+   * Primary method for unified search integration
+   * Overloaded to support both old and new call signatures
+   */
+  async searchWithMetadataFilter(
+    query: string,
+    limitOrFiles?: number | TFile[],
+    metadataOrOptions?: any | SearchOptions
+  ): Promise<SearchResult[]> {
+    // Handle overloaded parameters
+    let limit = 10;
+    let threshold = 0.7;
+    let includeContent = false;
+    let filteredFiles: TFile[] | undefined;
+    let metadata: any = {};
+
+    // Determine which signature is being used
+    if (typeof limitOrFiles === 'number') {
+      // Old signature: searchWithMetadataFilter(query, limit, metadata)
+      limit = limitOrFiles;
+      metadata = metadataOrOptions || {};
+    } else if (Array.isArray(limitOrFiles)) {
+      // New signature: searchWithMetadataFilter(query, filteredFiles, options)
+      filteredFiles = limitOrFiles;
+      const options = (metadataOrOptions as SearchOptions) || {};
+      limit = options.limit || 10;
+      threshold = options.threshold || 0.7;
+      includeContent = options.includeContent || false;
+    } else if (limitOrFiles === undefined && metadataOrOptions) {
+      // Only options provided: searchWithMetadataFilter(query, undefined, options)
+      const options = (metadataOrOptions as SearchOptions) || {};
+      limit = options.limit || 10;
+      threshold = options.threshold || 0.7;
+      includeContent = options.includeContent || false;
+    }
+
+    // Use file_embeddings collection for content search
+    const collectionName = 'file_embeddings';
+    
+    if (!this.hasIndex(collectionName)) {
+      console.warn(`[HnswSearchService] No index found for collection: ${collectionName}`);
+      return [];
+    }
+
+    try {
+      // Check if embedding service is available
+      if (!this.embeddingService) {
+        console.warn('[HnswSearchService] No embedding service available for semantic search');
+        return [];
+      }
+
+      // Generate embedding for query
+      console.log(`[HnswSearchService] Generating embedding for query: "${query}"`);
+      const queryEmbedding = await this.embeddingService.getEmbedding(query);
+      
+      if (!queryEmbedding || queryEmbedding.length === 0) {
+        console.error('[HnswSearchService] Failed to generate query embedding');
+        return [];
+      }
+
+      // If we have filtered files, create a where clause to match only those files
+      let where: WhereClause | undefined;
+      if (filteredFiles && filteredFiles.length > 0) {
+        const allowedPaths = filteredFiles.map(f => f.path);
+        where = {
+          filePath: { $in: allowedPaths }
+        };
+      }
+
+      // Perform HNSW search with the query embedding
+      const results = await this.searchSimilar(collectionName, queryEmbedding, limit, where);
+      
+      // Format results for return
+      const formattedResults = this.formatSearchResults(results, threshold, includeContent);
+      
+      console.log(`[HnswSearchService] Found ${formattedResults.length} results`);
+      return formattedResults;
+      
+    } catch (error) {
+      console.error('[HnswSearchService] Search failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Index file content for unified search
+   * @param file File to index
+   * @param content Content to index
+   * @returns Promise resolving when indexing is complete
+   */
+  async indexFileContent(file: TFile, content: string): Promise<void> {
+    const collectionName = 'file_embeddings';
+    
+    // Create database item
+    const item: DatabaseItem = {
+      id: file.path,
+      document: content,
+      metadata: {
+        filePath: file.path,
+        fileName: file.basename,
+        lastModified: file.stat.mtime,
+        fileSize: file.stat.size
+      },
+      embedding: [] // TODO: Generate embedding
+    };
+
+    // TODO: Generate embedding and add to index
+    console.log(`[HnswSearchService] Would index file: ${file.path}`);
+  }
+
+  /**
+   * Remove file from unified search index
+   * @param filePath Path of file to remove
+   * @returns Promise resolving when removal is complete
+   */
+  async removeFileFromIndex(filePath: string): Promise<void> {
+    const collectionName = 'file_embeddings';
+    await this.removeItemFromIndex(collectionName, filePath);
+    console.log(`[HnswSearchService] Removed file from index: ${filePath}`);
+  }
+
+  /**
+   * Convert HNSW results to SearchResult format
+   * @param results Results from HNSW search
+   * @param threshold Similarity threshold to apply
+   * @param includeContent Whether to include full content
+   * @returns Formatted search results
+   */
+  private formatSearchResults(
+    results: ItemWithDistance[],
+    threshold: number = 0.7,
+    includeContent: boolean = false
+  ): SearchResult[] {
+    const mappedResults = results
+      .map(({ item, distance }) => {
+        const similarity = 1 - distance; // Convert distance to similarity
+        
+        if (similarity < threshold) {
+          return null; // Filter out low similarity results
+        }
+
+        const result: SearchResult = {
+          id: item.id,
+          title: item.metadata?.fileName || item.id,
+          snippet: this.createSnippet(item.document || ''),
+          score: similarity,
+          searchMethod: 'semantic' as const,
+          metadata: {
+            filePath: item.metadata?.filePath || item.id,
+            similarity,
+            fileId: item.id,
+            timestamp: Date.now()
+          }
+        };
+        
+        if (includeContent && item.document) {
+          result.content = item.document;
+        }
+        
+        return result;
+      })
+      .filter((result): result is SearchResult => result !== null);
+
+    return mappedResults.sort((a, b) => b.score - a.score); // Sort by similarity descending
+  }
+
+  /**
+   * Create snippet from content
+   * @param content Full content
+   * @param maxLength Maximum snippet length
+   * @returns Snippet text
+   */
+  private createSnippet(content: string, maxLength: number = 200): string {
+    if (content.length <= maxLength) {
+      return content;
+    }
+    
+    return content.substring(0, maxLength).trim() + '...';
   }
 
   /**

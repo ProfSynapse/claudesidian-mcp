@@ -3,7 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceSession } from '../../../../database/workspace-types';
 import { LoadSessionParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { PropertySearchService } from '../../../../database/services/PropertySearchService';
+import { MetadataSearchService } from '../../../../database/services/MetadataSearchService';
 
 /**
  * Mode for loading a session with comprehensive context restoration
@@ -112,10 +112,10 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
         try {
           const app = this.agent.getApp();
           if (app) {
-            const propertySearchService = new PropertySearchService(app);
+            const metadataSearchService = new MetadataSearchService(app);
             
             // Search for files with 'key: true' property
-            const keyFiles = await propertySearchService.searchByProperty('key', 'true', {
+            const keyFiles = await metadataSearchService.searchByProperty('key', 'true', {
               path: workspace.rootFolder,
               limit: 10
             });

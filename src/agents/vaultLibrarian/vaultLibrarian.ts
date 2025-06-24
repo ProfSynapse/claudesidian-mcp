@@ -9,20 +9,20 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
-import { SemanticSearchService } from '../../database/services/SemanticSearchService';
+import { HnswSearchService } from '../../database/providers/chroma/services/HnswSearchService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Agent for searching and navigating the vault
- * Updated to use SemanticSearchService instead of ChromaSearchService
+ * Updated to use HnswSearchService for semantic search
  */
 export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
   private embeddingProvider: any | null = null;
   private embeddingService: EmbeddingService | null = null;
   private memoryService: MemoryService | null = null;
-  private semanticSearchService: SemanticSearchService | null = null;
+  private hnswSearchService: HnswSearchService | null = null;
   private workspaceService: WorkspaceService | null = null;
   private settings: MemorySettings;
   
@@ -77,8 +77,8 @@ export class VaultLibrarianAgent extends BaseAgent {
               this.memoryService = services.memoryService;
             }
             
-            if (services.semanticSearchService) {
-              this.semanticSearchService = services.semanticSearchService;
+            if (services.hnswSearchService) {
+              this.hnswSearchService = services.hnswSearchService;
             }
             
             if (services.workspaceService) {
@@ -95,7 +95,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     // Always register SearchMode (universal search with intelligent fallbacks)
     this.registerMode(new SearchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.semanticSearchService || undefined,
+      this.hnswSearchService || undefined,
       this.embeddingService || undefined, 
       this.memoryService || undefined,
       this.workspaceService || undefined
@@ -104,7 +104,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     // Always register BatchMode (supports both semantic and non-semantic users)
     this.registerMode(new BatchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.semanticSearchService || undefined,
+      this.hnswSearchService || undefined,
       this.embeddingService || undefined,
       this.memoryService || undefined,
       this.workspaceService || undefined
@@ -166,14 +166,14 @@ export class VaultLibrarianAgent extends BaseAgent {
    * Initialize the search service if it doesn't have a vector store
    */
   async initializeSearchService(): Promise<void> {
-    if (!this.semanticSearchService) {
+    if (!this.hnswSearchService) {
       console.warn('Semantic search service not available in VaultLibrarian');
       return;
     }
     
     // Modern services handle their own vector store setup
     try {
-      await this.semanticSearchService.initialize();
+      await this.hnswSearchService.initialize();
       console.log('Successfully initialized semantic search service');
     } catch (error) {
       console.error('Error initializing semantic search service:', error);

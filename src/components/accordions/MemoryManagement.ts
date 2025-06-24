@@ -4,7 +4,7 @@ import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian'
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddingAccessService';
-import { SemanticSearchService } from '../../database/services/SemanticSearchService';
+import { HnswSearchService } from '../../database/providers/chroma/services/HnswSearchService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 
@@ -19,7 +19,7 @@ export class MemoryManagementAccordion extends Accordion {
     // ChromaDB Services
     private embeddingService: EmbeddingService | undefined;
     private fileEmbeddingAccessService: FileEmbeddingAccessService | undefined;
-    private semanticSearchService: SemanticSearchService | undefined;
+    private hnswSearchService: HnswSearchService | undefined;
     private memoryService: MemoryService | undefined;
     private embeddingManager: EmbeddingManager | undefined;
     
@@ -34,7 +34,7 @@ export class MemoryManagementAccordion extends Accordion {
      * @param settings Plugin settings
      * @param embeddingService EmbeddingService for generating and managing embeddings
      * @param fileEmbeddingAccessService FileEmbeddingAccessService for file embedding access
-     * @param semanticSearchService SemanticSearchService for search operations
+     * @param hnswSearchService HnswSearchService for search operations
      * @param memoryService MemoryService for memory traces and sessions
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
      * @param embeddingManager EmbeddingManager for managing embedding providers (optional)
@@ -44,7 +44,7 @@ export class MemoryManagementAccordion extends Accordion {
         settings: Settings,
         embeddingService?: EmbeddingService,
         fileEmbeddingAccessService?: FileEmbeddingAccessService,
-        semanticSearchService?: SemanticSearchService,
+        hnswSearchService?: HnswSearchService,
         memoryService?: MemoryService,
         vaultLibrarian?: VaultLibrarianAgent,
         embeddingManager?: EmbeddingManager
@@ -53,7 +53,7 @@ export class MemoryManagementAccordion extends Accordion {
         this.settings = settings;
         this.embeddingService = embeddingService;
         this.fileEmbeddingAccessService = fileEmbeddingAccessService;
-        this.semanticSearchService = semanticSearchService;
+        this.hnswSearchService = hnswSearchService;
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
         this.embeddingManager = embeddingManager;
@@ -73,7 +73,7 @@ export class MemoryManagementAccordion extends Accordion {
         // Memory settings are now visible by default via CSS
         
         // Initialize memory settings tab if services or agent exists
-        const hasServices = this.embeddingService && this.fileEmbeddingAccessService && this.semanticSearchService && this.memoryService;
+        const hasServices = this.embeddingService && this.fileEmbeddingAccessService && this.hnswSearchService && this.memoryService;
         const hasAgent = this.vaultLibrarian;
         
         if (hasServices || hasAgent) {
@@ -101,7 +101,7 @@ export class MemoryManagementAccordion extends Accordion {
         this.memorySettingsContainer.empty();
         
         // Check if we have services available (preferred) or need to fall back to agents
-        const hasServices = this.embeddingService && this.fileEmbeddingAccessService && this.semanticSearchService && this.memoryService;
+        const hasServices = this.embeddingService && this.fileEmbeddingAccessService && this.hnswSearchService && this.memoryService;
         const hasAgent = this.vaultLibrarian;
         
         if (!hasServices && !hasAgent) {
@@ -121,7 +121,7 @@ export class MemoryManagementAccordion extends Accordion {
             this.embeddingManager,
             this.vaultLibrarian,
             this.embeddingService,
-            this.semanticSearchService
+            this.hnswSearchService
         );
         
         // Display settings

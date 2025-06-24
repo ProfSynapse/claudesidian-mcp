@@ -43,7 +43,15 @@ export class VectorStoreFactory {
     const providerId = settings.apiProvider;
     const providerSettings = settings.providerSettings?.[providerId];
     
-    if (!providerSettings || !providerSettings.apiKey) {
+    // Check if provider settings exist
+    if (!providerSettings) {
+      console.warn(`No provider settings found for ${providerId}, using default provider`);
+      return new ChromaEmbeddingProvider(undefined, 1536);
+    }
+    
+    // Ollama doesn't require an API key, so don't check for it
+    if (providerId !== 'ollama' && !providerSettings.apiKey) {
+      console.warn(`API key required for ${providerId} but not provided, using default provider`);
       return new ChromaEmbeddingProvider(undefined, 1536);
     }
     

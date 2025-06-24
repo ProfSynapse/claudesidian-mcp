@@ -50,6 +50,7 @@ export type CategoryType =
 export interface UniversalSearchParams extends CommonParameters, GraphBoostOptions {
   /**
    * Search query across all content types
+   * Supports metadata filtering syntax: "tag:javascript priority:high content query"
    */
   query: string;
   
@@ -87,6 +88,26 @@ export interface UniversalSearchParams extends CommonParameters, GraphBoostOptio
    * Similarity threshold for semantic search (0-1, default: 0.7)
    */
   semanticThreshold?: number;
+  
+  /**
+   * Additional metadata filters (alternative to query syntax)
+   */
+  metadataFilters?: {
+    /**
+     * Tags to filter by (AND logic if multiple)
+     */
+    tags?: string[];
+    
+    /**
+     * Properties to filter by (field: value pairs)
+     */
+    properties?: Record<string, any>;
+    
+    /**
+     * Logic operator for combining filters ('AND' | 'OR')
+     */
+    operator?: 'AND' | 'OR';
+  };
 }
 
 /**
@@ -122,6 +143,15 @@ export interface UniversalSearchResultItem {
    * Category-specific metadata
    */
   metadata?: Record<string, any>;
+  
+  /**
+   * File metadata (tags, properties) if applicable
+   */
+  fileMetadata?: {
+    tags?: string[];
+    properties?: Record<string, any>;
+    aliases?: string[];
+  };
   
   /**
    * Full content (if includeContent is true)
@@ -201,6 +231,12 @@ export interface UniversalSearchResult extends CommonResult {
     categoriesSearched: CategoryType[];
     categoriesExcluded: CategoryType[];
     fallbacksUsed: CategoryType[];
+    metadataFiltersApplied?: {
+      tags?: string[];
+      properties?: Record<string, any>;
+      operator?: 'AND' | 'OR';
+      filesFilteredByMetadata?: number;
+    };
   };
 }
 
