@@ -9,9 +9,9 @@ import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
  */
 interface ListFilesParameters extends CommonParameters {
   /**
-   * Directory path to list files from
+   * Directory path to list files from (optional, defaults to root)
    */
-  path: string;
+  path?: string;
   
   /**
    * Optional filter pattern for files
@@ -75,13 +75,11 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
    */
   async execute(params: ListFilesParameters): Promise<ListFilesResult> {
     try {
-      // Validate parameters
-      if (!params.path) {
-        return this.prepareResult(false, undefined, 'Path is required');
-      }
+      // Default to empty string for root if path not provided
+      const path = params.path ?? '';
       
       // Normalize the path to remove any leading slash
-      const normalizedPath = this.normalizePath(params.path);
+      const normalizedPath = this.normalizePath(path);
       
       // Get the folder - handle root folder case
       let parentFolder;
@@ -118,7 +116,12 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
       // Sort files by modified date (newest first)
       fileData.sort((a, b) => b.modified - a.modified);
       
-      return this.prepareResult(true, { files: fileData }, undefined, params.workspaceContext);
+      // Add helpful message for root directory listing
+      const message = normalizedPath === '' 
+        ? 'Listing files in root directory only. This may not include all notes in the vault - many notes may be organized in subfolders. Use listFolders mode to explore the full vault structure.'
+        : undefined;
+      
+      return this.prepareResult(true, { files: fileData }, message, params.workspaceContext);
       
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to list files: ', error));
@@ -136,7 +139,8 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
       properties: {
         path: {
           type: 'string',
-          description: 'Directory path to list files from'
+          description: 'Directory path to list files from (optional, empty string for root directory)',
+          default: ''
         },
         filter: {
           type: 'string',
@@ -144,7 +148,7 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
         },
         ...commonSchema
       },
-      required: ['path']
+      required: []
     };
   }
   

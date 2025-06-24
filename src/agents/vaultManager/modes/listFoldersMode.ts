@@ -9,7 +9,7 @@ import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
  */
 interface ListFoldersParameters extends CommonParameters {
   /**
-   * Directory path to list folders from (optional, defaults to root "/")
+   * Directory path to list folders from (empty string, "/", or "." for root)
    */
   path?: string;
   
@@ -52,14 +52,16 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
   }
   
   /**
-   * Normalize path by removing leading slash
+   * Normalize path by removing leading slash and handling special cases
    * @param path Path to normalize
    * @returns Normalized path
    */
   private normalizePath(path: string): string {
-    // Special case for root path "/"
-    if (path === '/') return '';
-    // Normal case
+    // Handle special cases for root directory
+    if (!path || path === '/' || path === '.') {
+      return '';
+    }
+    // Remove leading slash if present
     return path.startsWith('/') ? path.slice(1) : path;
   }
 
@@ -78,7 +80,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       
       // Get the folder - for root path, use the vault's root folder
       let parentFolder;
-      if (path === '/' || normalizedPath === '') {
+      if (normalizedPath === '') {
         parentFolder = this.app.vault.getRoot();
       } else {
         parentFolder = this.app.vault.getAbstractFileByPath(normalizedPath);
@@ -126,7 +128,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       properties: {
         path: {
           type: 'string',
-          description: 'Directory path to list folders from (optional, defaults to root "/")',
+          description: 'Directory path to list folders from (empty string, "/", or "." for root directory)',
           default: '/'
         },
         filter: {
