@@ -58,7 +58,7 @@ export class VectorStoreConfig implements IStorageOptions {
     };
     
     this.embedding = {
-      dimension: options?.embedding?.dimension ?? 1536,
+      dimension: options?.embedding?.dimension || (() => { throw new Error('Embedding dimension must be specified based on the actual model'); })(),
       model: options?.embedding?.model ?? 'default',
     };
   }
@@ -78,7 +78,7 @@ export class VectorStoreConfig implements IStorageOptions {
         ttl: 3600000, // 1 hour
       },
       embedding: {
-        dimension: 1536,
+        dimension: (() => { throw new Error('Default VectorStoreConfig requires embedding dimension to be specified'); })(),
         model: 'default',
       },
     });

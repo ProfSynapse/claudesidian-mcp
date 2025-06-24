@@ -20,7 +20,7 @@ export abstract class BaseEmbeddingProvider implements IEmbeddingProvider {
    * @param dimension Embedding dimension
    * @param type Provider type identifier
    */
-  constructor(dimension: number = 1536, type: string = 'default') {
+  constructor(dimension: number, type: string = 'default') {
     this.dimension = dimension;
     this.type = type;
   }

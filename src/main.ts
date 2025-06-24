@@ -196,9 +196,26 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Vector store initialization
         
+        // Get embedding dimensions from settings
+        const memorySettings = this.settings.settings.memory;
+        if (!memorySettings) {
+            throw new Error('Memory settings not found. Please configure your embedding settings.');
+        }
+        
+        const providerId = memorySettings.apiProvider;
+        const providerSettings = memorySettings.providerSettings?.[providerId];
+        
+        if (!providerSettings?.dimensions) {
+            throw new Error(`Embedding dimensions not configured for provider ${providerId}. Please configure your embedding provider settings.`);
+        }
+
         this.vectorStore = VectorStoreFactory.createVectorStore(this, {
             persistentPath: dataDir,
-            inMemory: false // Explicitly set to false to ensure persistence
+            inMemory: false,
+            embedding: {
+                dimension: providerSettings.dimensions,
+                model: providerSettings.model
+            }
         });
         
         try {

@@ -185,7 +185,9 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
   private generateSimpleEmbedding(text: string): number[] {
     // This is a placeholder that creates a simple embedding
     // In production, use a proper embedding model
-    const dimension = 1536; // Standard embedding dimension
+    const dimension = this.embeddingService?.getDimensions?.() || (() => { 
+      throw new Error('Cannot generate embedding: no embedding service configured or dimensions not available'); 
+    })();
     const vector = new Array(dimension).fill(0);
     
     // Generate some variation based on the text content

@@ -253,7 +253,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
         const providerSettings = this.settings.providerSettings[this.settings.apiProvider] || {
             apiKey: '',
             model: currentProvider?.models[0]?.id || '',
-            dimensions: currentProvider?.models[0]?.dimensions || 1536
+            dimensions: currentProvider?.models[0]?.dimensions!
         };
         
         if (currentProvider) {
@@ -272,7 +272,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                                     this.settings.providerSettings[this.settings.apiProvider] = {
                                         apiKey: '',
                                         model: currentProvider.models[0]?.id || '',
-                                        dimensions: currentProvider.models[0]?.dimensions || 1536
+                                        dimensions: currentProvider.models[0]?.dimensions!
                                     };
                                 }
                                 this.settings.providerSettings[this.settings.apiProvider].apiKey = value;
@@ -392,7 +392,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
                                     this.settings.providerSettings[this.settings.apiProvider] = {
                                         apiKey: '',
                                         model: currentProvider.models[0]?.id || '',
-                                        dimensions: currentProvider.models[0]?.dimensions || 768,
+                                        dimensions: currentProvider.models[0]?.dimensions!,
                                         customSettings: {}
                                     };
                                 }
@@ -502,7 +502,11 @@ export class ApiSettingsTab extends BaseSettingsTab {
             
             // Check for dimension mismatch and handle embedding reset if needed
             const selectedModel = currentProvider.models.find(m => m.id === providerSettings.model);
-            const maxDimensions = selectedModel?.dimensions || 1536;
+            const maxDimensions = selectedModel?.dimensions;
+            
+            if (!maxDimensions) {
+                throw new Error(`Model ${providerSettings.model} does not have dimensions specified`);
+            }
             
             // Add a warning if embeddings exist with different dimensions
             if (this.embeddingsExist && providerSettings.dimensions !== maxDimensions) {

@@ -45,14 +45,17 @@ export class VectorStoreFactory {
     
     // Check if provider settings exist
     if (!providerSettings) {
-      console.warn(`No provider settings found for ${providerId}, using default provider`);
-      return new ChromaEmbeddingProvider(undefined, 1536);
+      throw new Error(`No provider settings found for ${providerId}. Provider settings with dimensions must be configured.`);
+    }
+    
+    // Validate that dimensions are specified
+    if (!providerSettings.dimensions) {
+      throw new Error(`Embedding dimensions not specified for ${providerId}. Dimensions must match the actual model being used.`);
     }
     
     // Ollama doesn't require an API key, so don't check for it
     if (providerId !== 'ollama' && !providerSettings.apiKey) {
-      console.warn(`API key required for ${providerId} but not provided, using default provider`);
-      return new ChromaEmbeddingProvider(undefined, 1536);
+      throw new Error(`API key required for ${providerId} but not provided.`);
     }
     
     // Try to create provider using the registry
@@ -64,82 +67,16 @@ export class VectorStoreFactory {
     if (embeddingFunction) {
       // Wrap the Chroma embedding function in our IEmbeddingProvider interface
       return new ChromaEmbeddingProvider(
-        embeddingFunction.generate.bind(embeddingFunction),
         providerSettings.dimensions,
+        embeddingFunction.generate.bind(embeddingFunction),
         providerSettings.model
       );
     }
     
-    // Fallback to default provider
-    console.warn(`Failed to create ${providerId} provider, falling back to default`);
-    return new ChromaEmbeddingProvider(undefined, providerSettings.dimensions || 1536);
+    // No fallback - if provider creation fails, throw error
+    throw new Error(`Failed to create ${providerId} provider. Check your provider configuration and API credentials.`);
   }
   
-  /**
-   * Create an embedding provider from legacy settings (for migration)
-   * @param apiKey API key
-   * @param model Model name
-   * @returns Embedding provider instance
-   * @deprecated Use createEmbeddingProvider with MemorySettings instead
-   */
-  static async createLegacyEmbeddingProvider(
-    apiKey?: string,
-    model?: string
-  ): Promise<IEmbeddingProvider> {
-    if (!apiKey) {
-      return new ChromaEmbeddingProvider(undefined, 1536);
-    }
-    
-    // Create a temporary settings object for the legacy provider
-    const settings: MemorySettings = {
-      enabled: true,
-      embeddingsEnabled: true,
-      apiProvider: 'openai',
-      providerSettings: {
-        openai: {
-          apiKey,
-          model: model || 'text-embedding-3-small',
-          dimensions: 1536
-        }
-      },
-      maxTokensPerMonth: 1000000,
-      apiRateLimitPerMinute: 3000,
-      chunkStrategy: 'paragraph',
-      chunkSize: 512,
-      chunkOverlap: 50,
-      includeFrontmatter: true,
-      excludePaths: [],
-      minContentLength: 50,
-      embeddingStrategy: 'manual',
-      batchSize: 10,
-      concurrentRequests: 3,
-      processingDelay: 1000,
-      dbStoragePath: '',
-      autoCleanOrphaned: true,
-      maxDbSize: 500,
-      pruningStrategy: 'least-used',
-      defaultResultLimit: 10,
-      includeNeighbors: true,
-      graphBoostFactor: 0.3,
-      backlinksEnabled: true,
-      useFilters: true,
-      defaultThreshold: 0.3,
-      semanticThreshold: 0.5,
-      vectorStoreType: 'file-based',
-      autoCreateSessions: true,
-      sessionNaming: 'timestamp',
-      autoCheckpoint: false,
-      checkpointInterval: 30,
-      maxStates: 10,
-      statePruningStrategy: 'oldest',
-      costPerThousandTokens: {
-        'text-embedding-3-small': 0.00002,
-        'text-embedding-3-large': 0.00013
-      }
-    };
-    
-    return this.createEmbeddingProvider(settings);
-  }
   
   /**
    * Create workspace collection

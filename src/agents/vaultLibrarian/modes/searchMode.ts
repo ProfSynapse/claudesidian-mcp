@@ -41,15 +41,14 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
   /**
    * Execute universal search across all content types
    */
-  async execute(params: UniversalSearchParams): Promise<UniversalSearchResult> {
+  async execute(params: UniversalSearchParams): Promise<any> {
     try {
-      // Removed verbose debug logging for parameters
       // Validate required parameters
       if (!params.query || params.query.trim().length === 0) {
         return {
           success: false,
           error: 'Query parameter is required and cannot be empty'
-        } as UniversalSearchResult;
+        };
       }
 
       // Get default threshold from plugin settings
@@ -63,17 +62,23 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
         semanticThreshold: params.semanticThreshold || defaultThreshold
       };
 
-      // Execute the universal search
-      const result = await this.universalSearchService.executeUniversalSearch(searchParams);
+      // Execute the consolidated search (new format)
+      const consolidatedResults = await this.universalSearchService.executeConsolidatedSearch(searchParams);
       
-      return result;
+      return {
+        success: true,
+        query: params.query,
+        results: consolidatedResults,
+        totalResults: consolidatedResults.length,
+        executionTime: performance.now()
+      };
       
     } catch (error) {
       console.error('Universal search failed:', error);
       return {
         success: false,
         error: `Search failed: ${getErrorMessage(error)}`
-      } as UniversalSearchResult;
+      };
     }
   }
 
@@ -96,6 +101,18 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
             'notes',
             'README',
             'config'
+          ]
+        },
+        queryType: {
+          type: 'string',
+          description: 'REQUIRED: Search strategy to use for content search. Choose based on query intent:\n• "exact" (70% keyword, 20% semantic, 10% fuzzy) - Use for specific terms, technical words, exact phrases. Best for queries like "clustering", "neural networks", "typescript"\n• "conceptual" (60% semantic, 30% keyword, 10% fuzzy) - Use for broader topics and concepts. Best for "machine learning algorithms", "project management"\n• "exploratory" (80% semantic, 15% fuzzy, 5% keyword) - Use for questions, discovery, open-ended queries. Best for "how does X work?", "examples of Y"\n• "mixed" (40% semantic, 40% keyword, 20% fuzzy) - Use for balanced queries with both specific and conceptual elements',
+          enum: ['exact', 'conceptual', 'exploratory', 'mixed'],
+          default: 'mixed',
+          examples: [
+            'exact',
+            'conceptual', 
+            'exploratory',
+            'mixed'
           ]
         },
         limit: {
@@ -179,7 +196,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
           }
         }
       },
-      required: ['query'],
+      required: ['query', 'queryType'],
       additionalProperties: false
     };
     
@@ -203,101 +220,60 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
           type: 'string',
           description: 'Original search query'
         },
+        results: {
+          type: 'array',
+          description: 'Consolidated search results grouped by file',
+          items: {
+            type: 'object',
+            properties: {
+              filePath: {
+                type: 'string',
+                description: 'Path to the file containing search matches'
+              },
+              frontmatter: {
+                type: 'object',
+                description: 'File frontmatter including tags and properties',
+                additionalProperties: true
+              },
+              snippets: {
+                type: 'array',
+                description: 'All relevant content snippets from different search methods',
+                items: {
+                  type: 'object',
+                  properties: {
+                    content: {
+                      type: 'string',
+                      description: 'The content snippet'
+                    },
+                    searchMethod: {
+                      type: 'string',
+                      enum: ['semantic', 'keyword', 'fuzzy'],
+                      description: 'Search method that found this snippet'
+                    }
+                  },
+                  required: ['content', 'searchMethod']
+                }
+              },
+              connectedNotes: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'File paths of notes connected via wikilinks'
+              }
+            },
+            required: ['filePath', 'snippets', 'connectedNotes']
+          }
+        },
         totalResults: {
           type: 'number',
-          description: 'Total number of results across all categories'
+          description: 'Total number of files returned'
         },
         executionTime: {
           type: 'number',
           description: 'Search execution time in milliseconds'
         },
-        categories: {
-          type: 'object',
-          description: 'Search results organized by category',
-          properties: {
-            files: { $ref: '#/definitions/SearchResultCategory' },
-            folders: { $ref: '#/definitions/SearchResultCategory' },
-            content: { $ref: '#/definitions/SearchResultCategory' },
-            workspaces: { $ref: '#/definitions/SearchResultCategory' },
-            sessions: { $ref: '#/definitions/SearchResultCategory' },
-            snapshots: { $ref: '#/definitions/SearchResultCategory' },
-            memory_traces: { $ref: '#/definitions/SearchResultCategory' },
-            tags: { $ref: '#/definitions/SearchResultCategory' },
-            properties: { $ref: '#/definitions/SearchResultCategory' }
-          }
-        },
-        searchStrategy: {
-          type: 'object',
-          description: 'Information about the search strategy used',
-          properties: {
-            semanticAvailable: {
-              type: 'boolean',
-              description: 'Whether semantic search was available'
-            },
-            categoriesSearched: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Categories that were searched'
-            },
-            categoriesExcluded: {
-              type: 'array', 
-              items: { type: 'string' },
-              description: 'Categories that were excluded'
-            },
-            fallbacksUsed: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Categories that used fallback (non-semantic) search'
-            }
-          }
-        },
         error: {
           type: 'string',
           description: 'Error message if search failed'
-        }
-      },
-      definitions: {
-        SearchResultCategory: {
-          type: 'object',
-          properties: {
-            count: {
-              type: 'number',
-              description: 'Total number of results found in this category'
-            },
-            results: {
-              type: 'array',
-              description: 'Top results from this category',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string', description: 'Unique identifier' },
-                  title: { type: 'string', description: 'Display title' },
-                  snippet: { type: 'string', description: 'Content preview' },
-                  score: { type: 'number', description: 'Relevance score (0-1)' },
-                  searchMethod: { 
-                    type: 'string', 
-                    enum: ['semantic', 'fuzzy', 'exact', 'hybrid'],
-                    description: 'Search method used'
-                  },
-                  metadata: { type: 'object', description: 'Category-specific metadata' },
-                  content: { type: 'string', description: 'Full content (if requested)' }
-                }
-              }
-            },
-            hasMore: {
-              type: 'boolean',
-              description: 'Whether more results are available'
-            },
-            searchMethod: {
-              type: 'string',
-              enum: ['semantic', 'fuzzy', 'exact', 'hybrid'],
-              description: 'Primary search method used for this category'
-            },
-            semanticAvailable: {
-              type: 'boolean',
-              description: 'Whether semantic search was available for this category'
-            }
-          }
         }
       },
       required: ['success'],

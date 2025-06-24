@@ -31,8 +31,8 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
    * @param model Embedding model identifier
    */
   constructor(
+    dimension: number,
     embeddingFunction?: (texts: string[]) => Promise<number[][]>,
-    dimension: number = 1536,
     model: string = 'text-embedding-3-small'
   ) {
     super(dimension, 'chroma');

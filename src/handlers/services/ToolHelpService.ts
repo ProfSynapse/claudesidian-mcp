@@ -160,7 +160,7 @@ export class ToolHelpService implements IToolHelpService {
         const lastUnderscoreIndex = toolName.lastIndexOf('_');
         
         if (lastUnderscoreIndex === -1) {
-            // No underscore found, return the tool name as-is (single vault or legacy format)
+            // No underscore found, return the tool name as-is
             return toolName;
         }
         

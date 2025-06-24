@@ -8,9 +8,11 @@
 import { Plugin, TFile, getAllTags, prepareFuzzySearch } from 'obsidian';
 import { HnswSearchService } from '../../../../database/providers/chroma/services/HnswSearchService';
 import { MetadataSearchService, MetadataSearchCriteria, PropertyFilter } from '../../../../database/services/MetadataSearchService';
+import { HybridSearchService, HybridSearchOptions } from '../../../../database/services/search';
 import { EmbeddingService } from '../../../../database/services/EmbeddingService';
 import { MemoryService } from '../../../../database/services/MemoryService';
 import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+import { GraphOperations } from '../../../../database/utils/graph/GraphOperations';
 import { 
   UniversalSearchParams, 
   UniversalSearchResult, 
@@ -25,6 +27,18 @@ interface ParsedSearchQuery {
   properties: PropertyFilter[];
 }
 
+interface ConsolidatedSearchResult {
+  filePath: string;
+  frontmatter?: Record<string, any>;
+  snippets: SearchSnippet[];
+  connectedNotes: string[];
+}
+
+interface SearchSnippet {
+  content: string;
+  searchMethod: 'semantic' | 'keyword' | 'fuzzy';
+}
+
 /**
  * Universal search service with simplified, unified approach
  * Uses MetadataSearchService for tag/property filtering and HnswSearchService for content search
@@ -33,9 +47,11 @@ export class UniversalSearchService {
   private plugin: Plugin;
   private metadataSearchService: MetadataSearchService;
   private hnswSearchService?: HnswSearchService;
+  private hybridSearchService?: HybridSearchService;
   private embeddingService?: EmbeddingService;
   private memoryService?: MemoryService;
   private workspaceService?: WorkspaceService;
+  private graphOperations: GraphOperations;
 
   constructor(
     plugin: Plugin,
@@ -50,10 +66,359 @@ export class UniversalSearchService {
     this.embeddingService = embeddingService;
     this.memoryService = memoryService;
     this.workspaceService = workspaceService;
+    this.graphOperations = new GraphOperations();
+    
+    // Initialize hybrid search service with semantic search capability
+    if (hnswSearchService) {
+      this.hybridSearchService = new HybridSearchService(hnswSearchService);
+      console.log('[UniversalSearchService] Hybrid search initialized');
+      
+      // Populate hybrid search indexes with existing files (async, non-blocking)
+      this.populateHybridSearchIndexes().catch(error => {
+        console.error('[UniversalSearchService] Failed to populate hybrid search indexes:', error);
+      });
+    }
   }
 
   /**
-   * Execute universal search with simplified flow
+   * Populate hybrid search indexes with existing vault content
+   */
+  private async populateHybridSearchIndexes(): Promise<void> {
+    if (!this.hybridSearchService) {
+      console.error('[UniversalSearchService] No hybrid search service available for indexing');
+      return;
+    }
+
+    try {
+      console.log('[UniversalSearchService] Starting hybrid search index population...');
+      
+      const files = this.plugin.app.vault.getMarkdownFiles();
+      console.log(`[UniversalSearchService] Found ${files.length} markdown files to index`);
+      
+      let indexedCount = 0;
+      let errorCount = 0;
+      
+      for (const file of files) {
+        try {
+          console.log(`[UniversalSearchService] Indexing file: ${file.path}`);
+          const content = await this.plugin.app.vault.read(file);
+          
+          if (!content || content.trim().length === 0) {
+            console.log(`[UniversalSearchService] Skipping empty file: ${file.path}`);
+            continue;
+          }
+
+          // Extract metadata
+          const cache = this.plugin.app.metadataCache.getFileCache(file);
+          const tags = cache?.tags?.map(t => t.tag.replace('#', '')) || [];
+          const headers = this.extractHeaders(content);
+          
+          console.log(`[UniversalSearchService] File ${file.path} - Headers: [${headers.join(', ')}], Tags: [${tags.join(', ')}], Content length: ${content.length}`);
+          
+          // Check if this file contains "clustering"
+          if (content.toLowerCase().includes('clustering')) {
+            console.log(`[UniversalSearchService] *** FOUND CLUSTERING in ${file.path} ***`);
+            console.log(`[UniversalSearchService] Sample content: ${content.substring(0, 200)}...`);
+          }
+          
+          // Index the file in hybrid search
+          this.hybridSearchService.indexDocument(
+            file.path,
+            file.basename,
+            headers,
+            content,
+            tags,
+            file.path,
+            {
+              modified: file.stat.mtime,
+              size: file.stat.size,
+              extension: file.extension
+            }
+          );
+          
+          indexedCount++;
+        } catch (error) {
+          console.error(`[UniversalSearchService] Failed to index file ${file.path}:`, error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`[UniversalSearchService] Hybrid search indexing complete - Indexed: ${indexedCount}, Errors: ${errorCount}`);
+      
+      // Log search service stats
+      const stats = this.hybridSearchService.getStats();
+      console.log('[UniversalSearchService] Final hybrid search stats:', stats);
+      
+    } catch (error) {
+      console.error('[UniversalSearchService] Failed to populate hybrid search indexes:', error);
+    }
+  }
+
+  /**
+   * Extract headers from markdown content
+   */
+  private extractHeaders(content: string): string[] {
+    const headers: string[] = [];
+    const lines = content.split('\n');
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('#')) {
+        // Extract header text without # symbols
+        const headerText = trimmed.replace(/^#+\s*/, '').trim();
+        if (headerText) {
+          headers.push(headerText);
+        }
+      }
+    }
+    
+    return headers;
+  }
+
+  /**
+   * Get connected notes (wikilinked files) for a given file
+   */
+  private getConnectedNotes(file: TFile): string[] {
+    const connectedNotes: string[] = [];
+    
+    try {
+      const cache = this.plugin.app.metadataCache.getFileCache(file);
+      const resolvedLinks = this.plugin.app.metadataCache.resolvedLinks[file.path];
+      
+      if (resolvedLinks) {
+        // Get all resolved links (these are actual file paths)
+        Object.keys(resolvedLinks).forEach(linkedPath => {
+          if (linkedPath !== file.path) { // Don't include self
+            connectedNotes.push(linkedPath);
+          }
+        });
+      }
+      
+      // Also check for unresolved links from cache.links
+      if (cache?.links) {
+        cache.links.forEach(link => {
+          // Try to resolve manually if not in resolvedLinks
+          const linkedFile = this.plugin.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+          if (linkedFile && linkedFile.path !== file.path && !connectedNotes.includes(linkedFile.path)) {
+            connectedNotes.push(linkedFile.path);
+          }
+        });
+      }
+      
+    } catch (error) {
+      console.error(`[UniversalSearchService] Error getting connected notes for ${file.path}:`, error);
+    }
+    
+    return connectedNotes;
+  }
+
+  /**
+   * Apply graph boost to search results
+   */
+  private async applyGraphBoostToResults(
+    results: UniversalSearchResultItem[], 
+    params: UniversalSearchParams
+  ): Promise<UniversalSearchResultItem[]> {
+    if (!results.length) return results;
+
+    try {
+      // Convert results to the format expected by GraphOperations
+      const recordsWithScores = results.map(result => ({
+        record: {
+          id: result.id,
+          filePath: result.metadata?.filePath || result.id,
+          content: result.content || result.snippet || '',
+          metadata: {
+            links: this.getLinksForFile(result.metadata?.filePath || result.id)
+          }
+        },
+        similarity: result.score
+      }));
+
+      // Apply graph boost
+      const boostedRecords = this.graphOperations.applyGraphBoost(recordsWithScores, {
+        useGraphBoost: params.useGraphBoost || false,
+        boostFactor: params.graphBoostFactor || 0.3,
+        maxDistance: params.graphMaxDistance || 1,
+        seedNotes: params.seedNotes || []
+      });
+
+      // Convert back to search result format
+      return boostedRecords.map((boosted, index) => ({
+        ...results[index],
+        score: boosted.similarity
+      }));
+
+    } catch (error) {
+      console.error('[UniversalSearchService] Graph boost failed:', error);
+      return results;
+    }
+  }
+
+  /**
+   * Get link metadata for a file path
+   */
+  private getLinksForFile(filePath: string): any {
+    try {
+      const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+      if (!(file instanceof TFile)) return {};
+
+      const cache = this.plugin.app.metadataCache.getFileCache(file);
+      const resolvedLinks = this.plugin.app.metadataCache.resolvedLinks[filePath];
+
+      const links: {
+        outgoing: Array<{ displayText: string; targetPath: string }>;
+        incoming: Array<{ sourcePath: string; displayText: string }>;
+      } = {
+        outgoing: [],
+        incoming: []
+      };
+
+      // Get outgoing links
+      if (resolvedLinks) {
+        Object.keys(resolvedLinks).forEach(targetPath => {
+          links.outgoing.push({
+            displayText: targetPath.split('/').pop()?.replace('.md', '') || '',
+            targetPath: targetPath
+          });
+        });
+      }
+
+      // Get incoming links (files that link to this file)
+      Object.keys(this.plugin.app.metadataCache.resolvedLinks).forEach(sourcePath => {
+        const sourceLinks = this.plugin.app.metadataCache.resolvedLinks[sourcePath];
+        if (sourceLinks && sourceLinks[filePath]) {
+          links.incoming.push({
+            sourcePath: sourcePath,
+            displayText: sourcePath.split('/').pop()?.replace('.md', '') || ''
+          });
+        }
+      });
+
+      return links;
+    } catch (error) {
+      console.error(`[UniversalSearchService] Error getting links for ${filePath}:`, error);
+      return {};
+    }
+  }
+
+  /**
+   * Consolidate search results by file, grouping all snippets per file
+   */
+  private async consolidateResultsByFile(
+    results: UniversalSearchResultItem[], 
+    limit: number
+  ): Promise<ConsolidatedSearchResult[]> {
+    // Group results by file path
+    const fileGroups = new Map<string, UniversalSearchResultItem[]>();
+    
+    results.forEach(result => {
+      const filePath = result.metadata?.filePath || result.id;
+      if (!fileGroups.has(filePath)) {
+        fileGroups.set(filePath, []);
+      }
+      fileGroups.get(filePath)!.push(result);
+    });
+
+    // Convert to consolidated format
+    const consolidated: ConsolidatedSearchResult[] = [];
+    
+    for (const [filePath, fileResults] of fileGroups) {
+      try {
+        const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+        if (!(file instanceof TFile)) continue;
+
+        // Get frontmatter
+        const cache = this.plugin.app.metadataCache.getFileCache(file);
+        const frontmatter = cache?.frontmatter || {};
+
+        // Create snippets from all search results for this file
+        const snippets: SearchSnippet[] = fileResults.map(result => ({
+          content: result.snippet || '',
+          searchMethod: this.getSearchMethodFromResult(result)
+        }));
+
+        // Get connected notes
+        const connectedNotes = this.getConnectedNotes(file);
+
+        consolidated.push({
+          filePath,
+          frontmatter,
+          snippets,
+          connectedNotes
+        });
+
+      } catch (error) {
+        console.error(`[UniversalSearchService] Error consolidating file ${filePath}:`, error);
+      }
+    }
+
+    // Sort by highest scoring snippet per file and limit results
+    consolidated.sort((a, b) => {
+      const maxScoreA = Math.max(...fileGroups.get(a.filePath)!.map(r => r.score));
+      const maxScoreB = Math.max(...fileGroups.get(b.filePath)!.map(r => r.score));
+      return maxScoreB - maxScoreA;
+    });
+
+    return consolidated.slice(0, limit);
+  }
+
+  /**
+   * Determine search method from result metadata
+   */
+  private getSearchMethodFromResult(result: UniversalSearchResultItem): 'semantic' | 'keyword' | 'fuzzy' {
+    // Check if result has method scores to determine which method found it
+    const methodScores = result.metadata?.methodScores;
+    if (methodScores) {
+      if (methodScores.keyword && methodScores.keyword > 0) return 'keyword';
+      if (methodScores.fuzzy && methodScores.fuzzy > 0) return 'fuzzy';
+      if (methodScores.semantic && methodScores.semantic > 0) return 'semantic';
+    }
+    
+    // Fallback to searchMethod if available
+    if (result.searchMethod === 'hybrid') return 'semantic'; // Default for hybrid
+    return result.searchMethod as 'semantic' | 'keyword' | 'fuzzy';
+  }
+
+  /**
+   * Execute consolidated search that groups results by file
+   */
+  async executeConsolidatedSearch(params: UniversalSearchParams): Promise<ConsolidatedSearchResult[]> {
+    const startTime = performance.now();
+    const { query, limit = 5 } = params;
+
+    // 1. Parse query for tags/properties (optional)
+    const parsedQuery = this.parseSearchQuery(query);
+
+    // 2. Optional: Filter files by metadata first (if tags/properties specified)
+    let filteredFiles: TFile[] | undefined;
+    if (parsedQuery.tags.length > 0 || parsedQuery.properties.length > 0) {
+      const criteria: MetadataSearchCriteria = {
+        tags: parsedQuery.tags,
+        properties: parsedQuery.properties,
+        matchAll: true
+      };
+      filteredFiles = await this.metadataSearchService.getFilesMatchingMetadata(criteria);
+    }
+
+    // 3. Get hybrid search results
+    const hybridResults = await this.searchContent(parsedQuery.cleanQuery, filteredFiles, limit * 3, params);
+
+    // 4. Apply graph boost if enabled
+    let boostedResults = hybridResults;
+    if (params.useGraphBoost) {
+      boostedResults = await this.applyGraphBoostToResults(hybridResults, params);
+    }
+
+    // 5. Consolidate results by file
+    const consolidatedResults = await this.consolidateResultsByFile(boostedResults, limit);
+
+    console.log(`[UniversalSearchService] Consolidated search completed in ${performance.now() - startTime}ms, returning ${consolidatedResults.length} files`);
+    return consolidatedResults;
+  }
+
+  /**
+   * Execute universal search with simplified flow (legacy format)
    */
   async executeUniversalSearch(params: UniversalSearchParams): Promise<UniversalSearchResult> {
     const startTime = performance.now();
@@ -73,8 +438,8 @@ export class UniversalSearchService {
       filteredFiles = await this.metadataSearchService.getFilesMatchingMetadata(criteria);
     }
 
-    // 3. Search content with HNSW (on all files or filtered subset)
-    const contentResults = await this.searchContent(parsedQuery.cleanQuery, filteredFiles, limit);
+    // 3. Search content with hybrid search (on all files or filtered subset)
+    const contentResults = await this.searchContent(parsedQuery.cleanQuery, filteredFiles, limit, params);
 
     // 4. Search files/folders by name
     const fileResults = await this.searchFiles(query, limit);
@@ -205,29 +570,82 @@ export class UniversalSearchService {
   }
 
   /**
-   * Search content using HNSW (placeholder for now)
+   * Search content using hybrid search (semantic + keyword + fuzzy)
    */
-  private async searchContent(query: string, filteredFiles?: TFile[], limit: number = 5): Promise<UniversalSearchResultItem[]> {
-    if (!this.hnswSearchService || !query) {
-      return [];
-    }
+  private async searchContent(query: string, filteredFiles?: TFile[], limit: number = 5, params?: UniversalSearchParams): Promise<UniversalSearchResultItem[]> {
+    if (!query) return [];
 
     try {
-      const results = await this.hnswSearchService.searchWithMetadataFilter(query, filteredFiles, {
-        limit,
-        threshold: 0.7,
-        includeContent: false
-      });
+      // Use hybrid search if available, otherwise fall back to semantic search
+      if (this.hybridSearchService) {
+        const options: HybridSearchOptions = {
+          limit,
+          includeContent: false,
+          forceSemanticSearch: params?.forceSemanticSearch,
+          semanticThreshold: params?.semanticThreshold || (this.plugin as any).settings?.settings?.memory?.semanticThreshold || 0.5,
+          queryType: params?.queryType || 'mixed'  // Default to mixed if not provided
+        };
 
-      return results.map(result => ({
-        id: result.id,
-        title: result.title,
-        snippet: result.snippet,
-        score: result.score,
-        searchMethod: result.searchMethod,
-        metadata: result.metadata,
-        content: result.content
-      }));
+        console.log(`[UniversalSearchService] Starting hybrid search for query: "${query}" with queryType: ${options.queryType}`);
+        
+        // Log hybrid search stats before searching
+        const stats = this.hybridSearchService.getStats();
+        console.log(`[UniversalSearchService] Pre-search hybrid stats:`, stats);
+        
+        // If indexes are empty, try to populate them now
+        if (stats.keyword.totalDocuments === 0 && stats.fuzzy.totalDocuments === 0) {
+          console.log(`[UniversalSearchService] Indexes are empty, triggering manual population...`);
+          await this.populateHybridSearchIndexes();
+          
+          // Check stats again after population
+          const newStats = this.hybridSearchService.getStats();
+          console.log(`[UniversalSearchService] Post-population stats:`, newStats);
+        }
+        
+        const results = await this.hybridSearchService.search(query, options, filteredFiles);
+        
+        console.log(`[UniversalSearchService] Hybrid search returned ${results.length} results:`, 
+          results.map(r => ({ 
+            id: r.id, 
+            title: r.title, 
+            score: r.score, 
+            methods: r.originalMethods,
+            methodScores: r.metadata.methodScores 
+          })));
+        
+        return results.map(result => ({
+          id: result.id,
+          title: result.title,
+          snippet: result.snippet,
+          score: result.score,
+          searchMethod: result.searchMethod,
+          metadata: result.metadata,
+          content: result.content
+        }));
+      }
+      
+      // Fallback to pure semantic search
+      if (this.hnswSearchService) {
+        const searchThreshold = params?.semanticThreshold || (this.plugin as any).settings?.settings?.memory?.semanticThreshold || 0.5;
+        
+        const results = await this.hnswSearchService.searchWithMetadataFilter(query, filteredFiles, {
+          limit,
+          threshold: searchThreshold,
+          includeContent: false
+        });
+
+        return results.map(result => ({
+          id: result.id,
+          title: result.title,
+          snippet: result.snippet,
+          score: result.score,
+          searchMethod: result.searchMethod,
+          metadata: result.metadata,
+          content: result.content
+        }));
+      }
+      
+      return [];
     } catch (error) {
       console.error('[UniversalSearchService] Content search failed:', error);
       return [];

@@ -200,10 +200,8 @@ export class FileMonitor implements IFileMonitor {
             // Check if any chunk has different content hash
             const existingMetadata = queryResult.metadatas?.[0]?.[0];
             if (!existingMetadata || !existingMetadata.contentHash) {
-                // No content hash in metadata - this is a legacy embedding
-                // For FileMonitor purposes, treat legacy embeddings as up-to-date to avoid re-embedding
-                // The EmbeddingService will handle migration when actually processing
-                return false; // Don't re-embed legacy embeddings through FileMonitor
+                // No content hash in metadata - skip re-embedding to avoid conflicts
+                return false;
             }
 
             // Compare content hash - if different, needs re-embedding

@@ -40,12 +40,17 @@ export class EmbeddingGenerator {
    */
   async generateSingle(text: string): Promise<number[] | null> {
     if (!this.embeddingProvider) {
+      console.error('[EmbeddingGenerator] No embedding provider available!');
       return null;
     }
 
+    console.log('[EmbeddingGenerator] Generating embedding using provider:', this.embeddingProvider.constructor.name);
+
     try {
       const embeddings = await this.embeddingProvider.generateEmbeddings([text]);
-      return embeddings[0];
+      const result = embeddings[0];
+      console.log(`[EmbeddingGenerator] Generated embedding: ${result?.length}D, provider: ${this.embeddingProvider.constructor.name}`);
+      return result;
     } catch (error) {
       console.error('Error generating single embedding:', error);
       return null;

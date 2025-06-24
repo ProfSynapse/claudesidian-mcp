@@ -113,18 +113,89 @@ export class HnswSearchService {
       let nextId = 0;
       let skippedCount = 0;
 
-      // Add all items to the index
-      for (const item of items) {
-        if (item.embedding && item.embedding.length === dimension) {
-          const hnswId = nextId++;
+      // Add all items to the index with detailed validation
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        
+        if (!item.embedding) {
+          console.warn(`[HnswSearchService] Item ${i} (${item.id}) - no embedding`);
+          skippedCount++;
+          continue;
+        }
+        
+        if (item.embedding.length !== dimension) {
+          console.warn(`[HnswSearchService] Item ${i} (${item.id}) - dimension mismatch: expected ${dimension}, got ${item.embedding.length}`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Detailed embedding validation
+        const invalidValues = [];
+        const validationResults = {
+          hasNaN: false,
+          hasInfinity: false,
+          hasNonNumber: false,
+          valueRange: { min: Infinity, max: -Infinity }
+        };
+        
+        for (let j = 0; j < item.embedding.length; j++) {
+          const val = item.embedding[j];
           
+          if (typeof val !== 'number') {
+            validationResults.hasNonNumber = true;
+            invalidValues.push(`[${j}]: ${typeof val} (${val})`);
+          } else if (isNaN(val)) {
+            validationResults.hasNaN = true;
+            invalidValues.push(`[${j}]: NaN`);
+          } else if (!isFinite(val)) {
+            validationResults.hasInfinity = true;
+            invalidValues.push(`[${j}]: ${val > 0 ? 'Infinity' : '-Infinity'}`);
+          } else {
+            validationResults.valueRange.min = Math.min(validationResults.valueRange.min, val);
+            validationResults.valueRange.max = Math.max(validationResults.valueRange.max, val);
+          }
+        }
+        
+        const isValidEmbedding = !validationResults.hasNaN && !validationResults.hasInfinity && !validationResults.hasNonNumber;
+        
+        if (!isValidEmbedding) {
+          console.error(`[HnswSearchService] *** CORRUPTED EMBEDDING FOUND ***`);
+          console.error(`  Item Index: ${i}`);
+          console.error(`  Item ID: ${item.id}`);
+          console.error(`  File Path: ${item.metadata?.filePath || 'unknown'}`);
+          console.error(`  Embedding Length: ${item.embedding.length}`);
+          console.error(`  Validation Results:`, validationResults);
+          console.error(`  Invalid Values (first 10):`, invalidValues.slice(0, 10));
+          console.error(`  Document Preview: ${item.document?.substring(0, 100)}...`);
+          skippedCount++;
+          continue;
+        }
+        
+        const hnswId = nextId++;
+        
+        try {
           // Add to HNSW index
           index.addPoint(item.embedding, hnswId, false);
           
           // Store mappings
           idToItem.set(hnswId, item);
           itemIdToHnswId.set(item.id, hnswId);
-        } else {
+          
+          // Log successful addition for first few items
+          if (i < 3) {
+            console.log(`[HnswSearchService] Successfully added item ${i} (${item.id}), range: [${validationResults.valueRange.min.toFixed(4)}, ${validationResults.valueRange.max.toFixed(4)}]`);
+          }
+          
+        } catch (error) {
+          console.error(`[HnswSearchService] *** HNSW ADD POINT FAILED ***`);
+          console.error(`  Item Index: ${i}`);
+          console.error(`  Item ID: ${item.id}`);
+          console.error(`  HNSW ID: ${hnswId}`);
+          console.error(`  Error:`, error);
+          console.error(`  Embedding Length: ${item.embedding.length}`);
+          console.error(`  Embedding Range: [${validationResults.valueRange.min}, ${validationResults.valueRange.max}]`);
+          console.error(`  First 10 values: [${item.embedding.slice(0, 10).join(', ')}]`);
+          console.error(`  Last 10 values: [${item.embedding.slice(-10).join(', ')}]`);
           skippedCount++;
         }
       }
@@ -201,6 +272,18 @@ export class HnswSearchService {
   ): Promise<ItemWithDistance[]> {
     const indexData = this.indexes.get(collectionName);
     if (!indexData || queryEmbedding.length === 0) {
+      return [];
+    }
+
+    // Validate query embedding
+    const isValidQueryEmbedding = queryEmbedding.every(val => 
+      typeof val === 'number' && 
+      !isNaN(val) && 
+      isFinite(val)
+    );
+    
+    if (!isValidQueryEmbedding) {
+      console.error('[HnswSearchService] Invalid query embedding - contains NaN or infinite values');
       return [];
     }
 
@@ -301,7 +384,7 @@ export class HnswSearchService {
   ): Promise<SearchResult[]> {
     // Handle overloaded parameters
     let limit = 10;
-    let threshold = 0.7;
+    let threshold = 0.5; // Default threshold, will be overwritten by options
     let includeContent = false;
     let filteredFiles: TFile[] | undefined;
     let metadata: any = {};
@@ -343,12 +426,20 @@ export class HnswSearchService {
 
       // Generate embedding for query
       console.log(`[HnswSearchService] Generating embedding for query: "${query}"`);
+      console.log(`[HnswSearchService] Embedding service available:`, !!this.embeddingService);
+      
       const queryEmbedding = await this.embeddingService.getEmbedding(query);
       
       if (!queryEmbedding || queryEmbedding.length === 0) {
         console.error('[HnswSearchService] Failed to generate query embedding');
         return [];
       }
+      
+      console.log(`[HnswSearchService] Generated query embedding:`, {
+        dimension: queryEmbedding.length,
+        firstValues: queryEmbedding.slice(0, 3),
+        provider: (this.embeddingService as any)?.embeddingGenerator?.embeddingProvider?.constructor?.name || 'unknown'
+      });
 
       // If we have filtered files, create a where clause to match only those files
       let where: WhereClause | undefined;
@@ -362,10 +453,26 @@ export class HnswSearchService {
       // Perform HNSW search with the query embedding
       const results = await this.searchSimilar(collectionName, queryEmbedding, limit, where);
       
+      // Debug: Log raw results before filtering
+      console.log(`[HnswSearchService] Raw HNSW results: ${results.length}, threshold: ${threshold}`);
+      console.log(`[HnswSearchService] Query embedding dimension: ${queryEmbedding.length}, first few values: [${queryEmbedding.slice(0, 5).join(', ')}]`);
+      if (results.length > 0) {
+        results.slice(0, 3).forEach((result, idx) => {
+          const similarity = 1 - result.distance;
+          console.log(`  ${idx + 1}. Similarity: ${similarity.toFixed(3)}, File: ${result.item.metadata?.filePath || 'unknown'}, Content: ${result.item.document?.substring(0, 80)}...`);
+          
+          // Check if this result contains our search term
+          const containsSearchTerm = result.item.document?.toLowerCase().includes(query.toLowerCase());
+          if (containsSearchTerm) {
+            console.log(`    *** EXACT MATCH FOUND! This chunk contains "${query}" ***`);
+          }
+        });
+      }
+      
       // Format results for return
       const formattedResults = this.formatSearchResults(results, threshold, includeContent);
       
-      console.log(`[HnswSearchService] Found ${formattedResults.length} results`);
+      console.log(`[HnswSearchService] Found ${formattedResults.length} results after filtering`);
       return formattedResults;
       
     } catch (error) {
@@ -462,12 +569,34 @@ export class HnswSearchService {
    * @param maxLength Maximum snippet length
    * @returns Snippet text
    */
-  private createSnippet(content: string, maxLength: number = 200): string {
-    if (content.length <= maxLength) {
-      return content;
+  private createSnippet(content: string, maxLength: number = 300): string {
+    if (!content || content.length === 0) {
+      return '';
     }
     
-    return content.substring(0, maxLength).trim() + '...';
+    if (content.length <= maxLength) {
+      return content.trim();
+    }
+    
+    // Try to break at sentence boundary if possible
+    const truncated = content.substring(0, maxLength);
+    const lastSentenceEnd = Math.max(
+      truncated.lastIndexOf('.'),
+      truncated.lastIndexOf('!'),
+      truncated.lastIndexOf('?')
+    );
+    
+    if (lastSentenceEnd > maxLength * 0.6) {
+      return truncated.substring(0, lastSentenceEnd + 1).trim();
+    }
+    
+    // Break at word boundary
+    const lastSpace = truncated.lastIndexOf(' ');
+    if (lastSpace > maxLength * 0.8) {
+      return truncated.substring(0, lastSpace).trim() + '...';
+    }
+    
+    return truncated.trim() + '...';
   }
 
   /**

@@ -306,30 +306,18 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
       return [];
     }
     
-    // ChromaDB doesn't have a direct "getAll" method, so we'll use a dummy query
-    // with a high limit to get all items
-    const limit = options?.limit || count;
+    // Use ChromaDB's get method to retrieve all items without query embeddings
+    const results = await this.vectorStore.getItems(this.collectionName, [], ['embeddings', 'metadatas', 'documents']);
     
-    // Use a dummy embedding for querying (this is a workaround)
-    const dummyEmbedding = new Array(1536).fill(0);
-    
-    // Query with a high limit and where clause
-    const results = await this.vectorStore.query(this.collectionName, {
-      queryEmbeddings: [dummyEmbedding],
-      nResults: limit,
-      where: options?.where,
-      include: ['embeddings', 'metadatas', 'documents']
-    });
-    
-    if (!results.ids[0]?.length) {
+    if (!results.ids?.length) {
       return [];
     }
     
-    // Process results
-    const items = results.ids[0].map((id, index) => {
-      const embedding = results.embeddings?.[0]?.[index];
-      const metadata = results.metadatas?.[0]?.[index];
-      const document = results.documents?.[0]?.[index];
+    // Process results (getItems returns flat arrays, not nested like query)
+    const items = results.ids.map((id, index) => {
+      const embedding = results.embeddings?.[index];
+      const metadata = results.metadatas?.[index];
+      const document = results.documents?.[index];
       
       return this.storageToItem({
         id,

@@ -104,13 +104,13 @@ export class ContentHashService {
   }
 
   /**
-   * Add content hash to legacy embedding that doesn't have one
+   * Add content hash to embedding that doesn't have one
    * @param filePath Path to the file
    * @param contentHash Content hash to add
    * @param vectorStore Vector store instance
    * @returns Promise resolving to true if hash was added successfully
    */
-  async addContentHashToLegacyEmbedding(filePath: string, contentHash: string, vectorStore: any): Promise<boolean> {
+  async addContentHashToEmbedding(filePath: string, contentHash: string, vectorStore: any): Promise<boolean> {
     try {
       // Normalize the file path to match database format
       const normalizedPath = filePath.replace(/\\/g, '/');
@@ -146,7 +146,7 @@ export class ContentHashService {
       console.log(`[ContentHashService] Added content hash to ${chunkIds.length} existing chunks for ${filePath}`);
       return true;
     } catch (error) {
-      console.error(`[ContentHashService] Error adding content hash to legacy embedding for ${filePath}:`, error);
+      console.error(`[ContentHashService] Error adding content hash to embedding for ${filePath}:`, error);
       return false;
     }
   }

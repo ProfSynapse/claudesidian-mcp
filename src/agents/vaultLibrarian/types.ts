@@ -53,6 +53,15 @@ export interface UniversalSearchParams extends CommonParameters, GraphBoostOptio
    * Supports metadata filtering syntax: "tag:javascript priority:high content query"
    */
   query: string;
+
+  /**
+   * Search strategy type - controls weighting of semantic/keyword/fuzzy search methods
+   * - 'exact': 70% keyword, 20% semantic, 10% fuzzy (for specific terms)
+   * - 'conceptual': 60% semantic, 30% keyword, 10% fuzzy (for topics)
+   * - 'exploratory': 80% semantic, 15% fuzzy, 5% keyword (for questions)
+   * - 'mixed': 40% semantic, 40% keyword, 20% fuzzy (balanced)
+   */
+  queryType?: 'exact' | 'conceptual' | 'exploratory' | 'mixed';
   
   /**
    * Maximum number of results per category (default: 5)

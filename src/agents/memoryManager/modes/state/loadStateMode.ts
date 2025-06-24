@@ -103,14 +103,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       } catch (error) {
         console.error(`Failed to restore state: ${error instanceof Error ? error.message : String(error)}`);
         
-        // Try fallback to legacy method if available
-        if (activityEmbedder && typeof activityEmbedder.restoreStateSnapshot === 'function') {
-          console.log('Falling back to legacy restoreStateSnapshot method');
-          await activityEmbedder.restoreStateSnapshot(stateId);
-        } else {
-          console.warn('State restoration failed and no fallback is available');
-          throw new Error(`Failed to restore state: ${error instanceof Error ? error.message : String(error)}`);
-        }
+        console.warn('State restoration failed');
+        throw new Error(`Failed to restore state: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       // Prepare session initialization data

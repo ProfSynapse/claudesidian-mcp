@@ -46,7 +46,7 @@ export class MemoryService {
   private snapshots: SnapshotCollection;
 
   /**
-   * Plugin instance for legacy compatibility
+   * Plugin instance
    */
   private plugin: Plugin;
 
