@@ -33,6 +33,11 @@ export class MemoryManagerAgent extends BaseAgent {
   private vaultName: string;
 
   /**
+   * Flag to prevent infinite recursion in description getter
+   */
+  private isGettingDescription: boolean = false;
+
+  /**
    * Create a new MemoryManagerAgent
    * @param app Obsidian app instance
    * @param plugin Plugin instance for accessing shared services
@@ -82,8 +87,19 @@ export class MemoryManagerAgent extends BaseAgent {
    */
   get description(): string {
     const baseDescription = MemoryManagerConfig.description;
-    const workspaceContext = this.getWorkspacesSummary();
-    return `[${this.vaultName}] ${baseDescription}\n\n${workspaceContext}`;
+    
+    // Prevent infinite recursion
+    if (this.isGettingDescription) {
+      return `[${this.vaultName}] ${baseDescription}`;
+    }
+    
+    this.isGettingDescription = true;
+    try {
+      const workspaceContext = this.getWorkspacesSummary();
+      return `[${this.vaultName}] ${baseDescription}\n\n${workspaceContext}`;
+    } finally {
+      this.isGettingDescription = false;
+    }
   }
   
   /**

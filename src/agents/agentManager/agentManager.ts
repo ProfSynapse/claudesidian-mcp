@@ -25,6 +25,11 @@ export class AgentManagerAgent extends BaseAgent {
    * Vault name for multi-vault support
    */
   private vaultName: string;
+
+  /**
+   * Flag to prevent infinite recursion in description getter
+   */
+  private isGettingDescription: boolean = false;
   
   /**
    * Create a new AgentManagerAgent
@@ -57,12 +62,23 @@ export class AgentManagerAgent extends BaseAgent {
   }
 
   /**
-   * Dynamic description that includes information about all available agents
+   * Dynamic description that includes information about custom prompt agents
    */
   get description(): string {
     const baseDescription = AgentManagerConfig.description;
-    const agentsContext = this.getAgentsSummary();
-    return `[${this.vaultName}] ${baseDescription}\n\n${agentsContext}`;
+    
+    // Prevent infinite recursion
+    if (this.isGettingDescription) {
+      return `[${this.vaultName}] ${baseDescription}`;
+    }
+    
+    this.isGettingDescription = true;
+    try {
+      const customAgentsContext = this.getAgentsSummary();
+      return `[${this.vaultName}] ${baseDescription}\n\n${customAgentsContext}`;
+    } finally {
+      this.isGettingDescription = false;
+    }
   }
   
   /**
@@ -74,43 +90,41 @@ export class AgentManagerAgent extends BaseAgent {
   }
 
   /**
-   * Get a summary of all available agents in the system
-   * @returns Formatted string with agent information
+   * Get a summary of all available custom prompt agents
+   * @returns Formatted string with custom prompt agent information
    * @private
    */
   private getAgentsSummary(): string {
     try {
-      // Check if agent manager is available
-      if (!this.agentManager) {
-        return `🤖 Agents: Agent manager not available`;
+      // Check if storage service is available
+      if (!this.storageService) {
+        return `🤖 Custom Agents: Storage service not available`;
       }
 
-      // Get all agents from the agent manager
-      // Cast to the full AgentManager type to access getAgents method
-      const agents = (this.agentManager as any).getAgents ? (this.agentManager as any).getAgents() : [];
-      
-      if (!agents || agents.length === 0) {
-        return `🤖 Agents: No agents currently registered`;
+      // Check if custom prompts feature is enabled
+      if (!this.storageService.isEnabled()) {
+        return `🤖 Custom Agents: Custom prompts feature is disabled`;
       }
 
-      const agentSummary = [`🤖 Available Agents (${agents.length}):`];
+      // Get all custom prompt agents
+      const customPrompts = this.storageService.getAllPrompts();
       
-      for (const agent of agents) {
-        try {
-          // Get mode count for this agent
-          const modes = agent.getModes ? agent.getModes() : new Map();
-          const modeCount = modes instanceof Map ? modes.size : 
-                           Array.isArray(modes) ? modes.length : 0;
-          
-          agentSummary.push(`   • ${agent.name}: ${agent.description || 'No description'} (${modeCount} modes)`);
-        } catch (error) {
-          agentSummary.push(`   • ${agent.name}: ${agent.description || 'No description'} (modes unavailable)`);
-        }
+      if (!customPrompts || customPrompts.length === 0) {
+        return `🤖 Custom Agents: No custom prompt agents created yet`;
+      }
+
+      const enabledCount = customPrompts.filter(prompt => prompt.isEnabled).length;
+      const agentSummary = [`🤖 Custom Agents (${customPrompts.length} total, ${enabledCount} enabled):`];
+      
+      for (const prompt of customPrompts) {
+        const status = prompt.isEnabled ? '✅' : '❌';
+        const description = prompt.description || 'No description provided';
+        agentSummary.push(`   ${status} ${prompt.name}: ${description}`);
       }
 
       return agentSummary.join('\n');
     } catch (error) {
-      return `🤖 Agents: Error loading agent information (${error})`;
+      return `🤖 Custom Agents: Error loading custom prompt agents (${error})`;
     }
   }
 }

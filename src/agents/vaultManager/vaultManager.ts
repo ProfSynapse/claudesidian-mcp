@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, TFile, TFolder } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { VaultManagerConfig } from './config';
 import { 
@@ -20,6 +20,7 @@ import { sanitizeVaultName } from '../../utils/vaultUtils';
 export class VaultManagerAgent extends BaseAgent {
   private app: App;
   private vaultName: string;
+  private isGettingDescription: boolean = false;
 
   /**
    * Create a new VaultManagerAgent
@@ -52,8 +53,19 @@ export class VaultManagerAgent extends BaseAgent {
    */
   get description(): string {
     const baseDescription = VaultManagerConfig.description;
-    const vaultContext = this.getVaultStructureSummary();
-    return `[${this.vaultName}] ${baseDescription}\n\n${vaultContext}`;
+    
+    // Prevent infinite recursion
+    if (this.isGettingDescription) {
+      return `[${this.vaultName}] ${baseDescription}`;
+    }
+    
+    this.isGettingDescription = true;
+    try {
+      const vaultContext = this.getVaultStructureSummary();
+      return `[${this.vaultName}] ${baseDescription}\n\n${vaultContext}`;
+    } finally {
+      this.isGettingDescription = false;
+    }
   }
 
   /**
@@ -64,27 +76,22 @@ export class VaultManagerAgent extends BaseAgent {
   private getVaultStructureSummary(): string {
     try {
       const markdownFiles = this.app.vault.getMarkdownFiles();
-      const allFiles = this.app.vault.getAllLoadedFiles();
+      const rootFolder = this.app.vault.getRoot();
       
       // Get root folders (folders directly in vault root)
-      const rootFolders = allFiles
-        .filter(file => 
-          file.parent?.path === '' && // Direct child of root
-          !file.hasOwnProperty('extension') // Is a folder
-        )
-        .map(folder => folder.path)
-        .filter(path => path && path !== '/'); // Remove empty/root paths
+      const rootFolders = rootFolder.children
+        .filter(child => child instanceof TFolder)
+        .map(folder => folder.name)
+        .sort(); // Sort alphabetically for consistent display
 
       // Count files in each root folder
-      const folderFileCounts: Record<string, number> = {};
       const folderStructure: string[] = [];
 
-      for (const folder of rootFolders) {
+      for (const folderName of rootFolders) {
         const filesInFolder = markdownFiles.filter(file => 
-          file.path.startsWith(folder + '/')
+          file.path.startsWith(folderName + '/')
         ).length;
-        folderFileCounts[folder] = filesInFolder;
-        folderStructure.push(`   └── ${folder}/ (${filesInFolder} files)`);
+        folderStructure.push(`   └── ${folderName}/ (${filesInFolder} files)`);
       }
 
       // Count files in root
