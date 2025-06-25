@@ -79,6 +79,12 @@ export class WhatIsClaudesidianAccordion {
             'Manages workspace sessions, state snapshots, and persistent memory across conversations. Provides operations for creating, listing, editing, and deleting sessions and snapshot states.'
         );
         
+        this.createAgentDescription(
+            agentsContainer,
+            'Agent Manager',
+            'Manages agent configurations, custom prompts, and agent-specific settings. Provides operations for creating, editing, and managing custom agent prompts and behaviors.'
+        );
+        
 
         // Example Interactions section within intro
         const examplesSection = content.createEl('div', { cls: 'mcp-section' });

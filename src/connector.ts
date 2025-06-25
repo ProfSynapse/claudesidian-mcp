@@ -9,10 +9,12 @@ import {
     CommandManagerAgent,
     VaultManagerAgent,
     VaultLibrarianAgent,
-    MemoryManagerAgent
+    MemoryManagerAgent,
+    AgentManagerAgent
 } from './agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
+import { CustomPromptStorageService } from './database/services/CustomPromptStorageService';
 
 /**
  * Interface for agent-mode tool call parameters
@@ -32,6 +34,7 @@ export class MCPConnector {
     private agentManager: AgentManager;
     private eventManager: EventManager;
     private sessionContextManager: SessionContextManager;
+    private customPromptStorage?: CustomPromptStorageService;
     
     constructor(
         private app: App,
@@ -49,8 +52,14 @@ export class MCPConnector {
             }
         }
         
+        // Create custom prompt storage service if plugin settings are available
+        const pluginSettings = this.plugin && (this.plugin as any).settings;
+        if (pluginSettings) {
+            this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
+        }
+        
         // Create server with vault-specific identifier
-        this.server = new MCPServer(app, plugin, this.eventManager, this.sessionContextManager);
+        this.server = new MCPServer(app, plugin, this.eventManager, this.sessionContextManager, undefined, this.customPromptStorage);
         
         // Initialize agents
         this.initializeAgents();
@@ -88,6 +97,9 @@ export class MCPConnector {
                 this.app
             );
             
+            // Always register AgentManager (prompt management)
+            const agentManagerAgent = this.customPromptStorage ? new AgentManagerAgent((this.plugin as any).settings) : null;
+            
             // Always register VaultLibrarian (has non-vector modes like search)
             const vaultLibrarianAgent = new VaultLibrarianAgent(
                 this.app,
@@ -122,6 +134,9 @@ export class MCPConnector {
             this.agentManager.registerAgent(contentManagerAgent);
             this.agentManager.registerAgent(commandManagerAgent);
             this.agentManager.registerAgent(vaultManagerAgent);
+            if (agentManagerAgent) {
+                this.agentManager.registerAgent(agentManagerAgent);
+            }
             this.agentManager.registerAgent(vaultLibrarianAgent);
             
             // Register memory manager if created successfully

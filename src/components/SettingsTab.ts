@@ -3,9 +3,9 @@ import { Settings } from '../settings';
 // import { ConfigModal } from './ConfigModal';
 import { 
     WhatIsClaudesidianAccordion, 
-    BestPracticesAccordion, 
     SetupInstructionsAccordion,
-    MemoryManagementAccordion
+    MemoryManagementAccordion,
+    AgentManagementAccordion
 } from './accordions';
 import { UpdateManager } from '../utils/UpdateManager';
 import { templateFiles } from '../templates';
@@ -19,6 +19,7 @@ import { WorkspaceService } from '../database/services/WorkspaceService';
 import { MemoryService } from '../database/services/MemoryService';
 import { EmbeddingManager } from '../database/services/embeddingManager';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
+import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
 
 /**
  * Settings tab for the Claudesidian MCP plugin
@@ -242,10 +243,19 @@ export class SettingsTab extends PluginSettingTab {
             this.settingsManager,
             this.embeddingService,
             undefined, // fileEmbeddingAccessService - not available in settings tab context
-            undefined, // semanticSearchService - not available in settings tab context
+            undefined, // searchService - not available in settings tab context
             this.memoryService,
             this.vaultLibrarian,
             embeddingManager
+        );
+
+        // Agent Management accordion
+        const customPromptStorage = new CustomPromptStorageService(this.settingsManager);
+        new AgentManagementAccordion(
+            containerEl,
+            this.settingsManager,
+            customPromptStorage,
+            this.app
         );
 
         // Setup Instructions accordion
@@ -253,9 +263,6 @@ export class SettingsTab extends PluginSettingTab {
 
         // What is Claudesidian? accordion
         new WhatIsClaudesidianAccordion(containerEl);
-
-        // Best Practices accordion
-        new BestPracticesAccordion(containerEl, () => this.createTemplatePack());
 
         // Add CSS styles
         this.addStyles();

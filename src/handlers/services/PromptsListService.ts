@@ -1,6 +1,7 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IPromptsListService } from '../interfaces/IRequestHandlerServices';
 import { logger } from '../../utils/logger';
+import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
 
 /**
  * Prompt interface for MCP prompt listing
@@ -19,10 +20,14 @@ interface Prompt {
  * Service for listing available prompts
  * Applies Single Responsibility Principle by focusing solely on prompt enumeration
  * 
- * Currently returns empty list but structured for future prompt template support
+ * Includes both system prompts and user-defined custom prompts
  */
 export class PromptsListService implements IPromptsListService {
-    constructor() {}
+    private customPromptStorage?: CustomPromptStorageService;
+
+    constructor(customPromptStorage?: CustomPromptStorageService) {
+        this.customPromptStorage = customPromptStorage;
+    }
 
     /**
      * Get all available prompts
@@ -32,14 +37,28 @@ export class PromptsListService implements IPromptsListService {
         try {
             logger.systemLog('PromptsListService: Listing available prompts');
             
-            // Currently no prompts implemented - returning empty array
-            // This maintains API compatibility while allowing future expansion
             const prompts: Prompt[] = [];
             
-            // Future enhancement: Could scan for prompt templates in vault
-            // or provide predefined prompt templates for common operations
+            // Add system prompts (currently none)
+            // Future enhancement: Could add predefined system prompt templates
             
-            logger.systemLog(`PromptsListService: Found ${prompts.length} prompts`);
+            // Add custom prompts if storage service is available
+            if (this.customPromptStorage && this.customPromptStorage.isEnabled()) {
+                const customPrompts = this.customPromptStorage.getEnabledPrompts();
+                
+                // Convert custom prompts to MCP Prompt format
+                const mcpPrompts = customPrompts.map(customPrompt => ({
+                    name: customPrompt.name,
+                    description: customPrompt.description,
+                    // Custom prompts don't have arguments for now
+                    arguments: []
+                }));
+                
+                prompts.push(...mcpPrompts);
+                logger.systemLog(`PromptsListService: Added ${customPrompts.length} custom prompts`);
+            }
+            
+            logger.systemLog(`PromptsListService: Found ${prompts.length} total prompts`);
             return { prompts };
         } catch (error) {
             logger.systemError(error as Error, 'PromptsListService');
@@ -69,17 +88,51 @@ export class PromptsListService implements IPromptsListService {
     }
 
     /**
-     * Check if prompt exists by name (future enhancement)
+     * Check if prompt exists by name
      * @param name Prompt name
      * @returns Promise resolving to boolean
      */
     async promptExists(name: string): Promise<boolean> {
         try {
-            const prompts = await this.listPrompts();
-            return prompts.prompts.some(prompt => prompt.name === name);
+            // Check custom prompts first if available
+            if (this.customPromptStorage && this.customPromptStorage.isEnabled()) {
+                const customPrompt = this.customPromptStorage.getPromptByName(name);
+                if (customPrompt && customPrompt.isEnabled) {
+                    return true;
+                }
+            }
+            
+            // Check system prompts (currently none)
+            // Future: Add system prompt checking here
+            
+            return false;
         } catch (error) {
             logger.systemWarn(`PromptsListService: Prompt existence check failed for ${name}`);
             return false;
+        }
+    }
+
+    /**
+     * Get a specific prompt by name (for MCP prompts/get endpoint)
+     * @param name Prompt name
+     * @returns Promise resolving to prompt content or null
+     */
+    async getPrompt(name: string): Promise<string | null> {
+        try {
+            if (this.customPromptStorage && this.customPromptStorage.isEnabled()) {
+                const customPrompt = this.customPromptStorage.getPromptByName(name);
+                if (customPrompt && customPrompt.isEnabled) {
+                    return customPrompt.prompt;
+                }
+            }
+            
+            // Check system prompts (currently none)
+            // Future: Add system prompt retrieval here
+            
+            return null;
+        } catch (error) {
+            logger.systemError(error as Error, 'PromptsListService');
+            return null;
         }
     }
 }

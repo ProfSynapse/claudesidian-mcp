@@ -12,11 +12,15 @@ import {
   OpenNoteMode
 } from './modes';
 import { MoveNoteMode } from './modes/moveNoteMode';
+import { sanitizeVaultName } from '../../utils/vaultUtils';
 
 /**
  * Agent for file system operations in the Obsidian vault
  */
 export class VaultManagerAgent extends BaseAgent {
+  private app: App;
+  private vaultName: string;
+
   /**
    * Create a new VaultManagerAgent
    * @param app Obsidian app instance
@@ -28,6 +32,9 @@ export class VaultManagerAgent extends BaseAgent {
       VaultManagerConfig.version
     );
     
+    this.app = app;
+    this.vaultName = sanitizeVaultName(app.vault.getName());
+    
     // Register modes
     this.registerMode(new ListFilesMode(app));
     this.registerMode(new ListFoldersMode(app));
@@ -38,5 +45,66 @@ export class VaultManagerAgent extends BaseAgent {
     this.registerMode(new MoveFolderMode(app));
     this.registerMode(new DuplicateNoteMode(app));
     this.registerMode(new OpenNoteMode(app));
+  }
+
+  /**
+   * Dynamic description that includes current vault structure
+   */
+  get description(): string {
+    const baseDescription = VaultManagerConfig.description;
+    const vaultContext = this.getVaultStructureSummary();
+    return `[${this.vaultName}] ${baseDescription}\n\n${vaultContext}`;
+  }
+
+  /**
+   * Get a summary of the vault structure
+   * @returns Formatted string with vault structure information
+   * @private
+   */
+  private getVaultStructureSummary(): string {
+    try {
+      const markdownFiles = this.app.vault.getMarkdownFiles();
+      const allFiles = this.app.vault.getAllLoadedFiles();
+      
+      // Get root folders (folders directly in vault root)
+      const rootFolders = allFiles
+        .filter(file => 
+          file.parent?.path === '' && // Direct child of root
+          !file.hasOwnProperty('extension') // Is a folder
+        )
+        .map(folder => folder.path)
+        .filter(path => path && path !== '/'); // Remove empty/root paths
+
+      // Count files in each root folder
+      const folderFileCounts: Record<string, number> = {};
+      const folderStructure: string[] = [];
+
+      for (const folder of rootFolders) {
+        const filesInFolder = markdownFiles.filter(file => 
+          file.path.startsWith(folder + '/')
+        ).length;
+        folderFileCounts[folder] = filesInFolder;
+        folderStructure.push(`   └── ${folder}/ (${filesInFolder} files)`);
+      }
+
+      // Count files in root
+      const rootFiles = markdownFiles.filter(file => 
+        !file.path.includes('/')
+      ).length;
+
+      const summary = [
+        `📁 Vault Structure: ${markdownFiles.length} files, ${rootFolders.length} root folders`
+      ];
+
+      if (rootFiles > 0) {
+        summary.push(`   └── / (${rootFiles} files in root)`);
+      }
+
+      summary.push(...folderStructure);
+
+      return summary.join('\n');
+    } catch (error) {
+      return `📁 Vault Structure: Unable to load vault information (${error})`;
+    }
   }
 }

@@ -15,7 +15,7 @@ import { createErrorMessage } from '../utils/errorUtils';
  */
 export abstract class BaseAgent implements IAgent {
   name: string;
-  description: string;
+  protected _description: string;
   version: string;
   protected modes: Map<string, IMode> = new Map();
   
@@ -32,8 +32,16 @@ export abstract class BaseAgent implements IAgent {
    */
   constructor(name: string, description: string, version: string) {
     this.name = name;
-    this.description = description;
+    this._description = description;
     this.version = version;
+  }
+
+  /**
+   * Get the agent description
+   * Can be overridden by subclasses for dynamic descriptions
+   */
+  get description(): string {
+    return this._description;
   }
   
   /**

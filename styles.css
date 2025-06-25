@@ -28,7 +28,8 @@
 /* Handle border when accordion is open */
 .mcp-accordion-content.is-open {
     border-top: 1px solid var(--background-modifier-border);
-    max-height: 2000px; /* Large enough to contain content */
+    max-height: 70vh; /* Use viewport height for better responsive behavior */
+    overflow-y: auto; /* Enable vertical scrolling when content exceeds height */
     padding: 15px;
 }
 
@@ -966,4 +967,202 @@ a:hover {
     margin: 0 0 12px 0;
     font-weight: 500;
     line-height: 1.4;
+}
+
+/* Agent Management Styles */
+.agent-management-add-button {
+    margin-bottom: 16px;
+}
+
+.agent-management-add-button button {
+    width: 100%;
+}
+
+.agent-management-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.agent-management-disabled {
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 20px;
+}
+
+.agent-management-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 20px;
+    background-color: var(--background-secondary);
+    border-radius: 6px;
+    border: 1px dashed var(--background-modifier-border);
+}
+
+.agent-management-card {
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 16px;
+    transition: all 0.2s ease;
+}
+
+.agent-management-card:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.agent-management-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.agent-management-card-title {
+    font-weight: 600;
+    font-size: 1.1em;
+    color: var(--text-normal);
+    flex: 1;
+}
+
+.agent-management-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.agent-management-toggle {
+    display: flex;
+    align-items: center;
+}
+
+/* Ensure proper spacing for Obsidian toggle component */
+.agent-management-toggle .checkbox-container {
+    margin-right: 8px;
+}
+
+.agent-management-edit-btn,
+.agent-management-delete-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    color: var(--text-muted);
+}
+
+.agent-management-edit-btn:hover {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+.agent-management-delete-btn:hover {
+    background-color: var(--text-error);
+    color: white;
+    border-color: var(--text-error);
+}
+
+.agent-management-edit-btn svg,
+.agent-management-delete-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.agent-management-card-description {
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.agent-management-card-status {
+    font-size: 0.9em;
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.agent-management-card-status.enabled {
+    color: var(--text-success);
+    background-color: rgba(var(--color-green-rgb), 0.1);
+}
+
+.agent-management-card-status.disabled {
+    color: var(--text-muted);
+    background-color: var(--background-modifier-border);
+}
+
+/* Agent Management Modal Styles */
+.modal-button-container {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+/* Modal content styling */
+.modal-content h1 {
+    margin-bottom: 20px;
+    font-size: 1.5em;
+    font-weight: 600;
+}
+
+.modal-content h2 {
+    margin-top: 20px;
+    margin-bottom: 8px;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.modal-content h2:first-of-type {
+    margin-top: 0;
+}
+
+.agent-modal-input,
+.agent-modal-textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-medium);
+    margin-bottom: 4px;
+}
+
+.agent-modal-textarea {
+    resize: vertical;
+    min-height: 120px;
+    font-family: var(--font-interface);
+    line-height: 1.5;
+}
+
+.agent-modal-input:focus,
+.agent-modal-textarea:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+/* Responsive design for cards */
+@media (max-width: 768px) {
+    .agent-management-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .agent-management-card-actions {
+        align-self: flex-end;
+    }
 }

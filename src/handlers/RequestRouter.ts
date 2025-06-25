@@ -15,6 +15,7 @@ import { ToolListService } from './services/ToolListService';
 import { ResourceListService } from './services/ResourceListService';
 import { ResourceReadService } from './services/ResourceReadService';
 import { PromptsListService } from './services/PromptsListService';
+import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
 import { ToolHelpService } from './services/ToolHelpService';
 
 // Import strategies
@@ -23,6 +24,7 @@ import { ToolListStrategy } from './strategies/ToolListStrategy';
 import { ResourceListStrategy } from './strategies/ResourceListStrategy';
 import { ResourceReadStrategy } from './strategies/ResourceReadStrategy';
 import { PromptsListStrategy } from './strategies/PromptsListStrategy';
+import { PromptsGetStrategy } from './strategies/PromptsGetStrategy';
 import { ToolHelpStrategy } from './strategies/ToolHelpStrategy';
 
 // All requests now handled through modern strategy pattern
@@ -36,7 +38,8 @@ export class RequestRouter {
         private agents: Map<string, IAgent>,
         private isVaultEnabled: boolean,
         private vaultName?: string,
-        private sessionContextManager?: SessionContextManager
+        private sessionContextManager?: SessionContextManager,
+        private customPromptStorage?: CustomPromptStorageService
     ) {
         this.initializeDependencies();
         this.initializeStrategies();
@@ -52,7 +55,7 @@ export class RequestRouter {
             toolListService: new ToolListService(),
             resourceListService: new ResourceListService(this.app),
             resourceReadService: new ResourceReadService(this.app),
-            promptsListService: new PromptsListService(),
+            promptsListService: new PromptsListService(this.customPromptStorage),
             toolHelpService: new ToolHelpService()
         };
     }
@@ -79,6 +82,9 @@ export class RequestRouter {
                 this.app
             ),
             new PromptsListStrategy(
+                this.dependencies
+            ),
+            new PromptsGetStrategy(
                 this.dependencies
             ),
             new ToolHelpStrategy(

@@ -14,6 +14,7 @@ import {
     ListToolsRequestSchema,
     CallToolRequestSchema,
     ListPromptsRequestSchema,
+    GetPromptRequestSchema,
     ErrorCode,
     McpError
 } from '@modelcontextprotocol/sdk/types.js';
@@ -26,6 +27,7 @@ import { getErrorMessage } from './utils/errorUtils';
 import { generateModeHelp, formatModeHelp } from './utils/parameterHintUtils';
 import { sanitizeVaultName } from './utils/vaultUtils';
 import { RequestRouter } from './handlers/RequestRouter';
+import { CustomPromptStorageService } from './database/services/CustomPromptStorageService';
 
 /**
  * MCP Server implementation
@@ -55,7 +57,8 @@ export class MCPServer implements IMCPServer {
         _plugin: Plugin,
         private eventManager: EventManager,
         private sessionContextManager?: SessionContextManager,
-        private serverName?: string
+        private serverName?: string,
+        private customPromptStorage?: CustomPromptStorageService
     ) {
         // Get settings from plugin
         
@@ -154,7 +157,8 @@ export class MCPServer implements IMCPServer {
                 this.agents,
                 true, // isVaultEnabled
                 sanitizedVaultName,
-                this.sessionContextManager
+                this.sessionContextManager,
+                this.customPromptStorage
             );
         } catch (error) {
             logger.systemError(error as Error, 'Request Router Initialization');
@@ -182,6 +186,11 @@ export class MCPServer implements IMCPServer {
         // Handle prompts listing
         this.server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
             return await this.requestRouter.handleRequest('prompts/list', request);
+        });
+
+        // Handle prompts get
+        this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+            return await this.requestRouter.handleRequest('prompts/get', request);
         });
 
         // Handle tool listing

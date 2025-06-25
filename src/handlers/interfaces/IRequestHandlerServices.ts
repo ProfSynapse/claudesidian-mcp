@@ -83,6 +83,7 @@ export interface IPromptsListService {
     listPrompts(): Promise<{ prompts: Array<{ name: string; description?: string; arguments?: any[] }> }>;
     listPromptsByCategory(category?: string): Promise<{ prompts: Array<{ name: string; description?: string; arguments?: any[] }> }>;
     promptExists(name: string): Promise<boolean>;
+    getPrompt(name: string): Promise<string | null>;
 }
 
 export interface IToolHelpService {

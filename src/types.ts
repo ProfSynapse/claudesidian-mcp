@@ -46,6 +46,25 @@ export interface ModeCall {
 }
 
 /**
+ * Custom prompt definition for MCP
+ */
+export interface CustomPrompt {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  isEnabled: boolean;
+}
+
+/**
+ * Custom prompts settings
+ */
+export interface CustomPromptsSettings {
+  enabled: boolean;
+  prompts: CustomPrompt[];
+}
+
+/**
  * Server status enum
  */
 export type ServerStatus = 'initializing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
@@ -78,6 +97,7 @@ export interface MCPSettings {
     enabledVault: boolean;
     configFilePath?: string;
     memory?: MemorySettings;
+    customPrompts?: CustomPromptsSettings;
     lastUpdateVersion?: string;
     lastUpdateDate?: string;
     availableUpdateVersion?: string;
@@ -263,12 +283,21 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
 };
 
 /**
+ * Default custom prompts settings
+ */
+export const DEFAULT_CUSTOM_PROMPTS_SETTINGS: CustomPromptsSettings = {
+    enabled: true,
+    prompts: []
+};
+
+/**
  * Default plugin settings
  */
 export const DEFAULT_SETTINGS: MCPSettings = {
     enabledVault: true,
     configFilePath: undefined,
     memory: DEFAULT_MEMORY_SETTINGS,
+    customPrompts: DEFAULT_CUSTOM_PROMPTS_SETTINGS,
     lastUpdateVersion: undefined,
     lastUpdateDate: undefined,
     availableUpdateVersion: undefined,

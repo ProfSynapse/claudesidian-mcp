@@ -63,16 +63,16 @@ export class SetupInstructionsAccordion {
             text: 'Go to the Memory Management accordion in Settings'
         });
         memorySteps.createEl('li', {
-            text: 'Enable Memory Manager using the toggle switch'
+            text: 'Configure your embedding provider (e.g., OpenAI API key)'
         });
         memorySteps.createEl('li', {
-            text: 'Configure your embedding provider (e.g., OpenAI API key)'
+            text: 'Enable Memory Manager using the toggle switch if it does not automatically enable'
         });
         memorySteps.createEl('li', {
             text: 'Adjust embedding model and chunking settings as needed'
         });
         memorySteps.createEl('li', {
-            text: 'Click "Reindex All Content" to create initial embeddings'
+            text: 'Click "Start Initial Embedding" to create initial embeddings'
         });
         
         // Add a note about what the Memory Manager does

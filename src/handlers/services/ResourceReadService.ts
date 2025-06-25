@@ -99,6 +99,7 @@ export class ResourceReadService implements IResourceReadService {
         return await this.app.vault.read(file);
     }
 
+
     /**
      * Parse resource URI to extract file path
      * @param uri Resource URI (e.g., "obsidian://path/to/file.md")

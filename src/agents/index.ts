@@ -4,3 +4,4 @@ export * from './commandManager/commandManager';
 export * from './vaultManager/vaultManager';
 export * from './vaultLibrarian/vaultLibrarian';
 export * from './memoryManager/memoryManager';
+export * from './agentManager/agentManager';
