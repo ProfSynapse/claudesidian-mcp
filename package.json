@@ -50,6 +50,7 @@
         "hnswlib-wasm": "^0.8.2",
         "rerank": "^1.1.4",
         "tough-cookie": "^4.1.3",
+        "uuid": "^11.1.0",
         "yaml": "^2.6.1"
     }
 }
