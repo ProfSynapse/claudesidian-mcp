@@ -24,6 +24,13 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
   - Multiple embedding strategies (manual, live, idle, startup)
   - Batch operations for efficiency
 
+- 🔍 Advanced Search System
+  - Hybrid search combining semantic, keyword, and fuzzy matching
+  - Reciprocal Rank Fusion (RRF) for intelligent result ranking
+  - Multi-method search with automatic query analysis
+  - Enhanced metadata search with tag and property filtering
+  - Memory search across conversation history and workspaces
+
 - 🏗️ Agent-Mode Architecture
   - Domain-driven design with specialized agents
   - Consistent interfaces across all operations
@@ -223,12 +230,93 @@ Claudesidian supports several Ollama embedding models:
 - **Storage**: Additional space for models (nomic-embed-text is ~274MB)
 - **CPU**: Modern multi-core processor recommended
 
+## Advanced Search Capabilities
+
+Claudesidian MCP includes a sophisticated search system that combines multiple search methods to provide the most relevant results for your queries.
+
+### Hybrid Search System
+
+The plugin implements a **Hybrid Search** approach that combines three complementary search methods:
+
+1. **Semantic Search**: Uses vector embeddings to find conceptually related content
+2. **Keyword Search**: Employs BM25 algorithm for exact term matching
+3. **Fuzzy Search**: Handles typos and variations in search terms
+
+Results from all three methods are combined using **Reciprocal Rank Fusion (RRF)**, which intelligently weighs and merges results to provide the most relevant matches.
+
+### Intelligent Query Analysis
+
+The system automatically analyzes your search queries to determine the best search strategy:
+
+- **Exact Queries**: Prioritizes keyword matching for precise terms
+- **Conceptual Queries**: Emphasizes semantic understanding for abstract concepts  
+- **Exploratory Queries**: Focuses on broad discovery and related topics
+- **Mixed Queries**: Balances all search methods for comprehensive results
+
+### Enhanced Metadata Search
+
+Advanced metadata search capabilities include:
+
+- **Tag-based search**: Find files by specific tags or combinations of tags
+- **Property filtering**: Search by custom properties and frontmatter fields
+- **Pattern matching**: Use regular expressions for complex property searches
+- **Combined criteria**: Combine tags and properties with AND/OR logic
+
+### Memory Search
+
+Search across your conversation history and workspace memory:
+
+- **Memory traces**: Find past conversations and AI interactions
+- **Session history**: Search within specific session contexts  
+- **Workspace memory**: Locate project-specific information
+- **Context preservation**: Maintain conversation continuity across searches
+
+### Search Result Features
+
+- **File-based grouping**: Results grouped by file with multiple snippets per file
+- **Relevance scoring**: Advanced scoring considers content type, exact matches, and graph relationships
+- **Connected notes**: Discover related notes through wikilink connections
+- **Rich metadata**: Includes file paths, modification dates, and content previews
+
 ## Security
 
 - The plugin runs an MCP server that only accepts local connections
 - All vault operations require explicit user permission
 - Memory storage is contained within your vault
 - No data is sent externally without consent, except for embedding API calls if you enable the Memory Manager feature
+
+## Custom Prompts and Agent Management
+
+Claudesidian MCP includes a powerful **AgentManager** that allows you to create and manage custom AI prompts, effectively creating your own specialized AI agents for specific tasks.
+
+### Custom Prompt Features
+
+- **Create Custom Agents**: Define specialized prompts for specific use cases
+- **Enable/Disable Management**: Toggle prompts on/off as needed
+- **Multi-Vault Support**: Separate prompt collections per vault
+- **Persistent Storage**: Prompts are saved in your Obsidian settings
+- **Session Integration**: Custom prompts work seamlessly with memory sessions
+
+### Use Cases for Custom Prompts
+
+- **Writing Assistants**: Create prompts for specific writing styles or formats
+- **Code Review**: Specialized prompts for different programming languages
+- **Research Helpers**: Domain-specific research and analysis prompts
+- **Content Organization**: Prompts for structuring and organizing notes
+- **Task-Specific Workflows**: Custom prompts for recurring tasks
+
+### Managing Custom Prompts
+
+Through the AgentManager, you can:
+
+1. **List Prompts**: View all available custom prompts or only enabled ones
+2. **Create Prompts**: Add new custom prompts with names and descriptions
+3. **Update Prompts**: Modify existing prompts and their settings
+4. **Toggle Status**: Enable or disable prompts without deleting them
+5. **Delete Prompts**: Remove prompts you no longer need
+6. **Get Specific Prompts**: Retrieve individual prompts by name or ID
+
+Custom prompts integrate seamlessly with the plugin's session and memory management, allowing for sophisticated, context-aware AI interactions tailored to your specific needs.
 
 ## Agent-Mode Architecture
 
@@ -296,13 +384,15 @@ The VaultManager agent provides operations for managing files and folders in the
 | duplicateNote| Create a duplicate of a note    | sourcePath, targetPath, overwrite             |
 
 #### 4. VaultLibrarian Agent
-The VaultLibrarian agent provides operations for searching and navigating the vault.
+The VaultLibrarian agent provides advanced search operations across the vault using multiple search methods.
 
-| Mode       | Description                       | Parameters                                     |
-|------------|-----------------------------------|------------------------------------------------|
-| search     | Search content with multiple options | query, type, paths, limit, includeMetadata  |
-| vector     | Perform semantic vector search    | query, limit, filter, includeContent          |
-| batch      | Perform batch operations          | operations[]                                   |
+| Mode          | Description                            | Parameters                                     |
+|---------------|----------------------------------------|------------------------------------------------|
+| search        | Universal search with hybrid methods   | query, type, paths, limit, includeMetadata    |
+| searchFiles   | Search and discover files by name      | query, path, recursive, extension, limit      |
+| searchFolders | Search and discover folders by name    | query, path, recursive, limit                  |
+| vector        | Perform semantic vector search         | query, limit, filter, includeContent          |
+| batch         | Perform batch search operations        | operations[]                                   |
 
 #### 5. MemoryManager Agent
 The MemoryManager agent provides operations for managing sessions, states, and workspaces.
@@ -324,6 +414,19 @@ The MemoryManager agent provides operations for managing sessions, states, and w
 | editWorkspace   | Edit a workspace                    | workspaceId, name, description, addTags       |
 | deleteWorkspace | Delete a workspace                  | workspaceId, deleteAll                        |
 | loadWorkspace   | Load a workspace                    | workspaceId                                   |
+| searchMemory    | Search memory traces and sessions   | query, type, limit, workspaceFilter           |
+
+#### 6. AgentManager Agent
+The AgentManager agent provides operations for managing custom AI prompts and user-defined agents.
+
+| Mode         | Description                         | Parameters                                    |
+|--------------|-------------------------------------|-----------------------------------------------|
+| listPrompts  | List all or enabled custom prompts | enabledOnly, sessionId, context               |
+| getPrompt    | Get a specific custom prompt        | id, name, sessionId, context                  |
+| createPrompt | Create a new custom prompt          | name, prompt, enabled, sessionId, context     |
+| updatePrompt | Update an existing custom prompt    | id, name, prompt, enabled, sessionId, context |
+| deletePrompt | Delete a custom prompt              | id, sessionId, context                        |
+| togglePrompt | Toggle prompt enabled/disabled state| id, sessionId, context                        |
 
 
 ```mermaid
