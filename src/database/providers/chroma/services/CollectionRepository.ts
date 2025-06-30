@@ -373,10 +373,7 @@ export class CollectionRepository {
     
     const items = this.getAllItems();
     if (items.length > 0) {
-      console.log(`[CollectionRepository] Rebuilding HNSW index for ${this.collectionName} with ${items.length} items`);
       await this.hnswService.indexCollection(this.collectionName, items);
-      const stats = this.hnswService.getIndexStats(this.collectionName);
-      console.log(`[CollectionRepository] HNSW index rebuilt successfully:`, stats);
     }
   }
 }

@@ -72,7 +72,7 @@ export class HnswSearchService {
       // Load HNSW WASM library
       this.hnswLib = await loadHnswlib();
       this.isInitialized = true;
-      console.log('[HnswSearchService] HNSW service initialized');
+      // HNSW service initialized
     } catch (error) {
       console.error('[HnswSearchService] Failed to initialize HNSW:', error);
       throw error;
@@ -98,7 +98,7 @@ export class HnswSearchService {
     }
 
     const dimension = firstEmbedding.length;
-    console.log(`[HnswSearchService] Creating HNSW index for ${collectionName} with ${items.length} items, dimension: ${dimension}`);
+    // Creating HNSW index
 
     try {
       // Create new HNSW index using loaded library
@@ -183,7 +183,7 @@ export class HnswSearchService {
           
           // Log successful addition for first few items
           if (i < 3) {
-            console.log(`[HnswSearchService] Successfully added item ${i} (${item.id}), range: [${validationResults.valueRange.min.toFixed(4)}, ${validationResults.valueRange.max.toFixed(4)}]`);
+            // Item added to index
           }
           
         } catch (error) {
@@ -213,7 +213,7 @@ export class HnswSearchService {
         nextId
       });
 
-      console.log(`[HnswSearchService] Successfully indexed ${idToItem.size} items for collection: ${collectionName}`);
+      // Index creation complete
     } catch (error) {
       console.error(`[HnswSearchService] Failed to create index for collection ${collectionName}:`, error);
       throw error;

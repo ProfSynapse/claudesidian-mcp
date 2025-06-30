@@ -111,7 +111,7 @@ export default class ClaudesidianPlugin extends Plugin {
                     console.error(`Failed to verify ChromaDB directory creation at: ${chromaDbDir}`);
                 }
             } else {
-                console.log(`ChromaDB directory exists at: ${chromaDbDir}`);
+                // ChromaDB directory verified
             }
             
             // Check if there's a collections folder
@@ -223,12 +223,11 @@ export default class ClaudesidianPlugin extends Plugin {
             this.vectorStore.startSystemOperation();
             
             await this.vectorStore.initialize();
-            console.log("ChromaDB vector store initialized successfully");
+            // Vector store initialized
             
             // Check if we can access the store and collection
             const diagnostics = await this.vectorStore.getDiagnostics();
-            console.log(`ChromaDB diagnostics: ${diagnostics.totalCollections} collections found`);
-            console.log(`Storage mode: ${diagnostics.storageMode}, path: ${diagnostics.persistentPath}`);
+            // Database diagnostics completed
             
             // Check if file_embeddings collection has any data
             try {
@@ -277,6 +276,7 @@ export default class ClaudesidianPlugin extends Plugin {
                 console.warn(`Failed to load existing embeddings into HNSW: ${error.message}`);
             });
             
+            
             await this.workspaceService.initialize().catch(error => {
                 console.warn(`Failed to initialize workspace service: ${error.message}`);
             });
@@ -308,7 +308,7 @@ export default class ClaudesidianPlugin extends Plugin {
         };
 
         // Diagnostic: Log the actual embedding strategy being used
-        console.log(`[Main] Embedding strategy initialized: ${embeddingStrategy.type} (from settings: ${this.settings?.settings?.memory?.embeddingStrategy})`);
+        // Embedding strategy configured
         
         this.fileEventManager = new FileEventManagerModular(
             this.app,
@@ -324,10 +324,16 @@ export default class ClaudesidianPlugin extends Plugin {
             
             // Process startup queue if using startup embedding strategy
             if (embeddingStrategy.type === 'startup') {
-                console.log('[Main] Processing startup embedding queue...');
+                // Processing startup queue
                 // Add a short delay to ensure vault is fully ready
                 setTimeout(async () => {
                     await this.fileEventManager.processStartupQueue();
+                    // After startup queue processing is complete, initialize search indexes
+                    if (this.connector) {
+                        await this.initializeSearchIndexes().catch(error => {
+                            console.warn(`Failed to initialize search indexes after startup processing: ${error.message}`);
+                        });
+                    }
                 }, 1000); // 1 second delay
             }
         } catch (error) {
@@ -383,6 +389,14 @@ export default class ClaudesidianPlugin extends Plugin {
         // Initialize connector with settings
         this.connector = new MCPConnector(this.app, this);
         await this.connector.start();
+        
+        // Initialize search indexes after connector is ready (for non-startup strategies)
+        // For startup strategy, this happens after queue processing completes
+        if (embeddingStrategy.type !== 'startup') {
+            await this.initializeSearchIndexes().catch(error => {
+                console.warn(`Failed to initialize search indexes: ${error.message}`);
+            });
+        }
         
         // Add settings tab with services directly
         // Get agent references for settings tab
@@ -769,6 +783,45 @@ export default class ClaudesidianPlugin extends Plugin {
             
         } catch (error) {
             console.error('[ClaudesidianPlugin] Failed to load existing embeddings into HNSW:', error);
+            throw error;
+        }
+    }
+
+    private async initializeSearchIndexes(): Promise<void> {
+        try {
+            console.log('[ClaudesidianPlugin] Initializing search indexes...');
+            
+            // Get the VaultLibrarian agent from the connector
+            if (!this.connector) {
+                console.warn('[ClaudesidianPlugin] Connector not available yet - skipping search index initialization');
+                return;
+            }
+            
+            const vaultLibrarian = this.connector.getVaultLibrarian();
+            if (!vaultLibrarian) {
+                console.warn('[ClaudesidianPlugin] VaultLibrarian not available - skipping search index initialization');
+                return;
+            }
+            
+            // Get the UniversalSearchService from the search mode
+            const searchMode = vaultLibrarian.getMode('search');
+            if (!searchMode || !('universalSearchService' in searchMode)) {
+                console.warn('[ClaudesidianPlugin] SearchMode or UniversalSearchService not available - skipping search index initialization');
+                return;
+            }
+            
+            const universalSearchService = (searchMode as any).universalSearchService;
+            if (universalSearchService && typeof universalSearchService.populateHybridSearchIndexes === 'function') {
+                const startTime = Date.now();
+                await universalSearchService.populateHybridSearchIndexes();
+                const duration = Date.now() - startTime;
+                console.log(`[ClaudesidianPlugin] ✓ Plugin fully initialized - vector store, search indexes, and all services ready (${duration}ms)`);
+            } else {
+                console.warn('[ClaudesidianPlugin] populateHybridSearchIndexes method not available');
+            }
+            
+        } catch (error) {
+            console.error('[ClaudesidianPlugin] Failed to initialize search indexes:', error);
             throw error;
         }
     }

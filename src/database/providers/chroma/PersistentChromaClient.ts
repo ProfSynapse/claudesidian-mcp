@@ -401,7 +401,7 @@ export class StrictPersistenceChromaClient {
         
         // Load collections (async but immediate)
         this.loadCollectionsFromDisk()
-          .then(() => console.log(`Collection loading complete`))
+          .then(() => { /* Collections loaded */ })
           .catch(err => console.error('Error in async collection loading:', err));
       } else {
         throw new Error('Storage path is required for StrictPersistenceChromaClient');
@@ -454,7 +454,7 @@ export class StrictPersistenceChromaClient {
       }
       
       this.collectionsLoaded = true;
-      console.log(`Finished loading ${this.collections.size} collections from disk`);
+      // Collections loaded from disk
     } catch (error) {
       console.error('Failed to load collections from disk:', error);
       throw error;

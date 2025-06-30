@@ -149,7 +149,7 @@ export class PersistenceManager {
         return null;
       }
 
-      console.log(`Loading data from ${dataFilePath}...`);
+      // Loading collection data
 
       // Read the data file
       const fileContents = this.fs.readFileSync(dataFilePath, 'utf8');

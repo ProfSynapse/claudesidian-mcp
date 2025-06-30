@@ -71,40 +71,36 @@ export class UniversalSearchService {
     // Initialize hybrid search service with semantic search capability
     if (hnswSearchService) {
       this.hybridSearchService = new HybridSearchService(hnswSearchService);
-      console.log('[UniversalSearchService] Hybrid search initialized');
+      // Hybrid search initialized
       
-      // Populate hybrid search indexes with existing files (async, non-blocking)
-      this.populateHybridSearchIndexes().catch(error => {
-        console.error('[UniversalSearchService] Failed to populate hybrid search indexes:', error);
-      });
+      // Note: Search indexes will be populated during plugin startup sequence
+      // instead of immediately in constructor to coordinate with other initialization
     }
   }
 
   /**
    * Populate hybrid search indexes with existing vault content
    */
-  private async populateHybridSearchIndexes(): Promise<void> {
+  async populateHybridSearchIndexes(): Promise<void> {
     if (!this.hybridSearchService) {
       console.error('[UniversalSearchService] No hybrid search service available for indexing');
       return;
     }
 
     try {
-      console.log('[UniversalSearchService] Starting hybrid search index population...');
+      // Populating search indexes
       
       const files = this.plugin.app.vault.getMarkdownFiles();
-      console.log(`[UniversalSearchService] Found ${files.length} markdown files to index`);
+      // Processing files for search indexing
       
       let indexedCount = 0;
       let errorCount = 0;
       
       for (const file of files) {
         try {
-          console.log(`[UniversalSearchService] Indexing file: ${file.path}`);
           const content = await this.plugin.app.vault.read(file);
           
           if (!content || content.trim().length === 0) {
-            console.log(`[UniversalSearchService] Skipping empty file: ${file.path}`);
             continue;
           }
 
@@ -112,14 +108,6 @@ export class UniversalSearchService {
           const cache = this.plugin.app.metadataCache.getFileCache(file);
           const tags = cache?.tags?.map(t => t.tag.replace('#', '')) || [];
           const headers = this.extractHeaders(content);
-          
-          console.log(`[UniversalSearchService] File ${file.path} - Headers: [${headers.join(', ')}], Tags: [${tags.join(', ')}], Content length: ${content.length}`);
-          
-          // Check if this file contains "clustering"
-          if (content.toLowerCase().includes('clustering')) {
-            console.log(`[UniversalSearchService] *** FOUND CLUSTERING in ${file.path} ***`);
-            console.log(`[UniversalSearchService] Sample content: ${content.substring(0, 200)}...`);
-          }
           
           // Index the file in hybrid search
           this.hybridSearchService.indexDocument(
@@ -143,11 +131,7 @@ export class UniversalSearchService {
         }
       }
       
-      console.log(`[UniversalSearchService] Hybrid search indexing complete - Indexed: ${indexedCount}, Errors: ${errorCount}`);
-      
-      // Log search service stats
-      const stats = this.hybridSearchService.getStats();
-      console.log('[UniversalSearchService] Final hybrid search stats:', stats);
+      console.log(`[UniversalSearchService] Search indexes populated: ${indexedCount} files indexed, ${errorCount} errors`);
       
     } catch (error) {
       console.error('[UniversalSearchService] Failed to populate hybrid search indexes:', error);

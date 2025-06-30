@@ -36,11 +36,7 @@ export class EmbeddingSettingsManager {
       const pluginSettings = pluginAsClaudesidian?.settings?.settings?.memory || DEFAULT_MEMORY_SETTINGS;
       this.settings = { ...pluginSettings };
       
-      console.log('EmbeddingSettingsManager initialized with settings:', {
-        embeddingsEnabled: this.settings.embeddingsEnabled,
-        apiProvider: this.settings.apiProvider,
-        hasProviderSettings: !!this.settings.providerSettings
-      });
+      // Embedding settings loaded
     } catch (error) {
       console.error("Failed to initialize EmbeddingSettingsManager settings:", error);
       this.settings = { ...DEFAULT_MEMORY_SETTINGS, embeddingsEnabled: false };
