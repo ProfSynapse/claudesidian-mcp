@@ -26,12 +26,6 @@ export interface MemoryParameters extends WorkspaceParameters {
  */
 export interface MemoryResult extends CommonResult {
   /**
-   * Overrides the context string from CommonResult
-   * Note: prefer memoryContext for structured memory context data
-   */
-  context?: string;
-  
-  /**
    * Optional contextual information about the memory operation
    */
   memoryContext?: {

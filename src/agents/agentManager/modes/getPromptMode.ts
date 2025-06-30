@@ -2,6 +2,7 @@ import { BaseMode } from '../../baseMode';
 import { GetPromptParams, GetPromptResult } from '../types';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
 import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
  * Mode for getting a specific custom prompt

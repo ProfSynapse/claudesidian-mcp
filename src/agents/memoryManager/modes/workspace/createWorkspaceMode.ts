@@ -11,6 +11,7 @@ import { createErrorMessage } from '../../../../utils/errorUtils';
 
 // Define a custom interface for the Claudesidian plugin
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 
 /**
  * Mode to create a new workspace
@@ -148,12 +149,14 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       
       // Use context parameter to enhance the description if provided
       let enhancedDescription = params.description || '';
-      if (params.context && (!enhancedDescription || enhancedDescription.trim() === '')) {
-        enhancedDescription = params.context;
-      } else if (params.context && enhancedDescription) {
+      const contextString = typeof params.context === 'string' ? params.context : 
+                           (typeof params.context === 'object' && params.context?.toolContext ? params.context.toolContext : '');
+      if (contextString && (!enhancedDescription || enhancedDescription.trim() === '')) {
+        enhancedDescription = contextString;
+      } else if (contextString && enhancedDescription) {
         // If both exist, append context to description with a separator if not already included
-        if (!enhancedDescription.includes(params.context)) {
-          enhancedDescription = `${enhancedDescription}\n\nPurpose: ${params.context}`;
+        if (!enhancedDescription.includes(contextString)) {
+          enhancedDescription = `${enhancedDescription}\n\nPurpose: ${contextString}`;
         }
       }
       
@@ -225,10 +228,12 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         workspacePath: [...path, newWorkspace.id]
       };
 
-      // Pass the context from parameters to result
-      const contextString = params.context ? 
+      // Pass the context from parameters to result  
+      const resultContextString = typeof params.context === 'string' ? 
         `Created workspace "${params.name}" with purpose: ${params.context}` :
-        `Created workspace "${params.name}"`;
+        (typeof params.context === 'object' && params.context?.toolContext ? 
+          `Created workspace "${params.name}" with purpose: ${params.context.toolContext}` :
+          `Created workspace "${params.name}"`);
         
       return this.prepareResult(
         true,
@@ -237,7 +242,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
           workspace: newWorkspace
         },
         undefined,
-        contextString,
+        resultContextString,
         workspaceContext
       );
       

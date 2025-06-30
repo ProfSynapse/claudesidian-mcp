@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ReadContentParams, ReadContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 
@@ -77,12 +77,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       // Record this activity in workspace memory if applicable
       await this.recordActivity(params, resultData);
       
-      const result = this.prepareResult(
-        true,
-        resultData,
-        undefined,
-        workspaceContext
-      );
+      const result = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -91,7 +86,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       
       return result;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error reading content: ', error), params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error reading content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   
@@ -145,7 +140,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     }
   ): Promise<void> {
     // Parse workspace context
-    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
     
     // Skip if no workspace context
     if (!parsedContext?.workspaceId) {

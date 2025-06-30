@@ -5,6 +5,7 @@ import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 // Memory service is used indirectly through the agent
 // Workspace service is used indirectly through the agent
 import { WorkspaceStateSnapshot } from '../../../../database/workspace-types';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 
 /**
  * Mode for editing a workspace state

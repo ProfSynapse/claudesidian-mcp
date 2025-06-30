@@ -4,6 +4,7 @@ import { WorkspaceMemoryTrace, WorkspaceStateSnapshot } from '../../../../databa
 import { LoadStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { MetadataSearchService } from '../../../../database/services/MetadataSearchService';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 // Memory service is used indirectly through the agent
 // Workspace service is used indirectly through the agent
 
@@ -357,7 +358,56 @@ ${contextSummary}`;
         }
       }
       
-      // Return result with context
+      // Extract rich metadata from the state
+      const stateMetadata = state.state?.metadata || {};
+      const conversationHistory = {
+        traces: restoredTraces.map(trace => ({
+          id: trace.id,
+          timestamp: trace.timestamp,
+          content: trace.content.substring(0, 200) + '...',
+          activityType: trace.activityType,
+          tool: trace.metadata?.tool,
+          // contextDetail removed - not in metadata type
+        })),
+        timeline: restoredTraces.map(trace => ({
+          date: new Date(trace.timestamp).toISOString(),
+          event: `${trace.activityType} using ${trace.metadata?.tool || 'unknown tool'}`,
+          summary: trace.content.substring(0, 100) + '...'
+        }))
+      };
+
+      const filesInteracted = {
+        read: Array.from(associatedNotes).map(path => ({ path, interaction: 'read', timestamp: state.timestamp })),
+        created: [],
+        modified: []
+      };
+
+      const toolsUsed = restoredTraces.reduce((acc, trace) => {
+        const tool = trace.metadata?.tool || 'unknown';
+        const existing = acc.find(t => t.tool === tool);
+        if (existing) {
+          existing.count++;
+          // contextDetail property doesn't exist in metadata type
+          // purposes will be empty for now
+        } else {
+          acc.push({
+            tool,
+            mode: 'various',
+            count: 1,
+            purposes: [] // contextDetail property doesn't exist in metadata type
+          });
+        }
+        return acc;
+      }, [] as any[]);
+
+      const keyTopics = [
+        ...(stateMetadata.tags || []),
+        ...(restorationGoal ? [restorationGoal] : []),
+        workspace.name,
+        originalSessionName
+      ].filter(Boolean);
+
+      // Return result with enhanced structured context
       return this.prepareResult(true, {
         stateId,
         name: stateName, 
@@ -365,13 +415,27 @@ ${contextSummary}`;
         sessionId: originalSessionId,
         newSessionId,
         timestamp: Date.now(),
+        metadata: {
+          created: stateCreatedAt,
+          updated: new Date().toISOString(),
+          duration: Date.now() - state.timestamp,
+          traceCount: restoredTraces.length
+        },
+        conversationHistory,
+        filesInteracted,
+        toolsUsed,
+        keyTopics,
+        summary: contextSummary,
         restoredContext: {
           summary: contextSummary,
           associatedNotes: Array.from(associatedNotes),
           stateCreatedAt,
           originalSessionId,
           continuationHistory,
-          tags: resultTags
+          tags: resultTags,
+          purpose: stateMetadata.purpose,
+          sessionMemory: stateMetadata.sessionMemory,
+          toolContext: stateMetadata.toolContext
         }
       });
     } catch (error) {
@@ -595,58 +659,128 @@ ${contextSummary}`;
           type: 'number',
           description: 'Restoration timestamp'
         },
-        restoredContext: {
+        metadata: {
           type: 'object',
-          description: 'Information about the restored context',
           properties: {
-            summary: {
+            created: {
               type: 'string',
-              description: 'Summary of the restored state'
+              description: 'State creation date'
             },
-            relevantFiles: {
-              type: 'array',
-              items: {
-                type: 'string'
-              },
-              description: 'List of key files included in the state'
-            },
-            stateCreatedAt: {
+            updated: {
               type: 'string',
-              description: "State's original creation date"
+              description: 'State restoration date'
             },
-            originalSessionId: {
-              type: 'string',
-              description: 'The session that created the state'
+            duration: {
+              type: 'number',
+              description: 'Duration between creation and restoration in milliseconds'
             },
-            continuationHistory: {
+            traceCount: {
+              type: 'number',
+              description: 'Number of memory traces restored'
+            }
+          },
+          description: 'Metadata about the restored state'
+        },
+        conversationHistory: {
+          type: 'object',
+          properties: {
+            traces: {
               type: 'array',
               items: {
                 type: 'object',
                 properties: {
-                  timestamp: {
-                    type: 'number',
-                    description: 'When the event occurred'
-                  },
-                  description: {
-                    type: 'string',
-                    description: 'Description of the event'
-                  }
+                  id: { type: 'string' },
+                  timestamp: { type: 'number' },
+                  content: { type: 'string' },
+                  activityType: { type: 'string' },
+                  tool: { type: 'string' },
+                  contextDetail: { type: 'object' }
                 }
               },
-              description: 'Continuation history (timeline)'
+              description: 'Memory traces from the original session'
             },
-            tags: {
+            timeline: {
               type: 'array',
               items: {
-                type: 'string'
+                type: 'object',
+                properties: {
+                  date: { type: 'string' },
+                  event: { type: 'string' },
+                  summary: { type: 'string' }
+                }
               },
-              description: 'Tags associated with this restoration'
+              description: 'Timeline of conversation events'
             }
           },
-          required: ['summary', 'relevantFiles', 'stateCreatedAt', 'originalSessionId', 'tags']
+          description: 'Full conversation history reconstruction'
+        },
+        filesInteracted: {
+          type: 'object',
+          properties: {
+            read: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  path: { type: 'string' },
+                  interaction: { type: 'string' },
+                  timestamp: { type: 'number' }
+                }
+              }
+            },
+            created: { type: 'array', items: { type: 'object' } },
+            modified: { type: 'array', items: { type: 'object' } }
+          },
+          description: 'Files that were interacted with'
+        },
+        toolsUsed: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              tool: { type: 'string' },
+              mode: { type: 'string' },
+              count: { type: 'number' },
+              purposes: {
+                type: 'array',
+                items: { type: 'string' }
+              }
+            }
+          },
+          description: 'Tools used and their purposes'
+        },
+        keyTopics: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Key topics and concepts from the restored session'
+        },
+        summary: {
+          type: 'string',
+          description: 'Comprehensive restoration summary'
+        },
+        restoredContext: {
+          type: 'object',
+          description: 'Legacy context information for backward compatibility',
+          properties: {
+            summary: { type: 'string' },
+            associatedNotes: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            stateCreatedAt: { type: 'string' },
+            originalSessionId: { type: 'string' },
+            continuationHistory: { type: 'array' },
+            tags: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            purpose: { type: 'string' },
+            sessionMemory: { type: 'string' },
+            toolContext: { type: 'string' }
+          }
         }
       },
-      required: ['stateId', 'workspaceId', 'newSessionId', 'timestamp', 'restoredContext']
+      required: ['stateId', 'workspaceId', 'newSessionId', 'timestamp', 'conversationHistory', 'summary']
     };
     
     return baseSchema;

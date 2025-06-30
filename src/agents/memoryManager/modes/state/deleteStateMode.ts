@@ -1,6 +1,7 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { DeleteStateParams, StateResult } from '../../types';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 // Memory service is used indirectly through the agent
 // Workspace service is used indirectly through the agent
 

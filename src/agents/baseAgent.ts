@@ -8,6 +8,7 @@ import {
   prepareModeCallParams
 } from '../utils/contextUtils';
 import { createErrorMessage } from '../utils/errorUtils';
+import { extractContextFromParams } from '../utils/contextUtils';
 
 /**
  * Base class for all agents in the MCP plugin

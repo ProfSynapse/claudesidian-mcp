@@ -1,5 +1,6 @@
 import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { 
   DeleteWorkspaceParameters, 
   WorkspaceResult
@@ -71,12 +72,7 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
       
       // If the workspace has children and deleteChildren is false, check if it's safe to delete
       if (workspace.childWorkspaces.length > 0 && params.deleteChildren !== true) {
-        return this.prepareResult(
-          false, 
-          undefined, 
-          `Workspace has ${workspace.childWorkspaces.length} child workspaces. Set deleteChildren to true to delete them as well.`,
-          workspaceContext
-        );
+        return this.prepareResult(false, undefined, `Workspace has ${workspace.childWorkspaces.length} child workspaces. Set deleteChildren to true to delete them as well.`, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       }
       
       // Delete the workspace (WorkspaceService will handle parent-child relationships)
@@ -85,14 +81,9 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
         preserveSettings: params.preserveSettings
       });
       
-      return this.prepareResult(
-        true,
-        {
+      return this.prepareResult(true, {
           summary: `Workspace "${workspace.name}" deleted successfully`
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
     } catch (error: any) {
       return this.prepareResult(

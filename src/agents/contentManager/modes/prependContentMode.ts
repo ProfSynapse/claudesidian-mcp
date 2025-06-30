@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { PrependContentParams, PrependContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for prepending content to a file
@@ -39,16 +40,11 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
       // Update embeddings for the file if available
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(
-        true,
-        {
+      const response = this.prepareResult(true, {
           filePath,
           prependedLength: result.prependedLength,
           totalLength: result.totalLength
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -57,7 +53,7 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error prepending content: ', error), params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error prepending content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

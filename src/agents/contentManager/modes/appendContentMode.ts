@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { AppendContentParams, AppendContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for appending content to a file
@@ -38,16 +39,11 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(
-        true,
-        {
+      const response = this.prepareResult(true, {
           filePath,
           appendedLength: result.appendedLength,
           totalLength: result.totalLength
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -56,7 +52,7 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error appending content: ', error), params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error appending content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

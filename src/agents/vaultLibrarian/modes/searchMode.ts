@@ -202,7 +202,8 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
     
     // Removed verbose debug logging for schema generation
     
-    return schema;
+    // Merge with common schema (sessionId and context)
+    return this.getMergedSchema(schema);
   }
 
   /**

@@ -56,7 +56,7 @@ export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         path: {
@@ -75,5 +75,8 @@ export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
       required: ['path', 'newPath'],
       description: 'Move a note to a new location'
     };
+    
+    // Merge with common schema (sessionId and context)
+    return this.getMergedSchema(modeSchema);
   }
 }

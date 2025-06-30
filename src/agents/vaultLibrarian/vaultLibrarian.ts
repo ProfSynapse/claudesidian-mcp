@@ -3,6 +3,9 @@ import { BaseAgent } from '../baseAgent';
 import { VaultLibrarianConfig } from './config';
 import {
   SearchMode,
+  SearchFilesMode,
+  SearchFoldersMode,
+  SearchMemoryMode,
   BatchMode
 } from './modes';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
@@ -99,6 +102,30 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.embeddingService || undefined, 
       this.memoryService || undefined,
       this.workspaceService || undefined
+    ));
+    
+    // Register specific search modes
+    this.registerMode(new SearchFilesMode(
+      plugin || ({ app } as any),
+      this.hnswSearchService || undefined,
+      this.embeddingService || undefined, 
+      this.memoryService || undefined,
+      this.workspaceService || undefined
+    ));
+    
+    this.registerMode(new SearchFoldersMode(
+      plugin || ({ app } as any),
+      this.hnswSearchService || undefined,
+      this.embeddingService || undefined, 
+      this.memoryService || undefined,
+      this.workspaceService || undefined
+    ));
+    
+    this.registerMode(new SearchMemoryMode(
+      plugin || ({ app } as any),
+      this.memoryService || undefined,
+      this.workspaceService || undefined,
+      this.embeddingService || undefined
     ));
     
     // Always register BatchMode (supports both semantic and non-semantic users)

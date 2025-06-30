@@ -4,6 +4,7 @@ import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
 
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 /**
  * Parameters for list folders mode
  */
@@ -110,7 +111,7 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       // Sort folders alphabetically
       folderData.sort((a, b) => a.name.localeCompare(b.name));
       
-      return this.prepareResult(true, { folders: folderData }, undefined, params.workspaceContext);
+      return this.prepareResult(true, { folders: folderData }, undefined, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
       
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to list folders: ', error));

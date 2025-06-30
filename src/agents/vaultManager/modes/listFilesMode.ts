@@ -4,6 +4,7 @@ import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
 
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 /**
  * Parameters for list files mode
  */
@@ -121,7 +122,7 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
         ? 'Listing files in root directory only. This may not include all notes in the vault - many notes may be organized in subfolders. Use listFolders mode to explore the full vault structure.'
         : undefined;
       
-      return this.prepareResult(true, { files: fileData }, message, params.workspaceContext);
+      return this.prepareResult(true, { files: fileData }, message, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
       
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to list files: ', error));

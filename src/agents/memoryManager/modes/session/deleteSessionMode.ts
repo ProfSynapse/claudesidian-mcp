@@ -1,6 +1,7 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { DeleteSessionParams, SessionResult } from '../../types';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 
 /**
  * Mode for deleting a session and optionally its associated data
