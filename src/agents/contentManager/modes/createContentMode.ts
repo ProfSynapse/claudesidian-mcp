@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { CreateContentParams, CreateContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for creating a new file with content
@@ -38,11 +39,11 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       // Validate parameters
       if (!filePath) {
-        return this.prepareResult(false, undefined, 'File path is required', workspaceContext);
+        return this.prepareResult(false, undefined, 'File path is required', extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       }
       
       if (content === undefined || content === null) {
-        return this.prepareResult(false, undefined, 'Content is required', workspaceContext);
+        return this.prepareResult(false, undefined, 'Content is required', extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       }
       
       // Create file
@@ -50,15 +51,10 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const result = this.prepareResult(
-        true,
-        {
+      const result = this.prepareResult(true, {
           filePath,
           created: file.stat.ctime
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -67,7 +63,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       return result;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error creating file: ', error), params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error creating file: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

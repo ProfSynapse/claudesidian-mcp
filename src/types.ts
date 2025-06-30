@@ -516,9 +516,15 @@ export interface CommonParameters {
   sessionId: string;
   
   /**
-   * Background information and purpose for running this tool
+   * Contextual information for this tool call
+   * Can be either a string (legacy) or rich object (enhanced)
    */
-  context: string;
+  context: string | {
+    sessionMemory: string;
+    toolContext: string;
+    primaryGoal: string;
+    subgoal: string;
+  };
   
   /**
    * Optional workspace context for scoping operations
@@ -558,9 +564,15 @@ export interface CommonResult {
   sessionId?: string;
   
   /**
-   * Background information and purpose for running this tool
+   * Contextual information for this tool call
+   * Can be either a string (legacy) or rich object (enhanced)
    */
-  context?: string;
+  context?: string | {
+    sessionMemory: string;
+    toolContext: string;
+    primaryGoal: string;
+    subgoal: string;
+  };
   
   /**
    * Workspace context that was used (for continuity)

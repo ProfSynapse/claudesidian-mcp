@@ -4,6 +4,7 @@ import { DeleteContentParams, DeleteContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for deleting content from a file
@@ -46,15 +47,10 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(
-        true,
-        {
+      const response = this.prepareResult(true, {
           filePath,
           deletions
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -63,7 +59,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error deleting content: ', error), params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error deleting content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

@@ -3,6 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace } from '../../../../database/workspace-types';
 import { CreateStateParams, StateResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 // Memory service is used indirectly through the agent
 // Workspace service is used indirectly through the agent
 
@@ -96,7 +97,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             false, 
             undefined, 
             `Failed to determine workspace: ${error instanceof Error ? error.message : String(error)}`,
-            { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+            extractContextFromParams(params)
           );
         }
       }
@@ -123,7 +124,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             false, 
             undefined, 
             `Workspace with ID ${workspaceId} not found`,
-            { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+            extractContextFromParams(params)
           );
         }
       } catch (error) {
@@ -132,7 +133,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           false, 
           undefined, 
           `Error retrieving workspace: ${error instanceof Error ? error.message : String(error)}`,
-          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+          extractContextFromParams(params)
         );
       }
       
@@ -187,7 +188,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
               false, 
               undefined, 
               `Failed to create session: ${error instanceof Error ? error.message : String(error)}`,
-              { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+              extractContextFromParams(params)
             );
           }
         }
@@ -204,10 +205,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             false, 
             undefined, 
             `Session with ID ${usedSessionId} not found`,
-            { 
-              sessionId: params.sessionId, 
-              workspaceContext: params.workspaceContext 
-            }
+            extractContextFromParams(params)
           );
         }
         
@@ -254,7 +252,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
               false,
               undefined,
               `Session validation failed: ${sessionError instanceof Error ? sessionError.message : String(sessionError)}`,
-              { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+              extractContextFromParams(params)
             );
           }
         }
@@ -292,7 +290,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
               false,
               undefined,
               `Failed to create an active session: ${sessionError instanceof Error ? sessionError.message : String(sessionError)}`,
-              { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+              extractContextFromParams(params)
             );
           }
         }
@@ -302,7 +300,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           false, 
           undefined, 
           `Error retrieving session: ${error instanceof Error ? error.message : String(error)}`,
-          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+          extractContextFromParams(params)
         );
       }
       
@@ -317,12 +315,20 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           enhancedDescription += ` - Reason: ${reason}`;
         }
         if (params.context) {
-          enhancedDescription += ` - Purpose: ${params.context}`;
+          const contextObj = typeof params.context === 'object' ? params.context : { toolContext: params.context };
+          if ('primaryGoal' in contextObj && contextObj.primaryGoal) {
+            enhancedDescription += ` - Goal: ${contextObj.primaryGoal}`;
+          }
+          if ('sessionMemory' in contextObj && contextObj.sessionMemory) {
+            enhancedDescription += ` - Context: ${contextObj.sessionMemory.substring(0, 100)}...`;
+          }
         }
         enhancedDescription += ` - Session: ${session.name}`;
-      } else if (params.context && !enhancedDescription.includes(params.context)) {
-        // If description exists but doesn't include the context, append it
-        enhancedDescription = `${enhancedDescription}\n\nPurpose: ${params.context}`;
+      } else if (params.context) {
+        const contextObj = typeof params.context === 'object' ? params.context : { toolContext: params.context };
+        if ('primaryGoal' in contextObj && contextObj.primaryGoal && !enhancedDescription.includes(contextObj.primaryGoal)) {
+          enhancedDescription = `${enhancedDescription}\n\nGoal: ${contextObj.primaryGoal}`;
+        }
       }
       
       // Get recent traces for enhanced context
@@ -378,7 +384,9 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         workspaceName: workspace.name,
         reason: reason || 'Manual state save',
         // Store the context parameter for better discoverability
-        purpose: params.context,
+        purpose: typeof params.context === 'object' ? params.context.primaryGoal : params.context,
+        sessionMemory: typeof params.context === 'object' ? params.context.sessionMemory : undefined,
+        toolContext: typeof params.context === 'object' ? params.context.toolContext : undefined,
         summary: contextSummary,
         includedFiles,
         includesFileContents: includeFileContents,
@@ -444,14 +452,16 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           false, 
           undefined, 
           errorMessage,
-          { sessionId: params.sessionId, workspaceContext: params.workspaceContext }
+          extractContextFromParams(params)
         );
       }
       
       // Record a memory trace about the state creation
+      const contextObj = typeof params.context === 'object' ? params.context : { toolContext: params.context };
       const stateTraceContent = `Created state "${name}" of workspace "${workspace.name}" at ${stateDate}
 ${reason ? `Reason: ${reason}` : ''}
-${params.context ? `Purpose: ${params.context}` : ''}
+${'primaryGoal' in contextObj && contextObj.primaryGoal ? `Goal: ${contextObj.primaryGoal}` : ''}
+${'sessionMemory' in contextObj && contextObj.sessionMemory ? `Session Context: ${contextObj.sessionMemory}` : ''}
 
 This state captures the workspace state after ${recentTraces.length} activities in session "${session.name}"
 and includes ${includedFiles.length} relevant files.
@@ -523,8 +533,9 @@ ${contextSummary}`;
       
       // Return result with enhanced context
       // Include the purpose/context in the result for better discoverability
+      const primaryGoal = ('primaryGoal' in contextObj && contextObj.primaryGoal) ? contextObj.primaryGoal : 'state preservation';
       const contextString = params.context ? 
-        `Created state "${name}" with purpose: ${params.context}` :
+        `Created state "${name}" with goal: ${primaryGoal}` :
         `Created state "${name}" ${reason ? `Reason: ${reason}` : ''}`;
         
       return this.prepareResult(
@@ -541,11 +552,13 @@ ${contextSummary}`;
             traceCount: recentTraces.length,
             tags: enhancedMetadata.tags,
             reason,
-            purpose: params.context  // Add purpose/context directly in result
+            purpose: ('primaryGoal' in contextObj && contextObj.primaryGoal) ? contextObj.primaryGoal : undefined,
+            sessionMemory: ('sessionMemory' in contextObj && contextObj.sessionMemory) ? contextObj.sessionMemory : undefined,
+            toolContext: contextObj.toolContext
           }
         },
         undefined,
-        contextString
+        extractContextFromParams(params)
       );
     } catch (error) {
       console.error('Error in create state mode:', error);
@@ -554,10 +567,7 @@ ${contextSummary}`;
         false, 
         undefined, 
         `Error creating state: ${error instanceof Error ? error.message : String(error)}`, 
-        { 
-          sessionId: params.sessionId, 
-          workspaceContext: params.workspaceContext 
-        }
+        extractContextFromParams(params)
       );
     }
   }
@@ -690,9 +700,31 @@ ${contextSummary}`;
           description: 'Description of the state'
         },
         context: {
-          type: 'string',
-          description: 'Purpose or goal of this state - IMPORTANT: This will be stored with the state and used in memory operations',
-          minLength: 1
+          type: 'object',
+          properties: {
+            sessionMemory: {
+              type: 'string',
+              description: 'Summary of what has happened in the conversation so far',
+              minLength: 10
+            },
+            toolContext: {
+              type: 'string', 
+              description: 'Context for why this state is being created',
+              minLength: 5
+            },
+            primaryGoal: {
+              type: 'string',
+              description: 'The overarching goal of the current conversation/task',
+              minLength: 5
+            },
+            subgoal: {
+              type: 'string',
+              description: 'What creating this state is trying to accomplish',
+              minLength: 5
+            }
+          },
+          required: ['sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],
+          description: 'Rich contextual information for creating this state'
         },
         targetSessionId: {
           type: 'string',
@@ -807,7 +839,15 @@ ${contextSummary}`;
             },
             purpose: {
               type: 'string',
-              description: 'The purpose or goal of this state derived from context parameter'
+              description: 'The primary goal of this state derived from context parameter'
+            },
+            sessionMemory: {
+              type: 'string',
+              description: 'Conversation summary at the time of state creation'
+            },
+            toolContext: {
+              type: 'string',
+              description: 'Context for why this state was created'
             },
             files: {
               type: 'array',

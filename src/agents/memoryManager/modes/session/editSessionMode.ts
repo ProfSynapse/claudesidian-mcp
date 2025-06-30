@@ -1,6 +1,7 @@
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { EditSessionParams, SessionResult } from '../../types';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 
 /**
  * Mode for editing an existing session's metadata

@@ -197,7 +197,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
    * Get parameter schema for MCP tool definition
    */
   getParameterSchema() {
-    return {
+    const batchSchema = {
       type: 'object',
       title: 'Batch Universal Search Parameters',
       description: 'Execute multiple universal searches concurrently. Each search automatically covers all content types. Use this when you need to run several different searches at once.',
@@ -286,6 +286,9 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
       required: ['searches'],
       additionalProperties: false
     };
+    
+    // Merge with common schema (sessionId and context)
+    return this.getMergedSchema(batchSchema);
   }
 
   /**

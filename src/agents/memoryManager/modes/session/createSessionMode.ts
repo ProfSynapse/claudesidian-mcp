@@ -8,6 +8,7 @@ import {
   formatSessionInstructions, 
   enhanceContextWithSessionInstructions 
 } from '../../../../utils/sessionUtils';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 
 /**
  * Mode for creating a new session with rich context
@@ -111,7 +112,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
           false, 
           undefined, 
           `Workspace with ID ${workspaceId} not found`, 
-          { workspaceContext: params.workspaceContext, sessionId: params.sessionId }
+          extractContextFromParams(params)
         );
       }
       
@@ -135,10 +136,12 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       
       // Enhance description with context if provided
       let enhancedDescription = description;
-      if (!enhancedDescription && params.context) {
-        enhancedDescription = `Purpose: ${params.context}`;
-      } else if (enhancedDescription && params.context && !enhancedDescription.includes(params.context)) {
-        enhancedDescription = `${enhancedDescription}\n\nPurpose: ${params.context}`;
+      const contextString = typeof params.context === 'string' ? params.context : 
+                           (typeof params.context === 'object' && params.context?.toolContext ? params.context.toolContext : '');
+      if (!enhancedDescription && contextString) {
+        enhancedDescription = `Purpose: ${contextString}`;
+      } else if (enhancedDescription && contextString && !enhancedDescription.includes(contextString)) {
+        enhancedDescription = `${enhancedDescription}\n\nPurpose: ${contextString}`;
       }
       
       // If session goal was provided, ensure it's included in the description
@@ -313,7 +316,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
           
 ${contextSummary}
 
-${params.context ? `Purpose: ${params.context}` : ''}
+${contextString ? `Purpose: ${contextString}` : ''}
 ${sessionGoal ? `This session's goal is to: ${sessionGoal}` : ''}
 ${previousSessionId ? 'This session continues work from a previous session.' : 'This is a new session starting from scratch.'}`;
 
@@ -376,8 +379,8 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
       }
       
       // Prepare the context string
-      let contextString = params.context ? 
-        `Created session with purpose: ${params.context}` :
+      let finalContextString = contextString ? 
+        `Created session with purpose: ${contextString}` :
         `Created session ${name || new Date().toLocaleString()}`;
       
       // Get the session context manager to check if instructions have been sent
@@ -385,7 +388,7 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
       
       // Only add instructions if they haven't been sent before
       if (sessionManager && !sessionManager.hasReceivedInstructions(finalSessionId)) {
-        contextString = enhanceContextWithSessionInstructions(finalSessionId, contextString);
+        finalContextString = enhanceContextWithSessionInstructions(finalSessionId, finalContextString);
         sessionManager.markInstructionsReceived(finalSessionId);
       }
       
@@ -402,7 +405,7 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
       // Only include session instructions if we just sent them (i.e., they weren't sent before this request)
       if (!sessionManager || 
          (sessionManager.hasReceivedInstructions(finalSessionId) && 
-          contextString.includes("[SESSION_ID:"))) {
+          finalContextString.includes("[SESSION_ID:"))) {
         resultData.sessionInstructions = formatSessionInstructions(finalSessionId);
       }
       
@@ -411,7 +414,7 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
         true, 
         resultData,
         undefined,
-        contextString
+        finalContextString
       );
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error creating session: ', error));

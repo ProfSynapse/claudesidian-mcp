@@ -7,6 +7,7 @@ import {
 import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 import { sanitizePath } from '../../../../utils/pathUtils';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 
 /**
  * Mode to add files to an existing workspace

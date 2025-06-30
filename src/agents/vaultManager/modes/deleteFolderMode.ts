@@ -54,7 +54,7 @@ export class DeleteFolderMode extends BaseMode<DeleteFolderArgs, DeleteFolderRes
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         path: {
@@ -69,5 +69,8 @@ export class DeleteFolderMode extends BaseMode<DeleteFolderArgs, DeleteFolderRes
       required: ['path'],
       description: 'Delete a folder'
     };
+    
+    // Merge with common schema (sessionId and context)
+    return this.getMergedSchema(modeSchema);
   }
 }

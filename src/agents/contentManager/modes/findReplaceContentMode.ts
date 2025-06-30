@@ -4,6 +4,7 @@ import { FindReplaceContentParams, FindReplaceContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for find and replace operations in a file
@@ -65,17 +66,12 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(
-        true,
-        {
+      const response = this.prepareResult(true, {
           filePath,
           replacements,
           findText,
           replaceText
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -84,7 +80,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error in find and replace: ', error), params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error in find and replace: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

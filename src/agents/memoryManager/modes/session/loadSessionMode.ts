@@ -5,6 +5,7 @@ import { LoadSessionParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { MetadataSearchService } from '../../../../database/services/MetadataSearchService';
 
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 /**
  * Mode for loading a session with comprehensive context restoration
  */

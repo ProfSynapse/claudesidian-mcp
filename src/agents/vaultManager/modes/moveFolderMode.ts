@@ -56,7 +56,7 @@ export class MoveFolderMode extends BaseMode<MoveFolderArgs, MoveFolderResult> {
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         path: {
@@ -75,5 +75,8 @@ export class MoveFolderMode extends BaseMode<MoveFolderArgs, MoveFolderResult> {
       required: ['path', 'newPath'],
       description: 'Move a folder to a new location'
     };
+    
+    // Merge with common schema (sessionId and context)
+    return this.getMergedSchema(modeSchema);
   }
 }

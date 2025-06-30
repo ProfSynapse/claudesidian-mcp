@@ -1,5 +1,6 @@
 import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { 
   EditWorkspaceParameters, 
   WorkspaceResult,
@@ -159,14 +160,9 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
         workspacePath: updatedWorkspace?.path ? [...updatedWorkspace.path, updatedWorkspace.id] : []
       };
 
-      return this.prepareResult(
-        true,
-        {
+      return this.prepareResult(true, {
           workspace: updatedWorkspace
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
     } catch (error: any) {
       return this.prepareResult(

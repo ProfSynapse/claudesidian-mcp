@@ -3,7 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { BatchContentParams, BatchContentResult, ContentOperation } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { MemoryService } from '../../../database/services/MemoryService';
-import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
 
 /**
  * Mode for executing multiple content operations in a batch
@@ -169,12 +169,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       // Record batch activity in workspace memory
       await this.recordBatchActivityWithChromaDB(params, results);
       
-      const response = this.prepareResult(
-        true,
-        { results: results },
-        undefined,
-        workspaceContext
-      );
+      const response = this.prepareResult(true, { results: results }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -183,7 +178,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       
       return response;
     } catch (error: unknown) {
-      return this.prepareResult(false, undefined, error instanceof Error ? error.message : String(error), params.workspaceContext);
+      return this.prepareResult(false, undefined, error instanceof Error ? error.message : String(error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   
@@ -385,7 +380,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       }
       
       // Parse workspace context
-      const parsedContext = parseWorkspaceContext(params.workspaceContext);
+      const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
       
       // Skip if no workspace context is available
       if (!parsedContext?.workspaceId) {

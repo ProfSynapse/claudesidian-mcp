@@ -3,7 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from '../../../database/services/MemoryService';
-import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
@@ -94,17 +94,12 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
       }
       
       // Record this activity in workspace memory if applicable
-      const parsedContext = parseWorkspaceContext(params.workspaceContext);
+      const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
   if (parsedContext?.workspaceId) {
         await this.recordActivity(params, result);
       }
       
-      return this.prepareResult(
-        true, 
-        result, 
-        undefined, 
-        params.workspaceContext
-      );
+      return this.prepareResult(true, result, undefined, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to create folder: ', error));
     }
@@ -140,7 +135,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
     result: { path: string; existed: boolean }
   ): Promise<void> {
     // Parse workspace context
-    const parsedContext = parseWorkspaceContext(params.workspaceContext);
+    const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
     
     if (!parsedContext?.workspaceId || !this.memoryService) {
       return; // Skip if no workspace context or memory service

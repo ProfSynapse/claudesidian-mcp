@@ -3,6 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { ReplaceContentParams, ReplaceContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for replacing content in a file
@@ -44,15 +45,10 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(
-        true,
-        {
+      const response = this.prepareResult(true, {
           filePath,
           replacements
-        },
-        undefined,
-        workspaceContext
-      );
+        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -61,7 +57,7 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error replacing content: ', error), params.workspaceContext);
+      return this.prepareResult(false, undefined, createErrorMessage('Error replacing content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

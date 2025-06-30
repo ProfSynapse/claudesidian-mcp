@@ -181,3 +181,31 @@ export function prepareModeCallParams(
   
   return params;
 }
+
+/**
+ * Extract context information from parameters for use in prepareResult calls
+ * This function handles both legacy string context and enhanced object context
+ * @param params Parameters object that may contain context information
+ * @returns Context suitable for prepareResult calls
+ */
+export function extractContextFromParams(params: any): CommonResult['context'] {
+  if (params.context !== undefined) {
+    return normalizeContextForResult(params.context);
+  }
+  return undefined;
+}
+
+/**
+ * Normalize context for result output - handles both string and object formats
+ * @param context Context in either string or enhanced object format
+ * @returns Normalized context for result
+ */
+export function normalizeContextForResult(context: any): CommonResult['context'] {
+  if (typeof context === 'string') {
+    return context;
+  } else if (typeof context === 'object' && context !== null) {
+    // Return the enhanced context object as-is
+    return context;
+  }
+  return undefined;
+}

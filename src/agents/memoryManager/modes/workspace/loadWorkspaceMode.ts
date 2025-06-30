@@ -11,6 +11,7 @@ import { MetadataSearchService } from '../../../../database/services/MetadataSea
 import { sanitizePath } from '../../../../utils/pathUtils';
 import { CacheManager } from '../../../../database/services/CacheManager';
 import { DirectoryTreeBuilder, DirectoryTreeUtils } from '../../../../utils/directoryTreeUtils';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 
 /**
  * Mode to load a workspace as the active context
@@ -220,6 +221,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           }
         },
         undefined,
+        extractContextFromParams(params),
         workspaceContext
       );
       

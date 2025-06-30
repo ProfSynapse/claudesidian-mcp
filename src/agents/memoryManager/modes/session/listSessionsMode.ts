@@ -3,6 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceSession } from '../../../../database/workspace-types';
 import { ListSessionsParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { extractContextFromParams } from '../../../../utils/contextUtils';
 // Memory service is used indirectly through the agent
 
 /**
