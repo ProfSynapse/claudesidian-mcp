@@ -7,9 +7,9 @@ import {
 } from '../interfaces/IFileEventServices';
 
 export class FileEventCoordinator implements IFileEventCoordinator {
-    private isProcessingQueue: boolean = false;
+    private isProcessingQueue = false;
     private processQueueDebounced!: () => void;
-    private isStartupPhase: boolean = true;
+    private isStartupPhase = true;
     private startupTimeout: NodeJS.Timeout | null = null;
 
     // Event handlers

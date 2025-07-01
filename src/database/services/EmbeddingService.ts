@@ -446,9 +446,9 @@ export class EmbeddingService {
   private async processFilesInBatches(
     filePaths: string[], 
     vectorStore: any, 
-    batchMode: boolean = false,
+    batchMode = false,
     progressCallback?: (current: number, total: number) => void,
-    silent: boolean = false
+    silent = false
   ): Promise<{ ids: string[]; processedFiles: string[]; failedFiles: string[] }> {
     return this.fileIndexingService.processFilesInBatches(
       filePaths,

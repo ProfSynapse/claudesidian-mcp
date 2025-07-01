@@ -212,7 +212,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       
       // Build context information
       let continuationHistory: Array<{ timestamp: number; description: string }> = [];
-      let restoredTraces: WorkspaceMemoryTrace[] = [];
+      const restoredTraces: WorkspaceMemoryTrace[] = [];
       
       // Get all states for this workspace to build continuity history
       let historyStates: WorkspaceStateSnapshot[] = [];

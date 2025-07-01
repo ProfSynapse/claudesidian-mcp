@@ -23,10 +23,10 @@ export interface PersistenceData {
 
 export class PersistenceManager {
   private fs: FileSystemInterface;
-  private saveDebounceMs: number = 250;
+  private saveDebounceMs = 250;
   private saveTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
-  constructor(fs: FileSystemInterface, saveDebounceMs: number = 250) {
+  constructor(fs: FileSystemInterface, saveDebounceMs = 250) {
     this.fs = fs;
     this.saveDebounceMs = saveDebounceMs;
   }

@@ -9,7 +9,7 @@
  */
 export function generateSessionId(): string {
     const now = new Date();
-    const formattedDate = now.toISOString().replace(/[-:\.TZ]/g, '').slice(0, 14);
+    const formattedDate = now.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
     return `s-${formattedDate}`;
 }
 

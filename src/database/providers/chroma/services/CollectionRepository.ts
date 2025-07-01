@@ -24,9 +24,9 @@ export class CollectionRepository {
   private collectionMetadata: Record<string, any>;
   private hnswService: HnswSearchService;
   private collectionName: string;
-  private hnswEnabled: boolean = true;
+  private hnswEnabled = true;
 
-  constructor(metadata: Record<string, any> = {}, collectionName: string = 'default') {
+  constructor(metadata: Record<string, any> = {}, collectionName = 'default') {
     this.items = new Map();
     this.collectionMetadata = {
       ...metadata,
@@ -203,7 +203,7 @@ export class CollectionRepository {
    */
   queryItems(
     queryEmbeddings: number[][],
-    nResults: number = 10,
+    nResults = 10,
     where?: WhereClause
   ): ItemWithDistance[][] {
     const results: ItemWithDistance[][] = [];
@@ -259,7 +259,7 @@ export class CollectionRepository {
    */
   private bruteForceSearch(queryEmbedding: number[], nResults: number, where?: WhereClause): ItemWithDistance[] {
     // Filter items by where clause if provided
-    let filteredItems = FilterEngine.filterByWhere(this.getAllItems(), where);
+    const filteredItems = FilterEngine.filterByWhere(this.getAllItems(), where);
 
     // Calculate distances using brute force O(n)
     const itemsWithDistances = filteredItems.map(item => {

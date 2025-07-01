@@ -18,17 +18,17 @@ export class WorkspaceService {
   /**
    * Flag to prevent recursive activity recording
    */
-  private isRecordingActivity: boolean = false;
+  private isRecordingActivity = false;
   
   /**
    * Track last activity timestamp to limit frequency
    */
-  private lastActivityTime: number = 0;
+  private lastActivityTime = 0;
   
   /**
    * Minimum interval between activity recordings (in ms)
    */
-  private activityRateLimit: number = 1000; // 1 second
+  private activityRateLimit = 1000; // 1 second
   
   /**
    * Create a new workspace service

@@ -87,7 +87,7 @@ export class TokenTrackingMixin {
      * @param tokenCount Number of tokens to add
      * @param model Model name to update (defaults to text-embedding-3-small)
      */
-    async updateUsageStats(tokenCount: number, model: string = 'text-embedding-3-small'): Promise<void> {
+    async updateUsageStats(tokenCount: number, model = 'text-embedding-3-small'): Promise<void> {
         // Add to the specified model's usage count
         const currentUsage = this.modelUsage[model] || 0;
         this.modelUsage[model] = currentUsage + tokenCount;

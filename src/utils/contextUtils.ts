@@ -17,7 +17,7 @@ export interface WorkspaceContext {
  */
 export function parseWorkspaceContext(
   workspaceContext: CommonParameters['workspaceContext'] | null | undefined,
-  fallbackId: string = 'default-workspace'
+  fallbackId = 'default-workspace'
 ): WorkspaceContext | null {
   if (!workspaceContext) {
     return null;

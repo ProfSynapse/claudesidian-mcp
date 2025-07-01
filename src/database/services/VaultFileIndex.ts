@@ -262,7 +262,7 @@ export class VaultFileIndex extends EventEmitter {
     }
 
     getRecentFiles(limit = 10, folderPath?: string): IndexedFile[] {
-        let files = folderPath 
+        const files = folderPath 
             ? this.getFilesInFolder(folderPath, true)
             : this.getFiles();
 

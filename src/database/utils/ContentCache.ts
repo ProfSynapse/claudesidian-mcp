@@ -14,7 +14,7 @@ interface CacheEntry {
 export class ContentCache {
   private cache: Map<string, CacheEntry> = new Map();
   private maxSize: number;
-  private currentSize: number = 0;
+  private currentSize = 0;
   private ttl: number;
   
   /**

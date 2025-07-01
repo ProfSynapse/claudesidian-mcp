@@ -159,7 +159,7 @@ export class SizeCalculatorService implements ISizeCalculatorService {
   /**
    * Get size trend over time (if we have historical data)
    */
-  async getSizeTrend(days: number = 7): Promise<Record<string, number>> {
+  async getSizeTrend(days = 7): Promise<Record<string, number>> {
     // This would require historical tracking, for now return current size
     const currentSize = await this.calculateTotalDatabaseSize();
     const today = new Date().toISOString().split('T')[0];

@@ -67,8 +67,8 @@ export class FuzzySearchService {
   search(
     query: string,
     fuzzyTerms: string[],
-    limit: number = 10,
-    threshold: number = 0.6,
+    limit = 10,
+    threshold = 0.6,
     filteredFiles?: TFile[]
   ): FuzzySearchResult[] {
     if (!query.trim() && fuzzyTerms.length === 0) return [];
@@ -396,7 +396,7 @@ export class FuzzySearchService {
   /**
    * Generate a snippet highlighting fuzzy matches
    */
-  private generateSnippet(doc: FuzzyDocument, searchTerms: string[], maxLength: number = 300): string {
+  private generateSnippet(doc: FuzzyDocument, searchTerms: string[], maxLength = 300): string {
     const content = doc.content;
     
     if (!content || content.length === 0) {

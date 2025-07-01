@@ -7,10 +7,10 @@ import { sanitizeVaultName } from '../utils/vaultUtils';
  * Provides setup instructions for different operating systems
  */
 export class ConfigModal extends Modal {
-    private activeTab: string = 'windows';
+    private activeTab = 'windows';
     private tabButtons: Record<string, HTMLElement> = {};
     private tabContents: Record<string, HTMLElement> = {};
-    private isFirstTimeSetup: boolean = true;
+    private isFirstTimeSetup = true;
     
     /**
      * Create a new configuration modal

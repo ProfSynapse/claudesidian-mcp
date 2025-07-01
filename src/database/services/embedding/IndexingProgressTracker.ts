@@ -33,7 +33,7 @@ export class IndexingProgressTracker {
    * @param showNotice Whether to show progress notices
    * @returns Progress state object
    */
-  initializeProgress(total: number, operationId: string, showNotice: boolean = true): ProgressState {
+  initializeProgress(total: number, operationId: string, showNotice = true): ProgressState {
     const notice = showNotice ? new Notice(`Processing 0/${total} items`, 0) : undefined;
     
     this.progressState = {
@@ -60,8 +60,8 @@ export class IndexingProgressTracker {
    */
   updateProgress(
     current: number, 
-    processed: number = 0, 
-    failed: number = 0,
+    processed = 0, 
+    failed = 0,
     progressCallback?: (current: number, total: number) => void
   ): void {
     if (!this.progressState) {
@@ -109,7 +109,7 @@ export class IndexingProgressTracker {
     success: boolean, 
     error?: string, 
     finalMessage?: string, 
-    hideDelay: number = 3000
+    hideDelay = 3000
   ): ProgressResult {
     if (!this.progressState) {
       return {
@@ -283,7 +283,7 @@ export class IndexingProgressTracker {
     let failedItems = 0;
 
     return {
-      updateBatch: (batchProcessed: number, batchFailed: number = 0) => {
+      updateBatch: (batchProcessed: number, batchFailed = 0) => {
         processedItems += batchProcessed;
         failedItems += batchFailed;
         

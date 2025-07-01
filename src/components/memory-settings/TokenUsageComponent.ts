@@ -64,7 +64,7 @@ export class TokenUsageComponent {
     }
     
     // Flag to track if refresh is in progress
-    private isRefreshing: boolean = false;
+    private isRefreshing = false;
     
     /**
      * Refresh the display

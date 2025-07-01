@@ -40,11 +40,11 @@ export default class ClaudesidianPlugin extends Plugin {
     public cacheManager!: CacheManager;
     
     // Reindexing flag for batch operations
-    private isReindexing: boolean = false;
+    private isReindexing = false;
     
     // HNSW retry mechanism
-    private hnswRetryCount: number = 0;
-    private maxHnswRetries: number = 3;
+    private hnswRetryCount = 0;
+    private maxHnswRetries = 3;
     private hnswRetryTimeout?: NodeJS.Timeout;
     
     // Service registry

@@ -446,7 +446,7 @@ export class MemoryService {
    * @param autoCreate Whether to auto-create the session if it doesn't exist
    * @returns The session, either existing or newly created
    */
-  async getSession(id: string, autoCreate: boolean = true): Promise<WorkspaceSession | undefined> {
+  async getSession(id: string, autoCreate = true): Promise<WorkspaceSession | undefined> {
     return this.sessionService.getSession(id, autoCreate);
   }
 
@@ -480,7 +480,7 @@ export class MemoryService {
    * @param activeOnly Whether to only return active sessions
    * @returns Array of sessions
    */
-  async getAllSessions(activeOnly: boolean = false): Promise<WorkspaceSession[]> {
+  async getAllSessions(activeOnly = false): Promise<WorkspaceSession[]> {
     return this.sessionService.getAllSessions(activeOnly);
   }
 

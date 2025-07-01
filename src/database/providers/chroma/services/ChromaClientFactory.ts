@@ -220,7 +220,7 @@ export class ChromaClientFactory implements IChromaClientFactory {
   /**
    * Create client with retry logic
    */
-  async createClientWithRetry(options: IStorageOptions, maxRetries: number = 3): Promise<InstanceType<typeof ChromaClient>> {
+  async createClientWithRetry(options: IStorageOptions, maxRetries = 3): Promise<InstanceType<typeof ChromaClient>> {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

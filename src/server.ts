@@ -552,7 +552,7 @@ export class MCPServer implements IMCPServer {
             const agent = this.getAgent(agentName);
             
             // Apply workspace context from SessionContextManager if available
-            let originalSessionId = params.sessionId;
+            const originalSessionId = params.sessionId;
             
             if (this.sessionContextManager && params.sessionId) {
                 // Process the session ID

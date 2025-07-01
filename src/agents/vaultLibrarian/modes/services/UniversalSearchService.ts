@@ -556,7 +556,7 @@ export class UniversalSearchService {
   /**
    * Search content using hybrid search (semantic + keyword + fuzzy)
    */
-  private async searchContent(query: string, filteredFiles?: TFile[], limit: number = 5, params?: UniversalSearchParams): Promise<UniversalSearchResultItem[]> {
+  private async searchContent(query: string, filteredFiles?: TFile[], limit = 5, params?: UniversalSearchParams): Promise<UniversalSearchResultItem[]> {
     if (!query) return [];
 
     try {
@@ -639,7 +639,7 @@ export class UniversalSearchService {
   /**
    * Search files by name using Obsidian's fuzzy search
    */
-  private async searchFiles(query: string, limit: number = 5): Promise<UniversalSearchResultItem[]> {
+  private async searchFiles(query: string, limit = 5): Promise<UniversalSearchResultItem[]> {
     if (!query) return [];
 
     const files = this.plugin.app.vault.getMarkdownFiles();
@@ -677,7 +677,7 @@ export class UniversalSearchService {
   /**
    * Search tags
    */
-  private async searchTags(query: string, limit: number = 5): Promise<UniversalSearchResultItem[]> {
+  private async searchTags(query: string, limit = 5): Promise<UniversalSearchResultItem[]> {
     if (!query) return [];
 
     try {
@@ -708,7 +708,7 @@ export class UniversalSearchService {
   /**
    * Search properties
    */
-  private async searchProperties(query: string, limit: number = 5): Promise<UniversalSearchResultItem[]> {
+  private async searchProperties(query: string, limit = 5): Promise<UniversalSearchResultItem[]> {
     if (!query) return [];
 
     try {

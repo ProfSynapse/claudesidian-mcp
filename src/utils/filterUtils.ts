@@ -8,7 +8,7 @@
  * @param flags Optional regex flags (default: 'i' for case-insensitive)
  * @returns RegExp object for filtering
  */
-export function createFilterRegex(pattern: string, flags: string = 'i'): RegExp {
+export function createFilterRegex(pattern: string, flags = 'i'): RegExp {
   try {
     // First, try to use the pattern as-is (might be a valid regex)
     return new RegExp(pattern, flags);

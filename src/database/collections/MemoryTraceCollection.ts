@@ -151,7 +151,7 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
    * @param limit Maximum number of traces to return
    * @returns Memory traces for the workspace
    */
-  async getTracesByWorkspace(workspaceId: string, limit: number = 100): Promise<WorkspaceMemoryTrace[]> {
+  async getTracesByWorkspace(workspaceId: string, limit = 100): Promise<WorkspaceMemoryTrace[]> {
     const traces = await this.getAll({
       where: { workspaceId },
       sortBy: 'timestamp',
@@ -168,7 +168,7 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
    * @param limit Maximum number of traces to return
    * @returns Memory traces for the session
    */
-  async getTracesBySession(sessionId: string, limit: number = 100): Promise<WorkspaceMemoryTrace[]> {
+  async getTracesBySession(sessionId: string, limit = 100): Promise<WorkspaceMemoryTrace[]> {
     const traces = await this.getAll({
       where: { sessionId },
       sortBy: 'sequenceNumber',

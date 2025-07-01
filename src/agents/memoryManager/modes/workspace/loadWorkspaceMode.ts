@@ -304,7 +304,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   private async getRecentFiles(workspace: {
     rootFolder: string;
     id: string;
-  }, limit: number = 5): Promise<string[]> {
+  }, limit = 5): Promise<string[]> {
     // Try to use cached file index if available
     if (this.cacheManager) {
       const recentFiles = this.cacheManager.getRecentFiles(10, workspace.rootFolder);
@@ -587,7 +587,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       }
       
       // Calculate statistics
-      let totalStats = {
+      const totalStats = {
         totalFiles: 0,
         totalFolders: 0,
         relatedFiles: 0,

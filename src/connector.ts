@@ -17,6 +17,8 @@ import { logger } from './utils/logger';
 import { CustomPromptStorageService } from './database/services/CustomPromptStorageService';
 import { LLMProviderManager } from './services/LLMProviderManager';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from './types';
+import { LLMValidationService } from './services/LLMValidationService';
+import { EmbeddingProviderManager } from './database/services/embedding/EmbeddingProviderManager';
 
 /**
  * Interface for agent-mode tool call parameters
@@ -63,14 +65,70 @@ export class MCPConnector {
         // Create server with vault-specific identifier
         this.server = new MCPServer(app, plugin, this.eventManager, this.sessionContextManager, undefined, this.customPromptStorage);
         
-        // Initialize agents
-        this.initializeAgents();
+        // Initialize agents (now async)
+        this.initializeAgents().catch(error => {
+            console.error('Error initializing agents:', error);
+        });
     }
     
     /**
+     * Validate API keys for embedding providers
+     * Following the memory pattern for conditional mode availability
+     */
+    private async validateEmbeddingApiKeys(): Promise<boolean> {
+        try {
+            const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
+            if (!memorySettings?.embeddingsEnabled) {
+                return false;
+            }
+
+            const currentProvider = memorySettings.providerSettings?.[memorySettings.apiProvider];
+            if (!currentProvider?.apiKey) {
+                return false;
+            }
+
+            // Use EmbeddingProviderManager to validate settings
+            const embeddingManager = new EmbeddingProviderManager();
+            const isValid = embeddingManager['validateProviderSettings'](memorySettings);
+            
+            return isValid;
+        } catch (error) {
+            console.error('Error validating embedding API keys:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Validate API keys for LLM providers used in agent modes
+     */
+    private async validateLLMApiKeys(): Promise<boolean> {
+        try {
+            const pluginSettings = (this.plugin as any)?.settings?.settings;
+            const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
+            
+            const defaultProvider = llmProviderSettings.defaultModel?.split('/')[0];
+            if (!defaultProvider) {
+                return false;
+            }
+
+            const providerConfig = llmProviderSettings.providers?.[defaultProvider];
+            if (!providerConfig?.apiKey) {
+                return false;
+            }
+
+            // Validate the API key
+            const validation = await LLMValidationService.validateApiKey(defaultProvider, providerConfig.apiKey);
+            return validation.success;
+        } catch (error) {
+            console.error('Error validating LLM API keys:', error);
+            return false;
+        }
+    }
+
+    /**
      * Initialize all agents
      */
-    private initializeAgents(): void {
+    private async initializeAgents(): Promise<void> {
         try {
             // Get services from the plugin if available
             const services = this.plugin && (this.plugin as any).services ? (this.plugin as any).services : {};
@@ -81,6 +139,16 @@ export class MCPConnector {
             // Get memory settings to determine what to enable
             const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
             const isMemoryEnabled = memorySettings?.enabled && memorySettings?.embeddingsEnabled;
+            
+            // Validate API keys following the memory pattern
+            const hasValidEmbeddingKeys = await this.validateEmbeddingApiKeys();
+            const hasValidLLMKeys = await this.validateLLMApiKeys();
+            
+            // Enable vector modes only if memory is enabled AND valid embedding API keys exist
+            const enableVectorModes = isMemoryEnabled && hasValidEmbeddingKeys;
+            
+            // Enable LLM-dependent modes only if valid LLM API keys exist
+            const enableLLMModes = hasValidLLMKeys;
             
             
             // Always register these agents (no vector database dependency)
@@ -130,11 +198,11 @@ export class MCPConnector {
             // Always register VaultLibrarian (has non-vector modes like search)
             const vaultLibrarianAgent = new VaultLibrarianAgent(
                 this.app,
-                isMemoryEnabled  // Pass memory enabled status to control mode registration
+                enableVectorModes  // Pass vector modes enabled status (memory + valid API keys)
             );
             
-            // If memory is enabled, initialize vector capabilities
-            if (isMemoryEnabled && vectorStore) {
+            // If vector modes are enabled (memory + valid API keys), initialize vector capabilities
+            if (enableVectorModes && vectorStore) {
                 vaultLibrarianAgent.initializeSearchService().catch(error => 
                     console.error('Error initializing VaultLibrarian search service:', error)
                 );
@@ -171,11 +239,16 @@ export class MCPConnector {
                 this.agentManager.registerAgent(memoryManagerAgent);
             }
             
-            // Conditionally register vector-only agents
-            if (isMemoryEnabled) {
-                
+            // Log conditional mode availability status
+            if (!enableVectorModes && !enableLLMModes) {
+                console.log("No valid API keys found - modes requiring API keys will be disabled");
             } else {
-                console.log("Memory/embeddings disabled - skipping vector-dependent agents (VaultLibrarian, MemoryManager)");
+                if (!enableVectorModes) {
+                    console.log("Vector modes disabled - no valid embedding API keys or memory disabled");
+                }
+                if (!enableLLMModes) {
+                    console.log("LLM modes disabled - no valid LLM API keys configured");
+                }
             }
             
             // Register all agents from the agent manager with the server

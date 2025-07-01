@@ -21,13 +21,13 @@ export abstract class BaseVectorStore implements IVectorStore {
   /**
    * Initialization status
    */
-  protected initialized: boolean = false;
+  protected initialized = false;
   
   /**
    * Flag to indicate if the current operation is a system operation
    * System operations should not trigger file event handling
    */
-  public isSystemOperation: boolean = false;
+  public isSystemOperation = false;
   
   /**
    * Create a new base vector store

@@ -22,7 +22,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
      * Create a new usage settings tab
      */
     // Flag to prevent recursive refreshes
-    private isRefreshing: boolean = false;
+    private isRefreshing = false;
     // Storage event handler
     private storageEventHandler: (e: StorageEvent) => void;
     

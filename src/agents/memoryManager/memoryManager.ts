@@ -35,7 +35,7 @@ export class MemoryManagerAgent extends BaseAgent {
   /**
    * Flag to prevent infinite recursion in description getter
    */
-  private isGettingDescription: boolean = false;
+  private isGettingDescription = false;
 
   /**
    * Create a new MemoryManagerAgent

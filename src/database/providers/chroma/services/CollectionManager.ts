@@ -13,8 +13,8 @@ export class CollectionManager implements ICollectionManager {
   private directoryService: IDirectoryService;
   private collections: Set<string> = new Set();
   private collectionCache: Map<string, Collection> = new Map();
-  private cacheHits: number = 0;
-  private cacheRequests: number = 0;
+  private cacheHits = 0;
+  private cacheRequests = 0;
   private persistentPath: string | null;
 
   constructor(
@@ -352,7 +352,7 @@ export class CollectionManager implements ICollectionManager {
   /**
    * Get collection with retry logic
    */
-  async getCollectionWithRetry(collectionName: string, maxRetries: number = 3): Promise<Collection> {
+  async getCollectionWithRetry(collectionName: string, maxRetries = 3): Promise<Collection> {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

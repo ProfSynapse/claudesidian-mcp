@@ -5,7 +5,7 @@ import { EmbeddingService } from '../../../database/services/EmbeddingService';
 export class EmbeddingScheduler implements IEmbeddingScheduler {
     private strategy: EmbeddingStrategy;
     private lastActivityTime: number = Date.now();
-    private isIdleMode: boolean = false;
+    private isIdleMode = false;
 
     constructor(
         private plugin: Plugin,

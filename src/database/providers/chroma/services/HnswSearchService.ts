@@ -58,7 +58,7 @@ interface PartitionedHnswIndex {
 export class HnswSearchService {
   private indexes: Map<string, HnswIndex> = new Map();
   private partitionedIndexes: Map<string, PartitionedHnswIndex> = new Map();
-  private isInitialized: boolean = false;
+  private isInitialized = false;
   private hnswLib: any = null;
   private app?: App;
   private vectorStore?: IVectorStore;
@@ -344,7 +344,7 @@ export class HnswSearchService {
   async searchSimilar(
     collectionName: string,
     queryEmbedding: number[],
-    nResults: number = 10,
+    nResults = 10,
     where?: WhereClause
   ): Promise<ItemWithDistance[]> {
     if (queryEmbedding.length === 0) {
@@ -694,8 +694,8 @@ export class HnswSearchService {
    */
   private formatSearchResults(
     results: ItemWithDistance[],
-    threshold: number = 0.7,
-    includeContent: boolean = false
+    threshold = 0.7,
+    includeContent = false
   ): SearchResult[] {
     const mappedResults = results
       .map(({ item, distance }) => {
@@ -736,7 +736,7 @@ export class HnswSearchService {
    * @param maxLength Maximum snippet length
    * @returns Snippet text
    */
-  private createSnippet(content: string, maxLength: number = 300): string {
+  private createSnippet(content: string, maxLength = 300): string {
     if (!content || content.length === 0) {
       return '';
     }

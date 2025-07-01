@@ -203,7 +203,7 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
    * @param activeOnly Only return active sessions
    * @returns Sessions for the workspace
    */
-  async getSessionsByWorkspace(workspaceId: string, activeOnly: boolean = false): Promise<WorkspaceSession[]> {
+  async getSessionsByWorkspace(workspaceId: string, activeOnly = false): Promise<WorkspaceSession[]> {
     const where: Record<string, any> = { workspaceId };
     
     if (activeOnly) {

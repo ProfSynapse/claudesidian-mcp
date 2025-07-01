@@ -10,7 +10,7 @@ import { EmbeddingProviderRegistry } from '../../providers/registry/EmbeddingPro
 
 export class EmbeddingProviderManager {
   private embeddingProvider: IEmbeddingProvider | null = null;
-  private initialized: boolean = false;
+  private initialized = false;
 
   /**
    * Initialize provider with given settings

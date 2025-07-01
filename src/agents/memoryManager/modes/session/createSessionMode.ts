@@ -169,7 +169,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
       const finalSessionId = session.id;
       
       // Prepare context data for the result
-      let contextData: {
+      const contextData: {
         summary: string;
         relevantFiles?: string[];
         recentActivities?: Array<{

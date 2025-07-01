@@ -231,7 +231,7 @@ export class SettingsTab extends PluginSettingTab {
 
         // Memory Management accordion with services and agents
         // Create EmbeddingManager instance if we have memory manager but no embedding manager
-        let embeddingManager = this.embeddingManager;
+        const embeddingManager = this.embeddingManager;
         if (this.memoryManager && !embeddingManager && window.app) {
             // The MemoryManagerAgent is not directly compatible with EmbeddingManager
             // We're not creating a real EmbeddingManager since it may require complex initialization

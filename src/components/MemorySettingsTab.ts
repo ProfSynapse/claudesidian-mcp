@@ -21,7 +21,7 @@ export class MemorySettingsTab {
     private settings: MemorySettings;
     private settingsManager: Settings;
     private app: App;
-    private activeTabKey: string = 'api'; // Track the active tab
+    private activeTabKey = 'api'; // Track the active tab
     
     // Component tabs
     private apiSettingsTab: ApiSettingsTab;

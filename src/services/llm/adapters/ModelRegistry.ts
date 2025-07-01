@@ -62,7 +62,7 @@ export class ModelRegistry {
   /**
    * Get models with specific capabilities
    */
-  static getModelsByCapability(capability: keyof ModelSpec['capabilities'], value: boolean = true): ModelSpec[] {
+  static getModelsByCapability(capability: keyof ModelSpec['capabilities'], value = true): ModelSpec[] {
     const allModels = Object.values(AI_MODELS).flat();
     return allModels.filter(model => model.capabilities[capability] === value);
   }

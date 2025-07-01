@@ -22,7 +22,7 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
   /**
    * Current model being used for embeddings
    */
-  private model: string = 'text-embedding-3-small';
+  private model = 'text-embedding-3-small';
   
   /**
    * Create a new ChromaDB embedding provider
@@ -33,7 +33,7 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
   constructor(
     dimension: number,
     embeddingFunction?: (texts: string[]) => Promise<number[][]>,
-    model: string = 'text-embedding-3-small'
+    model = 'text-embedding-3-small'
   ) {
     super(dimension, 'chroma');
     

@@ -22,9 +22,9 @@ export class DeleteCollectionComponent {
      * @param settings Settings object
      */
     // Flag to prevent recursive refreshes
-    private isRefreshing: boolean = false;
+    private isRefreshing = false;
     // Track last refresh time to limit frequency
-    private lastRefreshTime: number = 0;
+    private lastRefreshTime = 0;
     
     constructor(containerEl: HTMLElement, vectorStore: IVectorStore, usageStatsService: UsageStatsService, settings: any) {
         this.containerEl = containerEl;

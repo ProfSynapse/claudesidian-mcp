@@ -34,7 +34,7 @@ export class AgentManagerAgent extends BaseAgent {
   /**
    * Flag to prevent infinite recursion in description getter
    */
-  private isGettingDescription: boolean = false;
+  private isGettingDescription = false;
 
   /**
    * LLM Provider Manager for model operations

@@ -14,7 +14,7 @@ export class ApiSettingsTab extends BaseSettingsTab {
     protected embeddingService: EmbeddingService | null;
     
     // Track whether embeddings exist
-    protected embeddingsExist: boolean = false;
+    protected embeddingsExist = false;
     
     /**
      * Create a new API settings tab

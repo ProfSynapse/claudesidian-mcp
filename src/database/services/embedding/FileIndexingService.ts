@@ -84,9 +84,9 @@ export class FileIndexingService {
   async processFilesInBatches(
     filePaths: string[], 
     vectorStore: any, 
-    batchMode: boolean = false,
+    batchMode = false,
     progressCallback?: (current: number, total: number) => void,
-    silent: boolean = false
+    silent = false
   ): Promise<BatchProcessResult> {
     const { batchSize, processingDelay } = this.settingsManager.getBatchingConfig();
     

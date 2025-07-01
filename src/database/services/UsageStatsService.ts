@@ -208,7 +208,7 @@ export class UsageStatsService {
      * @param skipEvents Whether to skip emitting events (used internally to prevent loops)
      * @returns Promise resolving to usage statistics object
      */
-    async getUsageStats(skipEvents: boolean = false): Promise<UsageStats> {
+    async getUsageStats(skipEvents = false): Promise<UsageStats> {
         console.log('UsageStatsService.getUsageStats called');
         
         const stats = { ...this.defaultStats };

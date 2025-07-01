@@ -49,8 +49,8 @@ export class KeywordSearchService {
   private termFrequency: Map<string, Map<string, number>> = new Map(); // term -> docId -> frequency
   private documentFrequency: Map<string, number> = new Map(); // term -> number of docs containing it
   private documentLengths: Map<string, number> = new Map(); // docId -> document length
-  private averageDocumentLength: number = 0;
-  private totalDocuments: number = 0;
+  private averageDocumentLength = 0;
+  private totalDocuments = 0;
 
   // BM25 parameters
   private readonly bm25Params: BM25Parameters = {
@@ -122,7 +122,7 @@ export class KeywordSearchService {
    */
   search(
     query: string, 
-    limit: number = 10,
+    limit = 10,
     exactPhrases: string[] = [],
     filteredFiles?: TFile[]
   ): KeywordSearchResult[] {
@@ -345,7 +345,7 @@ export class KeywordSearchService {
     doc: SearchableDocument, 
     queryTerms: string[], 
     phraseTerms: string[],
-    maxLength: number = 300
+    maxLength = 300
   ): string {
     const allTerms = [...queryTerms, ...phraseTerms];
     const content = doc.content;

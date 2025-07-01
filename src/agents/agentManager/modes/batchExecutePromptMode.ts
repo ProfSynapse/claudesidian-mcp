@@ -212,7 +212,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       const failed = results?.filter(r => !r.success) || [];
 
       // Calculate token usage (if available)
-      const tokensUsed = results?.reduce((sum, result) => {
+      const tokensUsed = results?.reduce((sum, _result) => {
         // This would be implemented when token counting is available
         return sum;
       }, 0);
@@ -626,22 +626,22 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       };
 
       switch (action.type) {
-        case 'create':
+        case 'create': {
           actionParams.filePath = action.targetPath;
           const createResult = await this.agentManager.executeAgentMode('contentManager', 'createContent', actionParams);
           return { success: createResult.success, error: createResult.error };
-
-        case 'append':
+        }
+        case 'append': {
           actionParams.filePath = action.targetPath;
           const appendResult = await this.agentManager.executeAgentMode('contentManager', 'appendContent', actionParams);
           return { success: appendResult.success, error: appendResult.error };
-
-        case 'prepend':
+        }
+        case 'prepend': {
           actionParams.filePath = action.targetPath;
           const prependResult = await this.agentManager.executeAgentMode('contentManager', 'prependContent', actionParams);
           return { success: prependResult.success, error: prependResult.error };
-
-        case 'replace':
+        }
+        case 'replace': {
           actionParams.filePath = action.targetPath;
           let replaceResult;
           if (action.position !== undefined) {
@@ -651,8 +651,8 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
             replaceResult = await this.agentManager.executeAgentMode('contentManager', 'replaceContent', actionParams);
           }
           return { success: replaceResult.success, error: replaceResult.error };
-
-        case 'findReplace':
+        }
+        case 'findReplace': {
           if (!action.findText) {
             return { success: false, error: 'findText is required for findReplace action' };
           }
@@ -664,6 +664,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
           actionParams.wholeWord = action.wholeWord ?? false;
           const findReplaceResult = await this.agentManager.executeAgentMode('contentManager', 'findReplaceContent', actionParams);
           return { success: findReplaceResult.success, error: findReplaceResult.error };
+        }
 
         default:
           return { success: false, error: `Unknown action type: ${action.type}` };

@@ -34,7 +34,7 @@ export class EmbeddingUpdateHelper {
     workspaceContext?: any,
     sessionId?: string,
     oldContent?: string,
-    operationType: string = 'content-modification'
+    operationType = 'content-modification'
   ): Promise<void> {
     try {
       // Skip if no embedding service available
@@ -124,7 +124,7 @@ export class EmbeddingUpdateHelper {
     filePath: string,
     workspaceContext?: any,
     sessionId?: string,
-    operationType: string = 'content-modification',
+    operationType = 'content-modification',
     metadata: any = {}
   ): Promise<void> {
     try {

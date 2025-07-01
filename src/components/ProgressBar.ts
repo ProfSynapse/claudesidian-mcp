@@ -39,9 +39,9 @@ export class ProgressBar {
     private cancelButton: HTMLElement;
     // app instance not used but kept for future use
     
-    private progress: number = 0;
-    private total: number = 0;
-    private operationId: string = '';
+    private progress = 0;
+    private total = 0;
+    private operationId = '';
     
     // Custom event handlers
     private onProgressHandler!: (data: ProgressUpdateData) => void;

@@ -324,7 +324,7 @@ export class DirectoryTreeUtils {
   /**
    * Convert a directory tree to a simple text representation
    */
-  static treeToText(tree: DirectoryTreeNode, indent: string = ''): string {
+  static treeToText(tree: DirectoryTreeNode, indent = ''): string {
     let result = '';
     const isLast = true; // We'll handle this in the caller
     

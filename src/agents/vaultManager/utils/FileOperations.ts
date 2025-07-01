@@ -18,7 +18,7 @@ export class FileOperations {
     app: App,
     path: string,
     content: string,
-    overwrite: boolean = false
+    overwrite = false
   ): Promise<{ file: TFile; existed: boolean }> {
     // Apply smart normalization (includes .md extension handling)
     const normalizedPath = smartNormalizePath(path);
@@ -133,7 +133,7 @@ export class FileOperations {
    * @returns Promise that resolves when the folder is deleted
    * @throws Error if deletion fails
    */
-  static async deleteFolder(app: App, path: string, recursive: boolean = false): Promise<void> {
+  static async deleteFolder(app: App, path: string, recursive = false): Promise<void> {
     // Normalize path to remove any leading slash
     const normalizedPath = normalizePath(path);
     
@@ -166,7 +166,7 @@ export class FileOperations {
     app: App,
     path: string,
     newPath: string,
-    overwrite: boolean = false
+    overwrite = false
   ): Promise<void> {
     // Normalize paths to remove any leading slashes
     const normalizedPath = normalizePath(path);
@@ -213,7 +213,7 @@ export class FileOperations {
     app: App,
     path: string,
     newPath: string,
-    overwrite: boolean = false
+    overwrite = false
   ): Promise<void> {
     // Normalize paths to remove any leading slashes
     const normalizedPath = normalizePath(path);
@@ -261,8 +261,8 @@ export class FileOperations {
     app: App,
     sourcePath: string,
     targetPath: string,
-    overwrite: boolean = false,
-    autoIncrement: boolean = false
+    overwrite = false,
+    autoIncrement = false
   ): Promise<{
     sourcePath: string;
     targetPath: string;

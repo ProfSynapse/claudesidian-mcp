@@ -363,7 +363,7 @@ export class StrictPersistenceChromaClient {
   private collections: Map<string, StrictPersistentCollection> = new Map();
   private storagePath: string | null = null;
   private fs: FileSystemInterface | null = null;
-  private collectionsLoaded: boolean = false;
+  private collectionsLoaded = false;
   private persistenceManager: PersistenceManager | null = null;
   
   /**

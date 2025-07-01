@@ -102,7 +102,7 @@ export class SessionService {
    * const existingSession = await sessionService.getSession('session-123', false);
    * ```
    */
-  async getSession(id: string, autoCreate: boolean = true): Promise<WorkspaceSession | undefined> {
+  async getSession(id: string, autoCreate = true): Promise<WorkspaceSession | undefined> {
     try {
       // Try to get the existing session
       const session = await this.sessions.get(id);
@@ -224,7 +224,7 @@ export class SessionService {
    * @param activeOnly - Whether to only return active sessions
    * @returns Promise resolving to array of sessions
    */
-  async getAllSessions(activeOnly: boolean = false): Promise<WorkspaceSession[]> {
+  async getAllSessions(activeOnly = false): Promise<WorkspaceSession[]> {
     if (activeOnly) {
       return this.sessions.getActiveSessions();
     }

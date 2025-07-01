@@ -34,7 +34,7 @@ export class VaultLibrarianAgent extends BaseAgent {
    * @param app Obsidian app instance
    * @param enableVectorModes Whether to enable vector-based modes (requires memory/embeddings)
    */
-  constructor(app: App, enableVectorModes: boolean = false) {
+  constructor(app: App, enableVectorModes = false) {
     super(
       VaultLibrarianConfig.name,
       VaultLibrarianConfig.description,

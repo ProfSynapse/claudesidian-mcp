@@ -202,7 +202,7 @@ export const withRetry = async <T>(
   operation: () => Promise<T>,
   config: RetryConfig,
   providerId: string,
-  operationName: string = 'operation'
+  operationName = 'operation'
 ): Promise<T> => {
   let lastError: any;
   
@@ -270,7 +270,7 @@ export const fetchWithRetry = async (
 export const validateEmbeddingResponse = (
   data: any,
   providerId: string,
-  expectedDataField: string = 'data'
+  expectedDataField = 'data'
 ): number[][] => {
   if (!data[expectedDataField] || !Array.isArray(data[expectedDataField])) {
     throw new EmbeddingProviderError(

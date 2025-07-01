@@ -3,10 +3,10 @@ import { IFileMonitor } from '../interfaces/IFileEventServices';
 import { ContentCache } from '../../../database/utils/ContentCache';
 
 export class FileMonitor implements IFileMonitor {
-    private isSystemOp: boolean = false;
-    private vaultIsReady: boolean = false;
-    private vaultReadyTimestamp: number = 0;
-    private startupFileEventCount: number = 0;
+    private isSystemOp = false;
+    private vaultIsReady = false;
+    private vaultReadyTimestamp = 0;
+    private startupFileEventCount = 0;
     private fileModificationTimes: Map<string, number> = new Map();
     private lastEmbeddingUpdateTimes: Map<string, number> = new Map();
     private contentCache: ContentCache;

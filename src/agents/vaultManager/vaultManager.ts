@@ -20,7 +20,7 @@ import { sanitizeVaultName } from '../../utils/vaultUtils';
 export class VaultManagerAgent extends BaseAgent {
   private app: App;
   private vaultName: string;
-  private isGettingDescription: boolean = false;
+  private isGettingDescription = false;
 
   /**
    * Create a new VaultManagerAgent

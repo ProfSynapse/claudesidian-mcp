@@ -24,7 +24,7 @@ export function isAbsolutePath(path: string): boolean {
  * @param name The name to sanitize
  * @param useUnderscores Whether to replace spaces with underscores
  */
-export function sanitizeName(name: string, useUnderscores: boolean = false): string {
+export function sanitizeName(name: string, useUnderscores = false): string {
     if (!name || typeof name !== 'string') {
         return '_unnamed_';
     }
@@ -52,7 +52,7 @@ export function sanitizeName(name: string, useUnderscores: boolean = false): str
  * @param preserveLeadingSlash Whether to preserve a leading slash if present
  * @returns A sanitized path safe for file system operations
  */
-export function sanitizePath(path: string, preserveLeadingSlash: boolean = false): string {
+export function sanitizePath(path: string, preserveLeadingSlash = false): string {
     // Handle empty or invalid input
     if (!path || typeof path !== 'string') {
         return '';
@@ -112,7 +112,7 @@ export function ensureMdExtension(path: string): string {
  * @param preserveLeadingSlash Whether to preserve a leading slash if present
  * @returns Normalized path with smart extension handling
  */
-export function smartNormalizePath(path: string, preserveLeadingSlash: boolean = false): string {
+export function smartNormalizePath(path: string, preserveLeadingSlash = false): string {
     if (!path || typeof path !== 'string') {
         return '';
     }
