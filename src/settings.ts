@@ -29,8 +29,8 @@ export class Settings {
         
         // If we have loaded data, merge it properly
         if (loadedData) {
-            // Shallow copy top-level properties except memory
-            const { memory, ...otherSettings } = loadedData;
+            // Shallow copy top-level properties except memory and llmProviders
+            const { memory, llmProviders, ...otherSettings } = loadedData;
             Object.assign(this.settings, otherSettings);
             
             // Deep merge memory settings to ensure all required properties exist
@@ -42,6 +42,19 @@ export class Settings {
                     providerSettings: {
                         ...DEFAULT_SETTINGS.memory.providerSettings,
                         ...(memory.providerSettings || {})
+                    }
+                };
+            }
+
+            // Deep merge LLM provider settings to ensure all required properties exist
+            if (llmProviders && DEFAULT_SETTINGS.llmProviders) {
+                this.settings.llmProviders = {
+                    ...DEFAULT_SETTINGS.llmProviders,
+                    ...llmProviders,
+                    // Ensure providers exists with all default providers
+                    providers: {
+                        ...DEFAULT_SETTINGS.llmProviders.providers,
+                        ...(llmProviders.providers || {})
                     }
                 };
             }
