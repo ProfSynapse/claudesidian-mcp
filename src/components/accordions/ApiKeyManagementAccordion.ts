@@ -24,7 +24,7 @@ export class ApiKeyManagementAccordion extends Accordion {
     super(
       options.containerEl,
       '🔑 LLM Provider API Keys',
-      'Configure API keys for LLM providers and set default model preferences'
+      false
     );
 
     this.settings = options.settings;
@@ -310,7 +310,7 @@ export class ApiKeyManagementAccordion extends Accordion {
               setTimeout(() => {
                 button.setButtonText('Test');
                 button.setDisabled(false);
-                button.removeClass('mod-success', 'mod-warning');
+                button.removeCta();
                 button.setClass('mod-cta');
               }, 3000);
             });

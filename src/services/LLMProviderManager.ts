@@ -63,8 +63,7 @@ export class LLMProviderManager {
 
     return models.map(model => ({
       ...model,
-      isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model,
-      userDescription: this.settings.providers[model.provider]?.userDescription
+      isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model
     }));
   }
 

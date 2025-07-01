@@ -419,7 +419,7 @@ export class GroqAdapter extends BaseAdapter {
           message = 'Groq service temporarily unavailable. Please try again.';
           break;
         default:
-          if (status >= 500) {
+          if (status && status >= 500) {
             errorCode = 'SERVER_ERROR';
             message = `Groq server error: ${message}`;
           }

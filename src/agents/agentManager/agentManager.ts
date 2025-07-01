@@ -43,7 +43,7 @@ export class AgentManagerAgent extends BaseAgent {
   /**
    * Agent Manager for handoff operations
    */
-  private agentManager: AgentManager | null = null;
+  private parentAgentManager: AgentManager | null = null;
   
   /**
    * Create a new AgentManagerAgent
@@ -123,8 +123,8 @@ export class AgentManagerAgent extends BaseAgent {
     if (executePromptMode) {
       executePromptMode.setProviderManager(providerManager);
       executePromptMode.setPromptStorage(this.storageService);
-      if (this.agentManager) {
-        executePromptMode.setAgentManager(this.agentManager);
+      if (this.parentAgentManager) {
+        executePromptMode.setAgentManager(this.parentAgentManager);
       }
     }
   }
@@ -132,8 +132,8 @@ export class AgentManagerAgent extends BaseAgent {
   /**
    * Set the Agent Manager for handoff operations
    */
-  setAgentManager(agentManager: AgentManager): void {
-    this.agentManager = agentManager;
+  setParentAgentManager(agentManager: AgentManager): void {
+    this.parentAgentManager = agentManager;
     
     // Update execute prompt mode if it exists
     const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;

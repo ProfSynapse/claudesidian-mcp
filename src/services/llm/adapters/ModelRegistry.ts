@@ -17,7 +17,7 @@ import { REQUESTY_MODELS, REQUESTY_DEFAULT_MODEL } from './requesty/RequestyMode
 import { GROQ_MODELS, GROQ_DEFAULT_MODEL } from './groq/GroqModels';
 
 // Re-export ModelSpec for convenience
-export { ModelSpec };
+export type { ModelSpec };
 
 /**
  * Complete model registry organized by provider

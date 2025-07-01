@@ -147,8 +147,8 @@ export class LLMService {
   /**
    * Get all available models from enabled providers
    */
-  async getAvailableModels(): Promise<ModelInfo[]> {
-    const allModels: ModelInfo[] = [];
+  async getAvailableModels(): Promise<(ModelInfo & { provider: string; userDescription?: string })[]> {
+    const allModels: (ModelInfo & { provider: string; userDescription?: string })[] = [];
 
     for (const [providerId, adapter] of this.adapters) {
       try {

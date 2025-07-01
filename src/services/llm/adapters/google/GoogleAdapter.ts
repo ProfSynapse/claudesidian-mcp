@@ -5,7 +5,7 @@
  * Updated June 17, 2025 with latest model availability and pricing
  */
 
-import { GoogleGenerativeAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { BaseAdapter } from '../BaseAdapter';
 import { 
   GenerateOptions, 
@@ -79,7 +79,7 @@ export class GoogleAdapter extends BaseAdapter {
           usage: this.extractGeminiUsage(response),
           finishReason: this.mapFinishReason(response.response.candidates?.[0]?.finishReason),
           metadata: {
-            thinking: options?.enableThinking ? response.response.candidates?.[0]?.content?.parts?.find(p => (p as any).thought !== undefined) : undefined
+            thinking: options?.enableThinking ? response.response.candidates?.[0]?.content?.parts?.find((p: any) => p.thought !== undefined) : undefined
           }
         };
       } catch (error) {
