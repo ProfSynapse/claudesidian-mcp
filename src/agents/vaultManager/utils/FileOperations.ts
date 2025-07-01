@@ -1,18 +1,10 @@
 import { App, TFile, TFolder } from 'obsidian';
+import { smartNormalizePath, normalizePath } from '../../../utils/pathUtils';
 
 /**
  * Utility class for file operations
  */
 export class FileOperations {
-  /**
-   * Normalize file path by removing any leading slash
-   * @param path Path to normalize
-   * @returns Normalized path
-   */
-  private static normalizePath(path: string): string {
-    // Remove leading slash if present
-    return path.startsWith('/') ? path.slice(1) : path;
-  }
   /**
    * Create a note
    * @param app Obsidian app instance
@@ -28,8 +20,8 @@ export class FileOperations {
     content: string,
     overwrite: boolean = false
   ): Promise<{ file: TFile; existed: boolean }> {
-    // Normalize path to remove any leading slash
-    const normalizedPath = this.normalizePath(path);
+    // Apply smart normalization (includes .md extension handling)
+    const normalizedPath = smartNormalizePath(path);
     
     // Check if the file already exists
     const existingFile = app.vault.getAbstractFileByPath(normalizedPath);
@@ -67,7 +59,7 @@ export class FileOperations {
    */
   static async createFolder(app: App, path: string): Promise<boolean> {
     // Normalize path to remove any leading slash
-    const normalizedPath = this.normalizePath(path);
+    const normalizedPath = normalizePath(path);
     
     // Check if the folder already exists
     const existingFolder = app.vault.getAbstractFileByPath(normalizedPath);
@@ -92,9 +84,9 @@ export class FileOperations {
    */
   static async ensureFolder(app: App, path: string): Promise<void> {
     // Normalize path to remove any leading slash
-    const normalizedPath = this.normalizePath(path);
+    const normalizedPath = normalizePath(path);
     
-    const folders = normalizedPath.split('/').filter(p => p.length > 0);
+    const folders = normalizedPath.split('/').filter((p: string) => p.length > 0);
     let currentPath = '';
     
     for (const folder of folders) {
@@ -119,7 +111,7 @@ export class FileOperations {
    */
   static async deleteNote(app: App, path: string): Promise<void> {
     // Normalize path to remove any leading slash
-    const normalizedPath = this.normalizePath(path);
+    const normalizedPath = normalizePath(path);
     
     const file = app.vault.getAbstractFileByPath(normalizedPath);
     if (!file) {
@@ -143,7 +135,7 @@ export class FileOperations {
    */
   static async deleteFolder(app: App, path: string, recursive: boolean = false): Promise<void> {
     // Normalize path to remove any leading slash
-    const normalizedPath = this.normalizePath(path);
+    const normalizedPath = normalizePath(path);
     
     const folder = app.vault.getAbstractFileByPath(normalizedPath);
     if (!folder) {
@@ -177,8 +169,8 @@ export class FileOperations {
     overwrite: boolean = false
   ): Promise<void> {
     // Normalize paths to remove any leading slashes
-    const normalizedPath = this.normalizePath(path);
-    const normalizedNewPath = this.normalizePath(newPath);
+    const normalizedPath = normalizePath(path);
+    const normalizedNewPath = normalizePath(newPath);
     
     const file = app.vault.getAbstractFileByPath(normalizedPath);
     if (!file) {
@@ -224,8 +216,8 @@ export class FileOperations {
     overwrite: boolean = false
   ): Promise<void> {
     // Normalize paths to remove any leading slashes
-    const normalizedPath = this.normalizePath(path);
-    const normalizedNewPath = this.normalizePath(newPath);
+    const normalizedPath = normalizePath(path);
+    const normalizedNewPath = normalizePath(newPath);
     
     const folder = app.vault.getAbstractFileByPath(normalizedPath);
     if (!folder) {
@@ -278,8 +270,8 @@ export class FileOperations {
     wasOverwritten: boolean;
   }> {
     // Normalize paths to remove any leading slashes
-    const normalizedSourcePath = this.normalizePath(sourcePath);
-    const normalizedTargetPath = this.normalizePath(targetPath);
+    const normalizedSourcePath = normalizePath(sourcePath);
+    const normalizedTargetPath = normalizePath(targetPath);
 
     // Check if source file exists
     const sourceFile = app.vault.getAbstractFileByPath(normalizedSourcePath);

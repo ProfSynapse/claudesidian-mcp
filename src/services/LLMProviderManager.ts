@@ -56,6 +56,13 @@ export class LLMProviderManager {
   }
 
   /**
+   * Get current settings
+   */
+  getSettings(): LLMProviderSettings {
+    return this.settings;
+  }
+
+  /**
    * Get all available models from enabled providers only
    */
   async getAvailableModels(): Promise<ModelWithProvider[]> {
@@ -141,7 +148,14 @@ export class LLMProviderManager {
    * Get enabled provider information only
    */
   getEnabledProviders(): ProviderInfo[] {
-    return this.getProviderInfo().filter(provider => provider.isEnabled && provider.hasApiKey);
+    const allProviders = this.getProviderInfo();
+    const enabled = allProviders.filter(provider => provider.isEnabled && provider.hasApiKey);
+    
+    // Debug logging
+    console.log('All providers:', allProviders.map(p => ({ id: p.id, enabled: p.isEnabled, hasKey: p.hasApiKey })));
+    console.log('Enabled providers:', enabled.map(p => p.id));
+    
+    return enabled;
   }
 
   /**

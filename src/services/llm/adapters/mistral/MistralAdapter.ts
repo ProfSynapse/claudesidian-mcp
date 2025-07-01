@@ -11,8 +11,9 @@ export class MistralAdapter extends BaseAdapter {
   readonly name = 'mistral';
   readonly baseUrl = 'https://api.mistral.ai/v1';
 
-  constructor(model?: string) {
-    super('MISTRAL_API_KEY', model || 'mistral-large-latest');
+  constructor(apiKey: string, model?: string) {
+    super(apiKey, model || 'mistral-large-latest');
+    this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {

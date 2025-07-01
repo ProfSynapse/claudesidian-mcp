@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { TogglePromptParams, TogglePromptResult } from '../types';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
-import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -36,15 +36,15 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
       
       // Validate required ID
       if (!id?.trim()) {
-        return this.prepareResult(false, null, 'ID is required');
+        return this.prepareResult(false, null, 'ID is required', extractContextFromParams(params));
       }
       
       // Toggle the prompt
       const toggledPrompt = await this.storageService.togglePrompt(id.trim());
       
-      return this.prepareResult(true, toggledPrompt);
+      return this.prepareResult(true, toggledPrompt, undefined, extractContextFromParams(params));
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to toggle prompt: ${error}`);
+      return this.prepareResult(false, null, `Failed to toggle prompt: ${error}`, extractContextFromParams(params));
     }
   }
   
@@ -73,11 +73,13 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
    * @returns JSON schema object
    */
   getResultSchema(): any {
+    const commonSchema = getCommonResultSchema();
+    
+    // Override the data property to define the specific structure for this mode
     return {
-      type: 'object',
+      ...commonSchema,
       properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' },
+        ...commonSchema.properties,
         data: {
           type: 'object',
           properties: {
@@ -88,12 +90,8 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
             isEnabled: { type: 'boolean' }
           },
           required: ['id', 'name', 'description', 'prompt', 'isEnabled']
-        },
-        sessionId: { type: 'string' },
-        context: { type: 'string' },
-        workspaceContext: { type: 'object' }
-      },
-      required: ['success']
+        }
+      }
     };
   }
 }

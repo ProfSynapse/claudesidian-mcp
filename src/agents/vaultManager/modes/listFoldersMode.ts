@@ -1,18 +1,19 @@
 import { App, TFolder } from 'obsidian';
-import { BaseMode } from '../../baseMode';
+import { BaseDirectoryMode } from './baseDirectoryMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
-
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+
 /**
  * Parameters for list folders mode
  */
 interface ListFoldersParameters extends CommonParameters {
   /**
-   * Directory path to list folders from (empty string, "/", or "." for root)
+   * Directory path to list folders from (required)
+   * Use empty string (""), "/" or "." for root directory
    */
-  path?: string;
+  path: string;
   
   /**
    * Optional filter pattern for folders
@@ -35,8 +36,7 @@ interface ListFoldersResult extends CommonResult {
 /**
  * Mode to list folders in a directory
  */
-export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFoldersResult> {
-  private app: App;
+export class ListFoldersMode extends BaseDirectoryMode<ListFoldersParameters, ListFoldersResult> {
   
   /**
    * Create a new ListFoldersMode
@@ -47,23 +47,9 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       'listFolders',
       'List Folders',
       'List folders in a specified directory',
-      '1.0.0'
+      '1.0.0',
+      app
     );
-    this.app = app;
-  }
-  
-  /**
-   * Normalize path by removing leading slash and handling special cases
-   * @param path Path to normalize
-   * @returns Normalized path
-   */
-  private normalizePath(path: string): string {
-    // Handle special cases for root directory
-    if (!path || path === '/' || path === '.') {
-      return '';
-    }
-    // Remove leading slash if present
-    return path.startsWith('/') ? path.slice(1) : path;
   }
 
   /**
@@ -73,23 +59,9 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
    */
   async execute(params: ListFoldersParameters): Promise<ListFoldersResult> {
     try {
-      // Default to root path if not provided or empty
-      const path = params.path || '/';
-      
-      // Normalize the path to remove any leading slash
-      const normalizedPath = this.normalizePath(path);
-      
-      // Get the folder - for root path, use the vault's root folder
-      let parentFolder;
-      if (normalizedPath === '') {
-        parentFolder = this.app.vault.getRoot();
-      } else {
-        parentFolder = this.app.vault.getAbstractFileByPath(normalizedPath);
-      }
-      
-      if (!parentFolder || !(parentFolder instanceof TFolder)) {
-        return this.prepareResult(false, undefined, `Folder not found at path: ${normalizedPath}`);
-      }
+      // Get the folder using base class method
+      const parentFolder = await this.getFolder(params.path);
+      const normalizedPath = this.normalizeDirectoryPath(params.path);
       
       // Get all children
       const children = parentFolder.children || [];
@@ -111,7 +83,16 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
       // Sort folders alphabetically
       folderData.sort((a, b) => a.name.localeCompare(b.name));
       
-      return this.prepareResult(true, { folders: folderData }, undefined, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+      // Generate helpful message for root directory (but folders don't need the same warning as files)
+      const message = this.getRootDirectoryMessage(normalizedPath, 'Listing folders');
+      
+      return this.prepareResult(
+        true, 
+        { folders: folderData }, 
+        message, 
+        extractContextFromParams(params), 
+        parseWorkspaceContext(params.workspaceContext) || undefined
+      );
       
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to list folders: ', error));
@@ -127,18 +108,14 @@ export class ListFoldersMode extends BaseMode<ListFoldersParameters, ListFolders
     return {
       type: 'object',
       properties: {
-        path: {
-          type: 'string',
-          description: 'Directory path to list folders from (empty string, "/", or "." for root directory)',
-          default: '/'
-        },
+        path: this.getDirectoryPathSchema(),
         filter: {
           type: 'string',
           description: FILTER_DESCRIPTION
         },
         ...commonSchema
       },
-      required: []
+      required: ['path']
     };
   }
   

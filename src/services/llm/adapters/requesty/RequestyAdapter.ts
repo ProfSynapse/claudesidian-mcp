@@ -12,8 +12,9 @@ export class RequestyAdapter extends BaseAdapter {
   readonly name = 'requesty';
   readonly baseUrl = 'https://router.requesty.ai/v1';
 
-  constructor(model?: string) {
-    super('REQUESTY_API_KEY', model || 'gpt-4-turbo');
+  constructor(apiKey: string, model?: string) {
+    super(apiKey, model || 'gpt-4-turbo');
+    this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {

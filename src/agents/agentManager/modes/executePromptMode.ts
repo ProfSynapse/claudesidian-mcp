@@ -10,9 +10,10 @@ import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
 import { LLMProviderManager } from '../../../services/LLMProviderManager';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
 import { AgentManager } from '../../../services/AgentManager';
+import { StaticModelsService } from '../../../services/StaticModelsService';
 
 export interface ExecutePromptParams {
-  agent: string;
+  agent?: string; // Made optional
   filepaths?: string[];
   prompt: string;
   provider?: string;
@@ -20,9 +21,13 @@ export interface ExecutePromptParams {
   temperature?: number;
   maxTokens?: number;
   action?: {
-    type: 'create' | 'append' | 'prepend' | 'replace';
+    type: 'create' | 'append' | 'prepend' | 'replace' | 'findReplace';
     targetPath: string;
     position?: number;
+    findText?: string; // Required for 'findReplace' type
+    replaceAll?: boolean; // Optional for 'findReplace' type
+    caseSensitive?: boolean; // Optional for 'findReplace' type
+    wholeWord?: boolean; // Optional for 'findReplace' type
   };
   sessionId: string;
   context: string;
@@ -122,36 +127,55 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         );
       }
 
-      // Get the custom prompt/agent
-      const customPrompt = await this.promptStorage.getPromptByName(params.agent);
-      if (!customPrompt) {
-        return createResult<ExecutePromptResult>(
-          false,
-          undefined,
-          `Custom prompt agent '${params.agent}' not found`,
-          undefined,
-          undefined,
-          params.sessionId,
-          params.context
-        );
-      }
+      // Get the custom prompt/agent if specified
+      let customPrompt = null;
+      let agentUsed = 'default';
+      
+      if (params.agent) {
+        if (!this.promptStorage) {
+          return createResult<ExecutePromptResult>(
+            false,
+            undefined,
+            'Custom agent specified but prompt storage not available',
+            undefined,
+            undefined,
+            params.sessionId,
+            params.context
+          );
+        }
+        
+        customPrompt = await this.promptStorage.getPromptByName(params.agent);
+        if (!customPrompt) {
+          return createResult<ExecutePromptResult>(
+            false,
+            undefined,
+            `Custom prompt agent '${params.agent}' not found`,
+            undefined,
+            undefined,
+            params.sessionId,
+            params.context
+          );
+        }
 
-      if (!customPrompt.isEnabled) {
-        return createResult<ExecutePromptResult>(
-          false,
-          undefined,
-          `Custom prompt agent '${params.agent}' is disabled`,
-          undefined,
-          undefined,
-          params.sessionId,
-          params.context
-        );
+        if (!customPrompt.isEnabled) {
+          return createResult<ExecutePromptResult>(
+            false,
+            undefined,
+            `Custom prompt agent '${params.agent}' is disabled`,
+            undefined,
+            undefined,
+            params.sessionId,
+            params.context
+          );
+        }
+        
+        agentUsed = customPrompt.name;
       }
 
       // Execute the LLM prompt
       const llmService = this.providerManager.getLLMService();
       const result = await llmService.executePrompt({
-        systemPrompt: customPrompt.prompt,
+        systemPrompt: customPrompt?.prompt || '', // Use custom prompt if available, otherwise empty
         userPrompt: params.prompt,
         filepaths: params.filepaths,
         provider: params.provider,
@@ -177,7 +201,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         response: result.response || '',
         model: result.model || 'unknown',
         provider: result.provider || 'unknown',
-        agentUsed: customPrompt.name,
+        agentUsed: agentUsed,
         usage: result.usage,
         cost: result.cost,
         filesIncluded: result.filesIncluded
@@ -185,6 +209,13 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
 
       // Execute action if specified
       if (params.action && this.agentManager) {
+        console.log('ExecutePromptMode: Action specified, attempting to execute:', {
+          actionType: params.action.type,
+          targetPath: params.action.targetPath,
+          hasAgentManager: !!this.agentManager,
+          responseLength: result.response?.length || 0
+        });
+        
         try {
           const actionResult = await this.executeContentAction(
             params.action,
@@ -193,6 +224,8 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             params.context
           );
 
+          console.log('ExecutePromptMode: Action execution result:', actionResult);
+
           resultData.actionPerformed = {
             type: params.action.type,
             targetPath: params.action.targetPath,
@@ -200,6 +233,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             error: actionResult.error
           };
         } catch (actionError) {
+          console.error('ExecutePromptMode: Action execution failed with exception:', actionError);
           resultData.actionPerformed = {
             type: params.action.type,
             targetPath: params.action.targetPath,
@@ -207,6 +241,11 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             error: actionError instanceof Error ? actionError.message : 'Unknown action error'
           };
         }
+      } else {
+        console.log('ExecutePromptMode: No action specified or agent manager not available', {
+          hasAction: !!params.action,
+          hasAgentManager: !!this.agentManager
+        });
       }
 
       return createResult<ExecutePromptResult>(
@@ -236,12 +275,28 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
    * Execute a ContentManager action with the LLM response
    */
   private async executeContentAction(
-    action: { type: string; targetPath: string; position?: number },
+    action: { 
+      type: string; 
+      targetPath: string; 
+      position?: number;
+      findText?: string;
+      replaceAll?: boolean;
+      caseSensitive?: boolean;
+      wholeWord?: boolean;
+    },
     content: string,
     sessionId: string,
     context: string
   ): Promise<{ success: boolean; error?: string }> {
+    console.log('executeContentAction called with:', {
+      actionType: action.type,
+      targetPath: action.targetPath,
+      contentLength: content.length,
+      hasAgentManager: !!this.agentManager
+    });
+
     if (!this.agentManager) {
+      console.error('executeContentAction: Agent manager not available');
       return { success: false, error: 'Agent manager not available' };
     }
 
@@ -252,38 +307,67 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         content
       };
 
+      console.log('executeContentAction: Preparing to call agent with params:', {
+        actionType: action.type,
+        paramsKeys: Object.keys(actionParams),
+        targetPath: action.targetPath
+      });
+
       switch (action.type) {
         case 'create':
-          actionParams.path = action.targetPath;
+          actionParams.filePath = action.targetPath;
+          console.log('executeContentAction: Calling createContent mode');
           await this.agentManager.executeAgentMode('contentManager', 'createContent', actionParams);
           break;
 
         case 'append':
-          actionParams.path = action.targetPath;
+          actionParams.filePath = action.targetPath;
+          console.log('executeContentAction: Calling appendContent mode');
           await this.agentManager.executeAgentMode('contentManager', 'appendContent', actionParams);
           break;
 
         case 'prepend':
-          actionParams.path = action.targetPath;
+          actionParams.filePath = action.targetPath;
+          console.log('executeContentAction: Calling prependContent mode');
           await this.agentManager.executeAgentMode('contentManager', 'prependContent', actionParams);
           break;
 
         case 'replace':
-          actionParams.path = action.targetPath;
+          actionParams.filePath = action.targetPath;
           if (action.position !== undefined) {
             actionParams.line = action.position;
+            console.log('executeContentAction: Calling replaceByLine mode');
             await this.agentManager.executeAgentMode('contentManager', 'replaceByLine', actionParams);
           } else {
+            console.log('executeContentAction: Calling replaceContent mode');
             await this.agentManager.executeAgentMode('contentManager', 'replaceContent', actionParams);
           }
           break;
 
+        case 'findReplace':
+          if (!action.findText) {
+            console.error('executeContentAction: findText is required for findReplace action');
+            return { success: false, error: 'findText is required for findReplace action' };
+          }
+          actionParams.filePath = action.targetPath;
+          actionParams.findText = action.findText;
+          actionParams.replaceText = content; // LLM response becomes the replacement text
+          actionParams.replaceAll = action.replaceAll ?? false;
+          actionParams.caseSensitive = action.caseSensitive ?? true;
+          actionParams.wholeWord = action.wholeWord ?? false;
+          console.log('executeContentAction: Calling findReplaceContent mode');
+          await this.agentManager.executeAgentMode('contentManager', 'findReplaceContent', actionParams);
+          break;
+
         default:
+          console.error('executeContentAction: Unknown action type:', action.type);
           return { success: false, error: `Unknown action type: ${action.type}` };
       }
 
+      console.log('executeContentAction: Agent mode execution completed successfully');
       return { success: true };
     } catch (error) {
+      console.error('executeContentAction: Agent mode execution failed:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -295,11 +379,15 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
    * Get parameter schema for the mode
    */
   getParameterSchema(): any {
+    // Get dynamic options from provider manager
+    const enabledProviders = this.getEnabledProviders();
+    const availableModels = this.getAvailableModels();
+
     return mergeWithCommonSchema({
       properties: {
         agent: {
           type: 'string',
-          description: 'Custom prompt agent name/id to use as system prompt'
+          description: 'Custom prompt agent name/id to use as system prompt (optional - if not provided, uses raw prompt only)'
         },
         filepaths: {
           type: 'array',
@@ -312,11 +400,23 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         },
         provider: {
           type: 'string',
-          description: 'LLM provider name (optional - uses default if not specified)'
+          description: enabledProviders.length > 0 
+            ? `LLM provider name (optional - uses default if not specified). Available providers: ${enabledProviders.join(', ')}`
+            : 'LLM provider name (optional - uses default if not specified). No providers are currently enabled. Please configure API keys in settings.',
+          ...(enabledProviders.length > 0 && { 
+            enum: enabledProviders,
+            examples: enabledProviders 
+          })
         },
         model: {
           type: 'string',
-          description: 'Model name (optional - uses default if not specified)'
+          description: availableModels.length > 0
+            ? `Model name (optional - uses default if not specified). Available models: ${availableModels.slice(0, 3).join(', ')}${availableModels.length > 3 ? '...' : ''}`
+            : 'Model name (optional - uses default if not specified). No models available. Please configure provider API keys in settings.',
+          ...(availableModels.length > 0 && { 
+            enum: availableModels,
+            examples: availableModels.slice(0, 5) // Show first 5 as examples
+          })
         },
         temperature: {
           type: 'number',
@@ -333,7 +433,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
           properties: {
             type: {
               type: 'string',
-              enum: ['create', 'append', 'prepend', 'replace'],
+              enum: ['create', 'append', 'prepend', 'replace', 'findReplace'],
               description: 'ContentManager action to perform with LLM response'
             },
             targetPath: {
@@ -343,14 +443,76 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             position: {
               type: 'number',
               description: 'Line position for replace action'
+            },
+            findText: {
+              type: 'string',
+              description: 'Text to find and replace (required for findReplace action)'
+            },
+            replaceAll: {
+              type: 'boolean',
+              description: 'Whether to replace all occurrences (default: false)',
+              default: false
+            },
+            caseSensitive: {
+              type: 'boolean',
+              description: 'Whether search is case sensitive (default: true)',
+              default: true
+            },
+            wholeWord: {
+              type: 'boolean',
+              description: 'Whether to match whole words only (default: false)',
+              default: false
             }
           },
           required: ['type', 'targetPath'],
-          description: 'Optional action to perform with the LLM response'
+          description: 'Optional action to perform with the LLM response. For findReplace type, findText is required.'
         }
       },
-      required: ['agent', 'prompt']
+      required: ['prompt'] // Removed 'agent' from required parameters
     });
+  }
+
+  /**
+   * Get enabled providers for schema
+   */
+  private getEnabledProviders(): string[] {
+    if (!this.providerManager) return [];
+    
+    try {
+      const settings = this.providerManager.getSettings();
+      return Object.keys(settings.providers)
+        .filter(id => settings.providers[id]?.enabled && settings.providers[id]?.apiKey);
+    } catch (error) {
+      console.warn('Error getting enabled providers:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all available models from enabled providers
+   */
+  private getAvailableModels(): string[] {
+    if (!this.providerManager) return [];
+    
+    try {
+      const staticModelsService = StaticModelsService.getInstance();
+      const enabledProviders = this.getEnabledProviders();
+      const models: string[] = [];
+      
+      enabledProviders.forEach(providerId => {
+        try {
+          const providerModels = staticModelsService.getModelsForProvider(providerId);
+          models.push(...providerModels.map(m => m.id));
+        } catch (error) {
+          console.warn(`Error getting models for provider ${providerId}:`, error);
+        }
+      });
+      
+      return [...new Set(models)]; // Remove duplicates
+    } catch (error) {
+      console.warn('Error getting available models:', error);
+      return [];
+    }
   }
 
   /**

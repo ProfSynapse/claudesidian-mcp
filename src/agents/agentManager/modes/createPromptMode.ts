@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { CreatePromptParams, CreatePromptResult } from '../types';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
-import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -36,15 +36,15 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
       
       // Validate required fields
       if (!name?.trim()) {
-        return this.prepareResult(false, null, 'Name is required');
+        return this.prepareResult(false, null, 'Name is required', extractContextFromParams(params));
       }
       
       if (!description?.trim()) {
-        return this.prepareResult(false, null, 'Description is required');
+        return this.prepareResult(false, null, 'Description is required', extractContextFromParams(params));
       }
       
       if (!prompt?.trim()) {
-        return this.prepareResult(false, null, 'Prompt text is required');
+        return this.prepareResult(false, null, 'Prompt text is required', extractContextFromParams(params));
       }
       
       // Create the prompt
@@ -55,9 +55,9 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
         isEnabled
       });
       
-      return this.prepareResult(true, newPrompt);
+      return this.prepareResult(true, newPrompt, undefined, extractContextFromParams(params));
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to create prompt: ${error}`);
+      return this.prepareResult(false, null, `Failed to create prompt: ${error}`, extractContextFromParams(params));
     }
   }
   
@@ -104,11 +104,13 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
    * @returns JSON schema object
    */
   getResultSchema(): any {
+    const commonSchema = getCommonResultSchema();
+    
+    // Override the data property to define the specific structure for this mode
     return {
-      type: 'object',
+      ...commonSchema,
       properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' },
+        ...commonSchema.properties,
         data: {
           type: 'object',
           properties: {
@@ -119,12 +121,8 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
             isEnabled: { type: 'boolean' }
           },
           required: ['id', 'name', 'description', 'prompt', 'isEnabled']
-        },
-        sessionId: { type: 'string' },
-        context: { type: 'string' },
-        workspaceContext: { type: 'object' }
-      },
-      required: ['success']
+        }
+      }
     };
   }
 }

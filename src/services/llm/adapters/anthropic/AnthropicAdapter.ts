@@ -21,8 +21,8 @@ export class AnthropicAdapter extends BaseAdapter {
   
   private client: Anthropic;
 
-  constructor(model?: string) {
-    super('ANTHROPIC_API_KEY', model || 'claude-3-5-sonnet-20241022');
+  constructor(apiKey: string, model?: string) {
+    super(apiKey, model || 'claude-3-5-sonnet-20241022');
     
     this.client = new Anthropic({
       apiKey: this.apiKey,

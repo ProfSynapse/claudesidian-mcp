@@ -51,8 +51,8 @@ export class PerplexityAdapter extends BaseAdapter {
   
   private client: AxiosInstance;
 
-  constructor(model?: string) {
-    super('PERPLEXITY_API_KEY', model || PERPLEXITY_DEFAULT_MODEL);
+  constructor(apiKey: string, model?: string) {
+    super(apiKey, model || PERPLEXITY_DEFAULT_MODEL);
     
     this.client = axios.create({
       baseURL: this.baseUrl,

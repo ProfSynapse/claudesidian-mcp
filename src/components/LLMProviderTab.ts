@@ -6,6 +6,9 @@
 import { Setting, ButtonComponent, Modal, App } from 'obsidian';
 import { LLMProviderSettings, LLMProviderConfig, ModelConfig } from '../types';
 import { LLMProviderManager } from '../services/LLMProviderManager';
+import { Card, CardConfig } from './Card';
+import { LLMProviderModal, LLMProviderModalConfig } from './LLMProviderModal';
+import { StaticModelsService } from '../services/StaticModelsService';
 
 export interface LLMProviderTabOptions {
   containerEl: HTMLElement;
@@ -19,12 +22,18 @@ export class LLMProviderTab {
   private onSettingsChange: (settings: LLMProviderSettings) => void;
   private providerCardsContainer!: HTMLElement;
   private providerManager: LLMProviderManager;
+  private app: App;
+  private providerCards: Map<string, Card> = new Map();
+  private staticModelsService: StaticModelsService;
+  private modelDropdownSetting: Setting | null = null;
 
-  constructor(options: LLMProviderTabOptions) {
+  constructor(options: LLMProviderTabOptions & { app?: App }) {
     this.containerEl = options.containerEl;
     this.settings = options.settings;
     this.onSettingsChange = options.onSettingsChange;
     this.providerManager = new LLMProviderManager(this.settings);
+    this.app = options.app || (window as any).app;
+    this.staticModelsService = StaticModelsService.getInstance();
 
     this.buildContent();
   }
@@ -68,22 +77,75 @@ export class LLMProviderTab {
           .setValue(this.settings.defaultModel.provider)
           .onChange(async (value) => {
             this.settings.defaultModel.provider = value;
+            // Reset model when provider changes
+            this.settings.defaultModel.model = '';
+            this.updateModelDropdown(value);
             this.onSettingsChange(this.settings);
           });
       });
 
-    new Setting(sectionEl)
+    // Create model dropdown setting and store reference
+    this.modelDropdownSetting = new Setting(sectionEl)
       .setName('Default Model')
-      .setDesc('The specific model to use by default')
-      .addText(text => {
-        text
-          .setPlaceholder('e.g., gpt-4o, claude-3-5-sonnet-20241022')
-          .setValue(this.settings.defaultModel.model)
-          .onChange(async (value) => {
-            this.settings.defaultModel.model = value;
-            this.onSettingsChange(this.settings);
-          });
-      });
+      .setDesc('The specific model to use by default');
+    
+    // Initial population of model dropdown
+    this.updateModelDropdown(this.settings.defaultModel.provider);
+  }
+
+  /**
+   * Update the model dropdown based on selected provider
+   */
+  private updateModelDropdown(providerId: string): void {
+    if (!this.modelDropdownSetting) return;
+
+    // Clear existing dropdown
+    this.modelDropdownSetting.clear();
+    
+    this.modelDropdownSetting.addDropdown(dropdown => {
+      if (!providerId) {
+        dropdown.addOption('', 'Select a provider first');
+        dropdown.setValue('');
+        return;
+      }
+
+      try {
+        const models = this.staticModelsService.getModelsForProvider(providerId);
+        
+        if (models.length === 0) {
+          dropdown.addOption('', 'No models available');
+          dropdown.setValue('');
+          return;
+        }
+
+        // Add models to dropdown
+        models.forEach(model => {
+          dropdown.addOption(model.id, model.name);
+        });
+
+        // Set current value or first model if current is invalid
+        const currentModel = this.settings.defaultModel.model;
+        const modelExists = models.some(m => m.id === currentModel);
+        
+        if (modelExists) {
+          dropdown.setValue(currentModel);
+        } else if (models.length > 0) {
+          // Set to first model if current model is invalid
+          dropdown.setValue(models[0].id);
+          this.settings.defaultModel.model = models[0].id;
+        }
+
+        dropdown.onChange(async (value) => {
+          this.settings.defaultModel.model = value;
+          this.onSettingsChange(this.settings);
+        });
+
+      } catch (error) {
+        console.error('Error loading models for provider:', providerId, error);
+        dropdown.addOption('', 'Error loading models');
+        dropdown.setValue('');
+      }
+    });
   }
 
   /**
@@ -102,209 +164,82 @@ export class LLMProviderTab {
    */
   private refreshProviderCards(): void {
     this.providerCardsContainer.empty();
+    this.providerCards.clear();
 
     const providerConfigs = this.getProviderConfigs();
     
     Object.keys(providerConfigs).forEach(providerId => {
       this.createProviderCard(providerId, providerConfigs[providerId]);
     });
+
+    // Also refresh the default model dropdown in case provider states changed
+    this.updateModelDropdown(this.settings.defaultModel.provider);
   }
 
   /**
-   * Create a card for a single provider
+   * Create a card for a single provider using the reusable Card component
    */
   private createProviderCard(providerId: string, config: ProviderDisplayConfig): void {
-    const settings = this.settings.providers[providerId] || {
+    const providerConfig = this.settings.providers[providerId] || {
       apiKey: '',
       enabled: false,
-      userDescription: config.description,
+      userDescription: '',
       models: {}
     };
 
-    const cardEl = this.providerCardsContainer.createDiv('llm-provider-card');
-    if (settings.enabled) {
-      cardEl.addClass('enabled');
-    }
+    const hasValidatedApiKey = !!(providerConfig.apiKey && providerConfig.apiKey.length > 0);
 
-    // Card header
-    const headerEl = cardEl.createDiv('llm-provider-header');
-    const titleEl = headerEl.createEl('h4');
-    titleEl.innerHTML = `${config.name} ${settings.enabled ? '✅' : '❌'}`;
-    
-    const descEl = headerEl.createDiv('llm-provider-description');
-    descEl.textContent = config.description;
+    const cardConfig: CardConfig = {
+      title: config.name, // Just the provider name, no emojis
+      description: '', // No description
+      isEnabled: hasValidatedApiKey && providerConfig.enabled,
+      showToggle: true, // Show toggle for providers
+      onToggle: async (enabled: boolean) => {
+        if (!hasValidatedApiKey && enabled) {
+          // If trying to enable without API key, open modal instead
+          this.openProviderModal(providerId, config, providerConfig);
+          return;
+        }
+        
+        this.settings.providers[providerId] = {
+          ...providerConfig,
+          enabled: enabled
+        };
+        this.onSettingsChange(this.settings);
+        this.refreshProviderCards();
+      },
+      onEdit: () => this.openProviderModal(providerId, config, providerConfig)
+    };
 
-    // Enable/disable toggle
-    const toggleEl = cardEl.createDiv('llm-provider-toggle');
-    new Setting(toggleEl)
-      .setName('Enable Provider')
-      .addToggle(toggle => {
-        toggle
-          .setValue(settings.enabled)
-          .onChange(async (value) => {
-            this.settings.providers[providerId] = {
-              ...settings,
-              enabled: value
-            };
-            this.onSettingsChange(this.settings);
-            this.refreshProviderCards();
-          });
-      });
-
-    // Card content (collapsed by default, expandable)
-    const contentEl = cardEl.createDiv('llm-provider-content');
-    if (!settings.enabled) {
-      contentEl.style.display = 'none';
-    }
-
-    // API Key section
-    this.createApiKeySection(contentEl, providerId, settings, config);
-
-    // Models section (only if API key is present)
-    if (settings.apiKey) {
-      this.createModelsSection(contentEl, providerId, settings).catch(error => {
-        console.error('Error creating models section:', error);
-      });
-    }
-
-    // Click to expand/collapse
-    headerEl.addEventListener('click', () => {
-      const isExpanded = contentEl.style.display !== 'none';
-      contentEl.style.display = isExpanded ? 'none' : 'block';
-      cardEl.toggleClass('expanded', !isExpanded);
-    });
+    const card = new Card(this.providerCardsContainer, cardConfig);
+    this.providerCards.set(providerId, card);
   }
 
   /**
-   * Create API key input section
+   * Open the provider configuration modal
    */
-  private createApiKeySection(
-    contentEl: HTMLElement, 
+  private openProviderModal(
     providerId: string, 
-    settings: LLMProviderConfig,
-    config: ProviderDisplayConfig
+    config: ProviderDisplayConfig, 
+    providerConfig: LLMProviderConfig
   ): void {
-    const apiKeyEl = contentEl.createDiv('llm-api-key-section');
-    
-    new Setting(apiKeyEl)
-      .setName('API Key')
-      .setDesc(`${config.name} API key (format: ${config.keyFormat})`)
-      .addText(text => {
-        text
-          .setPlaceholder(`Enter your ${config.name} API key`)
-          .setValue(this.maskApiKey(settings.apiKey))
-          .onChange(async (value) => {
-            if (value !== this.maskApiKey(settings.apiKey)) {
-              this.settings.providers[providerId] = {
-                ...settings,
-                apiKey: value,
-                enabled: value.length > 0 // Auto-enable when API key is added
-              };
-              this.onSettingsChange(this.settings);
-              this.refreshProviderCards();
-            }
-          });
-        
-        // Show full key on focus
-        text.inputEl.addEventListener('focus', () => {
-          if (text.getValue() === this.maskApiKey(settings.apiKey)) {
-            text.setValue(settings.apiKey);
-          }
-        });
-        
-        // Mask key on blur
-        text.inputEl.addEventListener('blur', () => {
-          if (text.getValue() === settings.apiKey) {
-            text.setValue(this.maskApiKey(settings.apiKey));
-          }
-        });
-      })
-      .addButton(button => {
-        button
-          .setButtonText('Get Key')
-          .setTooltip(`Open ${config.name} API key page`)
-          .onClick(() => {
-            window.open(config.signupUrl, '_blank');
-          });
-      });
-  }
-
-  /**
-   * Create models section showing available models with descriptions
-   */
-  private async createModelsSection(
-    contentEl: HTMLElement, 
-    providerId: string, 
-    settings: LLMProviderConfig
-  ): Promise<void> {
-    const modelsEl = contentEl.createDiv('llm-models-section');
-    modelsEl.createEl('h5', { text: 'Available Models' });
-
-    try {
-      // Update provider manager with current settings to get models
-      this.providerManager.updateSettings(this.settings);
-      const models = await this.providerManager.getModelsForProvider(providerId);
-
-      if (models.length === 0) {
-        modelsEl.createDiv('llm-models-empty')
-          .textContent = 'No models available. Check your API key and try again.';
-        return;
+    const modalConfig: LLMProviderModalConfig = {
+      providerId,
+      providerName: config.name,
+      providerDescription: '', // Remove built-in descriptions
+      keyFormat: config.keyFormat,
+      signupUrl: config.signupUrl,
+      config: providerConfig,
+      onSave: (updatedConfig: LLMProviderConfig) => {
+        this.settings.providers[providerId] = updatedConfig;
+        this.onSettingsChange(this.settings);
+        this.refreshProviderCards();
       }
+    };
 
-      // Create model list
-      const modelsList = modelsEl.createDiv('llm-models-list');
-      
-      models.forEach(model => {
-        const modelEl = modelsList.createDiv('llm-model-item');
-        
-        // Model name and info
-        const modelHeader = modelEl.createDiv('llm-model-header');
-        modelHeader.createEl('strong', { text: model.name });
-        
-        const modelInfo = modelEl.createDiv('llm-model-info');
-        modelInfo.innerHTML = `
-          <span class="llm-model-id">${model.id}</span>
-          <span class="llm-model-context">Context: ${model.contextWindow.toLocaleString()} tokens</span>
-          <span class="llm-model-price">$${model.pricing.inputPerMillion}/M input, $${model.pricing.outputPerMillion}/M output</span>
-        `;
-
-        // Model description input
-        const currentDescription = settings.models?.[model.id]?.description || '';
-        new Setting(modelEl)
-          .setName('Usage Description')
-          .setDesc('Describe when to use this model (helps Claude choose the right one)')
-          .addText(text => {
-            text
-              .setPlaceholder('e.g., "Best for creative writing and long-form content"')
-              .setValue(currentDescription)
-              .onChange(async (value) => {
-                // Initialize models object if it doesn't exist
-                if (!settings.models) {
-                  settings.models = {};
-                }
-                if (!settings.models[model.id]) {
-                  settings.models[model.id] = {};
-                }
-                
-                // Update the description
-                settings.models[model.id].description = value;
-                
-                // Update the provider settings
-                this.settings.providers[providerId] = settings;
-                this.onSettingsChange(this.settings);
-              });
-          });
-      });
-
-    } catch (error) {
-      const errorEl = modelsEl.createDiv('llm-models-error');
-      errorEl.innerHTML = `
-        <p><strong>⚠️ Error loading models:</strong></p>
-        <p>${error instanceof Error ? error.message : 'Unknown error'}</p>
-        <p><em>Make sure your API key is valid and the provider is properly configured.</em></p>
-      `;
-    }
+    new LLMProviderModal(this.app, modalConfig, this.providerManager).open();
   }
+
 
   /**
    * Get provider display configurations
@@ -378,18 +313,6 @@ export class LLMProviderTab {
     return configs[providerId]?.name || providerId;
   }
 
-  /**
-   * Mask API key for display
-   */
-  private maskApiKey(apiKey: string): string {
-    if (!apiKey || apiKey.length === 0) {
-      return '';
-    }
-    if (apiKey.length <= 8) {
-      return '*'.repeat(apiKey.length);
-    }
-    return apiKey.substring(0, 4) + '*'.repeat(Math.max(0, apiKey.length - 8)) + apiKey.substring(apiKey.length - 4);
-  }
 
   /**
    * Refresh the tab content

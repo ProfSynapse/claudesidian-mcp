@@ -5,7 +5,7 @@
 
 import { BaseMode } from '../../baseMode';
 import { CommonResult } from '../../../types';
-import { createResult } from '../../../utils/schemaUtils';
+import { createResult, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
 import { LLMProviderManager, ModelWithProvider } from '../../../services/LLMProviderManager';
 
@@ -105,17 +105,28 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
       // Get provider information
       const enabledProviders = this.providerManager.getEnabledProviders();
       
-      // Get statistics
-      const statistics = await this.providerManager.getModelStatistics();
-      
-      // Get default model
-      const defaultModel = this.providerManager.getLLMService().getDefaultModel();
+      // Get default model from settings
+      const settings = this.providerManager.getSettings();
+      const defaultModel = {
+        provider: settings.defaultModel.provider,
+        model: settings.defaultModel.model
+      };
 
       // Group models by provider for counting
       const modelsByProvider = models.reduce((acc, model) => {
         acc[model.provider] = (acc[model.provider] || 0) + 1;
         return acc;
       }, {} as { [key: string]: number });
+
+      // Calculate statistics
+      const statistics = {
+        totalModels: models.length,
+        providerCount: enabledProviders.length,
+        averageContextWindow: models.length > 0 ? Math.round(models.reduce((sum, m) => sum + m.contextWindow, 0) / models.length) : 0,
+        maxContextWindow: models.length > 0 ? Math.max(...models.map(m => m.contextWindow)) : 0,
+        minCostPerMillion: models.length > 0 ? Math.min(...models.map(m => m.pricing.inputPerMillion)) : 0,
+        maxCostPerMillion: models.length > 0 ? Math.max(...models.map(m => m.pricing.inputPerMillion)) : 0
+      };
 
       // Format the response
       const formattedModels = models.map(model => ({
@@ -197,11 +208,13 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
    * Get result schema for the mode
    */
   getResultSchema(): any {
+    const commonSchema = getCommonResultSchema();
+    
+    // Override the data property to define the specific structure for this mode
     return {
-      type: 'object',
+      ...commonSchema,
       properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' },
+        ...commonSchema.properties,
         data: {
           type: 'object',
           properties: {
@@ -279,11 +292,8 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
             }
           },
           required: ['models', 'defaultModel', 'statistics', 'availableProviders']
-        },
-        sessionId: { type: 'string' },
-        context: { type: 'string' }
-      },
-      required: ['success', 'sessionId']
+        }
+      }
     };
   }
 }

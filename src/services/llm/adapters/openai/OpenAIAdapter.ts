@@ -22,27 +22,22 @@ export class OpenAIAdapter extends BaseAdapter {
   
   private client: OpenAI;
 
-  constructor() {
-    super('OPENAI_API_KEY', 'gpt-4o');
+  constructor(apiKey: string) {
+    super(apiKey, 'gpt-4o');
     
     this.client = new OpenAI({
       apiKey: this.apiKey,
-      organization: process.env.OPENAI_ORG_ID,
-      project: process.env.OPENAI_PROJECT_ID
+      dangerouslyAllowBrowser: true, // Required for Obsidian plugin environment
     });
+    
+    this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
-      // Try Responses API first, fallback to Chat Completions
-      try {
-        const result = await this.generateWithResponsesAPI(prompt, options);
-        return result;
-      } catch (responsesError) {
-        console.warn('Responses API failed, falling back to Chat Completions:', responsesError);
-        const result = await this.generateWithChatCompletions(prompt, options);
-        return result;
-      }
+      // Use Chat Completions API directly for reliability
+      const result = await this.generateWithChatCompletions(prompt, options);
+      return result;
     } catch (error) {
       throw this.handleError(error, 'generation');
     }
@@ -50,64 +45,56 @@ export class OpenAIAdapter extends BaseAdapter {
 
   async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
     try {
-      // Try Responses API streaming first, fallback to Chat Completions
-      try {
-        const result = await this.generateWithResponsesAPIStream(prompt, options);
-        return result;
-      } catch (responsesError) {
-        console.warn('Responses API streaming failed, falling back to Chat Completions:', responsesError);
+      const streamParams: any = {
+        model: options?.model || this.currentModel,
+        messages: this.buildMessages(prompt, options?.systemPrompt),
+        stream: true
+      };
+
+      if (options?.temperature !== undefined) streamParams.temperature = options.temperature;
+      if (options?.maxTokens !== undefined) streamParams.max_tokens = options.maxTokens;
+      if (options?.jsonMode) streamParams.response_format = { type: 'json_object' };
+      if (options?.stopSequences) streamParams.stop = options.stopSequences;
+      if (options?.tools) streamParams.tools = options.tools;
+
+      const stream = await this.client.chat.completions.create(streamParams);
+
+      let fullText = '';
+      let usage: any = undefined;
+      let finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' = 'stop';
+
+      for await (const chunk of stream as any) {
+        const delta = chunk.choices[0]?.delta?.content || '';
+        if (delta) {
+          fullText += delta;
+          options?.onToken?.(delta);
+        }
         
-        const streamParams: any = {
-          model: options?.model || this.currentModel,
-          messages: this.buildMessages(prompt, options?.systemPrompt),
-          stream: true
-        };
-
-        if (options?.temperature !== undefined) streamParams.temperature = options.temperature;
-        if (options?.maxTokens !== undefined) streamParams.max_tokens = options.maxTokens;
-        if (options?.jsonMode) streamParams.response_format = { type: 'json_object' };
-        if (options?.stopSequences) streamParams.stop = options.stopSequences;
-        if (options?.tools) streamParams.tools = options.tools;
-
-        const stream = await this.client.chat.completions.create(streamParams);
-
-        let fullText = '';
-        let usage: any = undefined;
-        let finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' = 'stop';
-
-        for await (const chunk of stream as any) {
-          const delta = chunk.choices[0]?.delta?.content || '';
-          if (delta) {
-            fullText += delta;
-            options?.onToken?.(delta);
-          }
-          
-          if (chunk.usage) {
-            usage = chunk.usage;
-          }
-
-          if (chunk.choices[0]?.finish_reason) {
-            const reason = chunk.choices[0].finish_reason;
-            if (reason === 'stop' || reason === 'length' || reason === 'tool_calls' || reason === 'content_filter') {
-              finishReason = reason;
-            }
-          }
+        if (chunk.usage) {
+          usage = chunk.usage;
         }
 
-        const extractedUsage = this.extractUsage({ usage });
-        const response = await this.buildLLMResponse(
-          fullText,
-          this.currentModel,
-          extractedUsage,
-          undefined,
-          finishReason
-        );
-
-        if (options?.onComplete) {
-          options.onComplete(response);
+        if (chunk.choices[0]?.finish_reason) {
+          const reason = chunk.choices[0].finish_reason;
+          if (reason === 'stop' || reason === 'length' || reason === 'tool_calls' || reason === 'content_filter') {
+            finishReason = reason;
+          }
         }
-        return response;
       }
+
+      const extractedUsage = this.extractUsage({ usage });
+      const response = await this.buildLLMResponse(
+        fullText,
+        this.currentModel,
+        extractedUsage,
+        undefined,
+        finishReason
+      );
+
+      if (options?.onComplete) {
+        options.onComplete(response);
+      }
+      return response;
     } catch (error) {
       options?.onError?.(error as Error);
       throw this.handleError(error, 'streaming generation');

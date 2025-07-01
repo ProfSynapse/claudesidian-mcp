@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { GetPromptParams, GetPromptResult } from '../types';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
-import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -36,7 +36,7 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       
       // Must provide either id or name
       if (!id && !name) {
-        return this.prepareResult(false, null, 'Either id or name must be provided');
+        return this.prepareResult(false, null, 'Either id or name must be provided', extractContextFromParams(params));
       }
       
       // Get prompt by id or name
@@ -49,12 +49,12 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       
       if (!prompt) {
         const identifier = id ? `ID "${id}"` : `name "${name}"`;
-        return this.prepareResult(false, null, `Prompt with ${identifier} not found`);
+        return this.prepareResult(false, null, `Prompt with ${identifier} not found`, extractContextFromParams(params));
       }
       
-      return this.prepareResult(true, prompt);
+      return this.prepareResult(true, prompt, undefined, extractContextFromParams(params));
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to get prompt: ${error}`);
+      return this.prepareResult(false, null, `Failed to get prompt: ${error}`, extractContextFromParams(params));
     }
   }
   
@@ -90,11 +90,13 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
    * @returns JSON schema object
    */
   getResultSchema(): any {
+    const commonSchema = getCommonResultSchema();
+    
+    // Override the data property to define the specific structure for this mode
     return {
-      type: 'object',
+      ...commonSchema,
       properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' },
+        ...commonSchema.properties,
         data: {
           oneOf: [
             { type: 'null' },
@@ -110,12 +112,8 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
               required: ['id', 'name', 'description', 'prompt', 'isEnabled']
             }
           ]
-        },
-        sessionId: { type: 'string' },
-        context: { type: 'string' },
-        workspaceContext: { type: 'object' }
-      },
-      required: ['success']
+        }
+      }
     };
   }
 }

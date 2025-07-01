@@ -10,16 +10,14 @@ import {
     UsageStatsComponent,
     UsageSettingsTab
 } from './memory-settings';
+import { UnifiedTabs, UnifiedTabConfig } from './UnifiedTabs';
 
 /**
  * Memory Manager settings tab component
  * Provides UI for configuring the Memory Manager
  */
 export class MemorySettingsTab {
-    private tabContainer!: HTMLElement;
-    private contentContainer!: HTMLElement;
-    private tabs: Record<string, HTMLElement> = {};
-    private contents: Record<string, HTMLElement> = {};
+    private unifiedTabs: UnifiedTabs | null = null;
     private settings: MemorySettings;
     private settingsManager: Settings;
     private app: App;
@@ -116,55 +114,32 @@ export class MemorySettingsTab {
         const memorySection = this.containerEl.createEl('div', { cls: 'mcp-section memory-settings-container' });
         memorySection.createEl('h2', { text: 'Memory Manager Settings' });
 
-        // Create tabs for organization
-        this.tabContainer = memorySection.createDiv({ cls: 'memory-settings-tabs' });
+        // Create tabs using unified tabs component
+        const tabConfigs: UnifiedTabConfig[] = [
+            { key: 'api', label: 'API' },
+            { key: 'embedding', label: 'Embedding' },
+            { key: 'usage', label: 'Usage' }
+        ];
         
-        this.tabs = {
-            api: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'API' }),
-            embedding: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Embedding' }),
-            usage: this.tabContainer.createDiv({ cls: 'memory-tab', text: 'Usage' })
-        };
-
-        // Content containers for each tab
-        this.contentContainer = memorySection.createDiv({ cls: 'memory-tab-content' });
-        
-        this.contents = {
-            api: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
-            embedding: this.contentContainer.createDiv({ cls: 'memory-tab-pane' }),
-            usage: this.contentContainer.createDiv({ cls: 'memory-tab-pane' })
-        };
-
-        // Setup tab switching logic
-        Object.entries(this.tabs).forEach(([key, tab]) => {
-            tab.addEventListener('click', () => {
-                // Remove active class from all tabs and contents
-                Object.values(this.tabs).forEach(t => t.removeClass('active'));
-                Object.values(this.contents).forEach(c => c.removeClass('active'));
-                
-                // Add active class to clicked tab and corresponding content
-                tab.addClass('active');
-                this.contents[key as keyof typeof this.contents].addClass('active');
-                
-                // Save the active tab
-                this.activeTabKey = key;
-            });
+        this.unifiedTabs = new UnifiedTabs({
+            containerEl: memorySection,
+            tabs: tabConfigs,
+            defaultTab: this.activeTabKey,
+            onTabChange: (tabKey: string) => {
+                this.activeTabKey = tabKey;
+            }
         });
 
         // Render each tab's content using the specialized components
-        this.apiSettingsTab.display(this.contents.api);
-        this.embeddingSettingsTab.display(this.contents.embedding);
-        this.usageSettingsTab.display(this.contents.usage);
+        const apiContent = this.unifiedTabs.getTabContent('api');
+        const embeddingContent = this.unifiedTabs.getTabContent('embedding');
+        const usageContent = this.unifiedTabs.getTabContent('usage');
         
-        // Activate the previously active tab (or default to API)
-        if (this.tabs[this.activeTabKey]) {
-            this.tabs[this.activeTabKey].addClass('active');
-            this.contents[this.activeTabKey].addClass('active');
-        } else {
-            // Fallback to API tab if the saved tab key is invalid
-            this.tabs.api.addClass('active');
-            this.contents.api.addClass('active');
-            this.activeTabKey = 'api';
-        }
+        if (apiContent) this.apiSettingsTab.display(apiContent);
+        if (embeddingContent) this.embeddingSettingsTab.display(embeddingContent);
+        if (usageContent) this.usageSettingsTab.display(usageContent);
+        
+        // The unified tabs component handles tab activation
     }
 
     /**

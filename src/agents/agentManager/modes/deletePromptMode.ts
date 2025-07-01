@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { DeletePromptParams, DeletePromptResult } from '../types';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
-import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -36,13 +36,13 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
       
       // Validate required ID
       if (!id?.trim()) {
-        return this.prepareResult(false, null, 'ID is required');
+        return this.prepareResult(false, null, 'ID is required', extractContextFromParams(params));
       }
       
       // Check if prompt exists before deletion
       const existingPrompt = this.storageService.getPrompt(id.trim());
       if (!existingPrompt) {
-        return this.prepareResult(false, null, `Prompt with ID "${id}" not found`);
+        return this.prepareResult(false, null, `Prompt with ID "${id}" not found`, extractContextFromParams(params));
       }
       
       // Delete the prompt
@@ -51,9 +51,9 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
       return this.prepareResult(true, {
         deleted,
         id: id.trim()
-      });
+      }, undefined, extractContextFromParams(params));
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to delete prompt: ${error}`);
+      return this.prepareResult(false, null, `Failed to delete prompt: ${error}`, extractContextFromParams(params));
     }
   }
   
@@ -82,11 +82,13 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
    * @returns JSON schema object
    */
   getResultSchema(): any {
+    const commonSchema = getCommonResultSchema();
+    
+    // Override the data property to define the specific structure for this mode
     return {
-      type: 'object',
+      ...commonSchema,
       properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' },
+        ...commonSchema.properties,
         data: {
           type: 'object',
           properties: {
@@ -94,12 +96,8 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
             id: { type: 'string' }
           },
           required: ['deleted', 'id']
-        },
-        sessionId: { type: 'string' },
-        context: { type: 'string' },
-        workspaceContext: { type: 'object' }
-      },
-      required: ['success']
+        }
+      }
     };
   }
 }

@@ -4,10 +4,14 @@ import { validateParams, formatValidationErrors, ValidationError } from '../../u
 import { generateHintsForErrors } from '../../utils/parameterHintUtils';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { logger } from '../../utils/logger';
+import { smartNormalizePath } from '../../utils/pathUtils';
 
 export class ValidationService implements IValidationService {
     async validateToolParams(params: any, schema?: any): Promise<any> {
         const enhancedParams = { ...params };
+        
+        // Apply smart path normalization to common path parameters before validation
+        this.normalizePathParameters(enhancedParams);
         
         if (schema) {
             await this.validateAgainstSchema(enhancedParams, schema);
@@ -32,6 +36,59 @@ export class ValidationService implements IValidationService {
             );
         }
         return sessionId;
+    }
+
+    /**
+     * Apply smart path normalization to common path parameters
+     * This automatically adds .md extensions where appropriate
+     */
+    private normalizePathParameters(params: any): void {
+        // Common path parameter names used across modes
+        const pathParameterNames = [
+            'path',           // Most file operations (but not directory listing - handled by BaseDirectoryMode)
+            'filePath',       // Some modes use filePath
+            'sourcePath',     // Duplicate/move operations
+            'targetPath',     // Duplicate/move operations
+            'newPath',        // Move operations
+            'oldPath'         // Rename operations
+        ];
+
+        // Normalize individual path parameters
+        for (const paramName of pathParameterNames) {
+            if (params[paramName] && typeof params[paramName] === 'string') {
+                params[paramName] = smartNormalizePath(params[paramName]);
+            }
+        }
+
+        // Handle array of paths (like in batch operations)
+        if (params.paths && Array.isArray(params.paths)) {
+            params.paths = params.paths.map((path: any) => 
+                typeof path === 'string' ? smartNormalizePath(path) : path
+            );
+        }
+
+        // Handle file paths in operations arrays (batch operations)
+        if (params.operations && Array.isArray(params.operations)) {
+            params.operations.forEach((operation: any) => {
+                if (operation && operation.params) {
+                    this.normalizePathParameters(operation.params);
+                }
+            });
+        }
+
+        // Handle contextFiles arrays in agent operations
+        if (params.contextFiles && Array.isArray(params.contextFiles)) {
+            params.contextFiles = params.contextFiles.map((path: any) => 
+                typeof path === 'string' ? smartNormalizePath(path) : path
+            );
+        }
+
+        // Handle filepaths arrays (used in some prompt execution modes)
+        if (params.filepaths && Array.isArray(params.filepaths)) {
+            params.filepaths = params.filepaths.map((path: any) => 
+                typeof path === 'string' ? smartNormalizePath(path) : path
+            );
+        }
     }
 
     async validateBatchOperations(operations: any[]): Promise<void> {

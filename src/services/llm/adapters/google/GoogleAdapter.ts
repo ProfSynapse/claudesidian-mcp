@@ -23,8 +23,8 @@ export class GoogleAdapter extends BaseAdapter {
   
   private client: GoogleGenerativeAI;
 
-  constructor(model?: string) {
-    super('GOOGLE_API_KEY', model || 'gemini-2.5-flash');
+  constructor(apiKey: string, model?: string) {
+    super(apiKey, model || 'gemini-2.5-flash');
     
     this.client = new GoogleGenerativeAI(this.apiKey);
     this.initializeCache();

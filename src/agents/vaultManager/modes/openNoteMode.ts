@@ -2,7 +2,7 @@ import { App, TFile, WorkspaceLeaf } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
-
+import { smartNormalizePath } from '../../../utils/pathUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 /**
  * Parameters for open note mode
@@ -60,15 +60,6 @@ export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
   }
   
   /**
-   * Normalize path by removing leading slash
-   * @param path Path to normalize
-   * @returns Normalized path
-   */
-  private normalizePath(path: string): string {
-    return path.startsWith('/') ? path.slice(1) : path;
-  }
-
-  /**
    * Execute the mode
    * @param params Mode parameters
    * @returns Promise resolving to the result
@@ -80,8 +71,8 @@ export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
         return this.prepareResult(false, undefined, 'Path is required');
       }
       
-      // Normalize the path to remove any leading slash
-      const normalizedPath = this.normalizePath(params.path);
+      // Apply smart normalization (includes .md extension handling)
+      const normalizedPath = smartNormalizePath(params.path);
       
       // Get the file
       const file = this.app.vault.getAbstractFileByPath(normalizedPath);

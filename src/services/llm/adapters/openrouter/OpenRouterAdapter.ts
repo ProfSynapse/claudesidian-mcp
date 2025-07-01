@@ -12,8 +12,9 @@ export class OpenRouterAdapter extends BaseAdapter {
   readonly name = 'openrouter';
   readonly baseUrl = 'https://openrouter.ai/api/v1';
 
-  constructor(model?: string) {
-    super('OPENROUTER_API_KEY', model || 'anthropic/claude-3.5-sonnet');
+  constructor(apiKey: string, model?: string) {
+    super(apiKey, model || 'anthropic/claude-3.5-sonnet');
+    this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {

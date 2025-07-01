@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { UpdatePromptParams, UpdatePromptResult } from '../types';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
-import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -36,12 +36,12 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       
       // Validate required ID
       if (!id?.trim()) {
-        return this.prepareResult(false, null, 'ID is required');
+        return this.prepareResult(false, null, 'ID is required', extractContextFromParams(params));
       }
       
       // Check that at least one field is being updated
       if (name === undefined && description === undefined && prompt === undefined && isEnabled === undefined) {
-        return this.prepareResult(false, null, 'At least one field must be provided for update');
+        return this.prepareResult(false, null, 'At least one field must be provided for update', extractContextFromParams(params));
       }
       
       // Prepare updates object
@@ -49,21 +49,21 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       
       if (name !== undefined) {
         if (!name.trim()) {
-          return this.prepareResult(false, null, 'Name cannot be empty');
+          return this.prepareResult(false, null, 'Name cannot be empty', extractContextFromParams(params));
         }
         updates.name = name.trim();
       }
       
       if (description !== undefined) {
         if (!description.trim()) {
-          return this.prepareResult(false, null, 'Description cannot be empty');
+          return this.prepareResult(false, null, 'Description cannot be empty', extractContextFromParams(params));
         }
         updates.description = description.trim();
       }
       
       if (prompt !== undefined) {
         if (!prompt.trim()) {
-          return this.prepareResult(false, null, 'Prompt text cannot be empty');
+          return this.prepareResult(false, null, 'Prompt text cannot be empty', extractContextFromParams(params));
         }
         updates.prompt = prompt.trim();
       }
@@ -75,9 +75,9 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       // Update the prompt
       const updatedPrompt = await this.storageService.updatePrompt(id.trim(), updates);
       
-      return this.prepareResult(true, updatedPrompt);
+      return this.prepareResult(true, updatedPrompt, undefined, extractContextFromParams(params));
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to update prompt: ${error}`);
+      return this.prepareResult(false, null, `Failed to update prompt: ${error}`, extractContextFromParams(params));
     }
   }
   
@@ -128,11 +128,13 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
    * @returns JSON schema object
    */
   getResultSchema(): any {
+    const commonSchema = getCommonResultSchema();
+    
+    // Override the data property to define the specific structure for this mode
     return {
-      type: 'object',
+      ...commonSchema,
       properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' },
+        ...commonSchema.properties,
         data: {
           type: 'object',
           properties: {
@@ -143,12 +145,8 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
             isEnabled: { type: 'boolean' }
           },
           required: ['id', 'name', 'description', 'prompt', 'isEnabled']
-        },
-        sessionId: { type: 'string' },
-        context: { type: 'string' },
-        workspaceContext: { type: 'object' }
-      },
-      required: ['success']
+        }
+      }
     };
   }
 }

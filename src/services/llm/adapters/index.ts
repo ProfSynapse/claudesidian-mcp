@@ -36,27 +36,29 @@ import { SupportedProvider, LLMProviderError } from './types';
 
 /**
  * Factory function to create adapter instances
+ * Note: This factory requires environment variables to be set for API keys
+ * For direct API key injection, instantiate adapters directly
  */
 export function createAdapter(provider: SupportedProvider, model?: string): BaseAdapter {
   switch (provider.toLowerCase()) {
     case 'openai':
-      return new OpenAIAdapter();
+      return new OpenAIAdapter(process.env.OPENAI_API_KEY || '');
     case 'google':
     case 'gemini':
-      return new GoogleAdapter(model);
+      return new GoogleAdapter(process.env.GOOGLE_API_KEY || '', model);
     case 'anthropic':
     case 'claude':
-      return new AnthropicAdapter(model);
+      return new AnthropicAdapter(process.env.ANTHROPIC_API_KEY || '', model);
     case 'mistral':
-      return new MistralAdapter(model);
+      return new MistralAdapter(process.env.MISTRAL_API_KEY || '', model);
     case 'openrouter':
-      return new OpenRouterAdapter(model);
+      return new OpenRouterAdapter(process.env.OPENROUTER_API_KEY || '', model);
     case 'requesty':
-      return new RequestyAdapter(model);
+      return new RequestyAdapter(process.env.REQUESTY_API_KEY || '', model);
     case 'groq':
-      return new GroqAdapter(model);
+      return new GroqAdapter(process.env.GROQ_API_KEY || '', model);
     case 'perplexity':
-      return new PerplexityAdapter(model);
+      return new PerplexityAdapter(process.env.PERPLEXITY_API_KEY || '', model);
     // case 'ollama':
     //   return new OllamaAdapter(model);
     default:

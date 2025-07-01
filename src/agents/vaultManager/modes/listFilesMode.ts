@@ -1,18 +1,19 @@
-import { App, TFile, TFolder } from 'obsidian';
-import { BaseMode } from '../../baseMode';
+import { App, TFile } from 'obsidian';
+import { BaseDirectoryMode } from './baseDirectoryMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
-
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+
 /**
  * Parameters for list files mode
  */
 interface ListFilesParameters extends CommonParameters {
   /**
-   * Directory path to list files from (optional, defaults to root)
+   * Directory path to list files from (required)
+   * Use empty string (""), "/" or "." for root directory
    */
-  path?: string;
+  path: string;
   
   /**
    * Optional filter pattern for files
@@ -38,8 +39,7 @@ interface ListFilesResult extends CommonResult {
 /**
  * Mode to list files in a directory
  */
-export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult> {
-  private app: App;
+export class ListFilesMode extends BaseDirectoryMode<ListFilesParameters, ListFilesResult> {
   
   /**
    * Create a new ListFilesMode
@@ -50,23 +50,9 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
       'listFiles',
       'List Files',
       'List files in a specified directory',
-      '1.0.0'
+      '1.0.0',
+      app
     );
-    this.app = app;
-  }
-  
-  /**
-   * Normalize path by removing leading slash and handling special cases
-   * @param path Path to normalize
-   * @returns Normalized path
-   */
-  private normalizePath(path: string): string {
-    // Handle special cases for root directory
-    if (!path || path === '/' || path === '.') {
-      return '';
-    }
-    // Remove leading slash if present
-    return path.startsWith('/') ? path.slice(1) : path;
   }
 
   /**
@@ -76,23 +62,9 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
    */
   async execute(params: ListFilesParameters): Promise<ListFilesResult> {
     try {
-      // Default to empty string for root if path not provided
-      const path = params.path ?? '';
-      
-      // Normalize the path to remove any leading slash
-      const normalizedPath = this.normalizePath(path);
-      
-      // Get the folder - handle root folder case
-      let parentFolder;
-      if (normalizedPath === '') {
-        // Root folder case
-        parentFolder = this.app.vault.getRoot();
-      } else {
-        parentFolder = this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (!parentFolder || !(parentFolder instanceof TFolder)) {
-          return this.prepareResult(false, undefined, `Folder not found at path: ${normalizedPath}`);
-        }
-      }
+      // Get the folder using base class method
+      const parentFolder = await this.getFolder(params.path);
+      const normalizedPath = this.normalizeDirectoryPath(params.path);
       
       // Get all children
       const children = parentFolder.children || [];
@@ -117,12 +89,16 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
       // Sort files by modified date (newest first)
       fileData.sort((a, b) => b.modified - a.modified);
       
-      // Add helpful message for root directory listing
-      const message = normalizedPath === '' 
-        ? 'Listing files in root directory only. This may not include all notes in the vault - many notes may be organized in subfolders. Use listFolders mode to explore the full vault structure.'
-        : undefined;
+      // Generate helpful message for root directory
+      const message = this.getRootDirectoryMessage(normalizedPath, 'Listing files');
       
-      return this.prepareResult(true, { files: fileData }, message, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+      return this.prepareResult(
+        true, 
+        { files: fileData }, 
+        message, 
+        extractContextFromParams(params), 
+        parseWorkspaceContext(params.workspaceContext) || undefined
+      );
       
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to list files: ', error));
@@ -138,18 +114,14 @@ export class ListFilesMode extends BaseMode<ListFilesParameters, ListFilesResult
     return {
       type: 'object',
       properties: {
-        path: {
-          type: 'string',
-          description: 'Directory path to list files from (optional, empty string for root directory)',
-          default: ''
-        },
+        path: this.getDirectoryPathSchema(),
         filter: {
           type: 'string',
           description: FILTER_DESCRIPTION
         },
         ...commonSchema
       },
-      required: []
+      required: ['path']
     };
   }
   

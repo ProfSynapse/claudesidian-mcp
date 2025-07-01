@@ -4,6 +4,8 @@ import { CustomPromptStorageService } from '../../database/services/CustomPrompt
 import { CustomPrompt, LLMProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { Setting, Modal, App, ButtonComponent, ToggleComponent } from 'obsidian';
 import { LLMProviderTab } from '../LLMProviderTab';
+import { UnifiedTabs, UnifiedTabConfig } from '../UnifiedTabs';
+import { Card, CardConfig } from '../Card';
 
 /**
  * Agent Management accordion component
@@ -15,14 +17,11 @@ export class AgentManagementAccordion extends Accordion {
     private app: App;
     
     // Tab system
-    private tabContainer!: HTMLElement;
-    private contentContainer!: HTMLElement;
-    private tabs: Record<string, HTMLElement> = {};
-    private contents: Record<string, HTMLElement> = {};
-    private activeTabKey: string = 'agents'; // Default to agents tab
+    private unifiedTabs: UnifiedTabs | null = null;
     
     // Agent tab content
     private promptCardsContainer!: HTMLElement;
+    private promptCards: Map<string, Card> = new Map();
     
     // LLM Provider tab
     private llmProviderTab: LLMProviderTab | null = null;
@@ -55,68 +54,73 @@ export class AgentManagementAccordion extends Accordion {
     private initializeContent(): void {
         this.contentEl.empty();
         
-        // Ensure LLM provider settings exist
+        // Ensure LLM provider settings exist, but preserve existing values
         if (!this.settings.settings.llmProviders) {
             this.settings.settings.llmProviders = DEFAULT_LLM_PROVIDER_SETTINGS;
+        } else {
+            // Merge with defaults to ensure all provider entries exist, but keep existing API keys
+            const currentSettings = this.settings.settings.llmProviders;
+            const mergedProviders = { ...DEFAULT_LLM_PROVIDER_SETTINGS.providers };
+            
+            // Preserve existing provider settings (especially API keys)
+            Object.keys(currentSettings.providers || {}).forEach(providerId => {
+                if (mergedProviders[providerId]) {
+                    mergedProviders[providerId] = {
+                        ...mergedProviders[providerId],
+                        ...currentSettings.providers[providerId]
+                    };
+                }
+            });
+            
+            this.settings.settings.llmProviders = {
+                ...DEFAULT_LLM_PROVIDER_SETTINGS,
+                ...currentSettings,
+                providers: mergedProviders
+            };
         }
         
+        // Save settings after ensuring they're properly initialized
+        this.settings.saveSettings();
+        
         this.createTabStructure();
-        this.createAgentsTab();
-        this.createLLMProvidersTab();
-        this.switchToTab(this.activeTabKey);
     }
 
     /**
-     * Create the tab structure
+     * Create the tab structure using the unified tabs component
      */
     private createTabStructure(): void {
-        // Tab navigation
-        this.tabContainer = this.contentEl.createDiv('agent-management-tabs');
+        const tabConfigs: UnifiedTabConfig[] = [
+            { key: 'agents', label: '🤖 Custom Agents' },
+            { key: 'llm-providers', label: '🔑 LLM Providers' }
+        ];
         
-        // Create tab buttons
-        this.createTabButton('agents', '🤖 Custom Agents');
-        this.createTabButton('llm-providers', '🔑 LLM Providers');
+        this.unifiedTabs = new UnifiedTabs({
+            containerEl: this.contentEl,
+            tabs: tabConfigs,
+            defaultTab: 'agents',
+            onTabChange: (tabKey: string) => this.onTabChange(tabKey)
+        });
         
-        // Content container
-        this.contentContainer = this.contentEl.createDiv('agent-management-content');
+        // Initialize tab content
+        this.createAgentsTab();
+        this.createLLMProvidersTab();
     }
 
     /**
-     * Create a tab button
+     * Handle tab change events
      */
-    private createTabButton(tabKey: string, label: string): void {
-        const tabEl = this.tabContainer.createEl('button', {
-            cls: 'agent-management-tab',
-            text: label
-        });
-        
-        tabEl.addEventListener('click', () => this.switchToTab(tabKey));
-        this.tabs[tabKey] = tabEl;
+    private onTabChange(tabKey: string): void {
+        // Any additional logic when tabs change can go here
+        // For now, the TabContainer handles all the display logic
     }
 
-    /**
-     * Switch to a specific tab
-     */
-    private switchToTab(tabKey: string): void {
-        this.activeTabKey = tabKey;
-        
-        // Update tab buttons
-        Object.entries(this.tabs).forEach(([key, tabEl]) => {
-            tabEl.toggleClass('active', key === tabKey);
-        });
-        
-        // Update content visibility
-        Object.entries(this.contents).forEach(([key, contentEl]) => {
-            contentEl.style.display = key === tabKey ? 'block' : 'none';
-        });
-    }
 
     /**
      * Create the Custom Agents tab content
      */
     private createAgentsTab(): void {
-        const contentEl = this.contentContainer.createDiv('agents-tab-content');
-        this.contents['agents'] = contentEl;
+        const contentEl = this.unifiedTabs?.getTabContent('agents');
+        if (!contentEl) return;
         
         // Add Agent button
         const addButtonContainer = contentEl.createDiv('agent-management-add-button');
@@ -134,12 +138,13 @@ export class AgentManagementAccordion extends Accordion {
      * Create the LLM Providers tab content
      */
     private createLLMProvidersTab(): void {
-        const contentEl = this.contentContainer.createDiv('llm-providers-tab-content');
-        this.contents['llm-providers'] = contentEl;
+        const contentEl = this.unifiedTabs?.getTabContent('llm-providers');
+        if (!contentEl) return;
         
         this.llmProviderTab = new LLMProviderTab({
             containerEl: contentEl,
             settings: this.settings.settings.llmProviders!,
+            app: this.app,
             onSettingsChange: async (llmProviderSettings: LLMProviderSettings) => {
                 this.settings.settings.llmProviders = llmProviderSettings;
                 await this.settings.saveSettings();
@@ -152,6 +157,7 @@ export class AgentManagementAccordion extends Accordion {
      */
     private refreshPromptCards(): void {
         this.promptCardsContainer.empty();
+        this.promptCards.clear();
         
         const prompts = this.customPromptStorage.getAllPrompts();
         
@@ -165,46 +171,24 @@ export class AgentManagementAccordion extends Accordion {
     }
     
     /**
-     * Create a card for a single prompt
+     * Create a card for a single prompt using the reusable Card component
      * @param prompt Custom prompt to display
      */
     private createPromptCard(prompt: CustomPrompt): void {
-        const cardEl = this.promptCardsContainer.createDiv('agent-management-card');
-        
-        // Header with name and toggle
-        const headerEl = cardEl.createDiv('agent-management-card-header');
-        const titleEl = headerEl.createDiv('agent-management-card-title');
-        titleEl.setText(prompt.name);
-        
-        const actionsEl = headerEl.createDiv('agent-management-card-actions');
-        
-        // Toggle switch using Obsidian's ToggleComponent
-        const toggleContainer = actionsEl.createDiv('agent-management-toggle');
-        new ToggleComponent(toggleContainer)
-            .setValue(prompt.isEnabled)
-            .onChange(async (value) => {
+        const cardConfig: CardConfig = {
+            title: prompt.name,
+            description: prompt.description,
+            isEnabled: prompt.isEnabled,
+            showToggle: true, // Custom agents should have toggles
+            onToggle: async (enabled: boolean) => {
                 await this.customPromptStorage.togglePrompt(prompt.id);
-            });
+            },
+            onEdit: () => this.openPromptModal(prompt),
+            onDelete: () => this.deletePrompt(prompt)
+        };
         
-        // Edit button
-        const editBtn = actionsEl.createEl('button', { 
-            cls: 'clickable-icon agent-management-edit-btn',
-            attr: { 'aria-label': 'Edit agent' }
-        });
-        editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
-        editBtn.addEventListener('click', () => this.openPromptModal(prompt));
-        
-        // Delete button
-        const deleteBtn = actionsEl.createEl('button', { 
-            cls: 'clickable-icon agent-management-delete-btn',
-            attr: { 'aria-label': 'Delete agent' }
-        });
-        deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash"><polyline points="3,6 5,6 21,6"></polyline><path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path></svg>`;
-        deleteBtn.addEventListener('click', () => this.deletePrompt(prompt));
-        
-        // Description
-        const descEl = cardEl.createDiv('agent-management-card-description');
-        descEl.setText(prompt.description);
+        const card = new Card(this.promptCardsContainer, cardConfig);
+        this.promptCards.set(prompt.id, card);
     }
     
     /**

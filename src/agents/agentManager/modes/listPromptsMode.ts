@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { ListPromptsParams, ListPromptsResult } from '../types';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
-import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -52,9 +52,9 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
         prompts: promptList,
         totalCount: allPrompts.length,
         enabledCount: enabledPrompts.length
-      });
+      }, undefined, extractContextFromParams(params));
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to list prompts: ${error}`);
+      return this.prepareResult(false, null, `Failed to list prompts: ${error}`, extractContextFromParams(params));
     }
   }
   
@@ -83,11 +83,13 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
    * @returns JSON schema object
    */
   getResultSchema(): any {
+    const commonSchema = getCommonResultSchema();
+    
+    // Override the data property to define the specific structure for this mode
     return {
-      type: 'object',
+      ...commonSchema,
       properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' },
+        ...commonSchema.properties,
         data: {
           type: 'object',
           properties: {
@@ -108,12 +110,8 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
             enabledCount: { type: 'number' }
           },
           required: ['prompts', 'totalCount', 'enabledCount']
-        },
-        sessionId: { type: 'string' },
-        context: { type: 'string' },
-        workspaceContext: { type: 'object' }
-      },
-      required: ['success']
+        }
+      }
     };
   }
 }

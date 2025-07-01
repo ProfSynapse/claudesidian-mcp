@@ -58,23 +58,33 @@ export class LLMService {
    * Initialize adapters for all configured providers
    */
   private initializeAdapters(): void {
-    const providers = this.settings.providers;
+    const providers = this.settings?.providers;
+    
+    if (!providers) {
+      console.warn('No provider settings found, skipping adapter initialization');
+      return;
+    }
 
     // Only initialize adapters for providers with API keys
     if (providers.openai?.apiKey && providers.openai.enabled) {
       try {
-        // Set environment variable for the adapter
-        process.env.OPENAI_API_KEY = providers.openai.apiKey;
-        this.adapters.set('openai', new OpenAIAdapter());
+        console.log('Initializing OpenAI adapter...');
+        const adapter = new OpenAIAdapter(providers.openai.apiKey);
+        this.adapters.set('openai', adapter);
+        console.log('OpenAI adapter initialized successfully');
       } catch (error) {
-        console.warn('Failed to initialize OpenAI adapter:', error);
+        console.error('Failed to initialize OpenAI adapter:', error);
+        console.error('Error details:', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined
+        });
       }
     }
 
     if (providers.anthropic?.apiKey && providers.anthropic.enabled) {
       try {
-        process.env.ANTHROPIC_API_KEY = providers.anthropic.apiKey;
-        this.adapters.set('anthropic', new AnthropicAdapter());
+        this.adapters.set('anthropic', new AnthropicAdapter(providers.anthropic.apiKey));
       } catch (error) {
         console.warn('Failed to initialize Anthropic adapter:', error);
       }
@@ -82,8 +92,7 @@ export class LLMService {
 
     if (providers.google?.apiKey && providers.google.enabled) {
       try {
-        process.env.GOOGLE_API_KEY = providers.google.apiKey;
-        this.adapters.set('google', new GoogleAdapter());
+        this.adapters.set('google', new GoogleAdapter(providers.google.apiKey));
       } catch (error) {
         console.warn('Failed to initialize Google adapter:', error);
       }
@@ -91,8 +100,7 @@ export class LLMService {
 
     if (providers.mistral?.apiKey && providers.mistral.enabled) {
       try {
-        process.env.MISTRAL_API_KEY = providers.mistral.apiKey;
-        this.adapters.set('mistral', new MistralAdapter());
+        this.adapters.set('mistral', new MistralAdapter(providers.mistral.apiKey));
       } catch (error) {
         console.warn('Failed to initialize Mistral adapter:', error);
       }
@@ -100,8 +108,7 @@ export class LLMService {
 
     if (providers.groq?.apiKey && providers.groq.enabled) {
       try {
-        process.env.GROQ_API_KEY = providers.groq.apiKey;
-        this.adapters.set('groq', new GroqAdapter());
+        this.adapters.set('groq', new GroqAdapter(providers.groq.apiKey));
       } catch (error) {
         console.warn('Failed to initialize Groq adapter:', error);
       }
@@ -109,8 +116,7 @@ export class LLMService {
 
     if (providers.openrouter?.apiKey && providers.openrouter.enabled) {
       try {
-        process.env.OPENROUTER_API_KEY = providers.openrouter.apiKey;
-        this.adapters.set('openrouter', new OpenRouterAdapter());
+        this.adapters.set('openrouter', new OpenRouterAdapter(providers.openrouter.apiKey));
       } catch (error) {
         console.warn('Failed to initialize OpenRouter adapter:', error);
       }
@@ -118,8 +124,7 @@ export class LLMService {
 
     if (providers.requesty?.apiKey && providers.requesty.enabled) {
       try {
-        process.env.REQUESTY_API_KEY = providers.requesty.apiKey;
-        this.adapters.set('requesty', new RequestyAdapter());
+        this.adapters.set('requesty', new RequestyAdapter(providers.requesty.apiKey));
       } catch (error) {
         console.warn('Failed to initialize Requesty adapter:', error);
       }
@@ -127,8 +132,7 @@ export class LLMService {
 
     if (providers.perplexity?.apiKey && providers.perplexity.enabled) {
       try {
-        process.env.PERPLEXITY_API_KEY = providers.perplexity.apiKey;
-        this.adapters.set('perplexity', new PerplexityAdapter());
+        this.adapters.set('perplexity', new PerplexityAdapter(providers.perplexity.apiKey));
       } catch (error) {
         console.warn('Failed to initialize Perplexity adapter:', error);
       }
@@ -194,16 +198,53 @@ export class LLMService {
    */
   async executePrompt(options: LLMExecutionOptions): Promise<LLMExecutionResult> {
     try {
+      // Validate that we have settings
+      if (!this.settings || !this.settings.defaultModel) {
+        return {
+          success: false,
+          error: 'LLM service not properly configured - missing settings'
+        };
+      }
+
       // Determine provider and model
       const provider = options.provider || this.settings.defaultModel.provider;
       const model = options.model || this.settings.defaultModel.model;
 
-      // Check if provider is available
-      const adapter = this.adapters.get(provider);
-      if (!adapter) {
+      // Validate provider and model are specified
+      if (!provider) {
         return {
           success: false,
-          error: `Provider '${provider}' is not available. Please check API key configuration.`
+          error: 'No provider specified and no default provider configured. Please set up LLM providers in settings.'
+        };
+      }
+
+      if (!model) {
+        return {
+          success: false,
+          error: 'No model specified and no default model configured. Please set up default model in settings.'
+        };
+      }
+
+      // Check if provider is available
+      if (!this.adapters) {
+        return {
+          success: false,
+          error: 'LLM adapters not initialized'
+        };
+      }
+
+      console.log('Looking for adapter for provider:', provider);
+      console.log('Available adapters:', Array.from(this.adapters.keys()));
+      console.log('Adapters map:', this.adapters);
+      
+      const adapter = this.adapters.get(provider);
+      console.log('Found adapter:', !!adapter);
+      
+      if (!adapter) {
+        const availableProviders = Array.from(this.adapters.keys());
+        return {
+          success: false,
+          error: `Provider '${provider}' is not available. Available providers: ${availableProviders.length > 0 ? availableProviders.join(', ') : 'none (no API keys configured)'}. Please check API key configuration in settings.`
         };
       }
 
@@ -233,7 +274,17 @@ export class LLMService {
         stopSequences: options.stopSequences
       };
 
+      console.log('About to call adapter.generate with:', {
+        provider,
+        model,
+        promptLength: fullPrompt.length,
+        systemPromptLength: options.systemPrompt?.length || 0,
+        generateOptions
+      });
+      
       const result: LLMResponse = await adapter.generate(fullPrompt, generateOptions);
+      
+      console.log('Adapter.generate completed successfully');
 
       return {
         success: true,
@@ -246,9 +297,17 @@ export class LLMService {
       };
 
     } catch (error) {
+      console.error('LLMService.executePrompt failed:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined,
+        toString: String(error)
+      });
+      
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: `LLM execution failed: ${error instanceof Error ? error.message : 'Unknown error occurred'}. Check console for details.`
       };
     }
   }

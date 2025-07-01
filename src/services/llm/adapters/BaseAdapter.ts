@@ -27,20 +27,18 @@ export abstract class BaseAdapter {
   protected config: ProviderConfig;
   protected cache!: BaseCache<LLMResponse>;
 
-  constructor(envKeyName: string, defaultModel: string, baseUrl?: string) {
-    this.apiKey = process.env[envKeyName] || '';
+  constructor(apiKey: string, defaultModel: string, baseUrl?: string) {
+    this.apiKey = apiKey || '';
     this.currentModel = defaultModel;
-    
-    if (!this.apiKey) {
-      console.warn(`⚠️ ${envKeyName} not found in environment variables`);
-    }
 
     this.config = {
       apiKey: this.apiKey,
       baseUrl: baseUrl || ''
     };
 
-    this.validateConfiguration();
+    if (!this.apiKey) {
+      console.warn(`⚠️ API key not provided for adapter`);
+    }
   }
 
   protected initializeCache(cacheConfig?: any): void {

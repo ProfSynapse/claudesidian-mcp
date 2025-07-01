@@ -43,8 +43,8 @@ export class GroqAdapter extends BaseAdapter {
   
   private client: Groq;
 
-  constructor(model?: string) {
-    super('GROQ_API_KEY', model || GROQ_DEFAULT_MODEL);
+  constructor(apiKey: string, model?: string) {
+    super(apiKey, model || GROQ_DEFAULT_MODEL);
     
     // Initialize Groq client with official SDK
     this.client = new Groq({

@@ -8,7 +8,8 @@ import {
   DeletePromptMode,
   TogglePromptMode,
   ListModelsMode,
-  ExecutePromptMode
+  ExecutePromptMode,
+  BatchExecutePromptMode
 } from './modes';
 import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
 import { Settings } from '../../settings';
@@ -77,6 +78,7 @@ export class AgentManagerAgent extends BaseAgent {
     // Register LLM modes (will be initialized when provider manager is set)
     this.registerMode(new ListModelsMode());
     this.registerMode(new ExecutePromptMode());
+    this.registerMode(new BatchExecutePromptMode());
   }
 
   /**
@@ -127,6 +129,15 @@ export class AgentManagerAgent extends BaseAgent {
         executePromptMode.setAgentManager(this.parentAgentManager);
       }
     }
+
+    const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
+    if (batchExecutePromptMode) {
+      batchExecutePromptMode.setProviderManager(providerManager);
+      batchExecutePromptMode.setPromptStorage(this.storageService);
+      if (this.parentAgentManager) {
+        batchExecutePromptMode.setAgentManager(this.parentAgentManager);
+      }
+    }
   }
 
   /**
@@ -139,6 +150,12 @@ export class AgentManagerAgent extends BaseAgent {
     const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;
     if (executePromptMode) {
       executePromptMode.setAgentManager(agentManager);
+    }
+
+    // Update batch execute prompt mode if it exists
+    const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
+    if (batchExecutePromptMode) {
+      batchExecutePromptMode.setAgentManager(agentManager);
     }
   }
 

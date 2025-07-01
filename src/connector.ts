@@ -15,6 +15,8 @@ import {
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from './database/services/CustomPromptStorageService';
+import { LLMProviderManager } from './services/LLMProviderManager';
+import { DEFAULT_LLM_PROVIDER_SETTINGS } from './types';
 
 /**
  * Interface for agent-mode tool call parameters
@@ -99,6 +101,31 @@ export class MCPConnector {
             
             // Always register AgentManager (prompt management)
             const agentManagerAgent = this.customPromptStorage ? new AgentManagerAgent((this.plugin as any).settings) : null;
+            
+            // Initialize LLM Provider Manager if AgentManager exists
+            if (agentManagerAgent) {
+                try {
+                    // Get LLM provider settings from plugin settings or use defaults
+                    const pluginSettings = (this.plugin as any)?.settings?.settings;
+                    const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
+                    
+                    // Debug logging to see what settings we're getting
+                    console.log('Plugin settings found:', !!pluginSettings);
+                    console.log('LLM provider settings:', llmProviderSettings);
+                    console.log('Default provider/model:', llmProviderSettings.defaultModel);
+                    
+                    // Create LLM Provider Manager
+                    const llmProviderManager = new LLMProviderManager(llmProviderSettings);
+                    
+                    // Set up the provider manager on the agent
+                    agentManagerAgent.setProviderManager(llmProviderManager);
+                    agentManagerAgent.setParentAgentManager(this.agentManager);
+                    
+                    console.log('LLM Provider Manager initialized successfully');
+                } catch (error) {
+                    console.error('Failed to initialize LLM Provider Manager:', error);
+                }
+            }
             
             // Always register VaultLibrarian (has non-vector modes like search)
             const vaultLibrarianAgent = new VaultLibrarianAgent(

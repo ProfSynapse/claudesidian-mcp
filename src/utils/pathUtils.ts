@@ -3,6 +3,15 @@
  */
 
 /**
+ * Basic path normalization - removes leading slash for Obsidian compatibility
+ * @param path Path to normalize
+ * @returns Normalized path without leading slash
+ */
+export function normalizePath(path: string): string {
+    return path.startsWith('/') ? path.slice(1) : path;
+}
+
+/**
  * Determines if a path should be treated as absolute
  */
 export function isAbsolutePath(path: string): boolean {
@@ -94,6 +103,72 @@ export function ensureMdExtension(path: string): string {
         return path + '.md';
     }
     return path;
+}
+
+/**
+ * Smart path normalization that handles missing file extensions
+ * Automatically adds .md extension if no extension is present and path appears to be a file
+ * @param path The file path to normalize
+ * @param preserveLeadingSlash Whether to preserve a leading slash if present
+ * @returns Normalized path with smart extension handling
+ */
+export function smartNormalizePath(path: string, preserveLeadingSlash: boolean = false): string {
+    if (!path || typeof path !== 'string') {
+        return '';
+    }
+
+    // First apply standard path sanitization
+    const sanitizedPath = sanitizePath(path, preserveLeadingSlash);
+    
+    // Check if this looks like a file path (has no extension and doesn't end with /)
+    // and is not just a folder reference
+    if (sanitizedPath && 
+        !sanitizedPath.endsWith('/') && 
+        !hasFileExtension(sanitizedPath) &&
+        !isLikelyFolder(sanitizedPath)) {
+        return sanitizedPath + '.md';
+    }
+    
+    return sanitizedPath;
+}
+
+/**
+ * Checks if a path has any file extension
+ * @param path The path to check
+ * @returns True if path has an extension, false otherwise
+ */
+function hasFileExtension(path: string): boolean {
+    const lastSlashIndex = path.lastIndexOf('/');
+    const lastDotIndex = path.lastIndexOf('.');
+    
+    // Extension must come after the last slash (if any) and not be the first character of filename
+    return lastDotIndex > lastSlashIndex && lastDotIndex > lastSlashIndex + 1;
+}
+
+/**
+ * Heuristic to determine if a path is likely intended to be a folder
+ * @param path The path to check
+ * @returns True if path is likely a folder, false if likely a file
+ */
+function isLikelyFolder(path: string): boolean {
+    // Common folder indicators
+    const folderIndicators = [
+        '/',           // Ends with slash
+        'folder',      // Contains 'folder'
+        'dir',         // Contains 'dir'
+        'assets',      // Common folder names
+        'images',
+        'attachments',
+        'templates',
+        'scripts'
+    ];
+    
+    const lowerPath = path.toLowerCase();
+    
+    // Check for explicit folder indicators
+    return folderIndicators.some(indicator => 
+        lowerPath.endsWith(indicator) || lowerPath.includes(indicator + '/')
+    );
 }
 
 /**
