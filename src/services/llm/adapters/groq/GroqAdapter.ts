@@ -50,7 +50,8 @@ export class GroqAdapter extends BaseAdapter {
     this.client = new Groq({
       apiKey: this.apiKey,
       timeout: 120000, // 2 minutes for complex requests
-      maxRetries: 3
+      maxRetries: 3,
+      dangerouslyAllowBrowser: true
     });
     
     this.initializeCache({

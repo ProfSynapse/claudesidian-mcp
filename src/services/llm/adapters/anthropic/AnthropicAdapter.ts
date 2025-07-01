@@ -26,7 +26,8 @@ export class AnthropicAdapter extends BaseAdapter {
     
     this.client = new Anthropic({
       apiKey: this.apiKey,
-      baseURL: this.baseUrl
+      baseURL: this.baseUrl,
+      dangerouslyAllowBrowser: true
     });
     
     this.initializeCache();
