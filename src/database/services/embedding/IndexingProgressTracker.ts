@@ -129,15 +129,17 @@ export class IndexingProgressTracker {
       operationId: this.progressState.operationId
     };
 
-    // Update notice with final message
+    // Update notice with final message and capture notice reference before cleanup
+    let noticeToHide: Notice | null = null;
     if (this.progressState.notice) {
       const message = finalMessage || this.generateCompletionMessage(success, result, error);
       this.progressState.notice.setMessage(message);
+      noticeToHide = this.progressState.notice; // Capture reference before cleanup
       
       if (hideDelay > 0) {
         setTimeout(() => {
-          if (this.progressState?.notice) {
-            this.progressState.notice.hide();
+          if (noticeToHide) {
+            noticeToHide.hide();
           }
         }, hideDelay);
       }
