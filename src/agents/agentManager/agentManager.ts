@@ -6,11 +6,15 @@ import {
   CreatePromptMode,
   UpdatePromptMode,
   DeletePromptMode,
-  TogglePromptMode
+  TogglePromptMode,
+  ListModelsMode,
+  ExecutePromptMode
 } from './modes';
 import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
 import { Settings } from '../../settings';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
+import { LLMProviderManager } from '../../services/LLMProviderManager';
+import { AgentManager } from '../../services/AgentManager';
 
 /**
  * AgentManager Agent for custom prompt operations
@@ -30,6 +34,16 @@ export class AgentManagerAgent extends BaseAgent {
    * Flag to prevent infinite recursion in description getter
    */
   private isGettingDescription: boolean = false;
+
+  /**
+   * LLM Provider Manager for model operations
+   */
+  private providerManager: LLMProviderManager | null = null;
+
+  /**
+   * Agent Manager for handoff operations
+   */
+  private agentManager: AgentManager | null = null;
   
   /**
    * Create a new AgentManagerAgent
@@ -52,13 +66,17 @@ export class AgentManagerAgent extends BaseAgent {
       this.vaultName = 'unknown-vault';
     }
     
-    // Register modes
+    // Register prompt management modes
     this.registerMode(new ListPromptsMode(this.storageService));
     this.registerMode(new GetPromptMode(this.storageService));
     this.registerMode(new CreatePromptMode(this.storageService));
     this.registerMode(new UpdatePromptMode(this.storageService));
     this.registerMode(new DeletePromptMode(this.storageService));
     this.registerMode(new TogglePromptMode(this.storageService));
+
+    // Register LLM modes (will be initialized when provider manager is set)
+    this.registerMode(new ListModelsMode());
+    this.registerMode(new ExecutePromptMode());
   }
 
   /**
@@ -87,6 +105,41 @@ export class AgentManagerAgent extends BaseAgent {
    */
   getStorageService(): CustomPromptStorageService {
     return this.storageService;
+  }
+
+  /**
+   * Set the LLM Provider Manager for model operations
+   */
+  setProviderManager(providerManager: LLMProviderManager): void {
+    this.providerManager = providerManager;
+    
+    // Update the LLM modes with the provider manager
+    const listModelsMode = this.getMode('listModels') as ListModelsMode;
+    if (listModelsMode) {
+      listModelsMode.setProviderManager(providerManager);
+    }
+
+    const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;
+    if (executePromptMode) {
+      executePromptMode.setProviderManager(providerManager);
+      executePromptMode.setPromptStorage(this.storageService);
+      if (this.agentManager) {
+        executePromptMode.setAgentManager(this.agentManager);
+      }
+    }
+  }
+
+  /**
+   * Set the Agent Manager for handoff operations
+   */
+  setAgentManager(agentManager: AgentManager): void {
+    this.agentManager = agentManager;
+    
+    // Update execute prompt mode if it exists
+    const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;
+    if (executePromptMode) {
+      executePromptMode.setAgentManager(agentManager);
+    }
   }
 
   /**
