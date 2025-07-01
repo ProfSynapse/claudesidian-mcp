@@ -5,7 +5,7 @@ import { CustomPrompt, LLMProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS } from
 import { Setting, Modal, App, ButtonComponent, ToggleComponent } from 'obsidian';
 import { LLMProviderTab } from '../LLMProviderTab';
 import { UnifiedTabs, UnifiedTabConfig } from '../UnifiedTabs';
-import { Card, CardConfig } from '../Card';
+import { CardManager, CardManagerConfig } from '../CardManager';
 
 /**
  * Agent Management accordion component
@@ -20,8 +20,7 @@ export class AgentManagementAccordion extends Accordion {
     private unifiedTabs: UnifiedTabs | null = null;
     
     // Agent tab content
-    private promptCardsContainer!: HTMLElement;
-    private promptCards: Map<string, Card> = new Map();
+    private agentCardManager: CardManager<CustomPrompt> | null = null;
     
     // LLM Provider tab
     private llmProviderTab: LLMProviderTab | null = null;
@@ -122,16 +121,22 @@ export class AgentManagementAccordion extends Accordion {
         const contentEl = this.unifiedTabs?.getTabContent('agents');
         if (!contentEl) return;
         
-        // Add Agent button
-        const addButtonContainer = contentEl.createDiv('agent-management-add-button');
-        new ButtonComponent(addButtonContainer)
-            .setButtonText('Add Agent')
-            .setCta()
-            .onClick(() => this.openPromptModal());
+        const cardManagerConfig: CardManagerConfig<CustomPrompt> = {
+            containerEl: contentEl,
+            title: 'Custom Agents',
+            addButtonText: 'Add Agent',
+            emptyStateText: 'No custom agents created yet. Click "Add Agent" to create your first one.',
+            items: this.customPromptStorage.getAllPrompts(),
+            onAdd: () => this.openPromptModal(),
+            onToggle: async (prompt: CustomPrompt, enabled: boolean) => {
+                await this.customPromptStorage.togglePrompt(prompt.id);
+            },
+            onEdit: (prompt: CustomPrompt) => this.openPromptModal(prompt),
+            onDelete: (prompt: CustomPrompt) => this.deletePrompt(prompt),
+            showToggle: true
+        };
         
-        // Prompt cards container
-        this.promptCardsContainer = contentEl.createDiv('agent-management-cards');
-        this.refreshPromptCards();
+        this.agentCardManager = new CardManager(cardManagerConfig);
     }
 
     /**
@@ -153,42 +158,13 @@ export class AgentManagementAccordion extends Accordion {
     }
     
     /**
-     * Refresh the prompt cards display
+     * Refresh the agent cards display
      */
-    private refreshPromptCards(): void {
-        this.promptCardsContainer.empty();
-        this.promptCards.clear();
-        
-        const prompts = this.customPromptStorage.getAllPrompts();
-        
-        if (prompts.length === 0) {
-            this.promptCardsContainer.createDiv('agent-management-empty')
-                .setText('No custom agents created yet. Click "Add Agent" to create your first one.');
-            return;
+    private refreshAgentCards(): void {
+        if (this.agentCardManager) {
+            const prompts = this.customPromptStorage.getAllPrompts();
+            this.agentCardManager.updateItems(prompts);
         }
-        
-        prompts.forEach(prompt => this.createPromptCard(prompt));
-    }
-    
-    /**
-     * Create a card for a single prompt using the reusable Card component
-     * @param prompt Custom prompt to display
-     */
-    private createPromptCard(prompt: CustomPrompt): void {
-        const cardConfig: CardConfig = {
-            title: prompt.name,
-            description: prompt.description,
-            isEnabled: prompt.isEnabled,
-            showToggle: true, // Custom agents should have toggles
-            onToggle: async (enabled: boolean) => {
-                await this.customPromptStorage.togglePrompt(prompt.id);
-            },
-            onEdit: () => this.openPromptModal(prompt),
-            onDelete: () => this.deletePrompt(prompt)
-        };
-        
-        const card = new Card(this.promptCardsContainer, cardConfig);
-        this.promptCards.set(prompt.id, card);
     }
     
     /**
@@ -207,7 +183,7 @@ export class AgentManagementAccordion extends Accordion {
                     isEnabled: true
                 });
             }
-            this.refreshPromptCards();
+            this.refreshAgentCards();
         }).open();
     }
     
@@ -219,7 +195,7 @@ export class AgentManagementAccordion extends Accordion {
         const confirmed = confirm(`Are you sure you want to delete the agent "${prompt.name}"? This action cannot be undone.`);
         if (confirmed) {
             await this.customPromptStorage.deletePrompt(prompt.id);
-            this.refreshPromptCards();
+            this.refreshAgentCards();
         }
     }
 }

@@ -13,7 +13,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'GPT-4o',
-    apiName: 'gpt-4o',
+    apiName: 'openai/gpt-4o',
     contextWindow: 128000,
     maxTokens: 16384,
     inputCostPerMillion: 2.50,
@@ -29,7 +29,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'GPT-4.1',
-    apiName: 'gpt-4.1',
+    apiName: 'openai/gpt-4.1',
     contextWindow: 1047576,
     maxTokens: 32768,
     inputCostPerMillion: 2.00,
@@ -45,7 +45,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'GPT-4.1 Mini',
-    apiName: 'gpt-4.1-mini',
+    apiName: 'openai/gpt-4.1-mini',
     contextWindow: 1047576,
     maxTokens: 32768,
     inputCostPerMillion: 0.40,
@@ -61,7 +61,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'GPT-4.1 Nano',
-    apiName: 'gpt-4.1-nano',
+    apiName: 'openai/gpt-4.1-nano',
     contextWindow: 1047576,
     maxTokens: 32768,
     inputCostPerMillion: 0.10,
@@ -77,7 +77,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'o3',
-    apiName: 'o3',
+    apiName: 'openai/o3',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 2.00,
@@ -93,7 +93,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'o3 Pro',
-    apiName: 'o3-pro',
+    apiName: 'openai/o3-pro',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 20.00,
@@ -109,7 +109,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'o4 Mini',
-    apiName: 'o4-mini',
+    apiName: 'openai/o4-mini',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 1.10,
@@ -127,7 +127,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'Gemini 2.5 Pro Experimental',
-    apiName: 'gemini-2.5-pro-preview-06-05',
+    apiName: 'google/gemini-2.5-pro-preview-06-05',
     contextWindow: 1048576,
     maxTokens: 65535,
     inputCostPerMillion: 1.25,
@@ -143,7 +143,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'Gemini 2.5 Flash',
-    apiName: 'gemini-2.5-flash-preview-05-20',
+    apiName: 'google/gemini-2.5-flash-preview-05-20',
     contextWindow: 1048576,
     maxTokens: 65536,
     inputCostPerMillion: 0.15,
@@ -161,7 +161,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'Claude 3.5 Haiku',
-    apiName: 'claude-3-5-haiku-20241022',
+    apiName: 'anthropic/claude-3-5-haiku-20241022',
     contextWindow: 200000,
     maxTokens: 8192,
     inputCostPerMillion: 0.80,
@@ -177,7 +177,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'Claude 4 Opus',
-    apiName: 'claude-opus-4-20250514',
+    apiName: 'anthropic/claude-opus-4-20250514',
     contextWindow: 200000,
     maxTokens: 32000,
     inputCostPerMillion: 15.00,
@@ -193,7 +193,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'Claude 4 Sonnet',
-    apiName: 'claude-sonnet-4-20250514',
+    apiName: 'anthropic/claude-sonnet-4-20250514',
     contextWindow: 200000,
     maxTokens: 64000,
     inputCostPerMillion: 3.00,
@@ -211,7 +211,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'Mistral Large',
-    apiName: 'mistral-large-latest',
+    apiName: 'mistral/mistral-large-latest',
     contextWindow: 131000,
     maxTokens: 130000,
     inputCostPerMillion: 2.00,
@@ -226,4 +226,4 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   }
 ];
 
-export const REQUESTY_DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+export const REQUESTY_DEFAULT_MODEL = 'anthropic/claude-sonnet-4-20250514';

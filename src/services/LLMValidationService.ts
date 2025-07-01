@@ -4,6 +4,7 @@
  */
 
 import OpenAI from 'openai';
+import { requestUrl } from 'obsidian';
 
 export class LLMValidationService {
   /**
@@ -48,7 +49,7 @@ export class LLMValidationService {
 
       // Make a simple test request
       const response = await client.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4.1-nano',
         messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 5
       });
@@ -64,8 +65,9 @@ export class LLMValidationService {
 
   private static async validateAnthropic(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // Use fetch to test Anthropic API directly
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      // Use Obsidian's requestUrl to bypass CORS restrictions
+      const response = await requestUrl({
+        url: 'https://api.anthropic.com/v1/messages',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -73,16 +75,16 @@ export class LLMValidationService {
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-3-haiku-20240307',
+          model: 'claude-3-5-haiku-latest',
           max_tokens: 5,
           messages: [{ role: 'user', content: 'Hi' }]
         })
       });
 
-      if (response.ok) {
+      if (response.status >= 200 && response.status < 300) {
         return { success: true };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.json || {};
         return { 
           success: false, 
           error: errorData.error?.message || `HTTP ${response.status}` 
@@ -98,10 +100,12 @@ export class LLMValidationService {
 
   private static async validateGoogle(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+      const response = await requestUrl({
+        url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: 'Hi' }] }],
@@ -109,10 +113,10 @@ export class LLMValidationService {
         })
       });
 
-      if (response.ok) {
+      if (response.status >= 200 && response.status < 300) {
         return { success: true };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.json || {};
         return { 
           success: false, 
           error: errorData.error?.message || `HTTP ${response.status}` 
@@ -128,7 +132,8 @@ export class LLMValidationService {
 
   private static async validateMistral(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      const response = await requestUrl({
+        url: 'https://api.mistral.ai/v1/chat/completions',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,10 +146,10 @@ export class LLMValidationService {
         })
       });
 
-      if (response.ok) {
+      if (response.status >= 200 && response.status < 300) {
         return { success: true };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.json || {};
         return { 
           success: false, 
           error: errorData.error?.message || `HTTP ${response.status}` 
@@ -160,7 +165,8 @@ export class LLMValidationService {
 
   private static async validateGroq(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const response = await requestUrl({
+        url: 'https://api.groq.com/openai/v1/chat/completions',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,10 +179,10 @@ export class LLMValidationService {
         })
       });
 
-      if (response.ok) {
+      if (response.status >= 200 && response.status < 300) {
         return { success: true };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.json || {};
         return { 
           success: false, 
           error: errorData.error?.message || `HTTP ${response.status}` 
@@ -192,7 +198,8 @@ export class LLMValidationService {
 
   private static async validateOpenRouter(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const response = await requestUrl({
+        url: 'https://openrouter.ai/api/v1/chat/completions',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -201,16 +208,16 @@ export class LLMValidationService {
           'X-Title': 'Claude Code Obsidian Plugin'
         },
         body: JSON.stringify({
-          model: 'meta-llama/llama-3.2-3b-instruct:free',
+          model: 'openai/gpt-4.1-nano',
           messages: [{ role: 'user', content: 'Hi' }],
           max_tokens: 5
         })
       });
 
-      if (response.ok) {
+      if (response.status >= 200 && response.status < 300) {
         return { success: true };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.json || {};
         return { 
           success: false, 
           error: errorData.error?.message || `HTTP ${response.status}` 
@@ -226,23 +233,24 @@ export class LLMValidationService {
 
   private static async validatePerplexity(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      const response = await requestUrl({
+        url: 'https://api.perplexity.ai/chat/completions',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'llama-3.1-sonar-small-128k-online',
+          model: 'sonar',
           messages: [{ role: 'user', content: 'Hi' }],
           max_tokens: 5
         })
       });
 
-      if (response.ok) {
+      if (response.status >= 200 && response.status < 300) {
         return { success: true };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.json || {};
         return { 
           success: false, 
           error: errorData.error?.message || `HTTP ${response.status}` 
@@ -257,14 +265,34 @@ export class LLMValidationService {
   }
 
   private static async validateRequesty(apiKey: string): Promise<{ success: boolean; error?: string }> {
-    // Requesty doesn't have a public API endpoint for testing
-    // For now, just do format validation
-    if (apiKey.startsWith('req_') && apiKey.length > 10) {
-      return { success: true };
-    } else {
+    try {
+      const response = await requestUrl({
+        url: 'https://router.requesty.ai/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-4.1-nano',
+          messages: [{ role: 'user', content: 'Hi' }],
+          max_tokens: 5
+        })
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        return { success: true };
+      } else {
+        const errorData = response.json || {};
+        return { 
+          success: false, 
+          error: errorData.error?.message || `HTTP ${response.status}` 
+        };
+      }
+    } catch (error: any) {
       return { 
         success: false, 
-        error: 'Requesty API key format validation failed' 
+        error: error.message || 'Requesty API key validation failed' 
       };
     }
   }

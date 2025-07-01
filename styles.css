@@ -969,19 +969,23 @@ a:hover {
     line-height: 1.4;
 }
 
-/* Agent Management Styles */
+/* Card Manager Styles - Unified for all card-based UIs */
+.card-manager-add-button,
 .agent-management-add-button {
     margin-bottom: 16px;
 }
 
+.card-manager-add-button button,
 .agent-management-add-button button {
     width: 100%;
 }
 
-.agent-management-cards {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+.card-manager-grid,
+.agent-management-cards,
+.llm-provider-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
 }
 
 .agent-management-disabled {
@@ -991,6 +995,7 @@ a:hover {
     padding: 20px;
 }
 
+.card-manager-empty,
 .agent-management-empty {
     text-align: center;
     color: var(--text-muted);
@@ -1156,6 +1161,13 @@ a:hover {
 
 /* Responsive design for cards */
 @media (max-width: 768px) {
+    .card-manager-grid,
+    .agent-management-cards,
+    .llm-provider-cards {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
     .agent-management-card-header {
         flex-direction: column;
         align-items: flex-start;

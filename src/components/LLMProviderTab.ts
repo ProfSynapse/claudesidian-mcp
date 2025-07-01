@@ -6,7 +6,7 @@
 import { Setting, ButtonComponent, Modal, App } from 'obsidian';
 import { LLMProviderSettings, LLMProviderConfig, ModelConfig } from '../types';
 import { LLMProviderManager } from '../services/LLMProviderManager';
-import { Card, CardConfig } from './Card';
+import { CardManager, CardManagerConfig, CardItem } from './CardManager';
 import { LLMProviderModal, LLMProviderModalConfig } from './LLMProviderModal';
 import { StaticModelsService } from '../services/StaticModelsService';
 
@@ -16,14 +16,19 @@ export interface LLMProviderTabOptions {
   onSettingsChange: (settings: LLMProviderSettings) => void;
 }
 
+interface ProviderCardItem extends CardItem {
+  providerId: string;
+  config: LLMProviderConfig;
+  displayConfig: ProviderDisplayConfig;
+}
+
 export class LLMProviderTab {
   private containerEl: HTMLElement;
   private settings: LLMProviderSettings;
   private onSettingsChange: (settings: LLMProviderSettings) => void;
-  private providerCardsContainer!: HTMLElement;
+  private providerCardManager: CardManager<ProviderCardItem> | null = null;
   private providerManager: LLMProviderManager;
   private app: App;
-  private providerCards: Map<string, Card> = new Map();
   private staticModelsService: StaticModelsService;
   private modelDropdownSetting: Setting | null = null;
 
@@ -155,65 +160,76 @@ export class LLMProviderTab {
     const sectionEl = this.containerEl.createDiv('llm-providers-section');
     sectionEl.createEl('h3', { text: '🤖 LLM Providers' });
 
-    this.providerCardsContainer = sectionEl.createDiv('llm-provider-cards');
-    this.refreshProviderCards();
+    const cardManagerConfig: CardManagerConfig<ProviderCardItem> = {
+      containerEl: sectionEl,
+      title: 'LLM Providers',
+      addButtonText: 'Add Provider',
+      emptyStateText: 'No providers configured yet.',
+      items: this.getProviderCardItems(),
+      onAdd: () => {}, // No add functionality for providers
+      onToggle: async (item: ProviderCardItem, enabled: boolean) => {
+        if (!item.config.apiKey && enabled) {
+          // If trying to enable without API key, open modal instead
+          this.openProviderModal(item.providerId, item.displayConfig, item.config);
+          return;
+        }
+        
+        this.settings.providers[item.providerId] = {
+          ...item.config,
+          enabled: enabled
+        };
+        this.onSettingsChange(this.settings);
+        this.refreshProviderCards();
+      },
+      onEdit: (item: ProviderCardItem) => this.openProviderModal(item.providerId, item.displayConfig, item.config),
+      showToggle: true,
+      showAddButton: false // Don't show add button for providers
+    };
+
+    this.providerCardManager = new CardManager(cardManagerConfig);
+  }
+
+  /**
+   * Get provider card items for CardManager
+   */
+  private getProviderCardItems(): ProviderCardItem[] {
+    const providerConfigs = this.getProviderConfigs();
+    
+    return Object.keys(providerConfigs).map(providerId => {
+      const providerConfig = this.settings.providers[providerId] || {
+        apiKey: '',
+        enabled: false,
+        userDescription: '',
+        models: {}
+      };
+      
+      const hasValidatedApiKey = !!(providerConfig.apiKey && providerConfig.apiKey.length > 0);
+      
+      return {
+        id: providerId,
+        name: providerConfigs[providerId].name,
+        description: '', // No description for providers
+        isEnabled: hasValidatedApiKey && providerConfig.enabled,
+        providerId,
+        config: providerConfig,
+        displayConfig: providerConfigs[providerId]
+      };
+    });
   }
 
   /**
    * Refresh the provider cards display
    */
   private refreshProviderCards(): void {
-    this.providerCardsContainer.empty();
-    this.providerCards.clear();
-
-    const providerConfigs = this.getProviderConfigs();
-    
-    Object.keys(providerConfigs).forEach(providerId => {
-      this.createProviderCard(providerId, providerConfigs[providerId]);
-    });
+    if (this.providerCardManager) {
+      const items = this.getProviderCardItems();
+      this.providerCardManager.updateItems(items);
+    }
 
     // Also refresh the default model dropdown in case provider states changed
     this.updateModelDropdown(this.settings.defaultModel.provider);
   }
 
-  /**
-   * Create a card for a single provider using the reusable Card component
-   */
-  private createProviderCard(providerId: string, config: ProviderDisplayConfig): void {
-    const providerConfig = this.settings.providers[providerId] || {
-      apiKey: '',
-      enabled: false,
-      userDescription: '',
-      models: {}
-    };
-
-    const hasValidatedApiKey = !!(providerConfig.apiKey && providerConfig.apiKey.length > 0);
-
-    const cardConfig: CardConfig = {
-      title: config.name, // Just the provider name, no emojis
-      description: '', // No description
-      isEnabled: hasValidatedApiKey && providerConfig.enabled,
-      showToggle: true, // Show toggle for providers
-      onToggle: async (enabled: boolean) => {
-        if (!hasValidatedApiKey && enabled) {
-          // If trying to enable without API key, open modal instead
-          this.openProviderModal(providerId, config, providerConfig);
-          return;
-        }
-        
-        this.settings.providers[providerId] = {
-          ...providerConfig,
-          enabled: enabled
-        };
-        this.onSettingsChange(this.settings);
-        this.refreshProviderCards();
-      },
-      onEdit: () => this.openProviderModal(providerId, config, providerConfig)
-    };
-
-    const card = new Card(this.providerCardsContainer, cardConfig);
-    this.providerCards.set(providerId, card);
-  }
 
   /**
    * Open the provider configuration modal

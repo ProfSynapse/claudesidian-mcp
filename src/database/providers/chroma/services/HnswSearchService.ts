@@ -44,17 +44,29 @@ interface HnswIndex {
   nextId: number;
 }
 
+interface PartitionedHnswIndex {
+  partitions: HnswIndex[];
+  itemToPartition: Map<string, number>; // Maps item ID to partition index
+  maxItemsPerPartition: number;
+  dimension: number;
+}
+
 /**
  * High-performance vector search using HNSW (Hierarchical Navigable Small World)
  * Provides O(log n) search instead of O(n) brute force
  */
 export class HnswSearchService {
   private indexes: Map<string, HnswIndex> = new Map();
+  private partitionedIndexes: Map<string, PartitionedHnswIndex> = new Map();
   private isInitialized: boolean = false;
   private hnswLib: any = null;
   private app?: App;
   private vectorStore?: IVectorStore;
   private embeddingService?: EmbeddingService;
+  
+  // Partitioning configuration
+  private readonly maxItemsPerPartition = 500; // Lower threshold for partitioning
+  private readonly usePartitioning = true; // Enable partitioning by default
 
   constructor(app?: App, vectorStore?: IVectorStore, embeddingService?: EmbeddingService) {
     this.app = app;
@@ -90,6 +102,10 @@ export class HnswSearchService {
       return;
     }
 
+    // Remove any existing indexes for this collection to start fresh
+    this.indexes.delete(collectionName);
+    this.partitionedIndexes.delete(collectionName);
+
     // Determine embedding dimension from first item
     const firstEmbedding = items.find(item => item.embedding && item.embedding.length > 0)?.embedding;
     if (!firstEmbedding) {
@@ -98,75 +114,118 @@ export class HnswSearchService {
     }
 
     const dimension = firstEmbedding.length;
-    // Creating HNSW index
+    
+    // Decide whether to use partitioning based on collection size
+    if (this.usePartitioning && items.length > this.maxItemsPerPartition) {
+      console.log(`[HnswSearchService] Large collection detected (${items.length} items). Using partitioned indexing.`);
+      await this.createPartitionedIndex(collectionName, items, dimension);
+    } else {
+      console.log(`[HnswSearchService] Creating single HNSW index for ${items.length} items.`);
+      await this.createSingleIndex(collectionName, items, dimension);
+    }
+  }
 
+  /**
+   * Create partitioned HNSW indexes for very large collections
+   */
+  private async createPartitionedIndex(collectionName: string, items: DatabaseItem[], dimension: number): Promise<void> {
+    try {
+      const partitions: HnswIndex[] = [];
+      const itemToPartition = new Map<string, number>();
+      let skippedCount = 0;
+
+      // Calculate number of partitions needed
+      const numPartitions = Math.ceil(items.length / this.maxItemsPerPartition);
+      console.log(`[HnswSearchService] Creating ${numPartitions} partitions for ${items.length} items`);
+
+      // Create partitions
+      for (let partitionIndex = 0; partitionIndex < numPartitions; partitionIndex++) {
+        const startIdx = partitionIndex * this.maxItemsPerPartition;
+        const endIdx = Math.min(startIdx + this.maxItemsPerPartition, items.length);
+        const partitionItems = items.slice(startIdx, endIdx);
+
+        console.log(`[HnswSearchService] Creating partition ${partitionIndex + 1}/${numPartitions} with ${partitionItems.length} items`);
+
+        // Create HNSW index for this partition
+        const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, '');
+        
+        // Use a safe capacity for each partition
+        const maxElements = Math.max(partitionItems.length + 5000, 60000);
+        index.initIndex(dimension, 16, 200, maxElements);
+        
+        const idToItem = new Map<number, DatabaseItem>();
+        const itemIdToHnswId = new Map<string, number>();
+        let nextId = 0;
+
+        // Add items to this partition
+        for (let i = 0; i < partitionItems.length; i++) {
+          const item = partitionItems[i];
+          
+          if (!this.isValidItem(item, dimension)) {
+            skippedCount++;
+            continue;
+          }
+          
+          const hnswId = nextId++;
+          
+          try {
+            index.addPoint(item.embedding!, hnswId, false);
+            idToItem.set(hnswId, item);
+            itemIdToHnswId.set(item.id, hnswId);
+            itemToPartition.set(item.id, partitionIndex);
+            
+          } catch (error) {
+            console.error(`[HnswSearchService] Failed to add item to partition ${partitionIndex}:`, error);
+            skippedCount++;
+          }
+        }
+
+        partitions.push({
+          index,
+          idToItem,
+          itemIdToHnswId,
+          nextId
+        });
+      }
+
+      // Store the partitioned index
+      this.partitionedIndexes.set(collectionName, {
+        partitions,
+        itemToPartition,
+        maxItemsPerPartition: this.maxItemsPerPartition,
+        dimension
+      });
+
+      console.log(`[HnswSearchService] Successfully created ${numPartitions} partitions. Skipped ${skippedCount} invalid items.`);
+      
+    } catch (error) {
+      console.error(`[HnswSearchService] Failed to create partitioned index for collection ${collectionName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create single HNSW index for smaller collections
+   */
+  private async createSingleIndex(collectionName: string, items: DatabaseItem[], dimension: number): Promise<void> {
     try {
       // Create new HNSW index using loaded library
       const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, '');
       
-      // Initialize with appropriate parameters for performance
-      // dimensions, M, efConstruction, maxElements
-      index.initIndex(dimension, 16, 200, items.length);
+      // Use safe capacity with generous buffer
+      const maxElements = Math.max(items.length * 3, 60000);
+      index.initIndex(dimension, 16, 200, maxElements);
       
       const idToItem = new Map<number, DatabaseItem>();
       const itemIdToHnswId = new Map<string, number>();
       let nextId = 0;
       let skippedCount = 0;
 
-      // Add all items to the index with detailed validation
+      // Add all items to the index
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         
-        if (!item.embedding) {
-          console.warn(`[HnswSearchService] Item ${i} (${item.id}) - no embedding`);
-          skippedCount++;
-          continue;
-        }
-        
-        if (item.embedding.length !== dimension) {
-          console.warn(`[HnswSearchService] Item ${i} (${item.id}) - dimension mismatch: expected ${dimension}, got ${item.embedding.length}`);
-          skippedCount++;
-          continue;
-        }
-        
-        // Detailed embedding validation
-        const invalidValues = [];
-        const validationResults = {
-          hasNaN: false,
-          hasInfinity: false,
-          hasNonNumber: false,
-          valueRange: { min: Infinity, max: -Infinity }
-        };
-        
-        for (let j = 0; j < item.embedding.length; j++) {
-          const val = item.embedding[j];
-          
-          if (typeof val !== 'number') {
-            validationResults.hasNonNumber = true;
-            invalidValues.push(`[${j}]: ${typeof val} (${val})`);
-          } else if (isNaN(val)) {
-            validationResults.hasNaN = true;
-            invalidValues.push(`[${j}]: NaN`);
-          } else if (!isFinite(val)) {
-            validationResults.hasInfinity = true;
-            invalidValues.push(`[${j}]: ${val > 0 ? 'Infinity' : '-Infinity'}`);
-          } else {
-            validationResults.valueRange.min = Math.min(validationResults.valueRange.min, val);
-            validationResults.valueRange.max = Math.max(validationResults.valueRange.max, val);
-          }
-        }
-        
-        const isValidEmbedding = !validationResults.hasNaN && !validationResults.hasInfinity && !validationResults.hasNonNumber;
-        
-        if (!isValidEmbedding) {
-          console.error(`[HnswSearchService] *** CORRUPTED EMBEDDING FOUND ***`);
-          console.error(`  Item Index: ${i}`);
-          console.error(`  Item ID: ${item.id}`);
-          console.error(`  File Path: ${item.metadata?.filePath || 'unknown'}`);
-          console.error(`  Embedding Length: ${item.embedding.length}`);
-          console.error(`  Validation Results:`, validationResults);
-          console.error(`  Invalid Values (first 10):`, invalidValues.slice(0, 10));
-          console.error(`  Document Preview: ${item.document?.substring(0, 100)}...`);
+        if (!this.isValidItem(item, dimension)) {
           skippedCount++;
           continue;
         }
@@ -174,38 +233,36 @@ export class HnswSearchService {
         const hnswId = nextId++;
         
         try {
-          // Add to HNSW index
-          index.addPoint(item.embedding, hnswId, false);
-          
-          // Store mappings
+          index.addPoint(item.embedding!, hnswId, false);
           idToItem.set(hnswId, item);
           itemIdToHnswId.set(item.id, hnswId);
           
-          // Log successful addition for first few items
-          if (i < 3) {
-            // Item added to index
+        } catch (error) {
+          const errorMessage = String(error);
+          const errorStack = (error as any)?.stack || '';
+          
+          // Check for capacity-related errors
+          const isCapacityError = 
+            errorMessage.includes('maximum number of elements') ||
+            errorMessage.includes('max_elements') ||
+            errorStack.includes('maximum number of el') ||
+            (errorMessage.includes('std::runtime_error') && i > 500); // Likely capacity if many items added
+          
+          if (isCapacityError) {
+            console.warn(`[HnswSearchService] Capacity limit reached at item ${i}. Switching to partitioned indexing.`);
+            console.warn(`[HnswSearchService] Error details: ${errorMessage}`);
+            
+            // Fall back to partitioned indexing
+            await this.createPartitionedIndex(collectionName, items, dimension);
+            return;
           }
           
-        } catch (error) {
-          console.error(`[HnswSearchService] *** HNSW ADD POINT FAILED ***`);
-          console.error(`  Item Index: ${i}`);
-          console.error(`  Item ID: ${item.id}`);
-          console.error(`  HNSW ID: ${hnswId}`);
-          console.error(`  Error:`, error);
-          console.error(`  Embedding Length: ${item.embedding.length}`);
-          console.error(`  Embedding Range: [${validationResults.valueRange.min}, ${validationResults.valueRange.max}]`);
-          console.error(`  First 10 values: [${item.embedding.slice(0, 10).join(', ')}]`);
-          console.error(`  Last 10 values: [${item.embedding.slice(-10).join(', ')}]`);
+          console.error(`[HnswSearchService] Failed to add item ${i}:`, error);
           skippedCount++;
         }
       }
 
-      // Log summary of skipped items
-      if (skippedCount > 0) {
-        console.warn(`[HnswSearchService] Skipped ${skippedCount} items with invalid embeddings (expected dimension: ${dimension})`);
-      }
-
-      // Store the complete index
+      // Store the single index
       this.indexes.set(collectionName, {
         index,
         idToItem,
@@ -213,11 +270,26 @@ export class HnswSearchService {
         nextId
       });
 
-      // Index creation complete
+      console.log(`[HnswSearchService] Successfully created single index with ${items.length - skippedCount} items. Skipped ${skippedCount} invalid items.`);
+      
     } catch (error) {
-      console.error(`[HnswSearchService] Failed to create index for collection ${collectionName}:`, error);
+      console.error(`[HnswSearchService] Failed to create single index for collection ${collectionName}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Validate item for indexing
+   */
+  private isValidItem(item: DatabaseItem, expectedDimension: number): boolean {
+    if (!item.embedding) return false;
+    if (item.embedding.length !== expectedDimension) return false;
+    
+    return item.embedding.every(val => 
+      typeof val === 'number' && 
+      !isNaN(val) && 
+      isFinite(val)
+    );
   }
 
   /**
@@ -241,7 +313,12 @@ export class HnswSearchService {
       indexData.itemIdToHnswId.set(item.id, hnswId);
       
     } catch (error) {
-      console.error(`[HnswSearchService] Failed to add item ${item.id} to index:`, error);
+      const errorMessage = String(error);
+      if (errorMessage.includes('maximum number of elements') || errorMessage.includes('max_elements')) {
+        console.warn(`[HnswSearchService] HNSW index capacity limit reached when adding item ${item.id}. Index may need rebuilding with larger capacity.`);
+      } else {
+        console.error(`[HnswSearchService] Failed to add item ${item.id} to index:`, error);
+      }
     }
   }
 
@@ -262,7 +339,7 @@ export class HnswSearchService {
   }
 
   /**
-   * Perform fast HNSW search
+   * Perform fast HNSW search (supports both single and partitioned indexes)
    */
   async searchSimilar(
     collectionName: string,
@@ -270,8 +347,7 @@ export class HnswSearchService {
     nResults: number = 10,
     where?: WhereClause
   ): Promise<ItemWithDistance[]> {
-    const indexData = this.indexes.get(collectionName);
-    if (!indexData || queryEmbedding.length === 0) {
+    if (queryEmbedding.length === 0) {
       return [];
     }
 
@@ -287,12 +363,35 @@ export class HnswSearchService {
       return [];
     }
 
+    // Check if we have a partitioned index
+    const partitionedIndex = this.partitionedIndexes.get(collectionName);
+    if (partitionedIndex) {
+      return await this.searchPartitioned(partitionedIndex, queryEmbedding, nResults, where);
+    }
+
+    // Fall back to single index search
+    const indexData = this.indexes.get(collectionName);
+    if (!indexData) {
+      return [];
+    }
+
+    return await this.searchSingle(indexData, queryEmbedding, nResults, where);
+  }
+
+  /**
+   * Search within a single HNSW index
+   */
+  private async searchSingle(
+    indexData: HnswIndex,
+    queryEmbedding: number[],
+    nResults: number,
+    where?: WhereClause
+  ): Promise<ItemWithDistance[]> {
     try {
       // Set search parameter (higher = better recall, slower search)
       indexData.index.setEfSearch(Math.max(nResults * 2, 50));
       
-      // Perform HNSW search - this is O(log n) instead of O(n)!
-      // searchKnn expects: (queryEmbedding, k, filter) where filter can be null
+      // Perform HNSW search
       const searchResults = indexData.index.searchKnn(queryEmbedding, nResults * 3, null);
       
       // Convert HNSW results to our format
@@ -315,22 +414,77 @@ export class HnswSearchService {
       return results.slice(0, nResults);
       
     } catch (error) {
-      console.error(`[HnswSearchService] Search failed for collection ${collectionName}:`, error);
+      console.error(`[HnswSearchService] Single index search failed:`, error);
       return [];
     }
   }
 
   /**
-   * Check if collection has an index
+   * Search across all partitions and merge results
    */
-  hasIndex(collectionName: string): boolean {
-    return this.indexes.has(collectionName);
+  private async searchPartitioned(
+    partitionedIndex: PartitionedHnswIndex,
+    queryEmbedding: number[],
+    nResults: number,
+    where?: WhereClause
+  ): Promise<ItemWithDistance[]> {
+    try {
+      const allResults: ItemWithDistance[] = [];
+      
+      // Search each partition
+      for (let i = 0; i < partitionedIndex.partitions.length; i++) {
+        const partition = partitionedIndex.partitions[i];
+        
+        // Search this partition for more results than needed per partition
+        const partitionResults = await this.searchSingle(
+          partition, 
+          queryEmbedding, 
+          Math.max(nResults * 2, 100), // Get more results per partition
+          where
+        );
+        
+        allResults.push(...partitionResults);
+      }
+      
+      // Sort all results by distance (lower is better)
+      allResults.sort((a, b) => a.distance - b.distance);
+      
+      // Return top N results
+      return allResults.slice(0, nResults);
+      
+    } catch (error) {
+      console.error(`[HnswSearchService] Partitioned search failed:`, error);
+      return [];
+    }
   }
 
   /**
-   * Get index statistics
+   * Check if collection has an index (single or partitioned)
    */
-  getIndexStats(collectionName: string): { itemCount: number; dimension: number } | null {
+  hasIndex(collectionName: string): boolean {
+    return this.indexes.has(collectionName) || this.partitionedIndexes.has(collectionName);
+  }
+
+  /**
+   * Get index statistics (supports both single and partitioned)
+   */
+  getIndexStats(collectionName: string): { itemCount: number; dimension: number; partitions?: number } | null {
+    // Check for partitioned index first
+    const partitionedIndex = this.partitionedIndexes.get(collectionName);
+    if (partitionedIndex) {
+      let totalItems = 0;
+      for (const partition of partitionedIndex.partitions) {
+        totalItems += partition.idToItem.size;
+      }
+      
+      return {
+        itemCount: totalItems,
+        dimension: partitionedIndex.dimension,
+        partitions: partitionedIndex.partitions.length
+      };
+    }
+
+    // Check for single index
     const indexData = this.indexes.get(collectionName);
     if (!indexData) return null;
 
@@ -341,32 +495,45 @@ export class HnswSearchService {
   }
 
   /**
-   * Remove index for collection
+   * Remove index for collection (single or partitioned)
    */
   removeIndex(collectionName: string): void {
     this.indexes.delete(collectionName);
+    this.partitionedIndexes.delete(collectionName);
   }
 
   /**
-   * Clear all indexes
+   * Clear all indexes (single and partitioned)
    */
   clearAllIndexes(): void {
     this.indexes.clear();
+    this.partitionedIndexes.clear();
   }
 
   /**
-   * Get memory usage statistics
+   * Get memory usage statistics (includes partitioned indexes)
    */
-  getMemoryStats(): { totalIndexes: number; totalItems: number } {
+  getMemoryStats(): { totalIndexes: number; totalItems: number; totalPartitions: number } {
     let totalItems = 0;
+    let totalPartitions = 0;
     
+    // Count single indexes
     for (const indexData of this.indexes.values()) {
       totalItems += indexData.idToItem.size;
     }
 
+    // Count partitioned indexes
+    for (const partitionedIndex of this.partitionedIndexes.values()) {
+      totalPartitions += partitionedIndex.partitions.length;
+      for (const partition of partitionedIndex.partitions) {
+        totalItems += partition.idToItem.size;
+      }
+    }
+
     return {
-      totalIndexes: this.indexes.size,
-      totalItems
+      totalIndexes: this.indexes.size + this.partitionedIndexes.size,
+      totalItems,
+      totalPartitions
     };
   }
 

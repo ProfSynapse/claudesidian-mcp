@@ -13,7 +13,7 @@ export class RequestyAdapter extends BaseAdapter {
   readonly baseUrl = 'https://router.requesty.ai/v1';
 
   constructor(apiKey: string, model?: string) {
-    super(apiKey, model || 'gpt-4-turbo');
+    super(apiKey, model || 'gpt-4.1-nano');
     this.initializeCache();
   }
 

@@ -108,6 +108,24 @@ export const OPENAI_MODELS: ModelSpec[] = [
     }
   },
 
+  // o3 deep research models
+  {
+    provider: 'openai',
+    name: 'o3 Deep Research',
+    apiName: 'o3-deep-research',
+    contextWindow: 200000,
+    maxTokens: 100000,
+    inputCostPerMillion: 10.00,
+    outputCostPerMillion: 40.00,
+    capabilities: {
+      supportsJSON: false,
+      supportsImages: true,
+      supportsFunctions: false,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+
   // o4 models (reasoning)
   {
     provider: 'openai',
@@ -122,6 +140,22 @@ export const OPENAI_MODELS: ModelSpec[] = [
       supportsImages: false,
       supportsFunctions: false,
       supportsStreaming: false,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openai',
+    name: 'o4 Mini Deep Research',
+    apiName: 'o4-mini-deep-research',
+    contextWindow: 200000,
+    maxTokens: 100000,
+    inputCostPerMillion: 2.00,
+    outputCostPerMillion: 8.00,
+    capabilities: {
+      supportsJSON: false,
+      supportsImages: true,
+      supportsFunctions: false,
+      supportsStreaming: true,
       supportsThinking: true
     }
   }

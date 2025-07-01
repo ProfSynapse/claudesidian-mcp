@@ -42,6 +42,11 @@ export default class ClaudesidianPlugin extends Plugin {
     // Reindexing flag for batch operations
     private isReindexing: boolean = false;
     
+    // HNSW retry mechanism
+    private hnswRetryCount: number = 0;
+    private maxHnswRetries: number = 3;
+    private hnswRetryTimeout?: NodeJS.Timeout;
+    
     // Service registry
     public services!: {
         embeddingService: EmbeddingService;
@@ -274,6 +279,8 @@ export default class ClaudesidianPlugin extends Plugin {
             // Load existing embeddings into HNSW index for high-performance search
             await this.loadExistingEmbeddingsIntoHNSW().catch(error => {
                 console.warn(`Failed to load existing embeddings into HNSW: ${error.message}`);
+                // Schedule retry after a delay
+                this.scheduleHnswRetry();
             });
             
             
@@ -496,6 +503,9 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     async onunload() {
+        // Clear any pending HNSW retry timeout
+        this.clearHnswRetryTimeout();
+        
         // Clean up the file event manager
         if (this.fileEventManager) {
             this.fileEventManager.unload();
@@ -823,6 +833,44 @@ export default class ClaudesidianPlugin extends Plugin {
         } catch (error) {
             console.error('[ClaudesidianPlugin] Failed to initialize search indexes:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Schedule a retry for HNSW index loading after a delay
+     */
+    private scheduleHnswRetry(): void {
+        if (this.hnswRetryCount >= this.maxHnswRetries) {
+            console.warn(`[ClaudesidianPlugin] Maximum HNSW retry attempts (${this.maxHnswRetries}) reached. HNSW index will remain unavailable.`);
+            return;
+        }
+
+        this.hnswRetryCount++;
+        const retryDelay = Math.min(5000 * this.hnswRetryCount, 30000); // Exponential backoff, max 30s
+
+        console.log(`[ClaudesidianPlugin] Scheduling HNSW retry ${this.hnswRetryCount}/${this.maxHnswRetries} in ${retryDelay}ms`);
+
+        this.hnswRetryTimeout = setTimeout(async () => {
+            try {
+                console.log(`[ClaudesidianPlugin] Attempting HNSW retry ${this.hnswRetryCount}/${this.maxHnswRetries}`);
+                await this.loadExistingEmbeddingsIntoHNSW();
+                console.log(`[ClaudesidianPlugin] HNSW retry ${this.hnswRetryCount} successful!`);
+                this.hnswRetryCount = 0; // Reset counter on success
+            } catch (error) {
+                console.warn(`[ClaudesidianPlugin] HNSW retry ${this.hnswRetryCount} failed: ${(error as Error).message}`);
+                // Schedule next retry
+                this.scheduleHnswRetry();
+            }
+        }, retryDelay);
+    }
+
+    /**
+     * Clear any pending HNSW retry timeout
+     */
+    private clearHnswRetryTimeout(): void {
+        if (this.hnswRetryTimeout) {
+            clearTimeout(this.hnswRetryTimeout);
+            this.hnswRetryTimeout = undefined;
         }
     }
 }
