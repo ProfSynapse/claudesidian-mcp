@@ -5,8 +5,7 @@ import {
     WhatIsClaudesidianAccordion, 
     SetupInstructionsAccordion,
     MemoryManagementAccordion,
-    AgentManagementAccordion,
-    ApiKeyManagementAccordion
+    AgentManagementAccordion
 } from './accordions';
 import { UpdateManager } from '../utils/UpdateManager';
 import { templateFiles } from '../templates';
@@ -258,22 +257,6 @@ export class SettingsTab extends PluginSettingTab {
             customPromptStorage,
             this.app
         );
-
-        // LLM Provider API Keys accordion
-        if (this.settingsManager.settings.llmProviders) {
-            new ApiKeyManagementAccordion({
-                containerEl,
-                settings: this.settingsManager.settings.llmProviders,
-                onSettingsChange: async (llmProviderSettings) => {
-                    this.settingsManager.settings.llmProviders = llmProviderSettings;
-                    await this.settingsManager.saveSettings();
-                },
-                onTestProvider: async (provider: string) => {
-                    // TODO: Implement provider testing
-                    return { success: true };
-                }
-            });
-        }
 
         // Setup Instructions accordion
         new SetupInstructionsAccordion(containerEl);

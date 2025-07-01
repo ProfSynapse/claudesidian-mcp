@@ -65,12 +65,20 @@ export interface CustomPromptsSettings {
 }
 
 /**
+ * Model configuration with description
+ */
+export interface ModelConfig {
+  description?: string; // User-defined description of when to use this model
+}
+
+/**
  * LLM provider configuration
  */
 export interface LLMProviderConfig {
   apiKey: string;
   userDescription?: string;
   enabled: boolean;
+  models?: { [modelId: string]: ModelConfig }; // Model-specific configurations
 }
 
 /**

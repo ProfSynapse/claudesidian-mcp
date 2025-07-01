@@ -1,18 +1,31 @@
 import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
 import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
-import { CustomPrompt } from '../../types';
+import { CustomPrompt, LLMProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { Setting, Modal, App, ButtonComponent, ToggleComponent } from 'obsidian';
+import { LLMProviderTab } from '../LLMProviderTab';
 
 /**
  * Agent Management accordion component
- * Controls custom prompt agents - create, edit, delete, toggle
+ * Controls custom prompt agents and LLM providers with tab interface
  */
 export class AgentManagementAccordion extends Accordion {
     private settings: Settings;
     private customPromptStorage: CustomPromptStorageService;
     private app: App;
+    
+    // Tab system
+    private tabContainer!: HTMLElement;
+    private contentContainer!: HTMLElement;
+    private tabs: Record<string, HTMLElement> = {};
+    private contents: Record<string, HTMLElement> = {};
+    private activeTabKey: string = 'agents'; // Default to agents tab
+    
+    // Agent tab content
     private promptCardsContainer!: HTMLElement;
+    
+    // LLM Provider tab
+    private llmProviderTab: LLMProviderTab | null = null;
     
     /**
      * Create a new Agent Management accordion
@@ -37,21 +50,101 @@ export class AgentManagementAccordion extends Accordion {
     }
     
     /**
-     * Initialize the accordion content
+     * Initialize the accordion content with tabs
      */
     private initializeContent(): void {
         this.contentEl.empty();
         
+        // Ensure LLM provider settings exist
+        if (!this.settings.settings.llmProviders) {
+            this.settings.settings.llmProviders = DEFAULT_LLM_PROVIDER_SETTINGS;
+        }
+        
+        this.createTabStructure();
+        this.createAgentsTab();
+        this.createLLMProvidersTab();
+        this.switchToTab(this.activeTabKey);
+    }
+
+    /**
+     * Create the tab structure
+     */
+    private createTabStructure(): void {
+        // Tab navigation
+        this.tabContainer = this.contentEl.createDiv('agent-management-tabs');
+        
+        // Create tab buttons
+        this.createTabButton('agents', '🤖 Custom Agents');
+        this.createTabButton('llm-providers', '🔑 LLM Providers');
+        
+        // Content container
+        this.contentContainer = this.contentEl.createDiv('agent-management-content');
+    }
+
+    /**
+     * Create a tab button
+     */
+    private createTabButton(tabKey: string, label: string): void {
+        const tabEl = this.tabContainer.createEl('button', {
+            cls: 'agent-management-tab',
+            text: label
+        });
+        
+        tabEl.addEventListener('click', () => this.switchToTab(tabKey));
+        this.tabs[tabKey] = tabEl;
+    }
+
+    /**
+     * Switch to a specific tab
+     */
+    private switchToTab(tabKey: string): void {
+        this.activeTabKey = tabKey;
+        
+        // Update tab buttons
+        Object.entries(this.tabs).forEach(([key, tabEl]) => {
+            tabEl.toggleClass('active', key === tabKey);
+        });
+        
+        // Update content visibility
+        Object.entries(this.contents).forEach(([key, contentEl]) => {
+            contentEl.style.display = key === tabKey ? 'block' : 'none';
+        });
+    }
+
+    /**
+     * Create the Custom Agents tab content
+     */
+    private createAgentsTab(): void {
+        const contentEl = this.contentContainer.createDiv('agents-tab-content');
+        this.contents['agents'] = contentEl;
+        
         // Add Agent button
-        const addButtonContainer = this.contentEl.createDiv('agent-management-add-button');
+        const addButtonContainer = contentEl.createDiv('agent-management-add-button');
         new ButtonComponent(addButtonContainer)
             .setButtonText('Add Agent')
             .setCta()
             .onClick(() => this.openPromptModal());
         
         // Prompt cards container
-        this.promptCardsContainer = this.contentEl.createDiv('agent-management-cards');
+        this.promptCardsContainer = contentEl.createDiv('agent-management-cards');
         this.refreshPromptCards();
+    }
+
+    /**
+     * Create the LLM Providers tab content
+     */
+    private createLLMProvidersTab(): void {
+        const contentEl = this.contentContainer.createDiv('llm-providers-tab-content');
+        this.contents['llm-providers'] = contentEl;
+        
+        this.llmProviderTab = new LLMProviderTab({
+            containerEl: contentEl,
+            settings: this.settings.settings.llmProviders!,
+            onSettingsChange: async (llmProviderSettings: LLMProviderSettings) => {
+                this.settings.settings.llmProviders = llmProviderSettings;
+                await this.settings.saveSettings();
+            }
+        });
     }
     
     /**

@@ -11,6 +11,7 @@ export interface ModelWithProvider extends ModelInfo {
   provider: string;
   userDescription?: string;
   isDefault?: boolean;
+  modelDescription?: string; // User-defined description for when to use this specific model
 }
 
 export interface ProviderInfo {
@@ -55,15 +56,23 @@ export class LLMProviderManager {
   }
 
   /**
-   * Get all available models from enabled providers
+   * Get all available models from enabled providers only
    */
   async getAvailableModels(): Promise<ModelWithProvider[]> {
     const models = await this.llmService.getAvailableModels();
     const defaultModel = this.settings.defaultModel;
 
-    return models.map(model => ({
+    // Filter to only enabled providers
+    const enabledModels = models.filter(model => {
+      const providerConfig = this.settings.providers[model.provider];
+      return providerConfig && providerConfig.enabled && providerConfig.apiKey;
+    });
+
+    return enabledModels.map(model => ({
       ...model,
-      isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model
+      isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model,
+      // Add user-defined model description if available
+      modelDescription: this.settings.providers[model.provider]?.models?.[model.id]?.description
     }));
   }
 
@@ -133,6 +142,14 @@ export class LLMProviderManager {
    */
   getEnabledProviders(): ProviderInfo[] {
     return this.getProviderInfo().filter(provider => provider.isEnabled && provider.hasApiKey);
+  }
+
+  /**
+   * Get models for a specific provider (if enabled)
+   */
+  async getModelsForProvider(providerId: string): Promise<ModelWithProvider[]> {
+    const allModels = await this.getAvailableModels();
+    return allModels.filter(model => model.provider === providerId);
   }
 
   /**
