@@ -9,7 +9,6 @@ import {
 import { parseWorkspaceContext } from '../utils/contextUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { enhanceSchemaDocumentation } from '../utils/validationUtils';
-import { extractContextFromParams } from '../utils/contextUtils';
 
 /**
  * Base class for all modes in the MCP plugin

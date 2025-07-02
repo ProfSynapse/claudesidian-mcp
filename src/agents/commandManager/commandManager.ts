@@ -186,12 +186,10 @@ export class CommandManagerAgent extends BaseAgent {
   private getCommandHotkeys(commandId: string): string[] | undefined {
     try {
       // Access the Obsidian internal API to retrieve hotkeys
-      // @ts-ignore - Accessing internal Obsidian API
-      const hotkeyManager = this.app.hotkeyManager;
+      const hotkeyManager = (this.app as any).hotkeyManager;
       if (!hotkeyManager) return undefined;
       
       // Get all hotkeys from the manager
-      // @ts-ignore - Accessing internal Obsidian API
       const hotkeys = hotkeyManager.getHotkeys(commandId) || [];
       
       // Format hotkey strings

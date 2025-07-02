@@ -84,8 +84,7 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
         prompt: {
           type: 'string',
           description: 'The actual prompt text/persona',
-          minLength: 1,
-          maxLength: 10000
+          minLength: 1
         },
         isEnabled: {
           type: 'boolean',

@@ -12,7 +12,7 @@ import {
   FindReplaceContentMode,
   BatchContentMode
 } from './modes';
-import { AgentManager } from '../../services/AgentManager';
+// import { AgentManager } from '../../services/AgentManager';
 import ClaudesidianPlugin from '../../main';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { MemoryService } from '../../database/services/MemoryService';

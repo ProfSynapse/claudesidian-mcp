@@ -107,50 +107,67 @@ export class LLMProviderTab {
     // Clear existing dropdown
     this.modelDropdownSetting.clear();
     
-    this.modelDropdownSetting.addDropdown(dropdown => {
-      if (!providerId) {
-        dropdown.addOption('', 'Select a provider first');
-        dropdown.setValue('');
-        return;
-      }
-
-      try {
-        const models = this.staticModelsService.getModelsForProvider(providerId);
-        
-        if (models.length === 0) {
-          dropdown.addOption('', 'No models available');
+    // Special handling for Ollama - use text input instead of dropdown
+    if (providerId === 'ollama') {
+      this.modelDropdownSetting
+        .setName('Default Model')
+        .setDesc('The configured Ollama model (set in the Ollama provider card)')
+        .addText(text => text
+          .setPlaceholder('Configure in Ollama provider card')
+          .setValue(this.settings.defaultModel.model || '')
+          .setDisabled(true) // Read-only, configured in modal
+        );
+      return;
+    }
+    
+    // Standard dropdown for other providers
+    this.modelDropdownSetting
+      .setName('Default Model')
+      .setDesc('The specific model to use by default')
+      .addDropdown(dropdown => {
+        if (!providerId) {
+          dropdown.addOption('', 'Select a provider first');
           dropdown.setValue('');
           return;
         }
 
-        // Add models to dropdown
-        models.forEach(model => {
-          dropdown.addOption(model.id, model.name);
-        });
+        try {
+          const models = this.staticModelsService.getModelsForProvider(providerId);
+          
+          if (models.length === 0) {
+            dropdown.addOption('', 'No models available');
+            dropdown.setValue('');
+            return;
+          }
 
-        // Set current value or first model if current is invalid
-        const currentModel = this.settings.defaultModel.model;
-        const modelExists = models.some(m => m.id === currentModel);
-        
-        if (modelExists) {
-          dropdown.setValue(currentModel);
-        } else if (models.length > 0) {
-          // Set to first model if current model is invalid
-          dropdown.setValue(models[0].id);
-          this.settings.defaultModel.model = models[0].id;
+          // Add models to dropdown
+          models.forEach(model => {
+            dropdown.addOption(model.id, model.name);
+          });
+
+          // Set current value or first model if current is invalid
+          const currentModel = this.settings.defaultModel.model;
+          const modelExists = models.some(m => m.id === currentModel);
+          
+          if (modelExists) {
+            dropdown.setValue(currentModel);
+          } else if (models.length > 0) {
+            // Set to first model if current model is invalid
+            dropdown.setValue(models[0].id);
+            this.settings.defaultModel.model = models[0].id;
+          }
+
+          dropdown.onChange(async (value) => {
+            this.settings.defaultModel.model = value;
+            this.onSettingsChange(this.settings);
+          });
+
+        } catch (error) {
+          console.error('Error loading models for provider:', providerId, error);
+          dropdown.addOption('', 'Error loading models');
+          dropdown.setValue('');
         }
-
-        dropdown.onChange(async (value) => {
-          this.settings.defaultModel.model = value;
-          this.onSettingsChange(this.settings);
-        });
-
-      } catch (error) {
-        console.error('Error loading models for provider:', providerId, error);
-        dropdown.addOption('', 'Error loading models');
-        dropdown.setValue('');
-      }
-    });
+      });
   }
 
   /**
@@ -248,6 +265,24 @@ export class LLMProviderTab {
       config: providerConfig,
       onSave: (updatedConfig: LLMProviderConfig) => {
         this.settings.providers[providerId] = updatedConfig;
+        
+        // For Ollama, extract and handle the model from the special field
+        if (providerId === 'ollama') {
+          const ollamaModel = (updatedConfig as any).__ollamaModel;
+          if (ollamaModel) {
+            // Clean up the temporary field
+            delete (updatedConfig as any).__ollamaModel;
+            
+            // Update the default model if Ollama is the current default provider
+            if (this.settings.defaultModel.provider === 'ollama') {
+              this.settings.defaultModel.model = ollamaModel;
+            }
+            
+            // Force provider manager to reinitialize with new model
+            this.providerManager.updateSettings(this.settings);
+          }
+        }
+        
         this.onSettingsChange(this.settings);
         this.refreshProviderCards();
       }
@@ -317,6 +352,13 @@ export class LLMProviderTab {
         keyFormat: 'pplx-...',
         signupUrl: 'https://www.perplexity.ai/settings/api',
         docsUrl: 'https://docs.perplexity.ai'
+      },
+      ollama: {
+        name: 'Ollama (Local)',
+        description: 'Local LLM execution with complete privacy and no API costs',
+        keyFormat: 'http://127.0.0.1:11434',
+        signupUrl: 'https://ollama.com/download',
+        docsUrl: 'https://github.com/ollama/ollama'
       }
     };
   }

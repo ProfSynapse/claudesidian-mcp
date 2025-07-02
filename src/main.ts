@@ -395,6 +395,10 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Initialize connector with settings
         this.connector = new MCPConnector(this.app, this);
+        
+        // Initialize agents before starting the server
+        await this.connector.initializeAgents();
+        
         await this.connector.start();
         
         // Initialize search indexes after connector is ready (for non-startup strategies)

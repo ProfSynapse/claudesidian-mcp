@@ -65,10 +65,8 @@ export class MCPConnector {
         // Create server with vault-specific identifier
         this.server = new MCPServer(app, plugin, this.eventManager, this.sessionContextManager, undefined, this.customPromptStorage);
         
-        // Initialize agents (now async)
-        this.initializeAgents().catch(error => {
-            console.error('Error initializing agents:', error);
-        });
+        // Initialize agents (now async) - but don't call it here
+        // This will be called from the main plugin's onload method
     }
     
     /**
@@ -106,7 +104,7 @@ export class MCPConnector {
             const pluginSettings = (this.plugin as any)?.settings?.settings;
             const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
             
-            const defaultProvider = llmProviderSettings.defaultModel?.split('/')[0];
+            const defaultProvider = llmProviderSettings.defaultModel?.provider;
             if (!defaultProvider) {
                 return false;
             }
@@ -126,9 +124,9 @@ export class MCPConnector {
     }
 
     /**
-     * Initialize all agents
+     * Initialize all agents - public method to be called from main plugin
      */
-    private async initializeAgents(): Promise<void> {
+    public async initializeAgents(): Promise<void> {
         try {
             // Get services from the plugin if available
             const services = this.plugin && (this.plugin as any).services ? (this.plugin as any).services : {};
@@ -432,7 +430,11 @@ export class MCPConnector {
      * Get the vault librarian instance
      */
     getVaultLibrarian(): VaultLibrarianAgent | null {
-        return this.agentManager.getAgent('vaultLibrarian') as VaultLibrarianAgent;
+        try {
+            return this.agentManager.getAgent('vaultLibrarian') as VaultLibrarianAgent;
+        } catch (error) {
+            return null;
+        }
     }
     
     /**

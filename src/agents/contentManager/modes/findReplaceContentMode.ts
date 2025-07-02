@@ -2,15 +2,16 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { FindReplaceContentParams, FindReplaceContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-
-import { createErrorMessage } from '../../../utils/errorUtils';
+import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { MemoryService } from '../../../database/services/MemoryService';
 
 /**
  * Mode for find and replace operations in a file
  */
 export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, FindReplaceContentResult> {
   private app: App;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new FindReplaceContentMode
@@ -42,17 +43,9 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
         caseSensitive = true, 
         wholeWord = false,
         workspaceContext, 
-        handoff, 
-        sessionId 
+        handoff
       } = params;
       
-      // Get the original content before modification for diff-based embedding updates
-      let oldContent: string | undefined;
-      try {
-        oldContent = await ContentOperations.readContent(this.app, filePath);
-      } catch (error) {
-        console.warn(`Could not read original content for ${filePath}:`, error);
-      }
       
       const replacements = await ContentOperations.findReplaceContent(
         this.app,
@@ -66,12 +59,17 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(true, {
-          filePath,
-          replacements,
-          findText,
-          replaceText
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const resultData = {
+        filePath,
+        replacements,
+        findText,
+        replaceText
+      };
+      
+      // Record session activity for memory tracking
+      await this.recordActivity(params, resultData);
+      
+      const response = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -190,5 +188,73 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
       },
       required: ['success']
     };
+  }
+  
+  /**
+   * Record find and replace activity in workspace memory
+   * @param params Parameters used for find and replace operation
+   * @param resultData Result data containing replacement information
+   */
+  private async recordActivity(
+    params: FindReplaceContentParams,
+    resultData: {
+      filePath: string;
+      replacements: number;
+      findText: string;
+      replaceText: string;
+    }
+  ): Promise<void> {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
+    
+    // Skip if no workspace context
+    if (!parsedContext?.workspaceId) {
+      return;
+    }
+    
+    // Skip if no memory service
+    if (!this.memoryService) {
+      try {
+        // Try to get the memory service from the plugin
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        } else {
+          // No memory service available, skip activity recording
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to get memory service from plugin:', getErrorMessage(error));
+        return;
+      }
+    }
+    
+    // Create a descriptive content about this operation
+    const findSnippet = params.findText.substring(0, 50) + (params.findText.length > 50 ? '...' : '');
+    const replaceSnippet = params.replaceText.substring(0, 50) + (params.replaceText.length > 50 ? '...' : '');
+    
+    const content = `Find and replace in ${params.filePath} (${resultData.replacements} replacements)\nFind: "${findSnippet}"\nReplace: "${replaceSnippet}"`;
+    
+    try {
+      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
+        type: 'completion',
+        content: content,
+        metadata: {
+          tool: 'contentManager.findReplaceContent',
+          params: {
+            filePath: params.filePath,
+            replacements: resultData.replacements,
+            replaceAll: params.replaceAll,
+            caseSensitive: params.caseSensitive,
+            wholeWord: params.wholeWord
+          },
+          result: resultData,
+          relatedFiles: [params.filePath]
+        },
+        sessionId: params.sessionId
+      });
+    } catch (error) {
+      console.error('Failed to record find replace content activity:', getErrorMessage(error));
+    }
   }
 }

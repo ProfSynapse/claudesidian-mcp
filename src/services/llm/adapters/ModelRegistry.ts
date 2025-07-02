@@ -15,6 +15,7 @@ import { MISTRAL_MODELS, MISTRAL_DEFAULT_MODEL } from './mistral/MistralModels';
 import { OPENROUTER_MODELS, OPENROUTER_DEFAULT_MODEL } from './openrouter/OpenRouterModels';
 import { REQUESTY_MODELS, REQUESTY_DEFAULT_MODEL } from './requesty/RequestyModels';
 import { GROQ_MODELS, GROQ_DEFAULT_MODEL } from './groq/GroqModels';
+import { OLLAMA_MODELS } from './ollama/OllamaModels';
 
 // Re-export ModelSpec for convenience
 export type { ModelSpec };
@@ -30,7 +31,8 @@ export const AI_MODELS: Record<string, ModelSpec[]> = {
   mistral: MISTRAL_MODELS,
   openrouter: OPENROUTER_MODELS,
   requesty: REQUESTY_MODELS,
-  groq: GROQ_MODELS
+  groq: GROQ_MODELS,
+  ollama: OLLAMA_MODELS
 };
 
 /**

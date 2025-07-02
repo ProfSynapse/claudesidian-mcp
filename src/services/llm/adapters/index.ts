@@ -15,7 +15,7 @@ export { OpenRouterAdapter } from './openrouter/OpenRouterAdapter';
 export { RequestyAdapter } from './requesty/RequestyAdapter';
 export { GroqAdapter } from './groq/GroqAdapter';
 export { PerplexityAdapter } from './perplexity/PerplexityAdapter';
-// export { OllamaAdapter } from './OllamaAdapter';  // Not implemented yet
+export { OllamaAdapter } from './ollama/OllamaAdapter';
 
 // Model registry and cost calculation
 export * from './modelTypes';
@@ -31,7 +31,7 @@ import { OpenRouterAdapter } from './openrouter/OpenRouterAdapter';
 import { RequestyAdapter } from './requesty/RequestyAdapter';
 import { GroqAdapter } from './groq/GroqAdapter';
 import { PerplexityAdapter } from './perplexity/PerplexityAdapter';
-// import { OllamaAdapter } from './OllamaAdapter';  // Not implemented yet
+import { OllamaAdapter } from './ollama/OllamaAdapter';
 import { SupportedProvider, LLMProviderError } from './types';
 
 /**
@@ -59,8 +59,8 @@ export function createAdapter(provider: SupportedProvider, model?: string): Base
       return new GroqAdapter(process.env.GROQ_API_KEY || '', model);
     case 'perplexity':
       return new PerplexityAdapter(process.env.PERPLEXITY_API_KEY || '', model);
-    // case 'ollama':
-    //   return new OllamaAdapter(model);
+    case 'ollama':
+      return new OllamaAdapter(process.env.OLLAMA_URL || 'http://127.0.0.1:11434', model);
     default:
       throw new LLMProviderError(
         `Unsupported provider: ${provider}`,
@@ -74,7 +74,7 @@ export function createAdapter(provider: SupportedProvider, model?: string): Base
  * Get all available providers
  */
 export function getAvailableProviders(): SupportedProvider[] {
-  return ['openai', 'google', 'anthropic', 'mistral', 'openrouter', 'requesty', 'groq', 'perplexity'];
+  return ['openai', 'google', 'anthropic', 'mistral', 'openrouter', 'requesty', 'groq', 'perplexity', 'ollama'];
 }
 
 /**
@@ -143,6 +143,7 @@ export async function selectBestProvider(criteria?: {
       'google': 5,    // Gemini 2.5 Flash - best performance/cost
       'anthropic': 4, // Claude 4 - best reasoning
       'openai': 3,    // GPT-4 Turbo - reliable
+      'ollama': 3,    // Local models - good performance, no cost
       'mistral': 2,   // Good specialized models
       'openrouter': 1, // Good for variety
       'requesty': 1   // Good for cost optimization
@@ -153,6 +154,7 @@ export async function selectBestProvider(criteria?: {
     if (criteria?.prefersCost) {
       // Adjust for cost (lower cost = higher score)
       const costScores: Record<string, number> = {
+        'ollama': 5,    // Free local models
         'groq': 3,      // Very competitive pricing
         'google': 3,    // Gemini Flash - best value
         'mistral': 2,   // Good pricing
@@ -168,6 +170,7 @@ export async function selectBestProvider(criteria?: {
       // Adjust for speed
       const speedScores: Record<string, number> = {
         'groq': 5,      // Ultra-fast inference (up to 750 tokens/sec)
+        'ollama': 4,    // Local inference - very fast, no network latency
         'google': 3,    // Gemini Flash
         'openai': 2,    // GPT-4 Turbo
         'openrouter': 2,

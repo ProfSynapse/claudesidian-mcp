@@ -442,10 +442,11 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
         return `Completion status update using ${tool}`;
       case 'research':
         return `Research using ${tool}`;
-      default:
+      default: {
         // Extract a short summary from content
         const contentPreview = trace.content.substring(0, 50).trim();
         return contentPreview ? `${contentPreview}...` : `Activity using ${tool}`;
+      }
     }
   }
   

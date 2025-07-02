@@ -69,7 +69,9 @@ export class FileMonitor implements IFileMonitor {
     setSystemOperation(isSystem: boolean): void {
         this.isSystemOp = isSystem;
         if (isSystem) {
+            // System operation - disable event processing
         } else {
+            // User operation - enable event processing
         }
     }
 
@@ -174,7 +176,7 @@ export class FileMonitor implements IFileMonitor {
     }
 
     // Shared logic for checking if a file needs embedding (matches EmbeddingService logic)
-    private async checkIfFileNeedsEmbeddingInternal(filePath: string, vectorStore: any, embeddingService: any): Promise<boolean> {
+    private async checkIfFileNeedsEmbeddingInternal(filePath: string, vectorStore: any, _embeddingService: any): Promise<boolean> {
         try {
             // Read current file content and generate hash
             const file = this.app.vault.getAbstractFileByPath(filePath);

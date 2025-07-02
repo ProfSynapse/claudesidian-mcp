@@ -2,14 +2,16 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { AppendContentParams, AppendContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { createErrorMessage } from '../../../utils/errorUtils';
+import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { MemoryService } from '../../../database/services/MemoryService';
 
 /**
  * Mode for appending content to a file
  */
 export class AppendContentMode extends BaseMode<AppendContentParams, AppendContentResult> {
   private app: App;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new AppendContentMode
@@ -33,17 +35,22 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
    */
   async execute(params: AppendContentParams): Promise<AppendContentResult> {
     try {
-      const { filePath, content, workspaceContext, handoff, sessionId } = params;
+      const { filePath, content, workspaceContext, handoff } = params;
       
       const result = await ContentOperations.appendContent(this.app, filePath, content);
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(true, {
-          filePath,
-          appendedLength: result.appendedLength,
-          totalLength: result.totalLength
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const resultData = {
+        filePath,
+        appendedLength: result.appendedLength,
+        totalLength: result.totalLength
+      };
+      
+      // Record session activity for memory tracking
+      await this.recordActivity(params, resultData);
+      
+      const response = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -140,5 +147,72 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
       },
       required: ['success']
     };
+  }
+  
+  /**
+   * Record content appending activity in workspace memory
+   * @param params Parameters used for appending content
+   * @param resultData Result data containing append information
+   */
+  private async recordActivity(
+    params: AppendContentParams,
+    resultData: {
+      filePath: string;
+      appendedLength: number;
+      totalLength: number;
+    }
+  ): Promise<void> {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
+    
+    // Skip if no workspace context
+    if (!parsedContext?.workspaceId) {
+      return;
+    }
+    
+    // Skip if no memory service
+    if (!this.memoryService) {
+      try {
+        // Try to get the memory service from the plugin
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        } else {
+          // No memory service available, skip activity recording
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to get memory service from plugin:', getErrorMessage(error));
+        return;
+      }
+    }
+    
+    // Create a descriptive content about this operation
+    let contentSnippet = params.content.substring(0, 100);
+    if (params.content.length > 100) {
+      contentSnippet += '...';
+    }
+    
+    const content = `Appended to file ${params.filePath} (${resultData.appendedLength} chars added, ${resultData.totalLength} total)\nContent: ${contentSnippet}`;
+    
+    try {
+      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
+        type: 'completion',
+        content: content,
+        metadata: {
+          tool: 'contentManager.appendContent',
+          params: {
+            filePath: params.filePath,
+            appendedLength: resultData.appendedLength,
+            totalLength: resultData.totalLength
+          },
+          result: resultData,
+          relatedFiles: [params.filePath]
+        },
+        sessionId: params.sessionId
+      });
+    } catch (error) {
+      console.error('Failed to record append content activity:', getErrorMessage(error));
+    }
   }
 }

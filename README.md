@@ -285,38 +285,97 @@ Search across your conversation history and workspace memory:
 - Memory storage is contained within your vault
 - No data is sent externally without consent, except for embedding API calls if you enable the Memory Manager feature
 
-## Custom Prompts and Agent Management
+## LLM Integration and Custom Agent Management
 
-Claudesidian MCP includes a powerful **AgentManager** that allows you to create and manage custom AI prompts, effectively creating your own specialized AI agents for specific tasks.
+Claudesidian MCP includes a comprehensive **AgentManager** that transforms your vault into an AI-powered workspace. Create custom AI agents, execute prompts directly from your notes, and integrate with multiple LLM providers for sophisticated automation workflows.
 
-### Custom Prompt Features
+### LLM Provider Support
 
-- **Create Custom Agents**: Define specialized prompts for specific use cases
-- **Enable/Disable Management**: Toggle prompts on/off as needed
-- **Multi-Vault Support**: Separate prompt collections per vault
-- **Persistent Storage**: Prompts are saved in your Obsidian settings
-- **Session Integration**: Custom prompts work seamlessly with memory sessions
+The plugin supports multiple LLM providers with comprehensive model management:
 
-### Use Cases for Custom Prompts
+- **Anthropic Claude**: Claude-3.5-Sonnet, Claude-3-Haiku, Claude-3-Opus models
+- **OpenAI**: GPT-4o, GPT-4-Turbo, GPT-3.5-Turbo, and other models
+- **Google Gemini**: Gemini-1.5-Pro, Gemini-1.5-Flash models
+- **Groq**: Ultra-fast inference with Llama, Mixtral, and Gemma models
+- **Ollama**: Local LLM execution with complete privacy
+- **Perplexity**: Search-augmented AI responses
+- **xAI**: Grok models for creative and analytical tasks
 
-- **Writing Assistants**: Create prompts for specific writing styles or formats
-- **Code Review**: Specialized prompts for different programming languages
-- **Research Helpers**: Domain-specific research and analysis prompts
-- **Content Organization**: Prompts for structuring and organizing notes
-- **Task-Specific Workflows**: Custom prompts for recurring tasks
+### Setting Up API Keys
 
-### Managing Custom Prompts
+To use LLM features, configure your API keys in the plugin settings:
+
+1. **Open Settings**: Go to Obsidian Settings → Claudesidian MCP → LLM Providers
+2. **Select Provider**: Choose your preferred LLM provider(s)
+3. **Add API Key**: Enter your API key for each provider:
+   - **Anthropic**: Get your key from [console.anthropic.com](https://console.anthropic.com)
+   - **OpenAI**: Get your key from [platform.openai.com](https://platform.openai.com/api-keys)
+   - **Google**: Get your key from [aistudio.google.com](https://aistudio.google.com/app/apikey)
+   - **Groq**: Get your key from [console.groq.com](https://console.groq.com/keys)
+   - **Perplexity**: Get your key from [perplexity.ai](https://www.perplexity.ai/settings/api)
+   - **xAI**: Get your key from [console.x.ai](https://console.x.ai)
+   - **Ollama**: No API key needed for local setup
+4. **Set Default Model**: Choose your preferred default model and provider
+5. **Test Configuration**: Use the `listModels` mode to verify your setup
+
+### Custom Agent Features
+
+- **Specialized AI Agents**: Create domain-specific prompts for recurring tasks
+- **File Integration**: Include vault content as context in AI prompts
+- **Automated Actions**: Execute ContentManager operations with AI responses
+- **Model Selection**: Choose optimal models for different tasks
+- **Cost Tracking**: Monitor API usage and costs across providers
+- **Batch Processing**: Execute multiple prompts efficiently
+- **Session Integration**: Context-aware conversations with memory persistence
+
+### AI-Powered Workflow Examples
+
+1. **Content Creation**:
+   ```
+   executePrompt:
+     agent: "technical-writer"
+     prompt: "Create documentation for this API"
+     filepaths: ["api-spec.md"]
+     action: { type: "create", targetPath: "docs/api-documentation.md" }
+   ```
+
+2. **Code Review**:
+   ```
+   executePrompt:
+     agent: "code-reviewer"
+     prompt: "Review this code for best practices"
+     filepaths: ["src/main.ts"]
+     action: { type: "append", targetPath: "review-notes.md" }
+   ```
+
+3. **Research Analysis**:
+   ```
+   executePrompt:
+     agent: "research-assistant"
+     prompt: "Summarize key findings and create action items"
+     filepaths: ["research/*.md"]
+     action: { type: "create", targetPath: "analysis/summary.md" }
+   ```
+
+### Managing Custom Agents
 
 Through the AgentManager, you can:
 
-1. **List Prompts**: View all available custom prompts or only enabled ones
-2. **Create Prompts**: Add new custom prompts with names and descriptions
-3. **Update Prompts**: Modify existing prompts and their settings
-4. **Toggle Status**: Enable or disable prompts without deleting them
-5. **Delete Prompts**: Remove prompts you no longer need
-6. **Get Specific Prompts**: Retrieve individual prompts by name or ID
+1. **Create Specialized Agents**: Define custom prompts for specific domains
+2. **Execute AI Workflows**: Run prompts with file context and automated actions
+3. **Monitor Performance**: Track usage, costs, and model performance
+4. **Batch Operations**: Process multiple files or prompts efficiently
+5. **Model Management**: List available models with capabilities and pricing
+6. **Integration**: Seamlessly connect with vault content and memory systems
 
-Custom prompts integrate seamlessly with the plugin's session and memory management, allowing for sophisticated, context-aware AI interactions tailored to your specific needs.
+### Advanced AI Features
+
+- **Context Windows**: Leverage large context windows (up to 200K+ tokens)
+- **Structured Output**: Generate JSON, YAML, or formatted responses
+- **Image Analysis**: Process images with vision-capable models
+- **Function Calling**: Execute structured operations based on AI decisions
+- **Streaming Responses**: Real-time response generation for better UX
+- **Cost Optimization**: Automatic model selection based on task requirements
 
 ## Agent-Mode Architecture
 
@@ -417,16 +476,19 @@ The MemoryManager agent provides operations for managing sessions, states, and w
 | searchMemory    | Search memory traces and sessions   | query, type, limit, workspaceFilter           |
 
 #### 6. AgentManager Agent
-The AgentManager agent provides operations for managing custom AI prompts and user-defined agents.
+The AgentManager agent provides comprehensive operations for managing custom AI prompts, LLM model management, and executing AI-powered workflows directly from your vault.
 
-| Mode         | Description                         | Parameters                                    |
-|--------------|-------------------------------------|-----------------------------------------------|
-| listPrompts  | List all or enabled custom prompts | enabledOnly, sessionId, context               |
-| getPrompt    | Get a specific custom prompt        | id, name, sessionId, context                  |
-| createPrompt | Create a new custom prompt          | name, prompt, enabled, sessionId, context     |
-| updatePrompt | Update an existing custom prompt    | id, name, prompt, enabled, sessionId, context |
-| deletePrompt | Delete a custom prompt              | id, sessionId, context                        |
-| togglePrompt | Toggle prompt enabled/disabled state| id, sessionId, context                        |
+| Mode                | Description                                    | Parameters                                                        |
+|---------------------|------------------------------------------------|-------------------------------------------------------------------|
+| listPrompts         | List all or enabled custom prompts            | enabledOnly, sessionId, context                                   |
+| getPrompt           | Get a specific custom prompt                   | id, name, sessionId, context                                      |
+| createPrompt        | Create a new custom prompt                     | name, prompt, enabled, sessionId, context                         |
+| updatePrompt        | Update an existing custom prompt               | id, name, prompt, enabled, sessionId, context                     |
+| deletePrompt        | Delete a custom prompt                         | id, sessionId, context                                            |
+| togglePrompt        | Toggle prompt enabled/disabled state           | id, sessionId, context                                            |
+| listModels          | List available LLM models and capabilities     | sessionId, context                                                |
+| executePrompt       | Execute prompts with LLM integration           | agent, filepaths, prompt, provider, model, temperature, maxTokens, action, sessionId, context |
+| batchExecutePrompt  | Execute multiple prompts in sequence           | prompts[], sessionId, context                                     |
 
 
 ```mermaid

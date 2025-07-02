@@ -2,14 +2,16 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ReplaceContentParams, ReplaceContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { createErrorMessage } from '../../../utils/errorUtils';
+import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { MemoryService } from '../../../database/services/MemoryService';
 
 /**
  * Mode for replacing content in a file
  */
 export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceContentResult> {
   private app: App;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new ReplaceContentMode
@@ -33,7 +35,7 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
    */
   async execute(params: ReplaceContentParams): Promise<ReplaceContentResult> {
     try {
-      const { filePath, oldContent, newContent, similarityThreshold = 0.95, workspaceContext, handoff, sessionId } = params;
+      const { filePath, oldContent, newContent, similarityThreshold = 0.95, workspaceContext, handoff } = params;
       
       const replacements = await ContentOperations.replaceContent(
         this.app,
@@ -45,10 +47,15 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(true, {
-          filePath,
-          replacements
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const resultData = {
+        filePath,
+        replacements
+      };
+      
+      // Record session activity for memory tracking
+      await this.recordActivity(params, resultData);
+      
+      const response = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -152,5 +159,69 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
       },
       required: ['success']
     };
+  }
+  
+  /**
+   * Record content replacement activity in workspace memory
+   * @param params Parameters used for replacing content
+   * @param resultData Result data containing replacement information
+   */
+  private async recordActivity(
+    params: ReplaceContentParams,
+    resultData: {
+      filePath: string;
+      replacements: number;
+    }
+  ): Promise<void> {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
+    
+    // Skip if no workspace context
+    if (!parsedContext?.workspaceId) {
+      return;
+    }
+    
+    // Skip if no memory service
+    if (!this.memoryService) {
+      try {
+        // Try to get the memory service from the plugin
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        } else {
+          // No memory service available, skip activity recording
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to get memory service from plugin:', getErrorMessage(error));
+        return;
+      }
+    }
+    
+    // Create a descriptive content about this operation
+    const oldSnippet = params.oldContent.substring(0, 50) + (params.oldContent.length > 50 ? '...' : '');
+    const newSnippet = params.newContent.substring(0, 50) + (params.newContent.length > 50 ? '...' : '');
+    
+    const content = `Replaced content in ${params.filePath} (${resultData.replacements} replacements)\nOld: ${oldSnippet}\nNew: ${newSnippet}`;
+    
+    try {
+      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
+        type: 'completion',
+        content: content,
+        metadata: {
+          tool: 'contentManager.replaceContent',
+          params: {
+            filePath: params.filePath,
+            replacements: resultData.replacements,
+            similarityThreshold: params.similarityThreshold
+          },
+          result: resultData,
+          relatedFiles: [params.filePath]
+        },
+        sessionId: params.sessionId
+      });
+    } catch (error) {
+      console.error('Failed to record replace content activity:', getErrorMessage(error));
+    }
   }
 }

@@ -32,7 +32,7 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
    */
   async execute(params: ReplaceByLineParams): Promise<ReplaceByLineResult> {
     try {
-      const { filePath, startLine, endLine, newContent, workspaceContext, handoff, sessionId } = params;
+      const { filePath, startLine, endLine, newContent, workspaceContext, handoff } = params;
       
       const linesReplaced = await ContentOperations.replaceByLine(
         this.app,

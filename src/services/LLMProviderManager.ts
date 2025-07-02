@@ -64,23 +64,97 @@ export class LLMProviderManager {
 
   /**
    * Get all available models from enabled providers only
+   * Uses static models from *Models.ts files, not live API calls
    */
   async getAvailableModels(): Promise<ModelWithProvider[]> {
-    const models = await this.llmService.getAvailableModels();
+    const { StaticModelsService } = await import('./StaticModelsService');
+    const staticModelsService = StaticModelsService.getInstance();
     const defaultModel = this.settings.defaultModel;
+    const allModels: ModelWithProvider[] = [];
 
-    // Filter to only enabled providers
-    const enabledModels = models.filter(model => {
-      const providerConfig = this.settings.providers[model.provider];
-      return providerConfig && providerConfig.enabled && providerConfig.apiKey;
-    });
+    // Get enabled providers
+    const enabledProviders = this.getEnabledProviders();
+    
+    // For each enabled provider, get their static models
+    for (const provider of enabledProviders) {
+      if (provider.id === 'ollama') {
+        // Special handling for Ollama - only return the configured model
+        const ollamaModel = this.settings.defaultModel.provider === 'ollama' 
+          ? this.settings.defaultModel.model 
+          : '';
+        
+        if (ollamaModel) {
+          allModels.push({
+            provider: 'ollama',
+            id: ollamaModel,
+            name: ollamaModel,
+            contextWindow: this.estimateOllamaContextWindow(ollamaModel),
+            maxOutputTokens: 4096,
+            supportsJSON: false,
+            supportsImages: ollamaModel.includes('vision') || ollamaModel.includes('llava'),
+            supportsFunctions: false,
+            supportsStreaming: true,
+            supportsThinking: false,
+            pricing: {
+              inputPerMillion: 0,
+              outputPerMillion: 0,
+              currency: 'USD',
+              lastUpdated: new Date().toISOString()
+            },
+            isDefault: defaultModel.provider === 'ollama' && defaultModel.model === ollamaModel,
+            userDescription: this.settings.providers.ollama?.userDescription
+          });
+        }
+      } else {
+        // For other providers, use static models
+        const providerModels = staticModelsService.getModelsForProvider(provider.id);
+        
+        const modelsWithProviderInfo = providerModels.map(model => ({
+          provider: model.provider,
+          id: model.id,
+          name: model.name,
+          contextWindow: model.contextWindow,
+          maxOutputTokens: model.maxTokens,
+          supportsJSON: model.capabilities.supportsJSON,
+          supportsImages: model.capabilities.supportsImages,
+          supportsFunctions: model.capabilities.supportsFunctions,
+          supportsStreaming: model.capabilities.supportsStreaming,
+          supportsThinking: model.capabilities.supportsThinking,
+          pricing: {
+            inputPerMillion: model.pricing.inputPerMillion,
+            outputPerMillion: model.pricing.outputPerMillion,
+            currency: model.pricing.currency,
+            lastUpdated: new Date().toISOString()
+          },
+          isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model,
+          userDescription: this.settings.providers[model.provider]?.userDescription,
+          // Add user-defined model description if available
+          modelDescription: this.settings.providers[model.provider]?.models?.[model.id]?.description
+        }));
+        
+        allModels.push(...modelsWithProviderInfo);
+      }
+    }
 
-    return enabledModels.map(model => ({
-      ...model,
-      isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model,
-      // Add user-defined model description if available
-      modelDescription: this.settings.providers[model.provider]?.models?.[model.id]?.description
-    }));
+    return allModels;
+  }
+
+  /**
+   * Estimate context window for Ollama models
+   */
+  private estimateOllamaContextWindow(modelName: string): number {
+    // Rough estimates based on common Ollama models
+    if (modelName.includes('llama3.1')) return 128000;
+    if (modelName.includes('llama3')) return 8192;
+    if (modelName.includes('llama2')) return 4096;
+    if (modelName.includes('mistral')) return 32768;
+    if (modelName.includes('codellama')) return 16384;
+    if (modelName.includes('gemma')) return 8192;
+    if (modelName.includes('qwen')) return 32768;
+    if (modelName.includes('phi')) return 4096;
+    
+    // Default reasonable estimate
+    return 8192;
   }
 
   /**
@@ -127,6 +201,11 @@ export class LLMProviderManager {
         id: 'perplexity',
         name: 'Perplexity',
         description: 'Web search-enabled models with real-time information and citations'
+      },
+      {
+        id: 'ollama',
+        name: 'Ollama (Local)',
+        description: 'Local LLM execution with complete privacy and no API costs'
       }
     ];
 
@@ -134,11 +213,19 @@ export class LLMProviderManager {
       const config = this.settings.providers[provider.id];
       const isAvailable = this.llmService.isProviderAvailable(provider.id);
 
+      // For Ollama, check if server URL is configured
+      let hasApiKey = false;
+      if (provider.id === 'ollama') {
+        hasApiKey = !!(config?.apiKey && config.apiKey.trim());
+      } else {
+        hasApiKey = !!(config?.apiKey && config.apiKey.length > 0);
+      }
+
       return {
         ...provider,
         isAvailable,
         isEnabled: config?.enabled || false,
-        hasApiKey: !!(config?.apiKey && config.apiKey.length > 0),
+        hasApiKey,
         userDescription: config?.userDescription
       };
     });
@@ -149,11 +236,18 @@ export class LLMProviderManager {
    */
   getEnabledProviders(): ProviderInfo[] {
     const allProviders = this.getProviderInfo();
-    const enabled = allProviders.filter(provider => provider.isEnabled && provider.hasApiKey);
+    const enabled = allProviders.filter(provider => {
+      if (!provider.isEnabled) return false;
+      
+      // For Ollama, hasApiKey check should consider server URL
+      if (provider.id === 'ollama') {
+        const config = this.settings.providers[provider.id];
+        return !!(config?.apiKey && config.apiKey.trim());
+      } else {
+        return provider.hasApiKey;
+      }
+    });
     
-    // Debug logging
-    console.log('All providers:', allProviders.map(p => ({ id: p.id, enabled: p.isEnabled, hasKey: p.hasApiKey })));
-    console.log('Enabled providers:', enabled.map(p => p.id));
     
     return enabled;
   }

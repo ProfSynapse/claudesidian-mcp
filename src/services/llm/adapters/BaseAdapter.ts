@@ -27,7 +27,7 @@ export abstract class BaseAdapter {
   protected config: ProviderConfig;
   protected cache!: BaseCache<LLMResponse>;
 
-  constructor(apiKey: string, defaultModel: string, baseUrl?: string) {
+  constructor(apiKey: string, defaultModel: string, baseUrl?: string, requiresApiKey: boolean = true) {
     this.apiKey = apiKey || '';
     this.currentModel = defaultModel;
 
@@ -36,7 +36,7 @@ export abstract class BaseAdapter {
       baseUrl: baseUrl || ''
     };
 
-    if (!this.apiKey) {
+    if (!this.apiKey && requiresApiKey) {
       console.warn(`⚠️ API key not provided for adapter`);
     }
   }

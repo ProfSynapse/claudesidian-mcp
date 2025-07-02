@@ -39,7 +39,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
    */
   async execute(params: BatchContentParams): Promise<BatchContentResult> {
     try {
-      const { operations, workspaceContext, handoff, sessionId } = params;
+      const { operations, workspaceContext, handoff } = params;
       
       // Validate operations before execution
       if (!operations || !Array.isArray(operations) || operations.length === 0) {

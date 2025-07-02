@@ -109,8 +109,7 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
         prompt: {
           type: 'string',
           description: 'New prompt text/persona',
-          minLength: 1,
-          maxLength: 10000
+          minLength: 1
         },
         isEnabled: {
           type: 'boolean',

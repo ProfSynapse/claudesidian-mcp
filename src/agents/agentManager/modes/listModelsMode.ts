@@ -118,14 +118,15 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
         return acc;
       }, {} as { [key: string]: number });
 
-      // Calculate statistics
+      // Calculate statistics with safe pricing access
+      const modelsWithPricing = models.filter(m => m.pricing && typeof m.pricing.inputPerMillion === 'number');
       const statistics = {
         totalModels: models.length,
         providerCount: enabledProviders.length,
         averageContextWindow: models.length > 0 ? Math.round(models.reduce((sum, m) => sum + m.contextWindow, 0) / models.length) : 0,
         maxContextWindow: models.length > 0 ? Math.max(...models.map(m => m.contextWindow)) : 0,
-        minCostPerMillion: models.length > 0 ? Math.min(...models.map(m => m.pricing.inputPerMillion)) : 0,
-        maxCostPerMillion: models.length > 0 ? Math.max(...models.map(m => m.pricing.inputPerMillion)) : 0
+        minCostPerMillion: modelsWithPricing.length > 0 ? Math.min(...modelsWithPricing.map(m => m.pricing.inputPerMillion)) : 0,
+        maxCostPerMillion: modelsWithPricing.length > 0 ? Math.max(...modelsWithPricing.map(m => m.pricing.inputPerMillion)) : 0
       };
 
       // Format the response
@@ -145,10 +146,10 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
           supportsThinking: model.supportsThinking
         },
         pricing: {
-          inputPerMillion: model.pricing.inputPerMillion,
-          outputPerMillion: model.pricing.outputPerMillion,
-          currency: model.pricing.currency,
-          lastUpdated: model.pricing.lastUpdated
+          inputPerMillion: model.pricing?.inputPerMillion ?? 0,
+          outputPerMillion: model.pricing?.outputPerMillion ?? 0,
+          currency: model.pricing?.currency ?? 'USD',
+          lastUpdated: model.pricing?.lastUpdated ?? new Date().toISOString()
         }
       }));
 

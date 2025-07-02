@@ -2,8 +2,9 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CreateContentParams, CreateContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { createErrorMessage } from '../../../utils/errorUtils';
+import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { MemoryService } from '../../../database/services/MemoryService';
 
 /**
  * Mode for creating a new file with content
@@ -12,6 +13,7 @@ import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/
  */
 export class CreateContentMode extends BaseMode<CreateContentParams, CreateContentResult> {
   private app: App;
+  private memoryService?: MemoryService | null;
   
   /**
    * Create a new CreateContentMode
@@ -35,7 +37,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
    */
   async execute(params: CreateContentParams): Promise<CreateContentResult> {
     try {
-      const { filePath, content, workspaceContext, handoff, sessionId } = params;
+      const { filePath, content, workspaceContext, handoff } = params;
       
       // Validate parameters
       if (!filePath) {
@@ -51,10 +53,15 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const result = this.prepareResult(true, {
-          filePath,
-          created: file.stat.ctime
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const resultData = {
+        filePath,
+        created: file.stat.ctime
+      };
+      
+      // Record session activity for memory tracking
+      await this.recordActivity(params, resultData);
+      
+      const result = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -147,5 +154,72 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       },
       required: ['success']
     };
+  }
+  
+  /**
+   * Record content creation activity in workspace memory
+   * @param params Parameters used for creating content
+   * @param resultData Result data containing creation information
+   */
+  private async recordActivity(
+    params: CreateContentParams,
+    resultData: {
+      filePath: string;
+      created: number;
+    }
+  ): Promise<void> {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
+    
+    // Skip if no workspace context
+    if (!parsedContext?.workspaceId) {
+      return;
+    }
+    
+    // Skip if no memory service
+    if (!this.memoryService) {
+      try {
+        // Try to get the memory service from the plugin
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        } else {
+          // No memory service available, skip activity recording
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to get memory service from plugin:', getErrorMessage(error));
+        return;
+      }
+    }
+    
+    // Create a descriptive content about this operation
+    let contentSnippet = params.content.substring(0, 100);
+    if (params.content.length > 100) {
+      contentSnippet += '...';
+    }
+    
+    const content = `Created file ${params.filePath}\nContent: ${contentSnippet}`;
+    
+    try {
+      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
+        type: 'completion',
+        content: content,
+        metadata: {
+          tool: 'contentManager.createContent',
+          params: {
+            filePath: params.filePath,
+            contentLength: params.content.length
+          },
+          result: {
+            created: resultData.created
+          },
+          relatedFiles: [params.filePath]
+        },
+        sessionId: params.sessionId
+      });
+    } catch (error) {
+      console.error('Failed to record create content activity:', getErrorMessage(error));
+    }
   }
 }

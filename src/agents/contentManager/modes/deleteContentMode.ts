@@ -2,9 +2,9 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { DeleteContentParams, DeleteContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-
-import { createErrorMessage } from '../../../utils/errorUtils';
+import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { MemoryService } from '../../../database/services/MemoryService';
 
 /**
  * Mode for deleting content from a file
@@ -13,6 +13,7 @@ import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/
  */
 export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteContentResult> {
   private app: App;
+  private memoryService: MemoryService | null = null;
   
   /**
    * Create a new DeleteContentMode
@@ -36,7 +37,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
    */
   async execute(params: DeleteContentParams): Promise<DeleteContentResult> {
     try {
-      const { filePath, content, similarityThreshold = 0.95, workspaceContext, handoff, sessionId } = params;
+      const { filePath, content, similarityThreshold = 0.95, workspaceContext, handoff } = params;
       
       const deletions = await ContentOperations.deleteContent(
         this.app,
@@ -47,10 +48,15 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       
       // File change detection and embedding updates are handled automatically by FileEventManager
       
-      const response = this.prepareResult(true, {
-          filePath,
-          deletions
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const resultData = {
+        filePath,
+        deletions
+      };
+      
+      // Record session activity for memory tracking
+      await this.recordActivity(params, resultData);
+      
+      const response = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -150,5 +156,71 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       },
       required: ['success']
     };
+  }
+  
+  /**
+   * Record content deletion activity in workspace memory
+   * @param params Parameters used for deleting content
+   * @param resultData Result data containing deletion information
+   */
+  private async recordActivity(
+    params: DeleteContentParams,
+    resultData: {
+      filePath: string;
+      deletions: number;
+    }
+  ): Promise<void> {
+    // Parse workspace context
+    const parsedContext = parseWorkspaceContext(params.workspaceContext) || undefined;
+    
+    // Skip if no workspace context
+    if (!parsedContext?.workspaceId) {
+      return;
+    }
+    
+    // Skip if no memory service
+    if (!this.memoryService) {
+      try {
+        // Try to get the memory service from the plugin
+        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        if (plugin?.services?.memoryService) {
+          this.memoryService = plugin.services.memoryService;
+        } else {
+          // No memory service available, skip activity recording
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to get memory service from plugin:', getErrorMessage(error));
+        return;
+      }
+    }
+    
+    // Create a descriptive content about this operation
+    let contentSnippet = params.content.substring(0, 100);
+    if (params.content.length > 100) {
+      contentSnippet += '...';
+    }
+    
+    const content = `Deleted content from ${params.filePath} (${resultData.deletions} deletions)\nDeleted: ${contentSnippet}`;
+    
+    try {
+      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
+        type: 'completion',
+        content: content,
+        metadata: {
+          tool: 'contentManager.deleteContent',
+          params: {
+            filePath: params.filePath,
+            deletions: resultData.deletions,
+            similarityThreshold: params.similarityThreshold
+          },
+          result: resultData,
+          relatedFiles: [params.filePath]
+        },
+        sessionId: params.sessionId
+      });
+    } catch (error) {
+      console.error('Failed to record delete content activity:', getErrorMessage(error));
+    }
   }
 }

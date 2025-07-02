@@ -370,6 +370,11 @@ export const DEFAULT_LLM_PROVIDER_SETTINGS: LLMProviderSettings = {
             apiKey: '',
             userDescription: 'Web search-enabled models with real-time information and citations',
             enabled: false
+        },
+        ollama: {
+            apiKey: 'http://127.0.0.1:11434',
+            userDescription: 'Local LLM execution with complete privacy and no API costs',
+            enabled: false
         }
     },
     defaultModel: {

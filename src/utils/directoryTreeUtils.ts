@@ -326,7 +326,7 @@ export class DirectoryTreeUtils {
    */
   static treeToText(tree: DirectoryTreeNode, indent = ''): string {
     let result = '';
-    const isLast = true; // We'll handle this in the caller
+    const _isLast = true; // We'll handle this in the caller
     
     const prefix = tree.type === 'folder' ? '📁 ' : '📄 ';
     const keyIndicator = '';

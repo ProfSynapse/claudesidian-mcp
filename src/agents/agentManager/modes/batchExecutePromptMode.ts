@@ -680,7 +680,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   /**
    * Get parameter schema for MCP tool definition
    */
-  getParameterSchema() {
+  getParameterSchema(): any {
     const batchSchema = {
       type: 'object',
       title: 'Batch Execute LLM Prompts Parameters',
@@ -820,7 +820,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   /**
    * Get result schema for MCP tool definition
    */
-  getResultSchema() {
+  getResultSchema(): any {
     return {
       type: 'object',
       properties: {

@@ -275,8 +275,6 @@ export class ContentOperations {
       const matchedLength = oldContent.length;
       const actualMatchedText = existingContent.substring(matchPosition, matchPosition + matchedLength);
       
-      // Get the similarity score
-      const matchScore = this.calculateSimilarity(oldContent, actualMatchedText);
       
       // Create a clean replacement by slicing the original content
       const beforeMatch = existingContent.substring(0, matchPosition);
@@ -415,8 +413,6 @@ export class ContentOperations {
       const matchedLength = content.length;
       const actualMatchedText = existingContent.substring(matchPosition, matchPosition + matchedLength);
       
-      // Get the similarity score
-      const matchScore = this.calculateSimilarity(content, actualMatchedText);
       
       // Create a clean deletion by slicing the original content
       const beforeMatch = existingContent.substring(0, matchPosition);

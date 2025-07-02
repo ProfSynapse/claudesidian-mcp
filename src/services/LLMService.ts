@@ -13,6 +13,7 @@ import {
   RequestyAdapter,
   PerplexityAdapter
 } from './llm/adapters';
+import { OllamaAdapter } from './llm/adapters/ollama/OllamaAdapter';
 import { BaseAdapter } from './llm/adapters/BaseAdapter';
 import { GenerateOptions, LLMResponse, ModelInfo } from './llm/adapters/types';
 import { LLMProviderSettings, LLMProviderConfig } from '../types';
@@ -137,6 +138,18 @@ export class LLMService {
         console.warn('Failed to initialize Perplexity adapter:', error);
       }
     }
+
+    if (providers.ollama?.enabled && providers.ollama.apiKey) {
+      try {
+        // For Ollama, apiKey is actually the server URL, and we need the configured model
+        const defaultModel = this.settings.defaultModel.provider === 'ollama' 
+          ? this.settings.defaultModel.model 
+          : ''; // No fallback - user must configure model
+        this.adapters.set('ollama', new OllamaAdapter(providers.ollama.apiKey, defaultModel));
+      } catch (error) {
+        console.warn('Failed to initialize Ollama adapter:', error);
+      }
+    }
   }
 
   /**
@@ -233,12 +246,7 @@ export class LLMService {
         };
       }
 
-      console.log('Looking for adapter for provider:', provider);
-      console.log('Available adapters:', Array.from(this.adapters.keys()));
-      console.log('Adapters map:', this.adapters);
-      
       const adapter = this.adapters.get(provider);
-      console.log('Found adapter:', !!adapter);
       
       if (!adapter) {
         const availableProviders = Array.from(this.adapters.keys());
@@ -274,17 +282,7 @@ export class LLMService {
         stopSequences: options.stopSequences
       };
 
-      console.log('About to call adapter.generate with:', {
-        provider,
-        model,
-        promptLength: fullPrompt.length,
-        systemPromptLength: options.systemPrompt?.length || 0,
-        generateOptions
-      });
-      
       const result: LLMResponse = await adapter.generate(fullPrompt, generateOptions);
-      
-      console.log('Adapter.generate completed successfully');
 
       return {
         success: true,

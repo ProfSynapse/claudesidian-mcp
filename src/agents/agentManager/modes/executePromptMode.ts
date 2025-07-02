@@ -209,12 +209,6 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
 
       // Execute action if specified
       if (params.action && this.agentManager) {
-        console.log('ExecutePromptMode: Action specified, attempting to execute:', {
-          actionType: params.action.type,
-          targetPath: params.action.targetPath,
-          hasAgentManager: !!this.agentManager,
-          responseLength: result.response?.length || 0
-        });
         
         try {
           const actionResult = await this.executeContentAction(
@@ -224,7 +218,6 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             params.context
           );
 
-          console.log('ExecutePromptMode: Action execution result:', actionResult);
 
           resultData.actionPerformed = {
             type: params.action.type,
@@ -495,14 +488,23 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
     if (!this.providerManager) return [];
     
     try {
-      const staticModelsService = StaticModelsService.getInstance();
+      const settings = this.providerManager.getSettings();
       const enabledProviders = this.getEnabledProviders();
       const models: string[] = [];
       
       enabledProviders.forEach(providerId => {
         try {
-          const providerModels = staticModelsService.getModelsForProvider(providerId);
-          models.push(...providerModels.map(m => m.id));
+          if (providerId === 'ollama') {
+            // For Ollama, include the user-configured model
+            if (settings.defaultModel.provider === 'ollama' && settings.defaultModel.model) {
+              models.push(settings.defaultModel.model);
+            }
+          } else {
+            // For other providers, use static models
+            const staticModelsService = StaticModelsService.getInstance();
+            const providerModels = staticModelsService.getModelsForProvider(providerId);
+            models.push(...providerModels.map(m => m.id));
+          }
         } catch (error) {
           console.warn(`Error getting models for provider ${providerId}:`, error);
         }
