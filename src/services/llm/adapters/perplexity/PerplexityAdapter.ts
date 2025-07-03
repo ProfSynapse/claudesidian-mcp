@@ -12,7 +12,7 @@ import {
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
-  CostDetails,
+  ModelPricing,
   TokenUsage
 } from '../types';
 import { PERPLEXITY_MODELS, PERPLEXITY_DEFAULT_MODEL } from './PerplexityModels';
@@ -73,7 +73,7 @@ export class PerplexityAdapter extends BaseAdapter {
         return await this.client.post('/chat/completions', requestData);
       });
 
-      return this.parseResponse(response.data, options?.model || this.currentModel);
+      return await this.parseResponse(response.data, options?.model || this.currentModel);
     } catch (error) {
       throw this.handleError(error, 'generation');
     }
@@ -137,18 +137,23 @@ export class PerplexityAdapter extends BaseAdapter {
     };
   }
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('PerplexityAdapter: getModelPricing called for model:', modelId);
+    
     const modelSpec = PERPLEXITY_MODELS.find(m => m.apiName === modelId);
+    console.log('PerplexityAdapter: PERPLEXITY_MODELS.find result:', modelSpec);
+    
     if (modelSpec) {
-      return {
-        inputCost: 0,
-        outputCost: 0,
-        totalCost: 0,
+      const pricing: ModelPricing = {
         currency: 'USD',
         rateInputPerMillion: modelSpec.inputCostPerMillion,
         rateOutputPerMillion: modelSpec.outputCostPerMillion
       };
+      console.log('PerplexityAdapter: returning pricing:', pricing);
+      return pricing;
     }
+    
+    console.log('PerplexityAdapter: No model spec found for:', modelId);
     return null;
   }
 
@@ -194,7 +199,7 @@ export class PerplexityAdapter extends BaseAdapter {
     return requestData;
   }
 
-  private parseResponse(responseData: any, model: string): PerplexityResponse {
+  private async parseResponse(responseData: any, model: string): Promise<PerplexityResponse> {
     const choice = responseData.choices?.[0];
     if (!choice) {
       throw new Error('No response choice received from Perplexity');
@@ -206,21 +211,30 @@ export class PerplexityAdapter extends BaseAdapter {
     
     const usage = this.extractUsage(responseData);
     const finishReason = this.mapFinishReason(choice.finish_reason);
-
-    const response: PerplexityResponse = {
-      text: content,
-      model: responseData.model || model,
-      provider: this.name,
-      usage: usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    
+    const metadata = {
+      id: responseData.id,
+      created: responseData.created,
+      citationCount: citations.length,
+      relatedQuestionCount: relatedQuestions.length,
       citations,
-      relatedQuestions,
-      finishReason,
-      metadata: {
-        id: responseData.id,
-        created: responseData.created,
-        citationCount: citations.length,
-        relatedQuestionCount: relatedQuestions.length
-      }
+      relatedQuestions
+    };
+
+    // Use buildLLMResponse for cost calculation
+    const baseResponse = await this.buildLLMResponse(
+      content,
+      responseData.model || model,
+      usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      metadata,
+      finishReason
+    );
+    
+    // Add Perplexity-specific fields to the response
+    const response: PerplexityResponse = {
+      ...baseResponse,
+      citations,
+      relatedQuestions
     };
 
     return response;

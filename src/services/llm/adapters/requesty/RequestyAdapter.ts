@@ -5,7 +5,7 @@
  */
 
 import { BaseAdapter } from '../BaseAdapter';
-import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, CostDetails } from '../types';
+import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, ModelPricing } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 
 export class RequestyAdapter extends BaseAdapter {
@@ -48,23 +48,21 @@ export class RequestyAdapter extends BaseAdapter {
         const data = await response.json() as any;
         
         const usage = this.extractUsage(data);
-        const result: LLMResponse = {
-          text: data.choices[0].message.content || '',
-          model: data.model,
-          provider: this.name,
-          finishReason: data.choices[0].finish_reason,
-          toolCalls: data.choices[0].message.tool_calls,
-          metadata: {
-            routed_provider: data.provider_used,
-            analytics: data.analytics
-          }
+        const finishReason = data.choices[0].finish_reason;
+        const toolCalls = data.choices[0].message.tool_calls;
+        const metadata = {
+          routed_provider: data.provider_used,
+          analytics: data.analytics
         };
         
-        if (usage) {
-          result.usage = usage;
-        }
-        
-        return result;
+        return await this.buildLLMResponse(
+          data.choices[0].message.content || '',
+          data.model,
+          usage,
+          metadata,
+          finishReason,
+          toolCalls
+        );
       } catch (error) {
         this.handleError(error, 'generation');
       }
@@ -207,20 +205,24 @@ export class RequestyAdapter extends BaseAdapter {
   }
 
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('RequestyAdapter: getModelPricing called for model:', modelId);
+    
     // Use centralized model registry for pricing
     const modelSpec = ModelRegistry.findModel('requesty', modelId);
+    console.log('RequestyAdapter: ModelRegistry.findModel result:', modelSpec);
+    
     if (modelSpec) {
-      return {
-        inputCost: 0,
-        outputCost: 0,
-        totalCost: 0,
+      const pricing: ModelPricing = {
         currency: 'USD',
         rateInputPerMillion: modelSpec.inputCostPerMillion,
         rateOutputPerMillion: modelSpec.outputCostPerMillion
       };
+      console.log('RequestyAdapter: returning pricing:', pricing);
+      return pricing;
     }
 
+    console.log('RequestyAdapter: No model spec found for:', modelId);
     return null;
   }
 }

@@ -4,6 +4,7 @@ import { CustomPromptStorageService } from '../../database/services/CustomPrompt
 import { CustomPrompt, LLMProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { Setting, Modal, App, ButtonComponent, ToggleComponent } from 'obsidian';
 import { LLMProviderTab } from '../LLMProviderTab';
+import { LLMUsageTab } from '../LLMUsageTab';
 import { UnifiedTabs, UnifiedTabConfig } from '../UnifiedTabs';
 import { CardManager, CardManagerConfig } from '../CardManager';
 
@@ -24,6 +25,9 @@ export class AgentManagementAccordion extends Accordion {
     
     // LLM Provider tab
     private llmProviderTab: LLMProviderTab | null = null;
+    
+    // LLM Usage tab
+    private llmUsageTab: LLMUsageTab | null = null;
     
     /**
      * Create a new Agent Management accordion
@@ -90,7 +94,8 @@ export class AgentManagementAccordion extends Accordion {
     private createTabStructure(): void {
         const tabConfigs: UnifiedTabConfig[] = [
             { key: 'agents', label: '🤖 Custom Agents' },
-            { key: 'llm-providers', label: '🔑 LLM Providers' }
+            { key: 'llm-providers', label: '🔑 LLM Providers' },
+            { key: 'llm-usage', label: '📊 LLM Usage' }
         ];
         
         this.unifiedTabs = new UnifiedTabs({
@@ -103,6 +108,7 @@ export class AgentManagementAccordion extends Accordion {
         // Initialize tab content
         this.createAgentsTab();
         this.createLLMProvidersTab();
+        this.createLLMUsageTab();
     }
 
     /**
@@ -158,6 +164,19 @@ export class AgentManagementAccordion extends Accordion {
     }
     
     /**
+     * Create the LLM Usage tab content
+     */
+    private createLLMUsageTab(): void {
+        const contentEl = this.unifiedTabs?.getTabContent('llm-usage');
+        if (!contentEl) return;
+        
+        this.llmUsageTab = new LLMUsageTab({
+            containerEl: contentEl,
+            app: this.app
+        });
+    }
+    
+    /**
      * Refresh the agent cards display
      */
     private refreshAgentCards(): void {
@@ -197,6 +216,17 @@ export class AgentManagementAccordion extends Accordion {
             await this.customPromptStorage.deletePrompt(prompt.id);
             this.refreshAgentCards();
         }
+    }
+    
+    /**
+     * Cleanup when accordion is unloaded
+     */
+    onunload(): void {
+        if (this.llmUsageTab) {
+            this.llmUsageTab.destroy();
+            this.llmUsageTab = null;
+        }
+        super.onunload();
     }
 }
 

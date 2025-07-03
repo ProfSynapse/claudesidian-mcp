@@ -16,6 +16,7 @@ import { Settings } from '../../settings';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
 import { LLMProviderManager } from '../../services/LLMProviderManager';
 import { AgentManager } from '../../services/AgentManager';
+import { UsageTracker } from '../../services/UsageTracker';
 
 /**
  * AgentManager Agent for custom prompt operations
@@ -45,6 +46,11 @@ export class AgentManagerAgent extends BaseAgent {
    * Agent Manager for handoff operations
    */
   private parentAgentManager: AgentManager | null = null;
+  
+  /**
+   * Usage Tracker for LLM cost tracking
+   */
+  private usageTracker: UsageTracker | null = null;
   
   /**
    * Create a new AgentManagerAgent
@@ -128,6 +134,9 @@ export class AgentManagerAgent extends BaseAgent {
       if (this.parentAgentManager) {
         executePromptMode.setAgentManager(this.parentAgentManager);
       }
+      if (this.usageTracker) {
+        executePromptMode.setUsageTracker(this.usageTracker);
+      }
     }
 
     const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
@@ -137,6 +146,27 @@ export class AgentManagerAgent extends BaseAgent {
       if (this.parentAgentManager) {
         batchExecutePromptMode.setAgentManager(this.parentAgentManager);
       }
+      if (this.usageTracker) {
+        batchExecutePromptMode.setUsageTracker(this.usageTracker);
+      }
+    }
+  }
+
+  /**
+   * Set the Usage Tracker for LLM cost tracking
+   */
+  setUsageTracker(usageTracker: UsageTracker): void {
+    this.usageTracker = usageTracker;
+    
+    // Update the execute modes with the usage tracker
+    const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;
+    if (executePromptMode) {
+      executePromptMode.setUsageTracker(usageTracker);
+    }
+
+    const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
+    if (batchExecutePromptMode) {
+      batchExecutePromptMode.setUsageTracker(usageTracker);
     }
   }
 

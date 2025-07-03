@@ -26,7 +26,7 @@ export const GOOGLE_MODELS: ModelSpec[] = [
   {
     provider: 'google',
     name: 'Gemini 2.5 Flash',
-    apiName: 'gemini-2.5-flash-preview-05-20',
+    apiName: 'gemini-2.5-flash',
     contextWindow: 1048576,
     maxTokens: 65536,
     inputCostPerMillion: 0.15,
@@ -41,4 +41,4 @@ export const GOOGLE_MODELS: ModelSpec[] = [
   }
 ];
 
-export const GOOGLE_DEFAULT_MODEL = 'gemini-2.5-flash-preview-05-20';
+export const GOOGLE_DEFAULT_MODEL = 'gemini-2.5-flash';

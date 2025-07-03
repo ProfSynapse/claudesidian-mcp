@@ -13,7 +13,7 @@ import {
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
-  CostDetails
+  ModelPricing
 } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 
@@ -72,16 +72,19 @@ export class GoogleAdapter extends BaseAdapter {
 
         const response = await model.generateContent(request);
         
-        return {
-          text: response.response.text() || '',
-          model: options?.model || this.currentModel,
-          provider: this.name,
-          usage: this.extractGeminiUsage(response),
-          finishReason: this.mapFinishReason(response.response.candidates?.[0]?.finishReason),
-          metadata: {
-            thinking: options?.enableThinking ? response.response.candidates?.[0]?.content?.parts?.find((p: any) => p.thought !== undefined) : undefined
-          }
+        const extractedUsage = this.extractGeminiUsage(response);
+        const finishReason = this.mapFinishReason(response.response.candidates?.[0]?.finishReason);
+        const metadata = {
+          thinking: options?.enableThinking ? response.response.candidates?.[0]?.content?.parts?.find((p: any) => p.thought !== undefined) : undefined
         };
+
+        return await this.buildLLMResponse(
+          response.response.text() || '',
+          options?.model || this.currentModel,
+          extractedUsage,
+          metadata,
+          finishReason
+        );
       } catch (error) {
         this.handleError(error, 'generation');
       }
@@ -223,20 +226,24 @@ export class GoogleAdapter extends BaseAdapter {
     return reasonMap[reason] || 'stop';
   }
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('GoogleAdapter: getModelPricing called for model:', modelId);
+    
     // Use centralized model registry for pricing
     const modelSpec = ModelRegistry.findModel('google', modelId);
+    console.log('GoogleAdapter: ModelRegistry.findModel result:', modelSpec);
+    
     if (modelSpec) {
-      return {
-        inputCost: 0,
-        outputCost: 0,
-        totalCost: 0,
-        currency: 'USD',
+      const pricing: ModelPricing = {
         rateInputPerMillion: modelSpec.inputCostPerMillion,
-        rateOutputPerMillion: modelSpec.outputCostPerMillion
+        rateOutputPerMillion: modelSpec.outputCostPerMillion,
+        currency: 'USD'
       };
+      console.log('GoogleAdapter: returning pricing:', pricing);
+      return pricing;
     }
 
+    console.log('GoogleAdapter: No model spec found for:', modelId);
     return null;
   }
 }

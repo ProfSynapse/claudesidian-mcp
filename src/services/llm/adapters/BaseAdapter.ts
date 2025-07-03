@@ -13,7 +13,8 @@ import {
   ProviderConfig,
   ProviderCapabilities,
   TokenUsage,
-  CostDetails
+  CostDetails,
+  ModelPricing
 } from './types';
 import { BaseCache, CacheManager } from '../utils/CacheManager';
 import { createHash } from 'crypto';
@@ -56,7 +57,7 @@ export abstract class BaseAdapter {
   abstract generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse>;
   abstract listModels(): Promise<ModelInfo[]>;
   abstract getCapabilities(): ProviderCapabilities;
-  abstract getModelPricing(modelId: string): Promise<CostDetails | null>;
+  abstract getModelPricing(modelId: string): Promise<ModelPricing | null>;
 
   // Cached generate method
   async generate(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
@@ -291,21 +292,41 @@ export abstract class BaseAdapter {
 
   // Cost calculation methods
   protected async calculateCost(usage: TokenUsage, model: string): Promise<CostDetails | null> {
-    const modelInfo = await this.getModelPricing(model);
-    if (!modelInfo) return null;
+    console.log('BaseAdapter: calculateCost called', { usage, model, provider: this.name });
     
-    const inputCost = (usage.promptTokens / 1_000_000) * modelInfo.rateInputPerMillion;
-    const outputCost = (usage.completionTokens / 1_000_000) * modelInfo.rateOutputPerMillion;
+    const modelPricing = await this.getModelPricing(model);
+    console.log('BaseAdapter: modelPricing result', modelPricing);
+    
+    if (!modelPricing) {
+      console.log('BaseAdapter: No model pricing found for model:', model);
+      return null;
+    }
+    
+    // Calculate actual costs based on token usage and pricing rates
+    const inputCost = (usage.promptTokens / 1_000_000) * modelPricing.rateInputPerMillion;
+    const outputCost = (usage.completionTokens / 1_000_000) * modelPricing.rateOutputPerMillion;
     const totalCost = inputCost + outputCost;
 
-    return {
+    const costDetails: CostDetails = {
       inputCost,
       outputCost,
       totalCost,
-      currency: modelInfo.currency,
-      rateInputPerMillion: modelInfo.rateInputPerMillion,
-      rateOutputPerMillion: modelInfo.rateOutputPerMillion
+      currency: modelPricing.currency || 'USD',
+      rateInputPerMillion: modelPricing.rateInputPerMillion,
+      rateOutputPerMillion: modelPricing.rateOutputPerMillion
     };
+    
+    console.log('BaseAdapter: calculated cost successfully', {
+      provider: this.name,
+      model,
+      usage,
+      rates: {
+        input: modelPricing.rateInputPerMillion,
+        output: modelPricing.rateOutputPerMillion
+      },
+      calculatedCosts: costDetails
+    });
+    return costDetails;
   }
 
   protected async buildLLMResponse(
@@ -329,11 +350,23 @@ export abstract class BaseAdapter {
     // Calculate cost if usage is available
     if (usage) {
       const cost = await this.calculateCost(usage, model);
+      console.log('BaseAdapter: buildLLMResponse cost calculation result', cost);
       if (cost) {
         response.cost = cost;
+        console.log('BaseAdapter: attached cost to response');
+      } else {
+        console.log('BaseAdapter: cost calculation returned null, not attaching');
       }
+    } else {
+      console.log('BaseAdapter: no usage data, skipping cost calculation');
     }
 
+    console.log('BaseAdapter: final response', { 
+      hasCost: !!response.cost, 
+      hasUsage: !!response.usage,
+      provider: response.provider,
+      model: response.model 
+    });
     return response;
   }
 

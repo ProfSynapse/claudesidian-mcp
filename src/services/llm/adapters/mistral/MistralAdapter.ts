@@ -5,7 +5,7 @@
  */
 
 import { BaseAdapter } from '../BaseAdapter';
-import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, CostDetails } from '../types';
+import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, ModelPricing } from '../types';
 
 export class MistralAdapter extends BaseAdapter {
   readonly name = 'mistral';
@@ -43,19 +43,17 @@ export class MistralAdapter extends BaseAdapter {
         const data = await response.json() as any;
         
         const usage = this.extractUsage(data);
-        const result: LLMResponse = {
-          text: data.choices[0].message.content || '',
-          model: data.model,
-          provider: this.name,
-          finishReason: data.choices[0].finish_reason,
-          toolCalls: data.choices[0].message.tool_calls
-        };
+        const finishReason = data.choices[0].finish_reason;
+        const toolCalls = data.choices[0].message.tool_calls;
         
-        if (usage) {
-          result.usage = usage;
-        }
-        
-        return result;
+        return await this.buildLLMResponse(
+          data.choices[0].message.content || '',
+          data.model,
+          usage,
+          undefined,
+          finishReason,
+          toolCalls
+        );
       } catch (error) {
         this.handleError(error, 'generation');
       }
@@ -228,17 +226,24 @@ export class MistralAdapter extends BaseAdapter {
     return costs[modelId];
   }
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('MistralAdapter: getModelPricing called for model:', modelId);
+    
     const costs = this.getCostPer1kTokens(modelId);
-    if (!costs) return null;
+    console.log('MistralAdapter: getCostPer1kTokens result:', costs);
+    
+    if (!costs) {
+      console.log('MistralAdapter: No costs found for model:', modelId);
+      return null;
+    }
 
-    return {
-      inputCost: 0,
-      outputCost: 0,
-      totalCost: 0,
-      currency: 'USD',
+    const pricing: ModelPricing = {
       rateInputPerMillion: costs.input * 1000,
-      rateOutputPerMillion: costs.output * 1000
+      rateOutputPerMillion: costs.output * 1000,
+      currency: 'USD'
     };
+    
+    console.log('MistralAdapter: returning pricing:', pricing);
+    return pricing;
   }
 }

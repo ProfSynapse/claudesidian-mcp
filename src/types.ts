@@ -97,6 +97,7 @@ export interface LLMProviderSettings {
     [providerId: string]: LLMProviderConfig;
   };
   defaultModel: DefaultModelSettings;
+  monthlyBudget?: number; // Monthly budget in USD for LLM usage
 }
 
 /**
@@ -158,8 +159,9 @@ export interface MemorySettings {
         };
     };
     
-    // Rate limiting
+    // Rate limiting and budget
     maxTokensPerMonth: number;
+    monthlyBudget?: number; // Monthly budget in USD for embedding costs
     apiRateLimitPerMinute: number;
     
     // Chunking options

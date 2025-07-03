@@ -143,7 +143,7 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   {
     provider: 'requesty',
     name: 'Gemini 2.5 Flash',
-    apiName: 'google/gemini-2.5-flash-preview-05-20',
+    apiName: 'google/gemini-2.5-flash',
     contextWindow: 1048576,
     maxTokens: 65536,
     inputCostPerMillion: 0.15,

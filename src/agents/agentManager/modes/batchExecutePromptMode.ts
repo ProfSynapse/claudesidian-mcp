@@ -7,6 +7,7 @@ import { LLMService } from '../../../services/LLMService';
 import { AgentManager } from '../../../services/AgentManager';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
 import { StaticModelsService } from '../../../services/StaticModelsService';
+import { UsageTracker, BudgetStatus } from '../../../services/UsageTracker';
 
 /**
  * Parameters for batch LLM prompt execution
@@ -112,6 +113,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   private providerManager: LLMProviderManager | null = null;
   private agentManager: AgentManager | null = null;
   private promptStorage: CustomPromptStorageService | null = null;
+  private usageTracker: UsageTracker | null = null;
 
   constructor(
     plugin?: Plugin,
@@ -138,6 +140,13 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
    */
   setLLMService(llmService: LLMService): void {
     this.llmService = llmService;
+  }
+
+  /**
+   * Set the usage tracker for LLM cost tracking
+   */
+  setUsageTracker(usageTracker: UsageTracker): void {
+    this.usageTracker = usageTracker;
   }
 
   /**
@@ -306,8 +315,29 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
             sessionId: params.sessionId
           };
           
+          // Check budget before executing LLM prompt
+          if (this.usageTracker) {
+            const budgetStatus = await this.usageTracker.getBudgetStatusAsync();
+            if (budgetStatus.budgetExceeded) {
+              throw new Error(`Monthly LLM budget of $${budgetStatus.monthlyBudget.toFixed(2)} has been exceeded. Current spending: $${budgetStatus.currentSpending.toFixed(2)}. Please reset or increase your budget in settings.`);
+            }
+          }
+          
           // Execute the prompt using LLMService
           const response = await this.llmService!.executePrompt(executeParams);
+          
+          // Track usage for this execution
+          if (this.usageTracker && response.cost && response.provider) {
+            try {
+              await this.usageTracker.trackUsage(
+                response.provider.toLowerCase(),
+                response.cost.totalCost || 0
+              );
+            } catch (error) {
+              console.error('Failed to track LLM usage in batch execution:', error);
+              // Don't fail the request if usage tracking fails
+            }
+          }
           
           const executionTime = performance.now() - startTime;
           
@@ -473,8 +503,29 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
             sessionId: params.sessionId
           };
           
+          // Check budget before executing LLM prompt
+          if (this.usageTracker) {
+            const budgetStatus = await this.usageTracker.getBudgetStatusAsync();
+            if (budgetStatus.budgetExceeded) {
+              throw new Error(`Monthly LLM budget of $${budgetStatus.monthlyBudget.toFixed(2)} has been exceeded. Current spending: $${budgetStatus.currentSpending.toFixed(2)}. Please reset or increase your budget in settings.`);
+            }
+          }
+          
           // Execute the prompt using LLMService
           const response = await this.llmService!.executePrompt(executeParams);
+          
+          // Track usage for this execution
+          if (this.usageTracker && response.cost && response.provider) {
+            try {
+              await this.usageTracker.trackUsage(
+                response.provider.toLowerCase(),
+                response.cost.totalCost || 0
+              );
+            } catch (error) {
+              console.error('Failed to track LLM usage in batch execution:', error);
+              // Don't fail the request if usage tracking fails
+            }
+          }
           
           const executionTime = performance.now() - startTime;
           

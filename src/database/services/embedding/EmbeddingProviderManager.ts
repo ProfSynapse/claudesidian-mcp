@@ -7,6 +7,7 @@ import { IEmbeddingProvider, ITokenTrackingProvider } from '../../interfaces/IEm
 import { VectorStoreFactory } from '../../factory/VectorStoreFactory';
 import { MemorySettings } from '../../../types';
 import { EmbeddingProviderRegistry } from '../../providers/registry/EmbeddingProviderRegistry';
+import { UsageTracker } from '../../../services/UsageTracker';
 
 export class EmbeddingProviderManager {
   private embeddingProvider: IEmbeddingProvider | null = null;
@@ -31,6 +32,18 @@ export class EmbeddingProviderManager {
       
       if (this.embeddingProvider) {
         await this.embeddingProvider.initialize();
+        
+        // Inject UsageTracker if provider supports it
+        if ('setUsageTracker' in this.embeddingProvider) {
+          try {
+            const usageTracker = new UsageTracker('embeddings', settings);
+            (this.embeddingProvider as any).setUsageTracker(usageTracker);
+            console.log('Injected UsageTracker into embedding provider');
+          } catch (error) {
+            console.error('Failed to inject UsageTracker into embedding provider:', error);
+          }
+        }
+        
         console.log(`Initialized ${settings.apiProvider} embedding provider successfully`);
         this.initialized = true;
       }

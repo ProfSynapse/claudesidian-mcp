@@ -12,7 +12,7 @@ import {
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
-  CostDetails 
+  ModelPricing 
 } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 
@@ -252,20 +252,24 @@ export class OpenAIAdapter extends BaseAdapter {
 
 
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('OpenAIAdapter: getModelPricing called for model:', modelId);
+    
     // Use centralized model registry for pricing
     const modelSpec = ModelRegistry.findModel('openai', modelId);
+    console.log('OpenAIAdapter: ModelRegistry.findModel result:', modelSpec);
+    
     if (modelSpec) {
-      return {
-        inputCost: 0,
-        outputCost: 0,
-        totalCost: 0,
-        currency: 'USD',
+      const pricing: ModelPricing = {
         rateInputPerMillion: modelSpec.inputCostPerMillion,
-        rateOutputPerMillion: modelSpec.outputCostPerMillion
+        rateOutputPerMillion: modelSpec.outputCostPerMillion,
+        currency: 'USD'
       };
+      console.log('OpenAIAdapter: returning pricing:', pricing);
+      return pricing;
     }
 
+    console.log('OpenAIAdapter: No model spec found for:', modelId);
     return null;
   }
 

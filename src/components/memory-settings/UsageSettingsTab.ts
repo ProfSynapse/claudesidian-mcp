@@ -5,6 +5,8 @@ import { DeleteCollectionComponent } from './DeleteCollectionComponent';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
+import { UsageTracker } from '../../services/UsageTracker';
+import { UsageChart } from '../shared/UsageChart';
 
 /**
  * Usage Settings Tab component
@@ -17,6 +19,8 @@ export class UsageSettingsTab extends BaseSettingsTab {
     private deleteCollectionComponent: DeleteCollectionComponent | null = null;
     private usageStatsService: UsageStatsService | null = null;
     private vectorStore: any = null;
+    private embeddingUsageTracker: UsageTracker | null = null;
+    private usageChart: UsageChart | null = null;
     
     /**
      * Create a new usage settings tab
@@ -37,8 +41,9 @@ export class UsageSettingsTab extends BaseSettingsTab {
         this.embeddingManager = embeddingManager || null;
         this.vaultLibrarian = vaultLibrarian || null;
         
-        // Initialize the UsageStatsService
+        // Initialize the UsageStatsService and UsageTracker
         this.initializeUsageStatsService();
+        this.initializeEmbeddingUsageTracker();
         
         // Set up storage event listener for collection deletion events
         this.storageEventHandler = (e: StorageEvent) => {
@@ -102,66 +107,26 @@ export class UsageSettingsTab extends BaseSettingsTab {
     }
     
     /**
+     * Initialize the embedding usage tracker
+     */
+    private initializeEmbeddingUsageTracker(): void {
+        try {
+            this.embeddingUsageTracker = new UsageTracker('embeddings', this.settings);
+        } catch (error) {
+            console.error('Failed to initialize embedding usage tracker:', error);
+        }
+    }
+    
+    /**
      * Display the usage settings tab
      */
     display(containerEl: HTMLElement): void {
-        // Usage limits section
-        containerEl.createEl('h3', { text: 'Usage Limits' });
+        // Embedding budget section (cost-based tracking)
+        this.addEmbeddingBudgetSection(containerEl);
         
-        const tokenLimitSetting = new Setting(containerEl)
-            .setName('Monthly Token Limit')
-            .setDesc('Maximum tokens to process per month (1M ≈ $0.02 for small model)')
-            .addText(text => text
-                .setPlaceholder('1000000')
-                .setValue(String(this.settings.maxTokensPerMonth))
-                .onChange(async (value: string) => {
-                    const numValue = Number(value);
-                    if (!isNaN(numValue) && numValue > 0) {
-                        this.settings.maxTokensPerMonth = numValue;
-                        await this.saveSettings();
-                    }
-                })
-            );
-            
-        // Add update button directly next to the monthly token limit
-        tokenLimitSetting.addButton((button: any) => button
-            .setButtonText('Update Usage Counter')
-            .setCta()
-            .onClick(async () => {
-                // Get current token usage
-                let tokensThisMonth = 0;
-                if (this.usageStatsService) {
-                    const stats = await this.usageStatsService.getUsageStats();
-                    tokensThisMonth = stats.tokensThisMonth;
-                } else if (this.embeddingManager && this.embeddingManager.getProvider()) {
-                    const provider = this.embeddingManager.getProvider();
-                    // Try to get current usage from provider
-                    if (provider) {
-                        tokensThisMonth = (provider as any).getTokensThisMonth?.() || 0;
-                    }
-                }
-                
-                const newCount = prompt('Enter new token count:', tokensThisMonth.toString());
-                
-                if (newCount !== null) {
-                    const numValue = Number(newCount);
-                    if (!isNaN(numValue) && numValue >= 0) {
-                        if (this.usageStatsService) {
-                            await this.usageStatsService.updateUsageStats(numValue);
-                        } else if (this.embeddingManager && this.embeddingManager.getProvider()) {
-                            const provider = this.embeddingManager.getProvider();
-                            if (provider && typeof (provider as any).updateUsageStats === 'function') {
-                                await (provider as any).updateUsageStats(numValue);
-                            }
-                        }
-                        this.refreshStats();
-                    } else {
-                        new Notice('Please enter a valid number for token count');
-                    }
-                }
-            })
-        );
-            
+        // API Rate Limit setting (keep this as it's still relevant)
+        containerEl.createEl('h3', { text: 'API Limits' });
+        
         new Setting(containerEl)
             .setName('API Rate Limit')
             .setDesc('Maximum API requests per minute')
@@ -189,35 +154,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
             this.saveSettings();
         }
             
-        // Usage statistics section
-        // Create a container for the usage stats component
-        const usageStatsContainer = containerEl.createDiv({ cls: 'usage-stats-container' });
-        
-        // Create and display the UsageStatsComponent
-        if (!this.usageStatsComponent) {
-            // Get necessary dependencies for the component
-            const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
-            const embeddingService = plugin?.services?.embeddingService || plugin?.embeddingService;
-            const searchService = plugin?.services?.searchService || plugin?.searchService || 
-                (this.vaultLibrarian && (this.vaultLibrarian as any).searchService);
-            
-            this.usageStatsComponent = new UsageStatsComponent(
-                this.settings,
-                this.settingsManager,
-                this.app,
-                this.embeddingManager || undefined,
-                this.vaultLibrarian || undefined,
-                searchService,
-                embeddingService
-            );
-            
-            // Set up callback for when settings change
-            this.usageStatsComponent.onSettingsChanged = () => {
-                this.refreshStats();
-            };
-        }
-        
-        this.usageStatsComponent.display(usageStatsContainer);
+        // Note: Old token-based usage stats replaced with cost-based budget tracking above
         
         // Collection Management Section (moved from EmbeddingSettingsTab)
         const collectionManagementContainer = containerEl.createDiv({ cls: 'collection-management-container' });
@@ -323,6 +260,86 @@ export class UsageSettingsTab extends BaseSettingsTab {
         } finally {
             // Reset the refreshing flag
             this.isRefreshing = false;
+        }
+    }
+    
+    /**
+     * Add embedding budget section with cost tracking
+     */
+    private async addEmbeddingBudgetSection(containerEl: HTMLElement): Promise<void> {
+        if (!this.embeddingUsageTracker) return;
+        
+        try {
+            const budgetContainer = containerEl.createDiv({ cls: 'embedding-budget-section' });
+            budgetContainer.style.marginTop = '20px';
+            
+            const usageData = await this.embeddingUsageTracker.getUsageData();
+            const budgetStatus = await this.embeddingUsageTracker.getBudgetStatusAsync();
+            
+            this.usageChart = new UsageChart({
+                containerEl: budgetContainer,
+                title: '💰 Embedding Costs',
+                usageData,
+                budgetStatus,
+                onResetMonthly: () => this.handleResetEmbeddingUsage(),
+                onBudgetChange: (budget: number) => this.handleEmbeddingBudgetChange(budget)
+            });
+        } catch (error) {
+            console.error('Failed to create embedding budget section:', error);
+        }
+    }
+    
+    /**
+     * Handle embedding monthly usage reset
+     */
+    private async handleResetEmbeddingUsage(): Promise<void> {
+        if (!this.embeddingUsageTracker) return;
+        
+        try {
+            await this.embeddingUsageTracker.resetMonthlyUsage();
+            
+            // Refresh the chart
+            if (this.usageChart) {
+                const usageData = await this.embeddingUsageTracker.getUsageData();
+                const budgetStatus = await this.embeddingUsageTracker.getBudgetStatusAsync();
+                this.usageChart.update(usageData, budgetStatus);
+            }
+            
+            new Notice('Monthly embedding usage reset successfully');
+        } catch (error) {
+            console.error('Error resetting monthly embedding usage:', error);
+            new Notice('Failed to reset monthly usage');
+        }
+    }
+    
+    /**
+     * Handle embedding budget change
+     */
+    private async handleEmbeddingBudgetChange(budget: number): Promise<void> {
+        if (!this.embeddingUsageTracker) return;
+        
+        try {
+            this.embeddingUsageTracker.setMonthlyBudget(budget);
+            
+            // Update settings object for persistence
+            this.settings.monthlyBudget = budget;
+            await this.saveSettings();
+            
+            // Refresh the chart
+            if (this.usageChart) {
+                const usageData = await this.embeddingUsageTracker.getUsageData();
+                const budgetStatus = await this.embeddingUsageTracker.getBudgetStatusAsync();
+                this.usageChart.update(usageData, budgetStatus);
+            }
+            
+            if (budget > 0) {
+                new Notice(`Monthly embedding budget set to $${budget.toFixed(2)}`);
+            } else {
+                new Notice('Monthly embedding budget disabled');
+            }
+        } catch (error) {
+            console.error('Error setting embedding budget:', error);
+            new Notice('Failed to set budget');
         }
     }
     

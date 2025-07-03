@@ -61,6 +61,12 @@ export interface CostDetails {
   };
 }
 
+export interface ModelPricing {
+  rateInputPerMillion: number;
+  rateOutputPerMillion: number;
+  currency: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

@@ -187,28 +187,40 @@ export class MCPConnector {
                     agentManagerAgent.setProviderManager(llmProviderManager);
                     agentManagerAgent.setParentAgentManager(this.agentManager);
                     
-                    console.log('LLM Provider Manager initialized successfully');
+                    // Create and inject LLM usage tracker
+                    const { UsageTracker } = await import('./services/UsageTracker');
+                    const llmUsageTracker = new UsageTracker('llm', pluginSettings);
+                    agentManagerAgent.setUsageTracker(llmUsageTracker);
+                    
+                    console.log('LLM Provider Manager and Usage Tracker initialized successfully');
                 } catch (error) {
                     console.error('Failed to initialize LLM Provider Manager:', error);
                 }
             }
             
             // Always register VaultLibrarian (has non-vector modes like search)
-            const vaultLibrarianAgent = new VaultLibrarianAgent(
-                this.app,
-                enableVectorModes  // Pass vector modes enabled status (memory + valid API keys)
-            );
-            
-            // If vector modes are enabled (memory + valid API keys), initialize vector capabilities
-            if (enableVectorModes && vectorStore) {
-                vaultLibrarianAgent.initializeSearchService().catch(error => 
-                    console.error('Error initializing VaultLibrarian search service:', error)
+            let vaultLibrarianAgent;
+            try {
+                vaultLibrarianAgent = new VaultLibrarianAgent(
+                    this.app,
+                    enableVectorModes  // Pass vector modes enabled status (memory + valid API keys)
                 );
                 
-                // Update VaultLibrarian with memory settings
-                if (memorySettings) {
-                    vaultLibrarianAgent.updateSettings(memorySettings);
+                // If vector modes are enabled (memory + valid API keys), initialize vector capabilities
+                if (enableVectorModes && vectorStore) {
+                    vaultLibrarianAgent.initializeSearchService().catch(error => 
+                        console.error('Error initializing VaultLibrarian search service:', error)
+                    );
+                    
+                    // Update VaultLibrarian with memory settings
+                    if (memorySettings) {
+                        vaultLibrarianAgent.updateSettings(memorySettings);
+                    }
                 }
+            } catch (error) {
+                console.error("Error creating VaultLibrarianAgent:", error);
+                console.warn("Will continue without VaultLibrarian agent");
+                vaultLibrarianAgent = null;
             }
             
             // Initialize memory manager (always available for basic workspace management)
@@ -230,7 +242,11 @@ export class MCPConnector {
             if (agentManagerAgent) {
                 this.agentManager.registerAgent(agentManagerAgent);
             }
-            this.agentManager.registerAgent(vaultLibrarianAgent);
+            
+            // Register VaultLibrarian if created successfully
+            if (vaultLibrarianAgent) {
+                this.agentManager.registerAgent(vaultLibrarianAgent);
+            }
             
             // Register memory manager if created successfully
             if (memoryManagerAgent) {

@@ -11,7 +11,7 @@ import {
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
-  CostDetails,
+  ModelPricing,
   TokenUsage,
   LLMProviderError
 } from '../types';
@@ -91,29 +91,23 @@ export class OllamaAdapter extends BaseAdapter {
         totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
       };
 
-      return {
-        text: data.response,
-        model: model,
-        provider: this.name,
-        usage: usage,
-        cost: {
-          inputCost: 0, // Local models are free
-          outputCost: 0,
-          totalCost: 0,
-          currency: 'USD',
-          rateInputPerMillion: 0,
-          rateOutputPerMillion: 0
-        },
-        finishReason: data.done ? 'stop' : 'length',
-        metadata: {
-          cached: false,
-          modelDetails: data.model,
-          totalDuration: data.total_duration,
-          loadDuration: data.load_duration,
-          promptEvalDuration: data.prompt_eval_duration,
-          evalDuration: data.eval_duration
-        }
+      const finishReason = data.done ? 'stop' : 'length';
+      const metadata = {
+        cached: false,
+        modelDetails: data.model,
+        totalDuration: data.total_duration,
+        loadDuration: data.load_duration,
+        promptEvalDuration: data.prompt_eval_duration,
+        evalDuration: data.eval_duration
       };
+
+      return await this.buildLLMResponse(
+        data.response,
+        model,
+        usage,
+        metadata,
+        finishReason
+      );
     } catch (error) {
       if (error instanceof LLMProviderError) {
         throw error;
@@ -305,16 +299,18 @@ export class OllamaAdapter extends BaseAdapter {
     };
   }
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
-    // Local models are free
-    return {
-      inputCost: 0,
-      outputCost: 0,
-      totalCost: 0,
-      currency: 'USD',
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('OllamaAdapter: getModelPricing called for model:', modelId);
+    
+    // Local models are free - zero rates
+    const pricing: ModelPricing = {
       rateInputPerMillion: 0,
-      rateOutputPerMillion: 0
+      rateOutputPerMillion: 0,
+      currency: 'USD'
     };
+    
+    console.log('OllamaAdapter: returning free pricing:', pricing);
+    return pricing;
   }
 
   async isAvailable(): Promise<boolean> {

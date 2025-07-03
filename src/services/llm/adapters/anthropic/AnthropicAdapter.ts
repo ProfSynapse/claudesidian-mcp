@@ -12,7 +12,7 @@ import {
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
-  CostDetails
+  ModelPricing
 } from '../types';
 
 export class AnthropicAdapter extends BaseAdapter {
@@ -78,18 +78,22 @@ export class AnthropicAdapter extends BaseAdapter {
 
         const response = await this.client.messages.create(requestParams);
         
-        return {
-          text: this.extractTextFromContent(response.content),
-          model: response.model,
-          provider: this.name,
-          usage: this.extractUsage(response),
-          finishReason: this.mapStopReason(response.stop_reason),
-          toolCalls: this.extractToolCalls(response.content),
-          metadata: {
-            thinking: this.extractThinking(response),
-            stopSequence: response.stop_sequence
-          }
+        const extractedUsage = this.extractUsage(response);
+        const finishReason = this.mapStopReason(response.stop_reason);
+        const toolCalls = this.extractToolCalls(response.content);
+        const metadata = {
+          thinking: this.extractThinking(response),
+          stopSequence: response.stop_sequence
         };
+
+        return await this.buildLLMResponse(
+          this.extractTextFromContent(response.content),
+          response.model,
+          extractedUsage,
+          metadata,
+          finishReason,
+          toolCalls
+        );
       } catch (error) {
         this.handleError(error, 'generation');
       }
@@ -329,17 +333,24 @@ export class AnthropicAdapter extends BaseAdapter {
     return costs[modelId];
   }
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
-    const costs = this.getCostPer1kTokens(modelId);
-    if (!costs) return null;
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('AnthropicAdapter: getModelPricing called for model:', modelId);
     
-    return {
-      inputCost: 0,
-      outputCost: 0,
-      totalCost: 0,
-      currency: 'USD',
+    const costs = this.getCostPer1kTokens(modelId);
+    console.log('AnthropicAdapter: getCostPer1kTokens result:', costs);
+    
+    if (!costs) {
+      console.log('AnthropicAdapter: No costs found for model:', modelId);
+      return null;
+    }
+    
+    const pricing: ModelPricing = {
       rateInputPerMillion: costs.input * 1000, // Convert per 1k to per million
-      rateOutputPerMillion: costs.output * 1000
+      rateOutputPerMillion: costs.output * 1000,
+      currency: 'USD'
     };
+    
+    console.log('AnthropicAdapter: returning pricing:', pricing);
+    return pricing;
   }
 }

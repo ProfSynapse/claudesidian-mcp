@@ -2,6 +2,7 @@ import { BaseEmbeddingProvider } from '../base/BaseEmbeddingProvider';
 import { TokenTrackingMixin } from '../base/TokenTrackingMixin';
 import { ITokenTrackingProvider } from '../../interfaces/IEmbeddingProvider';
 import { getErrorMessage } from '../../../utils/errorUtils';
+import { UsageTracker } from '../../../services/UsageTracker';
 
 /**
  * Embedding provider for ChromaDB
@@ -18,6 +19,11 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
    * Token tracking functionality
    */
   private tokenTracker: TokenTrackingMixin;
+  
+  /**
+   * Usage tracker for cost-based tracking
+   */
+  private usageTracker: UsageTracker | null = null;
   
   /**
    * Current model being used for embeddings
@@ -62,14 +68,37 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
    */
   async generateEmbeddings(texts: string[]): Promise<number[][]> {
     try {
-      // Track token usage
+      // Check budget before generating embeddings
+      if (this.usageTracker) {
+        const estimatedCost = this.estimateEmbeddingCost(texts);
+        const canAfford = await this.usageTracker.canAfford(estimatedCost);
+        if (!canAfford) {
+          const budgetStatus = await this.usageTracker.getBudgetStatusAsync();
+          throw new Error(`Monthly embedding budget of $${budgetStatus.monthlyBudget.toFixed(2)} has been exceeded. Current spending: $${budgetStatus.currentSpending.toFixed(2)}. Please reset or increase your budget in settings.`);
+        }
+      }
+      
+      // Track token usage (legacy system)
       for (const text of texts) {
         const tokenCount = this.tokenTracker.estimateTokenCount(text);
         await this.tokenTracker.updateUsageStats(tokenCount, this.model);
       }
       
       // Generate embeddings
-      return await this.embeddingFunction(texts);
+      const embeddings = await this.embeddingFunction(texts);
+      
+      // Track cost-based usage (new system)
+      if (this.usageTracker) {
+        try {
+          const actualCost = this.calculateEmbeddingCost(texts);
+          await this.usageTracker.trackUsage('embeddings', actualCost);
+        } catch (error) {
+          console.error('Failed to track embedding usage:', error);
+          // Don't fail the embedding generation if usage tracking fails
+        }
+      }
+      
+      return embeddings;
     } catch (error) {
       console.error('Failed to generate embeddings:', error);
       throw new Error(`Embedding generation failed: ${getErrorMessage(error)}`);
@@ -158,5 +187,37 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
    */
   async resetUsageStats(): Promise<void> {
     return this.tokenTracker.resetUsageStats();
+  }
+  
+  /**
+   * Set the usage tracker for cost-based tracking
+   */
+  setUsageTracker(usageTracker: UsageTracker): void {
+    this.usageTracker = usageTracker;
+  }
+  
+  /**
+   * Estimate embedding cost before generation
+   */
+  private estimateEmbeddingCost(texts: string[]): number {
+    let totalTokens = 0;
+    for (const text of texts) {
+      totalTokens += this.tokenTracker.estimateTokenCount(text);
+    }
+    
+    // Use the same pricing as the legacy system from TokenTrackingMixin
+    const costPerThousandTokens = (this.tokenTracker as any).costPerThousandTokens;
+    const costPerToken = (costPerThousandTokens[this.model] || costPerThousandTokens['text-embedding-3-small'] || 0.00002) / 1000;
+    
+    return totalTokens * costPerToken;
+  }
+  
+  /**
+   * Calculate actual embedding cost after generation
+   */
+  private calculateEmbeddingCost(texts: string[]): number {
+    // For now, use the same estimation method
+    // In the future, this could use actual token counts from API responses
+    return this.estimateEmbeddingCost(texts);
   }
 }

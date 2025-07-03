@@ -6,11 +6,10 @@
 import { ModelSpec } from '../modelTypes';
 
 export const OPENAI_MODELS: ModelSpec[] = [
-  // GPT-4o models
   {
     provider: 'openai',
     name: 'GPT-4o',
-    apiName: 'gpt-4o',
+    apiName: 'gpt-4o-2024-11-20',
     contextWindow: 128000,
     maxTokens: 16384,
     inputCostPerMillion: 2.50,
@@ -28,7 +27,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'GPT-4.1',
-    apiName: 'gpt-4.1',
+    apiName: 'gpt-4.1-2025-04-14',
     contextWindow: 1047576,
     maxTokens: 32768,
     inputCostPerMillion: 8.00,
@@ -44,7 +43,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'GPT-4.1 Mini',
-    apiName: 'gpt-4.1-mini',
+    apiName: 'gpt-4.1-mini-2025-04-14',
     contextWindow: 1047576,
     maxTokens: 32768,
     inputCostPerMillion: 0.10,
@@ -60,7 +59,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'GPT-4.1 Nano',
-    apiName: 'gpt-4.1-nano',
+    apiName: 'gpt-4.1-nano-2025-04-14',
     contextWindow: 1047576,
     maxTokens: 32768,
     inputCostPerMillion: 0.10,
@@ -78,7 +77,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'o3',
-    apiName: 'o3',
+    apiName: 'o3-2025-04-16',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 2.00,
@@ -94,7 +93,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'o3 Pro',
-    apiName: 'o3-pro',
+    apiName: 'o3-pro-2025-06-10',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 20.00,
@@ -112,7 +111,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'o3 Deep Research',
-    apiName: 'o3-deep-research',
+    apiName: 'o3-deep-research-2025-06-26',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 10.00,
@@ -130,7 +129,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'o4 Mini',
-    apiName: 'o4-mini',
+    apiName: 'o4-mini-2025-04-16',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 1.10,
@@ -146,7 +145,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
   {
     provider: 'openai',
     name: 'o4 Mini Deep Research',
-    apiName: 'o4-mini-deep-research',
+    apiName: 'o4-mini-deep-research-2025-06-26',
     contextWindow: 200000,
     maxTokens: 100000,
     inputCostPerMillion: 2.00,
@@ -161,4 +160,4 @@ export const OPENAI_MODELS: ModelSpec[] = [
   }
 ];
 
-export const OPENAI_DEFAULT_MODEL = 'gpt-4.1';
+export const OPENAI_DEFAULT_MODEL = 'gpt-4.1-2025-04-14';

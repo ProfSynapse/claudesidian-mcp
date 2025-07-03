@@ -19,7 +19,7 @@ import {
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
-  CostDetails,
+  ModelPricing,
   TokenUsage,
   LLMProviderError
 } from '../types';
@@ -291,18 +291,25 @@ export class GroqAdapter extends BaseAdapter {
     };
   }
 
-  async getModelPricing(modelId: string): Promise<CostDetails | null> {
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    console.log('GroqAdapter: getModelPricing called for model:', modelId);
+    
     const modelSpec = GROQ_MODELS.find(m => m.apiName === modelId);
-    if (!modelSpec) return null;
+    console.log('GroqAdapter: GROQ_MODELS.find result:', modelSpec);
+    
+    if (!modelSpec) {
+      console.log('GroqAdapter: No model spec found for:', modelId);
+      return null;
+    }
 
-    return {
-      inputCost: 0,
-      outputCost: 0,
-      totalCost: 0,
-      currency: 'USD',
+    const pricing: ModelPricing = {
       rateInputPerMillion: modelSpec.inputCostPerMillion,
-      rateOutputPerMillion: modelSpec.outputCostPerMillion
+      rateOutputPerMillion: modelSpec.outputCostPerMillion,
+      currency: 'USD'
     };
+    
+    console.log('GroqAdapter: returning pricing:', pricing);
+    return pricing;
   }
 
   // Private helper methods

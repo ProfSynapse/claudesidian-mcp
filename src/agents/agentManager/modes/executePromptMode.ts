@@ -11,6 +11,7 @@ import { LLMProviderManager } from '../../../services/LLMProviderManager';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
 import { AgentManager } from '../../../services/AgentManager';
 import { StaticModelsService } from '../../../services/StaticModelsService';
+import { UsageTracker, BudgetStatus } from '../../../services/UsageTracker';
 
 export interface ExecutePromptParams {
   agent?: string; // Made optional
@@ -52,6 +53,7 @@ export interface ExecutePromptResult extends CommonResult {
       totalCost: number;
       currency: string;
     };
+    budgetStatus?: BudgetStatus;
     filesIncluded?: string[];
     actionPerformed?: {
       type: string;
@@ -66,6 +68,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
   private providerManager: LLMProviderManager | null = null;
   private promptStorage: CustomPromptStorageService | null = null;
   private agentManager: AgentManager | null = null;
+  private usageTracker: UsageTracker | null = null;
 
   constructor() {
     super(
@@ -88,6 +91,13 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
    */
   setPromptStorage(promptStorage: CustomPromptStorageService): void {
     this.promptStorage = promptStorage;
+  }
+
+  /**
+   * Set the usage tracker for LLM cost tracking
+   */
+  setUsageTracker(usageTracker: UsageTracker): void {
+    this.usageTracker = usageTracker;
   }
 
   /**
@@ -172,6 +182,22 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         agentUsed = customPrompt.name;
       }
 
+      // Check budget before executing LLM prompt
+      if (this.usageTracker) {
+        const budgetStatus = await this.usageTracker.getBudgetStatusAsync();
+        if (budgetStatus.budgetExceeded) {
+          return createResult<ExecutePromptResult>(
+            false,
+            undefined,
+            `Monthly LLM budget of $${budgetStatus.monthlyBudget.toFixed(2)} has been exceeded. Current spending: $${budgetStatus.currentSpending.toFixed(2)}. Please reset or increase your budget in settings.`,
+            undefined,
+            undefined,
+            params.sessionId,
+            params.context
+          );
+        }
+      }
+
       // Execute the LLM prompt
       const llmService = this.providerManager.getLLMService();
       const result = await llmService.executePrompt({
@@ -196,6 +222,32 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         );
       }
 
+      // Track usage and get budget status
+      let budgetStatus: BudgetStatus | undefined;
+      console.log('executePromptMode: Checking usage tracking', {
+        hasUsageTracker: !!this.usageTracker,
+        hasCost: !!result.cost,
+        hasProvider: !!result.provider,
+        cost: result.cost,
+        provider: result.provider
+      });
+      
+      if (this.usageTracker && result.cost && result.provider) {
+        try {
+          const usageResponse = await this.usageTracker.trackUsage(
+            result.provider.toLowerCase(),
+            result.cost.totalCost || 0
+          );
+          budgetStatus = usageResponse.budgetStatus;
+          console.log('executePromptMode: Successfully tracked usage', usageResponse);
+        } catch (error) {
+          console.error('Failed to track LLM usage:', error);
+          // Don't fail the request if usage tracking fails
+        }
+      } else {
+        console.log('executePromptMode: Skipping usage tracking - missing requirements');
+      }
+
       // Prepare result data
       const resultData: ExecutePromptResult['data'] = {
         response: result.response || '',
@@ -204,6 +256,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         agentUsed: agentUsed,
         usage: result.usage,
         cost: result.cost,
+        budgetStatus: budgetStatus,
         filesIncluded: result.filesIncluded
       };
 
