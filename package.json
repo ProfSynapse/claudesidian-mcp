@@ -46,7 +46,7 @@
         "@anthropic-ai/sdk": "^0.55.1",
         "@google/generative-ai": "^0.24.1",
         "@mistralai/mistralai": "^1.7.2",
-        "@modelcontextprotocol/sdk": "^1.9.0",
+        "@modelcontextprotocol/sdk": "^1.13.3",
         "axios": "^1.10.0",
         "chromadb": "^3.0.0",
         "diff-match-patch": "^1.0.5",
