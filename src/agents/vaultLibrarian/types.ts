@@ -301,10 +301,10 @@ export interface BatchUniversalSearchResult extends CommonResult {
    * Execution statistics
    */
   stats: {
-    totalExecutionTime: number;
+    totalExecutionTimeMS: number;
     queriesExecuted: number;
     queriesFailed: number;
-    avgExecutionTime: number;
+    avgExecutionTimeMS: number;
   };
 }
 

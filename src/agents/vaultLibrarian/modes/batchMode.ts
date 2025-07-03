@@ -63,7 +63,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
       // Execute searches with concurrency control
       const results = await this.executeConcurrentSearches(params.searches, maxConcurrency);
       
-      const totalExecutionTime = performance.now() - startTime;
+      const totalExecutionTimeMS = performance.now() - startTime;
       const successful = results.filter(r => r.success);
       const failed = results.filter(r => !r.success);
 
@@ -79,10 +79,10 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
             combinedCategories: merged.categories!
           },
           stats: {
-            totalExecutionTime,
+            totalExecutionTimeMS,
             queriesExecuted: params.searches.length,
             queriesFailed: failed.length,
-            avgExecutionTime: totalExecutionTime / params.searches.length
+            avgExecutionTimeMS: totalExecutionTimeMS / params.searches.length
           }
         };
       } else {
@@ -90,10 +90,10 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
           success: true,
           searches: results,
           stats: {
-            totalExecutionTime,
+            totalExecutionTimeMS,
             queriesExecuted: params.searches.length,
             queriesFailed: failed.length,
-            avgExecutionTime: totalExecutionTime / params.searches.length
+            avgExecutionTimeMS: totalExecutionTimeMS / params.searches.length
           }
         };
       }
@@ -268,7 +268,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
             required: ['query']
           },
           minItems: 1,
-          maxItems: 10
+          maxItems: 100
         },
         mergeResults: {
           type: 'boolean',
@@ -331,7 +331,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
           type: 'object',
           description: 'Execution statistics',
           properties: {
-            totalExecutionTime: {
+            totalExecutionTimeMS: {
               type: 'number',
               description: 'Total execution time in milliseconds'
             },
@@ -343,7 +343,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
               type: 'number',
               description: 'Number of queries that failed'
             },
-            avgExecutionTime: {
+            avgExecutionTimeMS: {
               type: 'number',
               description: 'Average execution time per query'
             }

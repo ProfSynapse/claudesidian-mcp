@@ -10,7 +10,7 @@ export const CONFIG = {
     /**
      * Plugin version
      */
-    VERSION: '2.6.0',
+    VERSION: '2.6.1',
     
     /**
      * Default port for the MCP server
@@ -25,10 +25,10 @@ export const CONFIG = {
     /**
      * Default timeout for requests (in milliseconds)
      */
-    DEFAULT_TIMEOUT: 30000,
+    DEFAULT_TIMEOUT: 1200000,
     
     /**
      * Maximum number of concurrent requests
      */
-    MAX_CONCURRENT_REQUESTS: 5
+    MAX_CONCURRENT_REQUESTS: 100
 };

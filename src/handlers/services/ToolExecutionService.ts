@@ -43,7 +43,8 @@ export class ToolExecutionService implements IToolExecutionService {
     }
 
     private validateVaultManagerParams(mode: string, params: any): void {
-        if (['listFolders', 'createFolder', 'listFiles'].includes(mode) && !params.path) {
+        if (['listFolders', 'createFolder', 'listFiles'].includes(mode) && 
+            params.path === undefined) {
             throw new McpError(
                 ErrorCode.InvalidParams,
                 `Missing required parameter: path for ${mode} mode`

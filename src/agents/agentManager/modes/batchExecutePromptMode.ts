@@ -27,10 +27,14 @@ export interface BatchExecutePromptParams extends CommonParameters {
     workspace?: string;
     /** Custom identifier for this prompt */
     id?: string;
-    /** Sequence number for ordered execution (prompts with same sequence run in parallel, sequences execute in order) */
+    /** Sequence number for ordered execution (sequences execute in numerical order: 0, 1, 2, etc.) */
     sequence?: number;
+    /** Parallel group within sequence - prompts with same parallelGroup run together, different groups run sequentially within the sequence */
+    parallelGroup?: string;
     /** Whether to include previous step results as context */
     includePreviousResults?: boolean;
+    /** Specific IDs of previous steps to include as context (if not specified, includes all previous results when includePreviousResults is true) */
+    contextFromSteps?: string[];
     /** Optional action to perform with the LLM response */
     action?: {
       type: 'create' | 'append' | 'prepend' | 'replace' | 'findReplace';
@@ -44,8 +48,6 @@ export interface BatchExecutePromptParams extends CommonParameters {
     /** Optional custom agent/prompt to use */
     agent?: string;
   }>;
-  /** Maximum number of concurrent requests (default: 3) */
-  maxConcurrency?: number;
   /** Whether to merge all responses into a single result */
   mergeResponses?: boolean;
 }
@@ -67,6 +69,7 @@ export interface BatchExecutePromptResult {
     error?: string;
     executionTime?: number;
     sequence?: number;
+    parallelGroup?: string;
     usage?: {
       promptTokens: number;
       completionTokens: number;
@@ -95,10 +98,10 @@ export interface BatchExecutePromptResult {
   };
   /** Execution statistics */
   stats?: {
-    totalExecutionTime: number;
+    totalExecutionTimeMS: number;
     promptsExecuted: number;
     promptsFailed: number;
-    avgExecutionTime: number;
+    avgExecutionTimeMS: number;
     tokensUsed?: number;
   };
   error?: string;
@@ -195,28 +198,12 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         };
       }
 
-      // Check if any sequence has more prompts than maxConcurrency (this is the real limit)
-      const maxConcurrency = params.maxConcurrency || 3;
-      const sequenceGroups = new Map<number, number>();
-      for (const prompt of params.prompts) {
-        const sequence = prompt.sequence || 0;
-        sequenceGroups.set(sequence, (sequenceGroups.get(sequence) || 0) + 1);
-      }
-      
-      const maxPromptsInAnySequence = Math.max(...Array.from(sequenceGroups.values()));
-      if (maxPromptsInAnySequence > maxConcurrency) {
-        return {
-          success: false,
-          error: `Too many prompts in a single sequence. Maximum concurrent prompts per sequence: ${maxConcurrency}. Found sequence with ${maxPromptsInAnySequence} prompts.\n\nTo execute prompts sequentially, add 'sequence' numbers to your prompts:\n- sequence: 0 (first step)\n- sequence: 1 (second step)\n- sequence: 2 (third step)\n\nExample: {"sequence": 0, "prompt": "..."}, {"sequence": 1, "prompt": "..."}`
-        };
-      }
-
       const startTime = performance.now();
       
-      // Execute prompts with sequence and concurrency control
-      const results = await this.executePromptsWithSequencing(params.prompts, maxConcurrency, params);
+      // Execute prompts with sequence control
+      const results = await this.executePromptsWithSequencing(params.prompts, params);
       
-      const totalExecutionTime = performance.now() - startTime;
+      const totalExecutionTimeMS = performance.now() - startTime;
       const successful = results?.filter(r => r.success) || [];
       const failed = results?.filter(r => !r.success) || [];
 
@@ -239,10 +226,10 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
             providersUsed: merged.providersUsed
           },
           stats: {
-            totalExecutionTime,
+            totalExecutionTimeMS,
             promptsExecuted: params.prompts.length,
             promptsFailed: failed.length,
-            avgExecutionTime: totalExecutionTime / params.prompts.length,
+            avgExecutionTimeMS: totalExecutionTimeMS / params.prompts.length,
             tokensUsed: tokensUsed || undefined
           }
         };
@@ -251,10 +238,10 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
           success: true,
           results: results,
           stats: {
-            totalExecutionTime,
+            totalExecutionTimeMS,
             promptsExecuted: params.prompts.length,
             promptsFailed: failed.length,
-            avgExecutionTime: totalExecutionTime / params.prompts.length,
+            avgExecutionTimeMS: totalExecutionTimeMS / params.prompts.length,
             tokensUsed: tokensUsed || undefined
           }
         };
@@ -402,14 +389,17 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   }
 
   /**
-   * Execute prompts with sequence support - allows for sequential chains and parallel execution within sequences
+   * Execute prompts with sequence and parallel group support
+   * - Sequences execute in numerical order (0, 1, 2, etc.)
+   * - Within each sequence, parallel groups execute sequentially
+   * - Prompts within the same parallel group execute concurrently
    */
   private async executePromptsWithSequencing(
     prompts: BatchExecutePromptParams['prompts'],
-    maxConcurrency: number,
     params: BatchExecutePromptParams
   ): Promise<NonNullable<BatchExecutePromptResult['results']>> {
     const results: NonNullable<BatchExecutePromptResult['results']> = [];
+    const allResults: NonNullable<BatchExecutePromptResult['results']> = []; // Track all results for ID-based context
     const previousResults: { [sequence: number]: NonNullable<BatchExecutePromptResult['results']> } = {};
     
     // Group prompts by sequence number (default to 0 if not specified)
@@ -429,16 +419,17 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
     for (const sequence of sortedSequences) {
       const sequencePrompts = sequenceGroups.get(sequence)!;
       
-      // Execute prompts within this sequence concurrently (up to maxConcurrency)
-      const sequenceResults = await this.executeConcurrentPromptsWithContext(
+      // Execute prompts within this sequence with parallel group support
+      const sequenceResults = await this.executeSequenceWithParallelGroups(
         sequencePrompts, 
-        maxConcurrency, 
         params, 
         previousResults, 
-        sequence
+        sequence,
+        allResults // Pass all results for ID-based context lookups
       );
       
       results.push(...sequenceResults);
+      allResults.push(...sequenceResults);
       previousResults[sequence] = sequenceResults;
     }
     
@@ -446,161 +437,246 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   }
 
   /**
-   * Execute prompts concurrently within a single sequence with previous context support
+   * Execute a sequence with parallel group support
+   * Groups prompts by parallelGroup and executes groups sequentially, prompts within groups concurrently
    */
-  private async executeConcurrentPromptsWithContext(
+  private async executeSequenceWithParallelGroups(
     prompts: BatchExecutePromptParams['prompts'],
-    maxConcurrency: number,
     params: BatchExecutePromptParams,
     previousResults: { [sequence: number]: NonNullable<BatchExecutePromptResult['results']> },
-    currentSequence: number
+    currentSequence: number,
+    allResults: NonNullable<BatchExecutePromptResult['results']>
   ): Promise<NonNullable<BatchExecutePromptResult['results']>> {
     const results: NonNullable<BatchExecutePromptResult['results']> = [];
+    const groupResults: { [groupKey: string]: NonNullable<BatchExecutePromptResult['results']> } = {};
     
-    // Process prompts in batches to control concurrency
-    for (let i = 0; i < prompts.length; i += maxConcurrency) {
-      const batch = prompts.slice(i, i + maxConcurrency);
+    // Group prompts by parallelGroup within this sequence
+    const parallelGroups = new Map<string, BatchExecutePromptParams['prompts']>();
+    for (const prompt of prompts) {
+      const groupKey = prompt.parallelGroup || 'default';
+      if (!parallelGroups.has(groupKey)) {
+        parallelGroups.set(groupKey, []);
+      }
+      parallelGroups.get(groupKey)!.push(prompt);
+    }
+    
+    // Sort groups to ensure consistent execution order (default group first, then alphabetically)
+    const sortedGroups = Array.from(parallelGroups.keys()).sort((a, b) => {
+      if (a === 'default' && b !== 'default') return -1;
+      if (a !== 'default' && b === 'default') return 1;
+      return a.localeCompare(b);
+    });
+    
+    // Execute each parallel group sequentially
+    for (const groupKey of sortedGroups) {
+      const groupPrompts = parallelGroups.get(groupKey)!;
       
-      const batchPromises = batch.map(async (promptConfig, index) => {
-        try {
-          // Add a small delay between concurrent requests to avoid overwhelming APIs
-          if (index > 0) {
-            await new Promise(resolve => setTimeout(resolve, index * 100));
-          }
-          
-          const startTime = performance.now();
-          
-          let systemPrompt = '';
-          let agentUsed = 'default';
-          
-          // Handle custom agent if specified
-          if (promptConfig.agent && this.promptStorage) {
-            const customPrompt = await this.promptStorage.getPromptByName(promptConfig.agent);
-            if (customPrompt && customPrompt.isEnabled) {
-              systemPrompt = customPrompt.prompt;
-              agentUsed = customPrompt.name;
-            }
-          }
-          
-          // Build the execution parameters with potential context from previous results
-          let userPrompt = promptConfig.prompt;
-          
-          // Add previous results as context if requested
-          if (promptConfig.includePreviousResults && currentSequence > 0) {
-            const previousContext = this.buildPreviousResultsContext(previousResults, currentSequence);
-            if (previousContext) {
-              userPrompt = `Previous step results:\n${previousContext}\n\nCurrent prompt: ${promptConfig.prompt}`;
-            }
-          }
-          
-          const executeParams = {
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            filepaths: promptConfig.contextFiles,
-            provider: promptConfig.provider,
-            model: promptConfig.model,
-            workspace: promptConfig.workspace,
-            sessionId: params.sessionId
-          };
-          
-          // Check budget before executing LLM prompt
-          if (this.usageTracker) {
-            const budgetStatus = await this.usageTracker.getBudgetStatusAsync();
-            if (budgetStatus.budgetExceeded) {
-              throw new Error(`Monthly LLM budget of $${budgetStatus.monthlyBudget.toFixed(2)} has been exceeded. Current spending: $${budgetStatus.currentSpending.toFixed(2)}. Please reset or increase your budget in settings.`);
-            }
-          }
-          
-          // Execute the prompt using LLMService
-          const response = await this.llmService!.executePrompt(executeParams);
-          
-          // Track usage for this execution
-          if (this.usageTracker && response.cost && response.provider) {
-            try {
-              await this.usageTracker.trackUsage(
-                response.provider.toLowerCase(),
-                response.cost.totalCost || 0
-              );
-            } catch (error) {
-              console.error('Failed to track LLM usage in batch execution:', error);
-              // Don't fail the request if usage tracking fails
-            }
-          }
-          
-          const executionTime = performance.now() - startTime;
-          
-          const result: NonNullable<BatchExecutePromptResult['results']>[0] = {
-            id: promptConfig.id,
-            prompt: promptConfig.prompt,
-            success: true,
-            response: response.response,
-            provider: response.provider,
-            model: response.model,
-            agent: agentUsed,
-            usage: response.usage,
-            cost: response.cost,
-            executionTime: executionTime,
-            filesIncluded: response.filesIncluded,
-            sequence: currentSequence
-          };
-          
-          // Execute action if specified
-          if (promptConfig.action && this.agentManager) {
-            try {
-              const actionResult = await this.executeContentAction(
-                promptConfig.action,
-                response.response || '',
-                params.sessionId,
-                typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
-              );
-              
-              result.actionPerformed = {
-                type: promptConfig.action.type,
-                targetPath: promptConfig.action.targetPath,
-                success: actionResult.success,
-                error: actionResult.error
-              };
-            } catch (actionError) {
-              result.actionPerformed = {
-                type: promptConfig.action.type,
-                targetPath: promptConfig.action.targetPath,
-                success: false,
-                error: actionError instanceof Error ? actionError.message : 'Unknown action error'
-              };
-            }
-          }
-          
-          return result;
-        } catch (error) {
-          return {
-            id: promptConfig.id,
-            prompt: promptConfig.prompt,
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error occurred',
-            provider: promptConfig.provider || 'unknown',
-            model: promptConfig.model || 'unknown',
-            agent: 'default',
-            executionTime: 0,
-            sequence: currentSequence
-          };
-        }
-      });
+      // Execute all prompts in this group concurrently
+      const groupExecutionResults = await this.executeConcurrentPromptsWithContext(
+        groupPrompts,
+        params,
+        previousResults,
+        currentSequence,
+        groupResults, // Pass previous group results within this sequence
+        allResults // Pass all results for ID-based context
+      );
       
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults);
+      results.push(...groupExecutionResults);
+      groupResults[groupKey] = groupExecutionResults;
+      allResults.push(...groupExecutionResults); // Update allResults with new results
     }
     
     return results;
   }
 
   /**
-   * Build context string from previous sequence results
+   * Execute prompts concurrently within a single parallel group with previous context support
+   */
+  private async executeConcurrentPromptsWithContext(
+    prompts: BatchExecutePromptParams['prompts'],
+    params: BatchExecutePromptParams,
+    previousResults: { [sequence: number]: NonNullable<BatchExecutePromptResult['results']> },
+    currentSequence: number,
+    currentSequenceGroupResults?: { [groupKey: string]: NonNullable<BatchExecutePromptResult['results']> },
+    allResults?: NonNullable<BatchExecutePromptResult['results']>
+  ): Promise<NonNullable<BatchExecutePromptResult['results']>> {
+    const results: NonNullable<BatchExecutePromptResult['results']> = [];
+    
+    // Execute all prompts in this group concurrently (no limit)
+    const batchPromises = prompts.map(async (promptConfig, index) => {
+      try {
+        // Add a small delay between concurrent requests to avoid overwhelming APIs
+        if (index > 0) {
+          await new Promise(resolve => setTimeout(resolve, index * 100));
+        }
+        
+        const startTime = performance.now();
+        
+        let systemPrompt = '';
+        let agentUsed = 'default';
+        
+        // Handle custom agent if specified
+        if (promptConfig.agent && this.promptStorage) {
+          const customPrompt = await this.promptStorage.getPromptByName(promptConfig.agent);
+          if (customPrompt && customPrompt.isEnabled) {
+            systemPrompt = customPrompt.prompt;
+            agentUsed = customPrompt.name;
+          }
+        }
+        
+        // Build the execution parameters with potential context from previous results
+        let userPrompt = promptConfig.prompt;
+        
+        // Add previous results as context if requested
+        if (promptConfig.includePreviousResults) {
+          const previousContext = this.buildPreviousResultsContext(
+            previousResults, 
+            currentSequence, 
+            currentSequenceGroupResults, 
+            promptConfig.parallelGroup,
+            promptConfig.contextFromSteps,
+            allResults
+          );
+          if (previousContext) {
+            userPrompt = `Previous step results:\n${previousContext}\n\nCurrent prompt: ${promptConfig.prompt}`;
+          }
+        }
+        
+        const executeParams = {
+          systemPrompt: systemPrompt,
+          userPrompt: userPrompt,
+          filepaths: promptConfig.contextFiles,
+          provider: promptConfig.provider,
+          model: promptConfig.model,
+          workspace: promptConfig.workspace,
+          sessionId: params.sessionId
+        };
+        
+        // Check budget before executing LLM prompt
+        if (this.usageTracker) {
+          const budgetStatus = await this.usageTracker.getBudgetStatusAsync();
+          if (budgetStatus.budgetExceeded) {
+            throw new Error(`Monthly LLM budget of $${budgetStatus.monthlyBudget.toFixed(2)} has been exceeded. Current spending: $${budgetStatus.currentSpending.toFixed(2)}. Please reset or increase your budget in settings.`);
+          }
+        }
+        
+        // Execute the prompt using LLMService
+        const response = await this.llmService!.executePrompt(executeParams);
+        
+        // Track usage for this execution
+        if (this.usageTracker && response.cost && response.provider) {
+          try {
+            await this.usageTracker.trackUsage(
+              response.provider.toLowerCase(),
+              response.cost.totalCost || 0
+            );
+          } catch (error) {
+            console.error('Failed to track LLM usage in batch execution:', error);
+            // Don't fail the request if usage tracking fails
+          }
+        }
+        
+        const executionTime = performance.now() - startTime;
+        
+        const result: NonNullable<BatchExecutePromptResult['results']>[0] = {
+          id: promptConfig.id,
+          prompt: promptConfig.prompt,
+          success: true,
+          response: response.response,
+          provider: response.provider,
+          model: response.model,
+          agent: agentUsed,
+          usage: response.usage,
+          cost: response.cost,
+          executionTime: executionTime,
+          filesIncluded: response.filesIncluded,
+          sequence: currentSequence,
+          parallelGroup: promptConfig.parallelGroup
+        };
+        
+        // Execute action if specified
+        if (promptConfig.action && this.agentManager) {
+          try {
+            const actionResult = await this.executeContentAction(
+              promptConfig.action,
+              response.response || '',
+              params.sessionId,
+              typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
+            );
+            
+            result.actionPerformed = {
+              type: promptConfig.action.type,
+              targetPath: promptConfig.action.targetPath,
+              success: actionResult.success,
+              error: actionResult.error
+            };
+          } catch (actionError) {
+            result.actionPerformed = {
+              type: promptConfig.action.type,
+              targetPath: promptConfig.action.targetPath,
+              success: false,
+              error: actionError instanceof Error ? actionError.message : 'Unknown action error'
+            };
+          }
+        }
+        
+        return result;
+      } catch (error) {
+        return {
+          id: promptConfig.id,
+          prompt: promptConfig.prompt,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
+          provider: promptConfig.provider || 'unknown',
+          model: promptConfig.model || 'unknown',
+          agent: 'default',
+          executionTime: 0,
+          sequence: currentSequence,
+          parallelGroup: promptConfig.parallelGroup
+        };
+      }
+    });
+    
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults);
+    
+    return results;
+  }
+
+  /**
+   * Build context string from previous sequence and group results with precise ID-based selection
    */
   private buildPreviousResultsContext(
     previousResults: { [sequence: number]: NonNullable<BatchExecutePromptResult['results']> },
-    currentSequence: number
+    currentSequence: number,
+    currentSequenceGroupResults?: { [groupKey: string]: NonNullable<BatchExecutePromptResult['results']> },
+    currentParallelGroup?: string,
+    contextFromSteps?: string[],
+    allResults?: NonNullable<BatchExecutePromptResult['results']>
   ): string {
     const contextParts: string[] = [];
+    
+    // If specific step IDs are requested, use those exclusively
+    if (contextFromSteps && contextFromSteps.length > 0 && allResults) {
+      contextParts.push('--- Selected Step Results ---');
+      
+      for (const stepId of contextFromSteps) {
+        const result = allResults.find(r => r.id === stepId);
+        if (result && result.success && result.response) {
+          const groupLabel = result.parallelGroup ? ` (${result.parallelGroup})` : '';
+          const sequenceLabel = result.sequence !== undefined ? ` [seq:${result.sequence}]` : '';
+          contextParts.push(`${stepId}${groupLabel}${sequenceLabel}: ${result.response}`);
+        } else if (!result) {
+          contextParts.push(`${stepId}: [Step not found or not yet executed]`);
+        } else if (!result.success) {
+          contextParts.push(`${stepId}: [Step failed: ${result.error || 'Unknown error'}]`);
+        }
+      }
+      
+      return contextParts.join('\n');
+    }
+    
+    // Otherwise, use the default behavior: include all previous sequences and groups
     
     // Include results from all previous sequences
     for (let seq = 0; seq < currentSequence; seq++) {
@@ -610,10 +686,35 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         sequenceResults.forEach((result, index) => {
           if (result.success && result.response) {
             const label = result.id ? `${result.id}` : `Step ${index + 1}`;
-            contextParts.push(`${label}: ${result.response}`);
+            const groupLabel = result.parallelGroup ? ` (${result.parallelGroup})` : '';
+            contextParts.push(`${label}${groupLabel}: ${result.response}`);
           }
         });
         contextParts.push('');
+      }
+    }
+    
+    // Include results from previous parallel groups in the current sequence
+    if (currentSequenceGroupResults && currentParallelGroup) {
+      for (const [groupKey, groupResults] of Object.entries(currentSequenceGroupResults)) {
+        // Only include groups that come before the current group alphabetically
+        if (groupKey !== 'default' && currentParallelGroup !== 'default' && groupKey >= currentParallelGroup) {
+          continue;
+        }
+        if (groupKey === currentParallelGroup) {
+          continue; // Don't include current group
+        }
+        
+        if (groupResults && groupResults.length > 0) {
+          contextParts.push(`--- Sequence ${currentSequence}, Group ${groupKey} Results ---`);
+          groupResults.forEach((result, index) => {
+            if (result.success && result.response) {
+              const label = result.id ? `${result.id}` : `Step ${index + 1}`;
+              contextParts.push(`${label}: ${result.response}`);
+            }
+          });
+          contextParts.push('');
+        }
       }
     }
     
@@ -845,14 +946,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
             required: ['prompt']
           },
           minItems: 1,
-          maxItems: 10
-        },
-        maxConcurrency: {
-          type: 'number',
-          description: 'Maximum number of concurrent requests (default: 3)',
-          minimum: 1,
-          maximum: 10,
-          default: 3
+          maxItems: 100
         },
         mergeResponses: {
           type: 'boolean',
@@ -917,6 +1011,14 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
                 type: 'number',
                 description: 'Execution time in milliseconds'
               },
+              sequence: {
+                type: 'number',
+                description: 'Sequence number this prompt was executed in'
+              },
+              parallelGroup: {
+                type: 'string',
+                description: 'Parallel group this prompt was executed in'
+              },
               agent: {
                 type: 'string',
                 description: 'The custom agent that was used'
@@ -973,7 +1075,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
           type: 'object',
           description: 'Execution statistics',
           properties: {
-            totalExecutionTime: {
+            totalExecutionTimeMS: {
               type: 'number',
               description: 'Total execution time in milliseconds'
             },
@@ -985,7 +1087,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
               type: 'number',
               description: 'Number of prompts that failed'
             },
-            avgExecutionTime: {
+            avgExecutionTimeMS: {
               type: 'number',
               description: 'Average execution time per prompt'
             },
