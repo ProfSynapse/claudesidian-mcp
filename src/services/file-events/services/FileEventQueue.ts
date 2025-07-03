@@ -97,6 +97,8 @@ export class FileEventQueue implements IFileEventQueue {
                     const cleanedData = this.attemptJSONRecovery(data);
                     queueData = JSON.parse(cleanedData);
                     console.log('[FileEventQueue] Successfully recovered corrupted queue file');
+                    // Save recovered data to disk to prevent future corruption warnings
+                    await this.persist();
                 } catch (recoveryError) {
                     console.warn('[FileEventQueue] Failed to recover queue file, clearing and starting fresh:', recoveryError);
                     await this.clearPersistedQueue();

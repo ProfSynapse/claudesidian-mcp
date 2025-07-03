@@ -336,10 +336,13 @@ export default class ClaudesidianPlugin extends Plugin {
                 setTimeout(async () => {
                     await this.fileEventManager.processStartupQueue();
                     // After startup queue processing is complete, initialize search indexes
-                    if (this.connector) {
+                    // But only if the connector and agents have been initialized
+                    if (this.connector && this.connector.getVaultLibrarian()) {
                         await this.initializeSearchIndexes().catch(error => {
                             console.warn(`Failed to initialize search indexes after startup processing: ${error.message}`);
                         });
+                    } else {
+                        console.log('[ClaudesidianPlugin] Connector or VaultLibrarian not ready yet - search index initialization will happen later');
                     }
                 }, 1000); // 1 second delay
             }
@@ -812,6 +815,7 @@ export default class ClaudesidianPlugin extends Plugin {
             }
             
             const vaultLibrarian = this.connector.getVaultLibrarian();
+            
             if (!vaultLibrarian) {
                 console.warn('[ClaudesidianPlugin] VaultLibrarian not available - skipping search index initialization');
                 return;

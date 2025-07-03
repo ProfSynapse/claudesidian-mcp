@@ -70,8 +70,8 @@ export class MCPConnector {
     }
     
     /**
-     * Validate API keys for embedding providers
-     * Following the memory pattern for conditional mode availability
+     * Validate embedding provider configuration
+     * Uses EmbeddingProviderManager to properly handle providers that don't require API keys (like Ollama)
      */
     private async validateEmbeddingApiKeys(): Promise<boolean> {
         try {
@@ -80,18 +80,13 @@ export class MCPConnector {
                 return false;
             }
 
-            const currentProvider = memorySettings.providerSettings?.[memorySettings.apiProvider];
-            if (!currentProvider?.apiKey) {
-                return false;
-            }
-
-            // Use EmbeddingProviderManager to validate settings
+            // Use EmbeddingProviderManager to validate settings (handles Ollama and other providers correctly)
             const embeddingManager = new EmbeddingProviderManager();
             const isValid = embeddingManager['validateProviderSettings'](memorySettings);
             
             return isValid;
         } catch (error) {
-            console.error('Error validating embedding API keys:', error);
+            console.error('Error validating embedding provider configuration:', error);
             return false;
         }
     }
