@@ -93,14 +93,6 @@ Claudesidian MCP supports running across multiple Obsidian vaults simultaneously
 - Each vault runs its own server process, which uses system resources
 - Each vault maintains isolated settings and configurations
 - Tools can only access files within their respective vault
-- The vault name is sanitized by converting to lowercase and replacing spaces/special characters with hyphens
-
-### Troubleshooting Multi-Vault Setup
-
-- Verify each vault has a unique server identifier in the configuration
-- Check that the paths to connector.js are correct for each vault
-- Ensure IPC paths don't conflict
-- If experiencing issues, check the plugin logs for each vault
 
 ## Automatic Embedding Strategies
 
@@ -113,13 +105,7 @@ Claudesidian MCP offers multiple strategies for embedding your notes, giving you
 - **Best for**: Users who want complete control over the indexing process
 - **How it works**: You need to manually trigger indexing through the "Reindex All Content" button in settings or via MCP tools
 
-#### 2. Live Embedding
-- **Description**: Embeds files immediately when they are created or modified
-- **Best for**: Real-time search capabilities, smaller vaults
-- **How it works**: File change events trigger immediate embedding of modified content
-- **Considerations**: May consume more API tokens, can cause brief UI pauses during embedding
-
-#### 3. Idle Embedding
+#### 2. Idle Embedding
 - **Description**: Waits for a period of inactivity before processing changes
 - **Best for**: Balancing real-time updates with performance
 - **How it works**: 
@@ -128,7 +114,7 @@ Claudesidian MCP offers multiple strategies for embedding your notes, giving you
   - Changes are batched for efficiency
 - **Considerations**: Good balance between token usage and having up-to-date embeddings
 
-#### 4. Startup Embedding
+#### 3. Startup Embedding
 - **Description**: Indexes non-embedded files when Obsidian starts
 - **Best for**: New vaults or infrequently updated content
 - **How it works**: 
@@ -151,13 +137,6 @@ Claudesidian MCP offers multiple strategies for embedding your notes, giving you
 - **Batch Size**: Controls how many files are processed together in a batch
 - **Processing Delay**: Controls the delay between processing batches (to reduce UI freezing)
 - **Concurrent Requests**: Controls how many API requests can run in parallel
-
-### Best Practices
-
-1. For large vaults, use "Idle" or "Startup" strategy to avoid performance issues
-2. For small vaults or if you need real-time search, "Live" strategy works well
-3. If you're concerned about API token usage, use "Manual" or "Startup" strategy
-4. Configure exclusion patterns to skip folders you don't want to index (like images, attachments, etc.)
 
 ## Setting Up Ollama for Local Embeddings
 
@@ -215,13 +194,6 @@ Claudesidian supports several Ollama embedding models:
 - **Speed**: Fast local processing
 - **Offline**: Works without internet connection
 - **Control**: Full control over model versions and updates
-
-### Troubleshooting Ollama Setup
-
-- **"Ollama not found"**: Ensure Ollama is installed and added to your system PATH
-- **Connection issues**: Make sure `ollama serve` is running and accessible at `http://127.0.0.1:11434`
-- **Model not found**: Verify the model was downloaded with `ollama list`
-- **Performance issues**: Ensure you have sufficient RAM for the embedding model
 
 ### System Requirements
 
@@ -283,7 +255,7 @@ Search across your conversation history and workspace memory:
 - The plugin runs an MCP server that only accepts local connections
 - All vault operations require explicit user permission
 - Memory storage is contained within your vault
-- No data is sent externally without consent, except for embedding API calls if you enable the Memory Manager feature
+- No data is sent externally without consent, except for embedding and LLM API calls if you enable the Memory Manager feature
 
 ## LLM Integration and Custom Agent Management
 
@@ -299,7 +271,9 @@ The plugin supports multiple LLM providers with comprehensive model management:
 - **Groq**: Ultra-fast inference with Llama, Mixtral, and Gemma models
 - **Ollama**: Local LLM execution with complete privacy
 - **Perplexity**: Search-augmented AI responses
-- **xAI**: Grok models for creative and analytical tasks
+- **OpenRouter**: Access to hundreds of AI models through a unified API
+- **Mistral**: High-performance European AI models
+- **Requesty**: Cost-optimized AI model access
 
 ### Setting Up API Keys
 
@@ -313,7 +287,9 @@ To use LLM features, configure your API keys in the plugin settings:
    - **Google**: Get your key from [aistudio.google.com](https://aistudio.google.com/app/apikey)
    - **Groq**: Get your key from [console.groq.com](https://console.groq.com/keys)
    - **Perplexity**: Get your key from [perplexity.ai](https://www.perplexity.ai/settings/api)
-   - **xAI**: Get your key from [console.x.ai](https://console.x.ai)
+   - **OpenRouter**: Get your key from [openrouter.ai/keys](https://openrouter.ai/keys)
+   - **Mistral**: Get your key from [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys)
+   - **Requesty**: Get your key from [requesty.ai](https://requesty.ai) - Unified LLM platform
    - **Ollama**: No API key needed for local setup
 4. **Set Default Model**: Choose your preferred default model and provider
 5. **Test Configuration**: Use the `listModels` mode to verify your setup
