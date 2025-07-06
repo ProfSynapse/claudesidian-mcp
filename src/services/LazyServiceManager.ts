@@ -278,8 +278,6 @@ export class LazyServiceManager {
         // Find files related to this workspace
         const relatedFiles = await this.findWorkspaceRelatedFiles(workspace, workspacePath);
         
-        console.log(`[LazyServiceManager] Caching ${relatedFiles.size} files for workspace ${workspaceId}`);
-        
         // Pre-load embeddings for these files
         const embeddings = new Map();
         const batchSize = 10;
@@ -298,7 +296,6 @@ export class LazyServiceManager {
                             const embedding = await fileEmbeddingService.getFileEmbedding(filePath);
                             return { filePath, embedding };
                         } catch (error) {
-                            console.warn(`[LazyServiceManager] Could not load embedding for ${filePath}:`, error);
                             return null;
                         }
                     })
@@ -325,7 +322,9 @@ export class LazyServiceManager {
             lastAccessed: Date.now()
         });
 
-        console.log(`[LazyServiceManager] Cached ${embeddings.size} embeddings for workspace ${workspaceId}`);
+        if (embeddings.size > 0) {
+            console.log(`[LazyServiceManager] Cached ${embeddings.size} embeddings for workspace ${workspaceId}`);
+        }
     }
 
     /**

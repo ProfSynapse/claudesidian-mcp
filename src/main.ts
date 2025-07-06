@@ -3,7 +3,6 @@ import { UpdateManager } from './utils/UpdateManager';
 import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { SettingsTab } from './components/SettingsTab';
-import { ConfigModal } from './components/ConfigModal';
 import { LazyServiceManager } from './services/LazyServiceManager';
 
 // Type imports for service interfaces
