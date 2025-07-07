@@ -162,9 +162,17 @@ export class StaticModelsService {
 
   /**
    * Find a specific model by provider and model ID
+   * For OpenRouter, supports :online suffix (e.g., "gpt-4:online")
    */
   findModel(provider: string, modelId: string): ModelWithProvider | undefined {
     const providerModels = this.getModelsForProvider(provider);
+    
+    // For OpenRouter models, check if modelId has :online suffix
+    if (provider === 'openrouter' && modelId.endsWith(':online')) {
+      const baseModelId = modelId.replace(':online', '');
+      return providerModels.find(model => model.id === baseModelId);
+    }
+    
     return providerModels.find(model => model.id === modelId);
   }
 

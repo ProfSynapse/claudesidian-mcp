@@ -106,13 +106,23 @@ export function ensureMdExtension(path: string): string {
 }
 
 /**
+ * Operation types for path normalization
+ */
+export type OperationType = 'NOTE' | 'DIRECTORY' | 'GENERIC';
+
+/**
  * Smart path normalization that handles missing file extensions
- * Automatically adds .md extension if no extension is present and path appears to be a file
+ * Only adds .md extension for note operations when no extension is present
  * @param path The file path to normalize
  * @param preserveLeadingSlash Whether to preserve a leading slash if present
- * @returns Normalized path with smart extension handling
+ * @param operationType Type of operation to determine extension handling
+ * @returns Normalized path with appropriate extension handling
  */
-export function smartNormalizePath(path: string, preserveLeadingSlash = false): string {
+export function smartNormalizePath(
+    path: string, 
+    preserveLeadingSlash = false, 
+    operationType: OperationType = 'GENERIC'
+): string {
     if (!path || typeof path !== 'string') {
         return '';
     }
@@ -120,12 +130,11 @@ export function smartNormalizePath(path: string, preserveLeadingSlash = false): 
     // First apply standard path sanitization
     const sanitizedPath = sanitizePath(path, preserveLeadingSlash);
     
-    // Check if this looks like a file path (has no extension and doesn't end with /)
-    // and is not just a folder reference
-    if (sanitizedPath && 
+    // Only add .md extension for note operations when no extension is present
+    if (operationType === 'NOTE' && 
+        sanitizedPath && 
         !sanitizedPath.endsWith('/') && 
-        !hasFileExtension(sanitizedPath) &&
-        !isLikelyFolder(sanitizedPath)) {
+        !hasFileExtension(sanitizedPath)) {
         return sanitizedPath + '.md';
     }
     
@@ -145,31 +154,7 @@ function hasFileExtension(path: string): boolean {
     return lastDotIndex > lastSlashIndex && lastDotIndex > lastSlashIndex + 1;
 }
 
-/**
- * Heuristic to determine if a path is likely intended to be a folder
- * @param path The path to check
- * @returns True if path is likely a folder, false if likely a file
- */
-function isLikelyFolder(path: string): boolean {
-    // Common folder indicators
-    const folderIndicators = [
-        '/',           // Ends with slash
-        'folder',      // Contains 'folder'
-        'dir',         // Contains 'dir'
-        'assets',      // Common folder names
-        'images',
-        'attachments',
-        'templates',
-        'scripts'
-    ];
-    
-    const lowerPath = path.toLowerCase();
-    
-    // Check for explicit folder indicators
-    return folderIndicators.some(indicator => 
-        lowerPath.endsWith(indicator) || lowerPath.includes(indicator + '/')
-    );
-}
+// Removed isLikelyFolder function - no longer needed with explicit operation types
 
 /**
  * Gets the parent folder path from a file path

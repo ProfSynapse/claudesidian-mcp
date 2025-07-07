@@ -4,14 +4,14 @@ import { validateParams, formatValidationErrors, ValidationError } from '../../u
 import { generateHintsForErrors } from '../../utils/parameterHintUtils';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { logger } from '../../utils/logger';
-import { smartNormalizePath } from '../../utils/pathUtils';
+import { smartNormalizePath, normalizePath, OperationType } from '../../utils/pathUtils';
 
 export class ValidationService implements IValidationService {
-    async validateToolParams(params: any, schema?: any): Promise<any> {
+    async validateToolParams(params: any, schema?: any, toolName?: string): Promise<any> {
         const enhancedParams = { ...params };
         
         // Apply smart path normalization to common path parameters before validation
-        this.normalizePathParameters(enhancedParams);
+        this.normalizePathParameters(enhancedParams, toolName);
         
         if (schema) {
             await this.validateAgainstSchema(enhancedParams, schema);
@@ -39,56 +39,101 @@ export class ValidationService implements IValidationService {
     }
 
     /**
-     * Apply smart path normalization to common path parameters
-     * This automatically adds .md extensions where appropriate
+     * Apply appropriate path normalization based on operation type
      */
-    private normalizePathParameters(params: any): void {
+    private normalizePathParameters(params: any, toolName?: string): void {
+        const operationType = this.getOperationType(toolName);
+        
         // Common path parameter names used across modes
         const pathParameterNames = [
-            'path',           // Most file operations (but not directory listing - handled by BaseDirectoryMode)
-            'filePath',       // Some modes use filePath
-            'sourcePath',     // Duplicate/move operations
-            'targetPath',     // Duplicate/move operations
-            'newPath',        // Move operations
-            'oldPath'         // Rename operations
+            'path',           
+            'filePath',       
+            'sourcePath',     
+            'targetPath',     
+            'newPath',        
+            'oldPath'         
         ];
 
         // Normalize individual path parameters
         for (const paramName of pathParameterNames) {
             if (params[paramName] && typeof params[paramName] === 'string') {
-                params[paramName] = smartNormalizePath(params[paramName]);
+                if (operationType === 'DIRECTORY') {
+                    // Directory operations: only basic normalization
+                    params[paramName] = normalizePath(params[paramName]);
+                } else {
+                    // Note operations: smart normalization with .md extension
+                    params[paramName] = smartNormalizePath(params[paramName], false, operationType);
+                }
             }
         }
 
         // Handle array of paths (like in batch operations)
         if (params.paths && Array.isArray(params.paths)) {
-            params.paths = params.paths.map((path: any) => 
-                typeof path === 'string' ? smartNormalizePath(path) : path
-            );
+            params.paths = params.paths.map((path: any) => {
+                if (typeof path === 'string') {
+                    return operationType === 'DIRECTORY' 
+                        ? normalizePath(path) 
+                        : smartNormalizePath(path, false, operationType);
+                }
+                return path;
+            });
         }
 
         // Handle file paths in operations arrays (batch operations)
+        // These typically need NOTE operation type for .md extension handling
         if (params.operations && Array.isArray(params.operations)) {
             params.operations.forEach((operation: any) => {
                 if (operation && operation.params) {
-                    this.normalizePathParameters(operation.params);
+                    // For batch operations, we need to check the operation type
+                    const operationType = operation.type || '';
+                    this.normalizePathParameters(operation.params, operationType);
                 }
             });
         }
 
-        // Handle contextFiles arrays in agent operations
+        // Handle contextFiles arrays in agent operations (these are typically file paths)
         if (params.contextFiles && Array.isArray(params.contextFiles)) {
             params.contextFiles = params.contextFiles.map((path: any) => 
-                typeof path === 'string' ? smartNormalizePath(path) : path
+                typeof path === 'string' ? smartNormalizePath(path, false, 'NOTE') : path
             );
         }
 
-        // Handle filepaths arrays (used in some prompt execution modes)
+        // Handle filepaths arrays (used in some prompt execution modes - these are typically file paths)
         if (params.filepaths && Array.isArray(params.filepaths)) {
             params.filepaths = params.filepaths.map((path: any) => 
-                typeof path === 'string' ? smartNormalizePath(path) : path
+                typeof path === 'string' ? smartNormalizePath(path, false, 'NOTE') : path
             );
         }
+    }
+
+    /**
+     * Determine operation type based on tool name
+     */
+    private getOperationType(toolName?: string): OperationType {
+        if (!toolName) return 'GENERIC';
+
+        // Directory operations - never need .md extension
+        const directoryOperations = [
+            'listFiles', 'listFolders', 'createFolder', 
+            'deleteFolder', 'moveFolder', 'editFolder'
+        ];
+
+        // Note operations - need .md extension when no extension present
+        const noteOperations = [
+            'openNote', 'readNote', 'editNote', 'deleteNote',
+            'readContent', 'createContent', 'appendContent', 
+            'prependContent', 'replaceContent', 'deleteContent'
+        ];
+
+        if (directoryOperations.some(op => toolName.includes(op) || toolName.endsWith(op))) {
+            return 'DIRECTORY';
+        }
+
+        if (noteOperations.some(op => toolName.includes(op) || toolName.endsWith(op))) {
+            return 'NOTE';
+        }
+
+        return 'GENERIC';
     }
 
     async validateBatchOperations(operations: any[]): Promise<void> {

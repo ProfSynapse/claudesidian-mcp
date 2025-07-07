@@ -59,6 +59,7 @@ export interface ListModelsResult extends CommonResult {
       isEnabled: boolean;
       userDescription?: string;
       modelCount: number;
+      specialFeatures?: string[];
     }>;
   };
 }
@@ -154,14 +155,28 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
       }));
 
       // Format provider information
-      const availableProviders = enabledProviders.map(provider => ({
-        id: provider.id,
-        name: provider.name,
-        description: provider.description,
-        isEnabled: provider.isEnabled,
-        userDescription: provider.userDescription,
-        modelCount: modelsByProvider[provider.id] || 0
-      }));
+      const availableProviders = enabledProviders.map(provider => {
+        const baseInfo = {
+          id: provider.id,
+          name: provider.name,
+          description: provider.description,
+          isEnabled: provider.isEnabled,
+          userDescription: provider.userDescription,
+          modelCount: modelsByProvider[provider.id] || 0
+        };
+        
+        // Add special features for OpenRouter
+        if (provider.id === 'openrouter') {
+          return {
+            ...baseInfo,
+            specialFeatures: [
+              'Add ":online" to any model name for web-enabled responses (e.g., "gpt-4:online")'
+            ]
+          };
+        }
+        
+        return baseInfo;
+      });
 
       const resultData = {
         models: formattedModels,
@@ -286,7 +301,11 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
                   description: { type: 'string' },
                   isEnabled: { type: 'boolean' },
                   userDescription: { type: 'string' },
-                  modelCount: { type: 'number' }
+                  modelCount: { type: 'number' },
+                  specialFeatures: {
+                    type: 'array',
+                    items: { type: 'string' }
+                  }
                 },
                 required: ['id', 'name', 'description', 'isEnabled', 'modelCount']
               }

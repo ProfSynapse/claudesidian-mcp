@@ -42,9 +42,10 @@ export abstract class BaseDirectoryMode<T extends CommonParameters, R extends Co
       return this.app.vault.getRoot();
     }
     
-    // Get folder by path
+    // Get folder by path - use getAbstractFileByPath for folders
     const folder = this.app.vault.getAbstractFileByPath(normalizedPath);
     if (!folder || !(folder instanceof TFolder)) {
+      // Double check by looking at the exact path without any modifications
       throw new Error(`Folder not found at path: ${normalizedPath}`);
     }
     

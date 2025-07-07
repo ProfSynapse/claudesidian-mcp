@@ -203,13 +203,23 @@ export class OpenRouterAdapter extends BaseAdapter {
     return `${baseModel}:${variant}`;
   }
 
+  /**
+   * Check if a model name is valid (including :online suffix)
+   */
+  isValidModel(modelName: string): boolean {
+    return ModelRegistry.isValidOpenRouterModel(modelName);
+  }
+
 
 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
     console.log('OpenRouterAdapter: getModelPricing called for model:', modelId);
     
+    // Handle :online suffix for OpenRouter models
+    const baseModelId = modelId.endsWith(':online') ? modelId.replace(':online', '') : modelId;
+    
     // Use centralized model registry for pricing
-    const modelSpec = ModelRegistry.findModel('openrouter', modelId);
+    const modelSpec = ModelRegistry.findModel('openrouter', baseModelId);
     console.log('OpenRouterAdapter: ModelRegistry.findModel result:', modelSpec);
     
     if (modelSpec) {

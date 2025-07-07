@@ -20,8 +20,8 @@ export class FileOperations {
     content: string,
     overwrite = false
   ): Promise<{ file: TFile; existed: boolean }> {
-    // Apply smart normalization (includes .md extension handling)
-    const normalizedPath = smartNormalizePath(path);
+    // Apply smart normalization for note operations (includes .md extension handling)
+    const normalizedPath = smartNormalizePath(path, false, 'NOTE');
     
     // Check if the file already exists
     const existingFile = app.vault.getAbstractFileByPath(normalizedPath);

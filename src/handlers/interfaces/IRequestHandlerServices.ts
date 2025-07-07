@@ -3,7 +3,7 @@ import { SessionContextManager } from '../../services/SessionContextManager';
 import { ModeCall, ModeCallResult } from '../../types';
 
 export interface IValidationService {
-    validateToolParams(params: any, schema?: any): Promise<any>;
+    validateToolParams(params: any, schema?: any, toolName?: string): Promise<any>;
     validateSessionId(sessionId: string): Promise<string>;
     validateBatchOperations(operations: any[]): Promise<void>;
     validateBatchPaths(paths: any[]): Promise<void>;

@@ -107,7 +107,8 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
 
         const enhancedParams = await this.dependencies.validationService.validateToolParams(
             context.params, 
-            paramSchema
+            paramSchema,
+            context.fullToolName
         );
 
         if (this.sessionContextManager && enhancedParams.sessionId) {

@@ -279,9 +279,17 @@ export class LLMProviderManager {
 
   /**
    * Find a specific model by provider and model ID
+   * For OpenRouter, supports :online suffix (e.g., "gpt-4:online")
    */
   async findModel(provider: string, modelId: string): Promise<ModelWithProvider | undefined> {
     const models = await this.getAvailableModels();
+    
+    // For OpenRouter models, check if modelId has :online suffix
+    if (provider === 'openrouter' && modelId.endsWith(':online')) {
+      const baseModelId = modelId.replace(':online', '');
+      return models.find(model => model.provider === provider && model.id === baseModelId);
+    }
+    
     return models.find(model => model.provider === provider && model.id === modelId);
   }
 
@@ -295,6 +303,7 @@ export class LLMProviderManager {
 
   /**
    * Validate that a provider/model combination is available
+   * For OpenRouter, supports :online suffix (e.g., "gpt-4:online")
    */
   async validateProviderModel(provider: string, model: string): Promise<boolean> {
     const foundModel = await this.findModel(provider, model);

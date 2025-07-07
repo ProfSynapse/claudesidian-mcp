@@ -48,9 +48,17 @@ export class ModelRegistry {
 
   /**
    * Find a specific model by provider and API name
+   * For OpenRouter, supports :online suffix (e.g., "gpt-4:online")
    */
   static findModel(provider: string, apiName: string): ModelSpec | undefined {
     const providerModels = this.getProviderModels(provider);
+    
+    // For OpenRouter models, check if apiName has :online suffix
+    if (provider === 'openrouter' && apiName.endsWith(':online')) {
+      const baseModelName = apiName.replace(':online', '');
+      return providerModels.find(model => model.apiName === baseModelName);
+    }
+    
     return providerModels.find(model => model.apiName === apiName);
   }
 
@@ -86,6 +94,18 @@ export class ModelRegistry {
    */
   static getLatestModels(): ModelSpec[] {
     return Object.values(AI_MODELS).flat();
+  }
+
+  /**
+   * Check if a model name is valid for OpenRouter with :online suffix
+   */
+  static isValidOpenRouterModel(apiName: string): boolean {
+    if (!apiName.endsWith(':online')) {
+      return this.findModel('openrouter', apiName) !== undefined;
+    }
+    
+    const baseModelName = apiName.replace(':online', '');
+    return this.findModel('openrouter', baseModelName) !== undefined;
   }
 
   /**

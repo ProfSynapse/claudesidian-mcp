@@ -71,8 +71,8 @@ export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
         return this.prepareResult(false, undefined, 'Path is required');
       }
       
-      // Apply smart normalization (includes .md extension handling)
-      const normalizedPath = smartNormalizePath(params.path);
+      // Apply smart normalization for note operations (includes .md extension handling)
+      const normalizedPath = smartNormalizePath(params.path, false, 'NOTE');
       
       // Get the file
       const file = this.app.vault.getAbstractFileByPath(normalizedPath);
