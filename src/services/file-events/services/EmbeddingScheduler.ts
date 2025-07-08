@@ -27,9 +27,6 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
         }
 
         switch (this.strategy.type) {
-            case 'manual':
-                return false; // Queue but never auto-process
-                
             case 'idle':
                 return this.isIdleMode; // Queue and process when idle
                 

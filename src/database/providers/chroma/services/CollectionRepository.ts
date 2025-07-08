@@ -25,15 +25,17 @@ export class CollectionRepository {
   private hnswService: HnswSearchService;
   private collectionName: string;
   private hnswEnabled = true;
+  private persistentPath?: string;
 
-  constructor(metadata: Record<string, any> = {}, collectionName = 'default') {
+  constructor(metadata: Record<string, any> = {}, collectionName = 'default', persistentPath?: string) {
     this.items = new Map();
     this.collectionMetadata = {
       ...metadata,
       createdAt: metadata.createdAt || new Date().toISOString()
     };
     this.collectionName = collectionName;
-    this.hnswService = new HnswSearchService();
+    this.persistentPath = persistentPath;
+    this.hnswService = new HnswSearchService(undefined, undefined, undefined, persistentPath);
   }
 
   /**
@@ -82,8 +84,8 @@ export class CollectionRepository {
       this.collectionMetadata = { ...data.metadata };
     }
 
-    // Rebuild HNSW index after loading data
-    this.rebuildHnswIndex();
+    // Use optimized HNSW index loading instead of always rebuilding
+    this.loadOrCreateHnswIndex();
   }
 
   /**
@@ -326,12 +328,12 @@ export class CollectionRepository {
   }
 
   /**
-   * Rebuild HNSW index from current items (async version)
+   * Load or create HNSW index using optimized approach
    */
-  private rebuildHnswIndex(): void {
-    // Call the async version without blocking
-    this.rebuildHnswIndexAsync().catch(error => {
-      console.error(`[CollectionRepository] Failed to rebuild HNSW index:`, error);
+  private loadOrCreateHnswIndex(): void {
+    // Call the optimized indexing method without blocking
+    this.hnswService.indexCollection(this.collectionName, this.getAllItems()).catch(error => {
+      console.error(`[CollectionRepository] Failed to load/create HNSW index:`, error);
       this.hnswEnabled = false; // Disable HNSW if it fails
     });
   }
@@ -340,7 +342,12 @@ export class CollectionRepository {
    * Force rebuild of HNSW index (public method for manual refresh)
    */
   public async forceRebuildHnswIndex(): Promise<void> {
-    return this.rebuildHnswIndexAsync();
+    if (!this.hnswEnabled) return;
+    
+    const items = this.getAllItems();
+    if (items.length > 0) {
+      await this.hnswService.forceRebuildIndex(this.collectionName, items);
+    }
   }
 
   /**
@@ -359,21 +366,10 @@ export class CollectionRepository {
   setHnswEnabled(enabled: boolean): void {
     this.hnswEnabled = enabled;
     if (enabled && this.items.size > 0) {
-      this.rebuildHnswIndex();
+      this.loadOrCreateHnswIndex();
     } else if (!enabled) {
       this.hnswService.removeIndex(this.collectionName);
     }
   }
 
-  /**
-   * Force rebuild of HNSW index
-   */
-  async rebuildHnswIndexAsync(): Promise<void> {
-    if (!this.hnswEnabled) return;
-    
-    const items = this.getAllItems();
-    if (items.length > 0) {
-      await this.hnswService.indexCollection(this.collectionName, items);
-    }
-  }
 }

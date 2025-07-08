@@ -112,8 +112,8 @@ class StrictPersistentCollection implements Collection {
     this.dataFilePath = `${storageDir}/${name}/items.json`;
     this.metaFilePath = `${storageDir}/${name}/metadata.json`;
     
-    // Initialize services
-    this.repository = new CollectionRepository(metadata, name);
+    // Initialize services with persistent path for HNSW optimization
+    this.repository = new CollectionRepository(metadata, name, storageDir);
     this.persistenceManager = new PersistenceManager(fs);
     
     // Create the collection directory if it doesn't exist
@@ -432,6 +432,16 @@ export class StrictPersistenceChromaClient {
       
       // Load each collection
       for (const collectionName of collectionDirs) {
+        // Skip non-collection directories
+        if (collectionName === 'hnsw-indexes') {
+          // Also remove any existing hnsw-indexes collection that might have been incorrectly created
+          if (this.collections.has('hnsw-indexes')) {
+            this.collections.delete('hnsw-indexes');
+            console.log('Removed incorrectly created hnsw-indexes collection');
+          }
+          continue;
+        }
+        
         try {
           // Create collection
           const collection = new StrictPersistentCollection(
@@ -514,6 +524,11 @@ export class StrictPersistenceChromaClient {
     
     const { name, metadata } = params;
     
+    // Prevent creating reserved directory names as collections
+    if (name === 'hnsw-indexes') {
+      throw new Error(`Collection name '${name}' is reserved for internal use`);
+    }
+    
     // First check if collection exists
     if (this.collections.has(name)) {
       console.log(`Using existing collection: ${name}`);
@@ -532,6 +547,11 @@ export class StrictPersistenceChromaClient {
     await this.ensureCollectionsLoaded();
     
     const { name, metadata } = params;
+    
+    // Prevent creating reserved directory names as collections
+    if (name === 'hnsw-indexes') {
+      throw new Error(`Collection name '${name}' is reserved for internal use`);
+    }
     
     if (!this.fs || !this.storagePath) {
       throw new Error('Cannot create collection: storage not configured');

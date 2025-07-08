@@ -33,15 +33,25 @@ export class FileEventManagerModular {
     private sessionCreateHandler!: (data: any) => void;
     private sessionEndHandler!: (data: any) => void;
 
+    // Lazy service getters (can be overridden for dependency injection)
+    private getMemoryService: () => Promise<MemoryService>;
+    private getWorkspaceService: () => Promise<WorkspaceService>;
+    private getEmbeddingService: () => Promise<EmbeddingService>;
+
     constructor(
         private app: App,
         private plugin: Plugin,
-        private memoryService: MemoryService,
-        private workspaceService: WorkspaceService,
-        private embeddingService: EmbeddingService,
+        private memoryService: MemoryService | null,
+        private workspaceService: WorkspaceService | null,
+        private embeddingService: EmbeddingService | null,
         private eventManager: EventManager,
         private embeddingStrategy: EmbeddingStrategy
     ) {
+        // Set up default service getters
+        this.getMemoryService = async () => this.memoryService!;
+        this.getWorkspaceService = async () => this.workspaceService!;
+        this.getEmbeddingService = async () => this.embeddingService!;
+        
         this.initializeDependencies();
         this.coordinator = new FileEventCoordinator(
             this.app,
@@ -70,6 +80,13 @@ export class FileEventManagerModular {
             console.error('[FileEventManagerModular] Initialization failed:', error);
             throw error;
         }
+    }
+    
+    /**
+     * Ensure vector dependencies are initialized before processing
+     */
+    async ensureVectorDependencies(): Promise<void> {
+        await this.initializeVectorDependencies();
     }
 
     /**
@@ -102,7 +119,21 @@ export class FileEventManagerModular {
      * Process all queued files for startup embedding strategy
      */
     async processStartupQueue(): Promise<void> {
+        // Ensure vector dependencies are ready before processing
+        await this.ensureVectorDependencies();
         await this.coordinator.processStartupQueue();
+    }
+
+    /**
+     * Activate vector services for real-time processing (called when first needed)
+     */
+    async activateVectorServices(): Promise<void> {
+        try {
+            await this.ensureVectorDependencies();
+            console.log('[FileEventManagerModular] Vector services activated for real-time processing');
+        } catch (error) {
+            console.warn('[FileEventManagerModular] Failed to activate vector services:', error);
+        }
     }
 
     /**
@@ -210,24 +241,52 @@ export class FileEventManagerModular {
     private initializeDependencies(): void {
         this.dependencies = {
             fileEventQueue: new FileEventQueue(this.plugin),
-            fileEventProcessor: new FileEventProcessor(
-                this.app,
-                this.memoryService,
-                this.workspaceService
-            ),
-            embeddingScheduler: new EmbeddingScheduler(
-                this.plugin,
-                this.embeddingService,
-                this.embeddingStrategy
-            ),
-            activityTracker: new ActivityTracker(
-                this.app,
-                this.memoryService,
-                this.workspaceService
-            ),
+            // Initialize with minimal dependencies for now
+            // These will be enhanced with vector services when they become available
+            fileEventProcessor: null as any, // Lazy initialized
+            embeddingScheduler: null as any, // Lazy initialized
+            activityTracker: null as any, // Lazy initialized
             sessionTracker: new SessionTracker(),
             fileMonitor: new FileMonitor(this.app)
         };
+    }
+    
+    /**
+     * Initialize vector-dependent services lazily
+     */
+    private async initializeVectorDependencies(): Promise<void> {
+        if (this.dependencies.fileEventProcessor) {
+            return; // Already initialized
+        }
+        
+        try {
+            const memoryService = await this.getMemoryService();
+            const workspaceService = await this.getWorkspaceService();
+            const embeddingService = await this.getEmbeddingService();
+            
+            this.dependencies.fileEventProcessor = new FileEventProcessor(
+                this.app,
+                memoryService,
+                workspaceService
+            );
+            
+            this.dependencies.embeddingScheduler = new EmbeddingScheduler(
+                this.plugin,
+                embeddingService,
+                this.embeddingStrategy
+            );
+            
+            this.dependencies.activityTracker = new ActivityTracker(
+                this.app,
+                memoryService,
+                workspaceService
+            );
+            
+            console.log('[FileEventManagerModular] Vector dependencies initialized');
+        } catch (error) {
+            console.warn('[FileEventManagerModular] Failed to initialize vector dependencies:', error);
+            throw error;
+        }
     }
 
     private bindSessionHandlers(): void {

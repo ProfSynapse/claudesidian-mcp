@@ -24,18 +24,62 @@ export default class ClaudesidianPlugin extends Plugin {
     private settingsTab!: SettingsTab;
     private serviceManager!: LazyServiceManager;
     
-    // Legacy service properties - now proxied through lazy service manager
-    public get vectorStore(): IVectorStore { return this.serviceManager?.get('vectorStore') as any; }
-    public get embeddingService(): EmbeddingService { return this.serviceManager?.get('embeddingService') as any; }
-    public get hnswSearchService(): HnswSearchService { return this.serviceManager?.get('hnswSearchService') as any; }
-    public get fileEmbeddingAccessService(): FileEmbeddingAccessService { return this.serviceManager?.get('fileEmbeddingAccessService') as any; }
-    public get directCollectionService(): DirectCollectionService { return this.serviceManager?.get('directCollectionService') as any; }
-    public get workspaceService(): WorkspaceService { return this.serviceManager?.get('workspaceService') as any; }
-    public get memoryService(): MemoryService { return this.serviceManager?.get('memoryService') as any; }
-    public get fileEventManager(): FileEventManagerModular { return this.serviceManager?.get('fileEventManager') as any; }
-    public get eventManager(): EventManager { return this.serviceManager?.get('eventManager') as any; }
-    public get usageStatsService(): UsageStatsService { return this.serviceManager?.get('usageStatsService') as any; }
-    public get cacheManager(): CacheManager { return this.serviceManager?.get('cacheManager') as any; }
+    // Legacy service properties - now proxied through lazy service manager with graceful fallbacks
+    public get vectorStore(): IVectorStore | null { 
+        return this.serviceManager?.getIfReady<IVectorStore>('vectorStore') || null; 
+    }
+    public get embeddingService(): EmbeddingService | null { 
+        return this.serviceManager?.getIfReady<EmbeddingService>('embeddingService') || null; 
+    }
+    public get hnswSearchService(): HnswSearchService | null { 
+        return this.serviceManager?.getIfReady<HnswSearchService>('hnswSearchService') || null; 
+    }
+    public get fileEmbeddingAccessService(): FileEmbeddingAccessService | null { 
+        return this.serviceManager?.getIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null; 
+    }
+    public get directCollectionService(): DirectCollectionService | null { 
+        return this.serviceManager?.getIfReady<DirectCollectionService>('directCollectionService') || null; 
+    }
+    public get workspaceService(): WorkspaceService | null { 
+        return this.serviceManager?.getIfReady<WorkspaceService>('workspaceService') || null; 
+    }
+    public get memoryService(): MemoryService | null { 
+        return this.serviceManager?.getIfReady<MemoryService>('memoryService') || null; 
+    }
+    public get fileEventManager(): FileEventManagerModular | null { 
+        return this.serviceManager?.getIfReady<FileEventManagerModular>('fileEventManager') || null; 
+    }
+    public get eventManager(): EventManager | null { 
+        return this.serviceManager?.getIfReady<EventManager>('eventManager') || null; 
+    }
+    public get usageStatsService(): UsageStatsService | null { 
+        return this.serviceManager?.getIfReady<UsageStatsService>('usageStatsService') || null; 
+    }
+    public get cacheManager(): CacheManager | null { 
+        return this.serviceManager?.getIfReady<CacheManager>('cacheManager') || null; 
+    }
+    
+    /**
+     * Get a service asynchronously, waiting for it to be ready if needed
+     */
+    public async getService<T>(name: string, timeoutMs: number = 10000): Promise<T | null> {
+        if (!this.serviceManager) {
+            return null;
+        }
+        
+        // If already ready, return immediately
+        if (this.serviceManager.isReady(name)) {
+            return this.serviceManager.getIfReady<T>(name);
+        }
+        
+        // Otherwise try to get it (will initialize if needed)
+        try {
+            return await this.serviceManager.get<T>(name);
+        } catch (error) {
+            console.warn(`[ClaudesidianPlugin] Failed to get service '${name}':`, error);
+            return null;
+        }
+    }
     
     // Service registry - now returns initialized services from lazy manager
     public get services(): Record<string, any> {
@@ -98,13 +142,17 @@ export default class ClaudesidianPlugin extends Plugin {
             const dataDir = path.join(pluginDir, 'data');
             const chromaDbDir = path.join(dataDir, 'chroma-db');
             const collectionsDir = path.join(chromaDbDir, 'collections');
+            const hnswIndexesDir = path.join(chromaDbDir, 'hnsw-indexes');
             
             // Create directories asynchronously
             await fs.mkdir(dataDir, { recursive: true });
             await fs.mkdir(chromaDbDir, { recursive: true });
             await fs.mkdir(collectionsDir, { recursive: true });
+            await fs.mkdir(hnswIndexesDir, { recursive: true });
             
             // Update settings with correct path
+            // ChromaDB client adds /collections automatically, so use base directory for ChromaDB
+            // HNSW service will use collectionsDir directly for consistency
             if (!this.settings.settings.memory) {
                 this.settings.settings.memory = this.getDefaultMemorySettings(chromaDbDir);
             } else {
@@ -143,7 +191,7 @@ export default class ClaudesidianPlugin extends Plugin {
             includeFrontmatter: true,
             excludePaths: ['.obsidian/**/*'],
             minContentLength: 50,
-            embeddingStrategy: 'manual' as 'manual',
+            embeddingStrategy: 'idle' as 'idle',
             idleTimeThreshold: 60000,
             batchSize: 10,
             concurrentRequests: 3,
@@ -192,9 +240,9 @@ export default class ClaudesidianPlugin extends Plugin {
                 try {
                     const notice = new Notice('Repairing vector collections...', 0);
                     
-                    const vectorStore = await this.serviceManager.get<IVectorStore>('vectorStore');
+                    const vectorStore = await this.getService<IVectorStore>('vectorStore', 15000);
                     if (!vectorStore) {
-                        notice.setMessage('Vector store not available');
+                        notice.setMessage('Vector store not available or failed to initialize');
                         setTimeout(() => notice.hide(), 5000);
                         return;
                     }
@@ -229,9 +277,9 @@ export default class ClaudesidianPlugin extends Plugin {
                 try {
                     const notice = new Notice('Checking vector storage...', 0);
                     
-                    const vectorStore = await this.serviceManager.get<IVectorStore>('vectorStore');
+                    const vectorStore = await this.getService<IVectorStore>('vectorStore', 15000);
                     if (!vectorStore) {
-                        notice.setMessage('Vector store not available');
+                        notice.setMessage('Vector store not available or failed to initialize');
                         setTimeout(() => notice.hide(), 5000);
                         return;
                     }
@@ -253,6 +301,50 @@ export default class ClaudesidianPlugin extends Plugin {
                 } catch (error) {
                     new Notice(`Diagnostics failed: ${(error as Error).message}`);
                     console.error('Diagnostics error:', error);
+                }
+            }
+        });
+        
+        this.addCommand({
+            id: 'check-service-readiness',
+            name: 'Check service readiness status',
+            callback: async () => {
+                try {
+                    const notice = new Notice('Checking service readiness...', 0);
+                    
+                    if (!this.serviceManager) {
+                        notice.setMessage('Service manager not available');
+                        setTimeout(() => notice.hide(), 5000);
+                        return;
+                    }
+                    
+                    const readinessStatus = this.serviceManager.getReadinessStatus();
+                    const stageStatus = {
+                        immediate: this.serviceManager.isStageReady(1),
+                        backgroundFast: this.serviceManager.isStageReady(2),
+                        backgroundSlow: this.serviceManager.isStageReady(3),
+                        onDemand: this.serviceManager.isStageReady(4)
+                    };
+                    
+                    const readyServices = Object.values(readinessStatus).filter(s => s.ready).length;
+                    const totalServices = Object.keys(readinessStatus).length;
+                    
+                    const message = [
+                        `Services: ${readyServices}/${totalServices} ready`,
+                        `Stage 1 (Immediate): ${stageStatus.immediate ? 'Ready' : 'Loading'}`,
+                        `Stage 2 (Background Fast): ${stageStatus.backgroundFast ? 'Ready' : 'Loading'}`,
+                        `Stage 3 (Background Slow): ${stageStatus.backgroundSlow ? 'Ready' : 'Loading'}`,
+                        `Stage 4 (On-Demand): ${stageStatus.onDemand ? 'Ready' : 'Pending'}`
+                    ].join('\n');
+                    
+                    notice.setMessage(message);
+                    console.log('Service readiness status:', readinessStatus);
+                    console.log('Stage readiness:', stageStatus);
+                    
+                    setTimeout(() => notice.hide(), 8000);
+                } catch (error) {
+                    new Notice(`Readiness check failed: ${(error as Error).message}`);
+                    console.error('Service readiness check error:', error);
                 }
             }
         });
@@ -308,14 +400,17 @@ export default class ClaudesidianPlugin extends Plugin {
     reloadConfiguration(): void {
         console.log('[ClaudesidianPlugin] Reloading configuration...');
         
-        if (this.serviceManager?.isInitialized('fileEventManager')) {
-            this.serviceManager.get('fileEventManager').then(fileEventManager => {
-                if (fileEventManager && typeof (fileEventManager as any).reloadConfiguration === 'function') {
+        if (this.serviceManager?.isReady('fileEventManager')) {
+            const fileEventManager = this.serviceManager.getIfReady('fileEventManager');
+            if (fileEventManager && typeof (fileEventManager as any).reloadConfiguration === 'function') {
+                try {
                     (fileEventManager as any).reloadConfiguration();
+                } catch (error) {
+                    console.warn('Error reloading file event manager configuration:', error);
                 }
-            }).catch(error => {
-                console.warn('Error reloading file event manager configuration:', error);
-            });
+            }
+        } else {
+            console.log('[ClaudesidianPlugin] File event manager not ready, skipping configuration reload');
         }
         
         console.log('[ClaudesidianPlugin] Configuration reload complete');

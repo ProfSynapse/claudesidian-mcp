@@ -14,7 +14,17 @@ import { CacheManager } from '../database/services/CacheManager';
 import { VectorStoreFactory } from '../database/factory/VectorStoreFactory';
 
 /**
- * Service descriptor for lazy initialization
+ * Loading stages for progressive service initialization
+ */
+enum LoadingStage {
+    IMMEDIATE = 1,      // 0-1s: Core plugin ready
+    BACKGROUND_FAST = 2, // 1-5s: Basic vector operations
+    BACKGROUND_SLOW = 3, // 5-15s: Full semantic search
+    ON_DEMAND = 4       // 15s+: Specialized features
+}
+
+/**
+ * Service descriptor for stage-based lazy initialization
  */
 interface ServiceDescriptor<T = any> {
     name: string;
@@ -23,8 +33,7 @@ interface ServiceDescriptor<T = any> {
     initialized: boolean;
     instance?: T;
     initPromise?: Promise<T>;
-    priority: 'immediate' | 'on-demand' | 'background';
-    loadTriggers?: string[]; // Events that should trigger loading
+    stage: LoadingStage;
 }
 
 /**
@@ -43,12 +52,13 @@ interface WorkspaceCacheEntry {
  */
 export class LazyServiceManager {
     private services = new Map<string, ServiceDescriptor>();
-    private backgroundInitQueue: string[] = [];
+    private stageQueues = new Map<LoadingStage, string[]>();
+    private currentStage = LoadingStage.IMMEDIATE;
     private isStarted = false;
     private toolCallCount = 0;
-    private vectorStoreTriggered = false;
     private workspaceCache = new Map<string, WorkspaceCacheEntry>();
     private activeWorkspace: string | null = null;
+    private stageProgress = new Map<LoadingStage, { loaded: number; total: number }>();
 
     constructor(
         private app: App,
@@ -61,90 +71,64 @@ export class LazyServiceManager {
      * Register all services with their descriptors and smart loading triggers
      */
     private registerServices(): void {
-        // Core services - immediate initialization
+        // STAGE 1 (IMMEDIATE): Core services only - plugin ready in <1s
         this.register('eventManager', {
             name: 'eventManager',
             factory: async () => new EventManager(),
             dependencies: [],
             initialized: false,
-            priority: 'immediate'
+            stage: LoadingStage.IMMEDIATE
         });
 
-        // Vector store - loads on any tool call (user engagement indicator)
+        // STAGE 2 (BACKGROUND_FAST): Basic vector operations - ready in 1-5s
         this.register('vectorStore', {
             name: 'vectorStore',
             factory: async () => this.createVectorStore(),
             dependencies: [],
             initialized: false,
-            priority: 'on-demand',
-            loadTriggers: ['tool-call', 'workspace-load']
+            stage: LoadingStage.BACKGROUND_FAST
         });
 
-        // Embedding service - loads with vector store
         this.register('embeddingService', {
             name: 'embeddingService',
             factory: async () => new EmbeddingService(this.plugin),
             dependencies: [],
             initialized: false,
-            priority: 'on-demand',
-            loadTriggers: ['tool-call', 'workspace-load']
+            stage: LoadingStage.BACKGROUND_FAST
         });
 
-        // Search service - loads with vector store but initializes index in background
+        // STAGE 3 (BACKGROUND_SLOW): Full semantic search - ready in 5-15s
         this.register('hnswSearchService', {
             name: 'hnswSearchService',
             factory: async () => {
                 const vectorStore = await this.get<IVectorStore>('vectorStore');
                 const embeddingService = await this.get<EmbeddingService>('embeddingService');
-                const service = new HnswSearchService(this.app, vectorStore, embeddingService);
                 
-                // Initialize with workspace-specific embeddings if available
-                this.scheduleWorkspaceIndexing(service);
+                // Get persistent path from memory settings for HNSW optimization
+                // HNSW needs the base ChromaDB directory, not the collections subdirectory
+                const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
+                const hnswPath = basePath;
+                const service = new HnswSearchService(this.app, vectorStore, embeddingService, hnswPath);
                 
                 return service;
             },
             dependencies: ['vectorStore', 'embeddingService'],
             initialized: false,
-            priority: 'on-demand',
-            loadTriggers: ['tool-call', 'workspace-load']
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
-        // File embedding access - loads with vector store
-        this.register('fileEmbeddingAccessService', {
-            name: 'fileEmbeddingAccessService',
-            factory: async () => {
-                const vectorStore = await this.get<IVectorStore>('vectorStore');
-                return new FileEmbeddingAccessService(this.plugin, vectorStore);
-            },
-            dependencies: ['vectorStore'],
-            initialized: false,
-            priority: 'on-demand',
-            loadTriggers: ['tool-call', 'workspace-load']
-        });
-
-        // Direct collection service - loads with vector store
-        this.register('directCollectionService', {
-            name: 'directCollectionService',
-            factory: async () => {
-                const vectorStore = await this.get<IVectorStore>('vectorStore');
-                return new DirectCollectionService(this.plugin, vectorStore);
-            },
-            dependencies: ['vectorStore'],
-            initialized: false,
-            priority: 'on-demand',
-            loadTriggers: ['tool-call']
-        });
-
-        // Workspace service - immediate but enhanced with smart caching
         this.register('workspaceService', {
             name: 'workspaceService',
-            factory: async () => this.createEnhancedWorkspaceService(),
-            dependencies: [],
+            factory: async () => {
+                const vectorStore = await this.get<IVectorStore>('vectorStore');
+                const embeddingService = await this.get<EmbeddingService>('embeddingService');
+                return new WorkspaceService(this.plugin, vectorStore, embeddingService);
+            },
+            dependencies: ['vectorStore', 'embeddingService'],
             initialized: false,
-            priority: 'immediate'
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
-        // Memory service - loads on tool call
         this.register('memoryService', {
             name: 'memoryService',
             factory: async () => {
@@ -154,20 +138,41 @@ export class LazyServiceManager {
             },
             dependencies: ['vectorStore', 'embeddingService'],
             initialized: false,
-            priority: 'on-demand',
-            loadTriggers: ['tool-call', 'workspace-load']
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
-        // File event manager - immediate but with smart workspace monitoring
+        // STAGE 1 (IMMEDIATE): File event manager - no vector dependencies at startup
         this.register('fileEventManager', {
             name: 'fileEventManager',
             factory: async () => this.createSmartFileEventManager(),
             dependencies: ['eventManager'],
             initialized: false,
-            priority: 'immediate'
+            stage: LoadingStage.IMMEDIATE
         });
 
-        // Usage stats service - background
+        // STAGE 4 (ON_DEMAND): Specialized features - load when needed
+        this.register('fileEmbeddingAccessService', {
+            name: 'fileEmbeddingAccessService',
+            factory: async () => {
+                const vectorStore = await this.get<IVectorStore>('vectorStore');
+                return new FileEmbeddingAccessService(this.plugin, vectorStore);
+            },
+            dependencies: ['vectorStore'],
+            initialized: false,
+            stage: LoadingStage.ON_DEMAND
+        });
+
+        this.register('directCollectionService', {
+            name: 'directCollectionService',
+            factory: async () => {
+                const vectorStore = await this.get<IVectorStore>('vectorStore');
+                return new DirectCollectionService(this.plugin, vectorStore);
+            },
+            dependencies: ['vectorStore'],
+            initialized: false,
+            stage: LoadingStage.ON_DEMAND
+        });
+
         this.register('usageStatsService', {
             name: 'usageStatsService',
             factory: async () => {
@@ -183,32 +188,28 @@ export class LazyServiceManager {
             },
             dependencies: ['embeddingService', 'vectorStore', 'eventManager'],
             initialized: false,
-            priority: 'background'
+            stage: LoadingStage.ON_DEMAND
         });
 
-        // Cache manager - enhanced with workspace-aware caching
         this.register('cacheManager', {
             name: 'cacheManager',
-            factory: async () => this.createWorkspaceAwareCacheManager(),
-            dependencies: ['workspaceService'],
+            factory: async () => {
+                const workspaceService = await this.get<WorkspaceService>('workspaceService');
+                const memoryService = await this.get<MemoryService>('memoryService');
+                return new CacheManager(this.app, workspaceService, memoryService);
+            },
+            dependencies: ['workspaceService', 'memoryService'],
             initialized: false,
-            priority: 'background'
+            stage: LoadingStage.ON_DEMAND
         });
     }
 
     /**
-     * Called when any tool is invoked - triggers vector store loading
+     * Called when any tool is invoked - tracks usage
      */
     async onToolCall(): Promise<void> {
         this.toolCallCount++;
-        
-        if (!this.vectorStoreTriggered) {
-            this.vectorStoreTriggered = true;
-            console.log('[LazyServiceManager] Tool call detected - triggering vector services...');
-            
-            // Trigger loading of vector-dependent services in background
-            this.triggerServicesByEvent('tool-call');
-        }
+        // Tool call tracking only - vector store loads automatically in background
     }
 
     /**
@@ -216,37 +217,12 @@ export class LazyServiceManager {
      */
     async onWorkspaceLoad(workspaceId: string, workspacePath?: string[]): Promise<void> {
         this.activeWorkspace = workspaceId;
-        console.log(`[LazyServiceManager] Workspace loaded: ${workspaceId} - triggering smart caching...`);
-        
-        // Trigger workspace-aware services
-        this.triggerServicesByEvent('workspace-load');
+        console.log(`[LazyServiceManager] Workspace loaded: ${workspaceId} - starting smart caching...`);
         
         // Start intelligent workspace caching
         this.scheduleWorkspaceCaching(workspaceId, workspacePath);
     }
 
-    /**
-     * Trigger services based on events
-     */
-    private triggerServicesByEvent(event: string): void {
-        const servicesToLoad = Array.from(this.services.values())
-            .filter(s => s.loadTriggers?.includes(event) && !s.initialized)
-            .map(s => s.name);
-
-        if (servicesToLoad.length > 0) {
-            console.log(`[LazyServiceManager] Triggering services for event '${event}':`, servicesToLoad);
-            
-            // Load services in background
-            setTimeout(async () => {
-                try {
-                    await Promise.all(servicesToLoad.map(name => this.get(name)));
-                    console.log(`[LazyServiceManager] Services loaded for event '${event}'`);
-                } catch (error) {
-                    console.warn(`[LazyServiceManager] Error loading services for event '${event}':`, error);
-                }
-            }, 50); // Small delay to avoid blocking current operation
-        }
-    }
 
     /**
      * Schedule intelligent workspace caching
@@ -466,7 +442,7 @@ export class LazyServiceManager {
     }
 
     /**
-     * Start the service manager and initialize immediate services
+     * Start the service manager with stage-based initialization
      */
     async start(): Promise<void> {
         if (this.isStarted) {
@@ -474,55 +450,112 @@ export class LazyServiceManager {
         }
 
         const startTime = Date.now();
-        console.log('[LazyServiceManager] Starting service initialization...');
+        console.log('[LazyServiceManager] Starting stage-based service initialization...');
 
-        // Initialize immediate services in parallel
-        const immediateServices = Array.from(this.services.values())
-            .filter(s => s.priority === 'immediate')
-            .map(s => s.name);
+        // Initialize stage queues
+        this.initializeStageQueues();
 
-        await Promise.all(immediateServices.map(name => this.get(name)));
-
-        // Queue background services for later initialization
-        this.backgroundInitQueue = Array.from(this.services.values())
-            .filter(s => s.priority === 'background')
-            .map(s => s.name);
-
-        // Start background initialization
-        this.startBackgroundInitialization();
-
+        // STAGE 1: Initialize immediate services only (blocking)
+        await this.initializeStage(LoadingStage.IMMEDIATE);
+        
         this.isStarted = true;
         const duration = Date.now() - startTime;
-        console.log(`[LazyServiceManager] Started (${duration}ms) - vector services will load on first tool call`);
+        console.log(`[LazyServiceManager] ✓ Stage 1 complete (${duration}ms) - Plugin ready! Background loading continues...`);
+
+        // Start cascading background initialization
+        this.startCascadingInitialization();
     }
 
     /**
-     * Start background initialization of services
+     * Initialize stage queues with service names organized by stage
      */
-    private startBackgroundInitialization(): void {
-        if (this.backgroundInitQueue.length === 0) {
+    private initializeStageQueues(): void {
+        // Clear existing queues
+        this.stageQueues.clear();
+        
+        // Organize services by stage
+        for (const [name, descriptor] of this.services) {
+            const stage = descriptor.stage;
+            if (!this.stageQueues.has(stage)) {
+                this.stageQueues.set(stage, []);
+            }
+            this.stageQueues.get(stage)!.push(name);
+        }
+        
+        // Initialize progress tracking
+        for (const [stage, serviceNames] of this.stageQueues) {
+            this.stageProgress.set(stage, { loaded: 0, total: serviceNames.length });
+        }
+        
+        console.log('[LazyServiceManager] Stage queues initialized:', 
+            Array.from(this.stageQueues.entries()).map(([stage, names]) => 
+                `Stage ${stage}: ${names.length} services`
+            ).join(', ')
+        );
+    }
+
+    /**
+     * Initialize all services in a specific stage
+     */
+    private async initializeStage(stage: LoadingStage): Promise<void> {
+        const serviceNames = this.stageQueues.get(stage) || [];
+        if (serviceNames.length === 0) {
             return;
         }
 
-        setTimeout(async () => {
-            const batchSize = 2;
-            
-            while (this.backgroundInitQueue.length > 0) {
-                const batch = this.backgroundInitQueue.splice(0, batchSize);
+        const stageName = LoadingStage[stage];
+        console.log(`[LazyServiceManager] Initializing stage ${stage} (${stageName}): ${serviceNames.length} services`);
+        
+        const startTime = Date.now();
+        
+        // Initialize services in parallel within the stage
+        const promises = serviceNames.map(async (name) => {
+            try {
+                await this.get(name);
                 
-                try {
-                    await Promise.all(batch.map(name => this.get(name)));
-                } catch (error) {
-                    console.warn('[LazyServiceManager] Background initialization error:', error);
-                }
+                // Update progress
+                const progress = this.stageProgress.get(stage)!;
+                progress.loaded++;
+                this.stageProgress.set(stage, progress);
                 
-                if (this.backgroundInitQueue.length > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
+                console.log(`[LazyServiceManager] ✓ ${name} initialized (${progress.loaded}/${progress.total})`);
+            } catch (error) {
+                console.error(`[LazyServiceManager] ✗ Failed to initialize ${name}:`, error);
+                throw error;
             }
-            
-            console.log('[LazyServiceManager] Background initialization complete');
-        }, 500); // Longer delay for background services
+        });
+        
+        await Promise.all(promises);
+        
+        const duration = Date.now() - startTime;
+        console.log(`[LazyServiceManager] ✓ Stage ${stage} (${stageName}) complete (${duration}ms)`);
+    }
+
+    /**
+     * Start cascading background initialization for remaining stages
+     */
+    private startCascadingInitialization(): void {
+        // Start with BACKGROUND_FAST after a short delay
+        setTimeout(async () => {
+            try {
+                await this.initializeStage(LoadingStage.BACKGROUND_FAST);
+                
+                // After BACKGROUND_FAST, start BACKGROUND_SLOW
+                setTimeout(async () => {
+                    try {
+                        await this.initializeStage(LoadingStage.BACKGROUND_SLOW);
+                        console.log('[LazyServiceManager] ✓ Background initialization complete - all core services ready');
+                        
+                        // ON_DEMAND services are initialized only when requested
+                    } catch (error) {
+                        console.warn('[LazyServiceManager] Background slow initialization failed:', error);
+                    }
+                }, 1000); // 1s delay between fast and slow
+                
+            } catch (error) {
+                console.warn('[LazyServiceManager] Background fast initialization failed:', error);
+            }
+        }, 500); // 500ms delay after immediate stage
     }
 
     /**
@@ -546,6 +579,88 @@ export class LazyServiceManager {
     isInitialized(name: string): boolean {
         const descriptor = this.services.get(name);
         return descriptor?.initialized || false;
+    }
+
+    /**
+     * Check if a service is ready for use (initialized and not currently initializing)
+     */
+    isReady(name: string): boolean {
+        const descriptor = this.services.get(name);
+        return Boolean(descriptor?.initialized && !descriptor?.initPromise);
+    }
+
+    /**
+     * Check if all services in a stage are ready
+     */
+    isStageReady(stage: LoadingStage): boolean {
+        const serviceNames = this.stageQueues.get(stage) || [];
+        return serviceNames.every(name => this.isReady(name));
+    }
+
+    /**
+     * Get service readiness status for diagnostics
+     */
+    getReadinessStatus(): Record<string, { stage: number; ready: boolean; initialized: boolean }> {
+        const status: Record<string, { stage: number; ready: boolean; initialized: boolean }> = {};
+        
+        for (const [name, descriptor] of this.services) {
+            status[name] = {
+                stage: descriptor.stage,
+                ready: this.isReady(name),
+                initialized: descriptor.initialized
+            };
+        }
+        
+        return status;
+    }
+
+    /**
+     * Get a service if ready, otherwise return null without initializing
+     */
+    getIfReady<T>(name: string): T | null {
+        const descriptor = this.services.get(name);
+        if (descriptor?.initialized && descriptor.instance) {
+            return descriptor.instance as T;
+        }
+        return null;
+    }
+
+    /**
+     * Wait for a service to be ready with timeout
+     */
+    async waitForService<T>(name: string, timeoutMs: number = 10000): Promise<T | null> {
+        const startTime = Date.now();
+        
+        while (Date.now() - startTime < timeoutMs) {
+            if (this.isReady(name)) {
+                return this.getIfReady<T>(name);
+            }
+            
+            // Wait a bit before checking again
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        console.warn(`[LazyServiceManager] Timeout waiting for service '${name}' (${timeoutMs}ms)`);
+        return null;
+    }
+
+    /**
+     * Wait for an entire stage to be ready
+     */
+    async waitForStage(stage: LoadingStage, timeoutMs: number = 30000): Promise<boolean> {
+        const startTime = Date.now();
+        
+        while (Date.now() - startTime < timeoutMs) {
+            if (this.isStageReady(stage)) {
+                return true;
+            }
+            
+            // Wait a bit before checking again
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        console.warn(`[LazyServiceManager] Timeout waiting for stage ${stage} (${timeoutMs}ms)`);
+        return false;
     }
 
     /**
@@ -674,10 +789,10 @@ export class LazyServiceManager {
         const eventManager = await this.get<EventManager>('eventManager');
         
         const embeddingStrategy = {
-            type: (this.plugin.settings?.settings?.memory?.embeddingStrategy || 'manual') as 'manual' | 'idle' | 'startup',
+            type: (this.plugin.settings?.settings?.memory?.embeddingStrategy || 'idle') as 'idle' | 'startup',
             idleTimeThreshold: this.plugin.settings?.settings?.memory?.idleTimeThreshold || 60000,
             batchSize: this.plugin.settings?.settings?.memory?.batchSize || 10,
-            processingDelay: 1000
+            processingDelay: this.plugin.settings?.settings?.memory?.processingDelay || 1000
         };
 
         const fileEventManager = new FileEventManagerModular(

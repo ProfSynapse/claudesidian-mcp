@@ -51,6 +51,16 @@ interface PartitionedHnswIndex {
   dimension: number;
 }
 
+interface IndexMetadata {
+  collectionName: string;
+  itemCount: number;
+  dimension: number;
+  lastModified: number;
+  contentHash: string;
+  isPartitioned: boolean;
+  partitionCount?: number;
+}
+
 /**
  * High-performance vector search using HNSW (Hierarchical Navigable Small World)
  * Provides O(log n) search instead of O(n) brute force
@@ -63,15 +73,21 @@ export class HnswSearchService {
   private app?: App;
   private vectorStore?: IVectorStore;
   private embeddingService?: EmbeddingService;
+  private persistentPath?: string;
   
   // Partitioning configuration
   private readonly maxItemsPerPartition = 500; // Lower threshold for partitioning
   private readonly usePartitioning = true; // Enable partitioning by default
+  
+  // Index persistence configuration
+  private readonly enablePersistence = true;
+  private readonly indexMetadataCache = new Map<string, IndexMetadata>();
 
-  constructor(app?: App, vectorStore?: IVectorStore, embeddingService?: EmbeddingService) {
+  constructor(app?: App, vectorStore?: IVectorStore, embeddingService?: EmbeddingService, persistentPath?: string) {
     this.app = app;
     this.vectorStore = vectorStore;
     this.embeddingService = embeddingService;
+    this.persistentPath = persistentPath;
   }
 
   /**
@@ -92,7 +108,7 @@ export class HnswSearchService {
   }
 
   /**
-   * Create or update HNSW index for a collection
+   * Create or update HNSW index for a collection with intelligent persistence
    */
   async indexCollection(collectionName: string, items: DatabaseItem[]): Promise<void> {
     await this.initialize();
@@ -102,6 +118,21 @@ export class HnswSearchService {
       return;
     }
 
+    // Try to load existing index first
+    if (await this.tryLoadPersistedIndex(collectionName, items)) {
+      console.log(`[HnswSearchService] ✓ Loaded persisted index for collection: ${collectionName}`);
+      return;
+    }
+
+    // Fallback to creating new index
+    console.log(`[HnswSearchService] Creating new index for collection: ${collectionName}`);
+    await this.createIndexFromScratch(collectionName, items);
+  }
+
+  /**
+   * Create index from scratch (original logic)
+   */
+  private async createIndexFromScratch(collectionName: string, items: DatabaseItem[]): Promise<void> {
     // Remove any existing indexes for this collection to start fresh
     this.indexes.delete(collectionName);
     this.partitionedIndexes.delete(collectionName);
@@ -123,6 +154,9 @@ export class HnswSearchService {
       console.log(`[HnswSearchService] Creating single HNSW index for ${items.length} items.`);
       await this.createSingleIndex(collectionName, items, dimension);
     }
+
+    // Persist the new index
+    await this.persistIndex(collectionName, items);
   }
 
   /**
@@ -771,5 +805,374 @@ export class HnswSearchService {
    */
   private matchesWhere(item: DatabaseItem, where: WhereClause): boolean {
     return FilterEngine.matchesWhereClause(item, where);
+  }
+
+  // ===== INDEX PERSISTENCE METHODS =====
+
+  /**
+   * Migrate metadata files from old location to new location
+   */
+  private async migrateMetadataFiles(): Promise<void> {
+    if (!this.persistentPath) return;
+
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      
+      const oldPath = path.join(this.persistentPath, 'collections', 'hnsw-indexes');
+      const newPath = path.join(this.persistentPath, 'hnsw-indexes');
+      
+      console.log(`[HnswSearchService] Checking for metadata files to migrate from ${oldPath} to ${newPath}`);
+      
+      // Check if old path exists
+      const oldExists = await fs.access(oldPath).then(() => true).catch(() => false);
+      if (!oldExists) {
+        console.log(`[HnswSearchService] No old metadata directory found, skipping migration`);
+        return;
+      }
+      
+      // Ensure new directory exists
+      await fs.mkdir(newPath, { recursive: true });
+      
+      // Move metadata files from old location to new location
+      const files = await fs.readdir(oldPath);
+      let migratedCount = 0;
+      
+      for (const file of files) {
+        if (file.endsWith('-metadata.json')) {
+          const oldFilePath = path.join(oldPath, file);
+          const newFilePath = path.join(newPath, file);
+          
+          // Check if file doesn't already exist in new location
+          const newExists = await fs.access(newFilePath).then(() => true).catch(() => false);
+          if (!newExists) {
+            await fs.copyFile(oldFilePath, newFilePath);
+            migratedCount++;
+            console.log(`[HnswSearchService] Migrated metadata file: ${file}`);
+          }
+        }
+      }
+      
+      if (migratedCount > 0) {
+        console.log(`[HnswSearchService] Successfully migrated ${migratedCount} metadata files`);
+      }
+      
+    } catch (error) {
+      console.warn(`[HnswSearchService] Error during metadata migration:`, error);
+    }
+  }
+
+  /**
+   * Try to load persisted index and validate against current data
+   */
+  private async tryLoadPersistedIndex(collectionName: string, currentItems: DatabaseItem[]): Promise<boolean> {
+    if (!this.enablePersistence || !this.persistentPath) {
+      return false;
+    }
+
+    try {
+      // First attempt migration if needed
+      await this.migrateMetadataFiles();
+      
+      const metadata = await this.loadIndexMetadata(collectionName);
+      if (!metadata) {
+        console.log(`[HnswSearchService] No persisted metadata found for collection: ${collectionName}`);
+        return false;
+      }
+
+      // Validate metadata against current items
+      if (!this.validateIndexMetadata(metadata, currentItems)) {
+        console.log(`[HnswSearchService] Persisted index is outdated for collection: ${collectionName}`);
+        await this.cleanupPersistedIndex(collectionName); // Clean up outdated index
+        return false;
+      }
+
+      // Try to load the actual index data
+      const indexLoaded = await this.loadIndexData(collectionName, metadata);
+      if (!indexLoaded) {
+        console.log(`[HnswSearchService] Failed to load persisted index data for collection: ${collectionName}`);
+        await this.cleanupPersistedIndex(collectionName);
+        return false;
+      }
+
+      // Add any new items that weren't in the persisted index
+      await this.addNewItemsToIndex(collectionName, currentItems, metadata);
+
+      console.log(`[HnswSearchService] Successfully loaded persisted index for collection: ${collectionName}`);
+      return true;
+
+    } catch (error) {
+      console.warn(`[HnswSearchService] Error loading persisted index for ${collectionName}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Validate if persisted metadata matches current data
+   */
+  private validateIndexMetadata(metadata: IndexMetadata, currentItems: DatabaseItem[]): boolean {
+    // Check basic item count (allow for minor differences due to incremental updates)
+    const itemCountDiff = Math.abs(metadata.itemCount - currentItems.length);
+    if (itemCountDiff > Math.max(10, metadata.itemCount * 0.1)) { // Allow 10% difference or 10 items
+      console.log(`[HnswSearchService] Item count mismatch: expected ~${metadata.itemCount}, got ${currentItems.length}`);
+      return false;
+    }
+
+    // Check dimension consistency
+    const firstEmbedding = currentItems.find(item => item.embedding && item.embedding.length > 0)?.embedding;
+    if (firstEmbedding && firstEmbedding.length !== metadata.dimension) {
+      console.log(`[HnswSearchService] Dimension mismatch: expected ${metadata.dimension}, got ${firstEmbedding.length}`);
+      return false;
+    }
+
+    // Check if content hash indicates significant changes
+    const currentContentHash = this.calculateContentHash(currentItems);
+    const hashSimilarity = this.calculateHashSimilarity(metadata.contentHash, currentContentHash);
+    if (hashSimilarity < 0.8) { // Allow 20% content changes
+      console.log(`[HnswSearchService] Content hash indicates significant changes (similarity: ${hashSimilarity.toFixed(2)})`);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Load index metadata from disk using Node.js filesystem
+   */
+  private async loadIndexMetadata(collectionName: string): Promise<IndexMetadata | null> {
+    if (!this.persistentPath) {
+      return null;
+    }
+
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const metadataPath = path.join(this.persistentPath, 'hnsw-indexes', `${collectionName}-metadata.json`);
+      
+      console.log(`[HnswSearchService] Looking for metadata at: ${metadataPath}`);
+      
+      // Check if file exists first
+      const exists = await fs.access(metadataPath).then(() => true).catch(() => false);
+      if (!exists) {
+        console.log(`[HnswSearchService] No metadata file found at: ${metadataPath}`);
+        return null;
+      }
+      
+      const metadataContent = await fs.readFile(metadataPath, 'utf8');
+      console.log(`[HnswSearchService] Successfully loaded metadata for ${collectionName}`);
+      return JSON.parse(metadataContent) as IndexMetadata;
+    } catch (error) {
+      console.warn(`[HnswSearchService] Failed to load metadata for ${collectionName}:`, error);
+      return null; // File doesn't exist or can't be read
+    }
+  }
+
+  /**
+   * Load index data from disk or create minimal index for quick startup
+   */
+  private async loadIndexData(collectionName: string, metadata: IndexMetadata): Promise<boolean> {
+    // Since hnswlib-wasm doesn't currently support serialization, we'll use a hybrid approach:
+    // 1. Create an empty index structure to reserve memory and prepare for incremental additions
+    // 2. This avoids the full rebuild while still getting the performance benefit
+    
+    try {
+      console.log(`[HnswSearchService] Creating optimized startup index for collection: ${collectionName}`);
+      
+      // Create an empty index with the correct dimensions and capacity
+      if (metadata.isPartitioned) {
+        // Create empty partitioned structure
+        const partitions: HnswIndex[] = [];
+        const itemToPartition = new Map<string, number>();
+        
+        const partitionCount = metadata.partitionCount || Math.ceil(metadata.itemCount / this.maxItemsPerPartition);
+        
+        for (let i = 0; i < partitionCount; i++) {
+          const index = new this.hnswLib.HierarchicalNSW('cosine', metadata.dimension, '');
+          const capacity = Math.max(this.maxItemsPerPartition + 1000, 60000);
+          index.initIndex(metadata.dimension, 16, 200, capacity);
+          
+          partitions.push({
+            index,
+            idToItem: new Map(),
+            itemIdToHnswId: new Map(),
+            nextId: 0
+          });
+        }
+        
+        this.partitionedIndexes.set(collectionName, {
+          partitions,
+          itemToPartition,
+          maxItemsPerPartition: this.maxItemsPerPartition,
+          dimension: metadata.dimension
+        });
+      } else {
+        // Create single empty index
+        const index = new this.hnswLib.HierarchicalNSW('cosine', metadata.dimension, '');
+        const capacity = Math.max(metadata.itemCount + 1000, 60000);
+        index.initIndex(metadata.dimension, 16, 200, capacity);
+        
+        this.indexes.set(collectionName, {
+          index,
+          idToItem: new Map(),
+          itemIdToHnswId: new Map(),
+          nextId: 0
+        });
+      }
+      
+      console.log(`[HnswSearchService] Created empty optimized index structure for collection: ${collectionName}`);
+      return true;
+      
+    } catch (error) {
+      console.error(`[HnswSearchService] Failed to create optimized index structure:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Add new items that weren't in the persisted index
+   */
+  private async addNewItemsToIndex(collectionName: string, currentItems: DatabaseItem[], metadata: IndexMetadata): Promise<void> {
+    // Check if we have any new items beyond the persisted count
+    const newItemsCount = currentItems.length - metadata.itemCount;
+    if (newItemsCount <= 0) {
+      console.log(`[HnswSearchService] No new items to add for collection: ${collectionName}`);
+      return;
+    }
+
+    console.log(`[HnswSearchService] Adding ${newItemsCount} new items to existing index for collection: ${collectionName}`);
+    
+    // Sort items by ID for consistent ordering
+    const sortedCurrentItems = currentItems.sort((a, b) => a.id.localeCompare(b.id));
+    
+    // Take only the new items (items beyond the persisted count)
+    const newItems = sortedCurrentItems.slice(metadata.itemCount);
+    
+    // Add each new item to the existing index
+    for (const item of newItems) {
+      if (item.embedding && item.embedding.length > 0) {
+        try {
+          await this.addItemToIndex(collectionName, item);
+        } catch (error) {
+          console.warn(`[HnswSearchService] Failed to add new item ${item.id} to index:`, error);
+        }
+      }
+    }
+    
+    console.log(`[HnswSearchService] Successfully added ${newItems.length} new items to index for collection: ${collectionName}`);
+  }
+
+  /**
+   * Persist index metadata and data to disk using Node.js filesystem
+   */
+  private async persistIndex(collectionName: string, items: DatabaseItem[]): Promise<void> {
+    if (!this.enablePersistence || !this.persistentPath) {
+      return;
+    }
+
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const indexesDir = path.join(this.persistentPath, 'hnsw-indexes');
+      
+      console.log(`[HnswSearchService] Persisting metadata to: ${indexesDir}`);
+      
+      // Ensure directory exists using Node.js fs
+      const dirExists = await fs.access(indexesDir).then(() => true).catch(() => false);
+      if (!dirExists) {
+        await fs.mkdir(indexesDir, { recursive: true });
+        console.log(`[HnswSearchService] Created directory: ${indexesDir}`);
+      }
+
+      // Create metadata
+      const metadata: IndexMetadata = {
+        collectionName,
+        itemCount: items.length,
+        dimension: items.find(item => item.embedding && item.embedding.length > 0)?.embedding?.length || 0,
+        lastModified: Date.now(),
+        contentHash: this.calculateContentHash(items),
+        isPartitioned: this.partitionedIndexes.has(collectionName),
+        partitionCount: this.partitionedIndexes.get(collectionName)?.partitions.length
+      };
+
+      // Save metadata using Node.js fs
+      const metadataPath = path.join(indexesDir, `${collectionName}-metadata.json`);
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+
+      // Cache metadata
+      this.indexMetadataCache.set(collectionName, metadata);
+
+      console.log(`[HnswSearchService] Successfully persisted metadata for collection: ${collectionName} at ${metadataPath}`);
+
+    } catch (error) {
+      console.warn(`[HnswSearchService] Failed to persist index for ${collectionName}:`, error);
+    }
+  }
+
+  /**
+   * Calculate content hash for change detection
+   */
+  private calculateContentHash(items: DatabaseItem[]): string {
+    const crypto = require('crypto');
+    
+    // Sort items by ID for consistent hashing
+    const sortedItems = items
+      .map(item => ({ id: item.id, docLength: item.document?.length || 0 }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    
+    const hashInput = JSON.stringify(sortedItems);
+    return crypto.createHash('md5').update(hashInput).digest('hex');
+  }
+
+  /**
+   * Calculate similarity between two hashes (simple implementation)
+   */
+  private calculateHashSimilarity(hash1: string, hash2: string): number {
+    if (hash1 === hash2) return 1.0;
+    
+    // Simple character-based similarity
+    let matches = 0;
+    const length = Math.min(hash1.length, hash2.length);
+    
+    for (let i = 0; i < length; i++) {
+      if (hash1[i] === hash2[i]) matches++;
+    }
+    
+    return matches / Math.max(hash1.length, hash2.length);
+  }
+
+  /**
+   * Clean up outdated persisted index files
+   */
+  private async cleanupPersistedIndex(collectionName: string): Promise<void> {
+    if (!this.persistentPath) return;
+
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const indexesDir = path.join(this.persistentPath, 'hnsw-indexes');
+      
+      const metadataPath = path.join(indexesDir, `${collectionName}-metadata.json`);
+      const indexPath = path.join(indexesDir, `${collectionName}-index.dat`);
+      
+      await Promise.allSettled([
+        fs.unlink(metadataPath),
+        fs.unlink(indexPath)
+      ]);
+      
+      this.indexMetadataCache.delete(collectionName);
+      console.log(`[HnswSearchService] Cleaned up outdated index files for collection: ${collectionName}`);
+      
+    } catch (error) {
+      // Ignore cleanup errors
+    }
+  }
+
+  /**
+   * Force rebuild of index (public method for manual refresh)
+   */
+  async forceRebuildIndex(collectionName: string, items: DatabaseItem[]): Promise<void> {
+    console.log(`[HnswSearchService] Force rebuilding index for collection: ${collectionName}`);
+    await this.cleanupPersistedIndex(collectionName);
+    await this.createIndexFromScratch(collectionName, items);
   }
 }

@@ -11,6 +11,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     private processQueueDebounced!: () => void;
     private isStartupPhase = true;
     private startupTimeout: NodeJS.Timeout | null = null;
+    private embeddingStrategy: EmbeddingStrategy = { type: 'idle', idleTimeThreshold: 60000, batchSize: 10, processingDelay: 1000 };
 
     // Event handlers
     private fileCreatedHandler!: (file: TAbstractFile) => void;
@@ -196,6 +197,30 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 return;
             }
 
+            // Check if we need vector services for processing
+            const needsVectorServices = events.some(e => e.operation === 'create' || e.operation === 'modify' || e.operation === 'delete');
+            
+            if (needsVectorServices && !this.dependencies.fileEventProcessor) {
+                // Try to initialize vector services on-demand
+                try {
+                    const plugin = (this.app as any).plugins?.plugins?.['claudesidian-mcp'];
+                    if (plugin?.getServiceManager) {
+                        const serviceManager = plugin.getServiceManager();
+                        const fileEventManager = await serviceManager.get('fileEventManager');
+                        if (fileEventManager && typeof fileEventManager.activateVectorServices === 'function') {
+                            await fileEventManager.activateVectorServices();
+                        }
+                    }
+                } catch (error) {
+                    console.warn('[FileEventCoordinator] Failed to activate vector services on-demand:', error);
+                }
+                
+                // If still not available, queue for later
+                if (!this.dependencies.fileEventProcessor) {
+                    console.log('[FileEventCoordinator] Vector services not ready, queuing events for later processing');
+                    return;
+                }
+            }
 
             // Group events by operation for efficient processing
             const deleteEvents = events.filter(e => e.operation === 'delete');
@@ -203,12 +228,14 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
             // Process deletes first (they're usually high priority)
             for (const event of deleteEvents) {
-                await this.dependencies.fileEventProcessor.processEvent(event);
+                if (this.dependencies.fileEventProcessor) {
+                    await this.dependencies.fileEventProcessor.processEvent(event);
+                }
                 this.dependencies.fileEventQueue.removeEvent(event.path);
             }
 
             // Handle embeddings for create/modify events
-            if (createModifyEvents.length > 0) {
+            if (createModifyEvents.length > 0 && this.dependencies.embeddingScheduler) {
                 // Check if we should process embeddings now or just queue them
                 const strategy = this.dependencies.embeddingScheduler.getStrategy();
                 
@@ -222,8 +249,10 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 
                 // Process remaining events for activity tracking (but keep them in queue for startup strategy)
                 for (const event of createModifyEvents) {
-                    if (!this.dependencies.fileEventProcessor.isProcessing(event.path)) {
-                        await this.dependencies.activityTracker.recordFileActivity(event);
+                    if (this.dependencies.fileEventProcessor && !this.dependencies.fileEventProcessor.isProcessing(event.path)) {
+                        if (this.dependencies.activityTracker) {
+                            await this.dependencies.activityTracker.recordFileActivity(event);
+                        }
                         
                         // Only remove from queue if not using startup strategy
                         if (strategy.type !== 'startup') {
@@ -250,7 +279,11 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
     // Public API for configuration
     setEmbeddingStrategy(strategy: EmbeddingStrategy): void {
-        this.dependencies.embeddingScheduler.setStrategy(strategy);
+        if (this.dependencies.embeddingScheduler) {
+            this.dependencies.embeddingScheduler.setStrategy(strategy);
+        }
+        // Store strategy for when embeddingScheduler becomes available
+        this.embeddingStrategy = strategy;
     }
 
     setSystemOperation(isSystem: boolean): void {

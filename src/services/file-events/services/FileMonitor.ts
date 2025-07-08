@@ -155,14 +155,30 @@ export class FileMonitor implements IFileMonitor {
     // Check if a file already has UP-TO-DATE embeddings in the vector store
     private async checkIfFileAlreadyEmbedded(filePath: string): Promise<boolean> {
         try {
-            // Get the plugin instance to access vector store and embedding service
+            // Get the plugin instance and check if services are available
             const plugin = (this.app as any).plugins?.plugins?.['claudesidian-mcp'];
-            if (!plugin?.vectorStore || !plugin?.embeddingService) {
+            if (!plugin?.getServiceManager) {
+                return false;
+            }
+
+            const serviceManager = plugin.getServiceManager();
+            
+            // Check if vector services are ready before trying to use them
+            if (!serviceManager.isReady('vectorStore') || !serviceManager.isReady('embeddingService')) {
+                // Services not ready yet - assume file needs embedding to be safe
+                return false;
+            }
+            
+            // Get vector store and embedding service (they should be ready now)
+            const vectorStore = serviceManager.getIfReady('vectorStore');
+            const embeddingService = serviceManager.getIfReady('embeddingService');
+            
+            if (!vectorStore || !embeddingService) {
                 return false;
             }
 
             // Use the same logic as EmbeddingService to check if file needs embedding
-            const needsEmbedding = await this.checkIfFileNeedsEmbeddingInternal(filePath, plugin.vectorStore, plugin.embeddingService);
+            const needsEmbedding = await this.checkIfFileNeedsEmbeddingInternal(filePath, vectorStore, embeddingService);
             
             if (!needsEmbedding) {
                 return true; // Has up-to-date embeddings

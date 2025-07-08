@@ -21,6 +21,68 @@ The plugin uses a modular agent architecture with the following key agents:
 
 ## Recent Changes
 
+### OpenAI Deep Research API Support (2025-01-08)
+**Problem**: The OpenAI adapter was trying to return results immediately for deep research models (`o3-deep-research-2025-06-26`, `o4-mini-deep-research-2025-06-26`) instead of following the proper asynchronous workflow required by the Deep Research API.
+
+**Root Issue**: Deep research models use a different API structure:
+- Submit request to `responses.create()` with special format
+- Response may be asynchronous (background processing)
+- Must poll for completion status
+- Final report extracted from `response.output[-1].content[0].text`
+- Citations available in `annotations` array
+
+**Solution Applied**:
+1. **Deep Research Model Detection** (`src/services/llm/adapters/openai/OpenAIAdapter.ts`):
+   - Added `isDeepResearchModel()` method that detects models containing "deep-research"
+   - Handles both `o3-deep-research-2025-06-26` and `o4-mini-deep-research-2025-06-26`
+
+2. **Specialized Deep Research Handlers**:
+   - **`generateWithDeepResearch()`**: Async processing for standard requests
+   - **`generateWithDeepResearchStreaming()`**: Progress updates during research
+   - **`pollForCompletion()`**: Basic polling without streaming
+   - **`pollForCompletionWithStreaming()`**: Polling with progress updates
+
+3. **Deep Research API Integration**:
+   - **Request Format**: Uses role-based input array with `developer` and `user` roles
+   - **Background Processing**: Sets `background: true` for async execution
+   - **Default Tools**: Includes `web_search_preview` tool automatically
+   - **Tool Conversion**: Maps standard tools to Deep Research API format
+
+4. **Response Processing**:
+   - **`parseDeepResearchResponse()`**: Extracts final report from output array
+   - **Citation Handling**: Processes annotations with title, URL, and position data
+   - **Metadata Enhancement**: Includes research-specific metadata (citations, processing steps, time)
+   - **Usage Extraction**: Finds usage data within output array structure
+
+5. **Streaming Support**:
+   - Deep research doesn't support real-time token streaming
+   - Instead provides progress updates during polling (🔍 Starting, 🔄 Progress, ✅ Complete)
+   - Different polling intervals for different models (2s for o4-mini, 5s for o3)
+
+6. **Routing Logic**:
+   - **`generateUncached()`**: Routes deep research models to specialized handler
+   - **`generateStream()`**: Uses streaming version with progress updates
+   - **Standard Models**: Continue using existing Chat Completions API
+
+**Key Implementation Details**:
+- **Model Detection**: Substring check for "deep-research" catches all variants
+- **Error Handling**: Comprehensive error handling for research failures and timeouts
+- **Timeout Management**: 5-minute default timeout with configurable limits
+- **Progress Feedback**: Visual progress indicators during long research processes
+- **Backward Compatibility**: No changes to existing standard model processing
+
+**Technical Benefits**:
+- ✅ Proper async handling for deep research models
+- ✅ Rich citation and metadata support
+- ✅ Progress feedback during long operations
+- ✅ Maintains compatibility with existing models
+- ✅ Follows OpenAI Deep Research API specifications
+- ✅ Handles both o3 and o4-mini deep research variants
+
+**Files Modified**:
+- `src/services/llm/adapters/openai/OpenAIAdapter.ts` - Added deep research support
+- `codebase-context.md` - Updated documentation
+
 ### Auto .md Extension Fix (2025-01-07)
 **Problem**: LLMs sometimes provide file paths without extensions (e.g., `foldername/filename` instead of `foldername/filename.md`), causing operations to fail since Obsidian expects `.md` files.
 
