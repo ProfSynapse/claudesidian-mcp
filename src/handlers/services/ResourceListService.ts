@@ -25,7 +25,6 @@ export class ResourceListService implements IResourceListService {
      */
     async listResources(): Promise<{ resources: Resource[] }> {
         try {
-            logger.systemLog('ResourceListService: Listing vault resources');
             
             const resources: Resource[] = [];
             const files = this.app.vault.getMarkdownFiles();
@@ -38,7 +37,6 @@ export class ResourceListService implements IResourceListService {
                 });
             }
             
-            logger.systemLog(`ResourceListService: Found ${resources.length} resources`);
             return { resources };
         } catch (error) {
             logger.systemError(error as Error, 'ResourceListService');

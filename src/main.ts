@@ -7,7 +7,7 @@ import { LazyServiceManager } from './services/LazyServiceManager';
 
 // Type imports for service interfaces
 import type { EmbeddingService } from './database/services/EmbeddingService';
-import type { HnswSearchService } from './database/providers/chroma/services/HnswSearchService';
+import type { HnswSearchService } from './database/services/hnsw/HnswSearchService';
 import type { FileEmbeddingAccessService } from './database/services/FileEmbeddingAccessService';
 import type { DirectCollectionService } from './database/services/DirectCollectionService';
 import type { IVectorStore } from './database/interfaces/IVectorStore';

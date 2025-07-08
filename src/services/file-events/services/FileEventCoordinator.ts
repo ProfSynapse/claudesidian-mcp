@@ -240,8 +240,8 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 const strategy = this.dependencies.embeddingScheduler.getStrategy();
                 
                 if (strategy.type === 'startup') {
-                    // For startup strategy, just queue events - don't process them
-                    console.log(`[FileEventCoordinator] Queuing ${createModifyEvents.length} events for startup processing`);
+                    // For startup strategy, just queue events - don't process them immediately
+                    console.log(`[FileEventCoordinator] Queued ${createModifyEvents.length} events for startup processing (${this.dependencies.fileEventQueue.size()} total in queue)`);
                 } else {
                     // For other strategies, process immediately
                     await this.dependencies.embeddingScheduler.scheduleEmbedding(createModifyEvents);
@@ -296,35 +296,55 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     async processStartupQueue(): Promise<void> {
         const queuedEvents = this.dependencies.fileEventQueue.getEvents();
         if (queuedEvents.length === 0) {
+            console.log('[FileEventCoordinator] No events in startup queue to process');
             return;
         }
 
-        console.log(`[FileEventCoordinator] Processing ${queuedEvents.length} queued events from startup`);
+        console.log(`[FileEventCoordinator] Starting processing of ${queuedEvents.length} queued startup events`);
+        const startTime = Date.now();
         
-        // Filter out files that no longer exist or aren't processable
-        const validEvents = queuedEvents.filter(event => {
-            // Delete events don't need to exist
-            if (event.operation === 'delete') {
-                return true;
+        try {
+            // Filter out files that no longer exist or aren't processable
+            const validEvents = queuedEvents.filter(event => {
+                // Delete events don't need to exist
+                if (event.operation === 'delete') {
+                    return true;
+                }
+                
+                const file = this.app.vault.getAbstractFileByPath(event.path);
+                return file && !('children' in file) && this.dependencies.fileMonitor.shouldProcessFile(file);
+            });
+            
+            const invalidCount = queuedEvents.length - validEvents.length;
+            if (invalidCount > 0) {
+                console.log(`[FileEventCoordinator] Filtered out ${invalidCount} stale events (files no longer exist or processable)`);
             }
             
-            const file = this.app.vault.getAbstractFileByPath(event.path);
-            return file && !('children' in file) && this.dependencies.fileMonitor.shouldProcessFile(file);
-        });
-        
-        const invalidCount = queuedEvents.length - validEvents.length;
-        if (invalidCount > 0) {
-            console.log(`[FileEventCoordinator] Filtered out ${invalidCount} invalid files from queue`);
+            if (validEvents.length > 0) {
+                console.log(`[FileEventCoordinator] Processing embeddings for ${validEvents.length} valid files`);
+                
+                if (!this.dependencies.embeddingScheduler) {
+                    throw new Error('Embedding scheduler not available for startup queue processing');
+                }
+                
+                await this.dependencies.embeddingScheduler.forceProcessEmbeddings(validEvents);
+                
+                const duration = Date.now() - startTime;
+                console.log(`[FileEventCoordinator] ✓ Successfully processed ${validEvents.length} file embeddings (${duration}ms)`);
+            } else {
+                console.log('[FileEventCoordinator] No valid events to process after filtering');
+            }
+            
+            // Clear queue after successful processing
+            this.dependencies.fileEventQueue.clear();
+            await this.dependencies.fileEventQueue.persist();
+            console.log('[FileEventCoordinator] ✓ Startup queue cleared and persisted');
+            
+        } catch (error) {
+            console.error('[FileEventCoordinator] Error during startup queue processing:', error);
+            // Don't clear queue on error so we can retry later
+            throw error;
         }
-        
-        if (validEvents.length > 0) {
-            console.log(`[FileEventCoordinator] Processing ${validEvents.length} valid files for embedding`);
-            await this.dependencies.embeddingScheduler.forceProcessEmbeddings(validEvents);
-        }
-        
-        // Clear queue after processing
-        this.dependencies.fileEventQueue.clear();
-        await this.dependencies.fileEventQueue.persist();
     }
 
     // Private helper methods

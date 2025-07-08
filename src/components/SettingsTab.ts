@@ -8,8 +8,6 @@ import {
     AgentManagementAccordion
 } from './accordions';
 import { UpdateManager } from '../utils/UpdateManager';
-import { templateFiles } from '../templates';
-import type { TemplateFile } from '../templates';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 
@@ -184,32 +182,6 @@ export class SettingsTab extends PluginSettingTab {
             });
     }
 
-    /**
-     * Creates the template pack files in the vault
-     */
-    private async createTemplatePack(): Promise<void> {
-        try {
-            // Create Templates folder if it doesn't exist
-            await this.app.vault.createFolder('Templates').catch(() => {});
-            
-            // Create each template file
-            for (const [_, template] of Object.entries(templateFiles) as [string, TemplateFile][]) {
-                await this.app.vault.create(
-                    template.path,
-                    '' // Empty content for user to fill
-                ).catch(err => {
-                    // Ignore "already exists" errors
-                    if (!err.message.includes('already exists')) {
-                        throw err;
-                    }
-                });
-            }
-            
-            new Notice('Template pack created successfully!');
-        } catch (error) {
-            new Notice('Error creating template pack: ' + (error as Error).message);
-        }
-    }
 
     /**
      * Add CSS styles for the settings tab (now implemented in styles.css)

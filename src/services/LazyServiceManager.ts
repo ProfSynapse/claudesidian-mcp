@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import ClaudesidianPlugin from '../main';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
 import { EmbeddingService } from '../database/services/EmbeddingService';
-import { HnswSearchService } from '../database/providers/chroma/services/HnswSearchService';
+import { HnswSearchService } from '../database/services/hnsw/HnswSearchService';
 import { FileEmbeddingAccessService } from '../database/services/FileEmbeddingAccessService';
 import { DirectCollectionService } from '../database/services/DirectCollectionService';
 import { WorkspaceService } from '../database/services/WorkspaceService';
@@ -108,7 +108,10 @@ export class LazyServiceManager {
                 // HNSW needs the base ChromaDB directory, not the collections subdirectory
                 const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
                 const hnswPath = basePath;
+                
+                // Create service with new IndexedDB-based architecture
                 const service = new HnswSearchService(this.app, vectorStore, embeddingService, hnswPath);
+                await service.initialize();
                 
                 return service;
             },
@@ -546,6 +549,9 @@ export class LazyServiceManager {
                         await this.initializeStage(LoadingStage.BACKGROUND_SLOW);
                         console.log('[LazyServiceManager] ✓ Background initialization complete - all core services ready');
                         
+                        // Process startup queue now that embedding services are ready
+                        await this.processStartupQueueIfNeeded();
+                        
                         // ON_DEMAND services are initialized only when requested
                     } catch (error) {
                         console.warn('[LazyServiceManager] Background slow initialization failed:', error);
@@ -556,6 +562,28 @@ export class LazyServiceManager {
                 console.warn('[LazyServiceManager] Background fast initialization failed:', error);
             }
         }, 500); // 500ms delay after immediate stage
+    }
+
+    /**
+     * Process startup queue if file event manager is using startup strategy
+     */
+    private async processStartupQueueIfNeeded(): Promise<void> {
+        try {
+            const fileEventManager = this.getIfReady<FileEventManagerModular>('fileEventManager');
+            if (!fileEventManager) {
+                console.warn('[LazyServiceManager] File event manager not ready for startup queue processing');
+                return;
+            }
+
+            const strategy = fileEventManager.getEmbeddingStrategy();
+            if (strategy.type === 'startup') {
+                console.log('[LazyServiceManager] Embedding services ready - triggering startup queue processing');
+                await fileEventManager.processStartupQueue();
+                console.log('[LazyServiceManager] ✓ Startup queue processing completed');
+            }
+        } catch (error) {
+            console.error('[LazyServiceManager] Error processing startup queue:', error);
+        }
     }
 
     /**

@@ -28,6 +28,7 @@ import { FileEventCoordinator } from './services/FileEventCoordinator';
 export class FileEventManagerModular {
     private dependencies!: IFileEventManagerDependencies;
     private coordinator!: FileEventCoordinator;
+    private isProcessingStartupQueue = false;
     
     // Event handlers for session management
     private sessionCreateHandler!: (data: any) => void;
@@ -119,9 +120,35 @@ export class FileEventManagerModular {
      * Process all queued files for startup embedding strategy
      */
     async processStartupQueue(): Promise<void> {
-        // Ensure vector dependencies are ready before processing
-        await this.ensureVectorDependencies();
-        await this.coordinator.processStartupQueue();
+        if (this.isProcessingStartupQueue) {
+            console.log('[FileEventManagerModular] Startup queue processing already in progress, skipping duplicate call');
+            return;
+        }
+
+        this.isProcessingStartupQueue = true;
+        const queueSize = this.dependencies.fileEventQueue.size();
+        
+        try {
+            if (queueSize === 0) {
+                console.log('[FileEventManagerModular] No events in startup queue to process');
+                return;
+            }
+
+            console.log(`[FileEventManagerModular] Starting startup queue processing for ${queueSize} events`);
+            
+            // Ensure vector dependencies are ready before processing
+            await this.ensureVectorDependencies();
+            await this.coordinator.processStartupQueue();
+            
+            const remainingEvents = this.dependencies.fileEventQueue.size();
+            console.log(`[FileEventManagerModular] ✓ Startup queue processing completed (${queueSize - remainingEvents} events processed, ${remainingEvents} remaining)`);
+            
+        } catch (error) {
+            console.error('[FileEventManagerModular] Error during startup queue processing:', error);
+            throw error;
+        } finally {
+            this.isProcessingStartupQueue = false;
+        }
     }
 
     /**
@@ -169,6 +196,10 @@ export class FileEventManagerModular {
      * Get current embedding strategy
      */
     getEmbeddingStrategy(): EmbeddingStrategy {
+        // Return stored strategy if embeddingScheduler not yet initialized
+        if (!this.dependencies.embeddingScheduler) {
+            return this.embeddingStrategy;
+        }
         return this.dependencies.embeddingScheduler.getStrategy();
     }
 

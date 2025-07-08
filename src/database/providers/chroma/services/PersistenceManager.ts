@@ -88,15 +88,18 @@ export class PersistenceManager {
       console.log(`Saving data to ${dataFilePath}...`);
 
       // Ensure the directory exists
-      const dirPath = dataFilePath.substring(0, dataFilePath.lastIndexOf('/'));
+      const path = require('path');
+      const dirPath = path.dirname(dataFilePath);
       this.ensureDirectory(dirPath);
 
-      // Add timestamp to metadata
+      // Add timestamp to metadata while preserving existing version and itemCount
       const metadata = {
         ...data.metadata,
-        itemCount: data.items.length,
+        // Only override itemCount if metadata doesn't already have it (for metadata-only saves)
+        itemCount: data.metadata.itemCount || data.items.length,
         savedAt: new Date().toISOString(),
-        version: "1.0.0"
+        // Only set version to 1.0.0 if no version exists
+        ...(data.metadata.version ? {} : { version: "1.0.0" })
       };
 
       // Save metadata to disk

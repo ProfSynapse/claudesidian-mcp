@@ -7,7 +7,7 @@ import { TFile } from 'obsidian';
 import { QueryAnalyzer, QueryAnalysis } from './QueryAnalyzer';
 import { KeywordSearchService, KeywordSearchResult, SearchableDocument } from './KeywordSearchService';
 import { FuzzySearchService, FuzzySearchResult, FuzzyDocument } from './FuzzySearchService';
-import { HnswSearchService, SearchResult as SemanticSearchResult } from '../../providers/chroma/services/HnswSearchService';
+import { HnswSearchService, SearchResult as SemanticSearchResult } from '../hnsw/HnswSearchService';
 
 export interface HybridSearchResult {
   id: string;

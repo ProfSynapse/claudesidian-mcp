@@ -259,7 +259,7 @@ class StrictPersistentCollection implements Collection {
     const { queryEmbeddings = [], nResults = 10, where, include = ['embeddings', 'metadatas', 'documents', 'distances'] } = params;
     
     // Query items through the repository
-    const queryResults = this.repository.queryItems(queryEmbeddings, nResults, where);
+    const queryResults = await this.repository.queryItems(queryEmbeddings, nResults, where);
     
     // Initialize results
     const results: any = {

@@ -1,7 +1,7 @@
 import { Plugin } from 'obsidian';
 import { CommonParameters } from '../../../types';
 import { BaseMode } from '../../baseMode';
-import { HnswSearchService } from '../../../database/providers/chroma/services/HnswSearchService';
+import { HnswSearchService } from '../../../database/services/hnsw/HnswSearchService';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
