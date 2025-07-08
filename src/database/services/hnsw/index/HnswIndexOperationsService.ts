@@ -64,7 +64,7 @@ export class HnswIndexOperationsService {
       const hnswId = singleIndex.nextId++;
       singleIndex.index.addPoint(item.embedding, hnswId, false);
       singleIndex.idToItem.set(hnswId, item);
-      singleIndex.itemIdToHnswId.set(item.id, hnswId);
+      singleIndex.itemIdToHnswId.set(String(item.id), hnswId);
       return true;
     } catch (error) {
       const errorMessage = getErrorMessage(error);
@@ -107,11 +107,11 @@ export class HnswIndexOperationsService {
       return false;
     }
 
-    const hnswId = singleIndex.itemIdToHnswId.get(itemId);
+    const hnswId = singleIndex.itemIdToHnswId.get(String(itemId));
     if (hnswId !== undefined) {
       // Note: HNSW doesn't support removal, so we just remove from our mappings
       singleIndex.idToItem.delete(hnswId);
-      singleIndex.itemIdToHnswId.delete(itemId);
+      singleIndex.itemIdToHnswId.delete(String(itemId));
       return true;
     }
 
@@ -145,7 +145,7 @@ export class HnswIndexOperationsService {
     );
 
     // Sort items by ID for consistent ordering
-    const sortedCurrentItems = currentItems.sort((a, b) => a.id.localeCompare(b.id));
+    const sortedCurrentItems = currentItems.sort((a, b) => String(a.id).localeCompare(String(b.id)));
     const newItems = sortedCurrentItems.slice(previousItemCount);
 
     let itemsAdded = 0;

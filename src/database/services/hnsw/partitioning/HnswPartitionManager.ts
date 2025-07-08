@@ -81,7 +81,7 @@ export class HnswPartitionManager {
         
         // Update item-to-partition mapping
         partitionResult.successfulItems.forEach(item => {
-          itemToPartition.set(item.id, i);
+          itemToPartition.set(String(item.id), i);
         });
 
         totalSkipped += partitionResult.skippedCount;
@@ -156,12 +156,12 @@ export class HnswPartitionManager {
     skippedCount: number;
   }> {
     // Create HNSW index for this partition
-    const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, null);
+    const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, '');
     index.initIndex(
-      dimension,
-      this.config.index.m,
-      this.config.index.efConstruction,
-      distribution.capacity
+      distribution.capacity, // maxElements
+      this.config.index.m, // m
+      this.config.index.efConstruction, // efConstruction
+      100 // randomSeed
     );
 
     const idToItem = new Map<number, DatabaseItem>();
@@ -182,7 +182,7 @@ export class HnswPartitionManager {
         const hnswId = nextId++;
         index.addPoint(item.embedding, hnswId, false);
         idToItem.set(hnswId, item);
-        itemIdToHnswId.set(item.id, hnswId);
+        itemIdToHnswId.set(String(item.id), hnswId);
         successfulItems.push(item);
       } catch (error) {
         logger.systemWarn(
@@ -230,10 +230,10 @@ export class HnswPartitionManager {
       const hnswId = targetPartition.nextId++;
       targetPartition.index.addPoint(item.embedding, hnswId, false);
       targetPartition.idToItem.set(hnswId, item);
-      targetPartition.itemIdToHnswId.set(item.id, hnswId);
+      targetPartition.itemIdToHnswId.set(String(item.id), hnswId);
       
       // Update partition mapping
-      partitionedIndex.itemToPartition.set(item.id, targetPartitionIndex);
+      partitionedIndex.itemToPartition.set(String(item.id), targetPartitionIndex);
 
       return true;
     } catch (error) {
@@ -255,19 +255,19 @@ export class HnswPartitionManager {
     partitionedIndex: PartitionedHnswIndex,
     itemId: string
   ): Promise<boolean> {
-    const partitionIndex = partitionedIndex.itemToPartition.get(itemId);
+    const partitionIndex = partitionedIndex.itemToPartition.get(String(itemId));
     if (partitionIndex === undefined) {
       return false;
     }
 
     const partition = partitionedIndex.partitions[partitionIndex];
-    const hnswId = partition.itemIdToHnswId.get(itemId);
+    const hnswId = partition.itemIdToHnswId.get(String(itemId));
     
     if (hnswId !== undefined) {
       // Note: HNSW doesn't support removal, so we just remove from our mappings
       partition.idToItem.delete(hnswId);
-      partition.itemIdToHnswId.delete(itemId);
-      partitionedIndex.itemToPartition.delete(itemId);
+      partition.itemIdToHnswId.delete(String(itemId));
+      partitionedIndex.itemToPartition.delete(String(itemId));
       return true;
     }
 

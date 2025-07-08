@@ -59,7 +59,15 @@ export class IndexedDbUtils {
       safeFilename = safeFilename.substring(0, maxBaseLength) + '_' + hash;
     }
 
-    return safeFilename;
+    // Ensure the filename is valid and convert to string explicitly
+    const finalFilename = String(safeFilename);
+    
+    // Validate the generated filename
+    if (!this.validateFilename(finalFilename)) {
+      throw new Error(`Generated filename is invalid: ${finalFilename}`);
+    }
+
+    return finalFilename;
   }
 
   /**
@@ -70,7 +78,14 @@ export class IndexedDbUtils {
    */
   static generatePartitionFilename(collectionName: string, partitionIndex: number): string {
     const baseFilename = this.generateSafeFilename(collectionName);
-    return `${baseFilename}${this.PARTITION_SUFFIX}${partitionIndex}`;
+    const partitionFilename = `${baseFilename}${this.PARTITION_SUFFIX}${String(partitionIndex)}`;
+    
+    // Ensure the partition filename is valid
+    if (!this.validateFilename(partitionFilename)) {
+      throw new Error(`Generated partition filename is invalid: ${partitionFilename}`);
+    }
+    
+    return partitionFilename;
   }
 
   /**
@@ -253,7 +268,7 @@ export class IndexedDbUtils {
       return false;
     }
 
-    // Check for dangerous characters
+    // Check for dangerous characters - regex matches unsafe chars, so if found, filename is invalid
     if (this.SAFE_FILENAME_REGEX.test(filename)) {
       return false;
     }

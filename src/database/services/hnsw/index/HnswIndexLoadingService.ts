@@ -86,7 +86,9 @@ export class HnswIndexLoadingService {
     currentItems: DatabaseItem[], 
     dimension: number
   ): Promise<IndexLoadingResult> {
-    const loadResult = await this.persistenceService.loadIndex(collectionName);
+    // Load metadata first, then pass it to loadIndex
+    const metadata = await this.persistenceService.loadIndexMetadata(collectionName);
+    const loadResult = await this.persistenceService.loadIndex(collectionName, metadata);
     
     if (!loadResult.success || !loadResult.index) {
       logger.systemLog(

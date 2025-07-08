@@ -767,16 +767,39 @@ export class HnswSearchService {
     }
 
     for (let i = 0; i < items.ids.length; i++) {
+      const rawEmbedding = items.embeddings[i] || [];
+      
+      // Convert embedding to regular array of numbers
+      let validEmbedding: number[] = [];
+      
+      if (rawEmbedding && typeof rawEmbedding === 'object' && rawEmbedding.length > 0) {
+        // Handle typed arrays (Float32Array, Float64Array, etc.) and regular arrays
+        if (Array.isArray(rawEmbedding) || rawEmbedding.constructor?.name?.includes('Array')) {
+          validEmbedding = Array.from(rawEmbedding).map((val: any) => {
+            const numVal = Number(val);
+            if (isNaN(numVal) || !isFinite(numVal)) {
+              return 0; // Default to 0 for invalid values
+            }
+            return numVal;
+          });
+        }
+      }
+      
       const item: DatabaseItem = {
-        id: items.ids[i],
-        embedding: items.embeddings[i] || [],
-        document: items.documents[i] || '',
+        id: String(items.ids[i]),
+        embedding: validEmbedding,
+        document: String(items.documents[i] || ''),
         metadata: items.metadatas?.[i] || {}
       };
       
       // Only include items that have valid embeddings
       if (item.embedding && item.embedding.length > 0) {
         databaseItems.push(item);
+      } else {
+        logger.systemWarn(
+          `[DIAGNOSTIC] Skipping item ${i} with invalid embedding: length=${item.embedding?.length}`,
+          'HnswSearchService'
+        );
       }
     }
 

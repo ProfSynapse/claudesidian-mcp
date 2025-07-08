@@ -7,7 +7,7 @@ import { LLMService } from '../../../services/LLMService';
 import { AgentManager } from '../../../services/AgentManager';
 import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
 import { StaticModelsService } from '../../../services/StaticModelsService';
-import { UsageTracker, BudgetStatus } from '../../../services/UsageTracker';
+import { UsageTracker } from '../../../services/UsageTracker';
 
 /**
  * Parameters for batch LLM prompt execution

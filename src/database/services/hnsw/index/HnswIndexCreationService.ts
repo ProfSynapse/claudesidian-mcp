@@ -105,12 +105,12 @@ export class HnswIndexCreationService {
     const capacity = this.config.calculateOptimalCapacity(items.length);
     
     // Create HNSW index (disable auto-save to prevent concurrent syncFS operations)
-    const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, null);
+    const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, '');
     index.initIndex(
-      dimension,
-      this.config.index.m,
-      this.config.index.efConstruction,
-      capacity
+      capacity, // maxElements
+      this.config.index.m, // m
+      this.config.index.efConstruction, // efConstruction
+      100 // randomSeed - use fixed value
     );
 
     const idToItem = new Map<number, DatabaseItem>();
@@ -130,7 +130,7 @@ export class HnswIndexCreationService {
         const hnswId = nextId++;
         index.addPoint(item.embedding, hnswId, false);
         idToItem.set(hnswId, item);
-        itemIdToHnswId.set(item.id, hnswId);
+        itemIdToHnswId.set(String(item.id), hnswId);
       } catch (error) {
         const errorMessage = getErrorMessage(error);
         
@@ -269,8 +269,8 @@ export class HnswIndexCreationService {
     expectedItemCount: number
   ): Promise<HnswIndex> {
     const capacity = this.config.calculateOptimalCapacity(expectedItemCount);
-    const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, null);
-    index.initIndex(dimension, this.config.index.m, this.config.index.efConstruction, capacity);
+    const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, '');
+    index.initIndex(capacity, this.config.index.m, this.config.index.efConstruction, 100);
 
     return {
       index,
@@ -296,8 +296,8 @@ export class HnswIndexCreationService {
     const capacity = this.config.calculateOptimalCapacity(this.config.partitioning.maxItemsPerPartition);
 
     for (let i = 0; i < partitionCount; i++) {
-      const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, null);
-      index.initIndex(dimension, this.config.index.m, this.config.index.efConstruction, capacity);
+      const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, '');
+      index.initIndex(capacity, this.config.index.m, this.config.index.efConstruction, 100);
 
       partitions.push({
         index,
