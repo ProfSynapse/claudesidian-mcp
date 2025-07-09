@@ -58,7 +58,8 @@ export class MCPServer implements IMCPServer {
         private eventManager: EventManager,
         private sessionContextManager?: SessionContextManager,
         private serverName?: string,
-        private customPromptStorage?: CustomPromptStorageService
+        private customPromptStorage?: CustomPromptStorageService,
+        private onToolCall?: (toolName: string, params: any) => Promise<void>
     ) {
         // Get settings from plugin
         
@@ -208,6 +209,15 @@ export class MCPServer implements IMCPServer {
         // Handle tool execution
         this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const parsedArgs = parseJsonArrays(request.params.arguments);
+            
+            // Trigger tool call hook for lazy loading
+            if (this.onToolCall) {
+                try {
+                    await this.onToolCall(request.params.name, parsedArgs);
+                } catch (error) {
+                    console.warn('[MCPServer] Tool call hook failed:', error);
+                }
+            }
             
             // Check if this is a help request
             if (parsedArgs && parsedArgs.help === true) {

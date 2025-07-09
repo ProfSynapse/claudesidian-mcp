@@ -4,6 +4,7 @@ import { MCPServer } from './server';
 import { EventManager } from './services/EventManager';
 import { AgentManager } from './services/AgentManager';
 import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
+import { LazyServiceManager } from './services/LazyServiceManager';
 import {
     ContentManagerAgent,
     CommandManagerAgent,
@@ -39,6 +40,7 @@ export class MCPConnector {
     private eventManager: EventManager;
     private sessionContextManager: SessionContextManager;
     private customPromptStorage?: CustomPromptStorageService;
+    private serviceManager?: LazyServiceManager;
     
     constructor(
         private app: App,
@@ -48,12 +50,19 @@ export class MCPConnector {
         this.sessionContextManager = new SessionContextManager();
         this.agentManager = new AgentManager(app, plugin, this.eventManager);
         
-        // Inject memory service if available
-        if (this.plugin && (this.plugin as any).services) {
-            const services = (this.plugin as any).services;
-            if (services.memoryService) {
-                this.sessionContextManager.setMemoryService(services.memoryService);
-            }
+        // Get service manager from plugin if available (for lazy loading)
+        if (this.plugin && (this.plugin as any).getServiceManager) {
+            this.serviceManager = (this.plugin as any).getServiceManager();
+        }
+        
+        // Inject memory service if available (will be lazy loaded)
+        if (this.serviceManager) {
+            // Set up lazy memory service injection
+            this.serviceManager.get('memoryService').then(memoryService => {
+                this.sessionContextManager.setMemoryService(memoryService);
+            }).catch(error => {
+                console.warn('[MCPConnector] Memory service not available:', error);
+            });
         }
         
         // Create custom prompt storage service if plugin settings are available
@@ -62,11 +71,62 @@ export class MCPConnector {
             this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
         }
         
-        // Create server with vault-specific identifier
-        this.server = new MCPServer(app, plugin, this.eventManager, this.sessionContextManager, undefined, this.customPromptStorage);
+        // Create server with vault-specific identifier and tool call hook
+        this.server = new MCPServer(
+            app, 
+            plugin, 
+            this.eventManager, 
+            this.sessionContextManager, 
+            undefined, 
+            this.customPromptStorage,
+            this.serviceManager ? (toolName: string, params: any) => this.onToolCall(toolName, params) : undefined
+        );
         
         // Initialize agents (now async) - but don't call it here
         // This will be called from the main plugin's onload method
+    }
+    
+    /**
+     * Handle tool calls to trigger lazy loading
+     */
+    private async onToolCall(toolName: string, params: any): Promise<void> {
+        // Trigger vector store loading on any tool call
+        if (this.serviceManager) {
+            await this.serviceManager.onToolCall();
+            
+            // If this is a workspace-related operation, trigger workspace caching
+            if (this.isWorkspaceOperation(toolName, params)) {
+                const workspaceId = this.extractWorkspaceId(params);
+                if (workspaceId) {
+                    await this.serviceManager.onWorkspaceLoad(workspaceId);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Check if this tool call is workspace-related
+     */
+    private isWorkspaceOperation(toolName: string, params: any): boolean {
+        const workspaceTools = [
+            'memoryManager.switchWorkspace',
+            'memoryManager.createWorkspace',
+            'memoryManager.getWorkspace',
+            'vaultLibrarian.search'
+        ];
+        
+        return workspaceTools.some(tool => toolName.includes(tool)) || 
+               (params && (params.workspaceId || params.workspace));
+    }
+    
+    /**
+     * Extract workspace ID from tool parameters
+     */
+    private extractWorkspaceId(params: any): string | null {
+        if (params?.workspaceId) return params.workspaceId;
+        if (params?.workspace) return params.workspace;
+        if (params?.params?.workspaceId) return params.params.workspaceId;
+        return null;
     }
     
     /**
@@ -123,12 +183,6 @@ export class MCPConnector {
      */
     public async initializeAgents(): Promise<void> {
         try {
-            // Get services from the plugin if available
-            const services = this.plugin && (this.plugin as any).services ? (this.plugin as any).services : {};
-            const memoryService = services.memoryService;
-            // Get vector store for initialization
-            const vectorStore = services.vectorStore;
-            
             // Get memory settings to determine what to enable
             const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
             const isMemoryEnabled = memorySettings?.enabled && memorySettings?.embeddingsEnabled;
@@ -150,9 +204,12 @@ export class MCPConnector {
                 this.plugin as ClaudesidianPlugin
             );
             
+            // CommandManager with lazy memory service
+            const memoryService = this.serviceManager ? 
+                await this.serviceManager.get('memoryService').catch(() => null) : null;
             const commandManagerAgent = new CommandManagerAgent(
                 this.app, 
-                memoryService
+                memoryService as any
             );
             
             
@@ -194,23 +251,30 @@ export class MCPConnector {
             }
             
             // Always register VaultLibrarian (has non-vector modes like search)
-            let vaultLibrarianAgent;
+            let vaultLibrarianAgent: VaultLibrarianAgent | null = null;
             try {
                 vaultLibrarianAgent = new VaultLibrarianAgent(
                     this.app,
                     enableVectorModes  // Pass vector modes enabled status (memory + valid API keys)
                 );
                 
-                // If vector modes are enabled (memory + valid API keys), initialize vector capabilities
-                if (enableVectorModes && vectorStore) {
-                    vaultLibrarianAgent.initializeSearchService().catch(error => 
-                        console.error('Error initializing VaultLibrarian search service:', error)
-                    );
-                    
-                    // Update VaultLibrarian with memory settings
-                    if (memorySettings) {
-                        vaultLibrarianAgent.updateSettings(memorySettings);
-                    }
+                // If vector modes are enabled, set up lazy initialization of search service
+                if (enableVectorModes && this.serviceManager) {
+                    // Initialize search service when vector store becomes available
+                    this.serviceManager.get('vectorStore').then(async (vectorStore) => {
+                        if (vaultLibrarianAgent) {
+                            await vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
+                                console.error('Error initializing VaultLibrarian search service:', error)
+                            );
+                            
+                            // Update VaultLibrarian with memory settings
+                            if (memorySettings) {
+                                vaultLibrarianAgent.updateSettings(memorySettings);
+                            }
+                        }
+                    }).catch((error: any) => {
+                        console.warn('Vector store not available for VaultLibrarian:', error);
+                    });
                 }
             } catch (error) {
                 console.error("Error creating VaultLibrarianAgent:", error);

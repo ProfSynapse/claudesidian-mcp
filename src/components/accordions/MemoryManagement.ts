@@ -4,7 +4,7 @@ import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian'
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddingAccessService';
-import { HnswSearchService } from '../../database/providers/chroma/services/HnswSearchService';
+import { HnswSearchService } from '../../database/services/hnsw/HnswSearchService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 

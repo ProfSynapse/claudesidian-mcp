@@ -35,7 +35,6 @@ export class PromptsListService implements IPromptsListService {
      */
     async listPrompts(): Promise<{ prompts: Prompt[] }> {
         try {
-            logger.systemLog('PromptsListService: Listing available prompts');
             
             const prompts: Prompt[] = [];
             
@@ -55,10 +54,8 @@ export class PromptsListService implements IPromptsListService {
                 }));
                 
                 prompts.push(...mcpPrompts);
-                logger.systemLog(`PromptsListService: Added ${customPrompts.length} custom prompts`);
             }
             
-            logger.systemLog(`PromptsListService: Found ${prompts.length} total prompts`);
             return { prompts };
         } catch (error) {
             logger.systemError(error as Error, 'PromptsListService');

@@ -88,12 +88,11 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
             .setName('Automatic Indexing')
             .setDesc('Controls when new or modified notes are automatically indexed and embedded for search')
             .addDropdown(dropdown => dropdown
-                .addOption('manual', 'Manual Only - No automatic indexing')
                 .addOption('idle', 'Idle Mode - Index when Obsidian is inactive')
                 .addOption('startup', 'Startup Mode - Index missing files on restart')
-                .setValue(this.settings.embeddingStrategy || 'manual')
+                .setValue(this.settings.embeddingStrategy || 'idle')
                 .onChange(async (value) => {
-                    this.settings.embeddingStrategy = value as 'manual' | 'idle' | 'startup';
+                    this.settings.embeddingStrategy = value as 'idle' | 'startup';
                     await this.saveSettings();
                     // Trigger re-render if needed
                     if (this.onSettingsChanged) {

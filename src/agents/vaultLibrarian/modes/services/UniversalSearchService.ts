@@ -6,7 +6,7 @@
  */
 
 import { Plugin, TFile, getAllTags, prepareFuzzySearch } from 'obsidian';
-import { HnswSearchService } from '../../../../database/providers/chroma/services/HnswSearchService';
+import { HnswSearchService } from '../../../../database/services/hnsw/HnswSearchService';
 import { MetadataSearchService, MetadataSearchCriteria, PropertyFilter } from '../../../../database/services/MetadataSearchService';
 import { HybridSearchService, HybridSearchOptions } from '../../../../database/services/search';
 import { EmbeddingService } from '../../../../database/services/EmbeddingService';
@@ -68,39 +68,76 @@ export class UniversalSearchService {
     this.workspaceService = workspaceService;
     this.graphOperations = new GraphOperations();
     
-    // Initialize hybrid search service with semantic search capability
-    if (hnswSearchService) {
-      this.hybridSearchService = new HybridSearchService(hnswSearchService);
-      // Hybrid search initialized
-      
-      // Note: Search indexes will be populated during plugin startup sequence
-      // instead of immediately in constructor to coordinate with other initialization
+    // Note: HybridSearchService will be initialized lazily when needed
+    // because HnswSearchService may not be ready during construction
+  }
+
+  /**
+   * Initialize hybrid search service lazily when needed
+   */
+  private async ensureHybridSearchService(): Promise<HybridSearchService | null> {
+    if (this.hybridSearchService) {
+      return this.hybridSearchService;
     }
+
+    // If we don't have the service from constructor, try to get it from plugin
+    if (!this.hnswSearchService) {
+      try {
+        const plugin = this.plugin as any;
+        if (plugin.services?.hnswSearchService) {
+          this.hnswSearchService = await plugin.services.hnswSearchService;
+        }
+      } catch (error) {
+        console.warn('[UniversalSearchService] Failed to get HnswSearchService:', error);
+        return null;
+      }
+    }
+
+    if (this.hnswSearchService) {
+      try {
+        this.hybridSearchService = new HybridSearchService(this.hnswSearchService);
+        console.log('[UniversalSearchService] Lazy-initialized HybridSearchService');
+        return this.hybridSearchService;
+      } catch (error) {
+        console.error('[UniversalSearchService] Failed to create HybridSearchService:', error);
+        return null;
+      }
+    }
+
+    return null;
   }
 
   /**
    * Populate hybrid search indexes with existing vault content
    */
   async populateHybridSearchIndexes(): Promise<void> {
-    if (!this.hybridSearchService) {
+    const hybridSearchService = await this.ensureHybridSearchService();
+    if (!hybridSearchService) {
       console.error('[UniversalSearchService] No hybrid search service available for indexing');
       return;
     }
 
     try {
-      // Populating search indexes
+      console.log('[UniversalSearchService] Starting hybrid search index population');
       
       const files = this.plugin.app.vault.getMarkdownFiles();
-      // Processing files for search indexing
+      console.log(`[UniversalSearchService] Found ${files.length} markdown files to process`);
+      
+      if (files.length === 0) {
+        console.warn('[UniversalSearchService] No markdown files found in vault');
+        return;
+      }
       
       let indexedCount = 0;
       let errorCount = 0;
+      let skippedCount = 0;
       
       for (const file of files) {
         try {
           const content = await this.plugin.app.vault.read(file);
           
           if (!content || content.trim().length === 0) {
+            skippedCount++;
             continue;
           }
 
@@ -110,7 +147,7 @@ export class UniversalSearchService {
           const headers = this.extractHeaders(content);
           
           // Index the file in hybrid search
-          this.hybridSearchService.indexDocument(
+          hybridSearchService.indexDocument(
             file.path,
             file.basename,
             headers,
@@ -125,16 +162,28 @@ export class UniversalSearchService {
           );
           
           indexedCount++;
+          
+          // Log progress every 100 files
+          if (indexedCount % 100 === 0) {
+            console.log(`[UniversalSearchService] Indexed ${indexedCount}/${files.length} files...`);
+          }
         } catch (error) {
           console.error(`[UniversalSearchService] Failed to index file ${file.path}:`, error);
           errorCount++;
         }
       }
       
-      console.log(`[UniversalSearchService] Search indexes populated: ${indexedCount} files indexed, ${errorCount} errors`);
+      console.log(`[UniversalSearchService] Index population complete: ${indexedCount} files indexed, ${skippedCount} skipped, ${errorCount} errors`);
+      
+      // Verify the indexes were actually populated
+      const postStats = hybridSearchService.getStats();
+      if (postStats.keyword.totalDocuments === 0 && postStats.fuzzy.totalDocuments === 0) {
+        console.error('[UniversalSearchService] WARNING: Index population appeared to succeed but no documents were indexed');
+      }
       
     } catch (error) {
       console.error('[UniversalSearchService] Failed to populate hybrid search indexes:', error);
+      throw error; // Re-throw to allow caller to handle
     }
   }
 
@@ -371,6 +420,8 @@ export class UniversalSearchService {
     const startTime = performance.now();
     const { query, limit = 5 } = params;
 
+    console.log(`[UniversalSearchService] Starting consolidated search for: "${query}" with limit: ${limit}`);
+
     // 1. Parse query for tags/properties (optional)
     const parsedQuery = this.parseSearchQuery(query);
 
@@ -386,7 +437,9 @@ export class UniversalSearchService {
     }
 
     // 3. Get hybrid search results
+    console.log(`[UniversalSearchService] Searching content with query: "${parsedQuery.cleanQuery}", filteredFiles: ${filteredFiles?.length || 'none'}`);
     const hybridResults = await this.searchContent(parsedQuery.cleanQuery, filteredFiles, limit * 3, params);
+    console.log(`[UniversalSearchService] Content search returned ${hybridResults.length} results`);
 
     // 4. Apply graph boost if enabled
     let boostedResults = hybridResults;
@@ -557,11 +610,18 @@ export class UniversalSearchService {
    * Search content using hybrid search (semantic + keyword + fuzzy)
    */
   private async searchContent(query: string, filteredFiles?: TFile[], limit = 5, params?: UniversalSearchParams): Promise<UniversalSearchResultItem[]> {
-    if (!query) return [];
+    if (!query) {
+      console.log(`[UniversalSearchService] Empty query provided to searchContent`);
+      return [];
+    }
+
+    console.log(`[UniversalSearchService] searchContent called with query: "${query}", limit: ${limit}`);
 
     try {
       // Use hybrid search if available, otherwise fall back to semantic search
-      if (this.hybridSearchService) {
+      const hybridSearchService = await this.ensureHybridSearchService();
+      if (hybridSearchService) {
+        console.log(`[UniversalSearchService] Using hybrid search service`);
         const options: HybridSearchOptions = {
           limit,
           includeContent: false,
@@ -573,20 +633,45 @@ export class UniversalSearchService {
         console.log(`[UniversalSearchService] Starting hybrid search for query: "${query}" with queryType: ${options.queryType}`);
         
         // Log hybrid search stats before searching
-        const stats = this.hybridSearchService.getStats();
+        const stats = hybridSearchService.getStats();
         console.log(`[UniversalSearchService] Pre-search hybrid stats:`, stats);
         
-        // If indexes are empty, try to populate them now
-        if (stats.keyword.totalDocuments === 0 && stats.fuzzy.totalDocuments === 0) {
+        // Check if indexes need population
+        const needsPopulation = stats.keyword.totalDocuments === 0 && stats.fuzzy.totalDocuments === 0;
+        const semanticAvailable = this.hnswSearchService && this.hnswSearchService.hasIndex('file_embeddings');
+        
+        if (needsPopulation) {
           console.log(`[UniversalSearchService] Indexes are empty, triggering manual population...`);
-          await this.populateHybridSearchIndexes();
+          console.log(`[UniversalSearchService] HNSW service available: ${!!this.hnswSearchService}`);
           
-          // Check stats again after population
-          const newStats = this.hybridSearchService.getStats();
-          console.log(`[UniversalSearchService] Post-population stats:`, newStats);
+          try {
+            await this.populateHybridSearchIndexes();
+            
+            // Check stats again after population
+            const newStats = hybridSearchService.getStats();
+            console.log(`[UniversalSearchService] Post-population stats:`, newStats);
+            
+            // Verify population was successful
+            if (newStats.keyword.totalDocuments === 0 && newStats.fuzzy.totalDocuments === 0) {
+              console.warn(`[UniversalSearchService] Index population failed - no documents indexed`);
+            }
+          } catch (error) {
+            console.error(`[UniversalSearchService] Index population failed:`, error);
+            // Continue with search anyway - may fall back to brute force
+          }
         }
         
-        const results = await this.hybridSearchService.search(query, options, filteredFiles);
+        console.log(`[UniversalSearchService] Search readiness: keyword=${stats.keyword.totalDocuments}, fuzzy=${stats.fuzzy.totalDocuments}, semantic=${semanticAvailable}`);
+        
+        // Execute hybrid search with proper error handling
+        let results: any[];
+        try {
+          results = await hybridSearchService.search(query, options, filteredFiles);
+        } catch (searchError) {
+          console.error(`[UniversalSearchService] Hybrid search failed:`, searchError);
+          // Return empty results rather than throwing - let fallback search handle it
+          results = [];
+        }
         
         console.log(`[UniversalSearchService] Hybrid search returned ${results.length} results:`, 
           results.map(r => ({ 

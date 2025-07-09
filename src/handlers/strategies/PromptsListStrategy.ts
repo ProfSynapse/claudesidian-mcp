@@ -33,7 +33,6 @@ export class PromptsListStrategy implements IRequestStrategy<PromptsListRequest,
 
     async handle(request: PromptsListRequest): Promise<PromptsListResponse> {
         try {
-            logger.systemLog('PromptsListStrategy: Handling prompts list request');
             
             const category = request.params?.category;
             

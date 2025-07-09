@@ -35,7 +35,6 @@ export class ResourceListStrategy implements IRequestStrategy<ResourceListReques
 
     async handle(request: ResourceListRequest): Promise<ResourceListResponse> {
         try {
-            logger.systemLog('ResourceListStrategy: Handling resource list request');
             
             const pathPrefix = request.params?.pathPrefix;
             

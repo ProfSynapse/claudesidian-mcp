@@ -20,7 +20,7 @@ export interface ProcessingResult {
 }
 
 export interface EmbeddingStrategy {
-    type: 'manual' | 'idle' | 'startup';
+    type: 'idle' | 'startup';
     idleTimeThreshold: number;
     batchSize: number;
     processingDelay: number;

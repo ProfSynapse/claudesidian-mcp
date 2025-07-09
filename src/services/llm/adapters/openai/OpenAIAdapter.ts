@@ -35,9 +35,15 @@ export class OpenAIAdapter extends BaseAdapter {
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
-      // Use Chat Completions API directly for reliability
-      const result = await this.generateWithChatCompletions(prompt, options);
-      return result;
+      const model = options?.model || this.currentModel;
+      
+      // Route deep research models to specialized handler
+      if (this.isDeepResearchModel(model)) {
+        return await this.generateWithDeepResearch(prompt, options);
+      }
+      
+      // Use Chat Completions API for standard models
+      return await this.generateWithChatCompletions(prompt, options);
     } catch (error) {
       throw this.handleError(error, 'generation');
     }
@@ -45,8 +51,17 @@ export class OpenAIAdapter extends BaseAdapter {
 
   async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
     try {
+      const model = options?.model || this.currentModel;
+      
+      // Deep research models don't support traditional streaming
+      // Instead, we provide progress updates during the research process
+      if (this.isDeepResearchModel(model)) {
+        return await this.generateWithDeepResearchStreaming(prompt, options);
+      }
+
+      // Standard streaming for regular models
       const streamParams: any = {
-        model: options?.model || this.currentModel,
+        model,
         messages: this.buildMessages(prompt, options?.systemPrompt),
         stream: true
       };
@@ -85,7 +100,7 @@ export class OpenAIAdapter extends BaseAdapter {
       const extractedUsage = this.extractUsage({ usage });
       const response = await this.buildLLMResponse(
         fullText,
-        this.currentModel,
+        model,
         extractedUsage,
         undefined,
         finishReason
@@ -110,6 +125,271 @@ export class OpenAIAdapter extends BaseAdapter {
       this.handleError(error, 'listing models');
       return [];
     }
+  }
+
+  // Deep research model detection
+  private isDeepResearchModel(model: string): boolean {
+    return model.includes('deep-research');
+  }
+
+  // Deep research streaming handler with progress updates
+  private async generateWithDeepResearchStreaming(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
+    const model = options?.model || this.currentModel;
+    
+    // Build input format for Deep Research API
+    const input: any[] = [];
+    
+    // Add system message if provided
+    if (options?.systemPrompt) {
+      input.push({
+        role: 'developer',
+        content: [{ type: 'input_text', text: options.systemPrompt }]
+      });
+    }
+    
+    // Add user message
+    input.push({
+      role: 'user', 
+      content: [{ type: 'input_text', text: prompt }]
+    });
+
+    const requestParams: any = {
+      model,
+      input,
+      reasoning: { summary: 'auto' },
+      tools: [{ type: 'web_search_preview' }], // Default tool for deep research
+      background: true // Enable async processing
+    };
+
+    // Add optional tools if specified
+    if (options?.tools && options.tools.length > 0) {
+      // Convert tools to Deep Research API format
+      const drTools = options.tools.map(tool => {
+        if (tool.type === 'function') {
+          return { type: 'code_interpreter', container: { type: 'auto', file_ids: [] } };
+        }
+        return { type: tool.type };
+      });
+      requestParams.tools = [...requestParams.tools, ...drTools];
+    }
+
+    // Submit the deep research request
+    console.log('Submitting deep research request for model:', model);
+    const response = await (this.client as any).responses.create(requestParams);
+    
+    // Poll for completion with progress updates
+    let finalResponse = response;
+    if (response.status === 'in_progress' || !this.isDeepResearchComplete(response)) {
+      finalResponse = await this.pollForCompletionWithStreaming(response.id, model, options);
+    }
+
+    // Extract the final report from the output array
+    const result = await this.parseDeepResearchResponse(finalResponse, model);
+    
+    if (options?.onComplete) {
+      options.onComplete(result);
+    }
+    
+    return result;
+  }
+
+  // Deep research handler with async processing
+  private async generateWithDeepResearch(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    const model = options?.model || this.currentModel;
+    
+    // Build input format for Deep Research API
+    const input: any[] = [];
+    
+    // Add system message if provided
+    if (options?.systemPrompt) {
+      input.push({
+        role: 'developer',
+        content: [{ type: 'input_text', text: options.systemPrompt }]
+      });
+    }
+    
+    // Add user message
+    input.push({
+      role: 'user', 
+      content: [{ type: 'input_text', text: prompt }]
+    });
+
+    const requestParams: any = {
+      model,
+      input,
+      reasoning: { summary: 'auto' },
+      tools: [{ type: 'web_search_preview' }], // Default tool for deep research
+      background: true // Enable async processing
+    };
+
+    // Add optional tools if specified
+    if (options?.tools && options.tools.length > 0) {
+      // Convert tools to Deep Research API format
+      const drTools = options.tools.map(tool => {
+        if (tool.type === 'function') {
+          return { type: 'code_interpreter', container: { type: 'auto', file_ids: [] } };
+        }
+        return { type: tool.type };
+      });
+      requestParams.tools = [...requestParams.tools, ...drTools];
+    }
+
+    // Submit the deep research request
+    console.log('Submitting deep research request for model:', model);
+    const response = await (this.client as any).responses.create(requestParams);
+    
+    // Poll for completion if response is not immediately ready
+    let finalResponse = response;
+    if (response.status === 'in_progress' || !this.isDeepResearchComplete(response)) {
+      finalResponse = await this.pollForCompletion(response.id, model);
+    }
+
+    // Extract the final report from the output array
+    return this.parseDeepResearchResponse(finalResponse, model);
+  }
+
+  // Check if deep research response is complete
+  private isDeepResearchComplete(response: any): boolean {
+    // Check if we have output with final content
+    return response.output && 
+           response.output.length > 0 && 
+           response.output.some((item: any) => 
+             item.type === 'message' && 
+             item.content && 
+             item.content.length > 0 &&
+             item.content[0].text
+           );
+  }
+
+  // Poll for deep research completion with streaming updates
+  private async pollForCompletionWithStreaming(responseId: string, model: string, options?: StreamOptions, maxWaitTime = 300000): Promise<any> {
+    const startTime = Date.now();
+    const pollInterval = model.includes('o4-mini') ? 2000 : 5000; // Faster polling for mini model
+    
+    console.log(`Polling for deep research completion (model: ${model}, interval: ${pollInterval}ms)`);
+    
+    // Send initial progress update
+    if (options?.onToken) {
+      options.onToken('🔍 Starting deep research...\n');
+    }
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        // Retrieve current status
+        const response = await (this.client as any).responses.retrieve(responseId);
+        
+        if (this.isDeepResearchComplete(response)) {
+          console.log('Deep research completed successfully');
+          if (options?.onToken) {
+            options.onToken('✅ Research complete! Generating final report...\n');
+          }
+          return response;
+        }
+        
+        if (response.status === 'failed' || response.status === 'error') {
+          throw new Error(`Deep research failed: ${response.error || 'Unknown error'}`);
+        }
+        
+        // Send progress updates to stream
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        const progressMessage = `🔄 Research in progress... (${elapsed}s elapsed)\n`;
+        
+        if (options?.onToken) {
+          options.onToken(progressMessage);
+        }
+        
+        console.log(`Deep research in progress... (${elapsed}s elapsed)`);
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+      } catch (error) {
+        console.error('Error polling for completion:', error);
+        if (options?.onError) {
+          options.onError(error as Error);
+        }
+        throw this.handleError(error, 'deep research polling');
+      }
+    }
+    
+    throw new Error(`Deep research timed out after ${maxWaitTime / 1000} seconds`);
+  }
+
+  // Poll for deep research completion
+  private async pollForCompletion(responseId: string, model: string, maxWaitTime = 300000): Promise<any> {
+    const startTime = Date.now();
+    const pollInterval = model.includes('o4-mini') ? 2000 : 5000; // Faster polling for mini model
+    
+    console.log(`Polling for deep research completion (model: ${model}, interval: ${pollInterval}ms)`);
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        // Retrieve current status (this is a hypothetical API call)
+        const response = await (this.client as any).responses.retrieve(responseId);
+        
+        if (this.isDeepResearchComplete(response)) {
+          console.log('Deep research completed successfully');
+          return response;
+        }
+        
+        if (response.status === 'failed' || response.status === 'error') {
+          throw new Error(`Deep research failed: ${response.error || 'Unknown error'}`);
+        }
+        
+        console.log(`Deep research in progress... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+      } catch (error) {
+        console.error('Error polling for completion:', error);
+        throw this.handleError(error, 'deep research polling');
+      }
+    }
+    
+    throw new Error(`Deep research timed out after ${maxWaitTime / 1000} seconds`);
+  }
+
+  // Parse deep research response structure
+  private async parseDeepResearchResponse(response: any, model: string): Promise<LLMResponse> {
+    if (!response.output || response.output.length === 0) {
+      throw new Error('No output received from deep research');
+    }
+
+    // Find the final message in the output array
+    const finalOutput = response.output[response.output.length - 1];
+    
+    if (finalOutput.type !== 'message' || !finalOutput.content || finalOutput.content.length === 0) {
+      throw new Error('Invalid deep research response structure');
+    }
+
+    const content = finalOutput.content[0];
+    const text = content.text || '';
+    const annotations = content.annotations || [];
+
+    // Extract usage information if available
+    let usage;
+    const usageOutput = response.output.find((item: any) => item.usage);
+    if (usageOutput) {
+      usage = this.extractUsage(usageOutput);
+    }
+
+    // Build metadata with citations
+    const metadata: Record<string, any> = {
+      deepResearch: true,
+      citations: annotations.map((annotation: any) => ({
+        title: annotation.title,
+        url: annotation.url,
+        startIndex: annotation.start_index,
+        endIndex: annotation.end_index
+      })),
+      intermediateSteps: response.output.length - 1, // Number of intermediate processing steps
+      processingTime: response.metadata?.processing_time_ms
+    };
+
+    return this.buildLLMResponse(
+      text,
+      model,
+      usage,
+      metadata,
+      'stop' // Deep research always completes normally
+    );
   }
 
   // Private methods

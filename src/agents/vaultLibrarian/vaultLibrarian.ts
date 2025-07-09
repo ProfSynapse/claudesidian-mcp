@@ -12,7 +12,7 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
-import { HnswSearchService } from '../../database/providers/chroma/services/HnswSearchService';
+import { HnswSearchService } from '../../database/services/hnsw/HnswSearchService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
 

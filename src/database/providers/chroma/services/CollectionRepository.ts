@@ -7,7 +7,7 @@
 import { DatabaseItem } from './FilterEngine';
 import { VectorCalculator } from './VectorCalculator';
 import { FilterEngine, WhereClause } from './FilterEngine';
-import { HnswSearchService } from './HnswSearchService';
+import { HnswSearchService } from '../../../services/hnsw/HnswSearchService';
 
 export interface CollectionData {
   items: Map<string, DatabaseItem>;
@@ -22,18 +22,20 @@ export interface ItemWithDistance {
 export class CollectionRepository {
   private items: Map<string, DatabaseItem>;
   private collectionMetadata: Record<string, any>;
-  private hnswService: HnswSearchService;
+  private hnswService?: HnswSearchService;
   private collectionName: string;
   private hnswEnabled = true;
+  private persistentPath?: string;
 
-  constructor(metadata: Record<string, any> = {}, collectionName = 'default') {
+  constructor(metadata: Record<string, any> = {}, collectionName = 'default', persistentPath?: string, hnswService?: HnswSearchService) {
     this.items = new Map();
     this.collectionMetadata = {
       ...metadata,
       createdAt: metadata.createdAt || new Date().toISOString()
     };
     this.collectionName = collectionName;
-    this.hnswService = new HnswSearchService();
+    this.persistentPath = persistentPath;
+    this.hnswService = hnswService; // Use injected service
   }
 
   /**
@@ -82,8 +84,8 @@ export class CollectionRepository {
       this.collectionMetadata = { ...data.metadata };
     }
 
-    // Rebuild HNSW index after loading data
-    this.rebuildHnswIndex();
+    // Use optimized HNSW index loading instead of always rebuilding
+    this.loadOrCreateHnswIndex();
   }
 
   /**
@@ -106,7 +108,7 @@ export class CollectionRepository {
       
       // Add to HNSW index if enabled and item has embedding
       if (this.hnswEnabled && item.embedding.length > 0) {
-        this.hnswService.addItemToIndex(this.collectionName, item).then(() => {
+        this.hnswService?.addItemToIndex(this.collectionName, item).then(() => {
           console.log(`[CollectionRepository] Added item ${item.id} to HNSW index`);
         }).catch(error => {
           console.warn(`Failed to add item ${item.id} to HNSW index:`, error);
@@ -178,7 +180,7 @@ export class CollectionRepository {
         this.items.delete(id);
         // Remove from HNSW index
         if (this.hnswEnabled) {
-          this.hnswService.removeItemFromIndex(this.collectionName, id).catch(error => {
+          this.hnswService?.removeItemFromIndex(this.collectionName, id).catch(error => {
             console.warn(`Failed to remove item ${id} from HNSW index:`, error);
           });
         }
@@ -190,7 +192,7 @@ export class CollectionRepository {
         this.items.delete(item.id);
         // Remove from HNSW index
         if (this.hnswEnabled) {
-          this.hnswService.removeItemFromIndex(this.collectionName, item.id).catch(error => {
+          this.hnswService?.removeItemFromIndex(this.collectionName, item.id).catch(error => {
             console.warn(`Failed to remove item ${item.id} from HNSW index:`, error);
           });
         }
@@ -201,43 +203,44 @@ export class CollectionRepository {
   /**
    * Query items with vector similarity - now using HNSW for O(log n) performance!
    */
-  queryItems(
+  async queryItems(
     queryEmbeddings: number[][],
     nResults = 10,
     where?: WhereClause
-  ): ItemWithDistance[][] {
+  ): Promise<ItemWithDistance[][]> {
     const results: ItemWithDistance[][] = [];
 
     // Use query embeddings, or just return top results if no query provided
     const queries = queryEmbeddings.length > 0 ? queryEmbeddings : [[]];
 
     for (const queryEmbedding of queries) {
-      if (this.hnswEnabled && queryEmbedding.length > 0 && this.hnswService.hasIndex(this.collectionName)) {
-        // Use HNSW for fast O(log n) search
-        this.hnswService.searchSimilar(this.collectionName, queryEmbedding, nResults, where)
-          .then(hnswResults => {
-            console.log(`[CollectionRepository] HNSW search returned ${hnswResults.length} results`);
-          })
-          .catch(error => {
-            console.error('[CollectionRepository] HNSW search failed, falling back to brute force:', error);
-          });
-        
-        // For now, use async/await pattern by making this method async in the future
-        // For immediate compatibility, we'll do a synchronous fallback
+      if (this.hnswEnabled && queryEmbedding.length > 0 && this.hnswService?.hasIndex(this.collectionName)) {
         try {
-          // Attempt to get cached HNSW results synchronously (this is a limitation we'll improve)
-          const hnswResults = this.performHnswSearchSync(queryEmbedding, nResults, where);
+          // Use HNSW for fast O(log n) search
+          console.log(`[CollectionRepository] Attempting HNSW search for collection: ${this.collectionName}`);
+          const hnswResults = await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, nResults, where);
+          
           if (hnswResults.length > 0) {
+            console.log(`[CollectionRepository] HNSW search returned ${hnswResults.length} results`);
             results.push(hnswResults);
             continue;
+          } else {
+            console.log(`[CollectionRepository] HNSW search returned no results, falling back to brute force`);
           }
         } catch (error) {
-          console.warn('[CollectionRepository] HNSW sync search failed, using brute force fallback:', error);
+          console.error('[CollectionRepository] HNSW search failed, falling back to brute force:', error);
+        }
+      } else {
+        if (!this.hnswEnabled) {
+          console.log('[CollectionRepository] HNSW disabled, using brute force search');
+        } else if (queryEmbedding.length === 0) {
+          console.log('[CollectionRepository] No query embedding provided, using brute force search');
+        } else if (!this.hnswService?.hasIndex(this.collectionName)) {
+          console.log(`[CollectionRepository] No HNSW index found for collection ${this.collectionName}, using brute force search`);
         }
       }
 
       // Fallback to brute force search (for compatibility and when HNSW fails)
-      console.log('[CollectionRepository] Using brute force search (O(n)) - consider rebuilding HNSW index');
       const bruteForceResults = this.bruteForceSearch(queryEmbedding, nResults, where);
       results.push(bruteForceResults);
     }
@@ -246,12 +249,19 @@ export class CollectionRepository {
   }
 
   /**
-   * Synchronous HNSW search helper (temporary solution for compatibility)
+   * Async HNSW search helper - properly integrates with HNSW service
    */
-  private performHnswSearchSync(queryEmbedding: number[], nResults: number, where?: WhereClause): ItemWithDistance[] {
-    // This is a simplified sync version - in practice, HNSW search should be async
-    // For now, we'll rebuild the search to be async-friendly in a future update
-    return [];
+  private async performHnswSearch(queryEmbedding: number[], nResults: number, where?: WhereClause): Promise<ItemWithDistance[]> {
+    if (!this.hnswService || !this.hnswEnabled) {
+      return [];
+    }
+
+    try {
+      return await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, nResults, where);
+    } catch (error) {
+      console.error(`[CollectionRepository] HNSW search error for collection ${this.collectionName}:`, error);
+      return [];
+    }
   }
 
   /**
@@ -326,12 +336,12 @@ export class CollectionRepository {
   }
 
   /**
-   * Rebuild HNSW index from current items (async version)
+   * Load or create HNSW index using optimized approach
    */
-  private rebuildHnswIndex(): void {
-    // Call the async version without blocking
-    this.rebuildHnswIndexAsync().catch(error => {
-      console.error(`[CollectionRepository] Failed to rebuild HNSW index:`, error);
+  private loadOrCreateHnswIndex(): void {
+    // Call the optimized indexing method without blocking
+    this.hnswService?.indexCollection(this.collectionName, this.getAllItems()).catch(error => {
+      console.error(`[CollectionRepository] Failed to load/create HNSW index:`, error);
       this.hnswEnabled = false; // Disable HNSW if it fails
     });
   }
@@ -340,7 +350,12 @@ export class CollectionRepository {
    * Force rebuild of HNSW index (public method for manual refresh)
    */
   public async forceRebuildHnswIndex(): Promise<void> {
-    return this.rebuildHnswIndexAsync();
+    if (!this.hnswEnabled) return;
+    
+    const items = this.getAllItems();
+    if (items.length > 0) {
+      await this.hnswService?.forceRebuildIndex(this.collectionName, items);
+    }
   }
 
   /**
@@ -349,7 +364,7 @@ export class CollectionRepository {
   getHnswStats(): { enabled: boolean; stats: any } {
     return {
       enabled: this.hnswEnabled,
-      stats: this.hnswEnabled ? this.hnswService.getIndexStats(this.collectionName) : null
+      stats: this.hnswEnabled ? this.hnswService?.getIndexStats(this.collectionName) : null
     };
   }
 
@@ -359,21 +374,10 @@ export class CollectionRepository {
   setHnswEnabled(enabled: boolean): void {
     this.hnswEnabled = enabled;
     if (enabled && this.items.size > 0) {
-      this.rebuildHnswIndex();
+      this.loadOrCreateHnswIndex();
     } else if (!enabled) {
-      this.hnswService.removeIndex(this.collectionName);
+      this.hnswService?.removeIndex(this.collectionName);
     }
   }
 
-  /**
-   * Force rebuild of HNSW index
-   */
-  async rebuildHnswIndexAsync(): Promise<void> {
-    if (!this.hnswEnabled) return;
-    
-    const items = this.getAllItems();
-    if (items.length > 0) {
-      await this.hnswService.indexCollection(this.collectionName, items);
-    }
-  }
 }
