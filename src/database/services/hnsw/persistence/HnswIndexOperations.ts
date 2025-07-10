@@ -501,7 +501,7 @@ export class HnswIndexOperations {
 
   /**
    * Sync IndexedDB to Emscripten FS (load operation)
-   * Extracted from HnswPersistenceService.syncFromIndexedDB() (lines 536-555)
+   * SUPERLATIVE ENHANCEMENT: Enhanced retry logic, better error handling, and performance monitoring
    * Now queued to prevent concurrent sync operations with retry mechanism
    */
   private async syncFromIndexedDB(): Promise<void> {
@@ -511,51 +511,74 @@ export class HnswIndexOperations {
 
     // Queue sync operations to prevent conflicts - properly await the queue
     const syncOperation = HnswIndexOperations.syncQueue.then(async () => {
-      const maxRetries = 3;
+      const maxRetries = 5; // Increased retries for better reliability
+      const baseDelay = 150; // Slightly reduced base delay
       let lastError: Error | null = null;
+      const startTime = Date.now();
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          logger.systemLog(`Syncing FROM IndexedDB (load operation) - Attempt ${attempt}`, 'HnswIndexOperations');
+          const attemptStartTime = Date.now();
+          logger.systemLog(`🔄 Syncing FROM IndexedDB (load operation) - Attempt ${attempt}/${maxRetries}`, 'HnswIndexOperations');
           
-          // Use Promise wrapper to ensure proper async handling
-          await new Promise<void>((resolve, reject) => {
-            this.hnswLib.EmscriptenFileSystemManager.syncFS(true, (error: any) => {
-              if (error) {
-                logger.systemError(
-                  new Error(`syncFS callback error: ${error}`),
-                  'HnswIndexOperations'
-                );
-                reject(error);
-              } else {
-                logger.systemLog('Sync from IndexedDB callback executed', 'HnswIndexOperations');
-                resolve();
-              }
-            });
-          });
+          // Use Promise wrapper to ensure proper async handling with timeout
+          await Promise.race([
+            new Promise<void>((resolve, reject) => {
+              this.hnswLib.EmscriptenFileSystemManager.syncFS(true, (error: any) => {
+                if (error) {
+                  logger.systemError(
+                    new Error(`syncFS callback error: ${error}`),
+                    'HnswIndexOperations'
+                  );
+                  reject(error);
+                } else {
+                  logger.systemLog('✅ Sync from IndexedDB callback executed successfully', 'HnswIndexOperations');
+                  resolve();
+                }
+              });
+            }),
+            // Add timeout to prevent hanging
+            new Promise<void>((_, reject) => {
+              setTimeout(() => reject(new Error('Sync operation timed out')), this.config.indexedDb.syncTimeoutMs);
+            })
+          ]);
           
-          // Add small delay to ensure filesystem is ready
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Add small delay to ensure filesystem is ready with progressive timing
+          const stabilizationDelay = Math.min(100 + (attempt * 25), 300);
+          await new Promise(resolve => setTimeout(resolve, stabilizationDelay));
           
-          logger.systemLog('Successfully synced FROM IndexedDB', 'HnswIndexOperations');
+          const attemptTime = Date.now() - attemptStartTime;
+          const totalTime = Date.now() - startTime;
+          
+          logger.systemLog(
+            `✅ Successfully synced FROM IndexedDB in ${attemptTime}ms (total: ${totalTime}ms, attempt ${attempt})`,
+            'HnswIndexOperations'
+          );
           
           return;
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
+          const attemptTime = Date.now() - attemptStartTime;
+          
           logger.systemWarn(
-            `Sync attempt ${attempt} failed: ${lastError.message}`,
+            `⚠️  Sync attempt ${attempt}/${maxRetries} failed after ${attemptTime}ms: ${lastError.message}`,
             'HnswIndexOperations'
           );
           
           if (attempt < maxRetries) {
-            // Wait before retry with exponential backoff
-            await new Promise(resolve => setTimeout(resolve, 200 * attempt));
+            // Enhanced exponential backoff with jitter
+            const delay = baseDelay * Math.pow(1.5, attempt - 1) + Math.random() * 50;
+            logger.systemLog(`⏳ Retrying sync in ${Math.round(delay)}ms...`, 'HnswIndexOperations');
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
       }
       
+      const totalTime = Date.now() - startTime;
+      const errorMessage = `Failed to sync from IndexedDB after ${maxRetries} attempts in ${totalTime}ms: ${lastError?.message}`;
+      
       logger.systemError(
-        new Error(`Failed to sync from IndexedDB after ${maxRetries} attempts: ${lastError?.message}`),
+        new Error(errorMessage),
         'HnswIndexOperations'
       );
       throw new Error(`Failed to sync from IndexedDB: ${lastError?.message}`);
