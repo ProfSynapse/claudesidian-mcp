@@ -16,6 +16,7 @@ import { UsageTracker, BudgetStatus } from '../../../services/UsageTracker';
 export interface ExecutePromptParams {
   agent?: string; // Made optional
   filepaths?: string[];
+  noteContent?: string; // Direct note content to include
   prompt: string;
   provider?: string;
   model?: string;
@@ -204,6 +205,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         systemPrompt: customPrompt?.prompt || '', // Use custom prompt if available, otherwise empty
         userPrompt: params.prompt,
         filepaths: params.filepaths,
+        noteContent: params.noteContent,
         provider: params.provider,
         model: params.model,
         temperature: params.temperature,
@@ -439,6 +441,10 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
           type: 'array',
           items: { type: 'string' },
           description: 'Optional array of file paths to include content as context'
+        },
+        noteContent: {
+          type: 'string',
+          description: 'Optional note content to include directly (alternative to filepaths)'
         },
         prompt: {
           type: 'string',

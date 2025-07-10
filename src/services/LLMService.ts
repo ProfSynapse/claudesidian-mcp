@@ -22,6 +22,7 @@ export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;
   model?: string;
   filepaths?: string[];
+  noteContent?: string;
   systemPrompt?: string;
   userPrompt: string;
 }
@@ -261,12 +262,25 @@ export class LLMService {
       
       // Add file content if filepaths provided
       let filesIncluded: string[] = [];
+      const contextParts: string[] = [];
+      
+      // Handle direct note content
+      if (options.noteContent && options.noteContent.length > 0) {
+        contextParts.push(options.noteContent);
+      }
+      
+      // Handle file paths
       if (options.filepaths && options.filepaths.length > 0) {
         const fileContent = await this.gatherFileContent(options.filepaths);
         if (fileContent.length > 0) {
-          fullPrompt = `Context from files:\n\n${fileContent}\n\n---\n\nUser request: ${options.userPrompt}`;
+          contextParts.push(fileContent);
           filesIncluded = options.filepaths;
         }
+      }
+      
+      // Combine all context if any exists
+      if (contextParts.length > 0) {
+        fullPrompt = `Context from notes:\n\n${contextParts.join('\n\n')}\n\n---\n\nUser request: ${options.userPrompt}`;
       }
 
       // Execute the prompt
