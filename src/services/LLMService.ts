@@ -22,7 +22,6 @@ export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;
   model?: string;
   filepaths?: string[];
-  noteContent?: string;
   systemPrompt?: string;
   userPrompt: string;
 }
@@ -262,25 +261,12 @@ export class LLMService {
       
       // Add file content if filepaths provided
       let filesIncluded: string[] = [];
-      const contextParts: string[] = [];
-      
-      // Handle direct note content
-      if (options.noteContent && options.noteContent.length > 0) {
-        contextParts.push(options.noteContent);
-      }
-      
-      // Handle file paths
       if (options.filepaths && options.filepaths.length > 0) {
         const fileContent = await this.gatherFileContent(options.filepaths);
         if (fileContent.length > 0) {
-          contextParts.push(fileContent);
+          fullPrompt = `Context from files:\n\n${fileContent}\n\n---\n\nUser request: ${options.userPrompt}`;
           filesIncluded = options.filepaths;
         }
-      }
-      
-      // Combine all context if any exists
-      if (contextParts.length > 0) {
-        fullPrompt = `Context from notes:\n\n${contextParts.join('\n\n')}\n\n---\n\nUser request: ${options.userPrompt}`;
       }
 
       // Execute the prompt
@@ -330,14 +316,16 @@ export class LLMService {
   private async gatherFileContent(filepaths: string[]): Promise<string> {
     const contentParts: string[] = [];
 
+    if (!this.vaultAdapter) {
+      console.error('LLMService: Vault adapter not initialized. File content cannot be read.');
+      return '[Error: Vault adapter not initialized. File content unavailable.]';
+    }
+
     for (const filepath of filepaths) {
       try {
         // Use Obsidian's app.vault.adapter to read file content
-        // This will be injected when the service is initialized in the plugin
-        if (this.vaultAdapter) {
-          const content = await this.vaultAdapter.read(filepath);
-          contentParts.push(`--- ${filepath} ---\n${content}\n`);
-        }
+        const content = await this.vaultAdapter.read(filepath);
+        contentParts.push(`--- ${filepath} ---\n${content}\n`);
       } catch (error) {
         console.warn(`Failed to read file ${filepath}:`, error);
         contentParts.push(`--- ${filepath} ---\n[Error reading file: ${error}]\n`);

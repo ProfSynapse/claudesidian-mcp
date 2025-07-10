@@ -237,6 +237,10 @@ export class MCPConnector {
                     
                     // Set up the provider manager on the agent
                     agentManagerAgent.setProviderManager(llmProviderManager);
+                    
+                    // Set the vault adapter for file reading
+                    llmProviderManager.setVaultAdapter(this.app.vault.adapter);
+                    
                     agentManagerAgent.setParentAgentManager(this.agentManager);
                     
                     // Create and inject LLM usage tracker
