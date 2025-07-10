@@ -213,9 +213,9 @@ export class HnswSearchService {
 
   /**
    * Ensure full initialization including index discovery and collection processing
-   * This is called lazily when HNSW functionality is first used
+   * This is called lazily when HNSW functionality is first used or during background initialization
    */
-  private async ensureFullyInitialized(): Promise<void> {
+  async ensureFullyInitialized(): Promise<void> {
     // First ensure basic initialization
     await this.initialize();
     

@@ -97,7 +97,7 @@ export class LazyServiceManager {
             stage: LoadingStage.BACKGROUND_FAST
         });
 
-        // STAGE 4 (ON_DEMAND): Full semantic search - lazy loaded when first used
+        // STAGE 3 (BACKGROUND_SLOW): Full semantic search - loads in background after delay
         this.register('hnswSearchService', {
             name: 'hnswSearchService',
             factory: async () => {
@@ -109,15 +109,18 @@ export class LazyServiceManager {
                 const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
                 const hnswPath = basePath;
                 
-                // Create service with new IndexedDB-based architecture - lightweight constructor only
+                // Create service with new IndexedDB-based architecture
                 const service = new HnswSearchService(this.app, vectorStore, embeddingService, hnswPath);
-                // NOTE: Do NOT call service.initialize() here - it will be called lazily when first search is performed
+                
+                // Initialize with full discovery - now happens in background after startup
+                await service.initialize();
+                await service.ensureFullyInitialized();
                 
                 return service;
             },
             dependencies: ['vectorStore', 'embeddingService'],
             initialized: false,
-            stage: LoadingStage.ON_DEMAND
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
         this.register('workspaceService', {
@@ -552,6 +555,9 @@ export class LazyServiceManager {
                         // Process startup queue now that embedding services are ready
                         await this.processStartupQueueIfNeeded();
                         
+                        // Initialize agents now that HNSW and all core services are ready
+                        await this.initializeAgentsInBackground();
+                        
                         // ON_DEMAND services are initialized only when requested
                     } catch (error) {
                         console.warn('[LazyServiceManager] Background slow initialization failed:', error);
@@ -562,6 +568,26 @@ export class LazyServiceManager {
                 console.warn('[LazyServiceManager] Background fast initialization failed:', error);
             }
         }, 500); // 500ms delay after immediate stage
+    }
+
+    /**
+     * Initialize agents in background after all core services are ready
+     */
+    private async initializeAgentsInBackground(): Promise<void> {
+        try {
+            console.log('[LazyServiceManager] 🤖 Initializing agents in background...');
+            
+            // Get the connector from the plugin and initialize agents
+            const plugin = this.plugin as any;
+            if (plugin.connector) {
+                await plugin.connector.initializeAgents();
+                console.log('[LazyServiceManager] ✅ Agents initialized successfully in background');
+            } else {
+                console.warn('[LazyServiceManager] No connector found for agent initialization');
+            }
+        } catch (error) {
+            console.error('[LazyServiceManager] Failed to initialize agents in background:', error);
+        }
     }
 
     /**

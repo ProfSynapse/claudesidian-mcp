@@ -80,11 +80,16 @@ export class UniversalSearchService {
       return this.hybridSearchService;
     }
 
-    // If we don't have the service from constructor, try to get it from plugin
+    // If we don't have the service from constructor, try to get it from the lazy service manager
     if (!this.hnswSearchService) {
       try {
         const plugin = this.plugin as any;
-        if (plugin.services?.hnswSearchService) {
+        if (plugin.serviceManager) {
+          // Use lazy service manager to get HNSW service on demand
+          this.hnswSearchService = await plugin.serviceManager.get('hnswSearchService');
+          console.log('[UniversalSearchService] Successfully loaded HNSW service lazily');
+        } else if (plugin.services?.hnswSearchService) {
+          // Fallback to old services pattern
           this.hnswSearchService = await plugin.services.hnswSearchService;
         }
       } catch (error) {
