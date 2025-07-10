@@ -281,11 +281,7 @@ class PromptModal extends Modal {
         this.promptTextarea.rows = 6;
         
         // Buttons
-        const buttonContainer = contentEl.createDiv('modal-button-container');
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.gap = '10px';
-        buttonContainer.style.justifyContent = 'flex-end';
-        buttonContainer.style.marginTop = '20px';
+        const buttonContainer = contentEl.createDiv('modal-button-container agent-management-button-container');
         
         const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
         cancelBtn.addEventListener('click', () => this.close());

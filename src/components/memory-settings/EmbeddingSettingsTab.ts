@@ -190,47 +190,6 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
                 });
         }
             
-        containerEl.createEl('h3', { text: 'Performance' });
-        
-        new Setting(containerEl)
-            .setName('Batch Size')
-            .setDesc('Number of chunks to process at once during batch operations')
-            .addSlider(slider => slider
-                .setLimits(1, 50, 1)
-                .setValue(this.settings.batchSize)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.settings.batchSize = value;
-                    await this.saveSettings();
-                })
-            );
-            
-        new Setting(containerEl)
-            .setName('Concurrent Requests')
-            .setDesc('Number of concurrent API requests (higher values may cause rate limiting)')
-            .addSlider(slider => slider
-                .setLimits(1, 10, 1)
-                .setValue(this.settings.concurrentRequests)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.settings.concurrentRequests = value;
-                    await this.saveSettings();
-                })
-            );
-            
-        new Setting(containerEl)
-            .setName('Processing Delay')
-            .setDesc('Milliseconds to wait between batches (larger values reduce freezing but slow down indexing)')
-            .addSlider(slider => slider
-                .setLimits(0, 5000, 100)
-                .setValue(this.settings.processingDelay || 1000)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.settings.processingDelay = value;
-                    await this.saveSettings();
-                })
-            );
-            
         // Filter Settings section (moved from FilterSettingsTab)
         containerEl.createEl('h3', { text: 'Exclude Patterns' });
         

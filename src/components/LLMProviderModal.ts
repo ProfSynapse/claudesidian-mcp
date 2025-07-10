@@ -101,8 +101,7 @@ export class LLMProviderModal extends Modal {
             .onChange((value) => {
               // Reset validation when URL changes
               this.isValidated = false;
-              this.apiKeyInput.style.borderColor = '';
-              this.apiKeyInput.style.backgroundColor = '';
+              this.apiKeyInput.removeClass('validating success error');
               
               // Clear existing timeout
               if (this.validationTimeout) {
@@ -147,8 +146,7 @@ export class LLMProviderModal extends Modal {
             .onChange((value) => {
               // Reset validation when key changes
               this.isValidated = false;
-              this.apiKeyInput.style.borderColor = '';
-              this.apiKeyInput.style.backgroundColor = '';
+              this.apiKeyInput.removeClass('validating success error');
               
               // Clear existing timeout
               if (this.validationTimeout) {
@@ -186,10 +184,7 @@ export class LLMProviderModal extends Modal {
    */
   private createModelsSection(contentEl: HTMLElement): void {
     const section = contentEl.createDiv('provider-modal-section');
-    const header = section.createDiv('models-header');
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
+    const header = section.createDiv('models-header llm-provider-header');
     
     header.createEl('h2', { text: 'Available Models' });
 
@@ -263,25 +258,18 @@ export class LLMProviderModal extends Modal {
       const modelEl = modelsList.createDiv('model-item');
       
       // Simple layout: | Model Name | Description Input |
-      const modelRow = modelEl.createDiv('model-row');
-      modelRow.style.display = 'flex';
-      modelRow.style.alignItems = 'center';
-      modelRow.style.gap = '10px';
-      modelRow.style.marginBottom = '10px';
+      const modelRow = modelEl.createDiv('model-row llm-provider-model-row');
       
       // Model name (left side)
-      const modelNameEl = modelRow.createDiv('model-name');
-      modelNameEl.style.minWidth = '150px';
-      modelNameEl.style.fontWeight = 'bold';
+      const modelNameEl = modelRow.createDiv('model-name llm-provider-model-name');
       modelNameEl.textContent = model.name;
       
       // Description input (right side)
       const currentDescription = this.config.config.models?.[model.id]?.description || '';
       const descInput = modelRow.createEl('input', {
         type: 'text',
-        cls: 'model-description-input'
+        cls: 'model-description-input llm-provider-description-input'
       });
-      descInput.style.flex = '1';
       descInput.placeholder = 'Describe when to use this model...';
       descInput.value = currentDescription;
       
@@ -305,11 +293,7 @@ export class LLMProviderModal extends Modal {
    * Create action buttons
    */
   private createButtons(contentEl: HTMLElement): void {
-    const buttonContainer = contentEl.createDiv('modal-button-container');
-    buttonContainer.style.display = 'flex';
-    buttonContainer.style.gap = '10px';
-    buttonContainer.style.justifyContent = 'flex-end';
-    buttonContainer.style.marginTop = '20px';
+    const buttonContainer = contentEl.createDiv('modal-button-container llm-provider-button-container');
 
     const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
     cancelBtn.addEventListener('click', () => this.close());
@@ -330,8 +314,8 @@ export class LLMProviderModal extends Modal {
     }
 
     // Show visual feedback that validation is in progress
-    this.apiKeyInput.style.borderColor = '#3b82f6';
-    this.apiKeyInput.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+    this.apiKeyInput.removeClass('success error');
+    this.apiKeyInput.addClass('validating');
 
     try {
       // Use the dedicated validation service for real API testing
@@ -340,8 +324,8 @@ export class LLMProviderModal extends Modal {
       if (result.success) {
         // Mark as validated
         this.isValidated = true;
-        this.apiKeyInput.style.borderColor = '#22c55e';
-        this.apiKeyInput.style.backgroundColor = 'rgba(34, 197, 94, 0.1)';
+        this.apiKeyInput.removeClass('validating error');
+        this.apiKeyInput.addClass('success');
         
         new Notice(`✅ ${this.config.providerName} API key validated successfully!`);
       } else {
@@ -352,8 +336,8 @@ export class LLMProviderModal extends Modal {
       console.error('API key validation failed:', error);
       
       this.isValidated = false;
-      this.apiKeyInput.style.borderColor = '#ef4444';
-      this.apiKeyInput.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+      this.apiKeyInput.removeClass('validating success');
+      this.apiKeyInput.addClass('error');
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       new Notice(`❌ ${this.config.providerName} API key validation failed: ${errorMessage}`);
@@ -437,8 +421,8 @@ export class LLMProviderModal extends Modal {
         
         // Mark as validated
         this.isValidated = true;
-        this.apiKeyInput.style.borderColor = '#22c55e';
-        this.apiKeyInput.style.backgroundColor = 'rgba(34, 197, 94, 0.1)';
+        this.apiKeyInput.removeClass('validating error');
+        this.apiKeyInput.addClass('success');
       } else {
         throw new Error('Model test returned invalid response');
       }
@@ -447,8 +431,8 @@ export class LLMProviderModal extends Modal {
       console.error('Ollama connection test failed:', error);
       
       this.isValidated = false;
-      this.apiKeyInput.style.borderColor = '#ef4444';
-      this.apiKeyInput.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+      this.apiKeyInput.removeClass('validating success');
+      this.apiKeyInput.addClass('error');
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       new Notice(`❌ Ollama test failed: ${errorMessage}`);

@@ -43,9 +43,7 @@ export class UsageChart {
         const chartContainer = this.containerEl.createDiv('usage-chart-container');
         
         // Title
-        const titleEl = chartContainer.createEl('h4', { text: this.options.title });
-        titleEl.style.marginBottom = '16px';
-        titleEl.style.color = 'var(--text-normal)';
+        const titleEl = chartContainer.createEl('h4', { text: this.options.title, cls: 'usage-chart-title' });
 
         // Budget section (if provided)
         if (this.options.budgetStatus) {
@@ -69,45 +67,34 @@ export class UsageChart {
         if (!this.options.budgetStatus) return;
 
         const budgetSection = container.createDiv('usage-budget-section');
-        budgetSection.style.marginBottom = '20px';
-        budgetSection.style.padding = '12px';
-        budgetSection.style.border = '1px solid var(--background-modifier-border)';
-        budgetSection.style.borderRadius = '6px';
-        budgetSection.style.backgroundColor = 'var(--background-secondary)';
 
         // Budget header
-        const budgetHeader = budgetSection.createEl('h5', { text: 'Monthly Budget' });
-        budgetHeader.style.margin = '0 0 8px 0';
-        budgetHeader.style.color = 'var(--text-normal)';
+        const budgetHeader = budgetSection.createEl('h5', { text: 'Monthly Budget', cls: 'usage-budget-header' });
 
         // Budget info
         const budgetInfo = budgetSection.createDiv();
         
         if (this.options.budgetStatus.monthlyBudget > 0) {
             // Progress bar
-            const progressContainer = budgetInfo.createDiv();
-            progressContainer.style.marginBottom = '8px';
+            const progressContainer = budgetInfo.createDiv('usage-progress-container');
             
-            const progressBar = progressContainer.createDiv();
-            progressBar.style.width = '100%';
-            progressBar.style.height = '8px';
-            progressBar.style.backgroundColor = 'var(--background-modifier-border)';
-            progressBar.style.borderRadius = '4px';
-            progressBar.style.overflow = 'hidden';
+            const progressBar = progressContainer.createDiv('usage-progress-bar');
             
-            const progressFill = progressBar.createDiv();
+            const progressFill = progressBar.createDiv('usage-progress-fill');
             const percentage = Math.min(100, this.options.budgetStatus.percentageUsed);
             progressFill.style.width = `${percentage}%`;
-            progressFill.style.height = '100%';
-            progressFill.style.backgroundColor = percentage >= 100 ? 'var(--text-error)' : 
-                                               percentage >= 80 ? 'var(--text-warning)' : 
-                                               'var(--text-success)';
-            progressFill.style.transition = 'width 0.3s ease';
+            
+            // Add appropriate status class
+            if (percentage >= 100) {
+                progressFill.addClass('error');
+            } else if (percentage >= 80) {
+                progressFill.addClass('warning');
+            } else {
+                progressFill.addClass('success');
+            }
 
             // Budget text
-            const budgetText = budgetInfo.createDiv();
-            budgetText.style.fontSize = '0.9em';
-            budgetText.style.color = 'var(--text-muted)';
+            const budgetText = budgetInfo.createDiv('usage-budget-text');
             
             const currentSpending = this.formatCurrency(this.options.budgetStatus.currentSpending);
             const totalBudget = this.formatCurrency(this.options.budgetStatus.monthlyBudget);
@@ -117,35 +104,23 @@ export class UsageChart {
             
             // Budget exceeded warning
             if (this.options.budgetStatus.budgetExceeded) {
-                const warningEl = budgetInfo.createDiv();
-                warningEl.style.color = 'var(--text-error)';
-                warningEl.style.fontSize = '0.9em';
-                warningEl.style.fontWeight = 'bold';
-                warningEl.style.marginTop = '4px';
+                const warningEl = budgetInfo.createDiv('usage-budget-warning');
                 warningEl.textContent = '⚠️ Budget exceeded - API calls will be blocked';
             }
         } else {
             budgetInfo.textContent = 'No budget set';
-            budgetInfo.style.color = 'var(--text-muted)';
-            budgetInfo.style.fontSize = '0.9em';
+            budgetInfo.addClass('usage-budget-text');
         }
 
         // Budget setting input
         if (this.options.onBudgetChange) {
-            const budgetInput = budgetSection.createEl('input');
+            const budgetInput = budgetSection.createEl('input', { cls: 'usage-budget-input' });
             budgetInput.type = 'number';
             budgetInput.step = '0.01';
             budgetInput.min = '0';
             budgetInput.placeholder = 'Set monthly budget ($)';
             budgetInput.value = this.options.budgetStatus.monthlyBudget > 0 ? 
                               this.options.budgetStatus.monthlyBudget.toString() : '';
-            budgetInput.style.width = '100%';
-            budgetInput.style.marginTop = '8px';
-            budgetInput.style.padding = '4px 8px';
-            budgetInput.style.border = '1px solid var(--background-modifier-border)';
-            budgetInput.style.borderRadius = '4px';
-            budgetInput.style.backgroundColor = 'var(--background-primary)';
-            budgetInput.style.color = 'var(--text-normal)';
 
             budgetInput.addEventListener('change', () => {
                 const budget = parseFloat(budgetInput.value) || 0;
@@ -159,19 +134,12 @@ export class UsageChart {
      */
     private renderCostsSection(container: HTMLElement, title: string, usage: ProviderUsage, total: number): void {
         const section = container.createDiv('usage-costs-section');
-        section.style.marginBottom = '16px';
 
         // Section title
-        const sectionTitle = section.createEl('h5', { text: title });
-        sectionTitle.style.margin = '0 0 8px 0';
-        sectionTitle.style.color = 'var(--text-normal)';
+        const sectionTitle = section.createEl('h5', { text: title, cls: 'usage-section-title' });
 
         // Total cost
-        const totalEl = section.createDiv();
-        totalEl.style.fontSize = '1.1em';
-        totalEl.style.fontWeight = 'bold';
-        totalEl.style.color = 'var(--text-normal)';
-        totalEl.style.marginBottom = '12px';
+        const totalEl = section.createDiv('usage-total-cost');
         totalEl.textContent = `Total: ${this.formatCurrency(total)}`;
 
         // Provider breakdown with stacked progress bar
@@ -181,9 +149,7 @@ export class UsageChart {
             this.renderStackedProgressBar(section, providers, total);
             
             // Create provider list below the progress bar
-            const providerList = section.createDiv();
-            providerList.style.fontSize = '0.9em';
-            providerList.style.marginTop = '8px';
+            const providerList = section.createDiv('usage-provider-list');
             
             providers
                 .sort(([, a], [, b]) => b - a) // Sort by cost descending
@@ -192,18 +158,10 @@ export class UsageChart {
                 });
         } else {
             // Show empty progress bar even when no usage
-            const progressContainer = section.createDiv();
-            progressContainer.style.width = '100%';
-            progressContainer.style.height = '8px';
-            progressContainer.style.backgroundColor = 'var(--background-modifier-border)';
-            progressContainer.style.borderRadius = '4px';
-            progressContainer.style.marginBottom = '8px';
+            const progressContainer = section.createDiv('usage-stacked-progress-container');
             
-            const noDataEl = section.createDiv();
+            const noDataEl = section.createDiv('usage-no-data');
             noDataEl.textContent = 'No usage yet';
-            noDataEl.style.color = 'var(--text-muted)';
-            noDataEl.style.fontSize = '0.9em';
-            noDataEl.style.fontStyle = 'italic';
         }
     }
 
@@ -211,14 +169,7 @@ export class UsageChart {
      * Render stacked progress bar showing all providers
      */
     private renderStackedProgressBar(container: HTMLElement, providers: [string, number][], totalCost: number): void {
-        const progressContainer = container.createDiv();
-        progressContainer.style.width = '100%';
-        progressContainer.style.height = '8px';
-        progressContainer.style.backgroundColor = 'var(--background-modifier-border)';
-        progressContainer.style.borderRadius = '4px';
-        progressContainer.style.overflow = 'hidden';
-        progressContainer.style.display = 'flex';
-        progressContainer.style.marginBottom = '8px';
+        const progressContainer = container.createDiv('usage-stacked-progress-container');
         
         // Sort providers by cost descending for consistent stacking
         const sortedProviders = providers.sort(([, a], [, b]) => b - a);
@@ -227,11 +178,9 @@ export class UsageChart {
             const percentage = totalCost > 0 ? (cost / totalCost) * 100 : 0;
             
             if (percentage > 0) {
-                const segment = progressContainer.createDiv();
+                const segment = progressContainer.createDiv('usage-progress-segment');
                 segment.style.width = `${percentage}%`;
-                segment.style.height = '100%';
                 segment.style.backgroundColor = this.getProviderColor(provider);
-                segment.style.transition = 'width 0.3s ease';
                 
                 // Add tooltip on hover
                 segment.title = `${this.formatProviderName(provider)}: ${this.formatCurrency(cost)} (${percentage.toFixed(1)}%)`;
@@ -243,47 +192,28 @@ export class UsageChart {
      * Render provider list item with color indicator
      */
     private renderProviderListItem(container: HTMLElement, provider: string, cost: number, totalCost: number): void {
-        const providerEl = container.createDiv();
-        providerEl.style.display = 'flex';
-        providerEl.style.justifyContent = 'space-between';
-        providerEl.style.alignItems = 'center';
-        providerEl.style.padding = '2px 0';
-        providerEl.style.color = 'var(--text-muted)';
+        const providerEl = container.createDiv('usage-provider-item');
         
         // Left side: color indicator + name
-        const leftEl = providerEl.createDiv();
-        leftEl.style.display = 'flex';
-        leftEl.style.alignItems = 'center';
-        leftEl.style.gap = '8px';
+        const leftEl = providerEl.createDiv('usage-provider-left');
         
         // Color indicator
-        const colorDot = leftEl.createDiv();
-        colorDot.style.width = '8px';
-        colorDot.style.height = '8px';
+        const colorDot = leftEl.createDiv('usage-provider-color-dot');
         colorDot.style.backgroundColor = this.getProviderColor(provider);
-        colorDot.style.borderRadius = '50%';
-        colorDot.style.flexShrink = '0';
         
         // Provider name
-        const nameEl = leftEl.createSpan();
+        const nameEl = leftEl.createSpan({ cls: 'usage-provider-name' });
         nameEl.textContent = this.formatProviderName(provider);
-        nameEl.style.color = 'var(--text-normal)';
         
         // Right side: cost and percentage
-        const rightEl = providerEl.createDiv();
-        rightEl.style.display = 'flex';
-        rightEl.style.alignItems = 'center';
-        rightEl.style.gap = '8px';
+        const rightEl = providerEl.createDiv('usage-provider-right');
         
-        const costEl = rightEl.createSpan();
+        const costEl = rightEl.createSpan({ cls: 'usage-provider-cost' });
         costEl.textContent = this.formatCurrency(cost);
-        costEl.style.fontFamily = 'var(--font-monospace)';
         
-        const percentageEl = rightEl.createSpan();
+        const percentageEl = rightEl.createSpan({ cls: 'usage-provider-percentage' });
         const percentage = totalCost > 0 ? (cost / totalCost) * 100 : 0;
         percentageEl.textContent = `(${percentage.toFixed(1)}%)`;
-        percentageEl.style.fontSize = '0.8em';
-        percentageEl.style.color = 'var(--text-faint)';
     }
 
     /**
@@ -314,28 +244,14 @@ export class UsageChart {
         if (!this.options.onResetMonthly) return;
 
         const actionsSection = container.createDiv('usage-actions');
-        actionsSection.style.marginTop = '16px';
 
-        const resetButton = actionsSection.createEl('button', { text: 'Reset Monthly Usage' });
-        resetButton.style.padding = '6px 12px';
-        resetButton.style.backgroundColor = 'var(--interactive-accent)';
-        resetButton.style.color = 'var(--text-on-accent)';
-        resetButton.style.border = 'none';
-        resetButton.style.borderRadius = '4px';
-        resetButton.style.cursor = 'pointer';
-        resetButton.style.fontSize = '0.9em';
+        const resetButton = actionsSection.createEl('button', { text: 'Reset Monthly Usage', cls: 'usage-reset-button' });
 
         resetButton.addEventListener('click', () => {
             this.options.onResetMonthly!();
         });
 
-        resetButton.addEventListener('mouseenter', () => {
-            resetButton.style.backgroundColor = 'var(--interactive-accent-hover)';
-        });
-
-        resetButton.addEventListener('mouseleave', () => {
-            resetButton.style.backgroundColor = 'var(--interactive-accent)';
-        });
+        // Hover effects are now handled by CSS
     }
 
     /**

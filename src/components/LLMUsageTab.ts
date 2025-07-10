@@ -41,19 +41,17 @@ export class LLMUsageTab {
         this.containerEl.empty();
         
         // Create main container
-        const mainContainer = this.containerEl.createDiv('llm-usage-tab');
-        mainContainer.style.padding = '16px';
+        const mainContainer = this.containerEl.createDiv('llm-usage-tab llm-usage-main-container');
 
         // Header
         const headerEl = mainContainer.createEl('h3', { text: 'LLM Usage & Budget' });
         headerEl.style.marginBottom = '20px';
-        headerEl.style.color = 'var(--text-normal)';
 
         // Description
         const descEl = mainContainer.createDiv();
+        descEl.style.marginBottom = '20px';
         descEl.style.color = 'var(--text-muted)';
         descEl.style.fontSize = '0.9em';
-        descEl.style.marginBottom = '20px';
         descEl.textContent = 'Track your LLM API costs and manage monthly budgets. Costs are calculated based on token usage from Agent Manager operations.';
 
         // Usage chart container
@@ -156,25 +154,12 @@ export class LLMUsageTab {
     private showError(container: HTMLElement): void {
         container.empty();
         
-        const errorEl = container.createDiv();
-        errorEl.style.color = 'var(--text-error)';
-        errorEl.style.padding = '20px';
-        errorEl.style.textAlign = 'center';
-        errorEl.style.border = '1px solid var(--text-error)';
-        errorEl.style.borderRadius = '6px';
-        errorEl.style.backgroundColor = 'var(--background-secondary)';
+        const errorEl = container.createDiv('llm-usage-error');
         
         errorEl.createEl('h4', { text: '⚠️ Error Loading Usage Data' });
         errorEl.createEl('p', { text: 'Unable to load LLM usage statistics. Please try refreshing the tab.' });
         
-        const retryButton = errorEl.createEl('button', { text: 'Retry' });
-        retryButton.style.marginTop = '12px';
-        retryButton.style.padding = '6px 12px';
-        retryButton.style.backgroundColor = 'var(--interactive-accent)';
-        retryButton.style.color = 'var(--text-on-accent)';
-        retryButton.style.border = 'none';
-        retryButton.style.borderRadius = '4px';
-        retryButton.style.cursor = 'pointer';
+        const retryButton = errorEl.createEl('button', { text: 'Retry', cls: 'llm-usage-error-button' });
         
         retryButton.addEventListener('click', () => {
             this.refreshUsageData();

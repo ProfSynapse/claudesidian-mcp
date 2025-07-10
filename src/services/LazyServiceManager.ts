@@ -819,8 +819,8 @@ export class LazyServiceManager {
         const embeddingStrategy = {
             type: (this.plugin.settings?.settings?.memory?.embeddingStrategy || 'idle') as 'idle' | 'startup',
             idleTimeThreshold: this.plugin.settings?.settings?.memory?.idleTimeThreshold || 60000,
-            batchSize: this.plugin.settings?.settings?.memory?.batchSize || 10,
-            processingDelay: this.plugin.settings?.settings?.memory?.processingDelay || 1000
+            batchSize: 10,
+            processingDelay: 1000
         };
 
         const fileEventManager = new FileEventManagerModular(
