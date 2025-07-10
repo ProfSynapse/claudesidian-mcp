@@ -797,7 +797,7 @@ export class HnswSearchService {
         databaseItems.push(item);
       } else {
         logger.systemWarn(
-          `[DIAGNOSTIC] Skipping item ${i} with invalid embedding: length=${item.embedding?.length}`,
+          `Skipping item ${i} with invalid embedding: length=${item.embedding?.length}`,
           'HnswSearchService'
         );
       }

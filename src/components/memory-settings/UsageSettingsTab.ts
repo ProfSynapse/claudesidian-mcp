@@ -5,6 +5,7 @@ import { DeleteCollectionComponent } from './DeleteCollectionComponent';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
+import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { UsageTracker } from '../../services/UsageTracker';
 import { UsageChart } from '../shared/UsageChart';
 
@@ -19,6 +20,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
     private deleteCollectionComponent: DeleteCollectionComponent | null = null;
     private usageStatsService: UsageStatsService | null = null;
     private vectorStore: any = null;
+    private embeddingService: EmbeddingService | null = null;
     private embeddingUsageTracker: UsageTracker | null = null;
     private usageChart: UsageChart | null = null;
     
@@ -76,6 +78,9 @@ export class UsageSettingsTab extends BaseSettingsTab {
         // Get the vector store first, as it's needed for both the UsageStatsService and DeleteCollectionComponent
         this.vectorStore = plugin.services?.vectorStore || plugin.vectorStore;
         
+        // Initialize the embedding service
+        this.embeddingService = plugin.services?.embeddingService || plugin.embeddingService;
+        
         // First try to get the global service instance
         if (plugin.services?.usageStatsService) {
             this.usageStatsService = plugin.services.usageStatsService;
@@ -88,7 +93,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
             console.warn('UsageSettingsTab: Global UsageStatsService not found, creating local instance (fallback)');
             
             // Get the embedding service
-            const embeddingService = plugin.services?.embeddingService || plugin.embeddingService;
+            const embeddingService = this.embeddingService;
             
             if (embeddingService && this.vectorStore) {
                 this.usageStatsService = new UsageStatsService(
@@ -159,14 +164,15 @@ export class UsageSettingsTab extends BaseSettingsTab {
         // Collection Management Section (moved from EmbeddingSettingsTab)
         const collectionManagementContainer = containerEl.createDiv({ cls: 'collection-management-container' });
         
-        // Only display if we have a vector store and usage stats service
-        if (this.vectorStore && this.usageStatsService) {
+        // Only display if we have a vector store, usage stats service, and embedding service
+        if (this.vectorStore && this.usageStatsService && this.embeddingService) {
             // Create and display the DeleteCollectionComponent
             if (!this.deleteCollectionComponent) {
                 this.deleteCollectionComponent = new DeleteCollectionComponent(
                     collectionManagementContainer,
                     this.vectorStore,
                     this.usageStatsService,
+                    this.embeddingService,
                     this.settings
                 );
             } else {
@@ -175,6 +181,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
                     collectionManagementContainer,
                     this.vectorStore,
                     this.usageStatsService,
+                    this.embeddingService,
                     this.settings
                 );
             }
@@ -183,7 +190,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
             this.deleteCollectionComponent.refresh();
         } else {
             collectionManagementContainer.createEl('div', { 
-                text: 'Collection management is not available. Vector store or usage stats service not initialized.',
+                text: 'Collection management is not available. Vector store, usage stats service, or embedding service not initialized.',
                 cls: 'collection-management-error'
             });
         }

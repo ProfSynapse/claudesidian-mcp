@@ -1,17 +1,20 @@
 import { Notice, Setting, ButtonComponent } from 'obsidian';
 import { UsageStatsService, USAGE_EVENTS } from '../../database/services/UsageStatsService';
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
+import { EmbeddingService } from '../../database/services/EmbeddingService';
 
 /**
- * Component for deleting collections in the memory settings
- * Provides UI for deleting embeddings by collection
+ * Component for managing collections in the memory settings
+ * Provides UI for deleting and reindexing collections
  */
 export class DeleteCollectionComponent {
     private containerEl: HTMLElement;
     private vectorStore: IVectorStore;
     private usageStatsService: UsageStatsService;
+    private embeddingService: EmbeddingService;
     private settings: any;
     private deleteButtons: Map<string, ButtonComponent> = new Map();
+    private reindexButtons: Map<string, ButtonComponent> = new Map();
     private collections: string[] = [];
 
     /**
@@ -19,6 +22,7 @@ export class DeleteCollectionComponent {
      * @param containerEl Container element
      * @param vectorStore Vector store instance
      * @param usageStatsService Usage stats service instance
+     * @param embeddingService Embedding service instance
      * @param settings Settings object
      */
     // Flag to prevent recursive refreshes
@@ -26,10 +30,11 @@ export class DeleteCollectionComponent {
     // Track last refresh time to limit frequency
     private lastRefreshTime = 0;
     
-    constructor(containerEl: HTMLElement, vectorStore: IVectorStore, usageStatsService: UsageStatsService, settings: any) {
+    constructor(containerEl: HTMLElement, vectorStore: IVectorStore, usageStatsService: UsageStatsService, embeddingService: EmbeddingService, settings: any) {
         this.containerEl = containerEl;
         this.vectorStore = vectorStore;
         this.usageStatsService = usageStatsService;
+        this.embeddingService = embeddingService;
         this.settings = settings;
         
         // Set up event listeners for collection updates - we're not using these to avoid cycles
@@ -79,14 +84,14 @@ export class DeleteCollectionComponent {
         this.containerEl.empty();
         
         // Create section header
-        this.containerEl.createEl('h3', { text: 'Delete Collection' });
+        this.containerEl.createEl('h3', { text: 'Manage Collections' });
         
         // Container for description and refresh button
         const headerContainer = this.containerEl.createEl('div', { cls: 'delete-collection-header' });
         
         // Create description
         headerContainer.createEl('p', { 
-            text: 'Delete a specific collection to free up space. This cannot be undone.', 
+            text: 'Reindex collections with your current embedding model or delete collections to free up space.', 
             cls: 'delete-collection-description' 
         });
         
@@ -188,9 +193,19 @@ export class DeleteCollectionComponent {
                 cls: 'collection-name'
             });
             
+            // Create action buttons for this collection
+            const actionsContainer = collectionRow.createEl('div', { cls: 'collection-actions' });
+            
+            // Create a reindex button for this collection
+            const reindexButton = new ButtonComponent(actionsContainer)
+                .setButtonText('Reindex')
+                .setClass('collection-reindex-button')
+                .onClick(async () => {
+                    await this.handleReindexCollection(collection, reindexButton);
+                });
+            
             // Create a delete button for this collection
-            const deleteContainer = collectionRow.createEl('div', { cls: 'collection-actions' });
-            const deleteButton = new ButtonComponent(deleteContainer)
+            const deleteButton = new ButtonComponent(actionsContainer)
                 .setButtonText('Delete')
                 .setClass('collection-delete-button')
                 .onClick(async () => {
@@ -258,8 +273,9 @@ export class DeleteCollectionComponent {
                     }
                 });
                 
-            // Store the button for later reference
+            // Store the buttons for later reference
             this.deleteButtons.set(collection, deleteButton);
+            this.reindexButtons.set(collection, reindexButton);
         });
         
         // Add a button to purge all collections
@@ -346,5 +362,195 @@ export class DeleteCollectionComponent {
                     }
                 }
             });
+    }
+    
+    /**
+     * Handle reindexing a specific collection
+     * @param collection Collection name to reindex
+     * @param button Button component for UI feedback
+     */
+    private async handleReindexCollection(collection: string, button: ButtonComponent): Promise<void> {
+        // Confirm reindexing
+        const confirmMsg = `Are you sure you want to reindex the "${collection}" collection? This will refresh all embeddings for this collection.`;
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        try {
+            // Disable the button during reindexing
+            button.setDisabled(true);
+            button.setButtonText('Reindexing...');
+            
+            // Show initial notice
+            new Notice(`Starting reindex for collection: ${collection}`);
+            
+            // Handle different collection types differently
+            if (collection === 'file_embeddings') {
+                // Only file_embeddings should use the chunking strategy
+                await this.reindexFileEmbeddings(button);
+            } else {
+                // Other collections (sessions, workspaces, memory_traces) should be handled as whole units
+                await this.reindexMetadataCollection(collection, button);
+            }
+            
+            // Show success message
+            new Notice(`Successfully reindexed collection: ${collection}`);
+            
+            // Update usage stats
+            try {
+                await this.usageStatsService.refreshStats();
+                
+                // Set a flag in localStorage to notify other components
+                localStorage.setItem('claudesidian-collection-reindexed', JSON.stringify({
+                    collection: collection,
+                    timestamp: Date.now()
+                }));
+                
+                // Dispatch a storage event to ensure all components update
+                if (typeof StorageEvent === 'function' && typeof window.dispatchEvent === 'function') {
+                    window.dispatchEvent(new StorageEvent('storage', {
+                        key: 'claudesidian-collection-reindexed',
+                        newValue: JSON.stringify({
+                            collection: collection,
+                            timestamp: Date.now()
+                        }),
+                        storageArea: localStorage
+                    }));
+                }
+            } catch (statsError) {
+                console.warn('Failed to update usage stats after reindexing:', statsError);
+            }
+            
+        } catch (error) {
+            console.error(`Error reindexing collection ${collection}:`, error);
+            new Notice(`Error reindexing collection: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            // Re-enable the button
+            button.setDisabled(false);
+            button.setButtonText('Reindex');
+        }
+    }
+    
+    /**
+     * Reindex file embeddings using the chunking strategy from settings
+     */
+    private async reindexFileEmbeddings(button: ButtonComponent): Promise<void> {
+        // Get all markdown files in the vault
+        const app = (window as any).app;
+        if (!app || !app.vault) {
+            throw new Error('Obsidian app or vault not available');
+        }
+        
+        const allFiles = app.vault.getMarkdownFiles();
+        const filePaths = allFiles.map((file: any) => file.path);
+        
+        // Create a progress callback
+        const progressCallback = (processed: number, total: number, currentFile?: string) => {
+            const percentage = Math.round((processed / total) * 100);
+            button.setButtonText(`Reindexing... ${percentage}%`);
+            
+            if (currentFile) {
+                console.log(`Reindexing file_embeddings: ${processed}/${total} - ${currentFile}`);
+            }
+        };
+        
+        // Use the embedding service to reindex the files with chunking
+        await this.embeddingService.incrementalIndexFiles(filePaths, progressCallback);
+    }
+    
+    /**
+     * Reindex metadata collections (sessions, workspaces, memory_traces) without chunking
+     */
+    private async reindexMetadataCollection(collection: string, button: ButtonComponent): Promise<void> {
+        button.setButtonText('Reindexing...');
+        
+        try {
+            // Get the plugin instance to access collection-specific reindexing
+            const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
+            if (!plugin) {
+                throw new Error('Plugin not found');
+            }
+            
+            console.log(`🔄 Starting reindex for collection: ${collection}`);
+            
+            // Step 1: Get existing data from the collection before clearing it
+            button.setButtonText('Backing up data...');
+            const existingItems = await this.vectorStore.getItems(collection, [], ['documents', 'metadatas']);
+            console.log(`🔄 Found ${existingItems.ids?.length || 0} existing items in ${collection}`);
+            
+            if (!existingItems.ids || existingItems.ids.length === 0) {
+                let message = `Collection "${collection}" is empty. `;
+                switch (collection) {
+                    case 'sessions':
+                        message += 'Sessions are created automatically when you use the plugin with workspaces.';
+                        break;
+                    case 'workspaces':
+                        message += 'Create workspaces through the Memory Manager to populate this collection.';
+                        break;
+                    case 'memory_traces':
+                        message += 'Memory traces are created automatically as you work with files and use the plugin.';
+                        break;
+                    default:
+                        message += 'Nothing to reindex.';
+                }
+                new Notice(message);
+                return;
+            }
+            
+            // Step 2: Clear the collection
+            button.setButtonText('Clearing collection...');
+            await this.vectorStore.deleteCollection(collection);
+            
+            // Step 3: Re-embed the existing data with current settings
+            button.setButtonText('Re-embedding data...');
+            console.log(`🔄 Re-embedding ${existingItems.ids.length} items for ${collection}`);
+            
+            const reembeddedItems = [];
+            for (let i = 0; i < existingItems.ids.length; i++) {
+                const id = existingItems.ids[i];
+                const document = existingItems.documents?.[i] || '';
+                const metadata = existingItems.metadatas?.[i] || {};
+                
+                // Get new embedding for the document text
+                const embedding = await this.embeddingService.getEmbedding(document);
+                
+                if (embedding) {
+                    reembeddedItems.push({
+                        id: id,
+                        embedding: embedding,
+                        document: document,
+                        metadata: metadata
+                    });
+                }
+                
+                // Update progress
+                const progress = Math.round(((i + 1) / existingItems.ids.length) * 100);
+                button.setButtonText(`Re-embedding... ${progress}%`);
+            }
+            
+            // Step 4: Add the re-embedded items back to the collection
+            if (reembeddedItems.length > 0) {
+                button.setButtonText('Saving data...');
+                await this.vectorStore.addItems(collection, {
+                    ids: reembeddedItems.map(item => item.id),
+                    embeddings: reembeddedItems.map(item => item.embedding),
+                    documents: reembeddedItems.map(item => item.document),
+                    metadatas: reembeddedItems.map(item => item.metadata)
+                });
+            }
+            
+            console.log(`🔄 Successfully reindexed ${reembeddedItems.length} items in ${collection}`);
+            new Notice(`Successfully reindexed ${reembeddedItems.length} items in ${collection} collection.`);
+            
+        } catch (error) {
+            console.error(`Error reindexing ${collection}:`, error);
+            // If collection doesn't exist, that's fine
+            if (error instanceof Error && error.message.includes('not found')) {
+                new Notice(`Collection "${collection}" was already empty.`);
+            } else {
+                throw error;
+            }
+        }
     }
 }

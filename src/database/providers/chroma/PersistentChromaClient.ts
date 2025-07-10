@@ -603,12 +603,61 @@ export class StrictPersistenceChromaClient {
       throw new Error(`Collection '${name}' not found`);
     }
     
-    // Remove from our collections map
-    this.collections.delete(name);
+    // Get the collection instance to clean up properly
+    const collection = this.collections.get(name);
     
-    // Delete from disk
-    const collectionDir = `${this.storagePath}/collections/${name}`;
-    this.persistenceManager.removeDirectory(collectionDir);
+    try {
+      // First, ensure any pending operations are completed
+      if (collection && typeof (collection as any).saveCollectionToDisk === 'function') {
+        await (collection as any).saveCollectionToDisk();
+      }
+      
+      // Cancel any pending save operations for this collection
+      if (this.persistenceManager && typeof (this.persistenceManager as any).cancelQueuedSave === 'function') {
+        (this.persistenceManager as any).cancelQueuedSave(name);
+      }
+      
+      // Remove from our collections map
+      this.collections.delete(name);
+      
+      // Add a small delay to ensure all references are released
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Delete from disk with retry logic for Windows file locking
+      const collectionDir = `${this.storagePath}/collections/${name}`;
+      await this.deleteCollectionWithRetry(collectionDir);
+      
+    } catch (error) {
+      // If file deletion fails, we still want to remove from memory
+      // but we should inform the user about the file deletion failure
+      throw new Error(`Failed to delete collection '${name}': ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  /**
+   * Delete collection directory with retry logic for Windows file locking issues
+   */
+  private async deleteCollectionWithRetry(collectionDir: string, maxRetries = 3): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.persistenceManager!.removeDirectory(collectionDir);
+        return; // Success
+      } catch (error) {
+        console.warn(`Attempt ${attempt}/${maxRetries} to delete collection directory failed:`, error);
+        
+        if (attempt === maxRetries) {
+          // On final failure, provide helpful error message
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          if (errorMessage.includes('EPERM') || errorMessage.includes('operation not permitted')) {
+            throw new Error(`Cannot delete collection files - they may be in use by another process. Please close any applications that might be using the collection files and try again.`);
+          }
+          throw error;
+        }
+        
+        // Wait before retry, with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, attempt * 500));
+      }
+    }
   }
   
   /**

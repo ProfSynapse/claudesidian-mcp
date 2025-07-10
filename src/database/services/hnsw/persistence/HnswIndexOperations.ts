@@ -67,15 +67,6 @@ export class HnswIndexOperations {
       }
 
       // Load the persisted index - readIndex expects (filename, maxElements)
-      logger.systemLog(
-        `[DIAGNOSTIC] Calling readIndex with filename: ${expectedFilename} (type: ${typeof expectedFilename}), maxElements: ${metadata.itemCount || 1000}`,
-        'HnswIndexOperations'
-      );
-      
-      // DIAGNOSTIC: Inspect index object before readIndex
-      logger.systemLog(`[DIAGNOSTIC] Index object type: ${typeof index}`, 'HnswIndexOperations');
-      logger.systemLog(`[DIAGNOSTIC] Index object constructor: ${index.constructor?.name}`, 'HnswIndexOperations');
-      logger.systemLog(`[DIAGNOSTIC] Index object methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(index)).join(', ')}`, 'HnswIndexOperations');
       
       // Initialize the index with correct parameters
       const maxElements = metadata.itemCount || 1000;
@@ -136,29 +127,15 @@ export class HnswIndexOperations {
       
       // If we get a string conversion error, it likely means the index data is corrupted
       if (errorReason.includes('Cannot pass non-string to std::string')) {
-        logger.systemLog(
-          `[DIAGNOSTIC] Detected corrupted single index data for ${collectionName}, clearing for rebuild`,
-          'HnswIndexOperations'
-        );
-        
         // Clear corrupted single index data
         try {
           const filename = IndexedDbUtils.generateSafeFilename(collectionName);
           if (this.hnswLib?.EmscriptenFileSystemManager?.checkFileExists?.(filename)) {
-            logger.systemLog(
-              `[DIAGNOSTIC] Removing corrupted single index file: ${filename}`,
-              'HnswIndexOperations'
-            );
             // Note: WASM filesystem doesn't have a delete method, files will be overwritten
           }
           
           // Sync to clear from IndexedDB
           await this.syncToIndexedDB();
-          
-          logger.systemLog(
-            `[DIAGNOSTIC] Cleared corrupted single index data for ${collectionName}`,
-            'HnswIndexOperations'
-          );
         } catch (cleanupError) {
           logger.systemError(
             new Error(`Failed to cleanup corrupted single index for ${collectionName}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`),
@@ -216,10 +193,6 @@ export class HnswIndexOperations {
       }
 
       // Save the index to Emscripten FS - ensure filename is a string
-      logger.systemLog(
-        `[DIAGNOSTIC] Calling writeIndex with filename: ${String(filename)} (type: ${typeof filename})`,
-        'HnswIndexOperations'
-      );
       await hnswIndex.writeIndex(String(filename));
       const saveTime = Date.now() - startTime;
 
@@ -446,11 +419,6 @@ export class HnswIndexOperations {
       // If we get a string conversion error, it likely means the index data is corrupted
       // Clear the corrupted index data to allow fresh rebuilding
       if (errorReason.includes('Cannot pass non-string to std::string')) {
-        logger.systemLog(
-          `[DIAGNOSTIC] Detected corrupted index data for ${collectionName}, clearing for rebuild`,
-          'HnswIndexOperations'
-        );
-        
         // Clear corrupted index data from filesystem and metadata
         try {
           // Clear partition files from WASM filesystem
@@ -458,21 +426,12 @@ export class HnswIndexOperations {
           for (let i = 0; i < partitionCount; i++) {
             const partitionFilename = IndexedDbUtils.generatePartitionFilename(collectionName, i);
             if (this.hnswLib?.EmscriptenFileSystemManager?.checkFileExists?.(partitionFilename)) {
-              logger.systemLog(
-                `[DIAGNOSTIC] Removing corrupted partition file: ${partitionFilename}`,
-                'HnswIndexOperations'
-              );
               // Note: WASM filesystem doesn't have a delete method, files will be overwritten
             }
           }
           
           // Sync to clear from IndexedDB
           await this.syncToIndexedDB();
-          
-          logger.systemLog(
-            `[DIAGNOSTIC] Cleared corrupted index data for ${collectionName}`,
-            'HnswIndexOperations'
-          );
         } catch (cleanupError) {
           logger.systemError(
             new Error(`Failed to cleanup corrupted index for ${collectionName}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`),
@@ -527,9 +486,6 @@ export class HnswIndexOperations {
         await new Promise(resolve => setTimeout(resolve, 50));
         
         logger.systemLog('Successfully synced TO IndexedDB', 'HnswIndexOperations');
-        
-        // DIAGNOSTIC: Inspect filesystem after sync TO IndexedDB
-        await this.inspectWasmFilesystem('AFTER_SYNC_TO_INDEXEDDB');
       } catch (error) {
         logger.systemError(
           new Error(`Failed to sync to IndexedDB: ${error instanceof Error ? error.message : String(error)}`),
@@ -582,9 +538,6 @@ export class HnswIndexOperations {
           await new Promise(resolve => setTimeout(resolve, 100));
           
           logger.systemLog('Successfully synced FROM IndexedDB', 'HnswIndexOperations');
-          
-          // DIAGNOSTIC: Inspect filesystem after sync FROM IndexedDB
-          await this.inspectWasmFilesystem('AFTER_SYNC_FROM_INDEXEDDB');
           
           return;
         } catch (error) {
@@ -661,88 +614,6 @@ export class HnswIndexOperations {
     return false;
   }
 
-  /**
-   * DIAGNOSTIC: Inspect WASM filesystem state after sync operations
-   */
-  private async inspectWasmFilesystem(operation: string): Promise<void> {
-    logger.systemLog(`[DIAGNOSTIC] WASM Filesystem Inspection - ${operation}`, 'HnswIndexOperations');
-    
-    if (!this.hnswLib?.EmscriptenFileSystemManager) {
-      logger.systemLog('[DIAGNOSTIC] EmscriptenFileSystemManager not available', 'HnswIndexOperations');
-      return;
-    }
-    
-    const fsManager = this.hnswLib.EmscriptenFileSystemManager;
-    
-    // 1. Check filesystem availability and methods
-    logger.systemLog(`[DIAGNOSTIC] Available methods: ${Object.keys(fsManager).join(', ')}`, 'HnswIndexOperations');
-    
-    // 2. Try to list files if method exists
-    if (fsManager.listFiles) {
-      try {
-        const files = fsManager.listFiles();
-        logger.systemLog(`[DIAGNOSTIC] Files in WASM filesystem: ${Array.isArray(files) ? files.length : 'Not an array'} entries`, 'HnswIndexOperations');
-        
-        if (Array.isArray(files)) {
-          files.forEach((file, index) => {
-            logger.systemLog(`[DIAGNOSTIC] File ${index}: ${file}`, 'HnswIndexOperations');
-          });
-        } else {
-          logger.systemLog(`[DIAGNOSTIC] listFiles returned: ${typeof files} - ${String(files)}`, 'HnswIndexOperations');
-        }
-      } catch (error) {
-        logger.systemLog(`[DIAGNOSTIC] Error listing files: ${error instanceof Error ? error.message : String(error)}`, 'HnswIndexOperations');
-      }
-    }
-    
-    // 3. Check for expected HNSW index files
-    const expectedFiles = [
-      'hnsw_file_embeddings_part_0',
-      'hnsw_file_embeddings_part_1', 
-      'hnsw_memory_traces',
-      'hnsw_sessions',
-      'hnsw_snapshots',
-      'hnsw_workspaces'
-    ];
-    
-    for (const filename of expectedFiles) {
-      try {
-        const exists = fsManager.checkFileExists?.(filename);
-        logger.systemLog(`[DIAGNOSTIC] File ${filename}: ${exists ? 'EXISTS' : 'MISSING'}`, 'HnswIndexOperations');
-        
-        if (exists && fsManager.getFileSize) {
-          try {
-            const size = fsManager.getFileSize(filename);
-            logger.systemLog(`[DIAGNOSTIC] File ${filename} size: ${size} bytes`, 'HnswIndexOperations');
-          } catch (error) {
-            logger.systemLog(`[DIAGNOSTIC] Error getting size for ${filename}: ${error instanceof Error ? error.message : String(error)}`, 'HnswIndexOperations');
-          }
-        }
-        
-        if (exists && fsManager.readFile) {
-          try {
-            const content = fsManager.readFile(filename);
-            const preview = Array.isArray(content) ? content.slice(0, 20) : String(content).substring(0, 100);
-            logger.systemLog(`[DIAGNOSTIC] File ${filename} preview: ${JSON.stringify(preview)}`, 'HnswIndexOperations');
-          } catch (error) {
-            logger.systemLog(`[DIAGNOSTIC] Error reading ${filename}: ${error instanceof Error ? error.message : String(error)}`, 'HnswIndexOperations');
-          }
-        }
-      } catch (error) {
-        logger.systemLog(`[DIAGNOSTIC] Error checking ${filename}: ${error instanceof Error ? error.message : String(error)}`, 'HnswIndexOperations');
-      }
-    }
-    
-    // 4. Check filesystem statistics if available
-    if (fsManager.getStats) {
-      try {
-        const stats = fsManager.getStats();
-        logger.systemLog(`[DIAGNOSTIC] Filesystem stats: ${JSON.stringify(stats)}`, 'HnswIndexOperations');
-      } catch (error) {
-        logger.systemLog(`[DIAGNOSTIC] Error getting filesystem stats: ${error instanceof Error ? error.message : String(error)}`, 'HnswIndexOperations');
-      }
-    }
-  }
 
   /**
    * Extract dimension from items
