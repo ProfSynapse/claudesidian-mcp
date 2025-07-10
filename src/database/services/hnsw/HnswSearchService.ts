@@ -66,6 +66,7 @@ export class HnswSearchService {
   // HNSW library and initialization state
   private hnswLib: any = null;
   private isInitialized = false;
+  private fullyInitialized = false;
 
   constructor(
     app?: App, 
@@ -200,15 +201,40 @@ export class HnswSearchService {
 
       this.isInitialized = true;
       
-      // Discover and recover existing indexes after initialization
+      logger.systemLog('HNSW search service initialized (lightweight) - discovery deferred for performance', 'HnswSearchService');
+    } catch (error) {
+      logger.systemError(
+        new Error(`Failed to initialize HNSW: ${error instanceof Error ? error.message : String(error)}`),
+        'HnswSearchService'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Ensure full initialization including index discovery and collection processing
+   * This is called lazily when HNSW functionality is first used
+   */
+  private async ensureFullyInitialized(): Promise<void> {
+    // First ensure basic initialization
+    await this.initialize();
+    
+    if (this.fullyInitialized) return;
+
+    try {
+      logger.systemLog('🔄 Starting lazy HNSW discovery and collection processing...', 'HnswSearchService');
+      
+      // Discover and recover existing indexes (this was previously in initialize())
       await this.discoverAndRecoverIndexes();
       
       // Check if we need to build indexes from existing ChromaDB collections
       await this.ensureIndexesForExistingCollections();
-      logger.systemLog('HNSW search service initialized successfully', 'HnswSearchService');
+      
+      this.fullyInitialized = true;
+      logger.systemLog('✅ HNSW search service fully initialized with lazy loading', 'HnswSearchService');
     } catch (error) {
       logger.systemError(
-        new Error(`Failed to initialize HNSW: ${error instanceof Error ? error.message : String(error)}`),
+        new Error(`Failed to fully initialize HNSW: ${error instanceof Error ? error.message : String(error)}`),
         'HnswSearchService'
       );
       throw error;
@@ -264,10 +290,7 @@ export class HnswSearchService {
     nResults = 10,
     where?: WhereClause
   ): Promise<ItemWithDistance[]> {
-    if (!this.isInitialized) {
-      logger.systemWarn('HNSW service not initialized', 'HnswSearchService');
-      return [];
-    }
+    await this.ensureFullyInitialized();
 
     try {
       const searchParams: SearchParameters = {
@@ -303,10 +326,7 @@ export class HnswSearchService {
     limitOrFiles?: number | TFile[],
     metadataOrOptions?: any | SearchOptions
   ): Promise<SearchResult[]> {
-    if (!this.isInitialized) {
-      logger.systemWarn('HNSW service not initialized', 'HnswSearchService');
-      return [];
-    }
+    await this.ensureFullyInitialized();
 
     // Parse overloaded parameters (maintain backward compatibility)
     const { limit, threshold, includeContent, filteredFiles } = this.parseSearchParameters(
@@ -415,7 +435,7 @@ export class HnswSearchService {
    * Add single item to existing index
    */
   async addItemToIndex(collectionName: string, item: DatabaseItem): Promise<void> {
-    if (!this.isInitialized) return;
+    await this.ensureFullyInitialized();
     await this.indexManager.addItemToIndex(collectionName, item);
   }
 
@@ -423,7 +443,7 @@ export class HnswSearchService {
    * Remove item from index
    */
   async removeItemFromIndex(collectionName: string, itemId: string): Promise<void> {
-    if (!this.isInitialized) return;
+    await this.ensureFullyInitialized();
     await this.indexManager.removeItemFromIndex(collectionName, itemId);
   }
 

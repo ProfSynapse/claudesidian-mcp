@@ -97,7 +97,7 @@ export class LazyServiceManager {
             stage: LoadingStage.BACKGROUND_FAST
         });
 
-        // STAGE 3 (BACKGROUND_SLOW): Full semantic search - ready in 5-15s
+        // STAGE 4 (ON_DEMAND): Full semantic search - lazy loaded when first used
         this.register('hnswSearchService', {
             name: 'hnswSearchService',
             factory: async () => {
@@ -109,15 +109,15 @@ export class LazyServiceManager {
                 const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
                 const hnswPath = basePath;
                 
-                // Create service with new IndexedDB-based architecture
+                // Create service with new IndexedDB-based architecture - lightweight constructor only
                 const service = new HnswSearchService(this.app, vectorStore, embeddingService, hnswPath);
-                await service.initialize();
+                // NOTE: Do NOT call service.initialize() here - it will be called lazily when first search is performed
                 
                 return service;
             },
             dependencies: ['vectorStore', 'embeddingService'],
             initialized: false,
-            stage: LoadingStage.BACKGROUND_SLOW
+            stage: LoadingStage.ON_DEMAND
         });
 
         this.register('workspaceService', {
