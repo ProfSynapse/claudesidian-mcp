@@ -74,7 +74,9 @@ export const OllamaProviderConfig: EmbeddingProviderConfig = {
       }
       
       const config = PROVIDER_CONFIGS.ollama;
-      const ollamaUrl = settings.customSettings?.url || 'http://127.0.0.1:11434';
+      const baseUrl = settings.customSettings?.url || 'http://127.0.0.1:11434';
+      // Ensure URL doesn't end with slash to avoid double slashes
+      const ollamaUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
       
       return {
         generate: async (texts: string[]): Promise<number[][]> => {

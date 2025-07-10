@@ -190,12 +190,9 @@ Continue with reindexing?`;
      */
     private async reindexCollectionEmbeddings(collection: string, button: ButtonComponent): Promise<void> {
         try {
-            console.log(`🔄 Starting reindex for collection: ${collection}`);
-            
             // Step 1: Get existing data from the collection (PRESERVE everything)
             button.setButtonText('Loading existing data...');
             const existingItems = await this.vectorStore.getItems(collection, [], ['documents', 'metadatas']);
-            console.log(`🔄 Found ${existingItems.ids?.length || 0} existing items in ${collection}`);
             
             if (!existingItems.ids || existingItems.ids.length === 0) {
                 let message = `Collection "${collection}" is empty. `;
@@ -221,7 +218,6 @@ Continue with reindexing?`;
             
             // Step 2: Generate NEW embeddings only (preserve all other data)
             button.setButtonText('Generating new embeddings...');
-            console.log(`🔄 Re-embedding ${existingItems.ids.length} items for ${collection}`);
             
             const updatedItems = [];
             for (let i = 0; i < existingItems.ids.length; i++) {
@@ -249,7 +245,6 @@ Continue with reindexing?`;
             // Step 3: Update items in-place (NO collection deletion, only embedding updates)
             if (updatedItems.length > 0) {
                 button.setButtonText('Updating embeddings...');
-                console.log(`🔄 Updating embeddings for ${updatedItems.length} items in ${collection}`);
                 
                 // Use updateItems instead of deleting and recreating
                 await this.vectorStore.updateItems(collection, {
