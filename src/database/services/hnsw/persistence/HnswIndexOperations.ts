@@ -517,8 +517,8 @@ export class HnswIndexOperations {
       const startTime = Date.now();
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const attemptStartTime = Date.now();
         try {
-          const attemptStartTime = Date.now();
           logger.systemLog(`🔄 Syncing FROM IndexedDB (load operation) - Attempt ${attempt}/${maxRetries}`, 'HnswIndexOperations');
           
           // Use Promise wrapper to ensure proper async handling with timeout
