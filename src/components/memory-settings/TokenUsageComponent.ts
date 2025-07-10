@@ -138,7 +138,7 @@ export class TokenUsageComponent {
         // Token usage progress bar
         const percentUsed = Math.min(100, (stats.tokensThisMonth / this.settings.maxTokensPerMonth) * 100);
         const progressContainer = this.containerEl.createDiv({ cls: 'memory-usage-progress' });
-        const progressBar = progressContainer.createDiv({ cls: 'memory-usage-bar' });
+        const progressBar = progressContainer.createDiv({ cls: 'memory-usage-bar token-usage-progress-bar' });
         progressBar.style.width = `${percentUsed}%`;
         
         // Estimated cost - use the cost from usage stats if available, otherwise calculate

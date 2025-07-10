@@ -9,8 +9,8 @@ export const GOOGLE_MODELS: ModelSpec[] = [
   // Gemini 2.5 models (latest)
   {
     provider: 'google',
-    name: 'Gemini 2.5 Pro Experimental',
-    apiName: 'gemini-2.5-pro-preview-06-05',
+    name: 'Gemini 2.5 Pro',
+    apiName: 'gemini-2.5-pro',
     contextWindow: 2000000,
     maxTokens: 8192,
     inputCostPerMillion: 1.25,

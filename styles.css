@@ -226,8 +226,8 @@
 
 .memory-settings-container h3 {
     margin-top: 24px;
-    border-bottom: 1px solid var(--background-modifier-border);
-    padding-bottom: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 0;
 }
 
 .memory-settings-tabs {
@@ -736,6 +736,52 @@ a:hover {
 .collection-actions {
     display: flex;
     gap: 8px;
+    align-items: center;
+}
+
+.collection-action-button {
+    height: 32px !important;
+    padding: 6px 12px !important;
+    margin: 0 !important;
+    border: 1px solid var(--background-modifier-border) !important;
+    border-radius: 4px !important;
+    background-color: var(--background-primary) !important;
+    color: var(--text-normal) !important;
+    font-size: 14px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    vertical-align: baseline !important;
+    transition: all 0.2s ease !important;
+}
+
+.collection-reindex-btn {
+    background-color: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+    border-color: var(--interactive-accent) !important;
+}
+
+.collection-reindex-btn:hover {
+    background-color: var(--interactive-accent-hover) !important;
+}
+
+.collection-delete-btn {
+    background-color: var(--text-error) !important;
+    color: white !important;
+    border-color: var(--text-error) !important;
+}
+
+.collection-delete-btn:hover {
+    background-color: var(--text-error-hover) !important;
+}
+
+.bulk-buttons-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
 }
 
 .collection-delete-button {
@@ -1157,6 +1203,339 @@ a:hover {
     outline: none;
     border-color: var(--interactive-accent);
     box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+/* Usage Chart Styles */
+.usage-chart-container {
+    width: 100%;
+}
+
+.usage-chart-title {
+    margin-bottom: 16px;
+    color: var(--text-normal);
+}
+
+.usage-budget-section {
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-secondary);
+}
+
+.usage-budget-header {
+    margin: 0 0 8px 0;
+    color: var(--text-normal);
+}
+
+.usage-progress-container {
+    margin-bottom: 8px;
+}
+
+.usage-progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: var(--background-modifier-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.usage-progress-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.usage-progress-fill.success {
+    background-color: var(--text-success);
+}
+
+.usage-progress-fill.warning {
+    background-color: var(--text-warning);
+}
+
+.usage-progress-fill.error {
+    background-color: var(--text-error);
+}
+
+.usage-budget-text {
+    font-size: 0.9em;
+    color: var(--text-muted);
+}
+
+.usage-budget-warning {
+    color: var(--text-error);
+    font-size: 0.9em;
+    font-weight: bold;
+    margin-top: 4px;
+}
+
+.usage-budget-input {
+    width: 100%;
+    margin-top: 8px;
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.usage-costs-section {
+    margin-bottom: 16px;
+}
+
+.usage-section-title {
+    margin: 0 0 8px 0;
+    color: var(--text-normal);
+}
+
+.usage-total-cost {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--text-normal);
+    margin-bottom: 12px;
+}
+
+.usage-stacked-progress-container {
+    width: 100%;
+    height: 8px;
+    background-color: var(--background-modifier-border);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    margin-bottom: 8px;
+}
+
+.usage-progress-segment {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.usage-provider-list {
+    font-size: 0.9em;
+    margin-top: 8px;
+}
+
+.usage-provider-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+    color: var(--text-muted);
+}
+
+.usage-provider-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.usage-provider-color-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.usage-provider-name {
+    color: var(--text-normal);
+}
+
+.usage-provider-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.usage-provider-cost {
+    font-family: var(--font-monospace);
+}
+
+.usage-provider-percentage {
+    font-size: 0.8em;
+    color: var(--text-faint);
+}
+
+.usage-no-data {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    font-style: italic;
+}
+
+.usage-actions {
+    margin-top: 16px;
+}
+
+.usage-reset-button {
+    padding: 6px 12px;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.usage-reset-button:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+/* LLM Usage Tab Styles */
+.llm-usage-main-container {
+    padding: 16px;
+}
+
+.llm-usage-error {
+    color: var(--text-error);
+    padding: 20px;
+    text-align: center;
+    border: 1px solid var(--text-error);
+    border-radius: 6px;
+    background-color: var(--background-secondary);
+}
+
+.llm-usage-error-button {
+    margin-top: 12px;
+    padding: 6px 12px;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.llm-usage-button-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+/* LLM Provider Modal Styles */
+.llm-provider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.llm-provider-model-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.llm-provider-model-name {
+    min-width: 150px;
+    font-weight: bold;
+}
+
+.llm-provider-description-input {
+    flex: 1;
+}
+
+.llm-provider-input {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.llm-provider-input.validating {
+    border-color: #3b82f6;
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+.llm-provider-input.success {
+    border-color: #22c55e;
+    background-color: rgba(34, 197, 94, 0.1);
+}
+
+.llm-provider-input.error {
+    border-color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.llm-provider-button-container {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+/* Embedding Settings Styles */
+.embedding-input-error {
+    border-color: var(--text-error);
+}
+
+/* Progress Bar Component Styles */
+.progress-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+.progress-bar-content {
+    flex: 1;
+}
+
+.progress-bar-text {
+    font-size: 0.9em;
+    color: var(--text-normal);
+    margin-bottom: 4px;
+}
+
+.progress-bar-track {
+    width: 100%;
+    height: 8px;
+    background-color: var(--background-modifier-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background-color: var(--interactive-accent);
+    transition: width 0.3s ease;
+}
+
+/* Agent Management Styles */
+.agent-management-button-container {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+/* Collection Stats Component Styles */
+.collection-stats-chart-segment {
+    /* Dynamic width set via JS */
+}
+
+.collection-stats-color-box {
+    /* Dynamic background color set via JS */
+}
+
+/* Token Usage Component Styles */
+.token-usage-progress-bar {
+    /* Dynamic width set via JS */
+}
+
+/* Usage Settings Tab Styles */
+.usage-settings-budget-container {
+    margin-top: 20px;
+}
+
+/* Diff styles for main.js compiled code */
+.diff-insert {
+    background: #e6ffe6;
+}
+
+.diff-delete {
+    background: #ffe6e6;
 }
 
 /* Responsive design for cards */

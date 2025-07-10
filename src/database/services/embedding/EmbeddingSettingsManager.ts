@@ -118,8 +118,8 @@ export class EmbeddingSettingsManager {
     processingDelay: number;
   } {
     return {
-      batchSize: this.settings.batchSize || 5,
-      processingDelay: this.settings.processingDelay || 1000
+      batchSize: 10,
+      processingDelay: 1000
     };
   }
 
@@ -221,7 +221,7 @@ export class EmbeddingSettingsManager {
       apiProvider: this.settings.apiProvider,
       hasApiKey: !!(providerSettings?.apiKey && providerSettings.apiKey.trim() !== ''),
       dimensions: providerSettings?.dimensions,
-      batchSize: this.settings.batchSize || 5,
+      batchSize: 10,
       maxTokensPerChunk: this.settings.maxTokensPerChunk || 8000
     };
   }

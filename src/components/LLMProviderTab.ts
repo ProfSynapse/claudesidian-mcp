@@ -31,6 +31,7 @@ export class LLMProviderTab {
   private app: App;
   private staticModelsService: StaticModelsService;
   private modelDropdownSetting: Setting | null = null;
+  private providerDropdownSetting: Setting | null = null;
 
   constructor(options: LLMProviderTabOptions & { app?: App }) {
     this.containerEl = options.containerEl;
@@ -63,7 +64,33 @@ export class LLMProviderTab {
     const sectionEl = this.containerEl.createDiv('llm-default-section');
     sectionEl.createEl('h3', { text: '🎯 Default Model Settings' });
 
-    new Setting(sectionEl)
+    // Create provider dropdown setting and store reference
+    this.providerDropdownSetting = new Setting(sectionEl)
+      .setName('Default Provider')
+      .setDesc('The LLM provider to use when none is specified');
+    
+    // Initial population of provider dropdown
+    this.updateProviderDropdown();
+
+    // Create model dropdown setting and store reference
+    this.modelDropdownSetting = new Setting(sectionEl)
+      .setName('Default Model')
+      .setDesc('The specific model to use by default');
+    
+    // Initial population of model dropdown
+    this.updateModelDropdown(this.settings.defaultModel.provider);
+  }
+
+  /**
+   * Update the provider dropdown with enabled providers
+   */
+  private updateProviderDropdown(): void {
+    if (!this.providerDropdownSetting) return;
+
+    // Clear existing dropdown
+    this.providerDropdownSetting.clear();
+    
+    this.providerDropdownSetting
       .setName('Default Provider')
       .setDesc('The LLM provider to use when none is specified')
       .addDropdown(dropdown => {
@@ -88,14 +115,6 @@ export class LLMProviderTab {
             this.onSettingsChange(this.settings);
           });
       });
-
-    // Create model dropdown setting and store reference
-    this.modelDropdownSetting = new Setting(sectionEl)
-      .setName('Default Model')
-      .setDesc('The specific model to use by default');
-    
-    // Initial population of model dropdown
-    this.updateModelDropdown(this.settings.defaultModel.provider);
   }
 
   /**
@@ -196,6 +215,10 @@ export class LLMProviderTab {
           enabled: enabled
         };
         this.onSettingsChange(this.settings);
+        
+        // Refresh both provider and model dropdowns when toggling providers
+        this.updateProviderDropdown();
+        this.updateModelDropdown(this.settings.defaultModel.provider);
         this.refreshProviderCards();
       },
       onEdit: (item: ProviderCardItem) => this.openProviderModal(item.providerId, item.displayConfig, item.config),
@@ -243,6 +266,9 @@ export class LLMProviderTab {
       this.providerCardManager.updateItems(items);
     }
 
+    // Refresh the provider dropdown to show newly enabled providers
+    this.updateProviderDropdown();
+    
     // Also refresh the default model dropdown in case provider states changed
     this.updateModelDropdown(this.settings.defaultModel.provider);
   }

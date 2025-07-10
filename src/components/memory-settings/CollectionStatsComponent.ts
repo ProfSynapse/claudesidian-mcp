@@ -104,7 +104,7 @@ export class CollectionStatsComponent {
             // Create segments for each collection
             stats.collectionStats.forEach((collection: CollectionStat) => {
                 const percentage = (collection.count / stats.totalEmbeddings) * 100;
-                const segment = barContainer.createDiv({ cls: 'collection-bar-segment' });
+                const segment = barContainer.createDiv({ cls: 'collection-bar-segment collection-stats-chart-segment' });
                 segment.style.width = `${percentage}%`;
                 segment.style.backgroundColor = collection.color;
                 
@@ -124,7 +124,7 @@ export class CollectionStatsComponent {
             const legendItemsContainer = legendContainer.createDiv({ cls: 'legend-items-container' });
             stats.collectionStats.forEach((collection: CollectionStat) => {
                 const legendItem = legendItemsContainer.createDiv({ cls: 'legend-item-compact' });
-                const colorBox = legendItem.createDiv({ cls: 'legend-color' });
+                const colorBox = legendItem.createDiv({ cls: 'legend-color collection-stats-color-box' });
                 colorBox.style.backgroundColor = collection.color;
                 const percentage = (collection.count / stats.totalEmbeddings) * 100;
                 legendItem.createEl('span', { 

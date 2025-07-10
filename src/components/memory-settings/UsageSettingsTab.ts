@@ -1,7 +1,7 @@
-import { Notice, Setting } from 'obsidian';
+import { Notice } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
 import { UsageStatsComponent } from './UsageStatsComponent';
-import { DeleteCollectionComponent } from './DeleteCollectionComponent';
+import { CollectionManagementComponent } from './CollectionManagementComponent';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
@@ -17,7 +17,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
     private embeddingManager: EmbeddingManager | null;
     private vaultLibrarian: VaultLibrarianAgent | null;
     private usageStatsComponent: UsageStatsComponent | null = null;
-    private deleteCollectionComponent: DeleteCollectionComponent | null = null;
+    private collectionManagementComponent: CollectionManagementComponent | null = null;
     private usageStatsService: UsageStatsService | null = null;
     private vectorStore: any = null;
     private embeddingService: EmbeddingService | null = null;
@@ -128,22 +128,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
     display(containerEl: HTMLElement): void {
         // Embedding budget section (cost-based tracking)
         this.addEmbeddingBudgetSection(containerEl);
-        
-        // API Rate Limit setting (keep this as it's still relevant)
-        containerEl.createEl('h3', { text: 'API Limits' });
-        
-        new Setting(containerEl)
-            .setName('API Rate Limit')
-            .setDesc('Maximum API requests per minute')
-            .addSlider((slider: any) => slider
-                .setLimits(10, 1000, 10)
-                .setValue(this.settings.apiRateLimitPerMinute)
-                .setDynamicTooltip()
-                .onChange(async (value: number) => {
-                    this.settings.apiRateLimitPerMinute = value;
-                    await this.saveSettings();
-                })
-            );
             
         // Ensure cost per thousand tokens is set with the correct values
         if (!this.settings.costPerThousandTokens) {
@@ -161,33 +145,23 @@ export class UsageSettingsTab extends BaseSettingsTab {
             
         // Note: Old token-based usage stats replaced with cost-based budget tracking above
         
-        // Collection Management Section (moved from EmbeddingSettingsTab)
+        // Collection Management Section
         const collectionManagementContainer = containerEl.createDiv({ cls: 'collection-management-container' });
         
-        // Only display if we have a vector store, usage stats service, and embedding service
+        // Only display if we have required services
         if (this.vectorStore && this.usageStatsService && this.embeddingService) {
-            // Create and display the DeleteCollectionComponent
-            if (!this.deleteCollectionComponent) {
-                this.deleteCollectionComponent = new DeleteCollectionComponent(
-                    collectionManagementContainer,
-                    this.vectorStore,
-                    this.usageStatsService,
-                    this.embeddingService,
-                    this.settings
-                );
-            } else {
-                // If already created, just set the container and refresh
-                this.deleteCollectionComponent = new DeleteCollectionComponent(
-                    collectionManagementContainer,
-                    this.vectorStore,
-                    this.usageStatsService,
-                    this.embeddingService,
-                    this.settings
-                );
-            }
             
-            // Initialize the component with collections
-            this.deleteCollectionComponent.refresh();
+            // Create and display the unified CollectionManagementComponent
+            this.collectionManagementComponent = new CollectionManagementComponent(
+                collectionManagementContainer,
+                this.vectorStore,
+                this.usageStatsService!,
+                this.embeddingService!,
+                this.settings
+            );
+            
+            this.collectionManagementComponent.display();
+            
         } else {
             collectionManagementContainer.createEl('div', { 
                 text: 'Collection management is not available. Vector store, usage stats service, or embedding service not initialized.',
@@ -195,6 +169,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
             });
         }
     }
+    
     
     /**
      * Explicitly refreshes token usage statistics and updates the UI
@@ -232,10 +207,10 @@ export class UsageSettingsTab extends BaseSettingsTab {
                 console.warn('UsageSettingsTab: No UsageStatsComponent available for refresh');
             }
             
-            // Refresh the DeleteCollectionComponent
-            if (this.deleteCollectionComponent) {
-                console.log('UsageSettingsTab: Refreshing DeleteCollectionComponent');
-                await this.deleteCollectionComponent.refresh();
+            // Refresh collection management component
+            if (this.collectionManagementComponent) {
+                console.log('UsageSettingsTab: Refreshing collection management component');
+                await this.collectionManagementComponent.display();
             }
             
             // Force localStorage events for other components
@@ -277,8 +252,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
         if (!this.embeddingUsageTracker) return;
         
         try {
-            const budgetContainer = containerEl.createDiv({ cls: 'embedding-budget-section' });
-            budgetContainer.style.marginTop = '20px';
+            const budgetContainer = containerEl.createDiv({ cls: 'embedding-budget-section usage-settings-budget-container' });
             
             const usageData = await this.embeddingUsageTracker.getUsageData();
             const budgetStatus = await this.embeddingUsageTracker.getBudgetStatusAsync();
