@@ -95,7 +95,7 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
   {
     provider: 'openrouter',
     name: 'Gemini 2.5 Pro Experimental',
-    apiName: 'google/gemini-2.5-pro-preview-06-05',
+    apiName: 'google/gemini-2.5-pro',
     contextWindow: 1048576,
     maxTokens: 66000,
     inputCostPerMillion: 1.25,
