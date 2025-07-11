@@ -108,22 +108,22 @@ export const OPENAI_MODELS: ModelSpec[] = [
   },
 
   // o3 deep research models
-  {
-    provider: 'openai',
-    name: 'o3 Deep Research',
-    apiName: 'o3-deep-research-2025-06-26',
-    contextWindow: 200000,
-    maxTokens: 100000,
-    inputCostPerMillion: 10.00,
-    outputCostPerMillion: 40.00,
-    capabilities: {
-      supportsJSON: false,
-      supportsImages: true,
-      supportsFunctions: false,
-      supportsStreaming: true,
-      supportsThinking: true
-    }
-  },
+  // {
+  //   provider: 'openai',
+  //   name: 'o3 Deep Research',
+  //   apiName: 'o3-deep-research-2025-06-26',
+  //   contextWindow: 200000,
+  //   maxTokens: 100000,
+  //   inputCostPerMillion: 10.00,
+  //   outputCostPerMillion: 40.00,
+  //   capabilities: {
+  //     supportsJSON: false,
+  //     supportsImages: true,
+  //     supportsFunctions: false,
+  //     supportsStreaming: true,
+  //     supportsThinking: true
+  //   }
+  // },
 
   // o4 models (reasoning)
   {
@@ -142,22 +142,22 @@ export const OPENAI_MODELS: ModelSpec[] = [
       supportsThinking: true
     }
   },
-  {
-    provider: 'openai',
-    name: 'o4 Mini Deep Research',
-    apiName: 'o4-mini-deep-research-2025-06-26',
-    contextWindow: 200000,
-    maxTokens: 100000,
-    inputCostPerMillion: 2.00,
-    outputCostPerMillion: 8.00,
-    capabilities: {
-      supportsJSON: false,
-      supportsImages: true,
-      supportsFunctions: false,
-      supportsStreaming: true,
-      supportsThinking: true
-    }
-  }
+  // {
+  //   provider: 'openai',
+  //   name: 'o4 Mini Deep Research',
+  //   apiName: 'o4-mini-deep-research-2025-06-26',
+  //   contextWindow: 200000,
+  //   maxTokens: 100000,
+  //   inputCostPerMillion: 2.00,
+  //   outputCostPerMillion: 8.00,
+  //   capabilities: {
+  //     supportsJSON: false,
+  //     supportsImages: true,
+  //     supportsFunctions: false,
+  //     supportsStreaming: true,
+  //     supportsThinking: true
+  //   }
+  // }
 ];
 
 export const OPENAI_DEFAULT_MODEL = 'gpt-4.1-2025-04-14';
