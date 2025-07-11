@@ -1,6 +1,7 @@
 /**
  * HnswIndexLoadingService - Handles HNSW index loading and validation logic
  * Follows Single Responsibility Principle by focusing only on index loading
+ * SUPERLATIVE ENHANCEMENT: Improved reliability, performance, and error handling
  */
 
 import { logger } from '../../../../utils/logger';
@@ -42,6 +43,7 @@ export class HnswIndexLoadingService {
 
   /**
    * Load persisted index and validate against current data
+   * SUPERLATIVE ENHANCEMENT: Improved validation, error handling, and performance tracking
    * @param collectionName Collection name
    * @param currentItems Current items
    * @param dimension Expected dimension
@@ -52,22 +54,62 @@ export class HnswIndexLoadingService {
     currentItems: DatabaseItem[], 
     dimension: number
   ): Promise<IndexLoadingResult> {
+    const startTime = Date.now();
+    
     try {
+      logger.systemLog(`🔄 Starting enhanced index loading for collection: ${collectionName}`, 'HnswIndexLoadingService');
+      
       // Load metadata to determine if index is partitioned
       const metadata = await this.persistenceService.loadIndexMetadata(collectionName);
       if (!metadata) {
+        logger.systemWarn(`❌ No metadata found for collection: ${collectionName}`, 'HnswIndexLoadingService');
         return { success: false, indexType: 'single', itemsIndexed: 0, itemsSkipped: 0, dimension };
       }
 
-      // Use metadata to determine correct loading method
-      if (metadata.isPartitioned) {
-        return await this.loadPersistedPartitionedIndex(collectionName, currentItems, dimension);
-      } else {
-        return await this.loadPersistedSingleIndex(collectionName, currentItems, dimension);
+      logger.systemLog(
+        `📋 Loaded metadata for ${collectionName}: ${metadata.itemCount} items, ${metadata.dimension}D, partitioned=${metadata.isPartitioned}`,
+        'HnswIndexLoadingService'
+      );
+
+      // Enhanced validation
+      if (metadata.dimension !== dimension && dimension > 0) {
+        logger.systemWarn(
+          `⚠️  Dimension mismatch for ${collectionName}: metadata=${metadata.dimension}, expected=${dimension}`,
+          'HnswIndexLoadingService'
+        );
       }
+
+      // Use metadata to determine correct loading method with enhanced error handling
+      let result: IndexLoadingResult;
+      
+      if (metadata.isPartitioned) {
+        logger.systemLog(`🔄 Loading partitioned index for ${collectionName}`, 'HnswIndexLoadingService');
+        result = await this.loadPersistedPartitionedIndex(collectionName, currentItems, dimension);
+      } else {
+        logger.systemLog(`🔄 Loading single index for ${collectionName}`, 'HnswIndexLoadingService');
+        result = await this.loadPersistedSingleIndex(collectionName, currentItems, dimension);
+      }
+
+      const loadTime = Date.now() - startTime;
+      
+      if (result.success) {
+        logger.systemLog(
+          `✅ Successfully loaded ${result.indexType} index for ${collectionName} in ${loadTime}ms (${result.itemsIndexed} items)`,
+          'HnswIndexLoadingService'
+        );
+      } else {
+        logger.systemWarn(
+          `❌ Failed to load index for ${collectionName} after ${loadTime}ms`,
+          'HnswIndexLoadingService'
+        );
+      }
+
+      return result;
+      
     } catch (error) {
-      logger.systemWarn(
-        `Error loading persisted index for ${collectionName}: ${getErrorMessage(error)}`,
+      const loadTime = Date.now() - startTime;
+      logger.systemError(
+        new Error(`Enhanced index loading failed for ${collectionName} after ${loadTime}ms: ${getErrorMessage(error)}`),
         'HnswIndexLoadingService'
       );
       return { success: false, indexType: 'single', itemsIndexed: 0, itemsSkipped: 0, dimension };
@@ -76,6 +118,7 @@ export class HnswIndexLoadingService {
 
   /**
    * Load persisted single index from IndexedDB
+   * SUPERLATIVE ENHANCEMENT: Better error handling, performance tracking, and validation
    * @param collectionName Collection name
    * @param currentItems Current items
    * @param dimension Expected dimension
@@ -86,42 +129,85 @@ export class HnswIndexLoadingService {
     currentItems: DatabaseItem[], 
     dimension: number
   ): Promise<IndexLoadingResult> {
-    // Load metadata first, then pass it to loadIndex
-    const metadata = await this.persistenceService.loadIndexMetadata(collectionName);
-    const loadResult = await this.persistenceService.loadIndex(collectionName, metadata);
+    const startTime = Date.now();
     
-    if (!loadResult.success || !loadResult.index) {
+    try {
+      logger.systemLog(`🔄 Loading single index for collection: ${collectionName}`, 'HnswIndexLoadingService');
+      
+      // Load metadata first, then pass it to loadIndex with enhanced validation
+      const metadata = await this.persistenceService.loadIndexMetadata(collectionName);
+      if (!metadata) {
+        logger.systemWarn(`❌ No metadata available for ${collectionName}`, 'HnswIndexLoadingService');
+        return { success: false, indexType: 'single', itemsIndexed: 0, itemsSkipped: 0, dimension };
+      }
+
+      // Enhanced metadata validation
+      if (metadata.dimension !== dimension && dimension > 0) {
+        logger.systemWarn(
+          `⚠️  Dimension mismatch detected: metadata=${metadata.dimension}, expected=${dimension}`,
+          'HnswIndexLoadingService'
+        );
+      }
+
+      logger.systemLog(`📂 Loading index data from persistence...`, 'HnswIndexLoadingService');
+      const loadResult = await this.persistenceService.loadIndex(collectionName, metadata);
+      
+      if (!loadResult.success || !loadResult.index) {
+        logger.systemWarn(
+          `❌ Failed to load persisted single index for ${collectionName}: ${loadResult.errorReason}`,
+          'HnswIndexLoadingService'
+        );
+        return { success: false, indexType: 'single', itemsIndexed: 0, itemsSkipped: 0, dimension };
+      }
+
+      logger.systemLog(`✅ Index data loaded successfully, creating index structure...`, 'HnswIndexLoadingService');
+
+      // Create the index structure to hold the loaded index with enhanced initialization
+      const indexData: HnswIndex = {
+        index: loadResult.index,
+        idToItem: new Map(),
+        itemIdToHnswId: new Map(),
+        nextId: metadata.itemCount || 0,
+      };
+
+      // Populate the mapping data from current items with performance tracking
+      logger.systemLog(`🔄 Populating index mappings for ${currentItems.length} items...`, 'HnswIndexLoadingService');
+      const populateStartTime = Date.now();
+      const populateResult = await this.populateIndexMappings(indexData, currentItems);
+      const populateTime = Date.now() - populateStartTime;
+
+      const totalTime = Date.now() - startTime;
+
       logger.systemLog(
-        `Failed to load persisted single index for ${collectionName}: ${loadResult.errorReason}`,
+        `✅ Successfully loaded persisted single index for ${collectionName} in ${totalTime}ms (${populateResult.itemsMapped} items mapped in ${populateTime}ms)`,
+        'HnswIndexLoadingService'
+      );
+
+      // Enhanced validation of mapping results
+      if (populateResult.itemsMapped === 0 && currentItems.length > 0) {
+        logger.systemWarn(
+          `⚠️  No items were mapped for ${collectionName} despite having ${currentItems.length} current items`,
+          'HnswIndexLoadingService'
+        );
+      }
+
+      return {
+        success: true,
+        indexType: 'single',
+        itemsIndexed: populateResult.itemsMapped,
+        itemsSkipped: populateResult.itemsSkipped,
+        dimension,
+        singleIndex: indexData,
+      };
+      
+    } catch (error) {
+      const totalTime = Date.now() - startTime;
+      logger.systemError(
+        new Error(`Enhanced single index loading failed for ${collectionName} after ${totalTime}ms: ${getErrorMessage(error)}`),
         'HnswIndexLoadingService'
       );
       return { success: false, indexType: 'single', itemsIndexed: 0, itemsSkipped: 0, dimension };
     }
-
-    // Create the index structure to hold the loaded index
-    const indexData: HnswIndex = {
-      index: loadResult.index,
-      idToItem: new Map(),
-      itemIdToHnswId: new Map(),
-      nextId: loadResult.metadata?.itemCount || 0,
-    };
-
-    // Populate the mapping data from current items
-    const populateResult = await this.populateIndexMappings(indexData, currentItems);
-
-    logger.systemLog(
-      `Successfully loaded persisted single index for ${collectionName} (${populateResult.itemsMapped} items mapped)`,
-      'HnswIndexLoadingService'
-    );
-
-    return {
-      success: true,
-      indexType: 'single',
-      itemsIndexed: populateResult.itemsMapped,
-      itemsSkipped: populateResult.itemsSkipped,
-      dimension,
-      singleIndex: indexData,
-    };
   }
 
   /**

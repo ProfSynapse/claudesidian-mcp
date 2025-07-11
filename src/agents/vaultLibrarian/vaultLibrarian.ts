@@ -185,26 +185,34 @@ export class VaultLibrarianAgent extends BaseAgent {
   async initialize(): Promise<void> {
     await super.initialize();
     
-    // Ensure we have our search service initialized
+    // Initialize search service - HNSW will be available since agents load after services
     await this.initializeSearchService();
   }
   
   /**
-   * Initialize the search service if it doesn't have a vector store
+   * Initialize the search service
+   * HNSW service should be available since agents load after services in background
    */
   async initializeSearchService(): Promise<void> {
-    if (!this.hnswSearchService) {
-      console.warn('Semantic search service not available in VaultLibrarian');
+    // If we already have the service, we're done
+    if (this.hnswSearchService) {
+      console.log('HNSW search service already available in VaultLibrarian');
       return;
     }
-    
-    // Modern services handle their own vector store setup
+
+    // Try to get the HNSW service from the service manager
     try {
-      await this.hnswSearchService.initialize();
-      console.log('Successfully initialized semantic search service');
+      const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+      if (plugin?.serviceManager) {
+        this.hnswSearchService = await plugin.serviceManager.get('hnswSearchService');
+        console.log('✅ Successfully loaded HNSW search service in VaultLibrarian');
+        return;
+      }
     } catch (error) {
-      console.error('Error initializing semantic search service:', error);
+      console.warn('Failed to load HNSW search service:', error);
     }
+
+    console.warn('⚠️  Semantic search service not available in VaultLibrarian');
   }
   
   /**

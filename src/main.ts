@@ -105,9 +105,8 @@ export default class ClaudesidianPlugin extends Plugin {
         // Start immediate services only
         await this.serviceManager.start();
         
-        // Initialize connector and agents
+        // Initialize connector only (agents will be loaded in background)
         this.connector = new MCPConnector(this.app, this);
-        await this.connector.initializeAgents();
         await this.connector.start();
         
         // Add settings tab

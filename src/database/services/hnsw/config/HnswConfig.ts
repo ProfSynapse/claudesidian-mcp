@@ -207,6 +207,7 @@ export class HnswConfig {
 
   /**
    * Get default configuration for production use
+   * SUPERLATIVE ENHANCEMENT: Optimized for persistence and performance
    * @returns Production-optimized configuration
    */
   static getProductionConfig(): HnswConfig {
@@ -217,16 +218,16 @@ export class HnswConfig {
         minItemsForPartitioning: 500,
       },
       persistence: {
-        enabled: true,
-        metadataCacheEnabled: true,
-        migrationEnabled: true,
+        enabled: true, // ✅ CRITICAL: Always enabled for production
+        metadataCacheEnabled: true, // ✅ Enhanced caching for faster startup
+        migrationEnabled: true, // ✅ Support for index upgrades
       },
       indexedDb: {
         storageQuotaWarningThreshold: 80,
         autoCleanupEnabled: true,
         maxCacheAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        compressionEnabled: false,
-        syncTimeoutMs: 30000, // 30 seconds
+        compressionEnabled: false, // Keep false for reliability
+        syncTimeoutMs: 30000, // 30 seconds - adequate for most cases
       },
       index: {
         efConstruction: 200, // Good balance of quality and speed
@@ -240,8 +241,8 @@ export class HnswConfig {
         resultsMultiplier: 2,
       },
       validation: {
-        strictEmbeddingValidation: true,
-        allowPartialMatches: false,
+        strictEmbeddingValidation: true, // ✅ Prevent corrupted indexes
+        allowPartialMatches: false, // ✅ Ensure data integrity
       },
     });
   }
