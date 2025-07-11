@@ -224,13 +224,6 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
 
       // Track usage and get budget status
       let budgetStatus: BudgetStatus | undefined;
-      console.log('executePromptMode: Checking usage tracking', {
-        hasUsageTracker: !!this.usageTracker,
-        hasCost: !!result.cost,
-        hasProvider: !!result.provider,
-        cost: result.cost,
-        provider: result.provider
-      });
       
       if (this.usageTracker && result.cost && result.provider) {
         try {
@@ -239,13 +232,11 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             result.cost.totalCost || 0
           );
           budgetStatus = usageResponse.budgetStatus;
-          console.log('executePromptMode: Successfully tracked usage', usageResponse);
         } catch (error) {
           console.error('Failed to track LLM usage:', error);
           // Don't fail the request if usage tracking fails
         }
       } else {
-        console.log('executePromptMode: Skipping usage tracking - missing requirements');
       }
 
       // Prepare result data

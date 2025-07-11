@@ -67,7 +67,6 @@ export class EmbeddingSettingsManager {
       if (pluginAsClaudesidian && pluginAsClaudesidian.settings) {
         pluginAsClaudesidian.settings.settings.memory = this.settings;
         await pluginAsClaudesidian.settings.saveSettings();
-        console.log('Settings saved successfully');
       }
     } catch (saveError) {
       console.error('Error saving settings:', saveError);

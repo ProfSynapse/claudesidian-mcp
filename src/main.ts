@@ -88,7 +88,6 @@ export default class ClaudesidianPlugin extends Plugin {
     
     async onload() {
         const startTime = Date.now();
-        console.log('[ClaudesidianPlugin] Starting optimized plugin initialization...');
         
         // Initialize settings first
         this.settings = new Settings(this);
@@ -118,8 +117,6 @@ export default class ClaudesidianPlugin extends Plugin {
         // Check for updates in background
         this.checkForUpdatesOnStartup();
         
-        const duration = Date.now() - startTime;
-        console.log(`[ClaudesidianPlugin] ✓ Plugin initialized (${duration}ms) - services will load on demand`);
     }
     
     /**
@@ -159,7 +156,6 @@ export default class ClaudesidianPlugin extends Plugin {
             }
             
             await this.settings.saveSettings();
-            console.log('[ClaudesidianPlugin] Data directories initialized');
         } catch (error) {
             console.error('[ClaudesidianPlugin] Failed to initialize data directories:', error);
             throw error;
@@ -291,7 +287,6 @@ export default class ClaudesidianPlugin extends Plugin {
                     ].join('\n');
                     
                     notice.setMessage(message);
-                    console.log('Vector storage diagnostics:', diagnostics);
                     
                     setTimeout(() => notice.hide(), 10000);
                 } catch (error) {
@@ -334,8 +329,6 @@ export default class ClaudesidianPlugin extends Plugin {
                     ].join('\n');
                     
                     notice.setMessage(message);
-                    console.log('Service readiness status:', readinessStatus);
-                    console.log('Stage readiness:', stageStatus);
                     
                     setTimeout(() => notice.hide(), 8000);
                 } catch (error) {
@@ -363,7 +356,6 @@ export default class ClaudesidianPlugin extends Plugin {
                     }
                 }
 
-                console.log('Checking for updates...');
                 const updateManager = new UpdateManager(this);
                 const hasUpdate = await updateManager.checkForUpdate();
                 
@@ -374,12 +366,10 @@ export default class ClaudesidianPlugin extends Plugin {
                     const availableVersion = release.tag_name.replace('v', '');
                     
                     this.settings.settings.availableUpdateVersion = availableVersion;
-                    console.log(`Update available: ${availableVersion}`);
                     
                     new Notice(`Plugin update available: v${availableVersion}. Check settings to update.`, 8000);
                 } else {
                     this.settings.settings.availableUpdateVersion = undefined;
-                    console.log('Plugin is up to date');
                 }
                 
                 await this.settings.saveSettings();
@@ -394,7 +384,6 @@ export default class ClaudesidianPlugin extends Plugin {
      * Reload configuration for all services after settings change
      */
     reloadConfiguration(): void {
-        console.log('[ClaudesidianPlugin] Reloading configuration...');
         
         if (this.serviceManager?.isReady('fileEventManager')) {
             const fileEventManager = this.serviceManager.getIfReady('fileEventManager');
@@ -406,10 +395,8 @@ export default class ClaudesidianPlugin extends Plugin {
                 }
             }
         } else {
-            console.log('[ClaudesidianPlugin] File event manager not ready, skipping configuration reload');
         }
         
-        console.log('[ClaudesidianPlugin] Configuration reload complete');
     }
     
     /**
@@ -441,7 +428,6 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     async onunload() {
-        console.log('[ClaudesidianPlugin] Starting cleanup...');
         
         try {
             // Cleanup service manager (handles all service cleanup)
@@ -454,7 +440,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 await this.connector.stop();
             }
             
-            console.log('[ClaudesidianPlugin] Cleanup complete');
         } catch (error) {
             console.error('[ClaudesidianPlugin] Error during cleanup:', error);
         }

@@ -43,7 +43,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             // End startup phase after 5 seconds to allow initial vault events to settle
             this.startupTimeout = setTimeout(() => {
                 this.isStartupPhase = false;
-                console.log('[FileEventCoordinator] Startup phase ended - now monitoring for new file changes');
             }, 5000);
             
             // Start processing any existing queue
@@ -59,7 +58,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
     async shutdown(): Promise<void> {
         try {
-            console.log('[FileEventCoordinator] Shutting down...');
             
             // Clear startup timeout
             if (this.startupTimeout) {
@@ -76,7 +74,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             // Persist any remaining queue
             await this.dependencies.fileEventQueue.persist();
             
-            console.log('[FileEventCoordinator] Shutdown complete');
         } catch (error) {
             console.error('[FileEventCoordinator] Shutdown error:', error);
         }
@@ -98,7 +95,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         // Check if this is a system operation
         const isSystemOp = this.dependencies.fileMonitor.isSystemOperation();
         
-        console.log(`[FileEventCoordinator] New file created: ${file.path}`);
         this.queueFileEvent({
             path: file.path,
             operation: 'create',
@@ -137,7 +133,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
         const isSystemOp = this.dependencies.fileMonitor.isSystemOperation();
         
-        console.log(`[FileEventCoordinator] File modified: ${file.path}`);
         this.queueFileEvent({
             path: file.path,
             operation: 'modify',
@@ -217,7 +212,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 
                 // If still not available, queue for later
                 if (!this.dependencies.fileEventProcessor) {
-                    console.log('[FileEventCoordinator] Vector services not ready, queuing events for later processing');
                     return;
                 }
             }
@@ -241,7 +235,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 
                 if (strategy.type === 'startup') {
                     // For startup strategy, just queue events - don't process them immediately
-                    console.log(`[FileEventCoordinator] Queued ${createModifyEvents.length} events for startup processing (${this.dependencies.fileEventQueue.size()} total in queue)`);
                 } else {
                     // For other strategies, process immediately
                     await this.dependencies.embeddingScheduler.scheduleEmbedding(createModifyEvents);
@@ -296,11 +289,9 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     async processStartupQueue(): Promise<void> {
         const queuedEvents = this.dependencies.fileEventQueue.getEvents();
         if (queuedEvents.length === 0) {
-            console.log('[FileEventCoordinator] No events in startup queue to process');
             return;
         }
 
-        console.log(`[FileEventCoordinator] Starting processing of ${queuedEvents.length} queued startup events`);
         const startTime = Date.now();
         
         try {
@@ -317,7 +308,6 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             
             const invalidCount = queuedEvents.length - validEvents.length;
             if (invalidCount > 0) {
-                console.log(`[FileEventCoordinator] Filtered out ${invalidCount} stale events (files no longer exist or processable)`);
             }
             
             if (validEvents.length > 0) {

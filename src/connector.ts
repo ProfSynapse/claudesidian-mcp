@@ -228,9 +228,6 @@ export class MCPConnector {
                     const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
                     
                     // Debug logging to see what settings we're getting
-                    console.log('Plugin settings found:', !!pluginSettings);
-                    console.log('LLM provider settings:', llmProviderSettings);
-                    console.log('Default provider/model:', llmProviderSettings.defaultModel);
                     
                     // Create LLM Provider Manager
                     const llmProviderManager = new LLMProviderManager(llmProviderSettings);
@@ -248,7 +245,6 @@ export class MCPConnector {
                     const llmUsageTracker = new UsageTracker('llm', pluginSettings);
                     agentManagerAgent.setUsageTracker(llmUsageTracker);
                     
-                    console.log('LLM Provider Manager and Usage Tracker initialized successfully');
                 } catch (error) {
                     console.error('Failed to initialize LLM Provider Manager:', error);
                 }

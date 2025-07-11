@@ -87,7 +87,6 @@ export class UniversalSearchService {
         if (plugin.serviceManager) {
           // Use lazy service manager to get HNSW service on demand
           this.hnswSearchService = await plugin.serviceManager.get('hnswSearchService');
-          console.log('[UniversalSearchService] Successfully loaded HNSW service lazily');
         } else if (plugin.services?.hnswSearchService) {
           // Fallback to old services pattern
           this.hnswSearchService = await plugin.services.hnswSearchService;
@@ -101,7 +100,6 @@ export class UniversalSearchService {
     if (this.hnswSearchService) {
       try {
         this.hybridSearchService = new HybridSearchService(this.hnswSearchService);
-        console.log('[UniversalSearchService] Lazy-initialized HybridSearchService');
         return this.hybridSearchService;
       } catch (error) {
         console.error('[UniversalSearchService] Failed to create HybridSearchService:', error);
@@ -123,10 +121,8 @@ export class UniversalSearchService {
     }
 
     try {
-      console.log('[UniversalSearchService] Starting hybrid search index population');
       
       const files = this.plugin.app.vault.getMarkdownFiles();
-      console.log(`[UniversalSearchService] Found ${files.length} markdown files to process`);
       
       if (files.length === 0) {
         console.warn('[UniversalSearchService] No markdown files found in vault');
@@ -170,7 +166,6 @@ export class UniversalSearchService {
           
           // Log progress every 100 files
           if (indexedCount % 100 === 0) {
-            console.log(`[UniversalSearchService] Indexed ${indexedCount}/${files.length} files...`);
           }
         } catch (error) {
           console.error(`[UniversalSearchService] Failed to index file ${file.path}:`, error);
@@ -178,7 +173,6 @@ export class UniversalSearchService {
         }
       }
       
-      console.log(`[UniversalSearchService] Index population complete: ${indexedCount} files indexed, ${skippedCount} skipped, ${errorCount} errors`);
       
       // Verify the indexes were actually populated
       const postStats = hybridSearchService.getStats();
@@ -425,7 +419,6 @@ export class UniversalSearchService {
     const startTime = performance.now();
     const { query, limit = 5 } = params;
 
-    console.log(`[UniversalSearchService] Starting consolidated search for: "${query}" with limit: ${limit}`);
 
     // 1. Parse query for tags/properties (optional)
     const parsedQuery = this.parseSearchQuery(query);
@@ -442,9 +435,7 @@ export class UniversalSearchService {
     }
 
     // 3. Get hybrid search results
-    console.log(`[UniversalSearchService] Searching content with query: "${parsedQuery.cleanQuery}", filteredFiles: ${filteredFiles?.length || 'none'}`);
     const hybridResults = await this.searchContent(parsedQuery.cleanQuery, filteredFiles, limit * 3, params);
-    console.log(`[UniversalSearchService] Content search returned ${hybridResults.length} results`);
 
     // 4. Apply graph boost if enabled
     let boostedResults = hybridResults;
@@ -455,7 +446,6 @@ export class UniversalSearchService {
     // 5. Consolidate results by file
     const consolidatedResults = await this.consolidateResultsByFile(boostedResults, limit);
 
-    console.log(`[UniversalSearchService] Consolidated search completed in ${performance.now() - startTime}ms, returning ${consolidatedResults.length} files`);
     return consolidatedResults;
   }
 

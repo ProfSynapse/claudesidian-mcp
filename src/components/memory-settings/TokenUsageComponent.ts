@@ -25,31 +25,26 @@ export class TokenUsageComponent {
         
         // Create a debounced refresh function for event handling
         const debouncedEventRefresh = this.debounce(() => {
-            console.log('TokenUsageComponent debounced event refresh triggered');
             this.refresh();
         }, 300); // 300ms debounce
         
         // Set up event listeners with debouncing to prevent loops
         this.usageStatsService.on(USAGE_EVENTS.STATS_UPDATED, () => {
-            console.log('Token usage stats updated event received');
             debouncedEventRefresh();
         });
         
         this.usageStatsService.on(USAGE_EVENTS.STATS_REFRESHED, (stats) => {
-            console.log('Token usage stats refreshed event received', stats);
             this.displayedStats = stats;
             // Use direct display method instead of refresh to avoid loops
             this.display();
         });
         
         this.usageStatsService.on(USAGE_EVENTS.STATS_RESET, () => {
-            console.log('Token usage stats reset event received');
             debouncedEventRefresh();
         });
         
         // Listen for localStorage changes directly (with debouncing)
         const debouncedRefresh = this.debounce(() => {
-            console.log('TokenUsageComponent debounced refresh triggered');
             this.refresh();
         }, 300); // 300ms debounce
         
@@ -72,19 +67,16 @@ export class TokenUsageComponent {
     async refresh(): Promise<void> {
         // Prevent concurrent refreshes
         if (this.isRefreshing) {
-            console.log('TokenUsageComponent refresh already in progress, skipping');
             return;
         }
         
         try {
             this.isRefreshing = true;
-            console.log('TokenUsageComponent refreshing');
             
             // Always get fresh stats - this ensures we have the latest data
             // Use skipEvents parameter to avoid triggering more events
             this.displayedStats = await this.usageStatsService.getUsageStats(true);
             
-            console.log('TokenUsageComponent received stats:', this.displayedStats);
             
             // Clear and redraw
             this.display();

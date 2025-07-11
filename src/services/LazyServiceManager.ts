@@ -223,7 +223,6 @@ export class LazyServiceManager {
      */
     async onWorkspaceLoad(workspaceId: string, workspacePath?: string[]): Promise<void> {
         this.activeWorkspace = workspaceId;
-        console.log(`[LazyServiceManager] Workspace loaded: ${workspaceId} - starting smart caching...`);
         
         // Start intelligent workspace caching
         this.scheduleWorkspaceCaching(workspaceId, workspacePath);
@@ -305,7 +304,6 @@ export class LazyServiceManager {
         });
 
         if (embeddings.size > 0) {
-            console.log(`[LazyServiceManager] Cached ${embeddings.size} embeddings for workspace ${workspaceId}`);
         }
     }
 
@@ -355,7 +353,6 @@ export class LazyServiceManager {
         if (this.activeWorkspace) {
             const cacheEntry = this.workspaceCache.get(this.activeWorkspace);
             if (cacheEntry && cacheEntry.embeddings.size > 0) {
-                console.log(`[LazyServiceManager] Pre-loading HNSW index with ${cacheEntry.embeddings.size} workspace embeddings`);
                 
                 setTimeout(async () => {
                     try {
@@ -372,7 +369,6 @@ export class LazyServiceManager {
                         }));
                         
                         await hnswService.indexCollection('file_embeddings', indexData);
-                        console.log(`[LazyServiceManager] HNSW index pre-loaded with workspace data`);
                     } catch (error) {
                         console.warn('[LazyServiceManager] Error pre-loading HNSW index:', error);
                     }
@@ -438,7 +434,6 @@ export class LazyServiceManager {
             }
             
             const duration = Date.now() - startTime;
-            console.log(`[LazyServiceManager] Initialized ${descriptor.name} (${duration}ms)`);
             
             return instance;
         } catch (error) {
@@ -456,7 +451,6 @@ export class LazyServiceManager {
         }
 
         const startTime = Date.now();
-        console.log('[LazyServiceManager] Starting stage-based service initialization...');
 
         // Initialize stage queues
         this.initializeStageQueues();
@@ -466,7 +460,6 @@ export class LazyServiceManager {
         
         this.isStarted = true;
         const duration = Date.now() - startTime;
-        console.log(`[LazyServiceManager] ✓ Stage 1 complete (${duration}ms) - Plugin ready! Background loading continues...`);
 
         // Start cascading background initialization
         this.startCascadingInitialization();
@@ -493,11 +486,6 @@ export class LazyServiceManager {
             this.stageProgress.set(stage, { loaded: 0, total: serviceNames.length });
         }
         
-        console.log('[LazyServiceManager] Stage queues initialized:', 
-            Array.from(this.stageQueues.entries()).map(([stage, names]) => 
-                `Stage ${stage}: ${names.length} services`
-            ).join(', ')
-        );
     }
 
     /**
@@ -510,7 +498,6 @@ export class LazyServiceManager {
         }
 
         const stageName = LoadingStage[stage];
-        console.log(`[LazyServiceManager] Initializing stage ${stage} (${stageName}): ${serviceNames.length} services`);
         
         const startTime = Date.now();
         
@@ -524,7 +511,6 @@ export class LazyServiceManager {
                 progress.loaded++;
                 this.stageProgress.set(stage, progress);
                 
-                console.log(`[LazyServiceManager] ✓ ${name} initialized (${progress.loaded}/${progress.total})`);
             } catch (error) {
                 console.error(`[LazyServiceManager] ✗ Failed to initialize ${name}:`, error);
                 throw error;
@@ -534,7 +520,6 @@ export class LazyServiceManager {
         await Promise.all(promises);
         
         const duration = Date.now() - startTime;
-        console.log(`[LazyServiceManager] ✓ Stage ${stage} (${stageName}) complete (${duration}ms)`);
     }
 
     /**
@@ -550,7 +535,6 @@ export class LazyServiceManager {
                 setTimeout(async () => {
                     try {
                         await this.initializeStage(LoadingStage.BACKGROUND_SLOW);
-                        console.log('[LazyServiceManager] ✓ Background initialization complete - all core services ready');
                         
                         // Process startup queue now that embedding services are ready
                         await this.processStartupQueueIfNeeded();
@@ -575,13 +559,11 @@ export class LazyServiceManager {
      */
     private async initializeAgentsInBackground(): Promise<void> {
         try {
-            console.log('[LazyServiceManager] 🤖 Initializing agents in background...');
             
             // Get the connector from the plugin and initialize agents
             const plugin = this.plugin as any;
             if (plugin.connector) {
                 await plugin.connector.initializeAgents();
-                console.log('[LazyServiceManager] ✅ Agents initialized successfully in background');
             } else {
                 console.warn('[LazyServiceManager] No connector found for agent initialization');
             }
@@ -603,9 +585,7 @@ export class LazyServiceManager {
 
             const strategy = fileEventManager.getEmbeddingStrategy();
             if (strategy.type === 'startup') {
-                console.log('[LazyServiceManager] Embedding services ready - triggering startup queue processing');
                 await fileEventManager.processStartupQueue();
-                console.log('[LazyServiceManager] ✓ Startup queue processing completed');
             }
         } catch (error) {
             console.error('[LazyServiceManager] Error processing startup queue:', error);
@@ -795,7 +775,6 @@ export class LazyServiceManager {
         
         try {
             await vectorStore.initialize();
-            console.log('[LazyServiceManager] Vector store initialized');
         } finally {
             vectorStore.endSystemOperation();
         }
@@ -889,7 +868,6 @@ export class LazyServiceManager {
         (cacheManager as any).warmCache = async (workspaceId: string) => {
             const cacheEntry = this.workspaceCache.get(workspaceId);
             if (cacheEntry) {
-                console.log(`[LazyServiceManager] Using pre-cached workspace data for ${workspaceId}`);
                 return;
             }
             return originalWarmCache(workspaceId);

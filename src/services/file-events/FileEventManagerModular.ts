@@ -95,7 +95,6 @@ export class FileEventManagerModular {
      */
     async shutdown(): Promise<void> {
         try {
-            console.log('[FileEventManagerModular] Shutting down...');
             
             // Unregister session handlers
             this.unregisterSessionHandlers();
@@ -103,7 +102,6 @@ export class FileEventManagerModular {
             // Shutdown the coordinator
             await this.coordinator.shutdown();
             
-            console.log('[FileEventManagerModular] Shutdown complete');
         } catch (error) {
             console.error('[FileEventManagerModular] Shutdown error:', error);
         }
@@ -121,7 +119,6 @@ export class FileEventManagerModular {
      */
     async processStartupQueue(): Promise<void> {
         if (this.isProcessingStartupQueue) {
-            console.log('[FileEventManagerModular] Startup queue processing already in progress, skipping duplicate call');
             return;
         }
 
@@ -130,18 +127,15 @@ export class FileEventManagerModular {
         
         try {
             if (queueSize === 0) {
-                console.log('[FileEventManagerModular] No events in startup queue to process');
                 return;
             }
 
-            console.log(`[FileEventManagerModular] Starting startup queue processing for ${queueSize} events`);
             
             // Ensure vector dependencies are ready before processing
             await this.ensureVectorDependencies();
             await this.coordinator.processStartupQueue();
             
             const remainingEvents = this.dependencies.fileEventQueue.size();
-            console.log(`[FileEventManagerModular] ✓ Startup queue processing completed (${queueSize - remainingEvents} events processed, ${remainingEvents} remaining)`);
             
         } catch (error) {
             console.error('[FileEventManagerModular] Error during startup queue processing:', error);
@@ -157,7 +151,6 @@ export class FileEventManagerModular {
     async activateVectorServices(): Promise<void> {
         try {
             await this.ensureVectorDependencies();
-            console.log('[FileEventManagerModular] Vector services activated for real-time processing');
         } catch (error) {
             console.warn('[FileEventManagerModular] Failed to activate vector services:', error);
         }
@@ -313,7 +306,6 @@ export class FileEventManagerModular {
                 workspaceService
             );
             
-            console.log('[FileEventManagerModular] Vector dependencies initialized');
         } catch (error) {
             console.warn('[FileEventManagerModular] Failed to initialize vector dependencies:', error);
             throw error;

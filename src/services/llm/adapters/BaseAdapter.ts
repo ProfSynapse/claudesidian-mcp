@@ -292,13 +292,10 @@ export abstract class BaseAdapter {
 
   // Cost calculation methods
   protected async calculateCost(usage: TokenUsage, model: string): Promise<CostDetails | null> {
-    console.log('BaseAdapter: calculateCost called', { usage, model, provider: this.name });
     
     const modelPricing = await this.getModelPricing(model);
-    console.log('BaseAdapter: modelPricing result', modelPricing);
     
     if (!modelPricing) {
-      console.log('BaseAdapter: No model pricing found for model:', model);
       return null;
     }
     
@@ -350,23 +347,13 @@ export abstract class BaseAdapter {
     // Calculate cost if usage is available
     if (usage) {
       const cost = await this.calculateCost(usage, model);
-      console.log('BaseAdapter: buildLLMResponse cost calculation result', cost);
       if (cost) {
         response.cost = cost;
-        console.log('BaseAdapter: attached cost to response');
       } else {
-        console.log('BaseAdapter: cost calculation returned null, not attaching');
       }
     } else {
-      console.log('BaseAdapter: no usage data, skipping cost calculation');
     }
 
-    console.log('BaseAdapter: final response', { 
-      hasCost: !!response.cost, 
-      hasUsage: !!response.usage,
-      provider: response.provider,
-      model: response.model 
-    });
     return response;
   }
 
