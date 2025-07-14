@@ -15,6 +15,8 @@ import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 import { EmbeddingService } from '../database/services/EmbeddingService';
 import { WorkspaceService } from '../database/services/WorkspaceService';
 import { MemoryService } from '../database/services/MemoryService';
+import { FileEmbeddingAccessService } from '../database/services/FileEmbeddingAccessService';
+import { HnswSearchService } from '../database/services/hnsw/HnswSearchService';
 import { EmbeddingManager } from '../database/services/embeddingManager';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
 import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
@@ -30,6 +32,8 @@ export class SettingsTab extends PluginSettingTab {
     // ChromaDB Services
     private embeddingService: EmbeddingService | undefined;
     private memoryService: MemoryService | undefined;
+    private fileEmbeddingAccessService: FileEmbeddingAccessService | undefined;
+    private hnswSearchService: HnswSearchService | undefined;
     private embeddingManager: EmbeddingManager | undefined;
     
     // Agent references
@@ -53,7 +57,9 @@ export class SettingsTab extends PluginSettingTab {
             embeddingService?: EmbeddingService,
             workspaceService?: WorkspaceService,
             memoryService?: MemoryService,
-            vectorStore?: IVectorStore
+            vectorStore?: IVectorStore,
+            fileEmbeddingAccessService?: FileEmbeddingAccessService,
+            hnswSearchService?: HnswSearchService
         },
         vaultLibrarian?: VaultLibrarianAgent,
         memoryManager?: MemoryManagerAgent
@@ -68,6 +74,8 @@ export class SettingsTab extends PluginSettingTab {
             // Removed assignment to unused property: this.workspaceService = services.workspaceService;
             this.memoryService = services.memoryService;
             // Removed assignment to unused property: this.vectorStore = services.vectorStore;
+            this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
+            this.hnswSearchService = services.hnswSearchService;
             
             // Create embedding manager instance if we have app access
             if (window.app && !this.embeddingManager && services.embeddingService) {
@@ -214,8 +222,8 @@ export class SettingsTab extends PluginSettingTab {
             containerEl, 
             this.settingsManager,
             this.embeddingService,
-            undefined, // fileEmbeddingAccessService - not available in settings tab context
-            undefined, // searchService - not available in settings tab context
+            this.fileEmbeddingAccessService, // Now properly injected from services
+            this.hnswSearchService, // Now properly injected from services
             this.memoryService,
             this.vaultLibrarian,
             embeddingManager

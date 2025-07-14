@@ -4,6 +4,7 @@ import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { SettingsTab } from './components/SettingsTab';
 import { LazyServiceManager } from './services/LazyServiceManager';
+import { logger } from './utils/logger';
 
 // Type imports for service interfaces
 import type { EmbeddingService } from './database/services/EmbeddingService';
@@ -204,17 +205,37 @@ export default class ClaudesidianPlugin extends Plugin {
     
     /**
      * Initialize settings tab
+     * PHASE 3 FIX: Wait for essential services before creating UI to fix service injection
      */
     private async initializeSettingsTab(): Promise<void> {
+        logger.systemLog('[PHASE3-SERVICE-INJECTION] Waiting for essential services before creating Settings UI...', 'ClaudesidianPlugin');
+        
+        // Wait for essential services needed by Memory Management UI
+        try {
+            // Wait for BACKGROUND_FAST services (embeddingService) and essential BACKGROUND_SLOW services
+            const embeddingService = await this.serviceManager.get('embeddingService');
+            const memoryService = await this.serviceManager.get('memoryService');
+            const fileEmbeddingAccessService = await this.serviceManager.get('fileEmbeddingAccessService');
+            const hnswSearchService = await this.serviceManager.get('hnswSearchService');
+            
+            logger.systemLog('[PHASE3-SERVICE-INJECTION] All Memory Management services ready, creating Settings UI', 'ClaudesidianPlugin');
+        } catch (error) {
+            logger.systemWarn(`[PHASE3-SERVICE-INJECTION] Some services not available, proceeding with agent fallback: ${error instanceof Error ? error.message : String(error)}`, 'ClaudesidianPlugin');
+        }
+        
         // Get agent references for settings tab - these will be available since agents are initialized
         const vaultLibrarian = this.connector.getVaultLibrarian();
         const memoryManager = this.connector.getMemoryManager();
+        
+        // Now services should be available in this.services
+        const availableServices = this.services;
+        logger.systemLog(`[PHASE3-SERVICE-INJECTION] Creating Settings UI with services: ${Object.keys(availableServices).join(', ')}`, 'ClaudesidianPlugin');
         
         this.settingsTab = new SettingsTab(
             this.app,
             this,
             this.settings,
-            this.services,
+            availableServices,
             vaultLibrarian || undefined,
             memoryManager || undefined
         );

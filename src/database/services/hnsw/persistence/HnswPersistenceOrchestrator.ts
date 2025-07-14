@@ -115,7 +115,7 @@ export class HnswPersistenceOrchestrator {
       
       if (!hasMetadata) {
         logger.systemLog(
-          `No persisted index found for collection: ${collectionName}`,
+          `[PHASE2-METADATA] No persisted index found for collection: ${collectionName}`,
           'HnswPersistenceOrchestrator'
         );
         return false;
@@ -125,9 +125,19 @@ export class HnswPersistenceOrchestrator {
       const metadata = await this.loadIndexMetadata(collectionName);
       if (!metadata) {
         logger.systemLog(
-          `No persisted metadata found for collection: ${collectionName}`,
+          `[PHASE2-METADATA] No persisted metadata found for collection: ${collectionName}`,
           'HnswPersistenceOrchestrator'
         );
+        return false;
+      }
+
+      // PHASE2 FIX: Check for stale metadata (claims items exist but collection is empty)
+      if (metadata.itemCount > 0 && currentItems.length === 0) {
+        logger.systemWarn(
+          `[PHASE2-STALE] Stale metadata detected for ${collectionName}: claims ${metadata.itemCount} items but collection is empty - cleaning up`,
+          'HnswPersistenceOrchestrator'
+        );
+        await this.cleanupPersistedIndex(collectionName);
         return false;
       }
 
@@ -135,7 +145,7 @@ export class HnswPersistenceOrchestrator {
       const validationResult = this.validateIndexMetadata(metadata, currentItems);
       if (!validationResult.isValid) {
         logger.systemLog(
-          `Persisted index is outdated for collection ${collectionName}: ${validationResult.reason}`,
+          `[PHASE2-METADATA] Persisted index is outdated for collection ${collectionName}: ${validationResult.reason}`,
           'HnswPersistenceOrchestrator'
         );
         await this.cleanupPersistedIndex(collectionName);
@@ -145,7 +155,7 @@ export class HnswPersistenceOrchestrator {
       return true;
     } catch (error) {
       logger.systemWarn(
-        `Error checking persisted index for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`,
+        `[PHASE2-METADATA] Error checking persisted index for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`,
         'HnswPersistenceOrchestrator'
       );
       return false;
@@ -175,23 +185,39 @@ export class HnswPersistenceOrchestrator {
 
   /**
    * Validate if persisted metadata matches current data
-   * Uses existing validation patterns instead of custom logic
+   * PHASE 1 FIX: Enhanced corruption detection with focused diagnostics
    */
   private validateIndexMetadata(metadata: IndexMetadata, currentItems: DatabaseItem[]): PersistenceValidationResult {
-    // Check basic item count (allow for minor differences for incremental updates)
     const itemCountDiff = Math.abs(metadata.itemCount - currentItems.length);
-    const maxAllowedDiff = Math.max(10, metadata.itemCount * 0.1); // 10% difference or 10 items
+    const corruptionThreshold = Math.max(metadata.itemCount * 0.5, 5); // 50% difference indicates corruption
     
-    // If metadata has 0 items, it's likely a placeholder from discovery - be more lenient
-    if (metadata.itemCount === 0) {
-      logger.systemLog(
-        `Placeholder metadata detected for ${metadata.collectionName}, allowing validation`,
+    // PHASE 1 FIX: Detect severe corruption early
+    if (itemCountDiff > corruptionThreshold && metadata.itemCount > 0) {
+      const corruptionPercent = Math.round((itemCountDiff / metadata.itemCount) * 100);
+      logger.systemWarn(
+        `[PHASE1-CORRUPTION] Severe corruption detected in ${metadata.collectionName}: expected ${metadata.itemCount}, got ${currentItems.length} (${corruptionPercent}% difference)`,
         'HnswPersistenceOrchestrator'
       );
-    } else if (itemCountDiff > maxAllowedDiff) {
       return {
         isValid: false,
-        reason: `Item count mismatch: expected ~${metadata.itemCount}, got ${currentItems.length}`,
+        reason: `Severe corruption: ${corruptionPercent}% item count difference`,
+        itemCountDiff,
+      };
+    }
+
+    // Allow small differences for incremental updates
+    const normalThreshold = Math.max(5, metadata.itemCount * 0.05); // 5% for normal variance
+    
+    if (metadata.itemCount === 0) {
+      logger.systemLog(`[PHASE1-VALIDATION] Placeholder metadata for ${metadata.collectionName}`, 'HnswPersistenceOrchestrator');
+    } else if (itemCountDiff > normalThreshold && itemCountDiff <= corruptionThreshold) {
+      logger.systemLog(
+        `[PHASE1-VALIDATION] Minor mismatch in ${metadata.collectionName}: expected ${metadata.itemCount}, got ${currentItems.length}`,
+        'HnswPersistenceOrchestrator'
+      );
+      return {
+        isValid: false,
+        reason: `Minor item count mismatch: expected ~${metadata.itemCount}, got ${currentItems.length}`,
         itemCountDiff,
       };
     }

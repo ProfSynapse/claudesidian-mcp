@@ -25,8 +25,26 @@ export class HnswIndexOperations {
     this.hnswLib = hnswLib;
     this.filesystemManager = new WasmFilesystemManager(config, hnswLib);
     
-    // Initialize filesystem through the manager
-    this.filesystemManager.initializeFileSystem();
+    // PHASE 1 FIX: Don't initialize filesystem in constructor to avoid WASM timing issues
+    // Filesystem will be initialized lazily when first needed
+  }
+
+  /**
+   * Ensure filesystem is initialized before operations that need it
+   */
+  private async ensureFilesystemReady(): Promise<boolean> {
+    try {
+      if (!this.hnswLib?.EmscriptenFileSystemManager) {
+        logger.systemLog('[PHASE1-WASM] EmscriptenFileSystemManager not available, deferring filesystem operations', 'HnswIndexOperations');
+        return false;
+      }
+      
+      await this.filesystemManager.initializeFileSystem();
+      return true;
+    } catch (error) {
+      logger.systemWarn(`[PHASE1-WASM] Filesystem initialization failed: ${error instanceof Error ? error.message : String(error)}`, 'HnswIndexOperations');
+      return false;
+    }
   }
 
   /**
@@ -46,6 +64,16 @@ export class HnswIndexOperations {
       return {
         success: false,
         errorReason: 'No metadata provided',
+      };
+    }
+
+    // PHASE 1 FIX: Check WASM readiness before attempting filesystem operations
+    if (!(await this.ensureFilesystemReady())) {
+      logger.systemLog(`[PHASE1-WASM] Filesystem not ready for ${collectionName}, skipping load`, 'HnswIndexOperations');
+      return {
+        success: false,
+        errorReason: 'WASM filesystem not ready',
+        loadTime: Date.now() - startTime,
       };
     }
 

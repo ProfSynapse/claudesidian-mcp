@@ -221,23 +221,45 @@ export class HnswSearchService {
     
     if (this.fullyInitialized) return;
 
+    logger.systemLog('[PHASE1-STARTUP] Beginning HNSW full initialization...', 'HnswSearchService');
+    
+    // PHASE 1 FIX: Add error boundaries - don't let one collection break everything
+    let recoveryErrors = 0;
+    let buildErrors = 0;
+    
     try {
-      logger.systemLog('🔄 Starting lazy HNSW discovery and collection processing...', 'HnswSearchService');
+      // Discover and recover existing indexes
+      try {
+        await this.discoverAndRecoverIndexes();
+      } catch (recoveryError) {
+        recoveryErrors++;
+        logger.systemWarn(`[PHASE1-BOUNDARY] Index recovery failed but continuing: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`, 'HnswSearchService');
+      }
       
-      // Discover and recover existing indexes (this was previously in initialize())
-      await this.discoverAndRecoverIndexes();
+      // Build missing indexes
+      try {
+        await this.ensureIndexesForExistingCollections();
+      } catch (buildError) {
+        buildErrors++;
+        logger.systemWarn(`[PHASE1-BOUNDARY] Index building failed but continuing: ${buildError instanceof Error ? buildError.message : String(buildError)}`, 'HnswSearchService');
+      }
       
-      // Check if we need to build indexes from existing ChromaDB collections
-      await this.ensureIndexesForExistingCollections();
-      
+      // PHASE 1 FIX: Always mark as initialized to prevent repeated attempts
       this.fullyInitialized = true;
-      logger.systemLog('✅ HNSW search service fully initialized with lazy loading', 'HnswSearchService');
-    } catch (error) {
+      
+      if (recoveryErrors > 0 || buildErrors > 0) {
+        logger.systemLog(`[PHASE1-STARTUP] HNSW initialization completed with errors (recovery: ${recoveryErrors}, build: ${buildErrors}) - service available`, 'HnswSearchService');
+      } else {
+        logger.systemLog('[PHASE1-STARTUP] HNSW initialization completed successfully', 'HnswSearchService');
+      }
+    } catch (criticalError) {
+      // Even critical errors shouldn't prevent the service from being marked as initialized
+      this.fullyInitialized = true;
       logger.systemError(
-        new Error(`Failed to fully initialize HNSW: ${error instanceof Error ? error.message : String(error)}`),
+        new Error(`[PHASE1-BOUNDARY] Critical HNSW initialization error: ${criticalError instanceof Error ? criticalError.message : String(criticalError)}`),
         'HnswSearchService'
       );
-      throw error;
+      logger.systemLog('[PHASE1-STARTUP] HNSW service marked as initialized despite errors - search will work with available indexes', 'HnswSearchService');
     }
   }
 
@@ -290,7 +312,14 @@ export class HnswSearchService {
     nResults = 10,
     where?: WhereClause
   ): Promise<ItemWithDistance[]> {
-    await this.ensureFullyInitialized();
+    // PHASE 1 FIX: Only ensure basic initialization - never trigger index building
+    await this.initialize();
+    
+    // Check if index exists - search should never trigger rebuilding
+    if (!this.hasIndex(collectionName)) {
+      logger.systemLog(`[PHASE1-SEARCH] No index for ${collectionName} - search blocked to prevent rebuild`, 'HnswSearchService');
+      return [];
+    }
 
     try {
       const searchParams: SearchParameters = {
@@ -326,7 +355,8 @@ export class HnswSearchService {
     limitOrFiles?: number | TFile[],
     metadataOrOptions?: any | SearchOptions
   ): Promise<SearchResult[]> {
-    await this.ensureFullyInitialized();
+    // PHASE 1 FIX: Only ensure basic initialization - never trigger index building
+    await this.initialize();
 
     // Parse overloaded parameters (maintain backward compatibility)
     const { limit, threshold, includeContent, filteredFiles } = this.parseSearchParameters(
@@ -337,7 +367,7 @@ export class HnswSearchService {
     const collectionName = 'file_embeddings';
 
     if (!this.indexManager.hasIndex(collectionName)) {
-      logger.systemWarn(`No index found for collection: ${collectionName}`, 'HnswSearchService');
+      logger.systemLog(`[PHASE1-SEARCH] No index for ${collectionName} - search blocked to prevent rebuild`, 'HnswSearchService');
       return [];
     }
 
@@ -435,7 +465,8 @@ export class HnswSearchService {
    * Add single item to existing index
    */
   async addItemToIndex(collectionName: string, item: DatabaseItem): Promise<void> {
-    await this.ensureFullyInitialized();
+    // PHASE 1 FIX: Only basic initialization - assume index exists from startup
+    await this.initialize();
     await this.indexManager.addItemToIndex(collectionName, item);
   }
 
@@ -443,7 +474,8 @@ export class HnswSearchService {
    * Remove item from index
    */
   async removeItemFromIndex(collectionName: string, itemId: string): Promise<void> {
-    await this.ensureFullyInitialized();
+    // PHASE 1 FIX: Only basic initialization - assume index exists from startup
+    await this.initialize();
     await this.indexManager.removeItemFromIndex(collectionName, itemId);
   }
 
@@ -680,11 +712,11 @@ export class HnswSearchService {
             let recoveredCount = 0;
             let failedCount = 0;
             
-            // SUPERLATIVE FIX: Actually load the indexes into memory
+            // PHASE 1 FIX: Process each collection with error boundaries
             for (const collectionName of discoveredCollections) {
               try {
                 const startTime = Date.now();
-                logger.systemLog(`🔄 Attempting to recover index for collection: ${collectionName}`, 'HnswSearchService');
+                logger.systemLog(`[PHASE1-RECOVERY] Processing collection: ${collectionName}`, 'HnswSearchService');
                 
                 const metadata = await this.persistenceService.loadIndexMetadata(collectionName);
                 if (!metadata) {
@@ -698,48 +730,73 @@ export class HnswSearchService {
                   'HnswSearchService'
                 );
 
-                // CRITICAL FIX: Actually load the index into memory instead of just metadata
-                const loadResult = await this.persistenceService.loadIndex(collectionName, metadata);
-                
-                if (loadResult.success && loadResult.index) {
-                  // Store the loaded index properly in the index manager
-                  const indexData = {
-                    index: loadResult.index,
-                    idToItem: new Map(),
-                    itemIdToHnswId: new Map(),
-                    nextId: metadata.itemCount || 0,
-                  };
-
-                  // Store in the appropriate index storage
-                  if (metadata.isPartitioned) {
-                    // For partitioned indexes, we need to handle them differently
-                    const partitionedLoadResult = await this.persistenceService.loadPartitionedIndex(collectionName, metadata);
-                    if (partitionedLoadResult.success && partitionedLoadResult.partitions) {
-                      const partitions = partitionedLoadResult.partitions.map(partitionIndex => ({
-                        index: partitionIndex,
-                        idToItem: new Map(),
-                        itemIdToHnswId: new Map(),
-                        nextId: 0,
-                      }));
-
-                      const partitionedIndex = {
-                        partitions,
-                        itemToPartition: new Map(),
-                        maxItemsPerPartition: this.config.partitioning.maxItemsPerPartition,
-                        dimension: metadata.dimension,
-                      };
-
-                      this.indexManager['partitionedIndexes'].set(collectionName, partitionedIndex);
-                      logger.systemLog(`✅ Successfully recovered partitioned index for ${collectionName} (${partitions.length} partitions)`, 'HnswSearchService');
-                    } else {
-                      logger.systemWarn(`❌ Failed to load partitioned index for ${collectionName}`, 'HnswSearchService');
+                // PHASE2 FIX: Validate metadata against current collection data
+                const vectorStore = (this.app as any)?.plugins?.plugins?.['claudesidian-mcp']?.services?.vectorStore;
+                if (vectorStore) {
+                  try {
+                    const count = await vectorStore.count(collectionName);
+                    const items = count > 0 ? await vectorStore.getItems(collectionName, { limit: count }) : { ids: [], embeddings: [], documents: [] };
+                    const currentItems = this.convertToDatabaseItems(items);
+                    
+                    logger.systemLog(`[PHASE2-VALIDATION] Validating metadata for ${collectionName}: expects ${metadata.itemCount}, has ${currentItems.length}`, 'HnswSearchService');
+                    const isValidForCurrentData = await this.persistenceService.canLoadPersistedIndex(collectionName, currentItems);
+                    
+                    if (!isValidForCurrentData) {
+                      logger.systemWarn(`[PHASE2-VALIDATION] Metadata validation failed for ${collectionName} - skipping load`, 'HnswSearchService');
                       failedCount++;
                       continue;
                     }
-                  } else {
-                    // Store single index
+                  } catch (validationError) {
+                    logger.systemWarn(`[PHASE2-VALIDATION] Could not validate ${collectionName}: ${validationError instanceof Error ? validationError.message : String(validationError)}`, 'HnswSearchService');
+                    // Continue with loading attempt
+                  }
+                }
+
+                // PHASE2 FIX: Use correct loading method based on index type
+                let loadResult;
+                if (metadata.isPartitioned) {
+                  logger.systemLog(`[PHASE2-FILENAME] Loading partitioned index for ${collectionName} (${metadata.partitionCount} partitions)`, 'HnswSearchService');
+                  loadResult = await this.persistenceService.loadPartitionedIndex(collectionName, metadata);
+                } else {
+                  logger.systemLog(`[PHASE2-FILENAME] Loading single index for ${collectionName}`, 'HnswSearchService');
+                  loadResult = await this.persistenceService.loadIndex(collectionName, metadata);
+                }
+                
+                // PHASE2 FIX: Handle both single and partitioned index results properly
+                if (loadResult.success) {
+                  if (metadata.isPartitioned && (loadResult as any).partitions) {
+                    // Handle partitioned index
+                    const partitions = (loadResult as any).partitions.map((partitionIndex: any) => ({
+                      index: partitionIndex,
+                      idToItem: new Map(),
+                      itemIdToHnswId: new Map(),
+                      nextId: 0,
+                    }));
+
+                    const partitionedIndex = {
+                      partitions,
+                      itemToPartition: new Map(),
+                      maxItemsPerPartition: this.config.partitioning.maxItemsPerPartition,
+                      dimension: metadata.dimension,
+                    };
+
+                    this.indexManager['partitionedIndexes'].set(collectionName, partitionedIndex);
+                    logger.systemLog(`[PHASE2-FILENAME] Successfully recovered partitioned index for ${collectionName} (${partitions.length} partitions)`, 'HnswSearchService');
+                  } else if (!metadata.isPartitioned && loadResult.index) {
+                    // Handle single index
+                    const indexData = {
+                      index: loadResult.index,
+                      idToItem: new Map(),
+                      itemIdToHnswId: new Map(),
+                      nextId: metadata.itemCount || 0,
+                    };
+
                     this.indexManager['singleIndexes'].set(collectionName, indexData);
-                    logger.systemLog(`✅ Successfully recovered single index for ${collectionName}`, 'HnswSearchService');
+                    logger.systemLog(`[PHASE2-FILENAME] Successfully recovered single index for ${collectionName}`, 'HnswSearchService');
+                  } else {
+                    logger.systemWarn(`[PHASE2-FILENAME] Load succeeded but missing expected data for ${collectionName} (partitioned=${metadata.isPartitioned})`, 'HnswSearchService');
+                    failedCount++;
+                    continue;
                   }
 
                   const loadTime = Date.now() - startTime;
@@ -757,26 +814,24 @@ export class HnswSearchService {
                   failedCount++;
                 }
               } catch (error) {
-                logger.systemError(
-                  new Error(`Failed to recover index for collection ${collectionName}: ${error instanceof Error ? error.message : String(error)}`),
+                // PHASE 1 FIX: Collection-level error boundary - don't break other collections
+                failedCount++;
+                logger.systemWarn(
+                  `[PHASE1-BOUNDARY] Collection ${collectionName} recovery failed: ${error instanceof Error ? error.message : String(error)}`,
                   'HnswSearchService'
                 );
-                failedCount++;
+                // Continue with next collection
               }
             }
             
-            // Enhanced summary logging
+            // PHASE 1 FIX: Focused diagnostic summary
             logger.systemLog(
-              `🎉 Index recovery completed: ${recoveredCount} recovered, ${failedCount} failed out of ${discoveredCollections.length} discovered`,
+              `[PHASE1-RECOVERY] Recovery completed: ${recoveredCount} successful, ${failedCount} failed (${discoveredCollections.length} total)`,
               'HnswSearchService'
             );
             
-            if (recoveredCount > 0) {
-              logger.systemLog(`🚀 Successfully recovered ${recoveredCount} indexes - startup will be faster!`, 'HnswSearchService');
-            }
-            
           } else {
-            logger.systemLog('📭 No existing indexes found during discovery - will build fresh', 'HnswSearchService');
+            logger.systemLog('[PHASE1-RECOVERY] No existing indexes found - will build fresh', 'HnswSearchService');
           }
         } catch (discoveryError) {
           // Enhanced error logging with more context
@@ -807,18 +862,18 @@ export class HnswSearchService {
    */
   private async ensureIndexesForExistingCollections(): Promise<void> {
     try {
-      logger.systemLog('🔍 Intelligently checking collections for missing HNSW indexes (persistence-first approach)', 'HnswSearchService');
+      logger.systemLog('[PHASE1-BUILD] Checking collections for missing HNSW indexes', 'HnswSearchService');
       
       // Get reference to the vector store to check for existing collections
       const vectorStore = (this.app as any)?.plugins?.plugins?.['claudesidian-mcp']?.services?.vectorStore;
       if (!vectorStore) {
-        logger.systemWarn('⚠️  Vector store not available for index building', 'HnswSearchService');
+        logger.systemWarn('[PHASE1-BUILD] Vector store not available', 'HnswSearchService');
         return;
       }
 
       // List all collections
       const collections = await vectorStore.listCollections();
-      logger.systemLog(`📋 Found ${collections.length} collections: ${collections.join(', ')}`, 'HnswSearchService');
+      logger.systemLog(`[PHASE1-BUILD] Found ${collections.length} collections to process`, 'HnswSearchService');
 
       let indexesLoaded = 0;
       let indexesBuilt = 0;
@@ -959,16 +1014,12 @@ export class HnswSearchService {
         }
       }
 
-      // Enhanced summary with detailed metrics
+      // PHASE 1 FIX: Focused summary
       const totalProcessed = indexesLoaded + indexesBuilt + indexesSkipped;
       logger.systemLog(
-        `🎉 Collection processing completed: ${indexesLoaded} loaded from persistence, ${indexesBuilt} built fresh, ${indexesSkipped} skipped (${totalProcessed} total)`,
+        `[PHASE1-BUILD] Collection processing completed: ${indexesBuilt} built, ${indexesSkipped} skipped (${totalProcessed} total)`,
         'HnswSearchService'
       );
-
-      if (indexesLoaded > 0) {
-        logger.systemLog(`🚀 Persistence optimization successful: ${indexesLoaded} indexes loaded instantly!`, 'HnswSearchService');
-      }
 
     } catch (error) {
       logger.systemError(

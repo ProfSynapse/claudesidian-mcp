@@ -72,17 +72,39 @@ export class MemoryManagementAccordion extends Accordion {
         
         // Memory settings are now visible by default via CSS
         
-        // Initialize memory settings tab if services or agent exists
+        // PHASE2 FIX: Check for services with better logic and timing
         const hasServices = this.embeddingService && this.fileEmbeddingAccessService && this.hnswSearchService && this.memoryService;
         const hasAgent = this.vaultLibrarian;
         
         if (hasServices || hasAgent) {
             this.initializeMemorySettingsTab();
         } else if (this.settings.settings.memory?.enabled) {
-            // Show message if enabled but services not initialized
-            this.memorySettingsContainer.createEl('div', {
-                cls: 'memory-notice',
-                text: 'Memory Manager is enabled but services are not yet initialized. Please restart Obsidian.'
+            // PHASE2 FIX: More helpful message about service loading
+            const statusEl = this.memorySettingsContainer.createEl('div', {
+                cls: 'memory-notice'
+            });
+            
+            statusEl.createEl('p', {
+                text: 'Memory Manager is enabled and services are initializing...'
+            });
+            
+            const serviceStatus = statusEl.createEl('div', {
+                cls: 'service-status'
+            });
+            
+            serviceStatus.createEl('p', {
+                text: `Service Status:`
+            });
+            serviceStatus.createEl('ul').innerHTML = `
+                <li>Embedding Service: ${this.embeddingService ? '✅ Ready' : '⏳ Loading...'}</li>
+                <li>File Access Service: ${this.fileEmbeddingAccessService ? '✅ Ready' : '⏳ Loading...'}</li>
+                <li>Search Service: ${this.hnswSearchService ? '✅ Ready' : '⏳ Loading...'}</li>
+                <li>Memory Service: ${this.memoryService ? '✅ Ready' : '⏳ Loading...'}</li>
+            `;
+            
+            statusEl.createEl('p', {
+                text: 'Settings will appear automatically when all services are ready. If this persists, try reloading Obsidian.',
+                cls: 'memory-notice-small'
             });
         } else {
             // Show message explaining how to enable memory manager
