@@ -140,6 +140,9 @@ export default class ClaudesidianPlugin extends Plugin {
             // Check for updates
             this.checkForUpdatesOnStartup();
             
+            // Update settings tab with loaded services
+            this.updateSettingsTabServices();
+            
             const bgLoadTime = Date.now() - bgStartTime;
             console.log(`[ClaudesidianPlugin] Background initialization completed in ${bgLoadTime}ms`);
             
@@ -289,8 +292,8 @@ export default class ClaudesidianPlugin extends Plugin {
             );
             this.addSettingTab(this.settingsTab);
             
-            // Start monitoring for service availability
-            this.loadServicesInBackground();
+            // Services will be updated when they become available
+            // No need for active monitoring - just update UI when ready
             
         } catch (error) {
             console.error('[STARTUP] Settings tab initialization failed:', error);
@@ -299,34 +302,12 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
-     * Monitor services as they become available in background and update Settings UI
+     * Update settings tab with available services (non-blocking)
      */
-    private async loadServicesInBackground(): Promise<void> {
-        // Set up a polling mechanism to check for service availability
-        // This doesn't force loading, just checks what's already available
-        const checkServicesInterval = setInterval(() => {
-            const availableServices = this.services;
-            
-            // Check if we have new services that weren't available before
-            const serviceNames = Object.keys(availableServices);
-            if (serviceNames.length > 0) {
-                logger.systemLog(`[BACKGROUND] Services available: ${serviceNames.join(', ')}`, 'ClaudesidianPlugin');
-                
-                // Update settings tab with any newly available services
-                if (this.settingsTab) {
-                    this.settingsTab.updateServices(availableServices);
-                }
-            }
-            
-            // Stop checking once we have all expected services or after 30 seconds
-            if (availableServices.hnswSearchService || 
-                Date.now() - this.startTime > 30000) {
-                clearInterval(checkServicesInterval);
-                if (availableServices.hnswSearchService) {
-                    logger.systemLog('[BACKGROUND] All services loaded, Settings UI fully ready', 'ClaudesidianPlugin');
-                }
-            }
-        }, 500); // Check every 500ms
+    private updateSettingsTabServices(): void {
+        if (this.settingsTab) {
+            this.settingsTab.updateServices(this.services);
+        }
     }
     
     /**
