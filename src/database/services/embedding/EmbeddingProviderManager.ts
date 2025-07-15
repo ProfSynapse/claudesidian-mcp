@@ -27,14 +27,14 @@ export class EmbeddingProviderManager {
         return;
       }
 
-      // Use the factory to create the embedding provider with the current settings
+      // Use the factory to create the embedding provider with the current settings (with caching)
       this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(settings);
       
       if (this.embeddingProvider) {
         await this.embeddingProvider.initialize();
         
-        // Inject UsageTracker if provider supports it
-        if ('setUsageTracker' in this.embeddingProvider) {
+        // Inject UsageTracker if provider supports it (only if not already injected)
+        if ('setUsageTracker' in this.embeddingProvider && !(this.embeddingProvider as any).usageTracker) {
           try {
             const usageTracker = new UsageTracker('embeddings', settings);
             (this.embeddingProvider as any).setUsageTracker(usageTracker);
@@ -44,7 +44,10 @@ export class EmbeddingProviderManager {
           }
         }
         
-        console.log(`Initialized ${settings.apiProvider} embedding provider successfully`);
+        // Only log if this is actually a new provider (not from cache)
+        if (!this.initialized) {
+          console.log(`Initialized ${settings.apiProvider} embedding provider successfully`);
+        }
         this.initialized = true;
       }
     } catch (providerError) {

@@ -159,20 +159,22 @@ export class VaultLibrarianAgent extends BaseAgent {
   async updateSettings(settings: MemorySettings): Promise<void> {
     this.settings = settings;
     
-    // Clean up existing provider
-    if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
-      (this.embeddingProvider as any).close();
-      this.embeddingProvider = null;
-    }
+    // Clean up existing provider reference (don't create our own)
+    this.embeddingProvider = null;
     
-    // Create new provider if enabled
+    // Get the shared provider from EmbeddingService instead of creating our own
     const currentProvider = settings.providerSettings?.[settings.apiProvider];
     if (settings.embeddingsEnabled && currentProvider?.apiKey) {
       try {
-        // Use VectorStoreFactory to create provider with new architecture
-        this.embeddingProvider = await VectorStoreFactory.createEmbeddingProvider(settings);
+        // Get the shared provider from the embedding service
+        if (this.embeddingService) {
+          this.embeddingProvider = this.embeddingService.getProvider();
+          console.log('VaultLibrarian using shared embedding provider from EmbeddingService');
+        } else {
+          console.warn('EmbeddingService not available, VaultLibrarian will use traditional search only');
+        }
       } catch (error) {
-        console.error('Error initializing embedding provider:', getErrorMessage(error));
+        console.error('Error getting shared embedding provider:', getErrorMessage(error));
         this.embeddingProvider = null;
       }
     }

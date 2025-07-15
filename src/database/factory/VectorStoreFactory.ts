@@ -23,6 +23,8 @@ import '../providers/registry/providers';
  * Factory class for creating vector store instances and related services
  */
 export class VectorStoreFactory {
+  // Singleton cache for embedding providers keyed by provider config
+  private static embeddingProviderCache = new Map<string, IEmbeddingProvider>();
   /**
    * Create a vector store instance using the modular implementation
    * @param plugin Plugin instance
@@ -35,7 +37,7 @@ export class VectorStoreFactory {
 
   
   /**
-   * Create an embedding provider based on memory settings
+   * Create an embedding provider based on memory settings (with singleton caching)
    * @param settings Memory settings containing provider configuration
    * @returns Embedding provider instance
    */
@@ -58,6 +60,16 @@ export class VectorStoreFactory {
       throw new Error(`API key required for ${providerId} but not provided.`);
     }
     
+    // Create cache key from provider configuration
+    const cacheKey = this.generateProviderCacheKey(providerId, providerSettings);
+    
+    // Check if provider already exists in cache
+    if (this.embeddingProviderCache.has(cacheKey)) {
+      const cachedProvider = this.embeddingProviderCache.get(cacheKey)!;
+      console.log(`Reusing existing ${providerId} embedding provider from cache`);
+      return cachedProvider;
+    }
+    
     // Try to create provider using the registry
     const embeddingFunction = await EmbeddingProviderRegistry.createEmbeddingFunction(
       providerId,
@@ -66,15 +78,38 @@ export class VectorStoreFactory {
     
     if (embeddingFunction) {
       // Wrap the Chroma embedding function in our IEmbeddingProvider interface
-      return new ChromaEmbeddingProvider(
+      const provider = new ChromaEmbeddingProvider(
         providerSettings.dimensions,
         embeddingFunction.generate.bind(embeddingFunction),
         providerSettings.model
       );
+      
+      // Cache the provider
+      this.embeddingProviderCache.set(cacheKey, provider);
+      
+      return provider;
     }
     
     // No fallback - if provider creation fails, throw error
     throw new Error(`Failed to create ${providerId} provider. Check your provider configuration and API credentials.`);
+  }
+  
+  /**
+   * Generate a cache key for embedding provider based on configuration
+   * @param providerId Provider ID
+   * @param providerSettings Provider settings
+   * @returns Cache key string
+   */
+  private static generateProviderCacheKey(providerId: string, providerSettings: any): string {
+    return `${providerId}-${providerSettings.model}-${providerSettings.dimensions}-${providerSettings.apiKey ? 'auth' : 'noauth'}`;
+  }
+  
+  /**
+   * Clear embedding provider cache (useful for testing or settings changes)
+   */
+  static clearEmbeddingProviderCache(): void {
+    this.embeddingProviderCache.clear();
+    console.log('Embedding provider cache cleared');
   }
   
   
