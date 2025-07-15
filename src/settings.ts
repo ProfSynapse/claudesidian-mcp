@@ -72,6 +72,9 @@ export class Settings {
                     }
                 };
             }
+        } catch (error) {
+            console.warn('[Settings] Failed to merge settings, using defaults:', error);
+            // Continue with defaults - plugin should still function
         }
     }
 
