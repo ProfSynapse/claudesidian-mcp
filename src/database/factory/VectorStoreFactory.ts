@@ -81,7 +81,8 @@ export class VectorStoreFactory {
       const provider = new ChromaEmbeddingProvider(
         providerSettings.dimensions,
         embeddingFunction.generate.bind(embeddingFunction),
-        providerSettings.model
+        providerSettings.model,
+        providerId
       );
       
       // Cache the provider

@@ -35,11 +35,13 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
    * @param embeddingFunction Optional external embedding function
    * @param dimension Embedding vector dimension
    * @param model Embedding model identifier
+   * @param provider Provider name (e.g., 'ollama', 'openai')
    */
   constructor(
     dimension: number,
     embeddingFunction?: (texts: string[]) => Promise<number[][]>,
-    model = 'text-embedding-3-small'
+    model = 'text-embedding-3-small',
+    private provider = 'openai'
   ) {
     super(dimension, 'chroma');
     
@@ -55,8 +57,8 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
    * Initialize the embedding provider
    */
   async initialize(): Promise<void> {
-    // Initialize token tracking
-    this.tokenTracker.initializeTokenTracking();
+    // Initialize token tracking with provider info
+    this.tokenTracker.initializeTokenTracking(this.provider);
     
     return Promise.resolve();
   }
@@ -81,7 +83,7 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
       // Track token usage (legacy system)
       for (const text of texts) {
         const tokenCount = this.tokenTracker.estimateTokenCount(text);
-        await this.tokenTracker.updateUsageStats(tokenCount, this.model);
+        await this.tokenTracker.updateUsageStats(tokenCount, this.model, this.provider);
       }
       
       // Generate embeddings
@@ -91,7 +93,8 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
       if (this.usageTracker) {
         try {
           const actualCost = this.calculateEmbeddingCost(texts);
-          await this.usageTracker.trackUsage('embeddings', actualCost);
+          const providerName = this.tokenTracker.getProviderDisplayName(this.provider);
+          await this.usageTracker.trackUsage(providerName.toLowerCase(), actualCost);
         } catch (error) {
           console.error('Failed to track embedding usage:', error);
           // Don't fail the embedding generation if usage tracking fails
@@ -143,6 +146,15 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
    */
   setModel(model: string): void {
     this.model = model;
+  }
+  
+  /**
+   * Set the provider
+   * @param provider Provider name
+   */
+  setProvider(provider: string): void {
+    this.provider = provider;
+    this.tokenTracker.initializeTokenTracking(provider);
   }
   
   /**

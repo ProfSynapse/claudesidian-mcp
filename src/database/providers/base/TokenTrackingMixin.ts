@@ -5,6 +5,7 @@
  */
 export class TokenTrackingMixin {
     protected modelUsage: {[key: string]: number} = {};
+    protected currentProvider: string | null = null;
     
     protected costPerThousandTokens: {[key: string]: number} = {
         // OpenAI models (2025 pricing)
@@ -62,8 +63,10 @@ export class TokenTrackingMixin {
     
     /**
      * Initialize token tracking from localStorage if available
+     * @param provider The current embedding provider name
      */
-    initializeTokenTracking(): void {
+    initializeTokenTracking(provider?: string): void {
+        this.currentProvider = provider || null;
         try {
             if (typeof localStorage !== 'undefined') {
                 const savedUsage = localStorage.getItem('claudesidian-tokens-used');
@@ -86,8 +89,10 @@ export class TokenTrackingMixin {
      * Update token usage stats
      * @param tokenCount Number of tokens to add
      * @param model Model name to update (defaults to text-embedding-3-small)
+     * @param provider Optional provider override
      */
-    async updateUsageStats(tokenCount: number, model = 'text-embedding-3-small'): Promise<void> {
+    async updateUsageStats(tokenCount: number, model = 'text-embedding-3-small', provider?: string): Promise<void> {
+        const actualProvider = provider || this.currentProvider;
         // Add to the specified model's usage count
         const currentUsage = this.modelUsage[model] || 0;
         this.modelUsage[model] = currentUsage + tokenCount;
@@ -96,7 +101,7 @@ export class TokenTrackingMixin {
         this.saveToLocalStorage();
         
         // Update all-time stats in real-time
-        this.updateAllTimeStats(tokenCount, model);
+        this.updateAllTimeStats(tokenCount, model, actualProvider || undefined);
         
         // Emit events
         this.emitTokenUsageEvents();
@@ -106,8 +111,9 @@ export class TokenTrackingMixin {
      * Update all-time stats in real-time
      * @param tokenCount Number of tokens to add
      * @param model Model name used
+     * @param provider Provider name used
      */
-    protected updateAllTimeStats(tokenCount: number, model: string): void {
+    protected updateAllTimeStats(tokenCount: number, model: string, provider?: string): void {
         try {
             if (typeof localStorage !== 'undefined') {
                 // Get current all-time stats
@@ -130,24 +136,8 @@ export class TokenTrackingMixin {
                     }
                 }
                 
-                // Calculate cost for this update - with improved Ollama detection
-                let costPerThousand = this.costPerThousandTokens[model];
-                
-                // If not found, check if it's an Ollama model (local = free)
-                if (costPerThousand === undefined) {
-                    if (model.includes('ollama') || 
-                        model.includes('nomic') || 
-                        model.includes('mxbai') || 
-                        model.includes('minilm') || 
-                        model.includes('arctic') ||
-                        model.includes('local') ||
-                        model.startsWith('llama') ||
-                        model.includes('mistral') && model.includes('local')) {
-                        costPerThousand = 0; // Free for local models
-                    } else {
-                        costPerThousand = this.costPerThousandTokens['default'] || 0.0001;
-                    }
-                }
+                // Calculate cost for this update - with provider-based logic
+                let costPerThousand = this.getProviderCostPerThousand(model, provider);
                 const cost = (tokenCount / 1000) * costPerThousand;
                 
                 // Update all-time stats
@@ -300,6 +290,66 @@ export class TokenTrackingMixin {
         } catch (emitError) {
             console.warn('Failed to emit token usage reset event:', emitError);
         }
+    }
+    
+    /**
+     * Get cost per thousand tokens based on provider and model
+     * Special case: Ollama provider is always free regardless of model
+     * @param model Model name
+     * @param provider Provider name
+     * @returns Cost per thousand tokens
+     */
+    protected getProviderCostPerThousand(model: string, provider?: string): number {
+        // Special case: Ollama provider is always free
+        if (provider?.toLowerCase() === 'ollama') {
+            return 0;
+        }
+        
+        // For all other providers, use model-specific pricing
+        let costPerThousand = this.costPerThousandTokens[model];
+        
+        // If model not found, check if it's a known free model or use default
+        if (costPerThousand === undefined) {
+            const modelLower = model.toLowerCase();
+            if (modelLower.includes('ollama') || 
+                modelLower.includes('nomic') || 
+                modelLower.includes('mxbai') || 
+                modelLower.includes('minilm') || 
+                modelLower.includes('arctic') ||
+                modelLower.includes('local') ||
+                modelLower.startsWith('llama') ||
+                modelLower.includes('snowflake') ||
+                (modelLower.includes('mistral') && modelLower.includes('local')) ||
+                modelLower === 'all-minilm') {
+                costPerThousand = 0; // Free for local models
+            } else {
+                costPerThousand = this.costPerThousandTokens['default'] || 0.0001;
+            }
+        }
+        
+        return costPerThousand;
+    }
+    
+    /**
+     * Get display name for provider
+     * @param provider Provider name
+     * @returns Formatted provider name
+     */
+    getProviderDisplayName(provider?: string): string {
+        if (!provider) return 'Unknown';
+        
+        const providerMap: { [key: string]: string } = {
+            'ollama': 'Ollama',
+            'openai': 'OpenAI',
+            'anthropic': 'Anthropic',
+            'google': 'Google',
+            'mistral': 'Mistral',
+            'cohere': 'Cohere',
+            'voyageai': 'VoyageAI',
+            'jina': 'Jina AI'
+        };
+        
+        return providerMap[provider.toLowerCase()] || provider.charAt(0).toUpperCase() + provider.slice(1);
     }
     
     /**
