@@ -146,8 +146,18 @@ export class ServiceDescriptors {
             create: async () => {
                 const eventManager = await this.dependencyResolver('eventManager');
                 
+                // Debug logging
+                console.log('[EVENTMANAGER_DEBUG] eventManager dependency:', eventManager);
+                console.log('[EVENTMANAGER_DEBUG] eventManager type:', typeof eventManager);
+                console.log('[EVENTMANAGER_DEBUG] eventManager.on type:', typeof eventManager?.on);
+                
                 // Validate eventManager has required methods
                 if (!eventManager || typeof eventManager.on !== 'function') {
+                    console.error('[EVENTMANAGER_DEBUG] EventManager validation failed:', {
+                        eventManager,
+                        hasOn: typeof eventManager?.on,
+                        constructorName: eventManager?.constructor?.name
+                    });
                     throw new Error('EventManager dependency is invalid - missing required methods');
                 }
                 

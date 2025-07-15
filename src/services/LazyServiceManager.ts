@@ -35,7 +35,15 @@ export class LazyServiceManager implements IServiceManager {
         this.serviceDescriptors = new ServiceDescriptors(app, plugin);
         
         // Set up dependency injection
-        this.serviceDescriptors.setDependencyResolver(this.get.bind(this));
+        this.serviceDescriptors.setDependencyResolver((name: string) => {
+            console.log(`[DEPENDENCY_DEBUG] Resolving dependency: ${name}`);
+            return this.get(name).then(result => {
+                console.log(`[DEPENDENCY_DEBUG] Resolved ${name}:`, result);
+                console.log(`[DEPENDENCY_DEBUG] ${name} type:`, typeof result);
+                console.log(`[DEPENDENCY_DEBUG] ${name} constructor:`, result?.constructor?.name);
+                return result;
+            });
+        });
         
         // Register all services
         this.registerServices();
@@ -91,6 +99,17 @@ export class LazyServiceManager implements IServiceManager {
 
         // Start background initialization
         this.startCascadingInitialization();
+        
+        // Also initialize IMMEDIATE stage services right away
+        setTimeout(async () => {
+            try {
+                console.log('[STAGE_DEBUG] Initializing IMMEDIATE stage services...');
+                await this.initializeStage(LoadingStage.IMMEDIATE);
+                console.log('[STAGE_DEBUG] IMMEDIATE stage services ready');
+            } catch (error) {
+                console.error('[STAGE_DEBUG] IMMEDIATE stage initialization failed:', error);
+            }
+        }, 100);
     }
 
     /**
