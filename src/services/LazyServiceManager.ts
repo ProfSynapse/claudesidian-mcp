@@ -112,9 +112,18 @@ export class LazyServiceManager {
                 // Create service with new IndexedDB-based architecture
                 const service = new HnswSearchService(this.app, vectorStore, embeddingService, hnswPath);
                 
-                // Initialize with full discovery - now happens in background after startup
+                // Initialize basic service only - full discovery happens in background
                 await service.initialize();
-                await service.ensureFullyInitialized();
+                
+                // Start full initialization in background without blocking
+                setTimeout(async () => {
+                    try {
+                        await service.ensureFullyInitialized();
+                        console.log('[LazyServiceManager] HNSW full initialization completed in background');
+                    } catch (error) {
+                        console.warn('[LazyServiceManager] Background HNSW initialization failed:', error);
+                    }
+                }, 5000); // 5 second delay after service creation
                 
                 return service;
             },
@@ -550,12 +559,12 @@ export class LazyServiceManager {
                     } catch (error) {
                         console.warn('[LazyServiceManager] Background slow initialization failed:', error);
                     }
-                }, 2000); // 2s delay to ensure plugin startup is complete
+                }, 5000); // 5s delay to ensure plugin startup is complete
                 
             } catch (error) {
                 console.warn('[LazyServiceManager] Background fast initialization failed:', error);
             }
-        }, 3000); // 3s delay to ensure plugin startup is fully complete
+        }, 1000); // 1s delay to ensure plugin startup is fully complete
     }
 
     /**

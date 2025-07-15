@@ -67,6 +67,7 @@ export class HnswSearchService {
   private hnswLib: any = null;
   private isInitialized = false;
   private fullyInitialized = false;
+  private isFullyReady = false;
 
   constructor(
     app?: App, 
@@ -246,6 +247,7 @@ export class HnswSearchService {
       
       // PHASE 1 FIX: Always mark as initialized to prevent repeated attempts
       this.fullyInitialized = true;
+      this.isFullyReady = true;
       
       if (recoveryErrors > 0 || buildErrors > 0) {
         logger.systemLog(`[PHASE1-STARTUP] HNSW initialization completed with errors (recovery: ${recoveryErrors}, build: ${buildErrors}) - service available`, 'HnswSearchService');
@@ -255,6 +257,7 @@ export class HnswSearchService {
     } catch (criticalError) {
       // Even critical errors shouldn't prevent the service from being marked as initialized
       this.fullyInitialized = true;
+      this.isFullyReady = true;
       logger.systemError(
         new Error(`[PHASE1-BOUNDARY] Critical HNSW initialization error: ${criticalError instanceof Error ? criticalError.message : String(criticalError)}`),
         'HnswSearchService'
@@ -315,6 +318,12 @@ export class HnswSearchService {
     // PHASE 1 FIX: Only ensure basic initialization - never trigger index building
     await this.initialize();
     
+    // Check if service is fully ready
+    if (!this.isFullyReady) {
+      logger.systemLog(`[SEARCH] HNSW service not fully ready - returning empty results`, 'HnswSearchService');
+      return [];
+    }
+    
     // Check if index exists - search should never trigger rebuilding
     if (!this.hasIndex(collectionName)) {
       logger.systemLog(`[PHASE1-SEARCH] No index for ${collectionName} - search blocked to prevent rebuild`, 'HnswSearchService');
@@ -358,6 +367,12 @@ export class HnswSearchService {
     // PHASE 1 FIX: Only ensure basic initialization - never trigger index building
     await this.initialize();
 
+    // Check if service is fully ready
+    if (!this.isFullyReady) {
+      logger.systemLog(`[HNSW-SEARCH] Service not fully ready - background loading in progress`, 'HnswSearchService');
+      return [];
+    }
+
     // Parse overloaded parameters (maintain backward compatibility)
     const { limit, threshold, includeContent, filteredFiles } = this.parseSearchParameters(
       limitOrFiles,
@@ -366,6 +381,12 @@ export class HnswSearchService {
 
     const collectionName = 'file_embeddings';
 
+    // Check if service is fully ready
+    if (!this.isFullyReady) {
+      logger.systemLog(`[SEARCH] HNSW service not fully ready - returning empty results`, 'HnswSearchService');
+      return [];
+    }
+    
     if (!this.indexManager.hasIndex(collectionName)) {
       logger.systemLog(`[PHASE1-SEARCH] No index for ${collectionName} - search blocked to prevent rebuild`, 'HnswSearchService');
       return [];
@@ -500,7 +521,7 @@ export class HnswSearchService {
    * Check if collection has an index
    */
   hasIndex(collectionName: string): boolean {
-    if (!this.isInitialized) return false;
+    if (!this.isInitialized || !this.isFullyReady) return false;
     return this.indexManager.hasIndex(collectionName);
   }
 
@@ -508,7 +529,7 @@ export class HnswSearchService {
    * Get index statistics
    */
   getIndexStats(collectionName: string): { itemCount: number; dimension: number; partitions?: number } | null {
-    if (!this.isInitialized) return null;
+    if (!this.isInitialized || !this.isFullyReady) return null;
     
     const stats = this.indexManager.getIndexStatistics(collectionName);
     if (!stats) return null;
@@ -568,6 +589,7 @@ export class HnswSearchService {
    */
   getServiceStatistics(): {
     initialized: boolean;
+    fullyReady: boolean;
     configuration: any;
     indexStats: any;
     persistenceStats: any;
@@ -575,6 +597,7 @@ export class HnswSearchService {
   } {
     return {
       initialized: this.isInitialized,
+      fullyReady: this.isFullyReady,
       configuration: this.config.toJSON(),
       indexStats: this.isInitialized ? this.indexManager.getMemoryStatistics() : null,
       persistenceStats: this.persistenceService.getStatistics(),
