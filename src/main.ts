@@ -132,7 +132,9 @@ export default class ClaudesidianPlugin extends Plugin {
             await this.serviceManager.start();
             
             // Initialize connector with agents - non-blocking start
-            this.connector.start().then(() => {
+            this.connector.initializeAgents().then(() => {
+                return this.connector.start();
+            }).then(() => {
                 console.log('[ClaudesidianPlugin] MCP connector started successfully');
             }).catch(error => {
                 console.error('[ClaudesidianPlugin] MCP connector failed to start:', error);
