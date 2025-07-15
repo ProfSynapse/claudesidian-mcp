@@ -101,7 +101,6 @@ export class ServiceDescriptors {
                 setTimeout(async () => {
                     try {
                         await service.ensureFullyInitialized();
-                        console.log('[ServiceDescriptors] HNSW full initialization completed');
                     } catch (error) {
                         console.warn('[ServiceDescriptors] Background HNSW initialization failed:', error);
                     }
@@ -145,11 +144,6 @@ export class ServiceDescriptors {
             stage: LoadingStage.BACKGROUND_SLOW,
             create: async () => {
                 const eventManager = await this.dependencyResolver('eventManager');
-                
-                // Debug logging
-                console.log('[EVENTMANAGER_DEBUG] eventManager dependency:', eventManager);
-                console.log('[EVENTMANAGER_DEBUG] eventManager type:', typeof eventManager);
-                console.log('[EVENTMANAGER_DEBUG] eventManager.on type:', typeof eventManager?.on);
                 
                 // Validate eventManager has required methods
                 if (!eventManager || typeof eventManager.on !== 'function') {
@@ -205,7 +199,7 @@ export class ServiceDescriptors {
         return {
             name: 'fileEmbeddingAccessService',
             dependencies: ['vectorStore'],
-            stage: LoadingStage.ON_DEMAND,
+            stage: LoadingStage.BACKGROUND_SLOW,
             create: async () => {
                 const vectorStore = await this.dependencyResolver('vectorStore');
                 return new FileEmbeddingAccessService(this.plugin, vectorStore);

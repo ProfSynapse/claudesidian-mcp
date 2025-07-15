@@ -606,17 +606,13 @@ export class UniversalSearchService {
    */
   private async searchContent(query: string, filteredFiles?: TFile[], limit = 5, params?: UniversalSearchParams): Promise<UniversalSearchResultItem[]> {
     if (!query) {
-      console.log(`[UniversalSearchService] Empty query provided to searchContent`);
       return [];
     }
-
-    console.log(`[UniversalSearchService] searchContent called with query: "${query}", limit: ${limit}`);
 
     try {
       // Use hybrid search if available, otherwise fall back to semantic search
       const hybridSearchService = await this.ensureHybridSearchService();
       if (hybridSearchService) {
-        console.log(`[UniversalSearchService] Using hybrid search service`);
         const options: HybridSearchOptions = {
           limit,
           includeContent: false,
@@ -624,27 +620,20 @@ export class UniversalSearchService {
           semanticThreshold: params?.semanticThreshold || (this.plugin as any).settings?.settings?.memory?.semanticThreshold || 0.5,
           queryType: params?.queryType || 'mixed'  // Default to mixed if not provided
         };
-
-        console.log(`[UniversalSearchService] Starting hybrid search for query: "${query}" with queryType: ${options.queryType}`);
         
         // Log hybrid search stats before searching
         const stats = hybridSearchService.getStats();
-        console.log(`[UniversalSearchService] Pre-search hybrid stats:`, stats);
         
         // Check if indexes need population
         const needsPopulation = stats.keyword.totalDocuments === 0 && stats.fuzzy.totalDocuments === 0;
         const semanticAvailable = this.hnswSearchService && this.hnswSearchService.hasIndex('file_embeddings');
         
         if (needsPopulation) {
-          console.log(`[UniversalSearchService] Indexes are empty, triggering manual population...`);
-          console.log(`[UniversalSearchService] HNSW service available: ${!!this.hnswSearchService}`);
-          
           try {
             await this.populateHybridSearchIndexes();
             
             // Check stats again after population
             const newStats = hybridSearchService.getStats();
-            console.log(`[UniversalSearchService] Post-population stats:`, newStats);
             
             // Verify population was successful
             if (newStats.keyword.totalDocuments === 0 && newStats.fuzzy.totalDocuments === 0) {
@@ -656,8 +645,6 @@ export class UniversalSearchService {
           }
         }
         
-        console.log(`[UniversalSearchService] Search readiness: keyword=${stats.keyword.totalDocuments}, fuzzy=${stats.fuzzy.totalDocuments}, semantic=${semanticAvailable}`);
-        
         // Execute hybrid search with proper error handling
         let results: any[];
         try {
@@ -668,14 +655,6 @@ export class UniversalSearchService {
           results = [];
         }
         
-        console.log(`[UniversalSearchService] Hybrid search returned ${results.length} results:`, 
-          results.map(r => ({ 
-            id: r.id, 
-            title: r.title, 
-            score: r.score, 
-            methods: r.originalMethods,
-            methodScores: r.metadata.methodScores 
-          })));
         
         return results.map(result => ({
           id: result.id,

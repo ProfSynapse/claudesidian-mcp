@@ -20,6 +20,7 @@ import { HnswSearchService } from '../database/services/hnsw/HnswSearchService';
 import { EmbeddingManager } from '../database/services/embeddingManager';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
 import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
+import { LazyServiceManager } from '../services/LazyServiceManager';
 
 /**
  * Settings tab for the Claudesidian MCP plugin
@@ -40,6 +41,12 @@ export class SettingsTab extends PluginSettingTab {
     private vaultLibrarian: VaultLibrarianAgent | undefined;
     private memoryManager: MemoryManagerAgent | undefined;
     
+    // Service manager
+    private serviceManager: LazyServiceManager | undefined;
+    
+    // Accordion references for updating
+    private memoryManagementAccordion: MemoryManagementAccordion | undefined;
+    
     /**
      * Create a new settings tab
      * @param app Obsidian app instance
@@ -48,6 +55,7 @@ export class SettingsTab extends PluginSettingTab {
      * @param services Service references
      * @param vaultLibrarian VaultLibrarian agent instance
      * @param memoryManager Memory Manager agent instance
+     * @param serviceManager LazyServiceManager instance
      */
     constructor(
         app: App, 
@@ -62,7 +70,8 @@ export class SettingsTab extends PluginSettingTab {
             hnswSearchService?: HnswSearchService
         },
         vaultLibrarian?: VaultLibrarianAgent,
-        memoryManager?: MemoryManagerAgent
+        memoryManager?: MemoryManagerAgent,
+        serviceManager?: LazyServiceManager
     ) {
         super(app, plugin);
         this.settings = settingsManager;
@@ -86,6 +95,9 @@ export class SettingsTab extends PluginSettingTab {
         // Store agent references
         this.vaultLibrarian = vaultLibrarian;
         this.memoryManager = memoryManager;
+        
+        // Store service manager reference
+        this.serviceManager = serviceManager;
     }
 
     /**
@@ -111,8 +123,29 @@ export class SettingsTab extends PluginSettingTab {
             this.embeddingManager = new EmbeddingManager(window.app);
         }
         
+        // Update the memory management accordion if it exists
+        if (this.memoryManagementAccordion) {
+            this.memoryManagementAccordion.updateServices(
+                this.embeddingService,
+                this.fileEmbeddingAccessService,
+                this.hnswSearchService,
+                this.memoryService,
+                this.vaultLibrarian,
+                this.embeddingManager
+            );
+        }
+        
         // Refresh the UI to show updated status
         this.display();
+    }
+
+    /**
+     * Cleanup method to clear any intervals or resources
+     */
+    cleanup(): void {
+        if (this.memoryManagementAccordion) {
+            this.memoryManagementAccordion.cleanup();
+        }
     }
 
     /**
@@ -242,10 +275,9 @@ export class SettingsTab extends PluginSettingTab {
         if (this.memoryManager && !embeddingManager && window.app) {
             // The MemoryManagerAgent is not directly compatible with EmbeddingManager
             // We're not creating a real EmbeddingManager since it may require complex initialization
-            console.log('Using memory manager without embedding manager');
         }
         
-        new MemoryManagementAccordion(
+        this.memoryManagementAccordion = new MemoryManagementAccordion(
             containerEl, 
             this.settingsManager,
             this.embeddingService,
@@ -253,7 +285,8 @@ export class SettingsTab extends PluginSettingTab {
             this.hnswSearchService, // Now properly injected from services
             this.memoryService,
             this.vaultLibrarian,
-            embeddingManager
+            embeddingManager,
+            this.serviceManager
         );
 
         // Agent Management accordion

@@ -26,9 +26,10 @@ export const logger = {
      * Log informational messages during development
      */
     systemLog(message: string, context?: string) {
-        console.log(
-            `SYSTEM INFO${context ? ` [${context}]` : ''}: ${message}`
-        );
+        // Disabled to reduce console output during production
+        // console.log(
+        //     `SYSTEM INFO${context ? ` [${context}]` : ''}: ${message}`
+        // );
     }
     
     // operationError function removed to eliminate unnecessary console logs

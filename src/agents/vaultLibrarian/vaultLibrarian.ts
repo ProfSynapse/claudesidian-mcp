@@ -138,8 +138,6 @@ export class VaultLibrarianAgent extends BaseAgent {
     ));
     
     if (enableVectorModes) {
-    } else {
-      console.log('VaultLibrarian initialized with traditional search (memory disabled)');
     }
     
   }
@@ -169,7 +167,6 @@ export class VaultLibrarianAgent extends BaseAgent {
         // Get the shared provider from the embedding service
         if (this.embeddingService) {
           this.embeddingProvider = this.embeddingService.getProvider();
-          console.log('VaultLibrarian using shared embedding provider from EmbeddingService');
         } else {
           console.warn('EmbeddingService not available, VaultLibrarian will use traditional search only');
         }
@@ -200,7 +197,6 @@ export class VaultLibrarianAgent extends BaseAgent {
   async initializeSearchService(): Promise<void> {
     // If we already have the service, we're done
     if (this.hnswSearchService) {
-      console.log('HNSW search service already available in VaultLibrarian');
       return;
     }
 
@@ -211,11 +207,9 @@ export class VaultLibrarianAgent extends BaseAgent {
         // Check if service is already ready - if not, schedule background loading
         if (plugin.serviceManager.isReady('hnswSearchService')) {
           this.hnswSearchService = plugin.serviceManager.getIfReady('hnswSearchService');
-          console.log('✅ HNSW search service was already ready in VaultLibrarian');
         } else {
           // Schedule non-blocking background loading
           this.scheduleHnswServiceLoading(plugin.serviceManager);
-          console.log('🔄 HNSW search service loading scheduled in background');
         }
         return;
       }
@@ -234,7 +228,6 @@ export class VaultLibrarianAgent extends BaseAgent {
     setTimeout(async () => {
       try {
         this.hnswSearchService = await serviceManager.get('hnswSearchService');
-        console.log('✅ HNSW search service loaded in background for VaultLibrarian');
       } catch (error) {
         console.warn('Background HNSW service loading failed:', error);
       }
@@ -254,8 +247,6 @@ export class VaultLibrarianAgent extends BaseAgent {
       
       // Call parent class onunload if it exists
       super.onunload?.();
-      
-      console.log('VaultLibrarian agent unloaded successfully');
     } catch (error) {
       console.error('Error unloading VaultLibrarian agent:', getErrorMessage(error));
     }

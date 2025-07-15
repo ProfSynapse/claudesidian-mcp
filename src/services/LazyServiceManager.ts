@@ -36,19 +36,7 @@ export class LazyServiceManager implements IServiceManager {
         
         // Set up dependency injection
         this.serviceDescriptors.setDependencyResolver((name: string) => {
-            console.log(`[DEPENDENCY_DEBUG] Resolving dependency: ${name}`);
-            return this.get(name).then(result => {
-                console.log(`[DEPENDENCY_DEBUG] Resolved ${name}:`, result);
-                console.log(`[DEPENDENCY_DEBUG] ${name} type:`, typeof result);
-                console.log(`[DEPENDENCY_DEBUG] ${name} constructor:`, result?.constructor?.name);
-                console.log(`[DEPENDENCY_DEBUG] ${name} has .on method:`, typeof result?.on);
-                if (result && typeof result.on === 'function') {
-                    console.log(`[DEPENDENCY_DEBUG] ${name} IS VALID - has .on method`);
-                } else {
-                    console.log(`[DEPENDENCY_DEBUG] ${name} IS INVALID - missing .on method`);
-                }
-                return result;
-            });
+            return this.get(name);
         });
         
         // Register all services
@@ -66,7 +54,7 @@ export class LazyServiceManager implements IServiceManager {
 
         // Check if already ready
         if (this.lifecycle.isReady(name)) {
-            return this.lifecycle.getStatus(name) as any;
+            return this.lifecycle.getServiceInstance(name) as T;
         }
 
         // Initialize dependencies first
@@ -101,7 +89,6 @@ export class LazyServiceManager implements IServiceManager {
         this.isStarted = true;
         const duration = Date.now() - startTime;
         
-        console.log(`[LazyServiceManager] Started in ${duration}ms (no services initialized)`);
 
         // Start background initialization
         this.startCascadingInitialization();
@@ -109,9 +96,7 @@ export class LazyServiceManager implements IServiceManager {
         // Also initialize IMMEDIATE stage services right away
         setTimeout(async () => {
             try {
-                console.log('[STAGE_DEBUG] Initializing IMMEDIATE stage services...');
                 await this.initializeStage(LoadingStage.IMMEDIATE);
-                console.log('[STAGE_DEBUG] IMMEDIATE stage services ready');
             } catch (error) {
                 console.error('[STAGE_DEBUG] IMMEDIATE stage initialization failed:', error);
             }
@@ -142,7 +127,6 @@ export class LazyServiceManager implements IServiceManager {
         this.workspaceCache.clearWorkspaceCache();
         
         this.isStarted = false;
-        console.log('[LazyServiceManager] Stopped');
     }
 
     /**
@@ -244,7 +228,6 @@ export class LazyServiceManager implements IServiceManager {
             this.registry.register(descriptor);
         }
         
-        console.log(`[LazyServiceManager] Registered ${descriptors.length} services`);
     }
 
     /**
@@ -253,14 +236,10 @@ export class LazyServiceManager implements IServiceManager {
     private startCascadingInitialization(): void {
         setTimeout(async () => {
             try {
-                console.log('[LazyServiceManager] Starting background services...');
-                
                 // Initialize BACKGROUND_SLOW services (includes HNSW and vector operations)
                 setTimeout(async () => {
                     try {
-                        console.log('[LazyServiceManager] Starting slow background services...');
                         await this.initializeStage(LoadingStage.BACKGROUND_SLOW);
-                        console.log('[LazyServiceManager] All background services loaded');
                     } catch (error) {
                         console.warn('[LazyServiceManager] Background slow initialization failed:', error);
                     }
@@ -296,6 +275,5 @@ export class LazyServiceManager implements IServiceManager {
         await Promise.all(promises);
         
         const duration = Date.now() - startTime;
-        console.log(`[LazyServiceManager] Stage ${LoadingStage[stage]} completed in ${duration}ms`);
     }
 }

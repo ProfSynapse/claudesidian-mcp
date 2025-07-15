@@ -101,8 +101,7 @@ export default class ClaudesidianPlugin extends Plugin {
         // Initialize connector skeleton (no agents yet)
         this.connector = new MCPConnector(this.app, this);
         
-        // Add empty settings tab immediately (no initialization)
-        this.addSettingTab(new SettingsTab(this.app, this, this.settings));
+        // Settings tab will be added later in initializeSettingsTab()
         
         // Plugin is now "loaded" - defer everything else to background
         const loadTime = Date.now() - startTime;
@@ -296,7 +295,8 @@ export default class ClaudesidianPlugin extends Plugin {
                 this.settings,
                 this.services, // Pass current services (may be empty initially)
                 vaultLibrarian || undefined,
-                memoryManager || undefined
+                memoryManager || undefined,
+                this.serviceManager
             );
             this.addSettingTab(this.settingsTab);
             
@@ -527,6 +527,11 @@ export default class ClaudesidianPlugin extends Plugin {
     async onunload() {
         
         try {
+            // Cleanup settings tab accordions
+            if (this.settingsTab && typeof (this.settingsTab as any).cleanup === 'function') {
+                (this.settingsTab as any).cleanup();
+            }
+            
             // Cleanup service manager (handles all service cleanup)
             if (this.serviceManager) {
                 await this.serviceManager.cleanup();

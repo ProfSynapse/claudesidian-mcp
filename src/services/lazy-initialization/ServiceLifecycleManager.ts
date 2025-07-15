@@ -16,13 +16,12 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
         
         // Check if already initialized
         const status = this.serviceStatuses.get(serviceName);
-        if (status?.initialized && status.ready) {
-            return status as any; // Return cached instance
+        if (status?.initialized && status.ready && status.instance) {
+            return status.instance as T; // Return cached instance
         }
 
         // Check if initialization is already in progress
         if (this.initializationMutex.has(serviceName)) {
-            console.log(`[ServiceLifecycle] Waiting for ongoing initialization of ${serviceName}`);
             return this.initializationMutex.get(serviceName) as Promise<T>;
         }
 
@@ -74,7 +73,7 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
 
         try {
             // Call cleanup method if it exists
-            const instance = status as any;
+            const instance = status.instance;
             if (instance && typeof instance.cleanup === 'function') {
                 await instance.cleanup();
             }
@@ -133,8 +132,6 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
      * Perform the actual initialization
      */
     private async performInitialization<T>(descriptor: IServiceDescriptor<T>): Promise<T> {
-        console.log(`[ServiceLifecycle] Initializing service: ${descriptor.name}`);
-        
         // Set status to initializing
         this.serviceStatuses.set(descriptor.name, {
             name: descriptor.name,
