@@ -194,9 +194,9 @@ export class MCPConnector {
                 this.plugin as ClaudesidianPlugin
             );
             
-            // CommandManager with lazy memory service
+            // CommandManager with lazy memory service - NON-BLOCKING
             const memoryService = this.serviceManager ? 
-                await this.serviceManager.get('memoryService').catch(() => null) : null;
+                this.serviceManager.getIfReady('memoryService') : null;
             const commandManagerAgent = new CommandManagerAgent(
                 this.app, 
                 memoryService as any
@@ -230,10 +230,13 @@ export class MCPConnector {
                     
                     agentManagerAgent.setParentAgentManager(this.agentManager);
                     
-                    // Create and inject LLM usage tracker
-                    const { UsageTracker } = await import('./services/UsageTracker');
-                    const llmUsageTracker = new UsageTracker('llm', pluginSettings);
-                    agentManagerAgent.setUsageTracker(llmUsageTracker);
+                    // Create and inject LLM usage tracker (non-blocking)
+                    import('./services/UsageTracker').then(({ UsageTracker }) => {
+                        const llmUsageTracker = new UsageTracker('llm', pluginSettings);
+                        agentManagerAgent.setUsageTracker(llmUsageTracker);
+                    }).catch(error => {
+                        console.error('Failed to load UsageTracker:', error);
+                    });
                     
                 } catch (error) {
                     console.error('Failed to initialize LLM Provider Manager:', error);
@@ -251,9 +254,10 @@ export class MCPConnector {
                 // If vector modes are enabled, set up lazy initialization of search service
                 if (enableVectorModes && this.serviceManager) {
                     // Initialize search service when vector store becomes available
-                    this.serviceManager.get('vectorStore').then(async (vectorStore) => {
+                    this.serviceManager.get('vectorStore').then((vectorStore) => {
                         if (vaultLibrarianAgent) {
-                            await vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
+                            // Initialize search service in background to avoid blocking
+                            vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
                                 console.error('Error initializing VaultLibrarian search service:', error)
                             );
                             

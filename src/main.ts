@@ -108,8 +108,12 @@ export default class ClaudesidianPlugin extends Plugin {
         const loadTime = Date.now() - startTime;
         console.log(`[ClaudesidianPlugin] Plugin loaded in ${loadTime}ms`);
         
-        // PHASE 2: Start background initialization immediately after onload
-        setImmediate(() => this.startBackgroundInitialization());
+        // PHASE 2: Start background initialization after onload completes (truly non-blocking)
+        setTimeout(() => {
+            this.startBackgroundInitialization().catch(error => {
+                console.error('[ClaudesidianPlugin] Background initialization failed:', error);
+            });
+        }, 0);
     }
     
     /**
@@ -128,8 +132,12 @@ export default class ClaudesidianPlugin extends Plugin {
             // Start service manager stages
             await this.serviceManager.start();
             
-            // Initialize connector with agents
-            await this.connector.start();
+            // Initialize connector with agents - non-blocking start
+            this.connector.start().then(() => {
+                console.log('[ClaudesidianPlugin] MCP connector started successfully');
+            }).catch(error => {
+                console.error('[ClaudesidianPlugin] MCP connector failed to start:', error);
+            });
             
             // Create settings tab (async)
             await this.initializeSettingsTab();

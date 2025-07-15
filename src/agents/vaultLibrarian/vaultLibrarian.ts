@@ -185,13 +185,15 @@ export class VaultLibrarianAgent extends BaseAgent {
   async initialize(): Promise<void> {
     await super.initialize();
     
-    // Initialize search service - HNSW will be available since agents load after services
-    await this.initializeSearchService();
+    // Initialize search service in background - non-blocking
+    this.initializeSearchService().catch(error => {
+      console.error('Error initializing search service:', error);
+    });
   }
   
   /**
    * Initialize the search service
-   * HNSW service should be available since agents load after services in background
+   * HNSW service loading is now non-blocking and happens in background
    */
   async initializeSearchService(): Promise<void> {
     // If we already have the service, we're done
@@ -200,19 +202,41 @@ export class VaultLibrarianAgent extends BaseAgent {
       return;
     }
 
-    // Try to get the HNSW service from the service manager
+    // Try to get the HNSW service from the service manager - NON-BLOCKING
     try {
       const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
       if (plugin?.serviceManager) {
-        this.hnswSearchService = await plugin.serviceManager.get('hnswSearchService');
-        console.log('✅ Successfully loaded HNSW search service in VaultLibrarian');
+        // Check if service is already ready - if not, schedule background loading
+        if (plugin.serviceManager.isReady('hnswSearchService')) {
+          this.hnswSearchService = plugin.serviceManager.getIfReady('hnswSearchService');
+          console.log('✅ HNSW search service was already ready in VaultLibrarian');
+        } else {
+          // Schedule non-blocking background loading
+          this.scheduleHnswServiceLoading(plugin.serviceManager);
+          console.log('🔄 HNSW search service loading scheduled in background');
+        }
         return;
       }
     } catch (error) {
-      console.warn('Failed to load HNSW search service:', error);
+      console.warn('Failed to setup HNSW search service loading:', error);
     }
 
     console.warn('⚠️  Semantic search service not available in VaultLibrarian');
+  }
+
+  /**
+   * Schedule HNSW service loading in background without blocking initialization
+   */
+  private scheduleHnswServiceLoading(serviceManager: any): void {
+    // Load HNSW service in background without blocking
+    setTimeout(async () => {
+      try {
+        this.hnswSearchService = await serviceManager.get('hnswSearchService');
+        console.log('✅ HNSW search service loaded in background for VaultLibrarian');
+      } catch (error) {
+        console.warn('Background HNSW service loading failed:', error);
+      }
+    }, 100); // Small delay to ensure it's truly background
   }
   
   /**

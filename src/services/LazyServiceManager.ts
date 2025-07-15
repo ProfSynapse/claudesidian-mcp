@@ -156,13 +156,13 @@ export class LazyServiceManager {
             stage: LoadingStage.BACKGROUND_SLOW
         });
 
-        // STAGE 1 (IMMEDIATE): File event manager - no vector dependencies at startup
+        // STAGE 2 (BACKGROUND_FAST): File event manager - moved to background for faster startup
         this.register('fileEventManager', {
             name: 'fileEventManager',
             factory: async () => this.createSmartFileEventManager(),
             dependencies: ['eventManager'],
             initialized: false,
-            stage: LoadingStage.IMMEDIATE
+            stage: LoadingStage.BACKGROUND_FAST
         });
 
         // STAGE 4 (ON_DEMAND): Specialized features - load when needed
@@ -536,8 +536,8 @@ export class LazyServiceManager {
      * Now properly deferred until after plugin startup completes
      */
     private startCascadingInitialization(): void {
-        // Wait for plugin to fully complete startup before starting background services
-        setTimeout(async () => {
+        // Use Promise.resolve() to ensure this runs after onload completes
+        Promise.resolve().then(async () => {
             try {
                 console.log('[LazyServiceManager] Starting background services after plugin startup...');
                 await this.initializeStage(LoadingStage.BACKGROUND_FAST);
@@ -551,8 +551,8 @@ export class LazyServiceManager {
                         // Process startup queue now that embedding services are ready
                         await this.processStartupQueueIfNeeded();
                         
-                        // Initialize agents now that HNSW and all core services are ready
-                        await this.initializeAgentsInBackground();
+                        // Note: Agent initialization is now handled by the main plugin
+                        // to avoid timing conflicts and blocking issues
                         
                         console.log('[LazyServiceManager] All background services loaded');
                         // ON_DEMAND services are initialized only when requested
@@ -564,25 +564,19 @@ export class LazyServiceManager {
             } catch (error) {
                 console.warn('[LazyServiceManager] Background fast initialization failed:', error);
             }
-        }, 1000); // 1s delay to ensure plugin startup is fully complete
+        }).catch(error => {
+            console.error('[LazyServiceManager] Background initialization failed:', error);
+        });
     }
 
     /**
      * Initialize agents in background after all core services are ready
+     * NOTE: This method is now deprecated - agent initialization is handled by the main plugin
      */
     private async initializeAgentsInBackground(): Promise<void> {
-        try {
-            
-            // Get the connector from the plugin and initialize agents
-            const plugin = this.plugin as any;
-            if (plugin.connector) {
-                await plugin.connector.initializeAgents();
-            } else {
-                console.warn('[LazyServiceManager] No connector found for agent initialization');
-            }
-        } catch (error) {
-            console.error('[LazyServiceManager] Failed to initialize agents in background:', error);
-        }
+        // This method is now deprecated - agent initialization is handled by the main plugin
+        // to avoid timing conflicts and blocking issues during plugin startup
+        console.log('[LazyServiceManager] Agent initialization is now handled by the main plugin');
     }
 
     /**
