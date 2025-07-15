@@ -45,6 +45,7 @@ export interface ServiceStatus {
     initialized: boolean;
     ready: boolean;
     error?: Error;
+    instance?: any; // Store the actual service instance
 }
 
 /**

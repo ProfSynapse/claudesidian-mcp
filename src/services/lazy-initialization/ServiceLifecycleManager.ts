@@ -33,13 +33,14 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
         try {
             const instance = await initPromise;
             
-            // Update status
+            // Update status - store the actual instance
             this.serviceStatuses.set(serviceName, {
                 name: serviceName,
                 stage: descriptor.stage,
                 initialized: true,
                 ready: true,
-                error: undefined
+                error: undefined,
+                instance: instance // Store the actual instance
             });
 
             // Clean up mutex

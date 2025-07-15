@@ -146,6 +146,11 @@ export class ServiceDescriptors {
             create: async () => {
                 const eventManager = await this.dependencyResolver('eventManager');
                 
+                // Validate eventManager has required methods
+                if (!eventManager || typeof eventManager.on !== 'function') {
+                    throw new Error('EventManager dependency is invalid - missing required methods');
+                }
+                
                 const embeddingStrategy = {
                     type: (this.plugin.settings?.settings?.memory?.embeddingStrategy || 'idle') as 'idle' | 'startup',
                     idleTimeThreshold: this.plugin.settings?.settings?.memory?.idleTimeThreshold || 60000,

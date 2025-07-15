@@ -144,7 +144,7 @@ export class LazyServiceManager implements IServiceManager {
         }
         
         const status = this.lifecycle.getStatus(name);
-        return status as any;
+        return status.instance as T || null;
     }
 
     /**
@@ -155,8 +155,8 @@ export class LazyServiceManager implements IServiceManager {
         const statuses = this.lifecycle.getAllStatuses();
         
         for (const [name, status] of statuses) {
-            if (status.initialized && status.ready) {
-                services[name] = status;
+            if (status.initialized && status.ready && status.instance) {
+                services[name] = status.instance;
             }
         }
         
