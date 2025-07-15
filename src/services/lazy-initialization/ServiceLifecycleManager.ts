@@ -112,6 +112,17 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
     }
 
     /**
+     * Get service instance if ready
+     */
+    getServiceInstance<T>(serviceName: string): T | null {
+        const status = this.serviceStatuses.get(serviceName);
+        if (status?.ready && status.instance) {
+            return status.instance as T;
+        }
+        return null;
+    }
+
+    /**
      * Get all service statuses
      */
     getAllStatuses(): Map<string, ServiceStatus> {

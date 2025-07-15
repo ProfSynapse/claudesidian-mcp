@@ -41,6 +41,12 @@ export class LazyServiceManager implements IServiceManager {
                 console.log(`[DEPENDENCY_DEBUG] Resolved ${name}:`, result);
                 console.log(`[DEPENDENCY_DEBUG] ${name} type:`, typeof result);
                 console.log(`[DEPENDENCY_DEBUG] ${name} constructor:`, result?.constructor?.name);
+                console.log(`[DEPENDENCY_DEBUG] ${name} has .on method:`, typeof result?.on);
+                if (result && typeof result.on === 'function') {
+                    console.log(`[DEPENDENCY_DEBUG] ${name} IS VALID - has .on method`);
+                } else {
+                    console.log(`[DEPENDENCY_DEBUG] ${name} IS INVALID - missing .on method`);
+                }
                 return result;
             });
         });
@@ -158,12 +164,7 @@ export class LazyServiceManager implements IServiceManager {
      * Get service if ready (non-blocking)
      */
     getIfReady<T>(name: string): T | null {
-        if (!this.lifecycle.isReady(name)) {
-            return null;
-        }
-        
-        const status = this.lifecycle.getStatus(name);
-        return status.instance as T || null;
+        return this.lifecycle.getServiceInstance<T>(name);
     }
 
     /**
