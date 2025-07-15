@@ -78,7 +78,7 @@ export class PersistenceManager {
   }
 
   /**
-   * Save data to disk atomically using temporary file
+   * Save data to disk atomically using temporary file with chunked serialization
    * @param dataFilePath Final data file path
    * @param metaFilePath Metadata file path
    * @param data Data to save
@@ -106,15 +106,21 @@ export class PersistenceManager {
       console.log(`Writing metadata to ${metaFilePath}...`);
       this.fs.writeFileSync(metaFilePath, JSON.stringify(metadata, null, 2));
 
-      // Save items to disk using a temp file for atomicity
+      // Save items to disk using a temp file for atomicity with chunked serialization
       const tempFile = `${dataFilePath}.tmp`;
 
-      // First write to temp file
+      // Check collection size and warn if approaching limits
+      const itemCount = data.items.length;
+      if (itemCount > 10000) {
+        console.warn(`Large collection detected: ${itemCount} items. Consider implementing collection splitting for better performance.`);
+      }
+
+      // First write to temp file using chunked serialization to handle large collections
       console.log(`Writing ${data.items.length} items to temporary file ${tempFile}...`);
-      this.fs.writeFileSync(tempFile, JSON.stringify({
+      await this.writeChunkedJSON(tempFile, {
         items: data.items,
         metadata
-      }, null, 2));
+      });
 
       // Then rename to final file (more atomic operation)
       console.log(`Moving temporary file to final location ${dataFilePath}...`);
@@ -135,6 +141,82 @@ export class PersistenceManager {
       }
     } catch (error) {
       console.error(`Failed to save data to disk:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Custom JSON replacer to reduce float precision and save storage space
+   * @param key Property key
+   * @param value Property value
+   * @returns Processed value with reduced precision for floats
+   */
+  private jsonReplacer(key: string, value: any): any {
+    // Reduce precision for embedding arrays to save significant storage space
+    if (key === 'embedding' && Array.isArray(value)) {
+      return value.map(num => typeof num === 'number' ? parseFloat(num.toFixed(6)) : num);
+    }
+    // Reduce precision for any other floating point numbers
+    if (typeof value === 'number' && !Number.isInteger(value)) {
+      return parseFloat(value.toFixed(6));
+    }
+    return value;
+  }
+
+  /**
+   * Write JSON data using chunked serialization to avoid string length limits
+   * @param filePath File path to write to
+   * @param data Data to serialize
+   */
+  private async writeChunkedJSON(filePath: string, data: any): Promise<void> {
+    const fs = require('fs');
+    const stream = fs.createWriteStream(filePath, { encoding: 'utf8' });
+    
+    try {
+      // Start JSON object
+      stream.write('{\n  "items": [');
+      
+      // Serialize items in chunks to avoid memory/string length limits
+      const items = data.items;
+      const CHUNK_SIZE = 100; // Process 100 items at a time
+      
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        const chunk = items.slice(i, i + CHUNK_SIZE);
+        
+        for (let j = 0; j < chunk.length; j++) {
+          const item = chunk[j];
+          const itemIndex = i + j;
+          
+          // Add comma before item (except for first item)
+          if (itemIndex > 0) {
+            stream.write(',');
+          }
+          
+          stream.write('\n    ');
+          // Serialize each item with precision reduction to save space
+          stream.write(JSON.stringify(item, this.jsonReplacer.bind(this), 4).replace(/\n/g, '\n    '));
+        }
+        
+        // Yield control occasionally to prevent blocking
+        if (i % (CHUNK_SIZE * 10) === 0 && i > 0) {
+          await new Promise(resolve => setImmediate(resolve));
+        }
+      }
+      
+      // Close items array and add metadata
+      stream.write('\n  ],\n  "metadata": ');
+      stream.write(JSON.stringify(data.metadata, this.jsonReplacer.bind(this), 2).replace(/\n/g, '\n  '));
+      stream.write('\n}');
+      
+      // Close stream and wait for completion
+      await new Promise((resolve, reject) => {
+        stream.end((error: any) => {
+          if (error) reject(error);
+          else resolve(void 0);
+        });
+      });
+    } catch (error) {
+      stream.destroy();
       throw error;
     }
   }

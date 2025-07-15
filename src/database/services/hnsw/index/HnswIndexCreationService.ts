@@ -293,7 +293,7 @@ export class HnswIndexCreationService {
     partitionCount: number
   ): Promise<PartitionedHnswIndex> {
     const partitions: HnswIndex[] = [];
-    const capacity = this.config.calculateOptimalCapacity(this.config.partitioning.maxItemsPerPartition);
+    const capacity = this.config.calculateOptimalCapacity(this.config.partitioning.maxItemsPerPartition, true);
 
     for (let i = 0; i < partitionCount; i++) {
       const index = new this.hnswLib.HierarchicalNSW('cosine', dimension, '');

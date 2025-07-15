@@ -89,6 +89,33 @@ export class SettingsTab extends PluginSettingTab {
     }
 
     /**
+     * Update services when they become available and refresh the UI
+     * @param services Updated service references
+     */
+    updateServices(services: {
+        embeddingService?: EmbeddingService,
+        workspaceService?: WorkspaceService,
+        memoryService?: MemoryService,
+        vectorStore?: IVectorStore,
+        fileEmbeddingAccessService?: FileEmbeddingAccessService,
+        hnswSearchService?: HnswSearchService
+    }): void {
+        // Update service references
+        this.embeddingService = services.embeddingService;
+        this.memoryService = services.memoryService;
+        this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
+        this.hnswSearchService = services.hnswSearchService;
+        
+        // Create embedding manager if we have the service
+        if (window.app && !this.embeddingManager && services.embeddingService) {
+            this.embeddingManager = new EmbeddingManager(window.app);
+        }
+        
+        // Refresh the UI to show updated status
+        this.display();
+    }
+
+    /**
      * Creates the update section in settings
      * Displays current version, last update info, and update button
      */

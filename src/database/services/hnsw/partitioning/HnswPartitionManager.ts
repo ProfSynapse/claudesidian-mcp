@@ -31,10 +31,52 @@ export interface PartitionDistribution {
 export class HnswPartitionManager {
   private config: HnswConfig;
   private hnswLib: any;
+  private totalAllocatedCapacity: number = 0;
 
   constructor(config: HnswConfig, hnswLib: any) {
     this.config = config;
     this.hnswLib = hnswLib;
+  }
+
+  /**
+   * Estimate memory usage for a given capacity and dimension
+   * @param capacity Number of vectors
+   * @param dimension Vector dimension
+   * @returns Estimated memory in bytes
+   */
+  private estimateMemoryUsage(capacity: number, dimension: number): number {
+    // Rough estimate: each vector uses dimension * 4 bytes (float32) 
+    // plus HNSW graph structure overhead (~50% additional)
+    const vectorMemory = capacity * dimension * 4;
+    const graphOverhead = vectorMemory * 0.5;
+    return vectorMemory + graphOverhead;
+  }
+
+  /**
+   * Check if we're approaching WASM memory limits
+   * @param additionalCapacity Additional capacity being requested
+   * @param dimension Vector dimension
+   */
+  private checkMemoryLimits(additionalCapacity: number, dimension: number): void {
+    const additionalMemory = this.estimateMemoryUsage(additionalCapacity, dimension);
+    const currentEstimatedMemory = this.estimateMemoryUsage(this.totalAllocatedCapacity, dimension);
+    const totalEstimatedMemory = currentEstimatedMemory + additionalMemory;
+    
+    // WASM has a 2GB limit (2^31 bytes), warn at 1.5GB
+    const WASM_MEMORY_WARNING_THRESHOLD = 1.5 * 1024 * 1024 * 1024; // 1.5GB
+    const WASM_MEMORY_CRITICAL_THRESHOLD = 1.8 * 1024 * 1024 * 1024; // 1.8GB
+    
+    if (totalEstimatedMemory > WASM_MEMORY_CRITICAL_THRESHOLD) {
+      logger.systemError(
+        new Error(`CRITICAL: Estimated memory usage (${Math.round(totalEstimatedMemory / 1024 / 1024)}MB) approaching WASM 2GB limit. Consider reducing collection size.`),
+        'HnswPartitionManager'
+      );
+    } else if (totalEstimatedMemory > WASM_MEMORY_WARNING_THRESHOLD) {
+      logger.systemWarn(
+        `Memory usage warning: Estimated ${Math.round(totalEstimatedMemory / 1024 / 1024)}MB allocated. Monitor for WASM memory limits.`,
+        'HnswPartitionManager'
+      );
+    }
   }
 
   /**
@@ -51,10 +93,16 @@ export class HnswPartitionManager {
   ): Promise<PartitionedHnswIndex> {
     try {
       const partitionCount = this.config.calculatePartitionCount(items.length);
+      
+      // Check memory limits before creating partitions
+      const itemsPerPartition = Math.ceil(items.length / partitionCount);
+      const partitionCapacity = this.config.calculateOptimalCapacity(itemsPerPartition, true);
+      this.checkMemoryLimits(partitionCount * partitionCapacity, dimension);
+      
       const distributions = this.distributeItemsAcrossPartitions(items, partitionCount);
       
       logger.systemLog(
-        `Creating ${partitionCount} partitions for ${items.length} items in collection ${collectionName}`,
+        `Creating ${partitionCount} partitions for ${items.length} items in collection ${collectionName}. Estimated capacity per partition: ${partitionCapacity}`,
         'HnswPartitionManager'
       );
 
@@ -121,12 +169,16 @@ export class HnswPartitionManager {
   ): PartitionDistribution[] {
     const distributions: PartitionDistribution[] = [];
     
+    // Calculate capacity based on actual distribution
+    const itemsPerPartition = Math.ceil(items.length / partitionCount);
+    const partitionCapacity = this.config.calculateOptimalCapacity(itemsPerPartition, true);
+    
     // Initialize partitions
     for (let i = 0; i < partitionCount; i++) {
       distributions.push({
         partitionIndex: i,
         items: [],
-        capacity: this.config.calculateOptimalCapacity(this.config.partitioning.maxItemsPerPartition),
+        capacity: partitionCapacity,
       });
     }
 
@@ -135,6 +187,9 @@ export class HnswPartitionManager {
       const partitionIndex = index % partitionCount;
       distributions[partitionIndex].items.push(item);
     });
+
+    // Track total allocated capacity for memory monitoring
+    this.totalAllocatedCapacity += partitionCount * partitionCapacity;
 
     return distributions;
   }

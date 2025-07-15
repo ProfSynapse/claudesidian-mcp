@@ -194,7 +194,7 @@ export class LazyServiceManager {
             },
             dependencies: ['embeddingService', 'vectorStore', 'eventManager'],
             initialized: false,
-            stage: LoadingStage.ON_DEMAND
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
         this.register('cacheManager', {
@@ -524,16 +524,19 @@ export class LazyServiceManager {
 
     /**
      * Start cascading background initialization for remaining stages
+     * Now properly deferred until after plugin startup completes
      */
     private startCascadingInitialization(): void {
-        // Start with BACKGROUND_FAST after a short delay
+        // Wait for plugin to fully complete startup before starting background services
         setTimeout(async () => {
             try {
+                console.log('[LazyServiceManager] Starting background services after plugin startup...');
                 await this.initializeStage(LoadingStage.BACKGROUND_FAST);
                 
-                // After BACKGROUND_FAST, start BACKGROUND_SLOW
+                // After BACKGROUND_FAST, start BACKGROUND_SLOW (includes HNSW)
                 setTimeout(async () => {
                     try {
+                        console.log('[LazyServiceManager] Starting slow background services (including HNSW)...');
                         await this.initializeStage(LoadingStage.BACKGROUND_SLOW);
                         
                         // Process startup queue now that embedding services are ready
@@ -542,16 +545,17 @@ export class LazyServiceManager {
                         // Initialize agents now that HNSW and all core services are ready
                         await this.initializeAgentsInBackground();
                         
+                        console.log('[LazyServiceManager] All background services loaded');
                         // ON_DEMAND services are initialized only when requested
                     } catch (error) {
                         console.warn('[LazyServiceManager] Background slow initialization failed:', error);
                     }
-                }, 1000); // 1s delay between fast and slow
+                }, 2000); // 2s delay to ensure plugin startup is complete
                 
             } catch (error) {
                 console.warn('[LazyServiceManager] Background fast initialization failed:', error);
             }
-        }, 500); // 500ms delay after immediate stage
+        }, 3000); // 3s delay to ensure plugin startup is fully complete
     }
 
     /**

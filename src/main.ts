@@ -24,6 +24,7 @@ export default class ClaudesidianPlugin extends Plugin {
     private connector!: MCPConnector;
     private settingsTab!: SettingsTab;
     private serviceManager!: LazyServiceManager;
+    private startTime: number = Date.now();
     
     // Legacy service properties - now proxied through lazy service manager with graceful fallbacks
     public get vectorStore(): IVectorStore | null { 
@@ -204,42 +205,60 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
-     * Initialize settings tab
-     * PHASE 3 FIX: Wait for essential services before creating UI to fix service injection
+     * Initialize settings tab immediately without waiting for background services
+     * Services will be loaded asynchronously and UI will update when ready
      */
     private async initializeSettingsTab(): Promise<void> {
-        logger.systemLog('[PHASE3-SERVICE-INJECTION] Waiting for essential services before creating Settings UI...', 'ClaudesidianPlugin');
-        
-        // Wait for essential services needed by Memory Management UI
-        try {
-            // Wait for BACKGROUND_FAST services (embeddingService) and essential BACKGROUND_SLOW services
-            const embeddingService = await this.serviceManager.get('embeddingService');
-            const memoryService = await this.serviceManager.get('memoryService');
-            const fileEmbeddingAccessService = await this.serviceManager.get('fileEmbeddingAccessService');
-            const hnswSearchService = await this.serviceManager.get('hnswSearchService');
-            
-            logger.systemLog('[PHASE3-SERVICE-INJECTION] All Memory Management services ready, creating Settings UI', 'ClaudesidianPlugin');
-        } catch (error) {
-            logger.systemWarn(`[PHASE3-SERVICE-INJECTION] Some services not available, proceeding with agent fallback: ${error instanceof Error ? error.message : String(error)}`, 'ClaudesidianPlugin');
-        }
+        logger.systemLog('[STARTUP] Creating Settings UI immediately, services will load in background...', 'ClaudesidianPlugin');
         
         // Get agent references for settings tab - these will be available since agents are initialized
         const vaultLibrarian = this.connector.getVaultLibrarian();
         const memoryManager = this.connector.getMemoryManager();
         
-        // Now services should be available in this.services
-        const availableServices = this.services;
-        logger.systemLog(`[PHASE3-SERVICE-INJECTION] Creating Settings UI with services: ${Object.keys(availableServices).join(', ')}`, 'ClaudesidianPlugin');
-        
+        // Create settings tab with service manager for async loading
         this.settingsTab = new SettingsTab(
             this.app,
             this,
             this.settings,
-            availableServices,
+            this.services, // Pass current services (may be empty initially)
             vaultLibrarian || undefined,
             memoryManager || undefined
         );
         this.addSettingTab(this.settingsTab);
+        
+        // Load services in background and update UI when ready
+        this.loadServicesInBackground();
+    }
+    
+    /**
+     * Monitor services as they become available in background and update Settings UI
+     */
+    private async loadServicesInBackground(): Promise<void> {
+        // Set up a polling mechanism to check for service availability
+        // This doesn't force loading, just checks what's already available
+        const checkServicesInterval = setInterval(() => {
+            const availableServices = this.services;
+            
+            // Check if we have new services that weren't available before
+            const serviceNames = Object.keys(availableServices);
+            if (serviceNames.length > 0) {
+                logger.systemLog(`[BACKGROUND] Services available: ${serviceNames.join(', ')}`, 'ClaudesidianPlugin');
+                
+                // Update settings tab with any newly available services
+                if (this.settingsTab) {
+                    this.settingsTab.updateServices(availableServices);
+                }
+            }
+            
+            // Stop checking once we have all expected services or after 30 seconds
+            if (availableServices.hnswSearchService || 
+                Date.now() - this.startTime > 30000) {
+                clearInterval(checkServicesInterval);
+                if (availableServices.hnswSearchService) {
+                    logger.systemLog('[BACKGROUND] All services loaded, Settings UI fully ready', 'ClaudesidianPlugin');
+                }
+            }
+        }, 500); // Check every 500ms
     }
     
     /**

@@ -265,11 +265,23 @@ export class HnswPersistenceOrchestrator {
     const currentContentHash = this.calculateContentHash(currentItems);
     const contentChanged = metadata.contentHash !== currentContentHash;
     
-    // Allow content changes if item count difference is small (incremental updates)
-    if (contentChanged && itemCountDiff > 5) {
+    // If item count is exactly the same, trust the index even if hash differs
+    // (hash might differ due to serialization changes, precision changes, etc.)
+    if (itemCountDiff === 0) {
+      return { 
+        isValid: true,
+        contentChanged: false, // Treat as unchanged if count matches exactly
+        itemCountDiff: 0,
+      };
+    }
+    
+    // Allow content changes if item count difference is reasonable for collection size
+    // For large collections, allow up to 5% change or 100 items, whichever is larger
+    const maxAllowedDiff = Math.max(100, Math.floor(metadata.itemCount * 0.05));
+    if (contentChanged && itemCountDiff > maxAllowedDiff) {
       return {
         isValid: false,
-        reason: `Content changed significantly (${itemCountDiff} item difference)`,
+        reason: `Content changed significantly (${itemCountDiff} item difference, max allowed: ${maxAllowedDiff})`,
         contentChanged: true,
         itemCountDiff,
       };

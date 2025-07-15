@@ -136,20 +136,41 @@ export class HnswConfig {
   }
 
   /**
+   * Check if collection qualifies as "large" and needs special handling
+   * @param itemCount Number of items in collection
+   * @returns True if collection is considered large
+   */
+  isLargeCollection(itemCount: number): boolean {
+    return itemCount > 10000; // Collections over 10K items are considered large
+  }
+
+  /**
    * Calculate optimal capacity for an index
    * @param itemCount Number of items to index
+   * @param isPartitioned Whether this is for a partitioned collection
    * @returns Recommended capacity
    */
-  calculateOptimalCapacity(itemCount: number): number {
+  calculateOptimalCapacity(itemCount: number, isPartitioned: boolean = false): number {
+    // For partitioned collections, use memory-efficient allocation
+    if (isPartitioned && this.partitioning.enabled) {
+      // For partitions, allocate based on actual partition size + reasonable buffer
+      // This prevents massive over-allocation when we have many small partitions
+      const partitionBuffer = Math.min(1000, itemCount * 0.2); // 20% buffer, max 1000
+      return itemCount + partitionBuffer;
+    }
+
+    // For large non-partitioned collections, use more conservative allocation
+    if (this.isLargeCollection(itemCount) && !isPartitioned) {
+      // Use smaller multiplier for large collections to conserve memory
+      const conservativeMultiplier = Math.max(1.5, this.index.defaultCapacityMultiplier * 0.5);
+      return Math.max(itemCount * conservativeMultiplier, 5000); // Lower minimum for large collections
+    }
+
+    // For normal-sized collections, use the original logic
     const baseCapacity = Math.max(
       itemCount * this.index.defaultCapacityMultiplier,
       this.index.minCapacity
     );
-
-    // Add buffer for partitioned indexes
-    if (this.partitioning.enabled && itemCount > this.partitioning.minItemsForPartitioning) {
-      return Math.max(baseCapacity, this.partitioning.maxItemsPerPartition + 5000);
-    }
 
     return baseCapacity;
   }
