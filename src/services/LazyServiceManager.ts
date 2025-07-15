@@ -80,13 +80,13 @@ export class LazyServiceManager {
             stage: LoadingStage.IMMEDIATE
         });
 
-        // STAGE 2 (BACKGROUND_FAST): Basic vector operations - ready in 1-5s
+        // STAGE 3 (BACKGROUND_SLOW): Basic vector operations - moved to slow stage for instant startup
         this.register('vectorStore', {
             name: 'vectorStore',
             factory: async () => this.createVectorStore(),
             dependencies: [],
             initialized: false,
-            stage: LoadingStage.BACKGROUND_FAST
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
         this.register('embeddingService', {
@@ -94,7 +94,7 @@ export class LazyServiceManager {
             factory: async () => new EmbeddingService(this.plugin),
             dependencies: [],
             initialized: false,
-            stage: LoadingStage.BACKGROUND_FAST
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
         // STAGE 3 (BACKGROUND_SLOW): Full semantic search - loads in background after delay
@@ -156,13 +156,13 @@ export class LazyServiceManager {
             stage: LoadingStage.BACKGROUND_SLOW
         });
 
-        // STAGE 2 (BACKGROUND_FAST): File event manager - moved to background for faster startup
+        // STAGE 3 (BACKGROUND_SLOW): File event manager - moved to slow stage for instant startup
         this.register('fileEventManager', {
             name: 'fileEventManager',
             factory: async () => this.createSmartFileEventManager(),
             dependencies: ['eventManager'],
             initialized: false,
-            stage: LoadingStage.BACKGROUND_FAST
+            stage: LoadingStage.BACKGROUND_SLOW
         });
 
         // STAGE 4 (ON_DEMAND): Specialized features - load when needed
@@ -536,13 +536,15 @@ export class LazyServiceManager {
      * Now properly deferred until after plugin startup completes
      */
     private startCascadingInitialization(): void {
-        // Use Promise.resolve() to ensure this runs after onload completes
-        Promise.resolve().then(async () => {
+        // Use setTimeout to ensure this runs after onload completes and doesn't block
+        setTimeout(async () => {
             try {
                 console.log('[LazyServiceManager] Starting background services after plugin startup...');
-                await this.initializeStage(LoadingStage.BACKGROUND_FAST);
                 
-                // After BACKGROUND_FAST, start BACKGROUND_SLOW (includes HNSW)
+                // Skip BACKGROUND_FAST stage since all services moved to BACKGROUND_SLOW
+                console.log('[LazyServiceManager] Skipping BACKGROUND_FAST stage - all services moved to BACKGROUND_SLOW');
+                
+                // After delay, start BACKGROUND_SLOW (includes HNSW)
                 setTimeout(async () => {
                     try {
                         console.log('[LazyServiceManager] Starting slow background services (including HNSW)...');
@@ -564,9 +566,7 @@ export class LazyServiceManager {
             } catch (error) {
                 console.warn('[LazyServiceManager] Background fast initialization failed:', error);
             }
-        }).catch(error => {
-            console.error('[LazyServiceManager] Background initialization failed:', error);
-        });
+        }, 2000); // 2 second delay to ensure plugin is fully loaded
     }
 
     /**
