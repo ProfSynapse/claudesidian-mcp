@@ -91,38 +91,93 @@ export default class ClaudesidianPlugin extends Plugin {
     async onload() {
         const startTime = Date.now();
         
-        // Initialize settings first
+        // PHASE 1: Absolute minimum to appear "loaded" - must complete <50ms
+        // Initialize settings instance only (no loading)
         this.settings = new Settings(this);
-        await this.settings.loadSettings();
         
-        // Initialize data directories asynchronously
-        this.initializeDataDirectories().catch(error => {
-            console.warn('[ClaudesidianPlugin] Failed to initialize data directories:', error);
-        });
-        
-        // Initialize lazy service manager
+        // Initialize service manager (stage framework only)
         this.serviceManager = new LazyServiceManager(this.app, this);
         
-        // Start immediate services only
-        await this.serviceManager.start();
-        
-        // Initialize connector only (agents will be loaded in background)
+        // Initialize connector skeleton (no agents yet)
         this.connector = new MCPConnector(this.app, this);
-        await this.connector.start();
         
-        // Add settings tab
-        await this.initializeSettingsTab();
+        // Add empty settings tab immediately (no initialization)
+        this.addSettingTab(new SettingsTab(this.app, this, this.settings));
         
-        // Register maintenance commands
-        this.registerMaintenanceCommands();
+        // Plugin is now "loaded" - defer everything else to background
+        const loadTime = Date.now() - startTime;
+        console.log(`[ClaudesidianPlugin] Plugin loaded in ${loadTime}ms`);
         
-        // Check for updates in background
-        this.checkForUpdatesOnStartup();
-        
+        // PHASE 2: Start background initialization immediately after onload
+        setImmediate(() => this.startBackgroundInitialization());
     }
     
     /**
-     * Initialize data directories asynchronously
+     * Background initialization - runs after onload() completes
+     */
+    private async startBackgroundInitialization(): Promise<void> {
+        const bgStartTime = Date.now();
+        
+        try {
+            // Load settings first
+            await this.settings.loadSettings();
+            
+            // Initialize data directories
+            await this.initializeDataDirectories();
+            
+            // Start service manager stages
+            await this.serviceManager.start();
+            
+            // Initialize connector with agents
+            await this.connector.start();
+            
+            // Create settings tab (async)
+            await this.initializeSettingsTab();
+            
+            // Register all maintenance commands
+            this.registerMaintenanceCommands();
+            
+            // Check for updates
+            this.checkForUpdatesOnStartup();
+            
+            const bgLoadTime = Date.now() - bgStartTime;
+            console.log(`[ClaudesidianPlugin] Background initialization completed in ${bgLoadTime}ms`);
+            
+        } catch (error) {
+            console.error('[ClaudesidianPlugin] Background initialization failed:', error);
+            // Plugin should still be functional for basic operations
+        }
+    }
+    
+    /**
+     * Register only essential commands that must be available immediately
+     */
+    private registerEssentialCommands(): void {
+        // Only register commands that work without full service initialization
+        this.addCommand({
+            id: 'check-service-readiness',
+            name: 'Check service readiness status',
+            callback: async () => {
+                const notice = new Notice('Checking service readiness...', 0);
+                
+                if (!this.serviceManager) {
+                    notice.setMessage('Service manager not available');
+                    setTimeout(() => notice.hide(), 3000);
+                    return;
+                }
+                
+                const readinessStatus = this.serviceManager.getReadinessStatus();
+                const readyServices = Object.values(readinessStatus).filter(s => s.ready).length;
+                const totalServices = Object.keys(readinessStatus).length;
+                
+                notice.setMessage(`Services: ${readyServices}/${totalServices} ready`);
+                setTimeout(() => notice.hide(), 5000);
+            }
+        });
+    }
+    
+    /**
+     * Initialize data directories asynchronously in background
      */
     private async initializeDataDirectories(): Promise<void> {
         const fs = require('fs').promises;
@@ -133,7 +188,8 @@ export default class ClaudesidianPlugin extends Plugin {
             if (this.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
                 basePath = (this.app.vault.adapter as any).getBasePath();
             } else {
-                throw new Error('FileSystemAdapter not available');
+                console.warn('[ClaudesidianPlugin] FileSystemAdapter not available, using defaults');
+                return;
             }
             
             const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.manifest.id);
@@ -142,25 +198,31 @@ export default class ClaudesidianPlugin extends Plugin {
             const collectionsDir = path.join(chromaDbDir, 'collections');
             const hnswIndexesDir = path.join(chromaDbDir, 'hnsw-indexes');
             
-            // Create directories asynchronously
-            await fs.mkdir(dataDir, { recursive: true });
-            await fs.mkdir(chromaDbDir, { recursive: true });
-            await fs.mkdir(collectionsDir, { recursive: true });
-            await fs.mkdir(hnswIndexesDir, { recursive: true });
+            // Create directories in parallel
+            await Promise.all([
+                fs.mkdir(dataDir, { recursive: true }),
+                fs.mkdir(chromaDbDir, { recursive: true }),
+                fs.mkdir(collectionsDir, { recursive: true }),
+                fs.mkdir(hnswIndexesDir, { recursive: true })
+            ]);
             
             // Update settings with correct path
-            // ChromaDB client adds /collections automatically, so use base directory for ChromaDB
-            // HNSW service will use collectionsDir directly for consistency
             if (!this.settings.settings.memory) {
                 this.settings.settings.memory = this.getDefaultMemorySettings(chromaDbDir);
             } else {
                 this.settings.settings.memory.dbStoragePath = chromaDbDir;
             }
             
-            await this.settings.saveSettings();
+            // Save settings in background
+            this.settings.saveSettings().catch(error => {
+                console.warn('[ClaudesidianPlugin] Failed to save settings after directory init:', error);
+            });
+            
+            console.log('[ClaudesidianPlugin] Data directories initialized');
+            
         } catch (error) {
             console.error('[ClaudesidianPlugin] Failed to initialize data directories:', error);
-            throw error;
+            // Don't throw - plugin should function without directories for now
         }
     }
     
@@ -205,29 +267,35 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
-     * Initialize settings tab immediately without waiting for background services
-     * Services will be loaded asynchronously and UI will update when ready
+     * Initialize settings tab asynchronously in background
+     * Services will be loaded and UI will update when ready
      */
     private async initializeSettingsTab(): Promise<void> {
-        logger.systemLog('[STARTUP] Creating Settings UI immediately, services will load in background...', 'ClaudesidianPlugin');
+        console.log('[STARTUP] Creating Settings UI in background...');
         
-        // Get agent references for settings tab - these will be available since agents are initialized
-        const vaultLibrarian = this.connector.getVaultLibrarian();
-        const memoryManager = this.connector.getMemoryManager();
-        
-        // Create settings tab with service manager for async loading
-        this.settingsTab = new SettingsTab(
-            this.app,
-            this,
-            this.settings,
-            this.services, // Pass current services (may be empty initially)
-            vaultLibrarian || undefined,
-            memoryManager || undefined
-        );
-        this.addSettingTab(this.settingsTab);
-        
-        // Load services in background and update UI when ready
-        this.loadServicesInBackground();
+        try {
+            // Get agent references - may not be available yet
+            const vaultLibrarian = this.connector?.getVaultLibrarian();
+            const memoryManager = this.connector?.getMemoryManager();
+            
+            // Create settings tab with current state
+            this.settingsTab = new SettingsTab(
+                this.app,
+                this,
+                this.settings,
+                this.services, // Pass current services (may be empty initially)
+                vaultLibrarian || undefined,
+                memoryManager || undefined
+            );
+            this.addSettingTab(this.settingsTab);
+            
+            // Start monitoring for service availability
+            this.loadServicesInBackground();
+            
+        } catch (error) {
+            console.error('[STARTUP] Settings tab initialization failed:', error);
+            // Plugin should still function without settings tab
+        }
     }
     
     /**

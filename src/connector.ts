@@ -46,32 +46,23 @@ export class MCPConnector {
         private app: App,
         private plugin: Plugin | ClaudesidianPlugin
     ) {
+        // Initialize core components only - defer service connections
         this.eventManager = new EventManager();
         this.sessionContextManager = new SessionContextManager();
         this.agentManager = new AgentManager(app, plugin, this.eventManager);
         
-        // Get service manager from plugin if available (for lazy loading)
+        // Get service manager reference but don't connect yet
         if (this.plugin && (this.plugin as any).getServiceManager) {
             this.serviceManager = (this.plugin as any).getServiceManager();
         }
         
-        // Inject memory service if available (will be lazy loaded)
-        if (this.serviceManager) {
-            // Set up lazy memory service injection
-            this.serviceManager.get('memoryService').then(memoryService => {
-                this.sessionContextManager.setMemoryService(memoryService);
-            }).catch(error => {
-                console.warn('[MCPConnector] Memory service not available:', error);
-            });
-        }
-        
-        // Create custom prompt storage service if plugin settings are available
+        // Initialize custom prompt storage if possible
         const pluginSettings = this.plugin && (this.plugin as any).settings;
         if (pluginSettings) {
             this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
         }
         
-        // Create server with vault-specific identifier and tool call hook
+        // Create server skeleton - full initialization deferred
         this.server = new MCPServer(
             app, 
             plugin, 
@@ -82,8 +73,7 @@ export class MCPConnector {
             this.serviceManager ? (toolName: string, params: any) => this.onToolCall(toolName, params) : undefined
         );
         
-        // Initialize agents (now async) - but don't call it here
-        // This will be called from the main plugin's onload method
+        // Full initialization deferred to start() method
     }
     
     /**

@@ -20,25 +20,39 @@ export class Settings {
 
     /**
      * Load settings from plugin data
+     * Now synchronous with minimal validation for fast startup
      */
     async loadSettings() {
-        const loadedData = await this.plugin.loadData();
+        try {
+            const loadedData = await this.plugin.loadData();
+            this.applyLoadedData(loadedData);
+        } catch (error) {
+            console.warn('[Settings] Failed to load settings, using defaults:', error);
+            // Continue with defaults - plugin should still function
+        }
+    }
+    
+    /**
+     * Apply loaded data with minimal validation for fast startup
+     */
+    private applyLoadedData(loadedData: any) {
+        if (!loadedData) {
+            return; // Use defaults
+        }
         
         // Start with default settings (includes memory)
         this.settings = Object.assign({}, DEFAULT_SETTINGS);
         
-        // If we have loaded data, merge it properly
-        if (loadedData) {
-            // Shallow copy top-level properties except memory and llmProviders
+        // Quick shallow merge for startup - detailed validation deferred
+        try {
             const { memory, llmProviders, ...otherSettings } = loadedData;
             Object.assign(this.settings, otherSettings);
             
-            // Deep merge memory settings to ensure all required properties exist
+            // Basic memory settings merge
             if (memory && DEFAULT_SETTINGS.memory) {
                 this.settings.memory = {
                     ...DEFAULT_SETTINGS.memory,
                     ...memory,
-                    // Ensure providerSettings exists with all default providers
                     providerSettings: {
                         ...DEFAULT_SETTINGS.memory.providerSettings,
                         ...(memory.providerSettings || {})
@@ -46,7 +60,7 @@ export class Settings {
                 };
             }
 
-            // Deep merge LLM provider settings to ensure all required properties exist
+            // Basic LLM provider settings merge
             if (llmProviders && DEFAULT_SETTINGS.llmProviders) {
                 this.settings.llmProviders = {
                     ...DEFAULT_SETTINGS.llmProviders,

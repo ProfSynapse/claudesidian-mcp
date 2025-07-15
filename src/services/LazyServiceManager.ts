@@ -461,17 +461,17 @@ export class LazyServiceManager {
 
         const startTime = Date.now();
 
-        // Initialize stage queues
+        // Initialize stage queues only
         this.initializeStageQueues();
 
-        // STAGE 1: Initialize immediate services only (blocking)
-        await this.initializeStage(LoadingStage.IMMEDIATE);
-        
+        // Mark as started - don't initialize anything yet
         this.isStarted = true;
         const duration = Date.now() - startTime;
+        
+        console.log(`[LazyServiceManager] Started in ${duration}ms (no services initialized)`);
 
-        // Start cascading background initialization
-        this.startCascadingInitialization();
+        // Start background initialization immediately but non-blocking
+        setImmediate(() => this.startCascadingInitialization());
     }
 
     /**
