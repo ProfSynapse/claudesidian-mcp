@@ -168,7 +168,7 @@ export class HybridSearchService {
     if (!this.semanticSearchService) return [];
 
     try {
-      return await this.semanticSearchService.searchWithMetadataFilter(
+      return await this.semanticSearchService.searchWithMetadataFilterHighLevel(
         query,
         filteredFiles,
         { limit: limit * 2, threshold, includeContent: true }

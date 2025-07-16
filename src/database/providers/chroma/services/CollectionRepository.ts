@@ -218,7 +218,7 @@ export class CollectionRepository {
         try {
           // Use HNSW for fast O(log n) search
           console.log(`[CollectionRepository] Attempting HNSW search for collection: ${this.collectionName}`);
-          const hnswResults = await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, nResults, where);
+          const hnswResults = await this.hnswService.searchSimilarLegacy(this.collectionName, queryEmbedding, nResults, where);
           
           if (hnswResults.length > 0) {
             console.log(`[CollectionRepository] HNSW search returned ${hnswResults.length} results`);
@@ -257,7 +257,7 @@ export class CollectionRepository {
     }
 
     try {
-      return await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, nResults, where);
+      return await this.hnswService.searchSimilarLegacy(this.collectionName, queryEmbedding, nResults, where);
     } catch (error) {
       console.error(`[CollectionRepository] HNSW search error for collection ${this.collectionName}:`, error);
       return [];

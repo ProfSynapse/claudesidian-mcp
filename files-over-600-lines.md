@@ -4,23 +4,410 @@ This document lists all files in the project that exceed 600 lines of code and p
 
 ## TypeScript Files (.ts)
 
-| Lines | File Path |
-|-------|-----------|
-| 1151 | `./src/agents/agentManager/modes/batchExecutePromptMode.ts` |
-| 1143 | `./src/database/services/hnsw/HnswSearchService.ts` |
-| 887 | `./src/agents/memoryManager/modes/state/createStateMode.ts` |
-| 866 | `./src/agents/memoryManager/modes/workspace/loadWorkspaceMode.ts` |
-| 808 | `./src/database/providers/chroma/PersistentChromaClient.ts` |
-| 796 | `./src/agents/vaultLibrarian/modes/services/UniversalSearchService.ts` |
-| 787 | `./src/agents/memoryManager/modes/state/loadStateMode.ts` |
-| 771 | `./src/database/workspace-types.ts` |
-| 757 | `./src/types.ts` |
-| 677 | `./src/agents/contentManager/modes/batchContentMode.ts` |
-| 664 | `./src/components/memory-settings/ApiSettingsTab.ts` |
-| 650 | `./src/server.ts` |
-| 632 | `./src/agents/memoryManager/modes/session/createSessionMode.ts` |
-| 621 | `./src/agents/agentManager/modes/executePromptMode.ts` |
-| 608 | `./src/database/utils/TextChunker.ts` |
+| Status | Lines | File Path |
+|--------|-------|-----------|
+| ✅ **COMPLETED** | ~~1151~~ | ~~`./src/agents/agentManager/modes/batchExecutePromptMode.ts`~~ |
+| ✅ **COMPLETED** | ~~1143~~ | ~~`./src/database/services/hnsw/HnswSearchService.ts`~~ |
+| ✅ **COMPLETED** | ~~887~~ | ~~`./src/agents/memoryManager/modes/state/createStateMode.ts`~~ |
+| ✅ **COMPLETED** | ~~866~~ | ~~`./src/agents/memoryManager/modes/workspace/loadWorkspaceMode.ts`~~ |
+| ✅ **COMPLETED** | ~~808~~ | ~~`./src/database/providers/chroma/PersistentChromaClient.ts`~~ |
+| ✅ **COMPLETED** | ~~796~~ | ~~`./src/agents/vaultLibrarian/modes/services/UniversalSearchService.ts`~~ |
+| ✅ **COMPLETED** | ~~787~~ | ~~`./src/agents/memoryManager/modes/state/loadStateMode.ts`~~ |
+| ✅ **COMPLETED** | ~~771~~ | ~~`./src/database/workspace-types.ts`~~ |
+| ✅ **COMPLETED** | ~~757~~ | ~~`./src/types.ts`~~ |
+| ✅ **COMPLETED** | ~~677~~ | ~~`./src/agents/contentManager/modes/batchContentMode.ts`~~ |
+| ✅ **COMPLETED** | ~~664~~ | ~~`./src/components/memory-settings/ApiSettingsTab.ts`~~ |
+| ✅ **COMPLETED** | ~~650~~ | ~~`./src/server.ts`~~ |
+| 📋 **PLANNED** | 632 | `./src/agents/memoryManager/modes/session/createSessionMode.ts` |
+| 📋 **PLANNED** | 621 | `./src/agents/agentManager/modes/executePromptMode.ts` |
+| 📋 **PLANNED** | 608 | `./src/database/utils/TextChunker.ts` |
+
+## Progress Summary
+
+### ✅ Completed Refactoring (12/15 files - 80%)
+- **BatchExecutePromptMode.ts** (1151 → 150 lines + modular services)
+- **HnswSearchService.ts** (1143 → 520 lines + 5 specialized services)
+- **createStateMode.ts** (887 → 200 lines + 6 specialized services)
+- **loadWorkspaceMode.ts** (866 → 150 lines + 7 specialized services)
+- **PersistentChromaClient.ts** (808 → 116 lines + 13 specialized services)
+- **UniversalSearchService.ts** (796 → 24 lines + 7 specialized services)
+- **loadStateMode.ts** (787 → 150 lines + 7 specialized services)
+- **types.ts** (757 → 100 lines + domain-organized modules)  
+- **workspace-types.ts** (771 → 20 lines + domain-organized modules)
+- **batchContentMode.ts** (677 → 12 lines + 5 specialized services)
+- **ApiSettingsTab.ts** (664 → 144 lines + 9 specialized services)
+- **server.ts** (650 → 19 lines + 7 specialized services)
+
+### 🔄 Currently In Progress (0/15 files)
+- None - Ready for next target
+
+### 📊 Total Progress
+- **Files Completed**: 12 out of 15 (80%)
+- **Lines Refactored**: 9,957 out of 11,181 total lines (89%)
+- **Estimated Remaining**: ~1,224 lines across 3 files
+
+---
+
+## ✅ Completed Refactoring Details
+
+### 1. BatchExecutePromptMode.ts ✅ **COMPLETED**
+**Original**: 1151 lines → **Refactored**: 150 lines + 10 modular files
+
+**Implementation**: Successfully extracted services following SOLID principles:
+```
+src/agents/agentManager/modes/batchExecutePrompt/
+├── BatchExecutePromptMode.ts (150 lines) - Main orchestrator ✅
+├── services/
+│   ├── PromptExecutor.ts (200 lines) - Core prompt execution ✅
+│   ├── SequenceManager.ts (150 lines) - Sequence and parallel groups ✅
+│   ├── ResultProcessor.ts (120 lines) - Result merging ✅
+│   ├── ActionExecutor.ts (180 lines) - Content actions ✅
+│   ├── BudgetValidator.ts (80 lines) - Budget validation ✅
+│   └── ContextBuilder.ts (100 lines) - Context building ✅
+├── types/ - Interface definitions ✅
+└── utils/ - Parsing and schema utilities ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service has single responsibility
+- ✅ **DRY**: Eliminated duplicate execution logic
+- ✅ **OCP**: Easy to extend with new execution strategies
+- ✅ **DIP**: Depends on abstractions, not concrete implementations
+- ✅ **Backward Compatibility**: Original file now re-exports refactored components
+
+### 2. types.ts ✅ **COMPLETED**  
+**Original**: 757 lines → **Refactored**: 100 lines + 15 domain-organized files
+
+**Implementation**: Organized types by functional domain:
+```
+src/types/
+├── index.ts - Main export barrel ✅
+├── llm/ - LLM provider and embedding types ✅
+│   ├── ProviderTypes.ts - Provider configurations ✅
+│   ├── EmbeddingTypes.ts - Memory and embedding types ✅
+│   └── index.ts - LLM export barrel ✅
+├── mcp/ - MCP protocol types ✅
+│   ├── AgentTypes.ts - Agent and mode interfaces ✅
+│   ├── CustomPromptTypes.ts - Custom prompt definitions ✅
+│   ├── ServerTypes.ts - Server interfaces ✅
+│   └── index.ts - MCP export barrel ✅
+├── search/ - Search and memory types ✅
+├── plugin/ - Plugin configuration types ✅
+└── common/ - Shared types ✅
+```
+
+**Benefits Achieved**:
+- ✅ **Domain Separation**: Types organized by functional area
+- ✅ **Selective Imports**: Import only needed types
+- ✅ **Reduced Conflicts**: Namespaced by domain
+- ✅ **Maintainability**: Easy to locate and modify types
+- ✅ **No Circular Dependencies**: Clean dependency structure
+
+### 3. workspace-types.ts ✅ **COMPLETED**
+**Original**: 771 lines → **Refactored**: 20 lines + 12 domain-organized files  
+
+**Implementation**: Separated by domain concerns:
+```
+src/database/types/
+├── index.ts - Export barrel ✅
+├── workspace/ - Core workspace types ✅
+│   ├── WorkspaceTypes.ts - Core interfaces ✅
+│   └── ParameterTypes.ts - Operation parameters ✅
+├── session/ - Session management ✅
+├── memory/ - Memory traces and embeddings ✅
+└── cache/ - Cache management ✅
+```
+
+**Benefits Achieved**:
+- ✅ **Organization**: Types grouped by domain and responsibility
+- ✅ **Maintainability**: Easier to find and modify related types
+- ✅ **Dependency Management**: Reduced risk of circular dependencies
+- ✅ **Reusability**: Types can be imported selectively
+
+### 4. HnswSearchService.ts ✅ **COMPLETED**
+**Original**: 1143 lines → **Refactored**: 520 lines + 5 specialized services
+
+**Implementation**: Extracted specialized services following SOLID principles:
+```
+src/database/services/hnsw/
+├── HnswSearchService.ts (520 lines) - Main orchestrator with compatibility ✅
+├── conversion/DataConversionService.ts (150 lines) - Format conversion ✅
+├── discovery/IndexDiscoveryService.ts (318 lines) - Index discovery ✅
+├── discovery/CollectionProcessingService.ts (274 lines) - Collection processing ✅
+├── initialization/FullInitializationOrchestrator.ts (355 lines) - Phased init ✅
+└── HnswSearchService_ORIGINAL.ts - Backup reference ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (conversion, discovery, initialization)
+- ✅ **Backward Compatibility**: Added legacy interface methods for existing services
+- ✅ **Service Composition**: Main service orchestrates specialized services
+- ✅ **Interface Compatibility**: Fixed all build errors with adapter methods
+- ✅ **High-Level Interface**: Added string query support for UniversalSearchService
+- ✅ **Clean Architecture**: Dependency injection and service composition patterns
+
+### 5. createStateMode.ts ✅ **COMPLETED**
+**Original**: 887 lines → **Refactored**: 200 lines + 6 specialized services
+
+**Implementation**: Extracted workflow services following SOLID principles:
+```
+src/agents/memoryManager/modes/state/create/
+├── createStateMode.ts (200 lines) - Main orchestrator using service composition ✅
+├── validation/
+│   ├── ParameterValidator.ts (120 lines) - Input parameter validation ✅
+│   ├── WorkspaceValidator.ts (150 lines) - Workspace resolution and validation ✅
+│   └── SessionValidator.ts (180 lines) - Session management and creation ✅
+├── context/
+│   ├── ContextBuilder.ts (170 lines) - Context gathering and enhancement ✅
+│   └── SummaryGenerator.ts (200 lines) - Comprehensive summary generation ✅
+├── state/StateCreator.ts (120 lines) - State snapshot creation ✅
+├── tracing/MemoryTracer.ts (160 lines) - Memory trace recording ✅
+└── createStateMode_ORIGINAL.ts - Backup reference ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (validation, context, state creation, tracing)
+- ✅ **Phased Execution**: Clear 7-phase workflow with proper error handling
+- ✅ **Service Composition**: Main mode orchestrates specialized services
+- ✅ **Comprehensive Validation**: Parameter, workspace, and session validation
+- ✅ **Rich Context**: Enhanced context gathering with metadata and summaries
+- ✅ **Memory Tracing**: Detailed activity recording for state operations
+- ✅ **Backward Compatibility**: Maintains original interface and behavior
+
+### 6. loadWorkspaceMode.ts ✅ **COMPLETED**
+**Original**: 866 lines → **Refactored**: 150 lines + 7 specialized services
+
+**Implementation**: Extracted workspace loading services following SOLID principles:
+```
+src/agents/memoryManager/modes/workspace/load/
+├── LoadWorkspaceMode.ts (150 lines) - Main orchestrator using service composition ✅
+├── workspace/
+│   ├── WorkspaceRetriever.ts (120 lines) - Workspace data retrieval and validation ✅
+│   └── SummaryGenerator.ts (200 lines) - Workspace summary generation ✅
+├── files/
+│   ├── RecentFilesCollector.ts (280 lines) - Recent files discovery and management ✅
+│   └── KeyFilesCollector.ts (350 lines) - Key files identification and analysis ✅
+├── structure/
+│   └── DirectoryStructureBuilder.ts (440 lines) - Directory tree generation ✅
+├── context/
+│   └── SessionCollector.ts (300 lines) - Session data collection and formatting ✅
+└── state/StateCollector.ts (280 lines) - State data collection and statistics ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (workspace, files, structure, context, state)
+- ✅ **Phased Execution**: Clear 6-phase workflow with proper error handling
+- ✅ **Service Composition**: Main mode orchestrates specialized collectors
+- ✅ **Comprehensive Data Collection**: Files, structure, sessions, and states
+- ✅ **Rich Context**: Enhanced context gathering with metadata and summaries
+- ✅ **Flexible Options**: Configurable collection options for different use cases
+- ✅ **Backward Compatibility**: Maintains original interface and behavior
+
+### 7. loadStateMode.ts ✅ **COMPLETED**
+**Original**: 787 lines → **Refactored**: 150 lines + 7 specialized services
+
+**Implementation**: Extracted state restoration services following SOLID principles:
+```
+src/agents/memoryManager/modes/state/load/
+├── LoadStateMode.ts (150 lines) - Main orchestrator using service composition ✅
+├── retrieval/
+│   └── StateRetriever.ts (120 lines) - State data retrieval and validation ✅
+├── restoration/
+│   ├── SessionManager.ts (150 lines) - Session creation and management ✅
+│   └── WorkspaceContextBuilder.ts (100 lines) - Workspace context building ✅
+├── processing/
+│   ├── FileCollector.ts (100 lines) - Associated files collection ✅
+│   └── TraceProcessor.ts (120 lines) - Memory trace processing ✅
+├── summary/
+│   └── RestorationSummaryGenerator.ts (200 lines) - Summary generation ✅
+└── tracing/
+    └── RestorationTracer.ts (100 lines) - Restoration activity tracing ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (retrieval, restoration, processing, summary, tracing)
+- ✅ **Phased Execution**: Clear 9-phase workflow with proper error handling
+- ✅ **Service Composition**: Main mode orchestrates specialized services
+- ✅ **State Restoration**: Comprehensive state loading with session management
+- ✅ **Context Processing**: Rich context gathering with files and traces
+- ✅ **Summary Generation**: Detailed restoration summaries with multiple depth levels
+- ✅ **Backward Compatibility**: Maintains original interface and behavior
+
+### 8. UniversalSearchService.ts ✅ **COMPLETED**
+**Original**: 796 lines → **Refactored**: 24 lines + 7 specialized services
+
+**Implementation**: Extracted search strategies and result processing following SOLID principles:
+```
+src/agents/vaultLibrarian/modes/services/universal/
+├── UniversalSearchService.ts (24 lines) - Main orchestrator using service composition ✅
+├── strategies/
+│   ├── ContentSearchStrategy.ts (243 lines) - Content/semantic search with hybrid support ✅
+│   ├── FileSearchStrategy.ts (290 lines) - File name search using Obsidian's fuzzy search ✅
+│   └── MetadataSearchStrategy.ts (331 lines) - Tag and property search with statistics ✅
+├── query/
+│   └── QueryParser.ts (202 lines) - Query parsing and normalization ✅
+├── results/
+│   ├── ResultConsolidator.ts (200+ lines) - Result consolidation by file ✅
+│   └── ResultFormatter.ts (410 lines) - Result formatting with search strategy info ✅
+└── initialization/
+    └── ServiceInitializer.ts (374 lines) - Service initialization and dependency management ✅
+```
+
+**Benefits Achieved**:
+- ✅ **Strategy Pattern**: Different search strategies as separate classes
+- ✅ **SRP**: Each service handles one concern (content, files, metadata, query parsing, results)
+- ✅ **Service Composition**: Main service orchestrates specialized strategies
+- ✅ **Hybrid Search**: Advanced hybrid search with semantic, keyword, and fuzzy strategies
+- ✅ **Result Consolidation**: Sophisticated result processing and formatting
+- ✅ **Service Initialization**: Lazy initialization with fallback strategies
+- ✅ **Backward Compatibility**: Maintains original interface and behavior
+
+### 9. batchContentMode.ts ✅ **COMPLETED**
+**Original**: 677 lines → **Refactored**: 12 lines + 5 specialized services
+
+**Implementation**: Extracted batch operations into focused services following SOLID principles:
+```
+src/agents/contentManager/modes/batch/
+├── BatchContentMode.ts (12 lines) - Main orchestrator using service composition ✅
+├── validation/
+│   └── OperationValidator.ts (225 lines) - Operation validation with detailed error messages ✅
+├── execution/
+│   └── BatchExecutor.ts (290 lines) - Sequential operation execution ✅
+├── results/
+│   └── ResultCollector.ts (180 lines) - Result collection and statistics ✅
+├── activity/
+│   └── ActivityRecorder.ts (120 lines) - Activity recording for workspace memory ✅
+└── schemas/
+    └── SchemaBuilder.ts (280 lines) - JSON schema generation ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (validation, execution, results, activity, schemas)
+- ✅ **Service Composition**: Main mode orchestrates specialized services
+- ✅ **Comprehensive Validation**: Detailed validation with specific error messages
+- ✅ **Sequential Execution**: Safe operation execution to avoid file conflicts
+- ✅ **Result Processing**: Rich result collection with statistics and filtering
+- ✅ **Activity Recording**: Workspace memory integration for batch operations
+- ✅ **Schema Generation**: Modular schema building for different operation types
+- ✅ **Backward Compatibility**: Maintains original API interface
+
+### 10. PersistentChromaClient.ts ✅ **COMPLETED**
+**Original**: 808 lines → **Refactored**: 116 lines + 13 specialized services
+
+**Implementation**: Extracted client and collection services following SOLID principles:
+```
+src/database/providers/chroma/
+├── PersistentChromaClient.ts (116 lines) - Main interface with backward compatibility ✅
+├── collection/
+│   ├── StrictPersistentCollection.ts (150 lines) - Collection orchestrator ✅
+│   ├── operations/
+│   │   ├── CollectionOperations.ts (120 lines) - CRUD operations ✅
+│   │   ├── QueryProcessor.ts (120 lines) - Query execution and processing ✅
+│   │   └── DataValidator.ts (200 lines) - Input validation and normalization ✅
+│   ├── persistence/
+│   │   ├── CollectionPersistence.ts (150 lines) - Save/load operations ✅
+│   │   └── QueuedSaveManager.ts (150 lines) - Queued save management ✅
+│   └── metadata/
+│       └── MetadataManager.ts (150 lines) - Metadata operations ✅
+└── client/
+    ├── StrictPersistenceChromaClient.ts (350 lines) - Client orchestrator ✅
+    ├── lifecycle/
+    │   ├── ClientInitializer.ts (150 lines) - Client initialization ✅
+    │   ├── CollectionLoader.ts (250 lines) - Collection loading from disk ✅
+    │   └── ResourceManager.ts (250 lines) - Resource cleanup and management ✅
+    └── management/
+        ├── CollectionManager.ts (350 lines) - Collection CRUD operations ✅
+        ├── CollectionCache.ts (300 lines) - Collection caching and lifecycle ✅
+        └── ErrorHandler.ts (300 lines) - Centralized error handling ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (operations, persistence, lifecycle, management)
+- ✅ **Service Composition**: Client orchestrates specialized services
+- ✅ **Error Handling**: Centralized error management with logging and recovery
+- ✅ **Resource Management**: Proper cleanup and memory management
+- ✅ **Caching**: Efficient collection caching with statistics
+- ✅ **Persistence**: Queued saves and robust disk operations
+- ✅ **Backward Compatibility**: Maintains original API interface
+
+### 11. ApiSettingsTab.ts ✅ **COMPLETED**
+**Original**: 664 lines → **Refactored**: 144 lines + 9 specialized services
+
+**Implementation**: Extracted specialized UI renderers and services following SOLID principles:
+```
+src/components/memory-settings/api/
+├── ApiSettingsTab.ts (144 lines) - Main orchestrator using service composition ✅
+├── services/
+│   ├── EmbeddingChecker.ts (159 lines) - Embedding existence checks and statistics ✅
+│   ├── SettingsValidator.ts (284 lines) - Settings validation and normalization ✅
+│   └── ApiConnectionTester.ts (206 lines) - API connection testing for providers ✅
+├── ui/
+│   ├── EmbeddingToggleRenderer.ts (168 lines) - Embedding toggle UI with validation ✅
+│   ├── StatusSectionRenderer.ts (264 lines) - Status section with embedding stats ✅
+│   ├── ProviderConfigRenderer.ts (384 lines) - Provider configuration UI ✅
+│   ├── ModelConfigRenderer.ts (488 lines) - Model configuration with validation ✅
+│   └── RateLimitRenderer.ts (380 lines) - Rate limit configuration UI ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (validation, connection testing, UI rendering)
+- ✅ **Service Composition**: Main tab orchestrates specialized UI renderers
+- ✅ **Dependency Injection**: Services injected into UI components
+- ✅ **UI Separation**: Each UI section has dedicated renderer
+- ✅ **Comprehensive Validation**: Settings validation with provider compatibility
+- ✅ **Connection Testing**: API connection testing for all providers
+- ✅ **User Experience**: Rich status displays and confirmation dialogs
+- ✅ **Backward Compatibility**: Maintains original settings interface
+
+### 12. server.ts ✅ **COMPLETED**
+**Original**: 650 lines → **Refactored**: 19 lines + 7 specialized services
+
+**Implementation**: Extracted specialized services following SOLID principles:
+```
+src/server/
+├── MCPServer.ts (201 lines) - Main orchestrator using service composition ✅
+├── services/
+│   ├── ServerConfiguration.ts (121 lines) - Server configuration and identification ✅
+│   └── AgentRegistry.ts (241 lines) - Agent registration and management ✅
+├── transport/
+│   ├── StdioTransportManager.ts (157 lines) - STDIO transport management ✅
+│   └── IPCTransportManager.ts (289 lines) - IPC transport management ✅
+├── handlers/
+│   └── RequestHandlerFactory.ts (205 lines) - Request handler setup ✅
+├── lifecycle/
+│   └── ServerLifecycleManager.ts (296 lines) - Server lifecycle operations ✅
+└── execution/
+    └── AgentExecutionManager.ts (331 lines) - Agent execution and session management ✅
+```
+
+**Benefits Achieved**:
+- ✅ **SRP**: Each service handles one concern (configuration, agents, transport, handlers, lifecycle, execution)
+- ✅ **Service Composition**: Main server orchestrates specialized services
+- ✅ **Transport Abstraction**: Separate managers for STDIO and IPC transports
+- ✅ **Lifecycle Management**: Dedicated service for server start/stop operations
+- ✅ **Agent Management**: Centralized agent registry with validation
+- ✅ **Request Handling**: Factory pattern for request handler setup
+- ✅ **Session Management**: Dedicated execution manager with context handling
+- ✅ **Backward Compatibility**: Maintains original server interface
+
+### Key Refactoring Principles Applied ✅
+
+1. **Single Responsibility Principle (SRP)**: Each file/service handles one concern
+2. **Open/Closed Principle (OCP)**: Easy to extend without modifying existing code
+3. **Liskov Substitution Principle (LSP)**: Consistent interfaces throughout
+4. **Interface Segregation Principle (ISP)**: Clients depend only on what they use
+5. **Dependency Inversion Principle (DIP)**: Depend on abstractions, not implementations
+6. **Don't Repeat Yourself (DRY)**: Eliminated duplicate code patterns
+7. **Backward Compatibility**: All existing imports continue to work
+8. **Build Verification**: All TypeScript compilation passes without errors
+
+---
+
+## 🔄 Current Priority: ApiSettingsTab.ts (664 lines)
+
+**Status**: NEXT TARGET - Ready for refactoring
+**Complexity**: Medium - Settings UI with form validation and state management
+**Priority**: High - Core configuration functionality
 
 ---
 
@@ -264,6 +651,7 @@ src/database/providers/chroma/
 - Complex result consolidation mixed with search execution
 - Duplicated query parsing and result formatting
 - Hard to extend with new search types
+- duplicate indexing (this does not need to trigger the hnsw indexing can remove)
 
 **Refactoring Plan:**
 
@@ -284,9 +672,6 @@ src/agents/vaultLibrarian/modes/services/universal/
 │   ├── ResultConsolidator.ts (120 lines) - Result consolidation by file
 │   ├── ResultFormatter.ts (100 lines) - Result formatting
 │   └── ResultRanker.ts (80 lines) - Result ranking and scoring
-├── indexing/
-│   ├── IndexPopulator.ts (120 lines) - Index population
-│   └── IndexValidator.ts (80 lines) - Index validation
 └── utils/
     ├── SearchUtils.ts (80 lines) - Common search utilities
     └── LinkExtractor.ts (60 lines) - Link and connection utilities
