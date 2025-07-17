@@ -253,23 +253,30 @@ export class MCPConnector {
                 
                 // If vector modes are enabled, set up lazy initialization of search service
                 if (enableVectorModes && this.serviceManager) {
-                    // Initialize search service when vector store becomes available
-                    this.serviceManager.get('vectorStore').then((vectorStore) => {
-                        if (vaultLibrarianAgent) {
-                            // Initialize search service in background to avoid blocking
-                            vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
-                                console.error('Error initializing VaultLibrarian search service:', error)
-                            );
-                            
-                            // Update VaultLibrarian with memory settings
-                            if (memorySettings) {
-                                vaultLibrarianAgent.updateSettings(memorySettings);
+                    // Wait for service manager to complete initialization, then initialize search service
+                    setTimeout(async () => {
+                        try {
+                            // Check if vector store is ready (don't trigger initialization here)
+                            const vectorStore = this.serviceManager?.getIfReady('vectorStore');
+                            if (vectorStore && vaultLibrarianAgent) {
+                                // Initialize search service in background to avoid blocking
+                                vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
+                                    console.error('Error initializing VaultLibrarian search service:', error)
+                                );
+                                
+                                // Update VaultLibrarian with memory settings
+                                if (memorySettings) {
+                                    vaultLibrarianAgent.updateSettings(memorySettings);
+                                }
+                            } else {
+                                console.log('[MCPConnector] Vector store not ready, deferring VaultLibrarian initialization');
                             }
+                        } catch (error) {
+                            console.error('Error setting up VaultLibrarian search service:', error);
                         }
-                    }).catch((error: any) => {
-                        console.warn('Vector store not available for VaultLibrarian:', error);
-                    });
+                    }, 15000); // Wait 15 seconds for service manager to complete
                 }
+                
             } catch (error) {
                 console.error("Error creating VaultLibrarianAgent:", error);
                 console.warn("Will continue without VaultLibrarian agent");
@@ -320,6 +327,9 @@ export class MCPConnector {
             
             // Register all agents from the agent manager with the server
             this.registerAgentsWithServer();
+            
+            // Reinitialize request router with registered agents
+            this.server.reinitializeRequestRouter();
         } catch (error) {
             if (error instanceof McpError) {
                 throw error;

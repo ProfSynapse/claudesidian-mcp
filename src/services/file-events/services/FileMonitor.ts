@@ -191,39 +191,16 @@ export class FileMonitor implements IFileMonitor {
         }
     }
 
-    // Shared logic for checking if a file needs embedding (matches EmbeddingService logic)
-    private async checkIfFileNeedsEmbeddingInternal(filePath: string, vectorStore: any, _embeddingService: any): Promise<boolean> {
+    // Shared logic for checking if a file needs embedding (delegates to ContentHashService)
+    private async checkIfFileNeedsEmbeddingInternal(filePath: string, vectorStore: any, embeddingService: any): Promise<boolean> {
         try {
-            // Read current file content and generate hash
-            const file = this.app.vault.getAbstractFileByPath(filePath);
-            if (!file || 'children' in file) {
-                return false; // Skip if file doesn't exist or is a folder
+            // Use the ContentHashService from the embedding service for consistency
+            if (embeddingService?.contentHashService && typeof embeddingService.contentHashService.checkIfFileNeedsEmbedding === 'function') {
+                return await embeddingService.contentHashService.checkIfFileNeedsEmbedding(filePath, vectorStore);
             }
-
-            const content = await this.app.vault.read(file as any);
-            const currentHash = this.hashContent(content);
-
-            // Query for existing embeddings for this file
-            const queryResult = await vectorStore.query('file_embeddings', {
-                where: { filePath: { $eq: filePath } },
-                nResults: 1, // Just need one to check metadata
-                include: ['metadatas']
-            });
-
-            // If no embeddings exist, we need to create them
-            if (!queryResult.ids || queryResult.ids.length === 0 || queryResult.ids[0].length === 0) {
-                return true;
-            }
-
-            // Check if any chunk has different content hash
-            const existingMetadata = queryResult.metadatas?.[0]?.[0];
-            if (!existingMetadata || !existingMetadata.contentHash) {
-                // No content hash in metadata - skip re-embedding to avoid conflicts
-                return false;
-            }
-
-            // Compare content hash - if different, needs re-embedding
-            return existingMetadata.contentHash !== currentHash;
+            
+            // Fallback: if ContentHashService not available, assume file needs embedding to be safe
+            return true;
 
         } catch (error) {
             console.warn(`[FileMonitor] Error checking if file needs embedding for ${filePath}:`, error);
@@ -231,11 +208,6 @@ export class FileMonitor implements IFileMonitor {
         }
     }
 
-    // Content hashing method (same as EmbeddingService)
-    private hashContent(content: string): string {
-        const crypto = require('crypto');
-        return crypto.createHash('sha256').update(content).digest('hex');
-    }
 
     // Utility methods
     isVaultReady(): boolean {

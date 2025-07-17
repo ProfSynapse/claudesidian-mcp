@@ -17,8 +17,7 @@ import { extractContextFromParams } from '../../../../utils/contextUtils';
  * Mode to create a new workspace
  */
 export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, CreateWorkspaceResult> {
-  private plugin: Plugin;
-  private workspaceService: WorkspaceService | null = null;
+  private app: App;
   
   /**
    * Create a new CreateWorkspaceMode
@@ -31,14 +30,23 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       'Create a new workspace, phase, or task',
       '1.0.0'
     );
-    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    this.app = app;
+  }
+  
+  /**
+   * Get workspace service asynchronously
+   */
+  private async getWorkspaceService(): Promise<WorkspaceService | null> {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+    if (!plugin) {
+      return null;
+    }
     
-    // Safely access the workspace service
-    if (this.plugin) {
-      const pluginWithServices = this.plugin as ClaudesidianPlugin;
-      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
-        this.workspaceService = pluginWithServices.services.workspaceService;
-      }
+    try {
+      return await plugin.getService<WorkspaceService>('workspaceService');
+    } catch (error) {
+      console.warn('[CreateWorkspaceMode] Failed to get workspace service:', error);
+      return null;
     }
   }
   
@@ -49,8 +57,9 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
    */
   async execute(params: CreateWorkspaceParameters): Promise<CreateWorkspaceResult> {
     try {
-      // Check if workspace service is available
-      if (!this.workspaceService) {
+      // Get workspace service asynchronously
+      const workspaceService = await this.getWorkspaceService();
+      if (!workspaceService) {
         return this.prepareResult(false, undefined, 'Workspace service not available');
       }
       
@@ -65,34 +74,29 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       
       // Check if the root folder exists and create it if it doesn't
       try {
-        // Try to get folder utility from the plugin
+        // Try to get folder utility from the app
         let folderCreated = false;
-        const plugin = this.plugin as any;
+        const app = this.app;
         
-        if (plugin?.app) {
-          const app = plugin.app;
-          
-          // Check if FileOperations utility is available
-          if (typeof app.plugins.getPlugin('claudesidian-mcp')?.services?.FileOperations?.ensureFolder === 'function') {
-            const FileOperations = app.plugins.getPlugin('claudesidian-mcp').services.FileOperations;
+        // Check if FileOperations utility is available
+        if (typeof app.plugins.getPlugin('claudesidian-mcp')?.services?.FileOperations?.ensureFolder === 'function') {
+          const FileOperations = app.plugins.getPlugin('claudesidian-mcp').services.FileOperations;
+          await FileOperations.ensureFolder(app, params.rootFolder);
+          folderCreated = true;
+        } else {
+          // Try to import FileOperations if it's not available as a service
+          try {
+            // Try to dynamically import the FileOperations class
+            const { FileOperations } = await import('../../../vaultManager/utils/FileOperations');
             await FileOperations.ensureFolder(app, params.rootFolder);
             folderCreated = true;
-          } 
-          // Try to import FileOperations if it's not available as a service
-          else {
-            try {
-              // Try to dynamically import the FileOperations class
-              const { FileOperations } = await import('../../../vaultManager/utils/FileOperations');
-              await FileOperations.ensureFolder(app, params.rootFolder);
-              folderCreated = true;
-            } catch (importError) {
-              // Fallback to basic folder creation if import fails
-              const folder = app.vault.getAbstractFileByPath(params.rootFolder);
-              if (!folder) {
-                await app.vault.createFolder(params.rootFolder);
-              }
-              folderCreated = true;
+          } catch (importError) {
+            // Fallback to basic folder creation if import fails
+            const folder = app.vault.getAbstractFileByPath(params.rootFolder);
+            if (!folder) {
+              await app.vault.createFolder(params.rootFolder);
             }
+            folderCreated = true;
           }
         }
         
@@ -112,7 +116,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       
       // If this is a child workspace, get the parent and validate
       if (params.parentId && hierarchyType !== 'workspace') {
-        parentWorkspace = await this.workspaceService.getWorkspace(params.parentId);
+        parentWorkspace = await workspaceService.getWorkspace(params.parentId);
         
         if (!parentWorkspace) {
           return this.prepareResult(
@@ -221,7 +225,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
       };
       
       // Save the workspace using the workspace service
-      const newWorkspace = await this.workspaceService.createWorkspace(workspaceData);
+      const newWorkspace = await workspaceService.createWorkspace(workspaceData);
       
       const workspaceContext = {
         workspaceId: newWorkspace.id,

@@ -15,8 +15,6 @@ import { extractContextFromParams } from '../../../../utils/contextUtils';
  */
 export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParameters, AddFilesToWorkspaceResult> {
   private app: App;
-  private plugin: Plugin;
-  private workspaceService: WorkspaceService | null = null;
   
   /**
    * Create a new AddFilesToWorkspaceMode
@@ -30,14 +28,22 @@ export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParamet
       '1.0.0'
     );
     this.app = app;
-    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+  }
+  
+  /**
+   * Get workspace service asynchronously
+   */
+  private async getWorkspaceService(): Promise<WorkspaceService | null> {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+    if (!plugin) {
+      return null;
+    }
     
-    // Safely access the plugin services
-    if (this.plugin) {
-      const pluginWithServices = this.plugin as ClaudesidianPlugin;
-      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
-        this.workspaceService = pluginWithServices.services.workspaceService;
-      }
+    try {
+      return await plugin.getService<WorkspaceService>('workspaceService');
+    } catch (error) {
+      console.warn('[AddFilesToWorkspaceMode] Failed to get workspace service:', error);
+      return null;
     }
   }
   
@@ -50,12 +56,14 @@ export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParamet
     console.log('[AddFilesToWorkspaceMode] ===== EXECUTION START =====');
     console.log('[AddFilesToWorkspaceMode] Input params:', JSON.stringify(params, null, 2));
     console.log('[AddFilesToWorkspaceMode] App available:', !!this.app);
-    console.log('[AddFilesToWorkspaceMode] Plugin available:', !!this.plugin);
-    console.log('[AddFilesToWorkspaceMode] Workspace service available:', !!this.workspaceService);
     
     try {
+      // Get workspace service asynchronously
+      const workspaceService = await this.getWorkspaceService();
+      console.log('[AddFilesToWorkspaceMode] Workspace service available:', !!workspaceService);
+      
       // Check if workspace service is available
-      if (!this.workspaceService) {
+      if (!workspaceService) {
         console.log('[AddFilesToWorkspaceMode] ERROR: Workspace service not available');
         const errorResult = {
           filesAdded: 0,
@@ -111,7 +119,7 @@ export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParamet
       console.log('[AddFilesToWorkspaceMode] Attempting to get workspace:', params.workspaceId);
       let workspace;
       try {
-        workspace = await this.workspaceService.getWorkspace(params.workspaceId);
+        workspace = await workspaceService.getWorkspace(params.workspaceId);
         console.log('[AddFilesToWorkspaceMode] Workspace retrieved:', !!workspace);
         if (workspace) {
           console.log('[AddFilesToWorkspaceMode] Workspace details:', {
@@ -223,7 +231,7 @@ export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParamet
       if (addedFiles.length > 0) {
         console.log('[AddFilesToWorkspaceMode] Updating workspace with new files/folders');
         try {
-          await this.workspaceService.updateWorkspace(workspace.id, {
+          await workspaceService.updateWorkspace(workspace.id, {
             relatedFiles: workspace.relatedFiles || [],
             relatedFolders: workspace.relatedFolders || []
           });
@@ -241,7 +249,7 @@ export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParamet
       console.log('[AddFilesToWorkspaceMode] Getting final workspace info');
       let updatedWorkspace, totalFiles, totalRelatedFiles;
       try {
-        updatedWorkspace = await this.workspaceService.getWorkspace(params.workspaceId);
+        updatedWorkspace = await workspaceService.getWorkspace(params.workspaceId);
         totalFiles = await this.countWorkspaceFiles(updatedWorkspace || workspace);
         totalRelatedFiles = (updatedWorkspace?.relatedFiles || []).length;
         console.log('[AddFilesToWorkspaceMode] Final counts:', { totalFiles, totalRelatedFiles });

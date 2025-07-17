@@ -347,7 +347,7 @@ Are you absolutely sure you want to delete ALL collections?`;
             button.setButtonText(`Reindexing... ${percentage}%`);
         };
         
-        await this.embeddingService.incrementalIndexFiles(filePaths, progressCallback);
+        await this.embeddingService.batchIndexFiles(filePaths, progressCallback);
     }
 
     /**

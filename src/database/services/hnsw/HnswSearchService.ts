@@ -19,6 +19,10 @@ import { DataConversionService } from './conversion/DataConversionService';
 import { SearchParameters } from './search/HnswSearchEngine';
 import { SearchOptions, SearchResult } from './results/HnswResultProcessor';
 
+// Import initialization coordination
+import { IInitializationStateManager } from '../../../services/initialization/interfaces/IInitializationStateManager';
+import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
+
 // Re-export types for backward compatibility
 export type { SearchResult } from './results/HnswResultProcessor';
 
@@ -37,6 +41,7 @@ export interface LegacySearchOptions {
 /**
  * Modern, SOLID-compliant HNSW search service
  * Uses service composition and dependency injection
+ * Enhanced with initialization coordination to prevent duplicate initialization
  */
 export class HnswSearchService {
   // Core dependencies
@@ -59,6 +64,10 @@ export class HnswSearchService {
   private isInitialized = false;
   private fullyInitialized = false;
   private isFullyReady = false;
+  
+  // Initialization coordination (injected)
+  private initializationStateManager: IInitializationStateManager | null = null;
+  private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
 
   constructor(
     app?: App, 
@@ -82,6 +91,17 @@ export class HnswSearchService {
     // Initialize lightweight services immediately
     this.initializeLightweightServices();
   }
+  
+  /**
+   * Set initialization coordination services (injected by service manager)
+   */
+  setInitializationCoordination(
+    stateManager: IInitializationStateManager,
+    collectionCoordinator: ICollectionLoadingCoordinator
+  ): void {
+    this.initializationStateManager = stateManager;
+    this.collectionCoordinator = collectionCoordinator;
+  }
 
   /**
    * Initialize lightweight services that don't require HNSW library
@@ -101,8 +121,31 @@ export class HnswSearchService {
 
   /**
    * Initialize HNSW library and complete service initialization
+   * Now uses coordination system to prevent duplicate initialization
    */
   async initialize(): Promise<void> {
+    if (this.initializationStateManager) {
+      // Use coordination system to prevent duplicate initialization
+      const result = await this.initializationStateManager.ensureInitialized(
+        'hnsw_basic_init',
+        async () => {
+          await this.performBasicInitialization();
+        }
+      );
+      
+      if (!result.success) {
+        throw result.error || new Error('HNSW basic initialization failed');
+      }
+    } else {
+      // Fallback to direct initialization if coordination not available
+      await this.performBasicInitialization();
+    }
+  }
+  
+  /**
+   * Perform the actual basic initialization
+   */
+  private async performBasicInitialization(): Promise<void> {
     if (this.isInitialized) return;
 
     try {
@@ -112,16 +155,24 @@ export class HnswSearchService {
       // Complete service initialization with HNSW library
       const fullServices = await this.serviceInitializer.initializeWithHnswLib(this.hnswLib);
       
-      // Update services with full initialization
-      Object.assign(this.services, fullServices);
+      // Update services with full initialization - properly replace undefined references
+      this.services.partitionManager = fullServices.partitionManager;
+      this.services.indexManager = fullServices.indexManager;
+      this.services.searchEngine = fullServices.searchEngine;
 
-      // Initialize full initialization orchestrator
+      // Initialize full initialization orchestrator with collection coordinator
       this.initializationOrchestrator = new FullInitializationOrchestrator(
         this.config,
         this.services.persistenceService,
         this.services.indexManager,
-        this.app
+        this.app,
+        this.collectionCoordinator || undefined
       );
+      
+      // Also set coordinator after construction if available
+      if (this.collectionCoordinator) {
+        this.initializationOrchestrator.setCollectionCoordinator(this.collectionCoordinator);
+      }
 
       this.isInitialized = true;
       
@@ -138,19 +189,92 @@ export class HnswSearchService {
   /**
    * Ensure full initialization including index discovery and collection processing
    * This is called lazily when HNSW functionality is first used or during background initialization
+   * Now uses coordination system to prevent duplicate initialization
    */
   async ensureFullyInitialized(): Promise<void> {
+    console.log('[HNSW-INIT-DEBUG] ensureFullyInitialized called, current state:', {
+      fullyInitialized: this.fullyInitialized,
+      isFullyReady: this.isFullyReady,
+      hasStateManager: !!this.initializationStateManager,
+      hasCollectionCoordinator: !!this.collectionCoordinator
+    });
+
     // First ensure basic initialization
     await this.initialize();
     
-    if (this.fullyInitialized) return;
+    if (this.fullyInitialized) {
+      console.log('[HNSW-INIT-DEBUG] Already fully initialized, returning early');
+      return;
+    }
+    
+    if (this.initializationStateManager) {
+      // Use coordination system to prevent duplicate full initialization
+      console.log('[HNSW-INIT-DEBUG] Using coordination system for full initialization');
+      const result = await this.initializationStateManager.ensureInitialized(
+        'hnsw_full_init',
+        async () => {
+          console.log('[HNSW-INIT-DEBUG] Coordination system calling performFullInitialization');
+          await this.performFullInitialization();
+        }
+      );
+      
+      console.log('[HNSW-INIT-DEBUG] Coordination system result:', result);
+      
+      if (!result.success) {
+        logger.systemError(
+          new Error(`HNSW full initialization failed: ${result.error?.message || 'Unknown error'}`),
+          'HnswSearchService'
+        );
+        // Don't throw - mark as initialized to prevent repeated attempts
+        this.fullyInitialized = true;
+        this.isFullyReady = false;
+      }
+    } else {
+      // Fallback to direct initialization if coordination not available
+      console.log('[HNSW-INIT-DEBUG] No coordination system, calling performFullInitialization directly');
+      await this.performFullInitialization();
+    }
+  }
+  
+  /**
+   * Perform the actual full initialization
+   */
+  private async performFullInitialization(): Promise<void> {
+    console.log('[HNSW-INIT-DEBUG] performFullInitialization called, current state:', {
+      fullyInitialized: this.fullyInitialized,
+      hasOrchestrator: !!this.initializationOrchestrator,
+      hasCollectionCoordinator: !!this.collectionCoordinator
+    });
+
+    if (this.fullyInitialized) {
+      console.log('[HNSW-INIT-DEBUG] Already fully initialized in performFullInitialization');
+      return;
+    }
 
     try {
+      // Wait for collections to be loaded if coordinator is available
+      if (this.collectionCoordinator) {
+        console.log('[HNSW-INIT-DEBUG] Waiting for collections to be loaded');
+        const collectionsResult = await this.collectionCoordinator.waitForCollections();
+        console.log('[HNSW-INIT-DEBUG] Collections loading result:', collectionsResult);
+        logger.systemLog('HNSW waiting for collections completed', 'HnswSearchService');
+      } else {
+        console.log('[HNSW-INIT-DEBUG] No collection coordinator available');
+      }
+      
+      console.log('[HNSW-INIT-DEBUG] Starting full initialization orchestrator');
       const result = await this.initializationOrchestrator.executeFullInitialization();
+      console.log('[HNSW-INIT-DEBUG] Full initialization orchestrator result:', result);
       
       // Always mark as initialized to prevent repeated attempts
       this.fullyInitialized = true;
       this.isFullyReady = result.success;
+      
+      console.log('[HNSW-INIT-DEBUG] Marked service as fully initialized:', {
+        fullyInitialized: this.fullyInitialized,
+        isFullyReady: this.isFullyReady,
+        resultSuccess: result.success
+      });
       
       if (result.success) {
         logger.systemLog('[STARTUP] HNSW initialization completed successfully', 'HnswSearchService');
@@ -158,6 +282,7 @@ export class HnswSearchService {
         logger.systemLog(`[STARTUP] HNSW initialization completed with errors - service available (${result.errors.length} errors)`, 'HnswSearchService');
       }
     } catch (criticalError) {
+      console.log('[HNSW-INIT-DEBUG] Critical error in performFullInitialization:', criticalError);
       // Even critical errors shouldn't prevent the service from being marked as initialized
       this.fullyInitialized = true;
       this.isFullyReady = true;
@@ -220,6 +345,10 @@ export class HnswSearchService {
         nResults: options.limit || 10
       };
 
+      if (!this.services.searchEngine || typeof this.services.searchEngine.search !== 'function') {
+        throw new Error('Search engine is not properly initialized');
+      }
+      
       const rawResults = await this.services.searchEngine.search(collectionName, searchParams);
       return this.services.resultProcessor.processResults(rawResults, options);
     } catch (error) {
@@ -348,8 +477,8 @@ export class HnswSearchService {
         return [];
       }
       
-      // For now, use default collection 'files' - this should be configurable
-      const collectionName = 'files';
+      // Use the correct collection name that matches FileIndexingService
+      const collectionName = 'file_embeddings';
       
       // Convert file filter to where clause if needed
       let whereClause: WhereClause | undefined;

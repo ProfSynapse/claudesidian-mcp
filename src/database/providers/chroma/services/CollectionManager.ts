@@ -327,10 +327,11 @@ export class CollectionManager implements ICollectionManager {
       for (const dir of dirs) {
         const collectionPath = path.join(collectionsDir, dir);
         
-        // Skip non-directories or already known collections
+        // Skip non-directories, system directories, or already known collections
         if (!this.directoryService.directoryExists(collectionPath) || 
             dir.startsWith('.') || 
-            this.collections.has(dir)) {
+            this.collections.has(dir) ||
+            this.shouldSkipSystemDirectory(dir)) {
           continue;
         }
         
@@ -388,5 +389,30 @@ export class CollectionManager implements ICollectionManager {
     
     await Promise.all(validationPromises);
     return results;
+  }
+
+  /**
+   * Register a loaded collection with the manager
+   * Used when collections are loaded from disk with actual data
+   */
+  registerCollection(collectionName: string, collection: Collection): void {
+    console.log(`[COLLECTION-MANAGER-DEBUG] Registering collection ${collectionName} with actual data`);
+    
+    // Add to collections set
+    this.collections.add(collectionName);
+    
+    // Add to cache
+    this.collectionCache.set(collectionName, collection);
+    
+    console.log(`[COLLECTION-MANAGER-DEBUG] Successfully registered ${collectionName}, cache size: ${this.collectionCache.size}`);
+  }
+
+  /**
+   * Check if a directory should be skipped during collection discovery
+   * Prevents HNSW indexes and other system directories from being treated as collections
+   */
+  private shouldSkipSystemDirectory(name: string): boolean {
+    const systemDirectories = ['hnsw-indexes', '.git', 'node_modules', '.tmp'];
+    return systemDirectories.includes(name);
   }
 }

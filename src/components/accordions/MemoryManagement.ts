@@ -206,40 +206,63 @@ export class MemoryManagementAccordion extends Accordion {
     }
     
     /**
-     * Start monitoring service readiness
+     * Start monitoring service readiness (services should already be initializing in background)
      */
     private startServiceReadinessMonitoring(): void {
+        // Services should already be initializing in background
+        if (this.areServicesReady()) {
+            this.initializeMemorySettingsTab();
+            return;
+        }
+        
+        // Display current status
+        this.updateServiceStatus();
+        
+        // Check once more after background initialization should complete
+        setTimeout(() => {
+            if (this.areServicesReady()) {
+                this.initializeMemorySettingsTab();
+            } else {
+                // If still not ready, show current status and allow timeout handling
+                this.updateServiceStatus();
+                this.startFallbackMonitoring();
+            }
+        }, 3000); // Single check after background init
+    }
+    
+    /**
+     * Fallback monitoring for cases where background init is slow
+     */
+    private startFallbackMonitoring(): void {
         if (this.readinessCheckInterval) {
             clearInterval(this.readinessCheckInterval);
         }
         
         this.readinessCheckInterval = setInterval(() => {
             if (this.areServicesReady()) {
-                console.log('[MemoryManagementAccordion] All services ready, initializing settings tab');
                 this.stopServiceReadinessMonitoring();
                 this.initializeMemorySettingsTab();
             } else {
-                // Update status display if we're still loading
                 this.updateServiceStatus();
             }
-        }, 1500); // Check every 1.5 seconds
+        }, 2000); // Check every 2 seconds as fallback
         
-        // Set a timeout to stop monitoring after 30 seconds
+        // Set a timeout to stop monitoring after 15 seconds
         setTimeout(() => {
             if (this.readinessCheckInterval) {
                 this.stopServiceReadinessMonitoring();
-                if (!this.areServicesReady()) {
-                    // Show the settings tab with whatever services are available
-                    this.initializeMemorySettingsTab();
-                } else if (this.statusElement) {
+                // Show the settings tab with whatever services are available
+                this.initializeMemorySettingsTab();
+                
+                if (this.statusElement && !this.areServicesReady()) {
                     const warningEl = this.statusElement.createEl('p', {
-                        text: 'Service initialization is taking longer than expected. Try reloading Obsidian if the issue persists.',
+                        text: 'Some services are still initializing. Settings may be limited until complete.',
                         cls: 'memory-notice-warning'
                     });
                     warningEl.style.color = 'var(--text-warning)';
                 }
             }
-        }, 30000);
+        }, 15000); // Reduced timeout
     }
     
     /**

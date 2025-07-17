@@ -13,15 +13,28 @@ import { FileEventManagerModular } from '../file-events/FileEventManagerModular'
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { CacheManager } from '../../database/services/CacheManager';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
+import { 
+  IInitializationStateManager,
+  ICollectionLoadingCoordinator,
+  IInitializationCoordinator,
+  createInitializationServices
+} from '../initialization';
 
 /**
  * Service Descriptors - Configuration-driven service definitions
  * Follows Open/Closed Principle - easy to add new services without modifying existing code
+ * Enhanced with initialization coordination to prevent duplicate initialization
  */
 export class ServiceDescriptors {
     private app: App;
     private plugin: ClaudesidianPlugin;
     private dependencyResolver: (name: string) => Promise<any>;
+    private serviceManager: any = null; // Reference to the actual LazyServiceManager
+    private initializationServices: {
+        stateManager: IInitializationStateManager;
+        collectionCoordinator: ICollectionLoadingCoordinator;
+        coordinator: IInitializationCoordinator;
+    } | null = null;
 
     constructor(app: App, plugin: ClaudesidianPlugin) {
         this.app = app;
@@ -30,10 +43,59 @@ export class ServiceDescriptors {
     }
 
     /**
-     * Set dependency resolver (injected by service manager)
+     * Set dependency resolver and service manager reference (injected by service manager)
      */
     setDependencyResolver(resolver: (name: string) => Promise<any>): void {
         this.dependencyResolver = resolver;
+    }
+
+    /**
+     * Set service manager reference (the actual LazyServiceManager instance)
+     */
+    setServiceManager(serviceManager: any): void {
+        // CRITICAL: Validate that this is the correct service manager type
+        if (!serviceManager) {
+            throw new Error('DIAGNOSTIC FAILURE: Cannot set null/undefined service manager');
+        }
+        
+        if (typeof serviceManager.get !== 'function') {
+            throw new Error(`DIAGNOSTIC FAILURE: Service manager missing 'get' method. Type: ${serviceManager.constructor.name}, Methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(serviceManager))}`);
+        }
+        
+        // Additional validation - make sure this isn't another ServiceDescriptors instance
+        if (serviceManager.constructor.name === 'ServiceDescriptors') {
+            throw new Error('DIAGNOSTIC FAILURE: Cannot set ServiceDescriptors as service manager - this creates circular reference');
+        }
+        
+        this.serviceManager = serviceManager;
+        console.log('[ServiceDescriptors] ✅ Valid service manager reference set:', serviceManager.constructor.name);
+    }
+
+    /**
+     * Initialize coordination services
+     */
+    async initializeCoordinationServices(): Promise<void> {
+        if (!this.initializationServices) {
+            if (!this.serviceManager) {
+                throw new Error('DIAGNOSTIC FAILURE: Service manager reference not set before initializing coordination services');
+            }
+            
+            const vectorStore = await this.dependencyResolver('vectorStore');
+            console.log('[ServiceDescriptors] Creating initialization services with LazyServiceManager:', this.serviceManager.constructor.name);
+            
+            this.initializationServices = createInitializationServices(
+                this.plugin,
+                vectorStore,
+                this.serviceManager // Pass the actual LazyServiceManager instance
+            );
+        }
+    }
+
+    /**
+     * Get initialization coordinator
+     */
+    getInitializationCoordinator(): IInitializationCoordinator | null {
+        return this.initializationServices?.coordinator || null;
     }
 
     /**
@@ -70,7 +132,19 @@ export class ServiceDescriptors {
             name: 'vectorStore',
             dependencies: [],
             stage: LoadingStage.BACKGROUND_SLOW,
-            create: async () => this.createVectorStore()
+            create: async () => {
+                const startTime = Date.now();
+                
+                const vectorStore = await this.createVectorStore();
+                
+                // Note: Collection coordinator injection will be handled by LazyServiceManager
+                // after both vectorStore and coordination services are initialized
+                
+                const totalTime = Date.now() - startTime;
+                console.log(`[STARTUP] VectorStore created in ${totalTime}ms`);
+                
+                return vectorStore;
+            }
         };
     }
 
@@ -92,19 +166,37 @@ export class ServiceDescriptors {
                 const vectorStore = await this.dependencyResolver('vectorStore');
                 const embeddingService = await this.dependencyResolver('embeddingService');
                 
+                // Ensure coordination services are initialized
+                await this.initializeCoordinationServices();
+                
                 const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
                 const service = new HnswSearchService(this.app, vectorStore, embeddingService, basePath);
                 
-                await service.initialize();
+                // Inject coordination services into HNSW service
+                if (this.initializationServices && 
+                    'setInitializationCoordination' in service) {
+                    service.setInitializationCoordination(
+                        this.initializationServices.stateManager,
+                        this.initializationServices.collectionCoordinator
+                    );
+                    console.log('[ServiceDescriptors] Injected coordination services into HNSW service');
+                }
                 
-                // Start full initialization in background
-                setTimeout(async () => {
-                    try {
-                        await service.ensureFullyInitialized();
-                    } catch (error) {
-                        console.warn('[ServiceDescriptors] Background HNSW initialization failed:', error);
-                    }
-                }, 5000);
+                // Only do basic initialization here - full initialization will be handled by InitializationCoordinator
+                if (this.initializationServices) {
+                    await this.initializationServices.stateManager.ensureInitialized(
+                        'hnswSearchService_basic',
+                        async () => {
+                            await service.initialize();
+                            console.log('[ServiceDescriptors] HNSW service basic initialization completed');
+                        }
+                    );
+                } else {
+                    // Fallback to original behavior if coordination not available
+                    await service.initialize();
+                }
+                
+                // Note: Full initialization (ensureFullyInitialized) will be called by InitializationCoordinator
                 
                 return service;
             }
@@ -162,7 +254,7 @@ export class ServiceDescriptors {
                     processingDelay: 1000
                 };
 
-                return new FileEventManagerModular(
+                const fileEventManager = new FileEventManagerModular(
                     this.app,
                     this.plugin,
                     null as any,
@@ -171,6 +263,19 @@ export class ServiceDescriptors {
                     eventManager,
                     embeddingStrategy
                 );
+                
+                // Use coordination system to handle startup queue processing
+                if (this.initializationServices) {
+                    await this.initializationServices.stateManager.ensureInitialized(
+                        'fileEventManager_startup',
+                        async () => {
+                            await fileEventManager.processStartupQueue();
+                            console.log('[ServiceDescriptors] Startup queue processed with coordination');
+                        }
+                    );
+                }
+                
+                return fileEventManager;
             }
         };
     }
@@ -201,8 +306,20 @@ export class ServiceDescriptors {
             dependencies: ['vectorStore'],
             stage: LoadingStage.BACKGROUND_SLOW,
             create: async () => {
+                const startTime = Date.now();
+                
+                const vectorStoreStart = Date.now();
                 const vectorStore = await this.dependencyResolver('vectorStore');
-                return new FileEmbeddingAccessService(this.plugin, vectorStore);
+                const vectorStoreTime = Date.now() - vectorStoreStart;
+                
+                const serviceStart = Date.now();
+                const service = new FileEmbeddingAccessService(this.plugin, vectorStore);
+                const serviceTime = Date.now() - serviceStart;
+                
+                const totalTime = Date.now() - startTime;
+                console.log(`[STARTUP] FileEmbeddingAccessService initialized in ${totalTime}ms (vectorStore: ${vectorStoreTime}ms, service: ${serviceTime}ms)`);
+                
+                return service;
             }
         };
     }
@@ -270,7 +387,10 @@ export class ServiceDescriptors {
         vectorStore.startSystemOperation();
         
         try {
+            // Initialize vector store without collection loading
+            // Collection loading will be handled by CollectionLoadingCoordinator
             await vectorStore.initialize();
+            console.log('[ServiceDescriptors] Vector store initialized (collections will be loaded by coordinator)');
         } finally {
             vectorStore.endSystemOperation();
         }

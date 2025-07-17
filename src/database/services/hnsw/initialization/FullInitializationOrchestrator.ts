@@ -12,6 +12,9 @@ import { HnswPersistenceOrchestrator } from '../persistence/HnswPersistenceOrche
 import { HnswIndexManager } from '../index/HnswIndexManager';
 import { logger } from '../../../../utils/logger';
 
+// Import coordination interfaces
+import { ICollectionLoadingCoordinator } from '../../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
+
 /**
  * Full initialization result
  */
@@ -36,6 +39,7 @@ export interface FullInitializationResult {
 /**
  * Service responsible for orchestrating the full initialization process
  * Follows SRP by focusing only on initialization coordination
+ * Enhanced with collection loading coordination
  */
 export class FullInitializationOrchestrator {
   private config: HnswConfig;
@@ -45,17 +49,20 @@ export class FullInitializationOrchestrator {
   private discoveryService: IndexDiscoveryService;
   private processingService: CollectionProcessingService;
   private conversionService: DataConversionService;
+  private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
 
   constructor(
     config: HnswConfig,
     persistenceService: HnswPersistenceOrchestrator,
     indexManager: HnswIndexManager,
-    app?: App
+    app?: App,
+    collectionCoordinator?: ICollectionLoadingCoordinator
   ) {
     this.config = config;
     this.app = app;
     this.persistenceService = persistenceService;
     this.indexManager = indexManager;
+    this.collectionCoordinator = collectionCoordinator || null;
     
     // Initialize supporting services
     this.conversionService = new DataConversionService();
@@ -70,6 +77,13 @@ export class FullInitializationOrchestrator {
       indexManager,
       this.conversionService
     );
+  }
+  
+  /**
+   * Set collection loading coordinator (for dependency injection)
+   */
+  setCollectionCoordinator(coordinator: ICollectionLoadingCoordinator): void {
+    this.collectionCoordinator = coordinator;
   }
 
   /**
@@ -101,9 +115,9 @@ export class FullInitializationOrchestrator {
         result.errors.push(...discoveryResult.errors.map(e => `Discovery: ${e.collection} - ${e.error}`));
       }
 
-      // Phase 2: Collection Processing
+      // Phase 2: Collection Processing (with discovered collections)
       result.phase = 'collection-processing';
-      const processingResult = await this.executeCollectionProcessingPhase();
+      const processingResult = await this.executeCollectionProcessingPhase(discoveryResult.collections);
       result.processingResult = {
         processed: processingResult.processed,
         built: processingResult.built,
@@ -177,11 +191,37 @@ export class FullInitializationOrchestrator {
 
   /**
    * Execute collection processing phase with error boundaries
+   * Uses discovered collections to optimize processing
+   * Now waits for coordinated collection loading
    */
-  private async executeCollectionProcessingPhase() {
+  private async executeCollectionProcessingPhase(discoveredCollections: string[] = []) {
     try {
       logger.systemLog('[FULL-INIT-PROCESSING] Starting collection processing phase', 'FullInitializationOrchestrator');
-      const result = await this.processingService.ensureIndexesForExistingCollections(this.app);
+      
+      // Wait for collections to be loaded by the coordinator
+      if (this.collectionCoordinator) {
+        try {
+          const loadResult = await this.collectionCoordinator.waitForCollections(30000);
+          if (loadResult.success) {
+            logger.systemLog(
+              `[FULL-INIT-PROCESSING] Collections loaded via coordinator: ${loadResult.collectionsLoaded} collections`,
+              'FullInitializationOrchestrator'
+            );
+          } else {
+            logger.systemWarn(
+              `[FULL-INIT-PROCESSING] Collection coordinator failed, proceeding with discovery`,
+              'FullInitializationOrchestrator'
+            );
+          }
+        } catch (coordinatorError) {
+          logger.systemWarn(
+            `[FULL-INIT-PROCESSING] Collection coordinator error: ${coordinatorError}, proceeding with discovery`,
+            'FullInitializationOrchestrator'
+          );
+        }
+      }
+      
+      const result = await this.processingService.ensureIndexesForExistingCollections(this.app, discoveredCollections);
       
       logger.systemLog(
         `[FULL-INIT-PROCESSING] Processing phase completed: ${result.built} built, ${result.skipped} skipped`,

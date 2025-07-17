@@ -80,18 +80,30 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       }
     }
     
-    this.initializeServices();
+    // Services will be initialized when mode is executed
   }
 
   /**
    * Initialize all specialized services
    */
   private initializeServices(): void {
+    // Try to get services again if they weren't available during construction
+    if (!this.workspaceService || !this.memoryService) {
+      if (this.plugin) {
+        const pluginWithServices = this.plugin as ClaudesidianPlugin;
+        if (pluginWithServices.services) {
+          this.workspaceService = this.workspaceService || pluginWithServices.services.workspaceService || null;
+          this.memoryService = this.memoryService || pluginWithServices.services.memoryService || null;
+          this.cacheManager = this.cacheManager || pluginWithServices.services.cacheManager || null;
+        }
+      }
+    }
+    
     if (!this.workspaceService) {
-      throw new Error('WorkspaceService not available');
+      throw new Error('WorkspaceService not available - required for workspace loading');
     }
     if (!this.memoryService) {
-      throw new Error('MemoryService not available');
+      throw new Error('MemoryService not available - required for workspace loading');
     }
     
     this.workspaceRetriever = new WorkspaceRetriever(this.workspaceService);
@@ -115,6 +127,11 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    */
   async execute(params: LoadWorkspaceParameters): Promise<LoadWorkspaceResult> {
     try {
+      // Initialize services if not already done
+      if (!this.workspaceRetriever) {
+        this.initializeServices();
+      }
+      
       // Phase 1: Retrieve and validate workspace
       const workspaceData = await this.executeWorkspaceRetrieval(params);
       

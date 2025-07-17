@@ -122,6 +122,30 @@ export class HnswResultProcessor {
   }
 
   /**
+   * Process results - compatibility method for HnswSearchService
+   * @param results Raw HNSW search results or formatted results
+   * @param options Processing options
+   * @returns Formatted search results
+   */
+  processResults(
+    results: ItemWithDistance[] | any,
+    options: SearchOptions = {}
+  ): SearchResult[] {
+    // If results is already a SearchResult from SearchEngine, extract the items
+    if (results && typeof results === 'object' && 'items' in results) {
+      return this.processSearchResults(results.items, options).results;
+    }
+
+    // If it's an array of ItemWithDistance, process normally
+    if (Array.isArray(results)) {
+      return this.processSearchResults(results, options).results;
+    }
+
+    // Empty results
+    return [];
+  }
+
+  /**
    * Process results for unified search integration
    * @param results Raw HNSW results
    * @param filteredFiles Optional file filter

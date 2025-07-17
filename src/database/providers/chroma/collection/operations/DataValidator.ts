@@ -223,9 +223,10 @@ export class DataValidator {
    */
   validateQueryParams(params: ChromaQueryParams): ValidationResult {
     try {
-      // Either queryEmbeddings or queryTexts must be provided
-      if (!params.queryEmbeddings && !params.queryTexts) {
-        return { valid: false, error: 'Either queryEmbeddings or queryTexts must be provided' };
+      // Either queryEmbeddings, queryTexts, or where clause must be provided
+      // This enables metadata-only filtering without semantic search
+      if (!params.queryEmbeddings && !params.queryTexts && !params.where) {
+        return { valid: false, error: 'Either queryEmbeddings, queryTexts, or where clause must be provided' };
       }
 
       // Validate nResults

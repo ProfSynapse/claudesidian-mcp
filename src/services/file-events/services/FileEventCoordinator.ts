@@ -288,7 +288,16 @@ export class FileEventCoordinator implements IFileEventCoordinator {
      */
     async processStartupQueue(): Promise<void> {
         const queuedEvents = this.dependencies.fileEventQueue.getEvents();
+        
+        console.log('[HNSW-STARTUP-DEBUG] Processing startup queue:', {
+            queuedEventsCount: queuedEvents.length,
+            hasEmbeddingScheduler: !!this.dependencies.embeddingScheduler,
+            hasFileEventProcessor: !!this.dependencies.fileEventProcessor,
+            strategy: this.dependencies.embeddingScheduler?.getStrategy()
+        });
+        
         if (queuedEvents.length === 0) {
+            console.log('[HNSW-STARTUP-DEBUG] No events in startup queue');
             return;
         }
 
@@ -310,8 +319,20 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             if (invalidCount > 0) {
             }
             
+            console.log('[HNSW-STARTUP-DEBUG] Event filtering results:', {
+                totalEvents: queuedEvents.length,
+                validEvents: validEvents.length,
+                invalidCount,
+                validEventPaths: validEvents.map(e => e.path)
+            });
+            
             if (validEvents.length > 0) {
-                console.log(`[FileEventCoordinator] Processing embeddings for ${validEvents.length} valid files`);
+                // Count file types for better logging
+        const newFiles = validEvents.filter(e => e.source === 'initial_scan').length;
+        const modifiedFiles = validEvents.filter(e => e.operation === 'modify').length;
+        const createdFiles = validEvents.filter(e => e.operation === 'create' && e.source !== 'initial_scan').length;
+        
+        console.log(`[FileEventCoordinator] Processing embeddings: {newFiles: ${newFiles}, modifiedFiles: ${modifiedFiles}, createdFiles: ${createdFiles}}`);
                 
                 if (!this.dependencies.embeddingScheduler) {
                     throw new Error('Embedding scheduler not available for startup queue processing');
@@ -320,7 +341,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 await this.dependencies.embeddingScheduler.forceProcessEmbeddings(validEvents);
                 
                 const duration = Date.now() - startTime;
-                console.log(`[FileEventCoordinator] ✓ Successfully processed ${validEvents.length} file embeddings (${duration}ms)`);
+                console.log(`[FileEventCoordinator] ✓ Completed in ${duration}ms`);
             } else {
                 console.log('[FileEventCoordinator] No valid events to process after filtering');
             }

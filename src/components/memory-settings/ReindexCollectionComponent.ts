@@ -182,7 +182,7 @@ Continue with reindexing?`;
         };
         
         // Use the embedding service to reindex the files with chunking
-        await this.embeddingService.incrementalIndexFiles(filePaths, progressCallback);
+        await this.embeddingService.batchIndexFiles(filePaths, progressCallback);
     }
 
     /**

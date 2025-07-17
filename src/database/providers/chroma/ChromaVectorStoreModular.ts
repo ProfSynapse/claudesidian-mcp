@@ -17,6 +17,11 @@ import { IChromaClientFactory } from './services/interfaces/IChromaClientFactory
 import { ICollectionManager } from './services/interfaces/ICollectionManager';
 import { IDiagnosticsService, RepairResult, ValidationResult } from './services/interfaces/IDiagnosticsService';
 import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorService';
+import { CollectionLoader } from './client/lifecycle/CollectionLoader';
+import { PersistenceManager, FileSystemInterface } from './services/PersistenceManager';
+
+// Import initialization coordination
+import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
 
 // Define standard include types for vector store compatibility
 type StoreIncludeType = 'embeddings' | 'metadatas' | 'documents' | 'distances';
@@ -24,6 +29,7 @@ type StoreIncludeType = 'embeddings' | 'metadatas' | 'documents' | 'distances';
 /**
  * Modular ChromaDB vector store implementation
  * Now follows SOLID principles with focused, single-responsibility services
+ * Enhanced with initialization coordination to prevent duplicate collection loading
  * 
  * SOLID Principles Applied:
  * - SRP: Each service has a single, well-defined responsibility
@@ -39,12 +45,16 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   private collectionManager!: ICollectionManager;
   private diagnosticsService!: IDiagnosticsService;
   private sizeCalculatorService!: ISizeCalculatorService;
+  private collectionLoader!: CollectionLoader;
   
   // ChromaDB client
   private client: InstanceType<typeof ChromaClient> | null = null;
   
   // Plugin instance for accessing paths
   private plugin: Plugin;
+  
+  // Collection loading coordinator (injected)
+  private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
 
   /**
    * Create a new modular ChromaDB vector store
@@ -56,6 +66,14 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
     
     // Initialize services with dependency injection
     this.initializeServices();
+  }
+  
+  /**
+   * Set collection loading coordinator (injected by service manager)
+   * Follows Dependency Inversion Principle
+   */
+  setCollectionCoordinator(coordinator: ICollectionLoadingCoordinator): void {
+    this.collectionCoordinator = coordinator;
   }
 
   /**
@@ -91,8 +109,8 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Initialize remaining services that depend on the client
       this.initializeClientDependentServices();
       
-      // Load existing collections
-      await this.collectionManager.refreshCollections();
+      // Load existing collections using coordination system
+      await this.loadCollectionsWithCoordination();
       
       this.initialized = true;
     } catch (error) {
@@ -115,6 +133,27 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       this.config.persistentPath
     );
     
+    // Create collection loader (depends on directory service)
+    // Create FileSystemInterface adapter from DirectoryService
+    const fs = require('fs');
+    const fsInterface: FileSystemInterface = {
+      existsSync: (path: string) => fs.existsSync(path),
+      mkdirSync: (path: string, options?: { recursive?: boolean }) => fs.mkdirSync(path, options),
+      writeFileSync: (path: string, data: string) => fs.writeFileSync(path, data),
+      readFileSync: (path: string, encoding: string) => fs.readFileSync(path, encoding),
+      renameSync: (oldPath: string, newPath: string) => fs.renameSync(oldPath, newPath),
+      unlinkSync: (path: string) => fs.unlinkSync(path),
+      readdirSync: (path: string) => fs.readdirSync(path),
+      statSync: (path: string) => fs.statSync(path),
+      rmdirSync: (path: string) => fs.rmdirSync(path)
+    };
+    
+    this.collectionLoader = new CollectionLoader(
+      this.config.persistentPath!,
+      fsInterface,
+      new PersistenceManager(fsInterface)
+    );
+    
     // Create size calculator service (depends on directory and collection services)
     this.sizeCalculatorService = new SizeCalculatorService(
       this.directoryService,
@@ -130,6 +169,76 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       this.sizeCalculatorService,
       this.config
     );
+  }
+
+  /**
+   * Load existing collections using coordination system
+   * This prevents duplicate collection loading across services
+   */
+  private async loadCollectionsWithCoordination(): Promise<void> {
+    console.log('[ChromaVectorStoreModular] Starting coordinated collection loading');
+    
+    try {
+      if (this.collectionCoordinator) {
+        // Use coordinator to ensure collections are loaded only once
+        const result = await this.collectionCoordinator.ensureCollectionsLoaded();
+        
+        if (result.success) {
+          // Register loaded collections with the CollectionManager
+          const metadata = this.collectionCoordinator.getCollectionMetadata();
+          for (const [collectionName, meta] of metadata) {
+            const collection = this.collectionCoordinator.getLoadedCollection(collectionName);
+            if (collection) {
+              console.log(`[ChromaVectorStoreModular] Registering coordinated collection ${collectionName}`);
+              this.collectionManager.registerCollection(collectionName, collection);
+            }
+          }
+          
+          console.log(`[ChromaVectorStoreModular] Successfully loaded ${result.collectionsLoaded} collections via coordination`);
+        } else {
+          console.warn('[ChromaVectorStoreModular] Coordination failed, falling back to direct loading');
+          await this.loadCollectionsFromDisk();
+        }
+      } else {
+        console.log('[ChromaVectorStoreModular] No coordinator available, using direct loading');
+        await this.loadCollectionsFromDisk();
+      }
+    } catch (error) {
+      console.error('[ChromaVectorStoreModular] Error in coordinated loading:', error);
+      // Fallback to direct loading on error
+      await this.loadCollectionsFromDisk();
+    }
+  }
+  
+  /**
+   * Load existing collections from disk with actual data (fallback method)
+   * This replaces the simple refreshCollections() with proper data loading
+   */
+  private async loadCollectionsFromDisk(): Promise<void> {
+    console.log('[ChromaVectorStoreModular] Starting direct collection loading from disk');
+    
+    try {
+      // Use CollectionLoader to load collections with their data
+      const loadResult = await this.collectionLoader.loadCollectionsFromDisk();
+      
+      if (loadResult.success && loadResult.loadedCollections) {
+        // Register loaded collections with the CollectionManager
+        for (const [collectionName, collection] of loadResult.loadedCollections) {
+          console.log(`[ChromaVectorStoreModular] Registering collection ${collectionName} with data`);
+          this.collectionManager.registerCollection(collectionName, collection);
+        }
+        
+        console.log(`[ChromaVectorStoreModular] Successfully loaded ${loadResult.loadedCollections.size} collections from disk`);
+      } else {
+        console.log('[ChromaVectorStoreModular] No collections loaded from disk, falling back to refresh');
+        // Fallback to the old method if loading fails
+        await this.collectionManager.refreshCollections();
+      }
+    } catch (error) {
+      console.error('[ChromaVectorStoreModular] Error loading collections from disk:', error);
+      // Fallback to the old method on error
+      await this.collectionManager.refreshCollections();
+    }
   }
 
   /**
@@ -252,6 +361,30 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
     const results = await collection.get({
       ids,
       include: include || ['embeddings', 'metadatas', 'documents']
+    } as any);
+    
+    return this.normalizeGetResults(results);
+  }
+
+  /**
+   * Get all items from a collection
+   * Used for building HNSW indexes from existing data
+   */
+  async getAllItems(collectionName: string, options?: { limit?: number; offset?: number }): Promise<{
+    ids: string[];
+    embeddings?: number[][];
+    metadatas?: Record<string, any>[];
+    documents?: string[];
+  }> {
+    this.ensureInitialized();
+    
+    const collection = await this.collectionManager.getOrCreateCollection(collectionName);
+    
+    // Get all items without specifying IDs
+    const results = await collection.get({
+      include: ['embeddings', 'metadatas', 'documents'],
+      limit: options?.limit,
+      offset: options?.offset
     } as any);
     
     return this.normalizeGetResults(results);

@@ -67,4 +67,12 @@ export interface ICollectionManager {
    * @returns Object mapping collection names to validation results
    */
   batchValidateCollections(collectionNames: string[]): Promise<Record<string, boolean>>;
+
+  /**
+   * Register a loaded collection with the manager
+   * Used when collections are loaded from disk with actual data
+   * @param collectionName Name of the collection
+   * @param collection Collection instance
+   */
+  registerCollection(collectionName: string, collection: Collection): void;
 }

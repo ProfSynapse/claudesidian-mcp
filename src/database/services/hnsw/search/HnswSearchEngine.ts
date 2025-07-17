@@ -79,10 +79,21 @@ export class HnswSearchEngine {
 
     // Check if we have an index for this collection
     if (!this.indexManager.hasIndex(params.collectionName)) {
+      // Add diagnostic logging to understand the issue
       logger.systemWarn(
         `No index found for collection: ${params.collectionName}`,
         'HnswSearchEngine'
       );
+      
+      console.log('[HNSW-DEBUG] Index diagnostic info:', {
+        searchingFor: params.collectionName,
+        hasIndexMethod: typeof this.indexManager.hasIndex,
+        indexManagerInstance: !!this.indexManager,
+        indexManagerType: this.indexManager.constructor.name,
+        hasGetPartitionedIndex: typeof this.indexManager.getPartitionedIndex,
+        hasGetSingleIndex: typeof this.indexManager.getSingleIndex
+      });
+      
       return this.createEmptyResult('single', startTime);
     }
 
@@ -440,6 +451,26 @@ export class HnswSearchEngine {
       complexity,
       recommendations: recommendations.length > 0 ? recommendations : undefined,
     };
+  }
+
+  /**
+   * Search method for compatibility with HnswSearchService
+   * @param collectionName Collection to search
+   * @param params Search parameters
+   * @returns Search results
+   */
+  async search(collectionName: string, params: SearchParameters): Promise<SearchResult> {
+    return this.searchSimilar({ ...params, collectionName });
+  }
+
+  /**
+   * Search with filter method for compatibility with HnswSearchService
+   * @param collectionName Collection to search
+   * @param params Search parameters with where clause
+   * @returns Search results
+   */
+  async searchWithFilter(collectionName: string, params: SearchParameters): Promise<SearchResult> {
+    return this.searchSimilar({ ...params, collectionName });
   }
 
   /**

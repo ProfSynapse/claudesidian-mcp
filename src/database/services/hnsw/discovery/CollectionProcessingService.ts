@@ -43,7 +43,7 @@ export class CollectionProcessingService {
    * Ensure HNSW indexes exist for all ChromaDB collections with embeddings
    * Called during initialization to build missing indexes
    */
-  async ensureIndexesForExistingCollections(app?: any): Promise<CollectionProcessingResult> {
+  async ensureIndexesForExistingCollections(app?: any, discoveredCollections?: string[]): Promise<CollectionProcessingResult> {
     const result: CollectionProcessingResult = {
       processed: 0,
       built: 0,
@@ -62,9 +62,22 @@ export class CollectionProcessingService {
         return result;
       }
 
-      // List all collections
-      const collections = await vectorStore.listCollections();
-      logger.systemLog(`[COLLECTION-PROCESSING] Found ${collections.length} collections to process`, 'CollectionProcessingService');
+      // Use discovered collections if available, otherwise list all collections
+      const collections = discoveredCollections && discoveredCollections.length > 0 
+        ? discoveredCollections 
+        : await vectorStore.listCollections();
+      
+      const source = discoveredCollections && discoveredCollections.length > 0 ? 'discovered' : 'vector store';
+      logger.systemLog(`[COLLECTION-PROCESSING] Found ${collections.length} collections to process from ${source}`, 'CollectionProcessingService');
+      
+      // Add diagnostic logging
+      console.log('[HNSW-COLLECTION-DEBUG] Collection processing info:', {
+        collections,
+        source,
+        discoveredCollections,
+        vectorStoreType: vectorStore.constructor.name,
+        hasListCollections: typeof vectorStore.listCollections
+      });
 
       // Process each collection
       for (const collectionName of collections) {
@@ -120,10 +133,43 @@ export class CollectionProcessingService {
     logger.systemLog(`🔍 Processing collection: ${collectionName}`, 'CollectionProcessingService');
 
     // Get collection info
-    const count = await vectorStore.getCollectionSize(collectionName);
+    const count = await vectorStore.count(collectionName);
+    
+    // Add diagnostic logging with more details
+    console.log('[HNSW-COLLECTION-PROCESSING-DEBUG] Processing collection:', {
+      collectionName,
+      itemCount: count,
+      hasIndex: this.indexManager.hasIndex(collectionName),
+      indexManagerType: this.indexManager.constructor.name,
+      vectorStoreType: vectorStore.constructor.name
+    });
+    
+    // Add additional diagnostic - try to get actual items to verify count
+    try {
+      const items = await vectorStore.getAllItems(collectionName, { limit: 10 });
+      const actualCount = items.ids.length;
+      console.log('[HNSW-COLLECTION-PROCESSING-DEBUG] Collection verification:', {
+        collectionName,
+        countMethod: count,
+        actualItemsFound: actualCount,
+        sampleIds: items.ids.slice(0, 3)
+      });
+    } catch (error) {
+      console.log('[HNSW-COLLECTION-PROCESSING-DEBUG] Failed to verify collection:', {
+        collectionName,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
     if (count === 0) {
-      logger.systemLog(`⚠️ Skipping empty collection: ${collectionName}`, 'CollectionProcessingService');
-      return { built: false, loaded: false, skipped: true };
+      logger.systemLog(`⚠️ Collection ${collectionName} is empty - will be populated through file processing pipeline`, 'CollectionProcessingService');
+      // Don't skip empty collections - they will be populated by the file processing pipeline
+      // Just check if index exists and return accordingly
+      if (this.indexManager.hasIndex(collectionName)) {
+        return { built: false, loaded: true, skipped: false };
+      } else {
+        return { built: false, loaded: false, skipped: true };
+      }
     }
 
     // Check if index already exists
@@ -177,8 +223,8 @@ export class CollectionProcessingService {
     try {
       logger.systemLog(`🔨 Building fresh HNSW index for collection: ${collectionName} (${count} items)`, 'CollectionProcessingService');
       
-      // Get items from the collection
-      const items = await vectorStore.getItems(collectionName, { limit: count });
+      // Get all items from the collection
+      const items = await vectorStore.getAllItems(collectionName, { limit: count });
       
       // Convert to DatabaseItem format
       const databaseItems = this.conversionService.convertToDatabaseItems(items);
@@ -245,7 +291,7 @@ export class CollectionProcessingService {
     vectorStore: any
   ): Promise<{ valid: boolean; reason?: string; itemCount?: number }> {
     try {
-      const count = await vectorStore.getCollectionSize(collectionName);
+      const count = await vectorStore.count(collectionName);
       
       if (count === 0) {
         return { valid: false, reason: 'Collection is empty', itemCount: 0 };

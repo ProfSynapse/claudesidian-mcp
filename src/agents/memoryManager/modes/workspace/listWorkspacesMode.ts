@@ -13,8 +13,7 @@ import { ClaudesidianPlugin } from '../utils/pluginTypes';
  * Mode to list available workspaces
  */
 export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListWorkspacesResult> {
-  private plugin: Plugin;
-  private workspaceService: WorkspaceService | null = null;
+  private app: App;
   
   /**
    * Create a new ListWorkspacesMode
@@ -27,14 +26,23 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       'List available workspaces with filters and sorting',
       '1.0.0'
     );
-    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    this.app = app;
+  }
+  
+  /**
+   * Get workspace service asynchronously
+   */
+  private async getWorkspaceService(): Promise<WorkspaceService | null> {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+    if (!plugin) {
+      return null;
+    }
     
-    // Safely access the workspace service
-    if (this.plugin) {
-      const pluginWithServices = this.plugin as ClaudesidianPlugin;
-      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
-        this.workspaceService = pluginWithServices.services.workspaceService;
-      }
+    try {
+      return await plugin.getService<WorkspaceService>('workspaceService');
+    } catch (error) {
+      console.warn('[ListWorkspacesMode] Failed to get workspace service:', error);
+      return null;
     }
   }
   
@@ -45,8 +53,8 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
    */
   async execute(params: ListWorkspacesParameters): Promise<ListWorkspacesResult> {
     try {
-      // Get workspace service
-      const workspaceService = this.workspaceService;
+      // Get workspace service asynchronously
+      const workspaceService = await this.getWorkspaceService();
       if (!workspaceService) {
         return {
           success: false,

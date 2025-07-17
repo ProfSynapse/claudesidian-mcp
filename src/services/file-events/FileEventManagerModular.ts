@@ -35,9 +35,9 @@ export class FileEventManagerModular {
     private sessionEndHandler!: (data: any) => void;
 
     // Lazy service getters (can be overridden for dependency injection)
-    private getMemoryService: () => Promise<MemoryService>;
-    private getWorkspaceService: () => Promise<WorkspaceService>;
-    private getEmbeddingService: () => Promise<EmbeddingService>;
+    private getMemoryService: () => Promise<MemoryService | null>;
+    private getWorkspaceService: () => Promise<WorkspaceService | null>;
+    private getEmbeddingService: () => Promise<EmbeddingService | null>;
 
     constructor(
         private app: App,
@@ -48,10 +48,39 @@ export class FileEventManagerModular {
         private eventManager: EventManager,
         private embeddingStrategy: EmbeddingStrategy
     ) {
-        // Set up default service getters
-        this.getMemoryService = async () => this.memoryService!;
-        this.getWorkspaceService = async () => this.workspaceService!;
-        this.getEmbeddingService = async () => this.embeddingService!;
+        // Set up default service getters with lazy loading
+        this.getMemoryService = async () => {
+            if (!this.memoryService) {
+                // Try to get from service manager
+                const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+                if (plugin?.getService) {
+                    this.memoryService = await plugin.getService('memoryService');
+                }
+            }
+            return this.memoryService;
+        };
+        
+        this.getWorkspaceService = async () => {
+            if (!this.workspaceService) {
+                // Try to get from service manager
+                const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+                if (plugin?.getService) {
+                    this.workspaceService = await plugin.getService('workspaceService');
+                }
+            }
+            return this.workspaceService;
+        };
+        
+        this.getEmbeddingService = async () => {
+            if (!this.embeddingService) {
+                // Try to get from service manager
+                const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+                if (plugin?.getService) {
+                    this.embeddingService = await plugin.getService('embeddingService');
+                }
+            }
+            return this.embeddingService;
+        };
         
         this.initializeDependencies();
         this.coordinator = new FileEventCoordinator(
@@ -115,6 +144,64 @@ export class FileEventManagerModular {
     }
 
     /**
+     * Discover and queue all existing vault files for initial processing
+     */
+    async discoverAndQueueExistingFiles(): Promise<void> {
+        try {
+            const files = this.app.vault.getMarkdownFiles();
+            
+            let queuedCount = 0;
+            let skippedUnchanged = 0;
+            let skippedFiltered = 0;
+            
+            for (const file of files) {
+                // Check if file should be processed (respect filters)
+                if (!this.dependencies.fileMonitor.shouldProcessFile(file)) {
+                    skippedFiltered++;
+                    continue;
+                }
+                
+                // CRITICAL OPTIMIZATION: Check if file actually needs re-embedding
+                try {
+                    // Use file monitor's built-in content change detection
+                    if (this.dependencies.fileMonitor.hasContentChanged) {
+                        const hasChanged = await this.dependencies.fileMonitor.hasContentChanged(file);
+                        if (!hasChanged) {
+                            skippedUnchanged++;
+                            continue; // Skip files that haven't changed
+                        }
+                    }
+                } catch (error) {
+                    // If hash checking fails, queue the file to be safe
+                    console.warn('[STARTUP] Content change check failed for', file.path, '- queuing for safety');
+                }
+                
+                // Only queue files that actually need processing
+                this.dependencies.fileEventQueue.addEvent({
+                    path: file.path,
+                    operation: 'create',
+                    timestamp: Date.now(),
+                    isSystemOperation: false,
+                    source: 'initial_scan',
+                    priority: 'normal'
+                });
+                queuedCount++;
+            }
+            
+            console.log(`[STARTUP] Vault scan: {queuedFiles: ${queuedCount}, skippedUnchanged: ${skippedUnchanged}, skippedFiltered: ${skippedFiltered}}`);
+            
+            // Only persist if we actually queued files
+            if (queuedCount > 0) {
+                await this.dependencies.fileEventQueue.persist();
+            }
+            
+        } catch (error) {
+            console.error('[STARTUP] Vault scan failed:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Process all queued files for startup embedding strategy
      */
     async processStartupQueue(): Promise<void> {
@@ -123,10 +210,23 @@ export class FileEventManagerModular {
         }
 
         this.isProcessingStartupQueue = true;
-        const queueSize = this.dependencies.fileEventQueue.size();
         
         try {
+            // First, discover and queue existing files if queue is empty
+            const initialQueueSize = this.dependencies.fileEventQueue.size();
+            console.log('[HNSW-STARTUP-DEBUG] Starting startup queue processing:', {
+                initialQueueSize,
+                hasEmbeddingScheduler: !!this.dependencies.embeddingScheduler
+            });
+            
+            if (initialQueueSize === 0) {
+                console.log('[HNSW-STARTUP-DEBUG] Queue is empty, running initial vault scan');
+                await this.discoverAndQueueExistingFiles();
+            }
+            
+            const queueSize = this.dependencies.fileEventQueue.size();
             if (queueSize === 0) {
+                console.log('[HNSW-STARTUP-DEBUG] No files to process after initial scan');
                 return;
             }
 
@@ -288,6 +388,15 @@ export class FileEventManagerModular {
             const workspaceService = await this.getWorkspaceService();
             const embeddingService = await this.getEmbeddingService();
             
+            if (!memoryService || !workspaceService || !embeddingService) {
+                console.warn('[FileEventManagerModular] Required services not available yet:', {
+                    memoryService: !!memoryService,
+                    workspaceService: !!workspaceService,
+                    embeddingService: !!embeddingService
+                });
+                throw new Error('Required services not available');
+            }
+            
             this.dependencies.fileEventProcessor = new FileEventProcessor(
                 this.app,
                 memoryService,
@@ -305,6 +414,8 @@ export class FileEventManagerModular {
                 memoryService,
                 workspaceService
             );
+            
+            console.log('[FileEventManagerModular] Vector dependencies initialized successfully');
             
         } catch (error) {
             console.warn('[FileEventManagerModular] Failed to initialize vector dependencies:', error);

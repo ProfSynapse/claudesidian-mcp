@@ -178,17 +178,8 @@ export class FileIndexingService {
    * - Stores embeddings with comprehensive metadata
    */
   async processFile(filePath: string, vectorStore: any): Promise<ProcessResult> {
-    // Delete existing embeddings for this file
+    // Normalize file path for consistent storage
     const normalizedPath = filePath.replace(/\\/g, '/');
-    const queryResult = await vectorStore.query('file_embeddings', {
-      where: { filePath: { $eq: normalizedPath } },
-      nResults: 1000
-    });
-    
-    if (queryResult.ids && queryResult.ids.length > 0 && queryResult.ids[0].length > 0) {
-      const existingIds = queryResult.ids[0];
-      await vectorStore.deleteItems('file_embeddings', existingIds);
-    }
     
     // Read file content
     const file = this.plugin.app.vault.getAbstractFileByPath(filePath);

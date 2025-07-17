@@ -131,14 +131,18 @@ export default class ClaudesidianPlugin extends Plugin {
             // Start service manager stages
             await this.serviceManager.start();
             
-            // Initialize connector with agents - non-blocking start
-            this.connector.initializeAgents().then(() => {
-                return this.connector.start();
-            }).then(() => {
+            // Pre-initialize UI-critical services to avoid long loading times in Memory Management
+            await this.preInitializeUICriticalServices();
+            
+            // Initialize connector with agents - must complete before plugin ready
+            try {
+                await this.connector.initializeAgents();
+                await this.connector.start();
                 console.log('[ClaudesidianPlugin] MCP connector started successfully');
-            }).catch(error => {
+            } catch (error) {
                 console.error('[ClaudesidianPlugin] MCP connector failed to start:', error);
-            });
+                // Continue with plugin initialization even if MCP fails
+            }
             
             // Create settings tab (async)
             await this.initializeSettingsTab();
@@ -311,6 +315,46 @@ export default class ClaudesidianPlugin extends Plugin {
         }
     }
     
+    /**
+     * Pre-initialize UI-critical services to avoid Memory Management loading delays
+     */
+    private async preInitializeUICriticalServices(): Promise<void> {
+        if (!this.serviceManager) return;
+        
+        console.log('[STARTUP] Pre-initializing UI-critical services...');
+        const startTime = Date.now();
+        
+        try {
+            // Initialize services that Memory Management accordion depends on
+            const uiCriticalServices = [
+                'vectorStore',
+                'fileEmbeddingAccessService',
+                'embeddingService',
+                'memoryService'
+            ];
+            
+            // Initialize in parallel where possible
+            await Promise.allSettled(
+                uiCriticalServices.map(async (serviceName) => {
+                    try {
+                        const serviceStart = Date.now();
+                        await this.serviceManager.get(serviceName);
+                        const serviceTime = Date.now() - serviceStart;
+                        console.log(`[STARTUP] ${serviceName} initialized in ${serviceTime}ms`);
+                    } catch (error) {
+                        console.warn(`[STARTUP] Failed to pre-initialize ${serviceName}:`, error);
+                    }
+                })
+            );
+            
+            const totalTime = Date.now() - startTime;
+            console.log(`[STARTUP] UI-critical services pre-initialization completed in ${totalTime}ms`);
+            
+        } catch (error) {
+            console.error('[STARTUP] UI-critical services pre-initialization failed:', error);
+        }
+    }
+
     /**
      * Update settings tab with available services (non-blocking)
      */

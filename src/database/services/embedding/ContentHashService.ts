@@ -52,10 +52,11 @@ export class ContentHashService {
       // Normalize the file path to match database format (forward slashes)
       const normalizedPath = filePath.replace(/\\/g, '/');
 
-      // Query for existing embeddings for this file
+      // Query for existing embeddings for this file using metadata filtering
+      // Use metadata-only query without queryTexts to avoid embedding function dependency
       const queryResult = await vectorStore.query('file_embeddings', {
         where: { filePath: { $eq: normalizedPath } },
-        nResults: 1, // Just need one to check metadata
+        nResults: 1,
         include: ['metadatas']
       });
 
@@ -66,8 +67,9 @@ export class ContentHashService {
 
       // Debug: Let's see what file paths are actually in the database
       if (queryResult.ids?.[0]?.length === 0) {
-        // Query a few random items to see what file paths look like
+        // Get a few random items to see what file paths look like
         const sampleQuery = await vectorStore.query('file_embeddings', {
+          where: {},
           nResults: 5,
           include: ['metadatas']
         });
@@ -94,7 +96,10 @@ export class ContentHashService {
       const storedHash = metadata.contentHash;
       const hashMatches = currentHash === storedHash;
       
-      console.log(`[ContentHashService] ${filePath} - hash comparison: current=${currentHash.substring(0, 8)}..., stored=${storedHash.substring(0, 8)}..., matches=${hashMatches}`);
+      // Only log when hashes don't match (file actually changed)
+      if (!hashMatches) {
+        console.log(`[ContentHashService] ${filePath} - content changed, needs re-embedding`);
+      }
       
       return !hashMatches; // Return true if hashes don't match (needs re-embedding)
     } catch (error) {

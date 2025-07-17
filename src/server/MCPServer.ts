@@ -290,6 +290,34 @@ export class MCPServer implements IMCPServer {
     }
 
     /**
+     * Reinitialize request router with current agents
+     * Call this after agents have been registered
+     */
+    reinitializeRequestRouter(): void {
+        try {
+            this.requestRouter = new RequestRouter(
+                this.app,
+                this.agentRegistry.getAgents(),
+                true, // isVaultEnabled
+                this.configuration.getSanitizedVaultName(),
+                this.sessionContextManager,
+                this.customPromptStorage
+            );
+            
+            // Reinitialize request handlers with new router
+            this.requestHandlerFactory = new RequestHandlerFactory(
+                this.server,
+                this.requestRouter,
+                this.onToolCall
+            );
+            this.requestHandlerFactory.initializeHandlers();
+        } catch (error) {
+            logger.systemError(error as Error, 'Request Router Reinitialization');
+            throw error;
+        }
+    }
+
+    /**
      * Get server info
      */
     getServerInfo(): any {

@@ -6,8 +6,15 @@ import { ServiceLifecycleManager } from './lazy-initialization/ServiceLifecycleM
 import { WorkspaceCacheManager } from './lazy-initialization/WorkspaceCacheManager';
 import { ServiceDescriptors } from './lazy-initialization/ServiceDescriptors';
 
+// Import initialization coordination
+import { 
+  IInitializationCoordinator, 
+  InitializationPhase 
+} from './initialization/interfaces/IInitializationCoordinator';
+
 /**
  * Lazy Service Manager - SOLID compliant
+ * Enhanced with initialization coordination to prevent duplicate initialization
  * 
  * Follows SOLID principles:
  * - SRP: Each component has a single responsibility
@@ -23,6 +30,7 @@ export class LazyServiceManager implements IServiceManager {
     private serviceDescriptors: ServiceDescriptors;
     private isStarted = false;
     private toolCallCount = 0;
+    private initializationCoordinator: IInitializationCoordinator | null = null;
 
     constructor(
         private app: App,
@@ -38,6 +46,9 @@ export class LazyServiceManager implements IServiceManager {
         this.serviceDescriptors.setDependencyResolver((name: string) => {
             return this.get(name);
         });
+        
+        // CRITICAL FIX: Set the service manager reference so ServiceDescriptors can pass the correct object
+        this.serviceDescriptors.setServiceManager(this);
         
         // Register all services
         this.registerServices();
@@ -76,7 +87,7 @@ export class LazyServiceManager implements IServiceManager {
     }
 
     /**
-     * Start the service manager
+     * Start the service manager with coordinated initialization
      */
     async start(): Promise<void> {
         if (this.isStarted) {
@@ -87,20 +98,32 @@ export class LazyServiceManager implements IServiceManager {
         
         // Mark as started - don't initialize anything yet
         this.isStarted = true;
+        
+        // Get initialization coordinator from service descriptors
+        await this.initializeCoordinationSystem();
+        
+        // Start single, coordinated initialization sequence
+        this.startCoordinatedInitialization();
+        
         const duration = Date.now() - startTime;
-        
-
-        // Start background initialization
-        this.startCascadingInitialization();
-        
-        // Also initialize IMMEDIATE stage services right away
-        setTimeout(async () => {
-            try {
-                await this.initializeStage(LoadingStage.IMMEDIATE);
-            } catch (error) {
-                console.error('[STAGE_DEBUG] IMMEDIATE stage initialization failed:', error);
+        console.log(`[LazyServiceManager] Service manager started in ${duration}ms`);
+    }
+    
+    /**
+     * Initialize the coordination system
+     */
+    private async initializeCoordinationSystem(): Promise<void> {
+        try {
+            // Initialize coordination services in ServiceDescriptors
+            await this.serviceDescriptors.initializeCoordinationServices();
+            this.initializationCoordinator = this.serviceDescriptors.getInitializationCoordinator();
+            
+            if (this.initializationCoordinator) {
+                console.log('[LazyServiceManager] Initialization coordinator ready');
             }
-        }, 100);
+        } catch (error) {
+            console.warn('[LazyServiceManager] Failed to initialize coordination system:', error);
+        }
     }
 
     /**
@@ -215,6 +238,11 @@ export class LazyServiceManager implements IServiceManager {
      * Cleanup method
      */
     async cleanup(): Promise<void> {
+        // Reset coordination system
+        if (this.initializationCoordinator) {
+            this.initializationCoordinator.reset();
+        }
+        
         await this.stop();
     }
 
@@ -231,22 +259,37 @@ export class LazyServiceManager implements IServiceManager {
     }
 
     /**
-     * Start cascading background initialization
+     * Start coordinated initialization sequence
+     * Replaces duplicate setTimeout triggers with single coordination
      */
-    private startCascadingInitialization(): void {
+    private startCoordinatedInitialization(): void {
         setTimeout(async () => {
             try {
-                // Initialize BACKGROUND_SLOW services (includes HNSW and vector operations)
-                setTimeout(async () => {
-                    try {
-                        await this.initializeStage(LoadingStage.BACKGROUND_SLOW);
-                    } catch (error) {
-                        console.warn('[LazyServiceManager] Background slow initialization failed:', error);
-                    }
-                }, 5000); // 5s delay to ensure plugin startup is complete
-                
+                if (this.initializationCoordinator) {
+                    // Use coordination system for clean initialization
+                    console.log('[LazyServiceManager] Starting coordinated initialization');
+                    const results = await this.initializationCoordinator.initializeAll();
+                    
+                    // Log results
+                    const successCount = results.filter(r => r.success).length;
+                    const totalCount = results.length;
+                    console.log(`[LazyServiceManager] Coordinated initialization completed: ${successCount}/${totalCount} phases successful`);
+                } else {
+                    // Fallback to stage-based initialization
+                    console.log('[LazyServiceManager] Falling back to stage-based initialization');
+                    await this.initializeStage(LoadingStage.IMMEDIATE);
+                    
+                    // Delay for background services
+                    setTimeout(async () => {
+                        try {
+                            await this.initializeStage(LoadingStage.BACKGROUND_SLOW);
+                        } catch (error) {
+                            console.warn('[LazyServiceManager] Background slow initialization failed:', error);
+                        }
+                    }, 5000);
+                }
             } catch (error) {
-                console.warn('[LazyServiceManager] Background initialization failed:', error);
+                console.warn('[LazyServiceManager] Coordinated initialization failed:', error);
             }
         }, 2000); // 2 second delay to ensure plugin is fully loaded
     }
@@ -261,11 +304,13 @@ export class LazyServiceManager implements IServiceManager {
         }
 
         const startTime = Date.now();
+        console.log(`[LazyServiceManager] Initializing stage ${stage} with ${serviceNames.length} services`);
         
         // Initialize services in parallel within the stage
         const promises = serviceNames.map(async (name) => {
             try {
                 await this.get(name);
+                console.log(`[LazyServiceManager] ✓ Initialized ${name}`);
             } catch (error) {
                 console.error(`[LazyServiceManager] ✗ Failed to initialize ${name}:`, error);
                 throw error;
@@ -275,5 +320,18 @@ export class LazyServiceManager implements IServiceManager {
         await Promise.all(promises);
         
         const duration = Date.now() - startTime;
+        console.log(`[LazyServiceManager] Stage ${stage} completed in ${duration}ms`);
+    }
+    
+    /**
+     * Initialize a service using the coordination system
+     */
+    async initializeService(serviceName: string): Promise<void> {
+        try {
+            await this.get(serviceName);
+        } catch (error) {
+            console.error(`[LazyServiceManager] Failed to initialize service ${serviceName}:`, error);
+            throw error;
+        }
     }
 }

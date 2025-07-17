@@ -39,7 +39,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
       '1.0.0'
     );
     
-    this.initializeServices();
+    // Services will be initialized when mode is executed
   }
 
   /**
@@ -51,7 +51,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
     const app = this.agent.getApp();
 
     if (!memoryService || !workspaceService || !app) {
-      throw new Error('Required services not available');
+      throw new Error('Required services not available - memoryService, workspaceService, or app is missing');
     }
 
     this.stateRetriever = new StateRetriever(memoryService);
@@ -68,6 +68,11 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
    */
   async execute(params: LoadStateParams): Promise<StateResult> {
     try {
+      // Initialize services if not already done
+      if (!this.stateRetriever) {
+        this.initializeServices();
+      }
+      
       // Phase 1: Validate parameters and prepare context
       const validatedParams = await this.executeParameterValidation(params);
       

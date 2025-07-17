@@ -14,8 +14,7 @@ import { ClaudesidianPlugin } from '../utils/pluginTypes';
  * Mode to edit an existing workspace
  */
 export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, WorkspaceResult> {
-  private plugin: Plugin;
-  private workspaceService: WorkspaceService | null = null;
+  private app: App;
   
   /**
    * Create a new EditWorkspaceMode
@@ -28,14 +27,23 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       'Update an existing workspace properties',
       '1.0.0'
     );
-    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+    this.app = app;
+  }
+  
+  /**
+   * Get workspace service asynchronously
+   */
+  private async getWorkspaceService(): Promise<WorkspaceService | null> {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+    if (!plugin) {
+      return null;
+    }
     
-    // Safely access the workspace service
-    if (this.plugin) {
-      const pluginWithServices = this.plugin as ClaudesidianPlugin;
-      if (pluginWithServices.services && pluginWithServices.services.workspaceService) {
-        this.workspaceService = pluginWithServices.services.workspaceService;
-      }
+    try {
+      return await plugin.getService<WorkspaceService>('workspaceService');
+    } catch (error) {
+      console.warn('[EditWorkspaceMode] Failed to get workspace service:', error);
+      return null;
     }
   }
   
@@ -52,7 +60,7 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
       }
       
       // Get the workspace service
-      const workspaceService = this.workspaceService;
+      const workspaceService = await this.getWorkspaceService();
       if (!workspaceService) {
         return this.prepareResult(false, undefined, 'Workspace service not available');
       }

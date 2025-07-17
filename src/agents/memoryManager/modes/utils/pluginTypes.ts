@@ -19,4 +19,5 @@ export interface ClaudesidianPlugin extends Plugin {
     vectorStore: IVectorStore;
     [key: string]: any;
   };
+  getService<T>(serviceName: string): Promise<T | null>;
 }

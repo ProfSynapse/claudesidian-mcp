@@ -200,6 +200,45 @@ export class CollectionManager {
   }
 
   /**
+   * Discover all collections from memory and filesystem
+   * Follows DRY principle by reusing existing collection listing methods
+   */
+  async discoverAllCollections(): Promise<string[]> {
+    const collections = new Set<string>();
+    
+    // Source 1: In-memory collections (most reliable)
+    this.getCollectionNames().forEach(name => collections.add(name));
+    
+    // Source 2: Filesystem collections (may have persisted data not yet loaded)
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const collectionsDir = path.join(this.storagePath, 'collections');
+      
+      if (fs.existsSync(collectionsDir)) {
+        const dirs = fs.readdirSync(collectionsDir, { withFileTypes: true })
+          .filter((dirent: any) => dirent.isDirectory())
+          .map((dirent: any) => dirent.name)
+          .filter((name: string) => !this.shouldSkipSystemDirectory(name));
+        
+        dirs.forEach((name: string) => collections.add(name));
+      }
+    } catch (error) {
+      console.warn('Failed to discover filesystem collections:', error);
+    }
+    
+    return Array.from(collections);
+  }
+
+  /**
+   * Check if a directory should be skipped during discovery
+   */
+  private shouldSkipSystemDirectory(name: string): boolean {
+    const systemDirectories = ['hnsw-indexes', '.git', 'node_modules', '.tmp'];
+    return systemDirectories.includes(name);
+  }
+
+  /**
    * Validate collection name
    */
   private validateCollectionName(name: string): {

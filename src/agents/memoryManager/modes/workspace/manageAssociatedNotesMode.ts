@@ -57,8 +57,6 @@ export interface ManageAssociatedNotesResult extends CommonResult {
  */
 export class ManageAssociatedNotesMode extends BaseMode<ManageAssociatedNotesParameters, ManageAssociatedNotesResult> {
   private app: App;
-  private plugin: Plugin;
-  private workspaceService: WorkspaceService | null = null;
   
   constructor(app: App) {
     super(
@@ -68,20 +66,29 @@ export class ManageAssociatedNotesMode extends BaseMode<ManageAssociatedNotesPar
       '1.0.0'
     );
     this.app = app;
-    this.plugin = app.plugins.getPlugin('claudesidian-mcp');
+  }
+  
+  /**
+   * Get workspace service asynchronously
+   */
+  private async getWorkspaceService(): Promise<WorkspaceService | null> {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+    if (!plugin) {
+      return null;
+    }
     
-    // Safely access the plugin services
-    if (this.plugin) {
-      const pluginWithServices = this.plugin as ClaudesidianPlugin;
-      if (pluginWithServices.services?.workspaceService) {
-        this.workspaceService = pluginWithServices.services.workspaceService;
-      }
+    try {
+      return await plugin.getService<WorkspaceService>('workspaceService');
+    } catch (error) {
+      console.warn('[ManageAssociatedNotesMode] Failed to get workspace service:', error);
+      return null;
     }
   }
   
   async execute(params: ManageAssociatedNotesParameters): Promise<ManageAssociatedNotesResult> {
     try {
-      if (!this.workspaceService) {
+      const workspaceService = await this.getWorkspaceService();
+      if (!workspaceService) {
         return this.prepareResult(
           false,
           { associatedNotes: [], action: params.action, message: 'Workspace service not available' }
@@ -89,7 +96,7 @@ export class ManageAssociatedNotesMode extends BaseMode<ManageAssociatedNotesPar
       }
       
       // Validate workspace exists
-      const workspace = await this.workspaceService.getWorkspace(params.workspaceId);
+      const workspace = await workspaceService.getWorkspace(params.workspaceId);
       if (!workspace) {
         return this.prepareResult(
           false,
@@ -118,8 +125,8 @@ export class ManageAssociatedNotesMode extends BaseMode<ManageAssociatedNotesPar
             );
           }
           
-          await this.workspaceService.addAssociatedNote(params.workspaceId, params.filePath);
-          currentNotes = await this.workspaceService.getAssociatedNotes(params.workspaceId);
+          await workspaceService.addAssociatedNote(params.workspaceId, params.filePath);
+          currentNotes = await workspaceService.getAssociatedNotes(params.workspaceId);
           message = `Added ${params.filePath} to associated notes`;
           break;
           
@@ -131,13 +138,13 @@ export class ManageAssociatedNotesMode extends BaseMode<ManageAssociatedNotesPar
             );
           }
           
-          await this.workspaceService.removeAssociatedNote(params.workspaceId, params.filePath);
-          currentNotes = await this.workspaceService.getAssociatedNotes(params.workspaceId);
+          await workspaceService.removeAssociatedNote(params.workspaceId, params.filePath);
+          currentNotes = await workspaceService.getAssociatedNotes(params.workspaceId);
           message = `Removed ${params.filePath} from associated notes`;
           break;
           
         case 'list':
-          currentNotes = await this.workspaceService.getAssociatedNotes(params.workspaceId);
+          currentNotes = await workspaceService.getAssociatedNotes(params.workspaceId);
           message = `Retrieved ${currentNotes.length} associated notes`;
           break;
           

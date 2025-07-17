@@ -137,6 +137,19 @@ export abstract class BaseVectorStore implements IVectorStore {
   }>;
   
   /**
+   * Get all items from a collection
+   * @param collectionName Name of the collection
+   * @param options Optional limit and offset parameters
+   * @returns All items in the collection
+   */
+  abstract getAllItems(collectionName: string, options?: { limit?: number; offset?: number }): Promise<{
+    ids: string[];
+    embeddings?: number[][];
+    metadatas?: Record<string, any>[];
+    documents?: string[];
+  }>;
+  
+  /**
    * Update items in a collection
    * @param collectionName Name of the collection
    * @param items Items to update

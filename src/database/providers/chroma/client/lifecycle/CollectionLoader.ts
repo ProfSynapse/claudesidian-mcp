@@ -34,15 +34,22 @@ export class CollectionLoader {
 
       // Read the collections directory
       const collectionDirs = this.persistenceManager.listSubdirectories(collectionsDir);
+      
+      console.log(`[CollectionLoader] Loading ${collectionDirs.length} collections from disk`);
 
       // Load each collection
       for (const collectionName of collectionDirs) {
         const loadResult = await this.loadSingleCollection(collectionName, collectionsDir);
         
         if (loadResult.success && loadResult.collection) {
+          const itemCount = await loadResult.collection.count();
+          console.log(`[CollectionLoader] ✓ ${collectionName}: ${itemCount} items`);
           collections.set(collectionName, loadResult.collection);
         } else {
-          console.error(`Failed to load collection ${collectionName}:`, loadResult.error);
+          // Only log error for non-system directories
+          if (!this.shouldSkipCollection(collectionName)) {
+            console.error(`Failed to load collection ${collectionName}:`, loadResult.error);
+          }
           // Continue with other collections instead of failing entirely
         }
       }
@@ -71,9 +78,9 @@ export class CollectionLoader {
     collection?: StrictPersistentCollection;
   }> {
     try {
-      // Skip system directories
+      // Skip system directories silently
       if (this.shouldSkipCollection(collectionName)) {
-        return { success: false, error: 'System directory skipped' };
+        return { success: false };
       }
 
       // Create collection instance

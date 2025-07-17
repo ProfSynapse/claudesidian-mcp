@@ -36,25 +36,34 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
         return this.prepareResult(false, undefined, 'State ID is required');
       }
       
-      // Get services
-      const memoryService = this.agent.getMemoryService();
-      const workspaceService = this.agent.getWorkspaceService();
+      // Get services asynchronously to ensure they're initialized
+      const memoryService = await this.agent.getMemoryServiceAsync();
+      const workspaceService = await this.agent.getWorkspaceServiceAsync();
       
       if (!memoryService || !workspaceService) {
         return this.prepareResult(false, undefined, 'Memory or workspace services not available');
       }
       
-      // If no workspace ID is provided, set it to a default value for system-wide states
+      // Resolve workspace ID properly
+      let workspaceId: string;
       let parsedContext = parseWorkspaceContext(params.workspaceContext);
-      if (!parsedContext?.workspaceId) {
-        params.workspaceContext = {
-          ...(typeof params.workspaceContext === 'object' ? params.workspaceContext : {}),
-          workspaceId: 'system'
-        };
-        parsedContext = parseWorkspaceContext(params.workspaceContext);
-      }
       
-      const workspaceId = parsedContext?.workspaceId;
+      if (parsedContext?.workspaceId) {
+        // Use provided workspace ID
+        workspaceId = parsedContext.workspaceId;
+      } else {
+        // Find the first available workspace
+        const workspaces = await workspaceService.getWorkspaces({ 
+          sortBy: 'lastAccessed', 
+          sortOrder: 'desc'
+        });
+        
+        if (workspaces && workspaces.length > 0) {
+          workspaceId = workspaces[0].id;
+        } else {
+          return this.prepareResult(false, undefined, 'No workspace available. Please create a workspace first.');
+        }
+      }
       const stateId = params.stateId;
       const name = params.name;
       const description = params.description;
@@ -113,8 +122,14 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
           ...tagsToAdd
         ];
         
-        // Update state
-        if (JSON.stringify(currentTags) !== JSON.stringify(updatedTags)) {
+        // Check if tags actually changed
+        const currentTagsSet = new Set(currentTags.filter((tag: any) => typeof tag === 'string') as string[]);
+        const updatedTagsSet = new Set(updatedTags);
+        const tagsChanged = currentTags.length !== updatedTags.length || 
+                           ![...currentTagsSet].every((tag: string) => updatedTagsSet.has(tag));
+        
+        // Update state if tags changed
+        if (tagsChanged) {
           // We need to make a deep copy of the state to modify the nested metadata
           updatedState.state = {
             ...state.state,

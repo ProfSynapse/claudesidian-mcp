@@ -8,7 +8,7 @@ export interface FileEvent {
     operation: FileOperation;
     timestamp: number;
     isSystemOperation: boolean;
-    source: 'vault' | 'manual';
+    source: 'vault' | 'manual' | 'initial_scan';
     priority: 'high' | 'normal' | 'low';
 }
 

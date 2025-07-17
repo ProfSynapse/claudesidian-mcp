@@ -52,11 +52,8 @@ export class MemoryManagerAgent extends BaseAgent {
     this.app = app;
     this.vaultName = sanitizeVaultName(app.vault.getName());
     
-    // Get services if plugin is defined
-    if (plugin && plugin.services) {
-      this.memoryService = plugin.services.memoryService;
-      this.workspaceService = plugin.services.workspaceService;
-    }
+    // Services will be accessed asynchronously when needed
+    // Removed synchronous service access from constructor
     
     // Register session modes
     this.registerMode(new Modes.CreateSessionMode(this));
@@ -111,17 +108,59 @@ export class MemoryManagerAgent extends BaseAgent {
   }
   
   /**
-   * Get the memory service instance
+   * Get the memory service instance synchronously - tries to get from initialized services
    */
-  getMemoryService(): MemoryService {
-    return this.memoryService;
+  getMemoryService(): MemoryService | null {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+    if (!plugin || !plugin.services) {
+      return null;
+    }
+    return plugin.services.memoryService || null;
   }
   
   /**
-   * Get the workspace service instance
+   * Get the workspace service instance synchronously - tries to get from initialized services
    */
-  getWorkspaceService(): WorkspaceService {
-    return this.workspaceService;
+  getWorkspaceService(): WorkspaceService | null {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+    if (!plugin || !plugin.services) {
+      return null;
+    }
+    return plugin.services.workspaceService || null;
+  }
+  
+  /**
+   * Get the memory service instance asynchronously - waits for service initialization
+   */
+  async getMemoryServiceAsync(): Promise<MemoryService | null> {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+    if (!plugin) {
+      return null;
+    }
+    
+    try {
+      return await (plugin as any).getService('memoryService') as MemoryService;
+    } catch (error) {
+      console.warn('[MemoryManagerAgent] Failed to get memory service:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Get the workspace service instance asynchronously - waits for service initialization
+   */
+  async getWorkspaceServiceAsync(): Promise<WorkspaceService | null> {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+    if (!plugin) {
+      return null;
+    }
+    
+    try {
+      return await (plugin as any).getService('workspaceService') as WorkspaceService;
+    } catch (error) {
+      console.warn('[MemoryManagerAgent] Failed to get workspace service:', error);
+      return null;
+    }
   }
   
   /**
@@ -146,8 +185,14 @@ export class MemoryManagerAgent extends BaseAgent {
           // Try to get an active session
           let sessionId: string | null = null;
           
-          // Get the most recent active session for this workspace
-          const activeSessions = await this.memoryService.getSessions(workspaceId, true);
+          // Get memory service and then get the most recent active session for this workspace
+          const memoryService = await this.getMemoryServiceAsync();
+          if (!memoryService) {
+            console.warn('[MemoryManagerAgent] Memory service not available for session management');
+            return super.executeMode(modeSlug, params);
+          }
+          
+          const activeSessions = await memoryService.getSessions(workspaceId, true);
           
           if (activeSessions && activeSessions.length > 0) {
             sessionId = activeSessions[0].id;
@@ -156,7 +201,7 @@ export class MemoryManagerAgent extends BaseAgent {
           // If no active session, create one automatically for non-session modes
           // (for session creation, we don't want to create a session automatically)
           if (!sessionId && !modeSlug.startsWith('createSession')) {
-            const newSession = await this.memoryService.createSession({
+            const newSession = await memoryService.createSession({
               workspaceId: workspaceId,
               name: `Auto-created session for ${modeSlug}`,
               isActive: true,

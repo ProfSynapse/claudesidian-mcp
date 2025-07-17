@@ -38,16 +38,6 @@ export class QueryProcessor {
   async executeQuery(params: ChromaQueryParams): Promise<QueryResult> {
     const { queryEmbeddings, queryTexts, nResults = 10, where, include = ['embeddings', 'metadatas', 'documents'] } = params;
 
-    // Get query embeddings
-    let embeddings: number[][];
-    if (queryEmbeddings) {
-      embeddings = queryEmbeddings;
-    } else if (queryTexts && this.embeddingFunction) {
-      embeddings = await this.embeddingFunction.generate(queryTexts);
-    } else {
-      throw new Error('Either queryEmbeddings or queryTexts must be provided');
-    }
-
     // Get all items that match the where clause
     const allItems = this.repository.getItems(undefined, where);
 
@@ -59,6 +49,68 @@ export class QueryProcessor {
       documents: include.includes('documents') ? [] : undefined,
       distances: include.includes('distances') ? [] : undefined
     };
+
+    // Handle metadata-only queries (no embedding search required)
+    if (!queryEmbeddings && !queryTexts && where) {
+      // Return filtered items without semantic search
+      const filteredItems = allItems.slice(0, nResults);
+      
+      const ids: string[] = [];
+      const embeddings: number[][] = [];
+      const metadatas: Record<string, any>[] = [];
+      const documents: string[] = [];
+      const distances: number[] = [];
+
+      for (const item of filteredItems) {
+        ids.push(item.id);
+        
+        if (include.includes('embeddings')) {
+          embeddings.push(item.embedding);
+        }
+        
+        if (include.includes('metadatas')) {
+          metadatas.push(item.metadata);
+        }
+        
+        if (include.includes('documents')) {
+          documents.push(item.document);
+        }
+        
+        if (include.includes('distances')) {
+          distances.push(0); // No distance calculation for metadata-only queries
+        }
+      }
+
+      results.ids.push(ids);
+      
+      if (include.includes('embeddings')) {
+        results.embeddings!.push(embeddings);
+      }
+      
+      if (include.includes('metadatas')) {
+        results.metadatas!.push(metadatas);
+      }
+      
+      if (include.includes('documents')) {
+        results.documents!.push(documents);
+      }
+      
+      if (include.includes('distances')) {
+        results.distances!.push(distances);
+      }
+
+      return results;
+    }
+
+    // Get query embeddings for semantic search
+    let embeddings: number[][];
+    if (queryEmbeddings) {
+      embeddings = queryEmbeddings;
+    } else if (queryTexts && this.embeddingFunction) {
+      embeddings = await this.embeddingFunction.generate(queryTexts);
+    } else {
+      throw new Error('Either queryEmbeddings or queryTexts must be provided');
+    }
 
     // Process each query embedding
     for (const queryEmbedding of embeddings) {
