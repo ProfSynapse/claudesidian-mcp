@@ -434,6 +434,154 @@ export class WasmFilesystemManager {
   }
 
   /**
+   * SUPERLATIVE batch sync to IndexedDB - eliminates concurrent syncFS operations
+   * Coordinates multiple file writes with single sync operation
+   */
+  async batchSyncToIndexedDB(filenames: string[]): Promise<{ success: boolean; errorReason?: string }> {
+    if (!this.hnswLib?.EmscriptenFileSystemManager) {
+      return { success: false, errorReason: 'EmscriptenFileSystemManager not available' };
+    }
+
+    console.log(`[BATCH-SYNC-SUPERLATIVE] Starting batch sync for ${filenames.length} files`);
+    
+    // Ensure IDBFS is initialized before sync
+    await this.initializeFileSystem();
+
+    // Queue the batch sync operation to prevent concurrent operations
+    const batchSyncOperation = WasmFilesystemManager.syncQueue.then(async () => {
+      try {
+        console.log(`[BATCH-SYNC-SUPERLATIVE] Phase 1: Pre-sync verification`);
+        
+        // Verify filesystem state before batch sync
+        const preCheckPassed = await this.verifyFilesystemState('batch-pre-sync');
+        if (!preCheckPassed) {
+          return { success: false, errorReason: 'Filesystem not ready for batch sync' };
+        }
+
+        // SUPERLATIVE ENHANCEMENT: Allow WASM filesystem to stabilize after multiple writes
+        console.log(`[BATCH-SYNC-SUPERLATIVE] Phase 2: Stabilization delay (500ms)`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log(`[BATCH-SYNC-SUPERLATIVE] Phase 3: Single coordinated syncFS operation`);
+        
+        // Single syncFS operation for all files (prevents concurrent operations)
+        await Promise.race([
+          new Promise<void>((resolve, reject) => {
+            this.hnswLib.EmscriptenFileSystemManager.syncFS(false, (error: any) => {
+              if (error) {
+                console.error(`[BATCH-SYNC-SUPERLATIVE] ❌ Batch syncFS error:`, error);
+                reject(error);
+              } else {
+                console.log(`[BATCH-SYNC-SUPERLATIVE] ✅ Batch syncFS completed successfully`);
+                resolve();
+              }
+            });
+          }),
+          // Timeout for batch operations (longer than single operations)
+          new Promise<void>((_, reject) => {
+            setTimeout(() => reject(new Error('Batch sync operation timed out')), this.config.indexedDb.syncTimeoutMs * 2);
+          })
+        ]);
+
+        // SUPERLATIVE ENHANCEMENT: Extended post-sync delay for IndexedDB commit
+        console.log(`[BATCH-SYNC-SUPERLATIVE] Phase 4: IndexedDB commit stabilization (800ms)`);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        console.log(`[BATCH-SYNC-SUPERLATIVE] Phase 5: Post-sync verification`);
+        const postCheckPassed = await this.verifyFilesystemState('batch-post-sync');
+        
+        if (!postCheckPassed) {
+          return { success: false, errorReason: 'Post-sync filesystem verification failed' };
+        }
+
+        console.log(`[BATCH-SYNC-SUPERLATIVE] ✅ Batch sync completed successfully for ${filenames.length} files`);
+        logger.systemLog(
+          `✅ Successfully batch synced ${filenames.length} files to IndexedDB`,
+          'WasmFilesystemManager'
+        );
+        
+        return { success: true };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[BATCH-SYNC-SUPERLATIVE] ❌ Batch sync failed:`, error);
+        logger.systemError(
+          new Error(`Batch sync to IndexedDB failed: ${errorMessage}`),
+          'WasmFilesystemManager'
+        );
+        return { success: false, errorReason: errorMessage };
+      }
+    });
+
+    WasmFilesystemManager.syncQueue = batchSyncOperation.then(() => {});
+    return await batchSyncOperation;
+  }
+
+  /**
+   * SUPERLATIVE file existence verification with comprehensive checking
+   * Enhanced version of checkFileExists with better error handling
+   */
+  async verifyFileExists(filename: string): Promise<boolean> {
+    console.log(`[VERIFY-FILE-SUPERLATIVE] Verifying existence of ${filename}`);
+    
+    try {
+      // First, ensure filesystem is ready
+      const fsReady = await this.verifyFilesystemState('file-verify');
+      if (!fsReady) {
+        console.error(`[VERIFY-FILE-SUPERLATIVE] ❌ Filesystem not ready for ${filename}`);
+        return false;
+      }
+
+      // Use checkFileExists with retry mechanism
+      const exists = await this.checkFileExists(filename);
+      
+      if (exists) {
+        console.log(`[VERIFY-FILE-SUPERLATIVE] ✅ File ${filename} verified successfully`);
+        
+        // Additional verification: try to get file info if available
+        try {
+          const fileInfo = this.hnswLib?.EmscriptenFileSystemManager?.getFileInfo?.(filename);
+          if (fileInfo) {
+            console.log(`[VERIFY-FILE-SUPERLATIVE] File info for ${filename}:`, fileInfo);
+          }
+        } catch (infoError) {
+          // File info is optional - existence check is primary
+          console.log(`[VERIFY-FILE-SUPERLATIVE] File ${filename} exists but info unavailable (acceptable)`);
+        }
+        
+        return true;
+      } else {
+        console.error(`[VERIFY-FILE-SUPERLATIVE] ❌ File ${filename} not found`);
+        return false;
+      }
+    } catch (error) {
+      console.error(`[VERIFY-FILE-SUPERLATIVE] ❌ Error verifying ${filename}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * SUPERLATIVE concurrent operation prevention system
+   * Prevents the "N FS.syncfs operations in flight" warnings
+   */
+  private static activeSyncOperations = new Set<string>();
+  
+  async preventConcurrentSync(operationId: string): Promise<boolean> {
+    if (WasmFilesystemManager.activeSyncOperations.has(operationId)) {
+      console.warn(`[PREVENT-CONCURRENT] Operation ${operationId} already in progress, skipping`);
+      return false;
+    }
+    
+    WasmFilesystemManager.activeSyncOperations.add(operationId);
+    console.log(`[PREVENT-CONCURRENT] Registered operation ${operationId}, active count: ${WasmFilesystemManager.activeSyncOperations.size}`);
+    return true;
+  }
+  
+  async completeSyncOperation(operationId: string): Promise<void> {
+    WasmFilesystemManager.activeSyncOperations.delete(operationId);
+    console.log(`[PREVENT-CONCURRENT] Completed operation ${operationId}, active count: ${WasmFilesystemManager.activeSyncOperations.size}`);
+  }
+
+  /**
    * Update configuration and reinitialize if needed
    */
   updateConfig(newConfig: HnswConfig): void {

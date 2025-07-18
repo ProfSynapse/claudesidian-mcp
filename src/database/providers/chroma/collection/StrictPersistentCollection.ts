@@ -178,14 +178,11 @@ export class StrictPersistentCollection implements Collection {
    * Load collection data from disk
    */
   async loadFromDisk(): Promise<void> {
-    console.log(`[COLLECTION-LOAD-DEBUG] Loading ${this.name} from disk`);
     const result = await this.collectionPersistence.loadFromDisk();
     if (!result.success) {
-      console.error(`[COLLECTION-LOAD-DEBUG] Failed to load ${this.name}:`, result.error);
       throw new Error(result.error);
     }
     const itemCount = this.repository.count();
-    console.log(`[COLLECTION-LOAD-DEBUG] Successfully loaded ${this.name} with ${itemCount} items`);
   }
 
   /**

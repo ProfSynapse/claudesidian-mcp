@@ -170,6 +170,18 @@ export class HnswIndexLoadingService {
         nextId: metadata.itemCount || 0,
       };
 
+      // CRITICAL FIX: Verify the loaded index actually contains data before populating mappings
+      const actualIndexCount = loadResult.index.getCurrentCount?.() || 0;
+      console.log(`[INDEX-LOADING-DEBUG] Loaded index for ${collectionName} has ${actualIndexCount} items`);
+      
+      if (actualIndexCount === 0 && metadata.itemCount > 0) {
+        logger.systemWarn(
+          `❌ Index file appears empty for ${collectionName}: loaded ${actualIndexCount} items but metadata claims ${metadata.itemCount}`,
+          'HnswIndexLoadingService'
+        );
+        return { success: false, indexType: 'single', itemsIndexed: 0, itemsSkipped: 0, dimension };
+      }
+      
       // Populate the mapping data from current items with performance tracking
       logger.systemLog(`🔄 Populating index mappings for ${currentItems.length} items...`, 'HnswIndexLoadingService');
       const populateStartTime = Date.now();

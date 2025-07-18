@@ -44,7 +44,9 @@ export class UsageSettingsTab extends BaseSettingsTab {
         this.vaultLibrarian = vaultLibrarian || null;
         
         // Initialize the UsageStatsService and UsageTracker
-        this.initializeUsageStatsService();
+        this.initializeUsageStatsService().catch(error => {
+            console.error('Failed to initialize UsageStatsService:', error);
+        });
         this.initializeEmbeddingUsageTracker();
         
         // Set up storage event listener for collection deletion events
@@ -68,17 +70,31 @@ export class UsageSettingsTab extends BaseSettingsTab {
     /**
      * Initialize the UsageStatsService and VectorStore
      */
-    private initializeUsageStatsService(): void {
+    private async initializeUsageStatsService(): Promise<void> {
         const plugin = (window as any).app.plugins.plugins['claudesidian-mcp'];
         if (!plugin) {
             console.warn('Plugin not found for UsageStatsService');
             return;
         }
         
-        // Get the vector store first, as it's needed for both the UsageStatsService and DeleteCollectionComponent
-        this.vectorStore = plugin.services?.vectorStore || plugin.vectorStore;
+        // Wait for services to be available through lazy loading
+        try {
+            // Try to get the service asynchronously with a timeout
+            this.usageStatsService = await plugin.getService('usageStatsService', 5000);
+            if (this.usageStatsService) {
+                console.log('UsageSettingsTab: Using global UsageStatsService from service manager');
+                
+                // Also get other required services
+                this.vectorStore = await plugin.getService('vectorStore', 5000);
+                this.embeddingService = await plugin.getService('embeddingService', 5000);
+                return;
+            }
+        } catch (error) {
+            console.warn('Failed to get UsageStatsService from service manager:', error);
+        }
         
-        // Initialize the embedding service
+        // Fallback to synchronous access
+        this.vectorStore = plugin.services?.vectorStore || plugin.vectorStore;
         this.embeddingService = plugin.services?.embeddingService || plugin.embeddingService;
         
         // First try to get the global service instance
@@ -102,6 +118,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
                     this.settings,
                     plugin.eventManager // Pass the global event manager
                 );
+                console.log('Created new local UsageStatsService instance (fallback)');
             } else {
                 console.warn('Missing dependencies for UsageStatsService', {
                     embeddingService: !!embeddingService,
@@ -188,7 +205,7 @@ export class UsageSettingsTab extends BaseSettingsTab {
             this.isRefreshing = true;
             
             // First, try to get the most recent service instance in case it was updated
-            this.initializeUsageStatsService();
+            await this.initializeUsageStatsService();
             
             // If we have the UsageStatsService, use it to refresh stats 
             if (this.usageStatsService) {

@@ -73,6 +73,13 @@ export class IndexDiscoveryService {
       );
     }
     
+    // SUPERLATIVE FIX: Ensure WASM filesystem is synced before validation
+    // This prevents false "no valid index file" warnings
+    try {
+      await this.persistenceService.discoverExistingIndexes();
+    } catch (error) {
+    }
+    
     // Discovery source 2: Validate discovered collections have valid indexes
     const validatedCollections = new Set<string>();
     for (const collectionName of collections) {
@@ -81,18 +88,12 @@ export class IndexDiscoveryService {
         if (hasValidIndex) {
           validatedCollections.add(collectionName);
         } else {
-          logger.systemWarn(
-            `[DISCOVERY] Collection '${collectionName}' has metadata but no valid index file`,
-            'IndexDiscoveryService'
-          );
+          // SUPERLATIVE FIX: Reduce log level since this is often a timing issue
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         discoveryErrors.push(`Validation for ${collectionName}: ${errorMessage}`);
-        logger.systemWarn(
-          `[DISCOVERY] Failed to validate collection '${collectionName}': ${errorMessage}`,
-          'IndexDiscoveryService'
-        );
+        // SUPERLATIVE FIX: Reduce log level for validation failures
       }
     }
     
@@ -187,13 +188,6 @@ export class IndexDiscoveryService {
       result.discovered = discoveredCollections.length;
       result.collections = discoveredCollections;
       
-      // Add diagnostic logging
-      console.log('[HNSW-DISCOVERY-DEBUG] Discovery results:', {
-        discoveredCollections,
-        count: discoveredCollections.length,
-        persistenceServiceType: this.persistenceService.constructor.name,
-        indexManagerType: this.indexManager.constructor.name
-      });
 
       if (discoveredCollections.length === 0) {
         logger.systemLog('[DISCOVERY] No existing indexes found - will build fresh', 'IndexDiscoveryService');

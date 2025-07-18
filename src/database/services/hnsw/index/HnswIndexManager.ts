@@ -87,7 +87,6 @@ export class HnswIndexManager {
    * @returns Index creation result
    */
   async createOrUpdateIndex(collectionName: string, items: DatabaseItem[]): Promise<IndexCreationResult> {
-    console.log(`[HnswIndexManager] createOrUpdateIndex called for ${collectionName} with ${items.length} items`);
     logger.systemLog(
       `Creating/updating index for collection: ${collectionName} with ${items.length} items`,
       'HnswIndexManager'
@@ -110,10 +109,17 @@ export class HnswIndexManager {
       const dimension = validationResult.dimension!;
 
       // Try to load existing index first
+      console.log(`[INDEX-MANAGER-DEBUG] Checking if can load persisted index for ${collectionName}`);
       const canLoadPersisted = await this.persistenceService.canLoadPersistedIndex(collectionName, validItems);
+      console.log(`[INDEX-MANAGER-DEBUG] canLoadPersisted for ${collectionName}: ${canLoadPersisted}`);
+      
       if (canLoadPersisted) {
+        console.log(`[INDEX-MANAGER-DEBUG] Attempting to load persisted index for ${collectionName}`);
         const loadResult = await this.loadingService.loadPersistedIndex(collectionName, validItems, dimension);
+        console.log(`[INDEX-MANAGER-DEBUG] Load result for ${collectionName}:`, loadResult);
+        
         if (loadResult.success) {
+          console.log(`[INDEX-MANAGER-DEBUG] ✅ Successfully loaded persisted index for ${collectionName}, skipping creation`);
           // Store the loaded index
           this.storeLoadedIndex(collectionName, loadResult);
           
@@ -134,10 +140,15 @@ export class HnswIndexManager {
             dimension: loadResult.dimension,
             partitionCount: loadResult.partitionCount,
           };
+        } else {
+          console.log(`[INDEX-MANAGER-DEBUG] ❌ Load failed for ${collectionName}, will create from scratch`);
         }
+      } else {
+        console.log(`[INDEX-MANAGER-DEBUG] Cannot load persisted index for ${collectionName}, will create from scratch`);
       }
 
       // Create new index from scratch
+      console.log(`[INDEX-MANAGER-DEBUG] Creating index from scratch for ${collectionName}`);
       return await this.createIndexFromScratch(collectionName, validItems, dimension);
     } catch (error) {
       logger.systemError(

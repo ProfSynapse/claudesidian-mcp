@@ -183,7 +183,9 @@ export class HnswIndexCreationService {
     );
 
     // Save the actual index to IndexedDB
+    console.log(`[INDEX-CREATION-DEBUG] About to call persistenceService.saveIndex for ${collectionName}`);
     const saveResult = await this.persistenceService.saveIndex(collectionName, hnswIndex.index, items, false);
+    console.log(`[INDEX-CREATION-DEBUG] persistenceService.saveIndex result for ${collectionName}:`, saveResult);
 
     // CRITICAL FIX: Only save metadata if index persistence was successful
     if (!saveResult.success) {
@@ -258,7 +260,9 @@ export class HnswIndexCreationService {
       itemCount: partition.idToItem.size,
     }));
     
+    console.log(`[INDEX-CREATION-DEBUG] About to call persistenceService.savePartitionedIndex for ${collectionName} with ${partitionsWithCounts.length} partitions`);
     await this.persistenceService.savePartitionedIndex(collectionName, partitionsWithCounts, items);
+    console.log(`[INDEX-CREATION-DEBUG] persistenceService.savePartitionedIndex completed for ${collectionName}`);
 
     // Save metadata so the index can be discovered on next startup
     const metadata = {

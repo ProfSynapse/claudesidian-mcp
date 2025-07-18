@@ -5,7 +5,7 @@
  * Updated June 17, 2025 with latest model availability and pricing
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { BaseAdapter } from '../BaseAdapter';
 import { 
   GenerateOptions, 
@@ -21,36 +21,30 @@ export class GoogleAdapter extends BaseAdapter {
   readonly name = 'google';
   readonly baseUrl = 'https://generativelanguage.googleapis.com/v1';
   
-  private client: GoogleGenerativeAI;
+  private client: GoogleGenAI;
 
   constructor(apiKey: string, model?: string) {
     super(apiKey, model || 'gemini-2.5-flash');
     
-    this.client = new GoogleGenerativeAI(this.apiKey);
+    this.client = new GoogleGenAI({ apiKey: this.apiKey });
     this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     return this.withRetry(async () => {
       try {
-        const model = this.client.getGenerativeModel({ 
-          model: options?.model || this.currentModel 
-        });
-
-        const generationConfig: any = {
-          temperature: options?.temperature,
-          maxOutputTokens: options?.maxTokens,
-          topK: 40,
-          topP: 0.95
-        };
-
-        // Build request
         const request: any = {
+          model: options?.model || this.currentModel,
           contents: [{
             role: 'user',
             parts: [{ text: prompt }]
           }],
-          generationConfig
+          config: {
+            temperature: options?.temperature,
+            maxOutputTokens: options?.maxTokens,
+            topK: 40,
+            topP: 0.95
+          }
         };
 
         // Add system instruction if provided
@@ -67,19 +61,19 @@ export class GoogleAdapter extends BaseAdapter {
 
         // Add tools if provided
         if (options?.tools && options.tools.length > 0) {
-          request.tools = this.convertTools(options.tools);
+          request.config.tools = this.convertTools(options.tools);
         }
 
-        const response = await model.generateContent(request);
+        const response = await this.client.models.generateContent(request);
         
         const extractedUsage = this.extractGeminiUsage(response);
-        const finishReason = this.mapFinishReason(response.response.candidates?.[0]?.finishReason);
+        const finishReason = this.mapFinishReason(response.candidates?.[0]?.finishReason);
         const metadata = {
-          thinking: options?.enableThinking ? response.response.candidates?.[0]?.content?.parts?.find((p: any) => p.thought !== undefined) : undefined
+          thinking: options?.enableThinking ? response.candidates?.[0]?.content?.parts?.find((p: any) => p.thought !== undefined) : undefined
         };
 
         return await this.buildLLMResponse(
-          response.response.text() || '',
+          response.text || '',
           options?.model || this.currentModel,
           extractedUsage,
           metadata,
@@ -94,16 +88,13 @@ export class GoogleAdapter extends BaseAdapter {
   async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
     return this.withRetry(async () => {
       try {
-        const model = this.client.getGenerativeModel({ 
-          model: options?.model || this.currentModel 
-        });
-
         const request: any = {
+          model: options?.model || this.currentModel,
           contents: [{
             role: 'user',
             parts: [{ text: prompt }]
           }],
-          generationConfig: {
+          config: {
             temperature: options?.temperature,
             maxOutputTokens: options?.maxTokens
           }
@@ -115,28 +106,30 @@ export class GoogleAdapter extends BaseAdapter {
           };
         }
 
-        const streamingResponse = await model.generateContentStream(request);
+        const streamingResponse = await this.client.models.generateContentStream(request);
         
         let fullText = '';
         let usage: any = undefined;
+        let finalChunk: any = undefined;
 
-        for await (const chunk of streamingResponse.stream) {
-          const chunkText = chunk.text();
+        for await (const chunk of streamingResponse) {
+          const chunkText = chunk.text;
           if (chunkText) {
             fullText += chunkText;
             options?.onToken?.(chunkText);
           }
+          finalChunk = chunk;
         }
 
-        const finalResponse = await streamingResponse.response;
-        usage = this.extractGeminiUsage({ response: finalResponse });
+        // Get usage from the final chunk
+        usage = this.extractGeminiUsage(finalChunk);
 
         const response: LLMResponse = {
           text: fullText,
           model: options?.model || this.currentModel,
           provider: this.name,
           usage,
-          finishReason: this.mapFinishReason(finalResponse.candidates?.[0]?.finishReason)
+          finishReason: this.mapFinishReason(finalChunk?.candidates?.[0]?.finishReason)
         };
 
         options?.onComplete?.(response);
@@ -205,7 +198,7 @@ export class GoogleAdapter extends BaseAdapter {
   }
 
   private extractGeminiUsage(response: any): any {
-    const usage = response.response?.usageMetadata;
+    const usage = response.usageMetadata || response.response?.usageMetadata;
     if (usage) {
       return {
         promptTokens: usage.promptTokenCount || 0,

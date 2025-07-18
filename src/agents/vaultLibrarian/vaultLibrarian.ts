@@ -3,8 +3,7 @@ import { BaseAgent } from '../baseAgent';
 import { VaultLibrarianConfig } from './config';
 import {
   SearchMode,
-  SearchFilesMode,
-  SearchFoldersMode,
+  SearchDirectoryMode,
   SearchMemoryMode,
   BatchMode
 } from './modes';
@@ -104,21 +103,9 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.workspaceService || undefined
     ));
     
-    // Register specific search modes
-    this.registerMode(new SearchFilesMode(
-      plugin || ({ app } as any),
-      this.hnswSearchService || undefined,
-      this.embeddingService || undefined, 
-      this.memoryService || undefined,
-      this.workspaceService || undefined
-    ));
-    
-    this.registerMode(new SearchFoldersMode(
-      plugin || ({ app } as any),
-      this.hnswSearchService || undefined,
-      this.embeddingService || undefined, 
-      this.memoryService || undefined,
-      this.workspaceService || undefined
+    // Register unified directory search mode
+    this.registerMode(new SearchDirectoryMode(
+      plugin || ({ app } as any)
     ));
     
     this.registerMode(new SearchMemoryMode(

@@ -154,6 +154,68 @@ export class HnswPersistenceOrchestrator {
         return false;
       }
 
+      // CRITICAL FIX: Perform a quick verification that the index file actually exists and contains data
+      // SUPERLATIVE ENHANCEMENT: Handle both single and partitioned indexes correctly
+      try {
+        let quickLoadTest: any;
+        
+        if (metadata.isPartitioned) {
+          quickLoadTest = await this.indexOperations.loadPartitionedIndex(collectionName, metadata);
+        } else {
+          quickLoadTest = await this.indexOperations.loadIndex(collectionName, metadata);
+        }
+        
+        if (!quickLoadTest.success) {
+          logger.systemWarn(
+            `[PHASE2-VERIFICATION] Index file verification failed for ${collectionName} (${metadata.isPartitioned ? 'partitioned' : 'single'}): ${quickLoadTest.errorReason}`,
+            'HnswPersistenceOrchestrator'
+          );
+          await this.cleanupPersistedIndex(collectionName);
+          return false;
+        }
+        
+        // Additional check: verify the loaded index actually has data
+        if (metadata.isPartitioned) {
+          // For partitioned indexes, check if we have the expected partitions
+          if (quickLoadTest.partitions && Array.isArray(quickLoadTest.partitions)) {
+            const expectedPartitions = metadata.partitionCount || 1;
+            if (quickLoadTest.partitions.length !== expectedPartitions) {
+              logger.systemWarn(
+                `[PHASE2-VERIFICATION] Partition count mismatch for ${collectionName}: expected ${expectedPartitions}, found ${quickLoadTest.partitions.length}`,
+                'HnswPersistenceOrchestrator'
+              );
+              await this.cleanupPersistedIndex(collectionName);
+              return false;
+            }
+          }
+        } else {
+          // For single indexes, check item count
+          if (quickLoadTest.index?.getCurrentCount) {
+            const actualCount = quickLoadTest.index.getCurrentCount();
+            if (actualCount === 0 && metadata.itemCount > 0) {
+              logger.systemWarn(
+                `[PHASE2-VERIFICATION] Index file is empty for ${collectionName}: expected ${metadata.itemCount} items but found ${actualCount}`,
+                'HnswPersistenceOrchestrator'
+              );
+              await this.cleanupPersistedIndex(collectionName);
+              return false;
+            }
+          }
+        }
+        
+        logger.systemLog(
+          `[PHASE2-VERIFICATION] ✅ Index verification passed for ${collectionName} (${metadata.isPartitioned ? 'partitioned' : 'single'})`,
+          'HnswPersistenceOrchestrator'
+        );
+      } catch (error) {
+        logger.systemWarn(
+          `[PHASE2-VERIFICATION] Index verification error for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`,
+          'HnswPersistenceOrchestrator'
+        );
+        await this.cleanupPersistedIndex(collectionName);
+        return false;
+      }
+
       return true;
     } catch (error) {
       logger.systemWarn(
@@ -347,7 +409,7 @@ export class HnswPersistenceOrchestrator {
     isPartitioned: boolean,
     partitionCount?: number
   ): Promise<IndexSaveResult> {
-    return this.indexOperations.saveIndex(collectionName, hnswIndex, items, isPartitioned, partitionCount);
+    return await this.indexOperations.saveIndex(collectionName, hnswIndex, items, isPartitioned, partitionCount);
   }
 
   /**

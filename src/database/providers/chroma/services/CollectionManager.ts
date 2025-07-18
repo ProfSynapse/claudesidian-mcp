@@ -396,15 +396,11 @@ export class CollectionManager implements ICollectionManager {
    * Used when collections are loaded from disk with actual data
    */
   registerCollection(collectionName: string, collection: Collection): void {
-    console.log(`[COLLECTION-MANAGER-DEBUG] Registering collection ${collectionName} with actual data`);
-    
     // Add to collections set
     this.collections.add(collectionName);
     
     // Add to cache
     this.collectionCache.set(collectionName, collection);
-    
-    console.log(`[COLLECTION-MANAGER-DEBUG] Successfully registered ${collectionName}, cache size: ${this.collectionCache.size}`);
   }
 
   /**

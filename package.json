@@ -44,7 +44,7 @@
     },
     "dependencies": {
         "@anthropic-ai/sdk": "^0.55.1",
-        "@google/generative-ai": "^0.24.1",
+        "@google/genai": "^1.0.0",
         "@mistralai/mistralai": "^1.7.2",
         "@modelcontextprotocol/sdk": "^1.13.3",
         "axios": "^1.10.0",

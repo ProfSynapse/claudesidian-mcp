@@ -162,7 +162,8 @@ export class HnswIndexOperations {
   }
 
   /**
-   * Save HNSW index with metadata
+   * Save HNSW index with SUPERLATIVE sync coordination
+   * Enhanced to work with improved batch sync system
    */
   async saveIndex(
     collectionName: string,
@@ -174,73 +175,50 @@ export class HnswIndexOperations {
     const startTime = Date.now();
     const filename = IndexedDbUtils.generateSafeFilename(collectionName);
 
+    const filesystemReady = await this.ensureFilesystemReady();
+    
+    if (!filesystemReady) {
+      return {
+        success: false,
+        filename,
+        errorReason: 'WASM filesystem not ready',
+        saveTime: Date.now() - startTime,
+      };
+    }
+
     try {
-      // Save the index to WASM filesystem
-      const writeResult = await hnswIndex.writeIndex(filename);
-      let success: boolean;
-
-      if (writeResult instanceof Promise) {
-        success = await writeResult;
-      } else {
-        success = writeResult === true || writeResult === undefined;
-      }
-
-      if (!success) {
+      const writeResult = await this.writeIndexWithoutSync(hnswIndex, filename);
+      
+      if (!writeResult.success) {
         return {
           success: false,
           filename,
-          errorReason: 'Failed to write index to WASM filesystem',
+          errorReason: `Failed to write index to WASM filesystem: ${writeResult.errorReason}`,
           saveTime: Date.now() - startTime,
         };
       }
 
       const syncStartTime = Date.now();
+      const syncResult = await this.filesystemManager.batchSyncToIndexedDB([filename]);
       
-      // Sync to IndexedDB using filesystem manager
-      await this.filesystemManager.syncToIndexedDB();
-      
-      // CRITICAL FIX: Verify persistence by attempting to load back the index
-      const verificationStartTime = Date.now();
-      let verificationSuccess = false;
-      
-      try {
-        // Try to verify the file exists after sync
-        await this.filesystemManager.syncFromIndexedDB();
-        const fileExists = await this.filesystemManager.checkFileExists(filename);
-        
-        if (fileExists) {
-          verificationSuccess = true;
-          logger.systemLog(
-            `✅ Index file ${filename} verified in WASM filesystem after sync`,
-            'HnswIndexOperations'
-          );
-        } else {
-          logger.systemWarn(
-            `⚠️ Index file ${filename} not found after sync - persistence may have failed`,
-            'HnswIndexOperations'
-          );
-        }
-      } catch (error) {
-        logger.systemWarn(
-          `⚠️ Failed to verify index persistence for ${filename}: ${error instanceof Error ? error.message : String(error)}`,
-          'HnswIndexOperations'
-        );
+      if (!syncResult.success) {
+        return {
+          success: false,
+          filename,
+          errorReason: `Sync to IndexedDB failed: ${syncResult.errorReason}`,
+          saveTime: Date.now() - startTime,
+        };
       }
       
-      const verificationTime = Date.now() - verificationStartTime;
       const syncTime = Date.now() - syncStartTime;
+      const verificationStartTime = Date.now();
+      const verificationSuccess = await this.filesystemManager.verifyFileExists(filename);
+      const verificationTime = Date.now() - verificationStartTime;
       const totalSaveTime = Date.now() - startTime;
-
-      // Estimate file size
       const estimatedSize = this.estimateIndexSize(items.length, this.extractDimension(items));
 
-      logger.systemLog(
-        `Successfully saved HNSW index for ${collectionName} (${items.length} items, ${estimatedSize} bytes estimated, verification: ${verificationSuccess ? 'PASSED' : 'FAILED'})`,
-        'HnswIndexOperations'
-      );
-
       return {
-        success: verificationSuccess, // Only report success if verification passed
+        success: verificationSuccess,
         filename,
         saveTime: totalSaveTime,
         syncTime,
@@ -252,10 +230,7 @@ export class HnswIndexOperations {
       const saveTime = Date.now() - startTime;
       const errorMessage = `Failed to save index for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`;
       
-      logger.systemError(
-        new Error(errorMessage),
-        'HnswIndexOperations'
-      );
+      logger.systemError(new Error(errorMessage), 'HnswIndexOperations');
 
       return {
         success: false,
@@ -267,7 +242,8 @@ export class HnswIndexOperations {
   }
 
   /**
-   * Save partitioned HNSW index
+   * Save partitioned HNSW index with SUPERLATIVE batch processing
+   * CRITICAL FIX: Eliminates concurrent syncFS operations that corrupt IndexedDB
    */
   async savePartitionedIndex(
     collectionName: string,
@@ -277,30 +253,37 @@ export class HnswIndexOperations {
     const startTime = Date.now();
     const baseFilename = IndexedDbUtils.generateSafeFilename(collectionName);
 
-    try {
-      let totalSyncTime = 0;
-      let totalEstimatedSize = 0;
+    
+    // CRITICAL FIX: Ensure WASM filesystem is ready before attempting to save partitions
+    if (!(await this.ensureFilesystemReady())) {
+      logger.systemLog(`[SAVE-PARTITIONED-WASM] Filesystem not ready for ${collectionName}, cannot save partitioned index`, 'HnswIndexOperations');
+      return {
+        success: false,
+        filename: baseFilename,
+        errorReason: 'WASM filesystem not ready',
+        saveTime: Date.now() - startTime,
+      };
+    }
 
-      // Save each partition
+    try {
+      let totalEstimatedSize = 0;
+      const partitionFilenames: string[] = [];
+
+      // PHASE 1: Write all partitions to WASM filesystem WITHOUT syncing (prevents concurrent syncFS)
       for (let i = 0; i < partitions.length; i++) {
         const partition = partitions[i];
         const partitionFilename = `${baseFilename}_part_${i}`;
+        partitionFilenames.push(partitionFilename);
 
-        // Save partition to WASM filesystem
-        const writeResult = await partition.index.writeIndex(partitionFilename);
-        let success: boolean;
-
-        if (writeResult instanceof Promise) {
-          success = await writeResult;
-        } else {
-          success = writeResult === true || writeResult === undefined;
-        }
-
-        if (!success) {
+        
+        // SUPERLATIVE FIX: Use writeIndexWithoutSync to prevent automatic syncing
+        const writeResult = await this.writeIndexWithoutSync(partition.index, partitionFilename);
+        
+        if (!writeResult.success) {
           return {
             success: false,
             filename: partitionFilename,
-            errorReason: `Failed to write partition ${i} to WASM filesystem`,
+            errorReason: `Failed to write partition ${i} to WASM filesystem: ${writeResult.errorReason}`,
             saveTime: Date.now() - startTime,
           };
         }
@@ -308,25 +291,55 @@ export class HnswIndexOperations {
         totalEstimatedSize += this.estimateIndexSize(partition.itemCount, this.extractDimension(items));
       }
 
+      // PHASE 2: Single, coordinated sync to IndexedDB (eliminates concurrent operations)
       const syncStartTime = Date.now();
       
-      // Sync all partitions to IndexedDB using filesystem manager
-      await this.filesystemManager.syncToIndexedDB();
+      const syncResult = await this.filesystemManager.batchSyncToIndexedDB(partitionFilenames);
       
-      totalSyncTime = Date.now() - syncStartTime;
+      if (!syncResult.success) {
+        return {
+          success: false,
+          filename: baseFilename,
+          errorReason: `Batch sync to IndexedDB failed: ${syncResult.errorReason}`,
+          saveTime: Date.now() - startTime,
+        };
+      }
+      
+      const totalSyncTime = Date.now() - syncStartTime;
       const totalSaveTime = Date.now() - startTime;
 
-      logger.systemLog(
-        `Successfully saved partitioned HNSW index for ${collectionName} (${partitions.length} partitions, ${totalEstimatedSize} bytes estimated)`,
-        'HnswIndexOperations'
-      );
+      // PHASE 3: Verification that all partitions persisted correctly
+      const verificationStartTime = Date.now();
+      let verificationSuccess = true;
+      
+      try {
+        for (const filename of partitionFilenames) {
+          const exists = await this.filesystemManager.verifyFileExists(filename);
+          if (!exists) {
+            verificationSuccess = false;
+            break;
+          }
+        }
+      } catch (error) {
+        verificationSuccess = false;
+      }
+      
+      const verificationTime = Date.now() - verificationStartTime;
+
+      const resultMessage = verificationSuccess 
+        ? `Successfully saved and verified partitioned HNSW index for ${collectionName} (${partitions.length} partitions, ${totalEstimatedSize} bytes estimated)`
+        : `Saved partitioned HNSW index for ${collectionName} but verification failed (${partitions.length} partitions, ${totalEstimatedSize} bytes estimated)`;
+
+      logger.systemLog(resultMessage, 'HnswIndexOperations');
 
       return {
-        success: true,
+        success: verificationSuccess,
         filename: baseFilename,
         saveTime: totalSaveTime,
         syncTime: totalSyncTime,
+        verificationTime,
         estimatedSize: totalEstimatedSize,
+        verified: verificationSuccess,
       };
     } catch (error) {
       const saveTime = Date.now() - startTime;
@@ -343,6 +356,46 @@ export class HnswIndexOperations {
         errorReason: errorMessage,
         saveTime,
       };
+    }
+  }
+
+  /**
+   * Write index to WASM filesystem WITHOUT automatic syncing
+   * SUPERLATIVE enhancement to prevent concurrent syncFS operations
+   */
+  private async writeIndexWithoutSync(
+    hnswIndex: any, 
+    filename: string
+  ): Promise<{ success: boolean; errorReason?: string }> {
+    try {
+      // Check if the index has a writeIndexWithoutSync method (newer WASM versions)
+      if (typeof hnswIndex.writeIndexWithoutSync === 'function') {
+        const result = await hnswIndex.writeIndexWithoutSync(filename);
+        const success = result === true || result === undefined;
+        return { success, errorReason: success ? undefined : 'writeIndexWithoutSync returned false' };
+      }
+      
+      // Fallback: Temporarily disable auto-sync during write
+      
+      // Try to disable auto-sync if the WASM library supports it
+      const hadAutoSync = this.hnswLib?.EmscriptenFileSystemManager?.getAutoSync?.();
+      if (typeof this.hnswLib?.EmscriptenFileSystemManager?.setAutoSync === 'function') {
+        this.hnswLib.EmscriptenFileSystemManager.setAutoSync(false);
+      }
+      
+      try {
+        const writeResult = await hnswIndex.writeIndex(filename);
+        const success = writeResult === true || writeResult === undefined;
+        return { success, errorReason: success ? undefined : 'writeIndex returned false' };
+      } finally {
+        // Re-enable auto-sync if it was previously enabled
+        if (hadAutoSync && typeof this.hnswLib?.EmscriptenFileSystemManager?.setAutoSync === 'function') {
+          this.hnswLib.EmscriptenFileSystemManager.setAutoSync(true);
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return { success: false, errorReason: errorMessage };
     }
   }
 

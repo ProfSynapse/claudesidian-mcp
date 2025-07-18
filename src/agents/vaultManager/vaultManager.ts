@@ -2,8 +2,7 @@ import { App, TFile, TFolder } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { VaultManagerConfig } from './config';
 import { 
-  ListFilesMode, 
-  ListFoldersMode, 
+  ListDirectoryMode, 
   CreateFolderMode, 
   EditFolderMode,
   DeleteFolderMode,
@@ -37,8 +36,7 @@ export class VaultManagerAgent extends BaseAgent {
     this.vaultName = sanitizeVaultName(app.vault.getName());
     
     // Register modes
-    this.registerMode(new ListFilesMode(app));
-    this.registerMode(new ListFoldersMode(app));
+    this.registerMode(new ListDirectoryMode(app));
     this.registerMode(new CreateFolderMode(app));
     this.registerMode(new EditFolderMode(app));
     this.registerMode(new DeleteFolderMode(app));

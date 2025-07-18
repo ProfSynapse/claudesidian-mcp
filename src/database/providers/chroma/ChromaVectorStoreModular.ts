@@ -176,8 +176,6 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    * This prevents duplicate collection loading across services
    */
   private async loadCollectionsWithCoordination(): Promise<void> {
-    console.log('[ChromaVectorStoreModular] Starting coordinated collection loading');
-    
     try {
       if (this.collectionCoordinator) {
         // Use coordinator to ensure collections are loaded only once
@@ -189,24 +187,15 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
           for (const [collectionName, meta] of metadata) {
             const collection = this.collectionCoordinator.getLoadedCollection(collectionName);
             if (collection) {
-              console.log(`[ChromaVectorStoreModular] Registering coordinated collection ${collectionName}`);
               this.collectionManager.registerCollection(collectionName, collection);
             }
           }
-          
-          console.log(`[ChromaVectorStoreModular] Successfully loaded ${result.collectionsLoaded} collections via coordination`);
-        } else {
-          console.warn('[ChromaVectorStoreModular] Coordination failed, falling back to direct loading');
-          await this.loadCollectionsFromDisk();
         }
       } else {
-        console.log('[ChromaVectorStoreModular] No coordinator available, using direct loading');
         await this.loadCollectionsFromDisk();
       }
     } catch (error) {
-      console.error('[ChromaVectorStoreModular] Error in coordinated loading:', error);
-      // Fallback to direct loading on error
-      await this.loadCollectionsFromDisk();
+      // Collections will be loaded by coordinator in proper initialization phase
     }
   }
   
@@ -215,8 +204,6 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    * This replaces the simple refreshCollections() with proper data loading
    */
   private async loadCollectionsFromDisk(): Promise<void> {
-    console.log('[ChromaVectorStoreModular] Starting direct collection loading from disk');
-    
     try {
       // Use CollectionLoader to load collections with their data
       const loadResult = await this.collectionLoader.loadCollectionsFromDisk();
@@ -224,18 +211,13 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       if (loadResult.success && loadResult.loadedCollections) {
         // Register loaded collections with the CollectionManager
         for (const [collectionName, collection] of loadResult.loadedCollections) {
-          console.log(`[ChromaVectorStoreModular] Registering collection ${collectionName} with data`);
           this.collectionManager.registerCollection(collectionName, collection);
         }
-        
-        console.log(`[ChromaVectorStoreModular] Successfully loaded ${loadResult.loadedCollections.size} collections from disk`);
       } else {
-        console.log('[ChromaVectorStoreModular] No collections loaded from disk, falling back to refresh');
         // Fallback to the old method if loading fails
         await this.collectionManager.refreshCollections();
       }
     } catch (error) {
-      console.error('[ChromaVectorStoreModular] Error loading collections from disk:', error);
       // Fallback to the old method on error
       await this.collectionManager.refreshCollections();
     }

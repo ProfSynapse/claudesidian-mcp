@@ -192,33 +192,21 @@ export class HnswSearchService {
    * Now uses coordination system to prevent duplicate initialization
    */
   async ensureFullyInitialized(): Promise<void> {
-    console.log('[HNSW-INIT-DEBUG] ensureFullyInitialized called, current state:', {
-      fullyInitialized: this.fullyInitialized,
-      isFullyReady: this.isFullyReady,
-      hasStateManager: !!this.initializationStateManager,
-      hasCollectionCoordinator: !!this.collectionCoordinator
-    });
-
     // First ensure basic initialization
     await this.initialize();
     
     if (this.fullyInitialized) {
-      console.log('[HNSW-INIT-DEBUG] Already fully initialized, returning early');
       return;
     }
     
     if (this.initializationStateManager) {
       // Use coordination system to prevent duplicate full initialization
-      console.log('[HNSW-INIT-DEBUG] Using coordination system for full initialization');
       const result = await this.initializationStateManager.ensureInitialized(
         'hnsw_full_init',
         async () => {
-          console.log('[HNSW-INIT-DEBUG] Coordination system calling performFullInitialization');
           await this.performFullInitialization();
         }
       );
-      
-      console.log('[HNSW-INIT-DEBUG] Coordination system result:', result);
       
       if (!result.success) {
         logger.systemError(
@@ -231,7 +219,6 @@ export class HnswSearchService {
       }
     } else {
       // Fallback to direct initialization if coordination not available
-      console.log('[HNSW-INIT-DEBUG] No coordination system, calling performFullInitialization directly');
       await this.performFullInitialization();
     }
   }
@@ -254,17 +241,11 @@ export class HnswSearchService {
     try {
       // Wait for collections to be loaded if coordinator is available
       if (this.collectionCoordinator) {
-        console.log('[HNSW-INIT-DEBUG] Waiting for collections to be loaded');
         const collectionsResult = await this.collectionCoordinator.waitForCollections();
-        console.log('[HNSW-INIT-DEBUG] Collections loading result:', collectionsResult);
         logger.systemLog('HNSW waiting for collections completed', 'HnswSearchService');
-      } else {
-        console.log('[HNSW-INIT-DEBUG] No collection coordinator available');
       }
       
-      console.log('[HNSW-INIT-DEBUG] Starting full initialization orchestrator');
       const result = await this.initializationOrchestrator.executeFullInitialization();
-      console.log('[HNSW-INIT-DEBUG] Full initialization orchestrator result:', result);
       
       // Always mark as initialized to prevent repeated attempts
       this.fullyInitialized = true;
