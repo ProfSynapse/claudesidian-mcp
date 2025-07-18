@@ -554,10 +554,11 @@ export class HnswSearchService {
     const stats = this.services.indexManager?.getIndexStatistics(collectionName);
     if (!stats) return null;
     
+    // CRITICAL FIX: The statistics service returns 'totalItems', not 'itemCount'
     return {
-      itemCount: stats.itemCount || 0,
+      itemCount: stats.totalItems || 0,
       dimension: stats.dimension || 0,
-      partitions: stats.partitions
+      partitions: stats.partitionCount
     };
   }
 

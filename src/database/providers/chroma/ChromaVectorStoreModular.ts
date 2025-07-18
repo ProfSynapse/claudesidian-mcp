@@ -380,10 +380,14 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
     
     const collection = await this.collectionManager.getOrCreateCollection(collectionName);
     
+    // CRITICAL FIX: When no limit specified, get actual count and use that
+    // This prevents ChromaDB from using default limit of 10
+    const actualLimit = options?.limit || await this.count(collectionName);
+    
     // Get all items without specifying IDs
     const results = await collection.get({
       include: ['embeddings', 'metadatas', 'documents'],
-      limit: options?.limit,
+      limit: actualLimit,
       offset: options?.offset
     } as any);
     

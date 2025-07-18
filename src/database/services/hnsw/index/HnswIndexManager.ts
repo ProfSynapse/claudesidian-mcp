@@ -87,6 +87,7 @@ export class HnswIndexManager {
    * @returns Index creation result
    */
   async createOrUpdateIndex(collectionName: string, items: DatabaseItem[]): Promise<IndexCreationResult> {
+    console.log(`[HnswIndexManager] createOrUpdateIndex called for ${collectionName} with ${items.length} items`);
     logger.systemLog(
       `Creating/updating index for collection: ${collectionName} with ${items.length} items`,
       'HnswIndexManager'
@@ -172,8 +173,24 @@ export class HnswIndexManager {
     const creationResult = await this.creationService.createIndexFromScratch(collectionName, items, dimension);
     
     if (creationResult.success) {
+      console.log(`[HnswIndexManager] About to store created index for ${collectionName}:`, {
+        indexType: creationResult.indexType,
+        itemsIndexed: creationResult.itemsIndexed,
+        hasHnswIndex: !!(creationResult as any).hnswIndex,
+        hasPartitionedIndex: !!(creationResult as any).partitionedIndex
+      });
+      
       // Store the created index
       this.storeCreatedIndex(collectionName, creationResult);
+      
+      // Verify storage immediately
+      const hasStoredIndex = this.hasIndex(collectionName);
+      console.log(`[HnswIndexManager] Index storage verification for ${collectionName}: hasIndex = ${hasStoredIndex}`);
+      
+      if (hasStoredIndex) {
+        const stats = this.getIndexStatistics(collectionName);
+        console.log(`[HnswIndexManager] Immediate stats after storage for ${collectionName}:`, stats);
+      }
       
       // Record build metrics
       const buildTime = Date.now() - startTime;
@@ -193,10 +210,37 @@ export class HnswIndexManager {
    * @param creationResult Creation result containing the index
    */
   private storeCreatedIndex(collectionName: string, creationResult: any): void {
+    console.log('[HnswIndexManager] Storing created index:', {
+      collectionName,
+      indexType: creationResult.indexType,
+      hasHnswIndex: !!creationResult.hnswIndex,
+      hasPartitionedIndex: !!creationResult.partitionedIndex,
+      itemsIndexed: creationResult.itemsIndexed
+    });
+    
     if (creationResult.indexType === 'single' && creationResult.hnswIndex) {
       this.singleIndexes.set(collectionName, creationResult.hnswIndex);
+      console.log('[HnswIndexManager] ✅ Stored single index for', collectionName);
+      
+      // Verify the stored index has items
+      const storedIndex = this.singleIndexes.get(collectionName);
+      if (storedIndex && storedIndex.idToItem) {
+        console.log('[HnswIndexManager] Stored index verification:', {
+          idToItemSize: storedIndex.idToItem.size,
+          itemIdToHnswIdSize: storedIndex.itemIdToHnswId?.size || 0,
+          nextId: storedIndex.nextId
+        });
+      }
     } else if (creationResult.indexType === 'partitioned' && creationResult.partitionedIndex) {
       this.partitionedIndexes.set(collectionName, creationResult.partitionedIndex);
+      console.log('[HnswIndexManager] ✅ Stored partitioned index for', collectionName);
+    } else {
+      console.error('[HnswIndexManager] ❌ Failed to store index - missing expected index object:', {
+        collectionName,
+        indexType: creationResult.indexType,
+        hasHnswIndex: !!creationResult.hnswIndex,
+        hasPartitionedIndex: !!creationResult.partitionedIndex
+      });
     }
   }
 
@@ -297,7 +341,19 @@ export class HnswIndexManager {
     const singleIndex = this.singleIndexes.get(collectionName);
     const partitionedIndex = this.partitionedIndexes.get(collectionName);
     
-    return this.statisticsService.getIndexStatistics(collectionName, singleIndex, partitionedIndex);
+    console.log(`[HnswIndexManager] getIndexStatistics for ${collectionName}:`, {
+      hasSingleIndex: !!singleIndex,
+      hasPartitionedIndex: !!partitionedIndex,
+      singleIndexesSize: this.singleIndexes.size,
+      partitionedIndexesSize: this.partitionedIndexes.size,
+      singleIndexKeys: Array.from(this.singleIndexes.keys()),
+      partitionedIndexKeys: Array.from(this.partitionedIndexes.keys())
+    });
+    
+    const stats = this.statisticsService.getIndexStatistics(collectionName, singleIndex, partitionedIndex);
+    console.log(`[HnswIndexManager] Statistics result for ${collectionName}:`, stats);
+    
+    return stats;
   }
 
   /**

@@ -279,6 +279,7 @@ export class InitializationCoordinator implements IInitializationCoordinator {
   /**
    * Trigger HNSW index creation from loaded collections
    * This is the missing piece - collections are loaded but indexes aren't created
+   * CRITICAL FIX: Actually verify that indexes were built, not just that the method completed
    */
   private async triggerHnswIndexCreation(
     componentsInitialized: string[], 
@@ -309,25 +310,74 @@ export class InitializationCoordinator implements IInitializationCoordinator {
       throw new Error('hnswService.ensureFullyInitialized is not a function');
     }
     
-    try {
-      await hnswService.ensureFullyInitialized();
-    } catch (methodError) {
-      throw new Error(`ensureFullyInitialized method threw error: ${methodError instanceof Error ? methodError.message : String(methodError)}`);
+    // Get vector store to check collection count
+    const vectorStore = await this.serviceManager.get('vectorStore');
+    if (!vectorStore) {
+      console.warn('[InitializationCoordinator] Vector store not available for index verification');
     }
     
-    // Verify indexes were actually created
     try {
-      const hasIndex = hnswService.hasIndex && hnswService.hasIndex('file_embeddings');
-      if (!hasIndex) {
-        throw new Error('ensureFullyInitialized completed but no index exists for file_embeddings collection');
+      console.log('[InitializationCoordinator] 🔧 Calling ensureFullyInitialized to trigger index building');
+      await hnswService.ensureFullyInitialized();
+      
+      // CRITICAL FIX: Verify that indexes were actually built by checking if they exist and have data
+      console.log('[InitializationCoordinator] 🔍 Verifying index creation after ensureFullyInitialized');
+      
+      let indexVerified = false;
+      let indexCount = 0;
+      
+      if (typeof hnswService.hasIndex === 'function') {
+        const hasFileEmbeddingsIndex = hnswService.hasIndex('file_embeddings');
+        console.log('[InitializationCoordinator] Has file_embeddings index:', hasFileEmbeddingsIndex);
+        
+        if (hasFileEmbeddingsIndex && typeof hnswService.getIndexStats === 'function') {
+          const stats = hnswService.getIndexStats('file_embeddings');
+          console.log('[InitializationCoordinator] Index stats for file_embeddings:', stats);
+          
+          if (stats && stats.itemCount > 0) {
+            indexVerified = true;
+            indexCount = stats.itemCount;
+            console.log(`[InitializationCoordinator] ✅ Index verified: ${indexCount} items in file_embeddings index`);
+          } else {
+            console.log('[InitializationCoordinator] ⚠️ Index exists but has no items');
+          }
+        } else if (hasFileEmbeddingsIndex) {
+          // Index exists but we can't verify item count - still consider it a success
+          indexVerified = true;
+          console.log('[InitializationCoordinator] ✅ Index exists (cannot verify item count)');
+        }
       }
-    } catch (verificationError) {
-      console.warn('[InitializationCoordinator] Could not verify index creation:', verificationError);
-      // Don't fail here as hasIndex method might not exist
+      
+      // Also check if collections have data that should be indexed
+      if (vectorStore && typeof vectorStore.count === 'function') {
+        try {
+          const collectionCount = await vectorStore.count('file_embeddings');
+          console.log(`[InitializationCoordinator] Collection file_embeddings has ${collectionCount} items`);
+          
+          if (collectionCount > 0 && !indexVerified) {
+            console.warn(`[InitializationCoordinator] ⚠️ Collection has ${collectionCount} items but no index was built - this indicates a problem`);
+            throw new Error(`Collection has ${collectionCount} items but no HNSW index was created`);
+          } else if (collectionCount === 0) {
+            console.log('[InitializationCoordinator] Collection is empty - no index expected');
+            indexVerified = true; // Empty collection is valid
+          }
+        } catch (countError) {
+          console.warn('[InitializationCoordinator] Could not verify collection count:', countError);
+        }
+      }
+      
+      if (!indexVerified) {
+        throw new Error('ensureFullyInitialized completed but no valid indexes were found');
+      }
+      
+    } catch (methodError) {
+      const errorMessage = methodError instanceof Error ? methodError.message : String(methodError);
+      console.error(`[InitializationCoordinator] Index creation failed: ${errorMessage}`);
+      throw new Error(`Index creation failed: ${errorMessage}`);
     }
     
     componentsInitialized.push('hnswIndexes');
-    console.log('[InitializationCoordinator] ✅ HNSW indexes created successfully');
+    console.log('[InitializationCoordinator] ✅ HNSW index creation verified successfully');
   }
 
   /**

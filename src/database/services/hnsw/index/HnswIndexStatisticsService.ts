@@ -137,6 +137,17 @@ export class HnswIndexStatisticsService {
   ): IndexStatistics {
     const performanceMetrics = this.performanceMetrics.get(collectionName);
 
+    console.log('[HnswIndexStatisticsService] Getting single index statistics:', {
+      collectionName,
+      hasIndex: !!singleIndex.index,
+      hasIdToItem: !!singleIndex.idToItem,
+      idToItemSize: singleIndex.idToItem?.size || 0,
+      hasItemIdToHnswId: !!singleIndex.itemIdToHnswId,
+      itemIdToHnswIdSize: singleIndex.itemIdToHnswId?.size || 0,
+      nextId: singleIndex.nextId,
+      indexNumDimensions: singleIndex.index?.getNumDimensions() || 0
+    });
+
     return {
       collectionName,
       indexType: 'single',

@@ -108,8 +108,9 @@ export class WasmFilesystemManager {
         const preCheckPassed = await this.verifyFilesystemState('pre-save-sync');
         logger.systemLog(`Pre-save-sync filesystem check: ${preCheckPassed ? 'PASSED' : 'FAILED'}`, 'WasmFilesystemManager');
         
-        // Add small delay to batch multiple writeIndex operations
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // CRITICAL FIX: Increase delay to ensure WASM filesystem operations complete
+        // Larger indexes need more time to stabilize before sync
+        await new Promise(resolve => setTimeout(resolve, 200));
         
         // Use Promise wrapper to ensure proper async handling with timeout
         await Promise.race([
@@ -134,8 +135,9 @@ export class WasmFilesystemManager {
         const postCheckPassed = await this.verifyFilesystemState('post-save-sync');
         logger.systemLog(`Post-save-sync filesystem check: ${postCheckPassed ? 'PASSED' : 'FAILED'}`, 'WasmFilesystemManager');
         
-        // Add post-sync delay to ensure operation completes
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // CRITICAL FIX: Increase post-sync delay to ensure IndexedDB commit completes
+        // Large indexes need more time for IndexedDB to fully commit data
+        await new Promise(resolve => setTimeout(resolve, 300));
         
         logger.systemLog('✅ Successfully synced TO IndexedDB with verification', 'WasmFilesystemManager');
       } catch (error) {
@@ -197,8 +199,9 @@ export class WasmFilesystemManager {
             })
           ]);
           
-          // CRITICAL: Verify filesystem is ready and files are accessible
-          const stabilizationDelay = Math.min(100 + (attempt * 25), 300);
+          // CRITICAL FIX: Increase stabilization delay for reliable file access
+          // IndexedDB → WASM filesystem sync needs more time to stabilize
+          const stabilizationDelay = Math.min(200 + (attempt * 50), 500);
           await new Promise(resolve => setTimeout(resolve, stabilizationDelay));
           
           // Post-sync verification

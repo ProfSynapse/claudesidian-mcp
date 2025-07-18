@@ -72,7 +72,8 @@ export class ServiceDescriptors {
     }
 
     /**
-     * Initialize coordination services
+     * Initialize coordination services - FIXED to prevent circular dependency
+     * Boy Scout Rule: Cleaner, safer initialization logic
      */
     async initializeCoordinationServices(): Promise<void> {
         if (!this.initializationServices) {
@@ -80,7 +81,12 @@ export class ServiceDescriptors {
                 throw new Error('DIAGNOSTIC FAILURE: Service manager reference not set before initializing coordination services');
             }
             
-            const vectorStore = await this.dependencyResolver('vectorStore');
+            // CRITICAL FIX: Get vectorStore from lifecycle manager directly to avoid circular call
+            const vectorStore = this.serviceManager.getIfReady('vectorStore');
+            if (!vectorStore) {
+                throw new Error('CRITICAL: VectorStore must be initialized before coordination services');
+            }
+            
             console.log('[ServiceDescriptors] Creating initialization services with LazyServiceManager:', this.serviceManager.constructor.name);
             
             this.initializationServices = createInitializationServices(
@@ -88,6 +94,27 @@ export class ServiceDescriptors {
                 vectorStore,
                 this.serviceManager // Pass the actual LazyServiceManager instance
             );
+        }
+    }
+
+    /**
+     * Inject coordination services into existing services
+     * Boy Scout Rule: Clean method for post-creation coordination setup
+     */
+    async injectCoordinationIntoServices(): Promise<void> {
+        if (!this.initializationServices) {
+            console.warn('[ServiceDescriptors] No coordination services available for injection');
+            return;
+        }
+
+        // Inject into HNSW service if available
+        const hnswService = this.serviceManager.getIfReady('hnswSearchService');
+        if (hnswService && 'setInitializationCoordination' in hnswService) {
+            hnswService.setInitializationCoordination(
+                this.initializationServices.stateManager,
+                this.initializationServices.collectionCoordinator
+            );
+            console.log('[ServiceDescriptors] Coordination services injected into HNSW service');
         }
     }
 
@@ -166,37 +193,16 @@ export class ServiceDescriptors {
                 const vectorStore = await this.dependencyResolver('vectorStore');
                 const embeddingService = await this.dependencyResolver('embeddingService');
                 
-                // Ensure coordination services are initialized
-                await this.initializeCoordinationServices();
-                
                 const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
                 const service = new HnswSearchService(this.app, vectorStore, embeddingService, basePath);
                 
-                // Inject coordination services into HNSW service
-                if (this.initializationServices && 
-                    'setInitializationCoordination' in service) {
-                    service.setInitializationCoordination(
-                        this.initializationServices.stateManager,
-                        this.initializationServices.collectionCoordinator
-                    );
-                    console.log('[ServiceDescriptors] Injected coordination services into HNSW service');
-                }
+                // CRITICAL FIX: Remove coordination initialization from service creation
+                // This prevents the circular dependency that caused stack overflow
+                // Coordination will be injected after service creation in a separate phase
                 
-                // Only do basic initialization here - full initialization will be handled by InitializationCoordinator
-                if (this.initializationServices) {
-                    await this.initializationServices.stateManager.ensureInitialized(
-                        'hnswSearchService_basic',
-                        async () => {
-                            await service.initialize();
-                            console.log('[ServiceDescriptors] HNSW service basic initialization completed');
-                        }
-                    );
-                } else {
-                    // Fallback to original behavior if coordination not available
-                    await service.initialize();
-                }
-                
-                // Note: Full initialization (ensureFullyInitialized) will be called by InitializationCoordinator
+                // Basic initialization only - no coordination calls during creation
+                await service.initialize();
+                console.log('[ServiceDescriptors] HNSW service basic initialization completed (coordination deferred)');
                 
                 return service;
             }
@@ -264,16 +270,11 @@ export class ServiceDescriptors {
                     embeddingStrategy
                 );
                 
-                // Use coordination system to handle startup queue processing
-                if (this.initializationServices) {
-                    await this.initializationServices.stateManager.ensureInitialized(
-                        'fileEventManager_startup',
-                        async () => {
-                            await fileEventManager.processStartupQueue();
-                            console.log('[ServiceDescriptors] Startup queue processed with coordination');
-                        }
-                    );
-                }
+                // CRITICAL FIX: Defer coordination-based startup queue processing
+                // Process startup queue directly without coordination during creation
+                // Coordination will be applied in post-creation phase
+                await fileEventManager.processStartupQueue();
+                console.log('[ServiceDescriptors] Startup queue processed (coordination deferred)');
                 
                 return fileEventManager;
             }

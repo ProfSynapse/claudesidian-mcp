@@ -56,6 +56,7 @@ export class LazyServiceManager implements IServiceManager {
 
     /**
      * Get a service instance, initializing if needed
+     * Enhanced with circular dependency prevention
      */
     async get<T>(name: string): Promise<T> {
         const descriptor = this.registry.getDescriptor(name);
@@ -66,6 +67,15 @@ export class LazyServiceManager implements IServiceManager {
         // Check if already ready
         if (this.lifecycle.isReady(name)) {
             return this.lifecycle.getServiceInstance(name) as T;
+        }
+
+        // CRITICAL FIX: Prevent circular dependency stack overflow
+        // Check if initialization is already in progress for this service
+        if (this.lifecycle.isInitializing(name)) {
+            const existingPromise = this.lifecycle.getInitializationPromise(name);
+            if (existingPromise) {
+                return existingPromise as Promise<T>;
+            }
         }
 
         // Initialize dependencies first
@@ -110,19 +120,47 @@ export class LazyServiceManager implements IServiceManager {
     }
     
     /**
-     * Initialize the coordination system
+     * Initialize the coordination system using phased approach
+     * CRITICAL FIX: Prevent circular dependency by deferring coordination until core services exist
      */
     private async initializeCoordinationSystem(): Promise<void> {
         try {
-            // Initialize coordination services in ServiceDescriptors
+            // Phase 1: Ensure core services exist first without coordination
+            console.log('[LazyServiceManager] Phase 1: Initializing core services');
+            await this.initializeCoreServices();
+            
+            // Phase 2: Initialize coordination services now that vectorStore exists
+            console.log('[LazyServiceManager] Phase 2: Initializing coordination services');
             await this.serviceDescriptors.initializeCoordinationServices();
             this.initializationCoordinator = this.serviceDescriptors.getInitializationCoordinator();
+            
+            // Phase 3: Inject coordination into existing services
+            console.log('[LazyServiceManager] Phase 3: Injecting coordination into services');
+            await this.serviceDescriptors.injectCoordinationIntoServices();
             
             if (this.initializationCoordinator) {
                 console.log('[LazyServiceManager] Initialization coordinator ready');
             }
         } catch (error) {
             console.warn('[LazyServiceManager] Failed to initialize coordination system:', error);
+        }
+    }
+
+    /**
+     * Initialize core services that coordination depends on
+     * Boy Scout Rule: Clean, focused method with single responsibility
+     */
+    private async initializeCoreServices(): Promise<void> {
+        // Initialize vectorStore first as it's the foundation for coordination
+        try {
+            const vectorStoreDescriptor = this.registry.getDescriptor('vectorStore');
+            if (vectorStoreDescriptor && !this.lifecycle.isReady('vectorStore')) {
+                await this.lifecycle.initialize(vectorStoreDescriptor);
+                console.log('[LazyServiceManager] Core vectorStore initialized');
+            }
+        } catch (error) {
+            console.warn('[LazyServiceManager] Failed to initialize core vectorStore:', error);
+            throw error;
         }
     }
 

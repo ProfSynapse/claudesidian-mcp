@@ -7,6 +7,7 @@ import { IServiceLifecycle, IServiceDescriptor, ServiceStatus, LoadingStage } fr
 export class ServiceLifecycleManager implements IServiceLifecycle {
     private serviceStatuses = new Map<string, ServiceStatus>();
     private initializationMutex = new Map<string, Promise<any>>();
+    private initializingServices = new Set<string>(); // Track services currently being initialized
 
     /**
      * Initialize a service using its descriptor
@@ -25,6 +26,9 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
             return this.initializationMutex.get(serviceName) as Promise<T>;
         }
 
+        // CRITICAL FIX: Mark service as being initialized to prevent circular dependency
+        this.initializingServices.add(serviceName);
+
         // Start initialization
         const initPromise = this.performInitialization(descriptor);
         this.initializationMutex.set(serviceName, initPromise);
@@ -42,8 +46,9 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
                 instance: instance // Store the actual instance
             });
 
-            // Clean up mutex
+            // Clean up tracking
             this.initializationMutex.delete(serviceName);
+            this.initializingServices.delete(serviceName);
             
             return instance;
         } catch (error) {
@@ -56,8 +61,9 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
                 error: error as Error
             });
 
-            // Clean up mutex
+            // Clean up tracking
             this.initializationMutex.delete(serviceName);
+            this.initializingServices.delete(serviceName);
             throw error;
         }
     }
@@ -126,6 +132,22 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
      */
     getAllStatuses(): Map<string, ServiceStatus> {
         return new Map(this.serviceStatuses);
+    }
+
+    /**
+     * Check if service is currently being initialized
+     * Boy Scout Rule: Clean method for circular dependency prevention
+     */
+    isInitializing(serviceName: string): boolean {
+        return this.initializingServices.has(serviceName);
+    }
+
+    /**
+     * Get initialization promise for service currently being initialized
+     * Boy Scout Rule: Provides access to existing promise to prevent duplicate initialization
+     */
+    getInitializationPromise(serviceName: string): Promise<any> | null {
+        return this.initializationMutex.get(serviceName) || null;
     }
 
     /**

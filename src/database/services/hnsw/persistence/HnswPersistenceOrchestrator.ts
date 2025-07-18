@@ -43,7 +43,9 @@ export interface IndexSaveResult {
   filename: string;
   saveTime?: number;
   syncTime?: number;
+  verificationTime?: number;
   estimatedSize?: number;
+  verified?: boolean;
   errorReason?: string;
 }
 

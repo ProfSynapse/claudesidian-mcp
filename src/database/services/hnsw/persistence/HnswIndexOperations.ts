@@ -199,6 +199,35 @@ export class HnswIndexOperations {
       // Sync to IndexedDB using filesystem manager
       await this.filesystemManager.syncToIndexedDB();
       
+      // CRITICAL FIX: Verify persistence by attempting to load back the index
+      const verificationStartTime = Date.now();
+      let verificationSuccess = false;
+      
+      try {
+        // Try to verify the file exists after sync
+        await this.filesystemManager.syncFromIndexedDB();
+        const fileExists = await this.filesystemManager.checkFileExists(filename);
+        
+        if (fileExists) {
+          verificationSuccess = true;
+          logger.systemLog(
+            `✅ Index file ${filename} verified in WASM filesystem after sync`,
+            'HnswIndexOperations'
+          );
+        } else {
+          logger.systemWarn(
+            `⚠️ Index file ${filename} not found after sync - persistence may have failed`,
+            'HnswIndexOperations'
+          );
+        }
+      } catch (error) {
+        logger.systemWarn(
+          `⚠️ Failed to verify index persistence for ${filename}: ${error instanceof Error ? error.message : String(error)}`,
+          'HnswIndexOperations'
+        );
+      }
+      
+      const verificationTime = Date.now() - verificationStartTime;
       const syncTime = Date.now() - syncStartTime;
       const totalSaveTime = Date.now() - startTime;
 
@@ -206,16 +235,18 @@ export class HnswIndexOperations {
       const estimatedSize = this.estimateIndexSize(items.length, this.extractDimension(items));
 
       logger.systemLog(
-        `Successfully saved HNSW index for ${collectionName} (${items.length} items, ${estimatedSize} bytes estimated)`,
+        `Successfully saved HNSW index for ${collectionName} (${items.length} items, ${estimatedSize} bytes estimated, verification: ${verificationSuccess ? 'PASSED' : 'FAILED'})`,
         'HnswIndexOperations'
       );
 
       return {
-        success: true,
+        success: verificationSuccess, // Only report success if verification passed
         filename,
         saveTime: totalSaveTime,
         syncTime,
+        verificationTime,
         estimatedSize,
+        verified: verificationSuccess,
       };
     } catch (error) {
       const saveTime = Date.now() - startTime;

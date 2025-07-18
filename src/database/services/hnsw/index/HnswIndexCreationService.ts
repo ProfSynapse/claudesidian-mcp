@@ -161,8 +161,44 @@ export class HnswIndexCreationService {
       nextId,
     };
 
+    // CRITICAL VALIDATION: Ensure index has data before saving
+    const actualItemsIndexed = items.length - skippedCount;
+    if (actualItemsIndexed === 0) {
+      logger.systemError(
+        new Error(`Cannot save empty index for ${collectionName} - no items were successfully added`),
+        'HnswIndexCreationService'
+      );
+      return {
+        success: false,
+        indexType: 'single',
+        itemsIndexed: 0,
+        itemsSkipped: items.length,
+        dimension,
+      };
+    }
+
+    logger.systemLog(
+      `💾 Saving HNSW index for ${collectionName} with ${actualItemsIndexed} items (${skippedCount} skipped)`,
+      'HnswIndexCreationService'
+    );
+
     // Save the actual index to IndexedDB
-    await this.persistenceService.saveIndex(collectionName, hnswIndex.index, items, false);
+    const saveResult = await this.persistenceService.saveIndex(collectionName, hnswIndex.index, items, false);
+
+    // CRITICAL FIX: Only save metadata if index persistence was successful
+    if (!saveResult.success) {
+      logger.systemError(
+        new Error(`Failed to persist index for ${collectionName}: ${saveResult.errorReason}`),
+        'HnswIndexCreationService'
+      );
+      return {
+        success: false,
+        indexType: 'single',
+        itemsIndexed: 0,
+        itemsSkipped: items.length,
+        dimension,
+      };
+    }
 
     // Save metadata so the index can be discovered on next startup
     const metadata = {
