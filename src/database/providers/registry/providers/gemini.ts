@@ -6,6 +6,7 @@ import {
   PROVIDER_CONFIGS,
   EmbeddingProviderError
 } from '../utils/EmbeddingProviderUtils';
+import { GoogleGenAI } from '@google/genai';
 
 /**
  * Google Gemini embedding provider configuration
@@ -45,10 +46,11 @@ export const GeminiProviderConfig: EmbeddingProviderConfig = {
   
   createEmbeddingFunction: async (settings: ProviderSettings): Promise<ChromaEmbeddingFunction | null> => {
     try {
-      // Direct Google Gemini API implementation (ChromaDB package not available in Obsidian environment)
+      // Use new Google GenAI package for embedding generation
       logProviderOperation('Google Gemini', 'initialization', 0, settings.model);
       
       const config = PROVIDER_CONFIGS.gemini;
+      const client = new GoogleGenAI({ apiKey: settings.apiKey });
       
       return {
         generate: async (texts: string[]): Promise<number[][]> => {
@@ -56,35 +58,57 @@ export const GeminiProviderConfig: EmbeddingProviderConfig = {
           
           const embeddings: number[][] = [];
           
-          // Process texts one by one (Gemini API doesn't support batch processing for embedContent)
+          // Process texts one by one (batch processing may not be supported)
           for (const text of texts) {
-            const response = await fetchWithRetry(
-              `https://generativelanguage.googleapis.com/v1beta/${settings.model}:embedContent?key=${settings.apiKey}`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
+            try {
+              const response = await client.models.embedContent({
+                model: settings.model,
+                contents: [{
+                  parts: [{ text }]
+                }]
+              });
+              
+              if (!response.embeddings || !response.embeddings[0] || !response.embeddings[0].values) {
+                throw new EmbeddingProviderError(
+                  'Invalid response format from Google Gemini API: missing embeddings[0].values',
+                  undefined,
+                  'Google Gemini'
+                );
+              }
+              
+              embeddings.push(response.embeddings[0].values);
+            } catch (error) {
+              // If the new package method fails, fall back to direct API call
+              console.warn('Google GenAI package method failed, falling back to direct API call:', error);
+              
+              const response = await fetchWithRetry(
+                `https://generativelanguage.googleapis.com/v1beta/${settings.model}:embedContent?key=${settings.apiKey}`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    content: {
+                      parts: [{ text }]
+                    }
+                  })
                 },
-                body: JSON.stringify({
-                  content: {
-                    parts: [{ text }]
-                  }
-                })
-              },
-              'Google Gemini',
-              config.retry
-            );
-            
-            const data = await response.json();
-            if (!data.embedding || !data.embedding.values) {
-              throw new EmbeddingProviderError(
-                'Invalid response format from Google Gemini API: missing embedding.values',
-                undefined,
-                'Google Gemini'
+                'Google Gemini',
+                config.retry
               );
+              
+              const data = await response.json();
+              if (!data.embedding || !data.embedding.values) {
+                throw new EmbeddingProviderError(
+                  'Invalid response format from Google Gemini API: missing embedding.values',
+                  undefined,
+                  'Google Gemini'
+                );
+              }
+              
+              embeddings.push(data.embedding.values);
             }
-            
-            embeddings.push(data.embedding.values);
           }
           
           return embeddings;
