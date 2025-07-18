@@ -499,28 +499,19 @@ ${previousSessionId ? 'This session continues work from a previous session.' : '
           default: 'standard'
         },
         workspaceContext: {
-          oneOf: [
-            {
-              type: 'object',
-              properties: {
-                workspaceId: { 
-                  type: 'string',
-                  description: 'Workspace identifier (optional - uses default workspace if not provided)' 
-                },
-                workspacePath: { 
-                  type: 'array', 
-                  items: { type: 'string' },
-                  description: 'Path from root workspace to specific phase/task'
-                }
-              },
-              description: 'Optional workspace context object - if not provided, uses a default workspace'
-            },
-            {
+          type: 'object',
+          properties: {
+            workspaceId: { 
               type: 'string',
-              description: 'Optional workspace context as JSON string - must contain workspaceId field'
+              description: 'Workspace identifier (optional - uses default workspace if not provided)' 
+            },
+            workspacePath: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: 'Path from root workspace to specific phase/task'
             }
-          ],
-          description: 'Optional workspace context - if not provided, uses a default workspace'
+          },
+          description: 'Optional workspace context object - if not provided, uses a default workspace. Can also be provided as a JSON string containing workspaceId field.'
         }
       }
     };

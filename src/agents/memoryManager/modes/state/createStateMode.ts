@@ -762,28 +762,19 @@ ${contextSummary}`;
           description: 'Optional reason for creating this state'
         },
         workspaceContext: {
-          oneOf: [
-            {
-              type: 'object',
-              properties: {
-                workspaceId: { 
-                  type: 'string',
-                  description: 'Workspace identifier (optional - uses first available workspace if not provided)' 
-                },
-                workspacePath: { 
-                  type: 'array', 
-                  items: { type: 'string' },
-                  description: 'Path from root workspace to specific phase/task'
-                }
-              },
-              description: 'Optional workspace context object'
-            },
-            {
+          type: 'object',
+          properties: {
+            workspaceId: { 
               type: 'string',
-              description: 'Optional workspace context as JSON string - should contain workspaceId field'
+              description: 'Workspace identifier (optional - uses first available workspace if not provided)' 
+            },
+            workspacePath: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: 'Path from root workspace to specific phase/task'
             }
-          ],
-          description: 'Optional workspace context - if not provided, uses the first available workspace'
+          },
+          description: 'Optional workspace context object - if not provided, uses the first available workspace. Can also be provided as a JSON string containing workspaceId field.'
         },
         sessionId: {
           type: 'string',
