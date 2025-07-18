@@ -68,18 +68,14 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       properties: {
         id: {
           type: 'string',
-          description: 'Unique ID of the prompt to retrieve'
+          description: 'Unique ID of the prompt to retrieve (either id or name must be provided)'
         },
         name: {
           type: 'string',
-          description: 'Name of the prompt to retrieve'
+          description: 'Name of the prompt to retrieve (either id or name must be provided)'
         }
       },
-      required: [],
-      anyOf: [
-        { required: ['id'] },
-        { required: ['name'] }
-      ]
+      required: []
     };
 
     return mergeWithCommonSchema(customSchema);
@@ -98,20 +94,16 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       properties: {
         ...commonSchema.properties,
         data: {
-          oneOf: [
-            { type: 'null' },
-            {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                description: { type: 'string' },
-                prompt: { type: 'string' },
-                isEnabled: { type: 'boolean' }
-              },
-              required: ['id', 'name', 'description', 'prompt', 'isEnabled']
-            }
-          ]
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            prompt: { type: 'string' },
+            isEnabled: { type: 'boolean' }
+          },
+          required: ['id', 'name', 'description', 'prompt', 'isEnabled'],
+          description: 'Prompt data (null if not found)'
         }
       }
     };

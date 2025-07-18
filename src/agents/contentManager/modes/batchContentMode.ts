@@ -448,142 +448,71 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
               },
               params: {
                 type: 'object',
-                description: 'Operation-specific parameters. IMPORTANT: All operations require a "filePath" parameter.',
-                allOf: [
-                  {
-                    if: {
-                      properties: { 
-                        "type": { "enum": ["read"] } 
-                      }
-                    },
-                    then: {
-                      properties: {
-                        filePath: { type: 'string', description: 'Path to the file to read' },
-                        limit: { type: 'number', description: 'Optional number of lines to read' },
-                        offset: { type: 'number', description: 'Optional line number to start reading from (1-based)' },
-                        includeLineNumbers: { type: 'boolean', description: 'Whether to include line numbers in the output' }
-                      },
-                      required: ['filePath']
-                    }
+                description: 'Operation-specific parameters. Required fields depend on operation type. All operations require filePath. See individual operation documentation for required fields.',
+                properties: {
+                  filePath: { 
+                    type: 'string', 
+                    description: 'Path to the file (required for all operations)' 
                   },
-                  {
-                    if: {
-                      properties: { 
-                        "type": { "enum": ["create"] }
-                      }
-                    },
-                    then: {
-                      properties: {
-                        filePath: { type: 'string', description: 'Path to the file to create' },
-                        content: { type: 'string', description: 'Content to write to the file' }
-                      },
-                      required: ['filePath', 'content']
-                    }
+                  content: { 
+                    type: 'string', 
+                    description: 'Content to write/append/prepend (required for create, append, prepend operations)' 
                   },
-                  {
-                    if: {
-                      properties: { 
-                        "type": { "enum": ["append", "prepend"] }
-                      }
-                    },
-                    then: {
-                      properties: {
-                        filePath: { type: 'string', description: 'Path to the file to modify' },
-                        content: { type: 'string', description: 'Content to append/prepend to the file' }
-                      },
-                      required: ['filePath', 'content']
-                    }
+                  oldContent: { 
+                    type: 'string', 
+                    description: 'Content to replace (required for replace operations)' 
                   },
-                  {
-                    if: {
-                      properties: { 
-                        "type": { "enum": ["replace"] }
-                      }
-                    },
-                    then: {
-                      properties: {
-                        filePath: { type: 'string', description: 'Path to the file to modify' },
-                        oldContent: { type: 'string', description: 'Content to replace' },
-                        newContent: { type: 'string', description: 'Content to replace with' },
-                        similarityThreshold: { 
-                          type: 'number', 
-                          description: 'Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)',
-                          default: 0.95,
-                          minimum: 0.0,
-                          maximum: 1.0
-                        }
-                      },
-                      required: ['filePath', 'oldContent', 'newContent']
-                    }
+                  newContent: { 
+                    type: 'string', 
+                    description: 'Content to replace with (required for replace, replaceByLine operations)' 
                   },
-                  {
-                    if: {
-                      properties: { 
-                        "type": { "enum": ["replaceByLine"] }
-                      }
-                    },
-                    then: {
-                      properties: {
-                        filePath: { type: 'string', description: 'Path to the file to modify' },
-                        startLine: { type: 'number', description: 'Start line number (1-based)' },
-                        endLine: { type: 'number', description: 'End line number (1-based, inclusive)' },
-                        newContent: { type: 'string', description: 'Content to replace with' }
-                      },
-                      required: ['filePath', 'startLine', 'endLine', 'newContent']
-                    }
+                  startLine: { 
+                    type: 'number', 
+                    description: 'Start line number (required for replaceByLine operations, 1-based)' 
                   },
-                  {
-                    if: {
-                      properties: { 
-                        "type": { "enum": ["delete"] }
-                      }
-                    },
-                    then: {
-                      properties: {
-                        filePath: { type: 'string', description: 'Path to the file to modify' },
-                        content: { type: 'string', description: 'Content to delete' },
-                        similarityThreshold: { 
-                          type: 'number', 
-                          description: 'Threshold for fuzzy matching (0.0 to 1.0, where 1.0 is exact match)',
-                          default: 0.95,
-                          minimum: 0.0,
-                          maximum: 1.0
-                        }
-                      },
-                      required: ['filePath', 'content']
-                    }
+                  endLine: { 
+                    type: 'number', 
+                    description: 'End line number (required for replaceByLine operations, 1-based, inclusive)' 
                   },
-                  {
-                    if: {
-                      properties: { 
-                        "type": { "enum": ["findReplace"] }
-                      }
-                    },
-                    then: {
-                      properties: {
-                        filePath: { type: 'string', description: 'Path to the file to modify' },
-                        findText: { type: 'string', description: 'Text to find' },
-                        replaceText: { type: 'string', description: 'Text to replace with' },
-                        replaceAll: { 
-                          type: 'boolean', 
-                          description: 'Whether to replace all occurrences or just the first one',
-                          default: false
-                        },
-                        caseSensitive: { 
-                          type: 'boolean', 
-                          description: 'Whether the search should be case sensitive',
-                          default: true
-                        },
-                        wholeWord: { 
-                          type: 'boolean', 
-                          description: 'Whether to use whole word matching',
-                          default: false
-                        }
-                      },
-                      required: ['filePath', 'findText', 'replaceText']
-                    }
+                  limit: { 
+                    type: 'number', 
+                    description: 'Number of lines to read (optional for read operations)' 
+                  },
+                  offset: { 
+                    type: 'number', 
+                    description: 'Line number to start reading from (optional for read operations, 1-based)' 
+                  },
+                  includeLineNumbers: { 
+                    type: 'boolean', 
+                    description: 'Whether to include line numbers in output (optional for read operations)' 
+                  },
+                  similarityThreshold: { 
+                    type: 'number', 
+                    description: 'Threshold for fuzzy matching (optional for replace operations, 0.0-1.0, default 0.95)',
+                    minimum: 0.0,
+                    maximum: 1.0
+                  },
+                  startPosition: { 
+                    type: 'number', 
+                    description: 'Start position for deletion (required for delete operations)' 
+                  },
+                  endPosition: { 
+                    type: 'number', 
+                    description: 'End position for deletion (required for delete operations)' 
+                  },
+                  findPattern: { 
+                    type: 'string', 
+                    description: 'Regex pattern to find (required for findReplace operations)' 
+                  },
+                  replacePattern: { 
+                    type: 'string', 
+                    description: 'Replacement pattern (required for findReplace operations)' 
+                  },
+                  flags: { 
+                    type: 'string', 
+                    description: 'Regex flags (optional for findReplace operations, e.g., "g", "gi")' 
                   }
-                ]
+                }
               }
             },
             required: ['type', 'params']

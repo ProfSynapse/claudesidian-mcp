@@ -12,33 +12,24 @@ import { enhanceSchemaDocumentation } from './validationUtils';
 export function getWorkspaceContextSchema(): any {
   return enhanceSchemaDocumentation({
     workspaceContext: {
-      oneOf: [
-        {
-          type: 'object',
-          properties: {
-            workspaceId: { 
-              type: 'string',
-              description: 'Workspace identifier (optional - uses default workspace if not provided)' 
-            },
-            workspacePath: { 
-              type: 'array', 
-              items: { type: 'string' },
-              description: 'Path from root workspace to specific phase/task'
-            },
-            contextDepth: {
-              type: 'string',
-              enum: ['minimal', 'standard', 'comprehensive'],
-              description: 'Level of context to include in results'
-            }
-          },
-          description: 'Optional workspace context object - if not provided, uses a default workspace'
-        },
-        {
+      type: 'object',
+      properties: {
+        workspaceId: { 
           type: 'string',
-          description: 'Optional workspace context as JSON string - must contain workspaceId field'
+          description: 'Workspace identifier (optional - uses default workspace if not provided)' 
+        },
+        workspacePath: { 
+          type: 'array', 
+          items: { type: 'string' },
+          description: 'Path from root workspace to specific phase/task'
+        },
+        contextDepth: {
+          type: 'string',
+          enum: ['minimal', 'standard', 'comprehensive'],
+          description: 'Level of context to include in results'
         }
-      ],
-      description: 'Optional workspace context - if not provided, uses a default workspace'
+      },
+      description: 'Optional workspace context object - if not provided, uses a default workspace. Can also be provided as a JSON string containing workspaceId field.'
     }
   });
 }
@@ -95,18 +86,9 @@ export function getHandoffSchema(): any {
   
   return enhanceSchemaDocumentation({
     handoff: {
-      oneOf: [
-        // Single mode call (backward compatibility)
-        modeCallSchema,
-        
-        // Array of mode calls (multi-mode execution)
-        {
-          type: 'array',
-          items: modeCallSchema,
-          description: 'Array of mode calls to execute'
-        }
-      ],
-      description: 'Optional handoff to another agent/mode(s)'
+      type: 'array',
+      items: modeCallSchema,
+      description: 'Optional handoff to another agent/mode(s). Can be a single mode call object or array of mode calls for multi-mode execution.'
     }
   });
 }
@@ -131,41 +113,31 @@ export function getSessionSchema(): any {
 export function getContextSchema(): any {
   return enhanceSchemaDocumentation({
     context: {
-      oneOf: [
-        {
+      type: 'object',
+      properties: {
+        sessionMemory: {
           type: 'string',
-          description: 'Legacy string context for backward compatibility',
-          minLength: 1
+          description: 'Summary of what has happened in the conversation so far, including key decisions, actions taken, and important context',
+          minLength: 10
         },
-        {
-          type: 'object',
-          properties: {
-            sessionMemory: {
-              type: 'string',
-              description: 'Summary of what has happened in the conversation so far, including key decisions, actions taken, and important context',
-              minLength: 10
-            },
-            toolContext: {
-              type: 'string', 
-              description: 'Specific context for why this tool/mode is being used at this moment',
-              minLength: 5
-            },
-            primaryGoal: {
-              type: 'string',
-              description: 'The overarching goal of the current conversation/task',
-              minLength: 5
-            },
-            subgoal: {
-              type: 'string',
-              description: 'What this specific tool call is trying to accomplish',
-              minLength: 5
-            }
-          },
-          required: ['sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],
-          description: 'Rich contextual information for this tool call'
+        toolContext: {
+          type: 'string', 
+          description: 'Specific context for why this tool/mode is being used at this moment',
+          minLength: 5
+        },
+        primaryGoal: {
+          type: 'string',
+          description: 'The overarching goal of the current conversation/task',
+          minLength: 5
+        },
+        subgoal: {
+          type: 'string',
+          description: 'What this specific tool call is trying to accomplish',
+          minLength: 5
         }
-      ],
-      description: 'Contextual information - can be string (legacy) or rich object (enhanced)'
+      },
+      required: ['sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],
+      description: 'Rich contextual information for this tool call. Can also be provided as a simple string for legacy compatibility.'
     }
   });
 }
