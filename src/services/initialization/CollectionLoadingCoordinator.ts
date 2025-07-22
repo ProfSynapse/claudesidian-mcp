@@ -189,14 +189,14 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
    */
   private async updateCollectionMetadata(collectionName: string, collection: any): Promise<void> {
     try {
-      // Get item count from the loaded collection data
+      // Get item count directly from the loaded collection
       let itemCount = 0;
-      if (collection && collection.items && Array.isArray(collection.items)) {
+      if (collection && typeof collection.count === 'function') {
+        itemCount = await collection.count();
+      } else if (collection && collection.items && Array.isArray(collection.items)) {
         itemCount = collection.items.length;
-      } else {
-        // Fallback to vector store count
-        itemCount = await this.getVectorStoreItemCount(collectionName);
       }
+      // No fallback to vector store - use the data we have from the loaded collection
       
       const hasIndex = await this.checkCollectionHasIndex(collectionName);
       

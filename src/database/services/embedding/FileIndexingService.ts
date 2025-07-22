@@ -62,13 +62,14 @@ export class FileIndexingService {
 
   /**
    * Process multiple files in batches with configurable batch size and delays.
-   * Supports both incremental and full reindexing modes.
+   * Supports both incremental and full reindexing modes with optional state tracking.
    * 
    * @param filePaths - Array of file paths to process
    * @param vectorStore - Vector store instance for storing embeddings
    * @param batchMode - If true, processes all files; if false, checks if files need processing
    * @param progressCallback - Optional callback for progress updates
    * @param silent - If true, suppresses progress notifications
+   * @param useStateTracking - If true, enables state persistence for resumable operations
    * @returns Results including processed files, failed files, and embedding IDs
    * 
    * @example
@@ -77,7 +78,9 @@ export class FileIndexingService {
    *   ['file1.md', 'file2.md'],
    *   vectorStore,
    *   false,
-   *   (current, total) => console.log(`${current}/${total}`)
+   *   (current, total) => console.log(`${current}/${total}`),
+   *   false,
+   *   true  // Enable state tracking for resumable operations
    * );
    * ```
    */
@@ -86,7 +89,8 @@ export class FileIndexingService {
     vectorStore: any, 
     batchMode = false,
     progressCallback?: (current: number, total: number) => void,
-    silent = false
+    silent = false,
+    useStateTracking = false
   ): Promise<BatchProcessResult> {
     const { batchSize, processingDelay } = this.settingsManager.getBatchingConfig();
     
@@ -95,14 +99,35 @@ export class FileIndexingService {
     const failedFiles: string[] = [];
     let processedCount = 0;
     
+    // Get state manager for resumable operations
+    let stateManager = null;
+    if (useStateTracking) {
+      const { IndexingStateManager } = await import('./IndexingStateManager');
+      stateManager = new IndexingStateManager(this.plugin);
+      
+      // Check if there's existing state to resume from
+      const existingState = await stateManager.loadState();
+      if (existingState && existingState.pendingFiles.length > 0) {
+        // Resume from existing state
+        filePaths = existingState.pendingFiles;
+        processedCount = existingState.processedFiles;
+        console.log(`Resuming from existing state: ${processedCount} files already processed`);
+      }
+    }
+    
     // Initialize progress immediately
     if (progressCallback) {
-      progressCallback(0, filePaths.length);
+      progressCallback(processedCount, filePaths.length + processedCount);
     }
     
     // Process files in batches
     for (let i = 0; i < filePaths.length; i += batchSize) {
       const batch = filePaths.slice(i, i + batchSize);
+      
+      // Update current batch in state if tracking enabled
+      if (useStateTracking && stateManager) {
+        await stateManager.updateBatchProgress(batch, i / filePaths.length);
+      }
       
       // Process batch in parallel
       const results = await Promise.allSettled(batch.map(async (filePath) => {
@@ -118,11 +143,31 @@ export class FileIndexingService {
           return await this.processFile(filePath, vectorStore);
         } catch (error) {
           console.error(`Error processing file ${filePath}:`, error);
+          
+          // NEW: Mark file as failed in state if not already marked
+          try {
+            const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+            if (file && !('children' in file)) {
+              const content = await this.plugin.app.vault.read(file as TFile);
+              const contentHash = this.contentHashService.hashContent(content);
+              await this.contentHashService.markFileFailed(
+                filePath,
+                contentHash,
+                error instanceof Error ? error.message : String(error)
+              );
+            }
+          } catch (stateError) {
+            console.error(`Failed to mark file as failed in state: ${stateError instanceof Error ? stateError.message : String(stateError)}`);
+          }
+          
           return null;
         }
       }));
       
       // Process results
+      const batchCompletedFiles: string[] = [];
+      const batchFailedFiles: string[] = [];
+      
       for (let j = 0; j < results.length; j++) {
         const result = results[j];
         const filePath = batch[j];
@@ -131,10 +176,17 @@ export class FileIndexingService {
           if (!result.value.skipped) {
             ids.push(...result.value.ids);
             processedFiles.push(filePath);
+            batchCompletedFiles.push(filePath);
           }
         } else {
           failedFiles.push(filePath);
+          batchFailedFiles.push(filePath);
         }
+      }
+      
+      // Update state after each batch if tracking enabled
+      if (useStateTracking && stateManager) {
+        await stateManager.saveProgressUpdate(batchCompletedFiles, batchFailedFiles);
       }
       
       // Update progress
@@ -252,17 +304,37 @@ export class FileIndexingService {
     const metadatas = embeddingRecords.map(record => record.metadata);
     const contents = embeddingRecords.map(record => record.content || '');
     
-    await vectorStore.addItems('file_embeddings', {
-      ids: ids,
-      embeddings: embeddingVectors,
-      metadatas: metadatas,
-      documents: contents
-    });
-    
-    return {
-      ids: ids,
-      tokens: chunks.reduce((total: number, chunk: any) => total + chunk.metadata.tokenCount, 0),
-      chunks: chunks.length
-    };
+    try {
+      await vectorStore.addItems('file_embeddings', {
+        ids: ids,
+        embeddings: embeddingVectors,
+        metadatas: metadatas,
+        documents: contents
+      });
+      
+      // NEW: Mark file as successfully processed in state
+      console.log(`[StateManager] FileIndexingService marking file as processed: ${normalizedPath}`);
+      await this.contentHashService.markFileProcessed(
+        normalizedPath,
+        contentHash,
+        this.embeddingGenerator.getProvider()?.constructor.name || 'unknown'
+      );
+      
+      return {
+        ids: ids,
+        tokens: chunks.reduce((total: number, chunk: any) => total + chunk.metadata.tokenCount, 0),
+        chunks: chunks.length
+      };
+    } catch (error) {
+      // NEW: Mark file as failed processing in state
+      console.log(`[StateManager] FileIndexingService marking file as failed: ${normalizedPath}`);
+      await this.contentHashService.markFileFailed(
+        normalizedPath,
+        contentHash,
+        error instanceof Error ? error.message : String(error)
+      );
+      
+      throw error;
+    }
   }
 }

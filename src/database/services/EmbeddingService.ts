@@ -18,6 +18,7 @@ import {
   IndexingStateManager,
   CollectionCleanupService
 } from './embedding';
+import { ProcessedFilesStateManager } from './state/ProcessedFilesStateManager';
 
 /**
  * Refactored EmbeddingService using composition pattern
@@ -42,15 +43,28 @@ export class EmbeddingService {
   /**
    * Create a new embedding service
    * @param plugin Plugin instance
+   * @param stateManager State manager for processed files tracking (REQUIRED)
    */
-  constructor(plugin: Plugin) {
+  constructor(plugin: Plugin, stateManager: ProcessedFilesStateManager) {
     this.plugin = plugin;
+    
+    // Validate required dependencies
+    if (!stateManager) {
+      console.error('[StateManager] ❌ CRITICAL: EmbeddingService requires StateManager');
+      console.error('[StateManager] ❌ DIAGNOSTIC: Constructor called with:', {
+        hasPlugin: !!plugin,
+        hasStateManager: !!stateManager,
+        pluginType: plugin?.constructor?.name
+      });
+      throw new Error('EmbeddingService requires a valid ProcessedFilesStateManager');
+    }
     
     // Initialize composed services
     this.settingsManager = new EmbeddingSettingsManager(plugin);
     this.providerManager = new EmbeddingProviderManager();
     this.embeddingGenerator = new EmbeddingGenerator();
-    this.contentHashService = new ContentHashService(plugin);
+    this.contentHashService = new ContentHashService(plugin, stateManager);
+    
     this.progressTracker = new IndexingProgressTracker();
     this.fileIndexingService = new FileIndexingService(
       plugin,
@@ -204,7 +218,10 @@ export class EmbeddingService {
    * Check if there's a resumable indexing operation
    */
   async hasResumableIndexing(): Promise<boolean> {
-    return await this.stateManager.hasResumableIndexing();
+    console.log('DEBUG: EmbeddingService.hasResumableIndexing called');
+    const result = await this.stateManager.hasResumableIndexing();
+    console.log('DEBUG: EmbeddingService.hasResumableIndexing result:', result);
+    return result;
   }
 
   /**
@@ -222,8 +239,8 @@ export class EmbeddingService {
     state.status = 'indexing';
     await this.stateManager.saveState(state);
     
-    // Process only the pending files
-    const result = await this.batchIndexFiles(state.pendingFiles, (current, total) => {
+    // Use state-aware batch processing for resumable operations
+    const result = await this.resumableBatchIndexFiles(state.pendingFiles, (current, total) => {
       // Adjust progress to account for already completed files
       const totalProgress = state.completedFiles.length + current;
       const totalFiles = state.totalFiles;
@@ -237,6 +254,47 @@ export class EmbeddingService {
     await this.stateManager.clearState();
     
     return result;
+  }
+
+  /**
+   * Resumable batch indexing with state tracking
+   */
+  async resumableBatchIndexFiles(
+    filePaths: string[], 
+    progressCallback?: (current: number, total: number) => void
+  ): Promise<string[]> {
+    if (!this.settingsManager.areEmbeddingsEnabled()) {
+      throw new Error('Embeddings are disabled in settings');
+    }
+    
+    if (!filePaths || filePaths.length === 0) {
+      return [];
+    }
+    
+    // Get plugin and vector store
+    const plugin = this.plugin.app.plugins.plugins['claudesidian-mcp'] as any;
+    if (!plugin || !plugin.vectorStore) {
+      throw new Error('Vector store not available');
+    }
+    
+    try {
+      // Use state-aware file indexing
+      const result = await this.fileIndexingService.processFilesInBatches(
+        filePaths, 
+        plugin.vectorStore,
+        true,  // batchMode
+        progressCallback,
+        false,  // silent
+        true  // Enable state tracking
+      );
+      
+      // Return just the processed files to match the expected return type
+      return result.processedFiles;
+    } catch (error) {
+      // Mark as paused on interruption, don't clear state
+      await this.stateManager.pauseIndexing();
+      throw error;
+    }
   }
 
   /**

@@ -6,7 +6,7 @@
 
 import { loadHnswlib } from 'hnswlib-wasm';
 import { DatabaseItem, WhereClause } from '../../providers/chroma/services/FilterEngine';
-import { TFile, App } from 'obsidian';
+import { TFile, App, Plugin } from 'obsidian';
 import { EmbeddingService } from '../EmbeddingService';
 import { IVectorStore } from '../../interfaces/IVectorStore';
 import { logger } from '../../../utils/logger';
@@ -18,6 +18,13 @@ import { FullInitializationOrchestrator } from './initialization/FullInitializat
 import { DataConversionService } from './conversion/DataConversionService';
 import { SearchParameters } from './search/HnswSearchEngine';
 import { SearchOptions, SearchResult } from './results/HnswResultProcessor';
+import { HnswValidationService } from './validation/HnswValidationService';
+import { HnswResultProcessor } from './results/HnswResultProcessor';
+import { HnswPartitionManager } from './partitioning/HnswPartitionManager';
+import { HnswIndexManager } from './index/HnswIndexManager';
+import { HnswSearchEngine } from './search/HnswSearchEngine';
+import { ProcessedFilesStateManager } from '../state/ProcessedFilesStateManager';
+import { ContentHashService } from '../embedding/ContentHashService';
 
 // Import initialization coordination
 import { IInitializationStateManager } from '../../../services/initialization/interfaces/IInitializationStateManager';
@@ -46,6 +53,7 @@ export interface LegacySearchOptions {
 export class HnswSearchService {
   // Core dependencies
   private app?: App;
+  private plugin: Plugin;
   private vectorStore?: IVectorStore;
   private embeddingService?: EmbeddingService;
   private persistentPath?: string;
@@ -70,12 +78,14 @@ export class HnswSearchService {
   private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
 
   constructor(
+    plugin: Plugin,
     app?: App, 
     vectorStore?: IVectorStore, 
     embeddingService?: EmbeddingService, 
     persistentPath?: string,
     configOptions?: HnswConfigOptions
   ) {
+    this.plugin = plugin;
     this.app = app;
     this.vectorStore = vectorStore;
     this.embeddingService = embeddingService;
@@ -84,12 +94,14 @@ export class HnswSearchService {
     // Initialize configuration
     this.config = configOptions ? new HnswConfig(configOptions) : HnswConfig.getProductionConfig();
 
-    // Initialize service orchestrators
-    this.serviceInitializer = new ServiceInitializer(app, vectorStore, embeddingService, persistentPath, configOptions);
+    // Initialize service orchestrators with plugin instance
+    this.serviceInitializer = new ServiceInitializer(plugin, app, vectorStore, embeddingService, persistentPath, configOptions);
     this.conversionService = new DataConversionService();
+    
+    console.log('[StateManager] HnswSearchService initialized with plugin instance');
 
-    // Initialize lightweight services immediately
-    this.initializeLightweightServices();
+    // Note: Lightweight services will be initialized async in initialize() method
+    // This prevents async operations in constructor
   }
   
   /**
@@ -108,8 +120,21 @@ export class HnswSearchService {
    */
   private async initializeLightweightServices(): Promise<void> {
     try {
-      this.services = await this.serviceInitializer.initializeServices();
-      logger.systemLog('Lightweight HNSW services initialized successfully', 'HnswSearchService');
+      console.log('[StateManager] ❌ WARNING: initializeLightweightServices bypassing ServiceInitializer for IndexedDB/WASM');
+      console.log('[StateManager] ❌ ServiceInitializer is incompatible with IndexedDB/WASM persistence');
+      
+      // Create basic services directly without ServiceInitializer for IndexedDB/WASM compatibility
+      this.services = {
+        validationService: new HnswValidationService(this.config),
+        persistenceService: null, // Will be handled directly by HNSW services with IndexedDB/WASM
+        partitionManager: null, // Will be created when needed
+        indexManager: null, // Will be created when needed
+        searchEngine: null, // Will be created when needed
+        resultProcessor: new HnswResultProcessor()
+      };
+      
+      console.log('[StateManager] ✅ Basic HNSW services initialized directly (bypassing ServiceInitializer)');
+      logger.systemLog('Basic HNSW services initialized directly for IndexedDB/WASM compatibility', 'HnswSearchService');
     } catch (error) {
       logger.systemError(
         new Error(`Failed to initialize lightweight services: ${error instanceof Error ? error.message : String(error)}`),
@@ -149,11 +174,51 @@ export class HnswSearchService {
     if (this.isInitialized) return;
 
     try {
+      // Initialize lightweight services first if not already done
+      if (!this.services || !this.services.validationService) {
+        console.log('[StateManager] Initializing lightweight services before basic initialization');
+        await this.initializeLightweightServices();
+      }
+      
       // Load HNSW WASM library
       this.hnswLib = await loadHnswlib();
 
-      // Complete service initialization with HNSW library
-      const fullServices = await this.serviceInitializer.initializeWithHnswLib(this.hnswLib);
+      console.log('[StateManager] ✅ HNSW WASM library loaded successfully');
+      console.log('[StateManager] Creating HNSW services directly for IndexedDB/WASM compatibility');
+      
+      // Create HNSW services directly for IndexedDB/WASM compatibility (bypassing ServiceInitializer)
+      // Create partition manager
+      this.services.partitionManager = new HnswPartitionManager(this.config, this.hnswLib);
+      
+      // Create state manager and content hash service for IndexManager
+      const stateManager = new ProcessedFilesStateManager(this.plugin);
+      await stateManager.loadState();
+      const contentHashService = new ContentHashService(this.plugin, stateManager);
+      
+      // Create index manager with proper dependencies (no ServiceInitializer)
+      this.services.indexManager = new HnswIndexManager(
+        this.config,
+        this.services.validationService,
+        null as any, // persistence service not needed for IndexedDB/WASM
+        this.services.partitionManager,
+        contentHashService,
+        this.hnswLib
+      );
+      
+      // Create search engine
+      this.services.searchEngine = new HnswSearchEngine(
+        this.config,
+        this.services.validationService,
+        this.services.indexManager
+      );
+      
+      console.log('[StateManager] ✅ HNSW services created directly for IndexedDB/WASM');
+      
+      const fullServices = {
+        partitionManager: this.services.partitionManager,
+        indexManager: this.services.indexManager,
+        searchEngine: this.services.searchEngine
+      };
       
       // Update services with full initialization - properly replace undefined references
       this.services.partitionManager = fullServices.partitionManager;

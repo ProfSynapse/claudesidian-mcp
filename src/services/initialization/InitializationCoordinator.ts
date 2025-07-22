@@ -280,6 +280,7 @@ export class InitializationCoordinator implements IInitializationCoordinator {
    * Trigger HNSW index creation from loaded collections
    * This is the missing piece - collections are loaded but indexes aren't created
    * CRITICAL FIX: Actually verify that indexes were built, not just that the method completed
+   * NEW: Check processed files state to avoid re-processing on every startup
    */
   private async triggerHnswIndexCreation(
     componentsInitialized: string[], 
@@ -314,6 +315,47 @@ export class InitializationCoordinator implements IInitializationCoordinator {
     const vectorStore = await this.serviceManager.get('vectorStore');
     if (!vectorStore) {
       console.warn('[InitializationCoordinator] Vector store not available for index verification');
+    }
+    
+    // NEW: Check processed files state to avoid unnecessary processing
+    const stateManager = await this.serviceManager.get('stateManager');
+    if (stateManager) {
+      const processedCount = stateManager.getProcessedFilesCount();
+      const vaultFiles = this.plugin.app.vault.getMarkdownFiles();
+      const totalFiles = vaultFiles.length;
+      
+      console.log(`[StateManager] InitializationCoordinator state check: ${processedCount} processed files, ${totalFiles} total files`);
+      
+      // If all files are processed and we have a reasonable collection count, skip full initialization
+      if (processedCount > 0 && vectorStore) {
+        try {
+          const collectionCount = await vectorStore.count('file_embeddings');
+          console.log(`[StateManager] Collection count: ${collectionCount}`);
+          
+          // Skip full initialization if:
+          // 1. We have processed files in state
+          // 2. Collection has embeddings
+          // 3. State count is reasonable relative to vault size
+          if (collectionCount > 0 && processedCount >= Math.min(totalFiles, collectionCount / 5)) {
+            console.log('[StateManager] ⚡ Skipping full initialization - files already processed');
+            return;
+          } else {
+            console.log(`[StateManager] Proceeding with initialization:`, {
+              processedCount,
+              totalFiles,
+              collectionCount,
+              threshold: Math.min(totalFiles, collectionCount / 5),
+              shouldSkip: processedCount >= Math.min(totalFiles, collectionCount / 5)
+            });
+          }
+        } catch (countError) {
+          console.warn('[StateManager] Could not check collection count, proceeding with initialization:', countError);
+        }
+      } else {
+        console.log(`[StateManager] Not skipping initialization: processedCount=${processedCount}, hasVectorStore=${!!vectorStore}`);
+      }
+    } else {
+      console.warn('[StateManager] No state manager available, proceeding with full initialization');
     }
     
     try {

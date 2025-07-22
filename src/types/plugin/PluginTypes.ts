@@ -6,6 +6,17 @@
 import { MemorySettings } from '../llm/EmbeddingTypes';
 import { CustomPromptsSettings } from '../mcp/CustomPromptTypes';
 import { LLMProviderSettings } from '../llm/ProviderTypes';
+import { ProcessedFileState } from '../../database/services/state/ProcessedFilesStateManager';
+
+/**
+ * Processed files data structure for embedding state management
+ * Stores file processing state to prevent re-processing on startup
+ */
+export interface ProcessedFilesData {
+  version: string;
+  lastUpdated: number;
+  files: Record<string, ProcessedFileState>;
+}
 
 /**
  * Plugin settings interface
@@ -21,4 +32,5 @@ export interface MCPSettings {
   lastUpdateDate?: string;
   availableUpdateVersion?: string;
   lastUpdateCheckDate?: string;
+  processedFiles?: ProcessedFilesData;
 }

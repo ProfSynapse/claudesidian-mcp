@@ -64,8 +64,8 @@ export class StrictPersistenceChromaClient {
       this.resourceManager = new ResourceManager(initResult.persistenceManager!, this.collectionCache.getAllCollections());
       this.collectionManager = new CollectionManager(this.collectionCache.getAllCollections(), this.storagePath, this.fs, this);
 
-      // Load collections from disk
-      await this.loadCollectionsFromDisk();
+      // Collections will be loaded by the CollectionLoadingCoordinator during initialization phase
+      // This prevents duplicate loading and ensures proper coordination
     } catch (error) {
       const errorResult = this.errorHandler.handleInitializationError(error);
       console.error('Client initialization failed:', errorResult.error);

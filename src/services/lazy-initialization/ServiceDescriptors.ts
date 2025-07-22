@@ -13,6 +13,7 @@ import { FileEventManagerModular } from '../file-events/FileEventManagerModular'
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { CacheManager } from '../../database/services/CacheManager';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
+import { ProcessedFilesStateManager } from '../../database/services/state/ProcessedFilesStateManager';
 import { 
   IInitializationStateManager,
   ICollectionLoadingCoordinator,
@@ -107,6 +108,27 @@ export class ServiceDescriptors {
             return;
         }
 
+        // NEW: Inject into vector store if available
+        const vectorStore = this.serviceManager.getIfReady('vectorStore');
+        console.log('[StateManager] Vector store available:', !!vectorStore);
+        console.log('[StateManager] Vector store methods:', vectorStore ? Object.getOwnPropertyNames(Object.getPrototypeOf(vectorStore)) : 'none');
+        
+        if (vectorStore && 'setCollectionCoordinator' in vectorStore) {
+            console.log('[StateManager] Injecting collection coordinator into vector store');
+            vectorStore.setCollectionCoordinator(this.initializationServices.collectionCoordinator);
+            
+            // Load collections with coordination to register them
+            if ('loadCollectionsWithCoordination' in vectorStore) {
+                console.log('[StateManager] Loading collections with coordination');
+                await vectorStore.loadCollectionsWithCoordination();
+                console.log('[StateManager] ✅ Collections loaded and registered with vector store');
+            } else {
+                console.warn('[StateManager] ❌ Vector store missing loadCollectionsWithCoordination method');
+            }
+        } else {
+            console.warn('[StateManager] ❌ Vector store missing setCollectionCoordinator method');
+        }
+
         // Inject into HNSW service if available
         const hnswService = this.serviceManager.getIfReady('hnswSearchService');
         if (hnswService && 'setInitializationCoordination' in hnswService) {
@@ -131,6 +153,7 @@ export class ServiceDescriptors {
     getAllDescriptors(): IServiceDescriptor[] {
         return [
             this.createEventManagerDescriptor(),
+            this.createStateManagerDescriptor(),
             this.createVectorStoreDescriptor(),
             this.createEmbeddingServiceDescriptor(),
             this.createHnswSearchServiceDescriptor(),
@@ -151,6 +174,44 @@ export class ServiceDescriptors {
             dependencies: [],
             stage: LoadingStage.IMMEDIATE,
             create: async () => new EventManager()
+        };
+    }
+
+    private createStateManagerDescriptor(): IServiceDescriptor<ProcessedFilesStateManager> {
+        return {
+            name: 'stateManager',
+            dependencies: [],
+            stage: LoadingStage.IMMEDIATE,
+            create: async () => {
+                console.log('[StateManager] Creating StateManager with plugin data.json');
+                
+                // Validate plugin instance before creating StateManager
+                if (!this.plugin) {
+                    console.error('[StateManager] ❌ CRITICAL: No plugin instance available');
+                    console.error('[StateManager] ❌ DIAGNOSTIC: ServiceDescriptors state:', {
+                        hasPlugin: !!this.plugin,
+                        hasApp: !!this.app,
+                        appType: this.app?.constructor?.name,
+                        serviceDescriptorType: this.constructor.name
+                    });
+                    throw new Error('StateManager requires Plugin instance but none available');
+                }
+                
+                if (!this.plugin.loadData || !this.plugin.saveData) {
+                    console.error('[StateManager] ❌ CRITICAL: Plugin missing data methods');
+                    console.error('[StateManager] ❌ DIAGNOSTIC: Plugin capabilities:', {
+                        hasLoadData: !!(this.plugin.loadData),
+                        hasSaveData: !!(this.plugin.saveData),
+                        pluginType: this.plugin.constructor.name,
+                        pluginMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(this.plugin))
+                    });
+                    throw new Error('Plugin instance missing required loadData/saveData methods');
+                }
+                
+                const stateManager = new ProcessedFilesStateManager(this.plugin);
+                await stateManager.loadState();
+                return stateManager;
+            }
         };
     }
 
@@ -178,9 +239,24 @@ export class ServiceDescriptors {
     private createEmbeddingServiceDescriptor(): IServiceDescriptor<EmbeddingService> {
         return {
             name: 'embeddingService',
-            dependencies: [],
+            dependencies: ['stateManager'],
             stage: LoadingStage.BACKGROUND_SLOW,
-            create: async () => new EmbeddingService(this.plugin)
+            create: async () => {
+                const stateManager = await this.dependencyResolver('stateManager');
+                
+                // Validate StateManager before creating EmbeddingService
+                if (!stateManager) {
+                    console.error('[StateManager] ❌ CRITICAL: StateManager not available for EmbeddingService');
+                    console.error('[StateManager] ❌ DIAGNOSTIC: EmbeddingService creation failed:', {
+                        hasPlugin: !!this.plugin,
+                        hasStateManager: !!stateManager,
+                        stateManagerType: stateManager?.constructor?.name
+                    });
+                    throw new Error('EmbeddingService requires StateManager but none available');
+                }
+                
+                return new EmbeddingService(this.plugin, stateManager);
+            }
         };
     }
 
@@ -194,7 +270,9 @@ export class ServiceDescriptors {
                 const embeddingService = await this.dependencyResolver('embeddingService');
                 
                 const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
-                const service = new HnswSearchService(this.app, vectorStore, embeddingService, basePath);
+                const service = new HnswSearchService(this.plugin, this.app, vectorStore, embeddingService, basePath);
+                
+                console.log('[StateManager] HnswSearchService created with plugin instance in ServiceDescriptors');
                 
                 // CRITICAL FIX: Remove coordination initialization from service creation
                 // This prevents the circular dependency that caused stack overflow
@@ -285,7 +363,7 @@ export class ServiceDescriptors {
         return {
             name: 'usageStatsService',
             dependencies: ['embeddingService', 'vectorStore', 'eventManager'],
-            stage: LoadingStage.BACKGROUND_SLOW,
+            stage: LoadingStage.IMMEDIATE,
             create: async () => {
                 const embeddingService = await this.dependencyResolver('embeddingService');
                 const vectorStore = await this.dependencyResolver('vectorStore');

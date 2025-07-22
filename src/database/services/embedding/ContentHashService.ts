@@ -5,12 +5,15 @@
 
 import * as crypto from 'crypto';
 import { Plugin, TFile } from 'obsidian';
+import { ProcessedFilesStateManager } from '../state/ProcessedFilesStateManager';
 
 export class ContentHashService {
   private plugin: Plugin;
+  private stateManager: ProcessedFilesStateManager;
 
-  constructor(plugin: Plugin) {
+  constructor(plugin: Plugin, stateManager: ProcessedFilesStateManager) {
     this.plugin = plugin;
+    this.stateManager = stateManager;
   }
 
   /**
@@ -39,6 +42,14 @@ export class ContentHashService {
 
       const content = await this.plugin.app.vault.read(file as any);
       const currentHash = this.hashContent(content);
+
+      // NEW: Check persistent state first
+      console.log(`[StateManager] Checking state for file: ${filePath}`);
+      if (this.stateManager.isFileProcessed(filePath, currentHash)) {
+        console.log(`[StateManager] ✅ ${filePath} - already processed (state), skipping`);
+        return false;
+      }
+      console.log(`[StateManager] ${filePath} - not in state, checking vector store`);
 
       // First check if the collection exists and has items
       const collectionExists = await vectorStore.hasCollection('file_embeddings');
@@ -75,8 +86,15 @@ export class ContentHashService {
         });
         
         const samplePaths = sampleQuery.metadatas?.[0]?.map((m: any) => m.filePath || 'no-filePath').slice(0, 5) || [];
-        console.log(`[ContentHashService] ${filePath} - sample stored file paths: ${samplePaths.join(', ')}`);
-        console.log(`[ContentHashService] ${filePath} - looking for exact match: "${normalizedPath}" (normalized from "${filePath}")`);
+        console.log(`[StateManager] 🔍 ${filePath} - sample stored file paths: ${samplePaths.join(', ')}`);
+        console.log(`[StateManager] 🔍 ${filePath} - looking for exact match: "${normalizedPath}" (normalized from "${filePath}")`);
+        console.log(`[StateManager] 🔍 Query details:`, {
+          where: { filePath: { $eq: normalizedPath } },
+          normalizedPath,
+          originalPath: filePath,
+          queryResultIds: queryResult.ids?.[0]?.length || 0,
+          collectionCount
+        });
       }
 
       // If no existing embeddings found, file needs embedding
@@ -96,12 +114,18 @@ export class ContentHashService {
       const storedHash = metadata.contentHash;
       const hashMatches = currentHash === storedHash;
       
-      // Only log when hashes don't match (file actually changed)
-      if (!hashMatches) {
-        console.log(`[ContentHashService] ${filePath} - content changed, needs re-embedding`);
+      // NEW: If embeddings exist and hashes match, mark as processed in state
+      if (hashMatches) {
+        console.log(`[StateManager] ✅ ${filePath} - embeddings exist and hash matches, marking as processed`);
+        this.stateManager.markFileProcessed(filePath, currentHash, 'existing');
+        await this.stateManager.saveState();
+        return false;
       }
       
-      return !hashMatches; // Return true if hashes don't match (needs re-embedding)
+      // Only log when hashes don't match (file actually changed)
+      console.log(`[ContentHashService] ${filePath} - content changed, needs re-embedding`);
+      
+      return true; // Return true if hashes don't match (needs re-embedding)
     } catch (error) {
       console.error(`[ContentHashService] Error checking if file needs embedding for ${filePath}:`, error);
       return true; // If we can't determine, assume it needs embedding
@@ -193,5 +217,39 @@ export class ContentHashService {
    */
   validateHash(hash: string): boolean {
     return typeof hash === 'string' && hash.length === 32 && /^[a-f0-9]+$/i.test(hash);
+  }
+
+  /**
+   * Mark file as successfully processed
+   * @param filePath Path to the file
+   * @param contentHash Content hash of the file
+   * @param provider Embedding provider used
+   * @param vectorStoreId Vector store ID
+   */
+  async markFileProcessed(filePath: string, contentHash: string, provider: string, vectorStoreId: string = 'default'): Promise<void> {
+    console.log(`[StateManager] ContentHashService marking file processed: ${filePath}`);
+    this.stateManager.markFileProcessed(filePath, contentHash, provider, vectorStoreId);
+    await this.stateManager.saveState();
+  }
+
+  /**
+   * Mark file as failed processing
+   * @param filePath Path to the file
+   * @param contentHash Content hash of the file
+   * @param errorMessage Error message
+   */
+  async markFileFailed(filePath: string, contentHash: string, errorMessage: string): Promise<void> {
+    console.log(`[StateManager] ContentHashService marking file failed: ${filePath}`);
+    this.stateManager.markFileFailed(filePath, contentHash, errorMessage);
+    await this.stateManager.saveState();
+  }
+
+  /**
+   * Remove file from processed state
+   * @param filePath Path to the file
+   */
+  async removeFileFromState(filePath: string): Promise<void> {
+    this.stateManager.removeFile(filePath);
+    await this.stateManager.saveState();
   }
 }

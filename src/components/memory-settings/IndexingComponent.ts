@@ -64,13 +64,48 @@ export class IndexingComponent {
         
         // Check if there's a resumable indexing operation
         let hasResumable = false;
-        if (this.embeddingService && typeof this.embeddingService.hasResumableIndexing === 'function') {
-            hasResumable = await this.embeddingService.hasResumableIndexing();
-        } else if (this.plugin.services?.embeddingService && typeof this.plugin.services.embeddingService.hasResumableIndexing === 'function') {
-            hasResumable = await this.plugin.services.embeddingService.hasResumableIndexing();
-        } else if (this.plugin.embeddingService && typeof this.plugin.embeddingService.hasResumableIndexing === 'function') {
-            hasResumable = await this.plugin.embeddingService.hasResumableIndexing();
+        
+        console.log('DEBUG: Checking for resumable indexing...');
+        console.log('DEBUG: this.embeddingService:', !!this.embeddingService);
+        console.log('DEBUG: this.plugin.services?.embeddingService:', !!this.plugin.services?.embeddingService);
+        console.log('DEBUG: this.plugin.embeddingService:', !!this.plugin.embeddingService);
+        
+        try {
+            if (this.embeddingService && typeof this.embeddingService.hasResumableIndexing === 'function') {
+                console.log('DEBUG: Using this.embeddingService.hasResumableIndexing()');
+                hasResumable = await this.embeddingService.hasResumableIndexing();
+                console.log('DEBUG: hasResumable from this.embeddingService:', hasResumable);
+            } else if (this.plugin.services?.embeddingService && typeof this.plugin.services.embeddingService.hasResumableIndexing === 'function') {
+                console.log('DEBUG: Using this.plugin.services.embeddingService.hasResumableIndexing()');
+                hasResumable = await this.plugin.services.embeddingService.hasResumableIndexing();
+                console.log('DEBUG: hasResumable from this.plugin.services.embeddingService:', hasResumable);
+            } else if (this.plugin.embeddingService && typeof this.plugin.embeddingService.hasResumableIndexing === 'function') {
+                console.log('DEBUG: Using this.plugin.embeddingService.hasResumableIndexing()');
+                hasResumable = await this.plugin.embeddingService.hasResumableIndexing();
+                console.log('DEBUG: hasResumable from this.plugin.embeddingService:', hasResumable);
+            } else {
+                console.warn('DEBUG: No embedding service with hasResumableIndexing method found');
+                // Let's try to check localStorage directly as a fallback
+                const stateStr = localStorage.getItem('claudesidian-indexing-state');
+                console.log('DEBUG: Direct localStorage check:', stateStr);
+                if (stateStr) {
+                    try {
+                        const state = JSON.parse(stateStr);
+                        console.log('DEBUG: Parsed state:', state);
+                        hasResumable = state !== null && 
+                                      (state.status === 'paused' || state.status === 'indexing') && 
+                                      state.pendingFiles && state.pendingFiles.length > 0;
+                        console.log('DEBUG: hasResumable from direct localStorage check:', hasResumable);
+                    } catch (parseError) {
+                        console.error('DEBUG: Error parsing localStorage state:', parseError);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('DEBUG: Error checking for resumable indexing:', error);
         }
+        
+        console.log('DEBUG: Final hasResumable value:', hasResumable);
         
         // Show resume button if there's a resumable operation
         if (hasResumable) {
@@ -160,6 +195,30 @@ export class IndexingComponent {
         reindexButton.textContent = 'Indexing in progress...';
         
         try {
+            // Get embedding service
+            const embeddingService = this.embeddingService || 
+                                   this.plugin.services?.embeddingService || 
+                                   this.plugin.embeddingService;
+            
+            if (!embeddingService) {
+                throw new Error('Embedding service not available');
+            }
+            
+            // Check if there's already a resumable reindex operation
+            const hasResumable = await embeddingService.hasResumableIndexing();
+            if (hasResumable) {
+                const shouldResume = confirm('Found incomplete reindex operation. Resume from where you left off?');
+                if (shouldResume) {
+                    await this.handleResumeOperation(reindexButton as HTMLButtonElement);
+                    return;
+                } else {
+                    // Clear old state and start fresh
+                    if (embeddingService.stateManager) {
+                        await embeddingService.stateManager.clearState();
+                    }
+                }
+            }
+            
             // Get all markdown files from the vault
             const files = this.app.vault.getMarkdownFiles();
             const filePaths = files.map((file: {path: string}) => file.path);
@@ -201,6 +260,11 @@ export class IndexingComponent {
                 throw new Error(`${memorySettings?.apiProvider || 'API'} key is required but not provided. Add your API key in the API tab.`);
             }
             
+            // Initialize state tracking for resumable reindexing
+            if (embeddingService.stateManager) {
+                await embeddingService.stateManager.initializeIndexing(filePaths, 'reindex');
+            }
+            
             // Initialize progress bar immediately
             if ((window as any).mcpProgressHandlers && (window as any).mcpProgressHandlers.updateProgress) {
                 (window as any).mcpProgressHandlers.updateProgress({
@@ -224,27 +288,19 @@ export class IndexingComponent {
                 }
             };
             
-            // Try to use embeddingService (direct injection preferred)
-            if (this.embeddingService && typeof this.embeddingService.batchIndexFiles === 'function') {
-                await this.embeddingService.batchIndexFiles(filePaths, progressTracker);
+            // Use resumable batch indexing instead of regular batch indexing
+            if (embeddingService && typeof embeddingService.resumableBatchIndexFiles === 'function') {
+                await embeddingService.resumableBatchIndexFiles(filePaths, progressTracker);
                 
                 // Force a stats update afterward to ensure the UI refreshes
-                await this.forceStatsUpdate(this.embeddingService);
+                await this.forceStatsUpdate(embeddingService);
             }
-            // Fallback methods if direct injection isn't available
-            else if (this.plugin.services?.embeddingService && 
-                typeof this.plugin.services.embeddingService.batchIndexFiles === 'function') {
-                await this.plugin.services.embeddingService.batchIndexFiles(filePaths, progressTracker);
+            // Fallback to regular batch indexing if resumable not available
+            else if (embeddingService && typeof embeddingService.batchIndexFiles === 'function') {
+                await embeddingService.batchIndexFiles(filePaths, progressTracker);
                 
                 // Force a stats update afterward to ensure the UI refreshes
-                await this.forceStatsUpdate(this.plugin.services.embeddingService);
-            }
-            else if (this.plugin.embeddingService && 
-                typeof this.plugin.embeddingService.batchIndexFiles === 'function') {
-                await this.plugin.embeddingService.batchIndexFiles(filePaths, progressTracker);
-                
-                // Force a stats update afterward to ensure the UI refreshes
-                await this.forceStatsUpdate(this.plugin.embeddingService);
+                await this.forceStatsUpdate(embeddingService);
             }
             else {
                 throw new Error('Embedding service not available. Please restart Obsidian and try again.');
@@ -284,14 +340,30 @@ export class IndexingComponent {
                 await this.plugin.services.usageStatsService.refreshStats();
             }
             
+            // Clear the state after successful completion
+            if (embeddingService.stateManager) {
+                await embeddingService.stateManager.clearState();
+            }
+            
             new Notice(`Completed indexing of ${filePaths.length} files`);
         } catch (error) {
             console.error('Error reindexing:', error);
             new Notice(`Error reindexing: ${error instanceof Error ? error.message : String(error)}`);
+            
+            // Mark as paused on error to allow resuming
+            const embeddingService = this.embeddingService || 
+                                   this.plugin.services?.embeddingService || 
+                                   this.plugin.embeddingService;
+            if (embeddingService?.stateManager) {
+                await embeddingService.stateManager.pauseIndexing();
+            }
         } finally {
             // Re-enable the button and reset its text
             reindexButton.removeAttribute('disabled');
             reindexButton.textContent = 'Reindex All Content';
+            
+            // Refresh the component to update button state (for resume button)
+            await this.display();
             
             // Wait a moment to ensure all stats are updated
             setTimeout(async () => {
@@ -434,7 +506,7 @@ export class IndexingComponent {
             new Notice('Successfully resumed and completed indexing');
             
             // Refresh the component to update button state
-            await this.refresh();
+            await this.display();
         } catch (error) {
             console.error('Error resuming indexing:', error);
             new Notice(`Error resuming indexing: ${error instanceof Error ? error.message : String(error)}`);

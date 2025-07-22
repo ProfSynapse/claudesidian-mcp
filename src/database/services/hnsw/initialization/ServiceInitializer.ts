@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { IVectorStore } from '../../../interfaces/IVectorStore';
 import { EmbeddingService } from '../../EmbeddingService';
 import { logger } from '../../../../utils/logger';
@@ -16,6 +16,7 @@ import { HnswResultProcessor } from '../results/HnswResultProcessor';
 // Import existing services for dependency injection
 import { PersistenceManager, FileSystemInterface } from '../../../providers/chroma/services/PersistenceManager';
 import { ContentHashService } from '../../embedding/ContentHashService';
+import { ProcessedFilesStateManager } from '../../state/ProcessedFilesStateManager';
 
 /**
  * Service responsible for initializing all HNSW specialized services
@@ -23,6 +24,7 @@ import { ContentHashService } from '../../embedding/ContentHashService';
  */
 export class ServiceInitializer {
   private app?: App;
+  private plugin: Plugin;
   private vectorStore?: IVectorStore;
   private embeddingService?: EmbeddingService;
   private persistentPath?: string;
@@ -37,17 +39,25 @@ export class ServiceInitializer {
   private resultProcessor?: HnswResultProcessor;
 
   constructor(
+    plugin: Plugin,
     app?: App,
     vectorStore?: IVectorStore,
     embeddingService?: EmbeddingService,
     persistentPath?: string,
     configOptions?: HnswConfigOptions
   ) {
+    this.plugin = plugin;
     this.app = app;
     this.vectorStore = vectorStore;
     this.embeddingService = embeddingService;
     this.persistentPath = persistentPath;
     this.config = configOptions ? new HnswConfig(configOptions) : HnswConfig.getProductionConfig();
+    
+    console.log('[StateManager] ServiceInitializer initialized with plugin instance:', {
+      hasPlugin: !!plugin,
+      hasApp: !!app,
+      pluginType: plugin?.constructor?.name
+    });
   }
 
   /**
@@ -65,17 +75,18 @@ export class ServiceInitializer {
       // Create validation service
       this.validationService = new HnswValidationService(this.config);
 
-      // Create persistence service with proper dependencies
-      this.persistenceService = await this.createPersistenceService();
-
       // Result processor has no dependencies
       this.resultProcessor = new HnswResultProcessor();
 
-      logger.systemLog('Basic HNSW services initialized successfully', 'ServiceInitializer');
+      console.log('[StateManager] ❌ WARNING: ServiceInitializer cannot create persistence service for IndexedDB/WASM');
+      console.log('[StateManager] ❌ HNSW services should be created directly without ServiceInitializer');
+      console.log('[StateManager] ❌ Only basic services (validation, result processor) initialized');
+
+      logger.systemLog('Basic HNSW services initialized (persistence service NOT created)', 'ServiceInitializer');
 
       return {
         validationService: this.validationService,
-        persistenceService: this.persistenceService,
+        persistenceService: this.persistenceService!, // Will be null - this is wrong architecture
         partitionManager: this.partitionManager!, // Will be initialized in initializeWithHnswLib
         indexManager: this.indexManager!,
         searchEngine: this.searchEngine!,
@@ -92,125 +103,44 @@ export class ServiceInitializer {
 
   /**
    * Complete initialization with HNSW library after it's loaded
+   * NOTE: This method is incompatible with IndexedDB/WASM persistence
    */
   async initializeWithHnswLib(hnswLib: any): Promise<{
     partitionManager: HnswPartitionManager;
     indexManager: HnswIndexManager;
     searchEngine: HnswSearchEngine;
   }> {
-    if (!this.validationService || !this.persistenceService || !this.resultProcessor) {
-      throw new Error('Basic services must be initialized first');
-    }
-
-    try {
-      // Update persistence service with hnswLib
-      this.persistenceService = await this.recreatePersistenceServiceWithHnswLib(hnswLib);
-
-      // Initialize remaining services that depend on hnswLib
-      this.partitionManager = new HnswPartitionManager(this.config, hnswLib);
-
-      const contentHashService = new ContentHashService(this.app as any);
-      
-      this.indexManager = new HnswIndexManager(
-        this.config,
-        this.validationService,
-        this.persistenceService,
-        this.partitionManager,
-        contentHashService,
-        hnswLib
-      );
-
-      this.searchEngine = new HnswSearchEngine(
-        this.config,
-        this.validationService,
-        this.indexManager
-      );
-
-      logger.systemLog('HNSW services with library initialized successfully', 'ServiceInitializer');
-
-      return {
-        partitionManager: this.partitionManager,
-        indexManager: this.indexManager,
-        searchEngine: this.searchEngine
-      };
-    } catch (error) {
-      logger.systemError(
-        new Error(`Failed to initialize HNSW services with library: ${error instanceof Error ? error.message : String(error)}`),
-        'ServiceInitializer'
-      );
-      throw error;
-    }
+    console.log('[StateManager] ❌ CRITICAL: ServiceInitializer.initializeWithHnswLib is incompatible with IndexedDB/WASM persistence');
+    console.log('[StateManager] ❌ ARCHITECTURE ISSUE: HNSW services should be created directly without ServiceInitializer');
+    console.log('[StateManager] ❌ SOLUTION: Use WasmFilesystemManager and HnswIndexOperations for proper IndexedDB persistence');
+    
+    throw new Error('ServiceInitializer.initializeWithHnswLib is incompatible with IndexedDB/WASM persistence. HNSW services should NOT use ServiceInitializer for IndexedDB systems.');
   }
 
   /**
    * Create persistence service with dependencies
+   * NOTE: This method should not be used for HNSW index persistence
+   * HNSW indexes use IndexedDB via WasmFilesystemManager, not file system operations
    */
   private async createPersistenceService(): Promise<HnswPersistenceOrchestrator> {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fsModule = require('fs');
-    const fs: FileSystemInterface = {
-      existsSync: fsModule.existsSync,
-      mkdirSync: fsModule.mkdirSync,
-      writeFileSync: fsModule.writeFileSync,
-      readFileSync: fsModule.readFileSync,
-      renameSync: fsModule.renameSync,
-      unlinkSync: fsModule.unlinkSync,
-      readdirSync: fsModule.readdirSync,
-      statSync: fsModule.statSync,
-      rmdirSync: fsModule.rmdirSync,
-    };
-
-    const persistenceManager = new PersistenceManager(fs);
-    const contentHashService = new ContentHashService(this.app as any);
+    console.log('[StateManager] ❌ WARNING: ServiceInitializer.createPersistenceService should not be used for HNSW indexes');
+    console.log('[StateManager] ❌ HNSW indexes use IndexedDB via WasmFilesystemManager, not file system operations');
+    console.log('[StateManager] ❌ This method is incompatible with IndexedDB/WASM persistence');
     
-    // DiagnosticsService requires multiple dependencies, create a stub for now
-    const diagnosticsService = null; // Will be properly initialized later when needed
-    
-    // Use factory to create the orchestrator with proper dependencies
-    return HnswPersistenceFactory.create(
-      this.config,
-      null, // hnswLib will be set later in initialize()
-      persistenceManager,
-      {} as any, // CacheManager not needed anymore
-      diagnosticsService as any,
-      contentHashService,
-      this.persistentPath || '/tmp/hnsw'
-    );
+    throw new Error('ServiceInitializer.createPersistenceService is incompatible with IndexedDB/WASM persistence. HNSW indexes should use WasmFilesystemManager.');
   }
 
   /**
    * Recreate persistence service with HNSW library
+   * NOTE: This method should not be used for HNSW index persistence
+   * HNSW indexes use IndexedDB via WasmFilesystemManager, not file system operations
    */
   private async recreatePersistenceServiceWithHnswLib(hnswLib: any): Promise<HnswPersistenceOrchestrator> {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fsModule = require('fs');
-    const fs: FileSystemInterface = {
-      existsSync: fsModule.existsSync,
-      mkdirSync: fsModule.mkdirSync,
-      writeFileSync: fsModule.writeFileSync,
-      readFileSync: fsModule.readFileSync,
-      renameSync: fsModule.renameSync,
-      unlinkSync: fsModule.unlinkSync,
-      readdirSync: fsModule.readdirSync,
-      statSync: fsModule.statSync,
-      rmdirSync: fsModule.rmdirSync,
-    };
+    console.log('[StateManager] ❌ WARNING: recreatePersistenceServiceWithHnswLib should not be used for HNSW indexes');
+    console.log('[StateManager] ❌ HNSW indexes use IndexedDB via WasmFilesystemManager, not file system operations');
+    console.log('[StateManager] ❌ This method is incompatible with IndexedDB/WASM persistence');
     
-    const persistenceManager = new PersistenceManager(fs);
-    const contentHashService = new ContentHashService(this.app as any);
-    
-    // DiagnosticsService requires multiple dependencies, skip for now
-    const diagnosticsService = null;
-    
-    return HnswPersistenceFactory.create(
-      this.config,
-      hnswLib,
-      persistenceManager,
-      {} as any, // CacheManager not needed
-      diagnosticsService as any,
-      contentHashService,
-      this.persistentPath || '/tmp/hnsw'
-    );
+    throw new Error('ServiceInitializer.recreatePersistenceServiceWithHnswLib is incompatible with IndexedDB/WASM persistence. HNSW indexes should use WasmFilesystemManager.');
   }
 
   /**

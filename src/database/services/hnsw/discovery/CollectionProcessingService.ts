@@ -42,6 +42,7 @@ export class CollectionProcessingService {
   /**
    * Ensure HNSW indexes exist for all ChromaDB collections with embeddings
    * Called during initialization to build missing indexes
+   * NEW: Check processed files state to avoid unnecessary processing
    */
   async ensureIndexesForExistingCollections(app?: any, discoveredCollections?: string[]): Promise<CollectionProcessingResult> {
     const result: CollectionProcessingResult = {
@@ -59,6 +60,13 @@ export class CollectionProcessingService {
       const vectorStore = this.getVectorStore(app);
       if (!vectorStore) {
         logger.systemWarn('[COLLECTION-PROCESSING] Vector store not available', 'CollectionProcessingService');
+        return result;
+      }
+
+      // NEW: Check if we can skip processing based on state
+      const stateManager = this.getStateManager(app);
+      if (stateManager && await this.shouldSkipProcessing(stateManager, vectorStore, app)) {
+        logger.systemLog('[COLLECTION-PROCESSING] ⚡ Skipping collection processing - files already processed', 'CollectionProcessingService');
         return result;
       }
 
@@ -231,6 +239,50 @@ export class CollectionProcessingService {
     } catch (error) {
       logger.systemWarn(`Failed to get vector store: ${error instanceof Error ? error.message : String(error)}`, 'CollectionProcessingService');
       return null;
+    }
+  }
+
+  /**
+   * Get state manager from app context
+   */
+  private getStateManager(app?: any): any {
+    try {
+      return app?.plugins?.plugins?.['claudesidian-mcp']?.services?.stateManager;
+    } catch (error) {
+      logger.systemWarn(`Failed to get state manager: ${error instanceof Error ? error.message : String(error)}`, 'CollectionProcessingService');
+      return null;
+    }
+  }
+
+  /**
+   * Check if we should skip processing based on processed files state
+   */
+  private async shouldSkipProcessing(stateManager: any, vectorStore: any, app?: any): Promise<boolean> {
+    try {
+      const processedCount = stateManager.getProcessedFilesCount();
+      
+      if (processedCount === 0) {
+        return false; // No processed files, need to process
+      }
+      
+      // Check if we have a reasonable number of processed files
+      const vaultFiles = app?.vault?.getMarkdownFiles?.() || [];
+      const totalFiles = vaultFiles.length;
+      
+      // Skip if we have processed files and they represent a significant portion of the vault
+      if (processedCount > 0 && totalFiles > 0 && processedCount >= Math.min(totalFiles * 0.8, 10)) {
+        // Check if collection has data that matches our state
+        const collectionCount = await vectorStore.count('file_embeddings');
+        if (collectionCount > 0) {
+          logger.systemLog(`[COLLECTION-PROCESSING] State indicates ${processedCount} files processed, collection has ${collectionCount} items`, 'CollectionProcessingService');
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      logger.systemWarn(`Failed to check if processing should be skipped: ${error instanceof Error ? error.message : String(error)}`, 'CollectionProcessingService');
+      return false; // If we can't determine, err on the side of processing
     }
   }
 

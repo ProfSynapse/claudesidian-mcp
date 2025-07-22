@@ -18,6 +18,7 @@ import type { EventManager } from './services/EventManager';
 import type { FileEventManagerModular } from './services/file-events/FileEventManagerModular';
 import type { UsageStatsService } from './database/services/UsageStatsService';
 import type { CacheManager } from './database/services/CacheManager';
+import type { ProcessedFilesStateManager } from './database/services/state/ProcessedFilesStateManager';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
@@ -59,6 +60,9 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     public get cacheManager(): CacheManager | null { 
         return this.serviceManager?.getIfReady<CacheManager>('cacheManager') || null; 
+    }
+    public get stateManager(): ProcessedFilesStateManager | null { 
+        return this.serviceManager?.getIfReady<ProcessedFilesStateManager>('stateManager') || null; 
     }
     
     /**
@@ -124,6 +128,19 @@ export default class ClaudesidianPlugin extends Plugin {
         try {
             // Load settings first
             await this.settings.loadSettings();
+            
+            // NEW: Log data.json for debugging StateManager
+            try {
+                const data = await this.loadData();
+                console.log('[StateManager] Plugin data.json loaded:', {
+                    hasProcessedFiles: !!data?.processedFiles,
+                    processedFilesCount: data?.processedFiles?.files ? Object.keys(data.processedFiles.files).length : 0,
+                    processedFilesVersion: data?.processedFiles?.version,
+                    processedFilesLastUpdated: data?.processedFiles?.lastUpdated
+                });
+            } catch (error) {
+                console.warn('[StateManager] Failed to debug data.json:', error);
+            }
             
             // Initialize data directories
             await this.initializeDataDirectories();
@@ -330,7 +347,8 @@ export default class ClaudesidianPlugin extends Plugin {
                 'vectorStore',
                 'fileEmbeddingAccessService',
                 'embeddingService',
-                'memoryService'
+                'memoryService',
+                'usageStatsService'
             ];
             
             // Initialize in parallel where possible
@@ -573,6 +591,13 @@ export default class ClaudesidianPlugin extends Plugin {
     async onunload() {
         
         try {
+            // NEW: Save processed files state before cleanup
+            const stateManager = this.stateManager;
+            if (stateManager) {
+                await stateManager.saveState();
+                console.log('[ClaudesidianPlugin] Processed files state saved');
+            }
+            
             // Cleanup settings tab accordions
             if (this.settingsTab && typeof (this.settingsTab as any).cleanup === 'function') {
                 (this.settingsTab as any).cleanup();

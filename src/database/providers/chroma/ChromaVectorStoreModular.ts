@@ -191,9 +191,8 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
             }
           }
         }
-      } else {
-        await this.loadCollectionsFromDisk();
       }
+      // No fallback - collections must be loaded through coordinator only
     } catch (error) {
       // Collections will be loaded by coordinator in proper initialization phase
     }
