@@ -129,14 +129,19 @@ export class ServiceDescriptors {
             console.warn('[StateManager] ❌ Vector store missing setCollectionCoordinator method');
         }
 
-        // Inject into HNSW service if available
-        const hnswService = this.serviceManager.getIfReady('hnswSearchService');
+        // Inject into HNSW service if available (use getForInjection to get created but uninitialized service)
+        const hnswService = this.serviceManager.getForInjection('hnswSearchService');
         if (hnswService && 'setInitializationCoordination' in hnswService) {
             hnswService.setInitializationCoordination(
                 this.initializationServices.stateManager,
                 this.initializationServices.collectionCoordinator
             );
-            console.log('[ServiceDescriptors] Coordination services injected into HNSW service');
+            console.log('[ServiceDescriptors] ✅ Coordination services injected into HNSW service');
+        } else {
+            console.warn('[ServiceDescriptors] ❌ HNSW service not available for coordination injection:', {
+                hasService: !!hnswService,
+                hasMethod: hnswService && 'setInitializationCoordination' in hnswService
+            });
         }
     }
 
@@ -274,13 +279,9 @@ export class ServiceDescriptors {
                 
                 console.log('[StateManager] HnswSearchService created with plugin instance in ServiceDescriptors');
                 
-                // CRITICAL FIX: Remove coordination initialization from service creation
-                // This prevents the circular dependency that caused stack overflow
-                // Coordination will be injected after service creation in a separate phase
-                
-                // Basic initialization only - no coordination calls during creation
-                await service.initialize();
-                console.log('[ServiceDescriptors] HNSW service basic initialization completed (coordination deferred)');
+                // CRITICAL FIX: Remove initialization call during service creation
+                // Initialization will be handled by coordination system after injection
+                console.log('[ServiceDescriptors] HNSW service created (initialization deferred to coordination system)');
                 
                 return service;
             }

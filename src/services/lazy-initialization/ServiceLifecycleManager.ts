@@ -128,6 +128,18 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
     }
 
     /**
+     * Get service instance even if not ready (for coordination injection)
+     * Boy Scout Rule: Added to support coordination injection before full initialization
+     */
+    getServiceInstanceForInjection<T>(serviceName: string): T | null {
+        const status = this.serviceStatuses.get(serviceName);
+        if (status?.instance) {
+            return status.instance as T;
+        }
+        return null;
+    }
+
+    /**
      * Get all service statuses
      */
     getAllStatuses(): Map<string, ServiceStatus> {
@@ -165,9 +177,15 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
         // Create the service instance
         const instance = await descriptor.create();
         
-        // Initialize the service if it has an initialize method
+        // CRITICAL FIX: Do not call initialize() on HNSW service - coordination system handles it
+        // Initialize the service if it has an initialize method (except for hnswSearchService)
         if (instance && typeof (instance as any).initialize === 'function') {
-            await (instance as any).initialize();
+            // Special handling for HNSW service - let coordination system handle initialization
+            if (descriptor.name === 'hnswSearchService') {
+                console.log('[ServiceLifecycle] HNSW service created - initialization deferred to coordination system');
+            } else {
+                await (instance as any).initialize();
+            }
         }
         
         return instance;

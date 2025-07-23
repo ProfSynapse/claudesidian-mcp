@@ -213,6 +213,14 @@ export class LazyServiceManager implements IServiceManager {
     }
 
     /**
+     * Get service instance for coordination injection (even if not ready)
+     * Boy Scout Rule: Added to support coordination injection timing
+     */
+    getForInjection<T>(name: string): T | null {
+        return this.lifecycle.getServiceInstanceForInjection<T>(name);
+    }
+
+    /**
      * Get all initialized services
      */
     getAllInitialized(): Record<string, any> {
