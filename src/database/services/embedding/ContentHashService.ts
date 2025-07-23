@@ -43,13 +43,10 @@ export class ContentHashService {
       const content = await this.plugin.app.vault.read(file as any);
       const currentHash = this.hashContent(content);
 
-      // NEW: Check persistent state first
-      console.log(`[StateManager] Checking state for file: ${filePath}`);
+      // Check persistent state first
       if (this.stateManager.isFileProcessed(filePath, currentHash)) {
-        console.log(`[StateManager] ✅ ${filePath} - already processed (state), skipping`);
-        return false;
+        return false; // Already processed
       }
-      console.log(`[StateManager] ${filePath} - not in state, checking vector store`);
 
       // First check if the collection exists and has items
       const collectionExists = await vectorStore.hasCollection('file_embeddings');
@@ -86,15 +83,7 @@ export class ContentHashService {
         });
         
         const samplePaths = sampleQuery.metadatas?.[0]?.map((m: any) => m.filePath || 'no-filePath').slice(0, 5) || [];
-        console.log(`[StateManager] 🔍 ${filePath} - sample stored file paths: ${samplePaths.join(', ')}`);
-        console.log(`[StateManager] 🔍 ${filePath} - looking for exact match: "${normalizedPath}" (normalized from "${filePath}")`);
-        console.log(`[StateManager] 🔍 Query details:`, {
-          where: { filePath: { $eq: normalizedPath } },
-          normalizedPath,
-          originalPath: filePath,
-          queryResultIds: queryResult.ids?.[0]?.length || 0,
-          collectionCount
-        });
+        // Debug info available but not logged to reduce clutter
       }
 
       // If no existing embeddings found, file needs embedding

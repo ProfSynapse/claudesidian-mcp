@@ -28,6 +28,51 @@ import { HnswMetadataManager } from './persistence/HnswMetadataManager';
 import { HnswIndexOperations } from './persistence/HnswIndexOperations';
 import { PersistenceManager } from '../../providers/chroma/services/PersistenceManager';
 
+/**
+ * Service factory for clean HNSW service dependency creation
+ * Follows Single Responsibility and Dependency Inversion principles
+ */
+class HnswServiceFactory {
+  static createServices(config: HnswConfig, hnswLib: any, plugin: Plugin, persistentPath?: string) {
+    // Create state and content services
+    const stateManager = new ProcessedFilesStateManager(plugin);
+    const contentHashService = new ContentHashService(plugin, stateManager);
+    
+    // Create persistence services - use Node.js fs for sync operations required by PersistenceManager
+    const baseDataPath = persistentPath || '.';
+    const fs = require('fs');
+    const persistenceManager = new PersistenceManager(fs);
+    const metadataManager = new HnswMetadataManager(persistenceManager, baseDataPath);
+    const indexOperations = new HnswIndexOperations(config, hnswLib);
+    
+    // Create orchestrated services
+    const persistenceOrchestrator = new HnswPersistenceOrchestrator(
+      config, hnswLib, metadataManager, indexOperations, contentHashService
+    );
+    
+    const partitionManager = new HnswPartitionManager(config, hnswLib);
+    const validationService = new HnswValidationService(config);
+    const resultProcessor = new HnswResultProcessor();
+    
+    const indexManager = new HnswIndexManager(
+      config, validationService, persistenceOrchestrator, partitionManager, contentHashService, hnswLib
+    );
+    
+    const searchEngine = new HnswSearchEngine(config, validationService, indexManager);
+    
+    return {
+      validationService,
+      persistenceService: persistenceOrchestrator,
+      partitionManager,
+      indexManager,
+      searchEngine,
+      resultProcessor,
+      stateManager,
+      contentHashService
+    };
+  }
+}
+
 // Import initialization coordination
 import { IInitializationStateManager } from '../../../services/initialization/interfaces/IInitializationStateManager';
 import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
@@ -35,17 +80,6 @@ import { ICollectionLoadingCoordinator } from '../../../services/initialization/
 // Re-export types for backward compatibility
 export type { SearchResult } from './results/HnswResultProcessor';
 
-// Legacy interfaces for backward compatibility
-export interface ItemWithDistance {
-  item: DatabaseItem;
-  distance: number;
-}
-
-export interface LegacySearchOptions {
-  limit?: number;
-  threshold?: number;
-  includeContent?: boolean;
-}
 
 /**
  * Modern, SOLID-compliant HNSW search service
@@ -97,7 +131,7 @@ export class HnswSearchService {
     // Note: ServiceInitializer removed - incompatible with IndexedDB/WASM persistence
     // Services are now created directly in HnswCoordinator
     
-    console.log('[StateManager] HnswSearchService initialized with plugin instance');
+    logger.systemLog('[HNSW-UPDATE] HnswSearchService constructor completed', 'HnswSearchService');
 
     // Note: Lightweight services will be initialized async in initialize() method
     // This prevents async operations in constructor
@@ -111,44 +145,25 @@ export class HnswSearchService {
     stateManager: IInitializationStateManager,
     collectionCoordinator: ICollectionLoadingCoordinator
   ): void {
+    console.log('[HNSW-UPDATE] 🎯 setInitializationCoordination called - injecting coordination services');
     this.initializationStateManager = stateManager;
     this.collectionCoordinator = collectionCoordinator;
     
+    console.log('[HNSW-UPDATE] 🔥 Coordination services injected:', {
+      hasStateManager: !!this.initializationStateManager,
+      hasCollectionCoordinator: !!this.collectionCoordinator
+    });
+    
     // Trigger initialization now that coordination services are available
     console.log('[HNSW-UPDATE] 🚀 Coordination services injected, triggering deferred initialization');
-    this.initialize().catch(error => {
+    this.initialize().then(() => {
+      console.log('[HNSW-UPDATE] ✅ Deferred initialization completed successfully');
+    }).catch(error => {
       console.error('[HNSW-UPDATE] ❌ Failed to initialize after coordination injection:', error);
+      logger.systemError(new Error(`Failed to initialize after coordination injection: ${error instanceof Error ? error.message : String(error)}`), 'HnswSearchService');
     });
   }
 
-  /**
-   * Initialize lightweight services that don't require HNSW library
-   */
-  private async initializeLightweightServices(): Promise<void> {
-    try {
-      console.log('[StateManager] ❌ WARNING: initializeLightweightServices bypassing ServiceInitializer for IndexedDB/WASM');
-      console.log('[StateManager] ❌ ServiceInitializer is incompatible with IndexedDB/WASM persistence');
-      
-      // Create basic services directly without ServiceInitializer for IndexedDB/WASM compatibility
-      this.services = {
-        validationService: new HnswValidationService(this.config),
-        persistenceService: null, // Will be created with full orchestrator after WASM library loads
-        partitionManager: null, // Will be created when needed
-        indexManager: null, // Will be created when needed
-        searchEngine: null, // Will be created when needed
-        resultProcessor: new HnswResultProcessor()
-      };
-      
-      console.log('[StateManager] ✅ Basic HNSW services initialized directly (bypassing ServiceInitializer)');
-      logger.systemLog('Basic HNSW services initialized directly for IndexedDB/WASM compatibility', 'HnswSearchService');
-    } catch (error) {
-      logger.systemError(
-        new Error(`Failed to initialize lightweight services: ${error instanceof Error ? error.message : String(error)}`),
-        'HnswSearchService'
-      );
-      throw error;
-    }
-  }
 
   /**
    * Initialize HNSW library and complete service initialization
@@ -156,6 +171,8 @@ export class HnswSearchService {
    * CRITICAL FIX: Only initialize if coordination services are available
    */
   async initialize(): Promise<void> {
+    console.log('[HNSW-UPDATE] 🎯 initialize() called, checking coordination services');
+    
     // CRITICAL: Do not auto-initialize until coordination services are injected
     // This prevents the ServiceLifecycleManager from calling the old initialization path
     if (!this.initializationStateManager) {
@@ -164,108 +181,67 @@ export class HnswSearchService {
       return;
     }
 
+    console.log('[HNSW-UPDATE] ✅ Coordination services available, proceeding with initialization');
+
     // Use coordination system to prevent duplicate initialization
+    console.log('[HNSW-UPDATE] 🔄 Calling ensureInitialized for hnsw_basic_init');
     const result = await this.initializationStateManager.ensureInitialized(
       'hnsw_basic_init',
       async () => {
+        console.log('[HNSW-UPDATE] 🚀 Running performBasicInitialization callback');
         await this.performBasicInitialization();
       }
     );
     
+    console.log('[HNSW-UPDATE] 📊 ensureInitialized result:', { success: result.success, hasError: !!result.error });
+    
     if (!result.success) {
+      console.error('[HNSW-UPDATE] ❌ ensureInitialized failed:', result.error);
       throw result.error || new Error('HNSW basic initialization failed');
     }
+    
+    console.log('[HNSW-UPDATE] ✅ initialize() completed successfully');
   }
+  
   
   /**
    * Perform the actual basic initialization
    */
   private async performBasicInitialization(): Promise<void> {
-    logger.systemLog('[HNSW-UPDATE] Starting HNSW basic initialization with proper service creation order', 'HnswSearchService');
+    console.log('[HNSW-UPDATE] 🎯 performBasicInitialization() called');
+    console.log('[HNSW-UPDATE] 📊 Current state:', {
+      isInitialized: this.isInitialized,
+      fullyInitialized: this.fullyInitialized,
+      hasServices: !!this.services,
+      hasHnswLib: !!this.hnswLib
+    });
     
     if (this.isInitialized) {
-      logger.systemLog('[HNSW-UPDATE] Already initialized, skipping', 'HnswSearchService');
+      console.log('[HNSW-UPDATE] ⏸️ Already initialized, skipping basic initialization');
       return;
     }
+    
+    console.log('[HNSW-UPDATE] 🚀 Starting HNSW basic initialization with proper service creation order');
 
     try {
-      // STEP 1: Initialize lightweight services first
-      if (!this.services || !this.services.validationService) {
-        logger.systemLog('[HNSW-UPDATE] Creating lightweight services', 'HnswSearchService');
-        await this.initializeLightweightServices();
-      }
-      
-      // STEP 2: Load HNSW WASM library
-      logger.systemLog('[HNSW-UPDATE] Loading HNSW WASM library', 'HnswSearchService');
+      // STEP 1: Load HNSW WASM library
+      console.log('[HNSW-UPDATE] 🔄 STEP 1: Loading HNSW WASM library');
       this.hnswLib = await loadHnswlib();
-      logger.systemLog('[HNSW-UPDATE] ✅ HNSW WASM library loaded successfully', 'HnswSearchService');
+      console.log('[HNSW-UPDATE] ✅ HNSW WASM library loaded successfully');
 
-      // STEP 3: Create dependencies in correct order
-      logger.systemLog('[HNSW-UPDATE] Creating service dependencies in proper order', 'HnswSearchService');
+      // STEP 2: Create all services using factory
+      console.log('[HNSW-UPDATE] 🔄 STEP 2: Creating HNSW services using factory');
+      const services = HnswServiceFactory.createServices(this.config, this.hnswLib, this.plugin, this.persistentPath);
       
-      // 3a. Create filesystem interface for PersistenceManager
-      const fs = require('fs');
-      const fsInterface = {
-        existsSync: (path: string) => fs.existsSync(path),
-        mkdirSync: (path: string, options?: { recursive?: boolean }) => fs.mkdirSync(path, options),
-        writeFileSync: (path: string, data: string) => fs.writeFileSync(path, data),
-        readFileSync: (path: string, encoding: string) => fs.readFileSync(path, encoding),
-        renameSync: (oldPath: string, newPath: string) => fs.renameSync(oldPath, newPath),
-        unlinkSync: (path: string) => fs.unlinkSync(path),
-        readdirSync: (path: string) => fs.readdirSync(path),
-        statSync: (path: string) => fs.statSync(path),
-        rmdirSync: (path: string) => fs.rmdirSync(path)
-      };
+      // Load state manager
+      await services.stateManager.loadState();
       
-      // 3b. Create PersistenceManager
-      const persistenceManager = new PersistenceManager(fsInterface);
-      logger.systemLog('[HNSW-UPDATE] ✅ PersistenceManager created', 'HnswSearchService');
-      
-      // 3c. Create state and content hash services
-      const stateManager = new ProcessedFilesStateManager(this.plugin);
-      await stateManager.loadState();
-      const contentHashService = new ContentHashService(this.plugin, stateManager);
-      logger.systemLog('[HNSW-UPDATE] ✅ State and ContentHash services created', 'HnswSearchService');
-      
-      // 3d. Create metadata and index operations
-      const baseDataPath = this.persistentPath || '.';
-      const metadataManager = new HnswMetadataManager(persistenceManager, baseDataPath);
-      const indexOperations = new HnswIndexOperations(this.config, this.hnswLib);
-      logger.systemLog('[HNSW-UPDATE] ✅ Metadata and Index operations created', 'HnswSearchService');
+      // Assign services to instance
+      this.services = services;
+      console.log('[HNSW-UPDATE] ✅ All HNSW services created via factory');
 
-      // STEP 4: Create persistence orchestrator with all dependencies
-      logger.systemLog('[HNSW-UPDATE] Creating HnswPersistenceOrchestrator with full dependencies', 'HnswSearchService');
-      this.services.persistenceService = new HnswPersistenceOrchestrator(
-        this.config,
-        this.hnswLib,
-        metadataManager,
-        indexOperations,
-        contentHashService
-      );
-      logger.systemLog('[HNSW-UPDATE] ✅ HnswPersistenceOrchestrator created successfully', 'HnswSearchService');
-
-      // STEP 5: Create remaining services
-      this.services.partitionManager = new HnswPartitionManager(this.config, this.hnswLib);
-      logger.systemLog('[HNSW-UPDATE] ✅ Partition manager created', 'HnswSearchService');
-      
-      this.services.indexManager = new HnswIndexManager(
-        this.config,
-        this.services.validationService,
-        this.services.persistenceService,
-        this.services.partitionManager,
-        contentHashService,
-        this.hnswLib
-      );
-      logger.systemLog('[HNSW-UPDATE] ✅ Index manager created', 'HnswSearchService');
-      
-      this.services.searchEngine = new HnswSearchEngine(
-        this.config,
-        this.services.validationService,
-        this.services.indexManager
-      );
-      logger.systemLog('[HNSW-UPDATE] ✅ Search engine created', 'HnswSearchService');
-
-      // STEP 6: Initialize coordinator
+      // STEP 3: Initialize coordinator with services
+      console.log('[HNSW-UPDATE] 🔄 STEP 3: Creating HnswCoordinator');
       this.initializationOrchestrator = new HnswCoordinator(
         this.config,
         this.services.persistenceService,
@@ -274,15 +250,14 @@ export class HnswSearchService {
         this.app,
         this.collectionCoordinator || undefined
       );
-      logger.systemLog('[HNSW-UPDATE] ✅ HnswCoordinator created with proper dependencies', 'HnswSearchService');
       
-      // Also set coordinator after construction if available
       if (this.collectionCoordinator) {
         this.initializationOrchestrator.setCollectionCoordinator(this.collectionCoordinator);
       }
+      console.log('[HNSW-UPDATE] ✅ HnswCoordinator created');
 
       this.isInitialized = true;
-      logger.systemLog('[HNSW-UPDATE] 🎉 HNSW basic initialization completed successfully', 'HnswSearchService');
+      console.log('[HNSW-UPDATE] 🎉 HNSW basic initialization completed successfully');
       
     } catch (error) {
       logger.systemError(
@@ -332,37 +307,41 @@ export class HnswSearchService {
   
   /**
    * Perform the actual full initialization
+   * CRITICAL FIX: Verify orchestrator exists before calling executeFullInitialization
    */
   private async performFullInitialization(): Promise<void> {
-    console.log('[HNSW-INIT-DEBUG] performFullInitialization called, current state:', {
-      fullyInitialized: this.fullyInitialized,
-      hasOrchestrator: !!this.initializationOrchestrator,
-      hasCollectionCoordinator: !!this.collectionCoordinator
-    });
+    logger.systemLog('[HNSW-UPDATE] Starting full HNSW initialization', 'HnswSearchService');
 
     if (this.fullyInitialized) {
-      console.log('[HNSW-INIT-DEBUG] Already fully initialized in performFullInitialization');
+      logger.systemLog('[HNSW-UPDATE] Already fully initialized, skipping', 'HnswSearchService');
       return;
     }
 
     try {
+      // CRITICAL FIX: Ensure basic initialization completed before proceeding
+      if (!this.initializationOrchestrator) {
+        logger.systemLog('[HNSW-UPDATE] ⚠️ Orchestrator not available, ensuring basic initialization completes', 'HnswSearchService');
+        await this.performBasicInitialization();
+        
+        if (!this.initializationOrchestrator) {
+          throw new Error('Basic initialization failed to create orchestrator - cannot proceed with full initialization');
+        }
+      }
+      
       // Wait for collections to be loaded if coordinator is available
       if (this.collectionCoordinator) {
         const collectionsResult = await this.collectionCoordinator.waitForCollections();
         logger.systemLog('HNSW waiting for collections completed', 'HnswSearchService');
       }
       
+      logger.systemLog('[HNSW-UPDATE] 🔥 Calling orchestrator.executeFullInitialization with verified orchestrator', 'HnswSearchService');
       const result = await this.initializationOrchestrator.executeFullInitialization();
       
       // Always mark as initialized to prevent repeated attempts
       this.fullyInitialized = true;
       this.isFullyReady = result.success;
       
-      console.log('[HNSW-INIT-DEBUG] Marked service as fully initialized:', {
-        fullyInitialized: this.fullyInitialized,
-        isFullyReady: this.isFullyReady,
-        resultSuccess: result.success
-      });
+      logger.systemLog(`[HNSW-UPDATE] Service marked as fully initialized - success: ${result.success}`, 'HnswSearchService');
       
       if (result.success) {
         logger.systemLog('[STARTUP] HNSW initialization completed successfully', 'HnswSearchService');
@@ -370,15 +349,14 @@ export class HnswSearchService {
         logger.systemLog(`[STARTUP] HNSW initialization completed with errors - service available (${result.errors.length} errors)`, 'HnswSearchService');
       }
     } catch (criticalError) {
-      console.log('[HNSW-INIT-DEBUG] Critical error in performFullInitialization:', criticalError);
-      // Even critical errors shouldn't prevent the service from being marked as initialized
-      this.fullyInitialized = true;
-      this.isFullyReady = true;
       logger.systemError(
         new Error(`Critical HNSW initialization error: ${criticalError instanceof Error ? criticalError.message : String(criticalError)}`),
         'HnswSearchService'
       );
-      logger.systemLog('[STARTUP] HNSW service marked as initialized despite errors - search will work with available indexes', 'HnswSearchService');
+      // Even critical errors shouldn't prevent the service from being marked as initialized
+      this.fullyInitialized = true;
+      this.isFullyReady = false; // Set to false for critical errors
+      logger.systemLog('[STARTUP] HNSW service marked as initialized despite errors - basic functionality available', 'HnswSearchService');
     }
   }
 
@@ -478,65 +456,6 @@ export class HnswSearchService {
     }
   }
 
-  // ===== LEGACY COMPATIBILITY METHODS =====
-  // These methods maintain backward compatibility with existing services
-
-  /**
-   * Legacy search method that returns ItemWithDistance[] for backward compatibility
-   * @deprecated Use searchSimilar() instead, which returns SearchResult[]
-   */
-  async searchSimilarLegacy(
-    collectionName: string,
-    queryEmbedding: number[],
-    nResults: number,
-    whereClause?: WhereClause
-  ): Promise<ItemWithDistance[]> {
-    const options: SearchOptions = { 
-      limit: nResults,
-      includeContent: true
-    };
-
-    try {
-      let searchResults: SearchResult[];
-      
-      if (whereClause) {
-        searchResults = await this.searchWithMetadataFilter(collectionName, queryEmbedding, whereClause, options);
-      } else {
-        searchResults = await this.searchSimilar(collectionName, queryEmbedding, options);
-      }
-
-      // Convert SearchResult[] to ItemWithDistance[] for backward compatibility
-      return this.convertSearchResultsToItemWithDistance(searchResults);
-    } catch (error) {
-      logger.systemError(
-        new Error(`Legacy search failed for collection ${collectionName}: ${error instanceof Error ? error.message : String(error)}`),
-        'HnswSearchService'
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Convert SearchResult[] to ItemWithDistance[] for legacy compatibility
-   */
-  private convertSearchResultsToItemWithDistance(searchResults: SearchResult[]): ItemWithDistance[] {
-    return searchResults.map(result => {
-      const item: DatabaseItem = {
-        id: result.id,
-        document: result.content || result.snippet,
-        embedding: [], // Legacy format doesn't need embeddings in results
-        metadata: {
-          title: result.title,
-          ...result.metadata
-        }
-      };
-
-      return {
-        item,
-        distance: 1 - result.score // Convert similarity score to distance
-      };
-    });
-  }
 
   /**
    * High-level semantic search interface for string queries with file filtering
@@ -614,19 +533,6 @@ export class HnswSearchService {
     await this.services.indexManager.removeItemFromIndex(collectionName, itemId);
   }
 
-  /**
-   * Index file content (legacy method for backward compatibility)
-   */
-  async indexFileContent(file: TFile, _content: string): Promise<void> {
-    logger.systemWarn('indexFileContent is deprecated - use indexCollection instead', 'HnswSearchService');
-  }
-
-  /**
-   * Remove file from index (legacy method for backward compatibility)
-   */
-  async removeFileFromIndex(filePath: string): Promise<void> {
-    logger.systemWarn('removeFileFromIndex is deprecated - use removeItemFromIndex instead', 'HnswSearchService');
-  }
 
   /**
    * Check if index exists for collection
@@ -794,15 +700,4 @@ export class HnswSearchService {
     return { status, details, recommendations };
   }
 
-  // Legacy method support for backward compatibility
-  private parseSearchParameters(
-    queryEmbedding: number[],
-    options: LegacySearchOptions = {}
-  ): SearchParameters {
-    return {
-      collectionName: '',
-      queryEmbedding,
-      nResults: options.limit || 10
-    };
-  }
 }

@@ -1,60 +1,51 @@
 /**
- * Full Initialization Orchestrator for HNSW Search Service
- * Coordinates the complex phased initialization process following SRP
+ * HNSW Coordinator - Simplified initialization replacing complex orchestration
+ * Coordinates direct comparison between ChromaDB collections and IndexedDB indexes
+ * Boy Scout Rule: Replacing 361-line complex orchestrator with simple, reliable logic
  */
 
 import { App } from 'obsidian';
 import { HnswConfig } from '../config/HnswConfig';
-import { IndexDiscoveryService } from '../discovery/IndexDiscoveryService';
-import { CollectionProcessingService } from '../discovery/CollectionProcessingService';
-import { DataConversionService } from '../conversion/DataConversionService';
 import { HnswPersistenceOrchestrator } from '../persistence/HnswPersistenceOrchestrator';
 import { HnswIndexManager } from '../index/HnswIndexManager';
+import { IVectorStore } from '../../../interfaces/IVectorStore';
+import { DatabaseItem } from '../../../providers/chroma/services/FilterEngine';
 import { logger } from '../../../../utils/logger';
 
 // Import coordination interfaces
 import { ICollectionLoadingCoordinator } from '../../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
 
 /**
- * Full initialization result
+ * Simplified initialization result
  */
-export interface FullInitializationResult {
+export interface HnswInitializationResult {
   success: boolean;
-  phase: 'discovery' | 'collection-processing' | 'completed' | 'error';
-  discoveryResult?: {
-    discovered: number;
-    recovered: number;
-    failed: number;
-  };
-  processingResult?: {
-    processed: number;
-    built: number;
-    loaded: number;
-    skipped: number;
-  };
+  collectionsProcessed: number;
+  indexesBuilt: number;
+  indexesLoaded: number;
+  indexesSkipped: number;
   errors: string[];
   duration: number;
 }
 
 /**
- * Service responsible for orchestrating the full initialization process
- * Follows SRP by focusing only on initialization coordination
- * Enhanced with collection loading coordination
+ * HnswCoordinator - Simplified direct coordination replacing complex orchestration
+ * Directly compares ChromaDB collections with IndexedDB indexes and rebuilds as needed
+ * Boy Scout Rule: Clean, simple logic instead of complex multi-phase orchestration
  */
-export class FullInitializationOrchestrator {
+class HnswCoordinator {
   private config: HnswConfig;
   private app?: App;
   private persistenceService: HnswPersistenceOrchestrator;
   private indexManager: HnswIndexManager;
-  private discoveryService: IndexDiscoveryService;
-  private processingService: CollectionProcessingService;
-  private conversionService: DataConversionService;
+  private vectorStore: IVectorStore;
   private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
 
   constructor(
     config: HnswConfig,
     persistenceService: HnswPersistenceOrchestrator,
     indexManager: HnswIndexManager,
+    vectorStore: IVectorStore,
     app?: App,
     collectionCoordinator?: ICollectionLoadingCoordinator
   ) {
@@ -62,21 +53,8 @@ export class FullInitializationOrchestrator {
     this.app = app;
     this.persistenceService = persistenceService;
     this.indexManager = indexManager;
+    this.vectorStore = vectorStore;
     this.collectionCoordinator = collectionCoordinator || null;
-    
-    // Initialize supporting services
-    this.conversionService = new DataConversionService();
-    this.discoveryService = new IndexDiscoveryService(
-      config,
-      persistenceService,
-      indexManager,
-      this.conversionService
-    );
-    this.processingService = new CollectionProcessingService(
-      config,
-      indexManager,
-      this.conversionService
-    );
   }
   
   /**
@@ -87,59 +65,66 @@ export class FullInitializationOrchestrator {
   }
 
   /**
-   * Execute full initialization with error boundaries and recovery
+   * Execute simple initialization: compare ChromaDB collections with IndexedDB indexes
+   * Implements your requirements: compare existing embeddings to persisted index, reindex if needed
    */
-  async executeFullInitialization(): Promise<FullInitializationResult> {
+  async executeFullInitialization(): Promise<HnswInitializationResult> {
     const startTime = Date.now();
-    const result: FullInitializationResult = {
+    const result: HnswInitializationResult = {
       success: false,
-      phase: 'discovery',
+      collectionsProcessed: 0,
+      indexesBuilt: 0,
+      indexesLoaded: 0,
+      indexesSkipped: 0,
       errors: [],
       duration: 0
     };
 
-    logger.systemLog('[FULL-INIT] Beginning HNSW full initialization...', 'FullInitializationOrchestrator');
+    logger.systemLog('[HNSW-COORDINATOR] Starting simple index comparison and rebuild', 'HnswCoordinator');
 
     try {
-      // Phase 1: Index Discovery and Recovery
-      result.phase = 'discovery';
-      const discoveryResult = await this.executeDiscoveryPhase();
-      result.discoveryResult = {
-        discovered: discoveryResult.discovered,
-        recovered: discoveryResult.recovered,
-        failed: discoveryResult.failed
-      };
-
-      // Log discovery results
-      if (discoveryResult.errors.length > 0) {
-        result.errors.push(...discoveryResult.errors.map(e => `Discovery: ${e.collection} - ${e.error}`));
+      // Wait for collection loading coordinator if available
+      if (this.collectionCoordinator) {
+        try {
+          await this.collectionCoordinator.waitForCollections(30000);
+        } catch (error) {
+          logger.systemWarn('Collection coordinator timeout, proceeding anyway', 'HnswCoordinator');
+        }
       }
 
-      // Phase 2: Collection Processing (with discovered collections)
-      result.phase = 'collection-processing';
-      const processingResult = await this.executeCollectionProcessingPhase(discoveryResult.collections);
-      result.processingResult = {
-        processed: processingResult.processed,
-        built: processingResult.built,
-        loaded: processingResult.loaded,
-        skipped: processingResult.skipped
-      };
+      // Step 1: Get all ChromaDB collections (your existing embeddings)
+      const collections = await this.getChromaCollections();
+      logger.systemLog(`[HNSW-COORDINATOR] Found ${collections.length} ChromaDB collections to process`, 'HnswCoordinator');
 
-      // Log processing results
-      if (processingResult.errors.length > 0) {
-        result.errors.push(...processingResult.errors.map(e => `Processing: ${e.collection} - ${e.error}`));
+      // Step 2: For each collection, compare with IndexedDB and reindex if needed
+      for (const collection of collections) {
+        try {
+          const collectionResult = await this.processCollection(collection);
+          result.collectionsProcessed++;
+          
+          if (collectionResult.action === 'built') {
+            result.indexesBuilt++;
+          } else if (collectionResult.action === 'loaded') {
+            result.indexesLoaded++;
+          } else {
+            result.indexesSkipped++;
+          }
+        } catch (error) {
+          const errorMsg = `${collection.name}: ${error instanceof Error ? error.message : String(error)}`;
+          result.errors.push(errorMsg);
+          logger.systemWarn(`[HNSW-COORDINATOR] Collection processing failed: ${errorMsg}`, 'HnswCoordinator');
+        }
       }
 
-      // Mark as completed
-      result.phase = 'completed';
       result.success = true;
       result.duration = Date.now() - startTime;
 
-      // Log final summary
-      this.logInitializationSummary(result);
+      logger.systemLog(
+        `[HNSW-COORDINATOR] Initialization completed: ${result.indexesBuilt} built, ${result.indexesLoaded} loaded, ${result.indexesSkipped} skipped (${result.duration}ms)`,
+        'HnswCoordinator'
+      );
 
     } catch (criticalError) {
-      result.phase = 'error';
       result.success = false;
       result.duration = Date.now() - startTime;
       
@@ -147,184 +132,160 @@ export class FullInitializationOrchestrator {
       result.errors.push(`Critical error: ${errorMessage}`);
       
       logger.systemError(
-        new Error(`[FULL-INIT] Critical initialization error: ${errorMessage}`),
-        'FullInitializationOrchestrator'
+        new Error(`[HNSW-COORDINATOR] Critical initialization error: ${errorMessage}`),
+        'HnswCoordinator'
       );
-      
-      // Even critical errors shouldn't prevent the service from being marked as initialized
-      logger.systemLog('[FULL-INIT] Service marked as initialized despite errors - search will work with available indexes', 'FullInitializationOrchestrator');
     }
 
     return result;
   }
 
   /**
-   * Execute discovery phase with error boundaries
+   * Get ChromaDB collections with their items using correct IVectorStore interface
+   * Replaces complex discovery with direct ChromaDB queries
    */
-  private async executeDiscoveryPhase() {
+  private async getChromaCollections(): Promise<Array<{name: string, items: DatabaseItem[], count: number}>> {
+    logger.systemLog('[HNSW-UPDATE] Getting ChromaDB collections directly', 'HnswCoordinator');
+    
     try {
-      logger.systemLog('[FULL-INIT-DISCOVERY] Starting index discovery phase', 'FullInitializationOrchestrator');
-      const result = await this.discoveryService.discoverAndRecoverIndexes();
+      const collections: Array<{name: string, items: DatabaseItem[], count: number}> = [];
       
-      logger.systemLog(
-        `[FULL-INIT-DISCOVERY] Discovery phase completed: ${result.recovered} recovered, ${result.failed} failed`,
-        'FullInitializationOrchestrator'
-      );
+      // Get all available collection names (returns string[])
+      const collectionNames = await this.vectorStore.listCollections();
+      logger.systemLog(`[HNSW-UPDATE] Found collections: ${collectionNames.join(', ')}`, 'HnswCoordinator');
       
-      return result;
-    } catch (discoveryError) {
-      const errorMessage = discoveryError instanceof Error ? discoveryError.message : String(discoveryError);
-      logger.systemWarn(
-        `[FULL-INIT-DISCOVERY] Discovery phase failed but continuing: ${errorMessage}`,
-        'FullInitializationOrchestrator'
-      );
-      
-      return {
-        discovered: 0,
-        recovered: 0,
-        failed: 1,
-        collections: [],
-        errors: [{ collection: 'discovery-phase', error: errorMessage }]
-      };
-    }
-  }
-
-  /**
-   * Execute collection processing phase with error boundaries
-   * Uses discovered collections to optimize processing
-   * Now waits for coordinated collection loading
-   */
-  private async executeCollectionProcessingPhase(discoveredCollections: string[] = []) {
-    try {
-      logger.systemLog('[FULL-INIT-PROCESSING] Starting collection processing phase', 'FullInitializationOrchestrator');
-      
-      // Wait for collections to be loaded by the coordinator
-      if (this.collectionCoordinator) {
+      // Process each collection
+      for (const collectionName of collectionNames) {
         try {
-          const loadResult = await this.collectionCoordinator.waitForCollections(30000);
-          if (loadResult.success) {
-            logger.systemLog(
-              `[FULL-INIT-PROCESSING] Collections loaded via coordinator: ${loadResult.collectionsLoaded} collections`,
-              'FullInitializationOrchestrator'
-            );
-          } else {
-            logger.systemWarn(
-              `[FULL-INIT-PROCESSING] Collection coordinator failed, proceeding with discovery`,
-              'FullInitializationOrchestrator'
-            );
+          // Check if collection exists
+          const hasCollection = await this.vectorStore.hasCollection(collectionName);
+          if (!hasCollection) {
+            logger.systemWarn(`[HNSW-UPDATE] Collection ${collectionName} doesn't exist, skipping`, 'HnswCoordinator');
+            continue;
           }
-        } catch (coordinatorError) {
-          logger.systemWarn(
-            `[FULL-INIT-PROCESSING] Collection coordinator error: ${coordinatorError}, proceeding with discovery`,
-            'FullInitializationOrchestrator'
-          );
+
+          // Get collection count first
+          const count = await this.vectorStore.count(collectionName);
+          if (count === 0) {
+            logger.systemLog(`[HNSW-UPDATE] Collection ${collectionName} is empty, skipping`, 'HnswCoordinator');
+            continue;
+          }
+
+          // Get all items from the collection
+          const allItems = await this.vectorStore.getAllItems(collectionName, {
+            limit: undefined,
+            offset: 0
+          });
+
+          if (!allItems.ids || allItems.ids.length === 0) {
+            logger.systemLog(`[HNSW-UPDATE] Collection ${collectionName} has no items, skipping`, 'HnswCoordinator');
+            continue;
+          }
+
+          // Convert to DatabaseItem[] format
+          const items: DatabaseItem[] = [];
+          for (let i = 0; i < allItems.ids.length; i++) {
+            items.push({
+              id: allItems.ids[i],
+              document: allItems.documents?.[i] || '',
+              embedding: allItems.embeddings?.[i] || [],
+              metadata: allItems.metadatas?.[i] || {}
+            });
+          }
+
+          collections.push({
+            name: collectionName,
+            items,
+            count: items.length
+          });
+
+          logger.systemLog(`[HNSW-UPDATE] Loaded collection ${collectionName} with ${items.length} items`, 'HnswCoordinator');
+
+        } catch (collectionError) {
+          logger.systemWarn(`[HNSW-UPDATE] Failed to load collection ${collectionName}: ${collectionError instanceof Error ? collectionError.message : String(collectionError)}`, 'HnswCoordinator');
         }
       }
       
-      const result = await this.processingService.ensureIndexesForExistingCollections(this.app, discoveredCollections);
+      logger.systemLog(`[HNSW-UPDATE] Successfully loaded ${collections.length} collections for processing`, 'HnswCoordinator');
+      return collections;
       
-      logger.systemLog(
-        `[FULL-INIT-PROCESSING] Processing phase completed: ${result.built} built, ${result.skipped} skipped`,
-        'FullInitializationOrchestrator'
+    } catch (error) {
+      logger.systemError(
+        new Error(`[HNSW-UPDATE] Failed to get ChromaDB collections: ${error instanceof Error ? error.message : String(error)}`),
+        'HnswCoordinator'
       );
-      
-      return result;
-    } catch (processingError) {
-      const errorMessage = processingError instanceof Error ? processingError.message : String(processingError);
-      logger.systemWarn(
-        `[FULL-INIT-PROCESSING] Processing phase failed but continuing: ${errorMessage}`,
-        'FullInitializationOrchestrator'
-      );
-      
-      return {
-        processed: 0,
-        built: 0,
-        loaded: 0,
-        skipped: 1,
-        errors: [{ collection: 'processing-phase', error: errorMessage }]
-      };
+      return [];
     }
   }
 
   /**
-   * Log comprehensive initialization summary
+   * Process a single collection: compare ChromaDB with IndexedDB and reindex if needed
+   * Implements your core requirement: compare existing embeddings to persisted index
    */
-  private logInitializationSummary(result: FullInitializationResult): void {
-    const { discoveryResult, processingResult, duration, errors } = result;
+  private async processCollection(collection: {name: string, items: DatabaseItem[], count: number}): Promise<{action: 'built' | 'loaded' | 'skipped'}> {
+    const { name, items, count } = collection;
     
-    if (errors.length === 0) {
-      logger.systemLog(
-        `[FULL-INIT] HNSW initialization completed successfully in ${duration}ms`,
-        'FullInitializationOrchestrator'
-      );
-    } else {
-      logger.systemLog(
-        `[FULL-INIT] HNSW initialization completed with ${errors.length} errors in ${duration}ms - service available`,
-        'FullInitializationOrchestrator'
-      );
-    }
+    logger.systemLog(`[HNSW-UPDATE] Processing collection ${name} (${count} items)`, 'HnswCoordinator');
 
-    // Log detailed statistics
-    if (discoveryResult) {
-      logger.systemLog(
-        `[FULL-INIT-STATS] Discovery: ${discoveryResult.recovered}/${discoveryResult.discovered} collections recovered`,
-        'FullInitializationOrchestrator'
-      );
-    }
+    try {
+      // Step 1: Check if we already have an HNSW index in memory
+      if (this.indexManager.hasIndex(name)) {
+        const indexStats = this.indexManager.getIndexStatistics(name);
+        logger.systemLog(`[HNSW-UPDATE] Collection ${name} already has in-memory index (${indexStats?.totalItems || 0} items)`, 'HnswCoordinator');
+        
+        if (indexStats && indexStats.totalItems === count) {
+          logger.systemLog(`[HNSW-UPDATE] Collection ${name} index is current, skipping`, 'HnswCoordinator');
+          return { action: 'skipped' };
+        }
+      }
 
-    if (processingResult) {
-      logger.systemLog(
-        `[FULL-INIT-STATS] Processing: ${processingResult.built} built, ${processingResult.loaded} loaded, ${processingResult.skipped} skipped`,
-        'FullInitializationOrchestrator'
-      );
-    }
+      // Step 2: Check if we can load from persisted IndexedDB
+      logger.systemLog(`[HNSW-UPDATE] Checking persisted index for ${name}`, 'HnswCoordinator');
+      const canLoadPersisted = await this.persistenceService.canLoadPersistedIndex(name, items);
+      logger.systemLog(`[HNSW-UPDATE] Collection ${name} can load persisted: ${canLoadPersisted}`, 'HnswCoordinator');
+      
+      if (canLoadPersisted) {
+        // Try to load from IndexedDB
+        try {
+          const indexResult = await this.indexManager.createOrUpdateIndex(name, items);
+          if (indexResult.success && indexResult.itemsIndexed > 0) {
+            logger.systemLog(`[HNSW-UPDATE] Collection ${name} loaded from IndexedDB (${indexResult.itemsIndexed} items)`, 'HnswCoordinator');
+            return { action: 'loaded' };
+          } else {
+            logger.systemWarn(`[HNSW-UPDATE] Collection ${name} load failed, will rebuild`, 'HnswCoordinator');
+          }
+        } catch (loadError) {
+          logger.systemWarn(`[HNSW-UPDATE] Collection ${name} load error: ${loadError instanceof Error ? loadError.message : String(loadError)}, will rebuild`, 'HnswCoordinator');
+        }
+      }
 
-    // Log errors if any
-    if (errors.length > 0) {
-      logger.systemWarn(
-        `[FULL-INIT-ERRORS] Initialization errors (${errors.length}): ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}`,
-        'FullInitializationOrchestrator'
+      // Step 3: No valid persisted index, rebuild from scratch
+      logger.systemLog(`[HNSW-UPDATE] Collection ${name} needs rebuild - creating new index`, 'HnswCoordinator');
+      
+      // Clear any existing index first
+      this.indexManager.removeIndex(name);
+      
+      // Build new index
+      const buildResult = await this.indexManager.createOrUpdateIndex(name, items);
+      
+      if (buildResult.success && buildResult.itemsIndexed > 0) {
+        logger.systemLog(`[HNSW-UPDATE] Collection ${name} successfully rebuilt (${buildResult.itemsIndexed} items, ${buildResult.indexType})`, 'HnswCoordinator');
+        return { action: 'built' };
+      } else {
+        throw new Error(`Index creation failed: ${buildResult.itemsSkipped} items skipped`);
+      }
+
+    } catch (error) {
+      logger.systemError(
+        new Error(`[HNSW-UPDATE] Collection ${name} processing failed: ${error instanceof Error ? error.message : String(error)}`),
+        'HnswCoordinator'
       );
+      throw error;
     }
   }
 
   /**
-   * Get initialization health status
-   */
-  getInitializationHealth(): {
-    isHealthy: boolean;
-    issues: string[];
-    recommendations: string[];
-  } {
-    const issues: string[] = [];
-    const recommendations: string[] = [];
-
-    // Check if basic services are available
-    if (!this.persistenceService) {
-      issues.push('Persistence service not available');
-      recommendations.push('Restart the HNSW service');
-    }
-
-    if (!this.indexManager) {
-      issues.push('Index manager not available');
-      recommendations.push('Check service initialization');
-    }
-
-    // Check configuration
-    if (!this.config.persistence.enabled) {
-      issues.push('Persistence is disabled');
-      recommendations.push('Enable persistence for better performance');
-    }
-
-    return {
-      isHealthy: issues.length === 0,
-      issues,
-      recommendations
-    };
-  }
-
-  /**
-   * Execute lightweight health check
+   * Simple health check for the coordinator
    */
   async performHealthCheck(): Promise<{
     status: 'healthy' | 'degraded' | 'unhealthy';
@@ -334,9 +295,7 @@ export class FullInitializationOrchestrator {
     const services = {
       persistence: !!this.persistenceService,
       indexManager: !!this.indexManager,
-      discovery: !!this.discoveryService,
-      processing: !!this.processingService,
-      conversion: !!this.conversionService
+      vectorStore: !!this.vectorStore
     };
 
     const healthyServices = Object.values(services).filter(Boolean).length;
@@ -347,15 +306,19 @@ export class FullInitializationOrchestrator {
 
     if (healthyServices === totalServices) {
       status = 'healthy';
-      message = 'All services operational';
-    } else if (healthyServices >= totalServices * 0.7) {
+      message = '[HNSW-UPDATE] All services operational';
+    } else if (healthyServices >= 2) {
       status = 'degraded';
-      message = `${healthyServices}/${totalServices} services operational`;
+      message = `[HNSW-UPDATE] ${healthyServices}/${totalServices} services operational`;
     } else {
       status = 'unhealthy';
-      message = `Only ${healthyServices}/${totalServices} services operational`;
+      message = `[HNSW-UPDATE] Only ${healthyServices}/${totalServices} services operational`;
     }
 
+    logger.systemLog(message, 'HnswCoordinator');
     return { status, services, message };
   }
 }
+
+// Export the new simplified coordinator
+export { HnswCoordinator };

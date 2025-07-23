@@ -42,13 +42,12 @@ export class HnswPersistenceFactory {
       hnswLib
     );
 
-    // Create orchestrator with all dependencies (discoveryService removed)
+    // Create orchestrator with all dependencies (discoveryService and diagnosticsService removed)
     const orchestrator = new HnswPersistenceOrchestrator(
       config,
       hnswLib,
       metadataManager,
       indexOperations,
-      diagnosticsService,
       contentHashService
     );
 

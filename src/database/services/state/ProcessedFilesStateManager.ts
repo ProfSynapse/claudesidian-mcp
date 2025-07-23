@@ -124,13 +124,6 @@ export class ProcessedFilesStateManager {
         const normalizedPath = normalizePath(filePath);
         const state = this.processedFiles.get(normalizedPath);
         
-        console.log(`[StateManager] Checking if file processed: ${normalizedPath}`, {
-            hasState: !!state,
-            status: state?.status,
-            storedHash: state?.contentHash,
-            currentHash: currentContentHash,
-            hashMatch: state?.contentHash === currentContentHash
-        });
         
         if (!state) {
             console.log(`[StateManager] No state found for: ${normalizedPath}`);
@@ -141,7 +134,6 @@ export class ProcessedFilesStateManager {
         // 1. Status is completed
         // 2. Content hash matches (file hasn't changed)
         const isProcessed = state.status === 'completed' && state.contentHash === currentContentHash;
-        console.log(`[StateManager] File ${normalizedPath} processed: ${isProcessed}`);
         return isProcessed;
     }
 

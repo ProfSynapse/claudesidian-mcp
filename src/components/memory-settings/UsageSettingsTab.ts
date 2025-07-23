@@ -165,26 +165,80 @@ export class UsageSettingsTab extends BaseSettingsTab {
         // Collection Management Section
         const collectionManagementContainer = containerEl.createDiv({ cls: 'collection-management-container' });
         
-        // Only display if we have required services
-        if (this.vectorStore && this.usageStatsService && this.embeddingService) {
+        // Show loading state initially
+        const loadingEl = collectionManagementContainer.createEl('div', { 
+            text: 'Loading collection management...', 
+            cls: 'collection-management-loading'
+        });
+        
+        // Retry service initialization and display when ready
+        this.retryServiceInitialization(collectionManagementContainer, loadingEl);
+    }
+
+    /**
+     * Retry service initialization with exponential backoff
+     */
+    private async retryServiceInitialization(container: HTMLElement, loadingEl: HTMLElement): Promise<void> {
+        const maxRetries = 5;
+        let attempt = 0;
+        
+        while (attempt < maxRetries) {
+            try {
+                // Re-initialize services
+                await this.initializeUsageStatsService();
+                
+                // Check if we now have all required services
+                if (this.vectorStore && this.usageStatsService && this.embeddingService) {
+                    // Remove loading message
+                    loadingEl.remove();
+                    
+                    // Create and display the unified CollectionManagementComponent
+                    this.collectionManagementComponent = new CollectionManagementComponent(
+                        container,
+                        this.vectorStore,
+                        this.usageStatsService!,
+                        this.embeddingService!,
+                        this.settings
+                    );
+                    
+                    this.collectionManagementComponent.display();
+                    return; // Success!
+                }
+            } catch (error) {
+                console.warn(`Service initialization attempt ${attempt + 1} failed:`, error);
+            }
             
-            // Create and display the unified CollectionManagementComponent
-            this.collectionManagementComponent = new CollectionManagementComponent(
-                collectionManagementContainer,
-                this.vectorStore,
-                this.usageStatsService!,
-                this.embeddingService!,
-                this.settings
-            );
-            
-            this.collectionManagementComponent.display();
-            
-        } else {
-            collectionManagementContainer.createEl('div', { 
-                text: 'Collection management is not available. Vector store, usage stats service, or embedding service not initialized.',
-                cls: 'collection-management-error'
-            });
+            attempt++;
+            if (attempt < maxRetries) {
+                // Exponential backoff: 500ms, 1s, 2s, 4s
+                const delay = Math.min(500 * Math.pow(2, attempt - 1), 4000);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                // Update loading message to show retry
+                loadingEl.textContent = `Loading collection management... (attempt ${attempt + 1}/${maxRetries})`;
+            }
         }
+        
+        // All retries failed, show error
+        loadingEl.remove();
+        container.createEl('div', { 
+            text: 'Collection management is not available. Services failed to initialize after multiple attempts.',
+            cls: 'collection-management-error'
+        });
+        
+        // Add retry button
+        const retryButton = container.createEl('button', {
+            text: 'Retry',
+            cls: 'mod-cta'
+        });
+        retryButton.onclick = () => {
+            container.empty();
+            const newLoadingEl = container.createEl('div', { 
+                text: 'Loading collection management...', 
+                cls: 'collection-management-loading'
+            });
+            this.retryServiceInitialization(container, newLoadingEl);
+        };
     }
     
     

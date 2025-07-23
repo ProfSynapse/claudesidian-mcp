@@ -97,15 +97,23 @@ export class EmbeddingSettingsManager {
   }
 
   /**
-   * Get chunking configuration
+   * Get chunking configuration (now using semantic boundaries)
    */
   getChunkingConfig(): {
     maxTokensPerChunk: number;
     chunkStrategy: string;
+    chunkSize: number;
+    chunkOverlap: number;
+    includeFrontmatter: boolean;
+    minContentLength: number;
   } {
     return {
-      maxTokensPerChunk: this.settings.maxTokensPerChunk || 8000,
-      chunkStrategy: this.settings.chunkStrategy || 'paragraph'
+      maxTokensPerChunk: 0, // Not used - semantic chunking respects document structure
+      chunkStrategy: 'semantic-paragraph', // Semantic paragraph chunking
+      chunkSize: 0, // Not used - chunking by semantic boundaries
+      chunkOverlap: 0, // Not used - no overlap needed
+      includeFrontmatter: true, // Always include frontmatter
+      minContentLength: 0 // No minimum content length
     };
   }
 

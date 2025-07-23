@@ -103,10 +103,14 @@ export class ServiceDescriptors {
      * Boy Scout Rule: Clean method for post-creation coordination setup
      */
     async injectCoordinationIntoServices(): Promise<void> {
+        console.log('[ServiceDescriptors] 🔥 Starting coordination injection into services');
+        
         if (!this.initializationServices) {
             console.warn('[ServiceDescriptors] No coordination services available for injection');
             return;
         }
+        
+        console.log('[ServiceDescriptors] ✅ Coordination services available for injection');
 
         // NEW: Inject into vector store if available
         const vectorStore = this.serviceManager.getIfReady('vectorStore');
@@ -129,18 +133,50 @@ export class ServiceDescriptors {
             console.warn('[StateManager] ❌ Vector store missing setCollectionCoordinator method');
         }
 
-        // Inject into HNSW service if available (use getForInjection to get created but uninitialized service)
-        const hnswService = this.serviceManager.getForInjection('hnswSearchService');
+        // Inject into HNSW service - ensure it exists first by creating it if needed
+        console.log('[ServiceDescriptors] 🔍 Checking for HNSW service for coordination injection');
+        
+        // CRITICAL FIX: Try to get existing service first
+        let hnswService = this.serviceManager.getForInjection('hnswSearchService');
+        
+        // If service doesn't exist yet, create it explicitly using the same method as the descriptor
+        if (!hnswService) {
+            console.log('[ServiceDescriptors] 🛠️ HNSW service not created yet, creating it for coordination injection');
+            try {
+                // Create HNSW service directly using the same dependencies
+                const vectorStore = await this.dependencyResolver('vectorStore');
+                const embeddingService = await this.dependencyResolver('embeddingService');
+                const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath;
+                
+                hnswService = new HnswSearchService(this.plugin, this.app, vectorStore, embeddingService, basePath);
+                console.log('[ServiceDescriptors] 🎯 HNSW service created directly for injection');
+            } catch (error) {
+                console.error('[ServiceDescriptors] ❌ Failed to create HNSW service for injection:', error);
+            }
+        } else {
+            console.log('[ServiceDescriptors] 🎯 HNSW service already exists for injection');
+        }
+        console.log('[ServiceDescriptors] 🔍 HNSW service retrieved:', {
+            hasService: !!hnswService,
+            serviceName: hnswService?.constructor?.name,
+            hasMethod: hnswService && 'setInitializationCoordination' in hnswService,
+            serviceType: typeof hnswService,
+            actualMethods: hnswService ? Object.getOwnPropertyNames(Object.getPrototypeOf(hnswService)).slice(0, 10) : 'no service',
+            hasSetMethod: hnswService && typeof hnswService.setInitializationCoordination === 'function'
+        });
+        
         if (hnswService && 'setInitializationCoordination' in hnswService) {
+            console.log('[ServiceDescriptors] 🚀 Calling setInitializationCoordination on HNSW service');
             hnswService.setInitializationCoordination(
                 this.initializationServices.stateManager,
                 this.initializationServices.collectionCoordinator
             );
             console.log('[ServiceDescriptors] ✅ Coordination services injected into HNSW service');
         } else {
-            console.warn('[ServiceDescriptors] ❌ HNSW service not available for coordination injection:', {
+            console.error('[ServiceDescriptors] ❌ HNSW service not available for coordination injection:', {
                 hasService: !!hnswService,
-                hasMethod: hnswService && 'setInitializationCoordination' in hnswService
+                hasMethod: hnswService && 'setInitializationCoordination' in hnswService,
+                availableMethods: hnswService ? Object.getOwnPropertyNames(hnswService) : 'no service'
             });
         }
     }

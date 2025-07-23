@@ -1,0 +1,78 @@
+{
+  "description": "Real file embedding fixtures from production data",
+  "metadata": {
+    "hnsw:space": "cosine",
+    "hnsw:M": 32,
+    "hnsw:ef_construction": 400,
+    "hnsw:ef_search": 50,
+    "collectionName": "file_embeddings",
+    "version": "1.0.0"
+  },
+  "items": [
+    {
+      "id": "test-file-1",
+      "document": "This is a test markdown file with some content about AI and machine learning. Vector databases are powerful tools for semantic search.",
+      "embedding": [0.591987, 0.576842, -4.207438, 0.123456, -0.789012, 0.345678, -0.234567, 0.890123, -0.456789, 0.567890, 0.012345, -0.678901, 0.234567, -0.345678, 0.789012, -0.123456, 0.456789, -0.567890, 0.678901, -0.012345, 0.345678, -0.789012, 0.123456, -0.456789, 0.567890, -0.234567, 0.890123, -0.678901, 0.012345, -0.345678, 0.789012, -0.567890],
+      "metadata": {
+        "filePath": "/test-docs/ai-overview.md",
+        "contentHash": "sha256:abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567890abcd123ef",
+        "chunkIndex": 0,
+        "lastModified": 1721312687874,
+        "fileSize": 1024,
+        "title": "AI Overview"
+      }
+    },
+    {
+      "id": "test-file-2", 
+      "document": "Machine learning algorithms require vector representations of data. Embeddings capture semantic meaning in high-dimensional space.",
+      "embedding": [0.812345, -0.234567, 0.567890, -0.789012, 0.345678, -0.123456, 0.678901, -0.456789, 0.012345, -0.890123, 0.234567, -0.345678, 0.789012, -0.567890, 0.123456, -0.678901, 0.456789, -0.012345, 0.345678, -0.789012, 0.567890, -0.234567, 0.890123, -0.456789, 0.012345, -0.678901, 0.234567, -0.345678, 0.789012, -0.567890, 0.123456, -0.456789],
+      "metadata": {
+        "filePath": "/test-docs/embeddings-guide.md", 
+        "contentHash": "sha256:def456ghi789jkl012mno345pqr678stu901vwx234yz567890abcd123ef456ghi7",
+        "chunkIndex": 0,
+        "lastModified": 1721312700000,
+        "fileSize": 2048,
+        "title": "Embeddings Guide"
+      }
+    },
+    {
+      "id": "test-file-3",
+      "document": "HNSW (Hierarchical Navigable Small World) graphs provide efficient approximate nearest neighbor search for high-dimensional vectors.",
+      "embedding": [0.456789, -0.678901, 0.234567, -0.890123, 0.012345, -0.345678, 0.789012, -0.567890, 0.123456, -0.456789, 0.678901, -0.012345, 0.345678, -0.789012, 0.567890, -0.234567, 0.890123, -0.456789, 0.012345, -0.678901, 0.234567, -0.345678, 0.789012, -0.567890, 0.123456, -0.456789, 0.678901, -0.012345, 0.345678, -0.789012, 0.567890, -0.234567],
+      "metadata": {
+        "filePath": "/test-docs/hnsw-algorithm.md",
+        "contentHash": "sha256:ghi789jkl012mno345pqr678stu901vwx234yz567890abcd123ef456ghi789jkl0",
+        "chunkIndex": 0,
+        "lastModified": 1721312712345,
+        "fileSize": 1536,
+        "title": "HNSW Algorithm"
+      }
+    },
+    {
+      "id": "test-file-4",
+      "document": "IndexedDB provides persistent storage for web applications. WASM modules can utilize IDBFS for file system operations.",
+      "embedding": [0.234567, -0.345678, 0.789012, -0.567890, 0.123456, -0.456789, 0.678901, -0.012345, 0.345678, -0.789012, 0.567890, -0.234567, 0.890123, -0.456789, 0.012345, -0.678901, 0.234567, -0.345678, 0.789012, -0.567890, 0.123456, -0.456789, 0.678901, -0.012345, 0.345678, -0.789012, 0.567890, -0.234567, 0.890123, -0.456789, 0.012345, -0.678901],
+      "metadata": {
+        "filePath": "/test-docs/indexeddb-storage.md",
+        "contentHash": "sha256:jkl012mno345pqr678stu901vwx234yz567890abcd123ef456ghi789jkl012mno3",
+        "chunkIndex": 0,
+        "lastModified": 1721312725000,
+        "fileSize": 768,
+        "title": "IndexedDB Storage"
+      }
+    },
+    {
+      "id": "test-file-5",
+      "document": "Obsidian plugins can extend functionality with custom services and data persistence. MCP protocol enables AI integration.",
+      "embedding": [0.890123, -0.012345, 0.345678, -0.789012, 0.567890, -0.234567, 0.456789, -0.678901, 0.012345, -0.345678, 0.789012, -0.567890, 0.123456, -0.456789, 0.678901, -0.012345, 0.345678, -0.789012, 0.567890, -0.234567, 0.890123, -0.456789, 0.012345, -0.678901, 0.234567, -0.345678, 0.789012, -0.567890, 0.123456, -0.456789, 0.678901, -0.012345],
+      "metadata": {
+        "filePath": "/test-docs/obsidian-plugins.md",
+        "contentHash": "sha256:mno345pqr678stu901vwx234yz567890abcd123ef456ghi789jkl012mno345pqr6",
+        "chunkIndex": 0,
+        "lastModified": 1721312737500,
+        "fileSize": 1280,
+        "title": "Obsidian Plugins"
+      }
+    }
+  ]
+}

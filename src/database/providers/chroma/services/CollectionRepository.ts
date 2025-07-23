@@ -218,7 +218,21 @@ export class CollectionRepository {
         try {
           // Use HNSW for fast O(log n) search
           console.log(`[CollectionRepository] Attempting HNSW search for collection: ${this.collectionName}`);
-          const hnswResults = await this.hnswService.searchSimilarLegacy(this.collectionName, queryEmbedding, nResults, where);
+          const searchOptions = { limit: nResults, includeContent: true };
+          const searchResults = where 
+            ? await this.hnswService.searchWithMetadataFilter(this.collectionName, queryEmbedding, where, searchOptions)
+            : await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, searchOptions);
+          
+          // Convert SearchResult[] to ItemWithDistance[] for compatibility
+          const hnswResults = searchResults.map(result => ({
+            item: {
+              id: result.id,
+              document: result.content || result.snippet,
+              embedding: [], // Legacy format doesn't need embeddings
+              metadata: { title: result.title, ...result.metadata }
+            },
+            distance: 1 - result.score // Convert similarity to distance
+          }));
           
           if (hnswResults.length > 0) {
             console.log(`[CollectionRepository] HNSW search returned ${hnswResults.length} results`);
@@ -257,7 +271,21 @@ export class CollectionRepository {
     }
 
     try {
-      return await this.hnswService.searchSimilarLegacy(this.collectionName, queryEmbedding, nResults, where);
+      const searchOptions = { limit: nResults, includeContent: true };
+      const searchResults = where 
+        ? await this.hnswService.searchWithMetadataFilter(this.collectionName, queryEmbedding, where, searchOptions)
+        : await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, searchOptions);
+      
+      // Convert SearchResult[] to ItemWithDistance[] for compatibility  
+      return searchResults.map(result => ({
+        item: {
+          id: result.id,
+          document: result.content || result.snippet,
+          embedding: [], // Legacy format doesn't need embeddings
+          metadata: { title: result.title, ...result.metadata }
+        },
+        distance: 1 - result.score // Convert similarity to distance
+      }));
     } catch (error) {
       console.error(`[CollectionRepository] HNSW search error for collection ${this.collectionName}:`, error);
       return [];

@@ -1,0 +1,57 @@
+{
+  "description": "Test workspace data fixtures for HNSW initialization testing",
+  "metadata": {
+    "collectionName": "workspaces",
+    "version": "1.0.0"
+  },
+  "items": [
+    {
+      "id": "test-workspace-1",
+      "document": "AI Research Workspace containing machine learning documentation and experimental notebooks",
+      "embedding": [0.712345, -0.456789, 0.890123, -0.234567, 0.567890, -0.789012, 0.123456, -0.345678, 0.678901, -0.012345, 0.456789, -0.567890, 0.234567, -0.890123, 0.345678, -0.678901, 0.789012, -0.123456, 0.012345, -0.456789, 0.567890, -0.234567, 0.890123, -0.345678, 0.678901, -0.789012, 0.123456, -0.012345, 0.456789, -0.567890, 0.234567, -0.890123],
+      "metadata": {
+        "name": "AI Research",
+        "description": "Workspace for AI and ML research documentation",
+        "rootFolder": "/ai-research/",
+        "relatedFolders": ["/ai-research/papers/", "/ai-research/experiments/"],
+        "relatedFiles": ["/ai-research/README.md", "/ai-research/experiments/embedding-tests.md"],
+        "hierarchyType": "project",
+        "status": "active",
+        "createdAt": 1721312600000,
+        "lastAccessed": 1721312800000
+      }
+    },
+    {
+      "id": "test-workspace-2",
+      "document": "Vector Database Development workspace for HNSW implementation and testing",
+      "embedding": [0.345678, -0.789012, 0.123456, -0.567890, 0.890123, -0.234567, 0.678901, -0.012345, 0.456789, -0.345678, 0.789012, -0.567890, 0.123456, -0.890123, 0.234567, -0.678901, 0.012345, -0.456789, 0.567890, -0.234567, 0.890123, -0.345678, 0.678901, -0.789012, 0.123456, -0.012345, 0.456789, -0.567890, 0.234567, -0.890123, 0.345678, -0.678901],
+      "metadata": {
+        "name": "Vector DB Development",
+        "description": "Development workspace for vector database features",
+        "rootFolder": "/vector-db/",
+        "relatedFolders": ["/vector-db/hnsw/", "/vector-db/tests/"],
+        "relatedFiles": ["/vector-db/hnsw/implementation.md", "/vector-db/tests/integration.md"],
+        "hierarchyType": "development",
+        "status": "active",
+        "createdAt": 1721312650000,
+        "lastAccessed": 1721312850000
+      }
+    },
+    {
+      "id": "test-workspace-3",
+      "document": "Documentation workspace containing user guides and API references",
+      "embedding": [0.567890, -0.123456, 0.678901, -0.890123, 0.234567, -0.456789, 0.789012, -0.345678, 0.012345, -0.567890, 0.123456, -0.678901, 0.890123, -0.234567, 0.456789, -0.789012, 0.345678, -0.012345, 0.567890, -0.123456, 0.678901, -0.890123, 0.234567, -0.456789, 0.789012, -0.345678, 0.012345, -0.567890, 0.123456, -0.678901, 0.890123, -0.234567],
+      "metadata": {
+        "name": "Documentation",
+        "description": "Comprehensive documentation workspace",
+        "rootFolder": "/docs/",
+        "relatedFolders": ["/docs/user-guide/", "/docs/api/"],
+        "relatedFiles": ["/docs/user-guide/getting-started.md", "/docs/api/reference.md"],
+        "hierarchyType": "documentation",
+        "status": "active",
+        "createdAt": 1721312700000,
+        "lastAccessed": 1721312750000
+      }
+    }
+  ]
+}

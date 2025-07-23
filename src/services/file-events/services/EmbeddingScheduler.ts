@@ -77,15 +77,40 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
 
         // Process in batches
         const allFileEvents = [...createEvents, ...modifyEvents];
+        const totalFiles = allFileEvents.length;
+        
+        // Initialize overall progress tracking for the entire batch operation
+        if (totalFiles > 0) {
+            const embeddingService = this.embeddingService as any;
+            if (embeddingService.progressTracker) {
+                embeddingService.progressTracker.initializeProgress(
+                    totalFiles,
+                    'batch-embedding-discovery',
+                    true
+                );
+            }
+        }
         
         for (let i = 0; i < allFileEvents.length; i += batchSize) {
             const batch = allFileEvents.slice(i, i + batchSize);
-            const batchResults = await this.processBatch(batch);
+            const batchResults = await this.processBatchWithOverallProgress(batch, i, totalFiles);
             results.push(...batchResults);
 
             // Add delay between batches to prevent overwhelming the system
             if (i + batchSize < allFileEvents.length) {
                 await this.delay(100); // 100ms between batches
+            }
+        }
+
+        // Complete overall progress tracking
+        if (totalFiles > 0) {
+            const embeddingService = this.embeddingService as any;
+            if (embeddingService.progressTracker) {
+                embeddingService.progressTracker.completeProgress(
+                    true,
+                    undefined,
+                    `✅ Completed embedding ${totalFiles} files`
+                );
             }
         }
 
@@ -127,6 +152,51 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
             }
         }
         
+        return results;
+    }
+
+    private async processBatchWithOverallProgress(events: FileEvent[], currentIndex: number, totalFiles: number): Promise<ProcessingResult[]> {
+        const results: ProcessingResult[] = [];
+        
+        try {
+            // Extract file paths for the embedding service
+            const filePaths = events.map(event => event.path);
+            
+            // Use the embedding service to process the files silently (no batch progress notification)
+            await this.embeddingService.incrementalIndexFilesSilent(filePaths);
+
+            // Update overall progress
+            const embeddingService = this.embeddingService as any;
+            if (embeddingService.progressTracker) {
+                const completedFiles = currentIndex + events.length;
+                embeddingService.progressTracker.updateProgress(
+                    completedFiles,
+                    completedFiles,
+                    0
+                );
+            }
+
+            // Mark all as successful
+            for (const event of events) {
+                results.push({
+                    success: true,
+                    embeddingCreated: true,
+                    activityRecorded: false
+                });
+            }
+        } catch (error) {
+            console.error('[EmbeddingScheduler] Error processing batch with overall progress:', error);
+            
+            // Mark all as failed
+            for (const event of events) {
+                results.push({
+                    success: false,
+                    embeddingCreated: false,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
+
         return results;
     }
 

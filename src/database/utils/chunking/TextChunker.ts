@@ -29,14 +29,11 @@ export class TextChunker {
     }
 
     /**
-     * Split text into chunks that respect token limits
+     * Split text into chunks using semantic paragraph boundaries
+     * Respects document structure (headings, lists, code blocks, paragraphs)
      */
     chunkText(text: string, options: ChunkOptions = {}): TextChunk[] {
-        // Default options
-        const maxTokens = options.maxTokens ?? 8000;
-        const overlap = options.overlap ?? 200;
-        const strategy = options.strategy ?? 'paragraph';
-        const chunkSize = options.chunkSize ?? 4000;
+        // Semantic chunking - respects document structure without arbitrary limits
         const includeMetadata = options.includeMetadata ?? true;
 
         // Validate input
@@ -49,60 +46,13 @@ export class TextChunker {
             return [];
         }
 
-        // Validate token limits
-        const tokenValidation = this.tokenEstimator.validateTokenLimits(maxTokens, overlap);
-        if (!tokenValidation.isValid) {
-            throw new Error(tokenValidation.errors.join(', '));
-        }
-
-        // Validate strategy
-        const strategyValidation = this.chunkingStrategies.validateStrategy(strategy);
-        if (!strategyValidation.isValid) {
-            throw new Error(strategyValidation.error!);
-        }
-
-        // Estimate token count of full text
-        const estimatedTokens = this.tokenEstimator.estimateTokenCount(text);
-
-        // For full-document strategy, always return the whole document
-        if (strategy === 'full-document') {
-            return this.chunkingStrategies.chunkAsFullDocument(text);
-        }
-
-        // For fixed-size strategy, if the text is already within limits, return it as a single chunk
-        if (strategy === 'fixed' && estimatedTokens <= maxTokens) {
-            return this.chunkingStrategies.chunkAsFullDocument(text);
-        }
-
-        // Choose chunking strategy based on options
+        // Always use semantic paragraph chunking
         let chunks: TextChunk[] = [];
-
-        switch (strategy) {
-            case 'paragraph':
-                chunks = this.chunkingStrategies.chunkByParagraph(text, maxTokens, overlap);
-                break;
-            case 'sentence':
-                chunks = this.chunkingStrategies.chunkBySentence(text, maxTokens, overlap);
-                break;
-            case 'fixed':
-                chunks = this.chunkingStrategies.chunkByFixedSize(text, chunkSize, overlap);
-                break;
-            case 'heading':
-                // TODO: Implement heading-based chunking
-                // For now, fallback to paragraph chunking
-                chunks = this.chunkingStrategies.chunkByParagraph(text, maxTokens, overlap);
-                break;
-            case 'sliding-window':
-                // Sliding window is similar to fixed size with overlap
-                chunks = this.chunkingStrategies.chunkByFixedSize(text, chunkSize, overlap);
-                break;
-            default:
-                chunks = this.chunkingStrategies.chunkByParagraph(text, maxTokens, overlap);
-        }
+        chunks = this.chunkingStrategies.chunkByParagraph(text, 0, 0); // Parameters ignored in new implementation
 
         // Add position metadata if requested
         if (includeMetadata) {
-            chunks = this.metadataManager.addPositionMetadata(chunks, overlap);
+            chunks = this.metadataManager.addPositionMetadata(chunks, 0);
         }
 
         return chunks;
@@ -137,32 +87,18 @@ export class TextChunker {
     }
 
     /**
-     * Analyze text and recommend optimal chunking strategy
+     * Analyze text structure (semantic chunking always uses paragraph boundaries)
      */
-    recommendChunkingStrategy(text: string, maxTokens: number = 8000): {
-        recommendedStrategy: string;
+    analyzeTextStructure(text: string): {
+        strategy: string;
         reason: string;
         analysis: any;
     } {
         const analysis = this.contentAnalyzer.analyzeTextStructure(text);
         
-        let recommendedStrategy = analysis.recommendedStrategy;
-        let reason = 'Based on text structure analysis';
-
-        // Additional logic based on token count
-        const tokenCount = this.tokenEstimator.estimateTokenCount(text);
-        
-        if (tokenCount <= maxTokens) {
-            recommendedStrategy = 'full-document';
-            reason = 'Text fits within token limit, no chunking needed';
-        } else if (tokenCount <= maxTokens * 2 && analysis.paragraphCount <= 3) {
-            recommendedStrategy = 'fixed';
-            reason = 'Short text with few paragraphs, fixed chunking is efficient';
-        }
-
         return {
-            recommendedStrategy,
-            reason,
+            strategy: 'semantic-paragraph',
+            reason: 'Uses semantic paragraph boundaries with respect for markdown structure',
             analysis
         };
     }

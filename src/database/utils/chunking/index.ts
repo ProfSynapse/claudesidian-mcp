@@ -35,5 +35,6 @@ export function estimateTokenCount(text: string): number {
 }
 
 export function chunkText(text: string, options: ChunkOptions = {}): TextChunk[] {
-    return textChunker.chunkText(text, options);
+    // Ignore user options and use fixed chunking settings
+    return textChunker.chunkText(text, { includeMetadata: options.includeMetadata });
 }

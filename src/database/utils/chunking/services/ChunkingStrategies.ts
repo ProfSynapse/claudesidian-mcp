@@ -18,42 +18,128 @@ export class ChunkingStrategies {
     ) {}
 
     /**
-     * Split text into chunks by paragraph boundaries
+     * Split text into chunks by semantic boundaries (paragraphs, headings, lists, code blocks)
+     * Respects natural document structure without arbitrary token limits
      */
     chunkByParagraph(text: string, maxTokens: number, overlap: number): TextChunk[] {
-        const paragraphs = this.contentAnalyzer.splitIntoParagraphs(text);
+        // First, handle special content types that need different treatment
+        return this.chunkBySemanticBoundaries(text);
+    }
+
+    /**
+     * Chunk text by semantic boundaries, preserving document structure
+     */
+    private chunkBySemanticBoundaries(text: string): TextChunk[] {
         const chunks: TextChunk[] = [];
         let chunkIndex = 0;
+
+        // Split into sections by double newlines, but also detect headings
+        const sections = this.splitIntoSemanticSections(text);
         
-        for (const paragraph of paragraphs) {
-            // Skip empty paragraphs
-            if (!paragraph.trim()) {
+        for (const section of sections) {
+            if (!section.trim()) {
                 continue;
             }
-            
-            const paragraphTokens = this.tokenEstimator.estimateTokenCount(paragraph);
-            
-            // If a single paragraph exceeds the token limit, we need to split it
-            if (paragraphTokens > maxTokens) {
-                const splitChunks = this.splitLargeParagraph(paragraph, maxTokens, overlap, chunkIndex);
-                chunks.push(...splitChunks);
-                chunkIndex += splitChunks.length;
-            } else {
-                // Normal paragraph that fits within the token limit
-                chunks.push({
-                    content: paragraph,
-                    metadata: this.contentAnalyzer.createChunkMetadata(
-                        paragraph,
-                        chunkIndex++,
-                        0, // Will update later
-                        paragraphTokens
-                    )
-                });
-            }
+
+            const tokenCount = this.tokenEstimator.estimateTokenCount(section);
+            chunks.push({
+                content: section.trim(),
+                metadata: this.contentAnalyzer.createChunkMetadata(
+                    section.trim(),
+                    chunkIndex++,
+                    0, // Will update later
+                    tokenCount
+                )
+            });
         }
         
-        // Update total chunks count
         return this.updateTotalChunks(chunks);
+    }
+
+    /**
+     * Split text into semantic sections respecting markdown structure
+     * Headings are grouped WITH their immediate content until the next paragraph break
+     */
+    private splitIntoSemanticSections(text: string): string[] {
+        const lines = text.split('\n');
+        const sections: string[] = [];
+        let currentSection: string[] = [];
+        let inCodeBlock = false;
+        let codeBlockFence = '';
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trim();
+
+            // Track code block boundaries
+            if (trimmedLine.startsWith('```')) {
+                if (!inCodeBlock) {
+                    inCodeBlock = true;
+                    codeBlockFence = trimmedLine;
+                } else if (trimmedLine === '```' || trimmedLine === codeBlockFence) {
+                    inCodeBlock = false;
+                    codeBlockFence = '';
+                    currentSection.push(line);
+                    continue;
+                }
+            }
+
+            // Inside code blocks, just add lines without splitting
+            if (inCodeBlock) {
+                currentSection.push(line);
+                continue;
+            }
+
+            // Check for markdown headings - these start new sections
+            if (/^#{1,6}\s+/.test(trimmedLine)) {
+                // If we have existing content, save it as a section
+                if (currentSection.length > 0) {
+                    sections.push(currentSection.join('\n'));
+                }
+                // Start new section with this heading
+                currentSection = [line];
+                continue;
+            }
+
+            // Check for empty lines (paragraph breaks)
+            if (trimmedLine === '') {
+                // Look ahead to see if this is a paragraph break (consecutive empty lines or line followed by content)
+                let nextNonEmptyIndex = i + 1;
+                while (nextNonEmptyIndex < lines.length && lines[nextNonEmptyIndex].trim() === '') {
+                    nextNonEmptyIndex++;
+                }
+                
+                // If there's content after the empty line(s), this is a paragraph break
+                if (nextNonEmptyIndex < lines.length) {
+                    const nextLine = lines[nextNonEmptyIndex].trim();
+                    
+                    // Don't split if the next line is a heading (headings start their own sections)
+                    if (!/^#{1,6}\s+/.test(nextLine)) {
+                        // This is a paragraph break - end current section
+                        if (currentSection.length > 0) {
+                            sections.push(currentSection.join('\n'));
+                            currentSection = [];
+                        }
+                        // Skip empty lines between sections
+                        continue;
+                    }
+                }
+                
+                // If we're here, it's either an empty line within a section or before a heading
+                currentSection.push(line);
+                continue;
+            }
+
+            // Regular content line - add to current section
+            currentSection.push(line);
+        }
+
+        // Add remaining content
+        if (currentSection.length > 0) {
+            sections.push(currentSection.join('\n'));
+        }
+
+        return sections.filter(section => section.trim().length > 0);
     }
 
     /**

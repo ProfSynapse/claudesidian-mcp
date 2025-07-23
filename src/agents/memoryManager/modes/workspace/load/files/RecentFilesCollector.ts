@@ -75,18 +75,12 @@ export class RecentFilesCollector {
     }
 
     try {
-      // Get recent files from cache
-      const recentFiles = this.cacheManager.getRecentFiles();
+      // Get recent files from cache filtered by workspace folder
+      const recentFiles = this.cacheManager.getRecentFiles(limit, workspace.rootFolder);
       
-      // Filter to workspace and normalize paths
+      // Sort and return paths (already filtered by workspace)
       const workspaceFiles = recentFiles
-        .filter((file: any) => {
-          const normalizedPath = sanitizePath(file.path);
-          const normalizedWorkspaceRoot = sanitizePath(workspace.rootFolder);
-          return normalizedPath.startsWith(normalizedWorkspaceRoot);
-        })
         .sort((a: any, b: any) => (b.lastModified || 0) - (a.lastModified || 0))
-        .slice(0, limit)
         .map((file: any) => file.path);
 
       return workspaceFiles;

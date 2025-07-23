@@ -28,17 +28,17 @@ export interface MemorySettings {
   monthlyBudget?: number; // Monthly budget in USD for embedding costs
   apiRateLimitPerMinute: number;
   
-  // Chunking options
-  chunkStrategy: 'paragraph' | 'heading' | 'fixed-size' | 'sliding-window' | 'full-document';
-  chunkSize: number;
-  chunkOverlap: number;
-  includeFrontmatter: boolean;
+  // Fixed chunking settings (no longer configurable)
+  chunkStrategy: 'paragraph'; // Always semantic paragraph chunking
+  chunkSize: number; // Not used - chunking by semantic boundaries
+  chunkOverlap: number; // Not used - no overlap needed
+  includeFrontmatter: boolean; // Always true
   
   // Path filters
   excludePaths: string[];
   
-  // Content filters
-  minContentLength: number;
+  // Content filters (no minimum length required)
+  minContentLength: number; // Fixed at 0
   maxTokensPerChunk?: number;  // Maximum tokens per chunk
   ignorePatterns?: string[];   // Patterns to ignore when indexing
   
@@ -137,12 +137,12 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   },
   maxTokensPerMonth: 1000000,
   apiRateLimitPerMinute: 500,
-  chunkStrategy: 'paragraph',
-  chunkSize: 512,
-  chunkOverlap: 50,
-  includeFrontmatter: true,
+  chunkStrategy: 'paragraph', // Fixed semantic paragraph chunking
+  chunkSize: 0, // Not used - chunking by semantic boundaries
+  chunkOverlap: 0, // Not used - no overlap needed  
+  includeFrontmatter: true, // Always include frontmatter
   excludePaths: ['.obsidian/**/*', 'node_modules/**/*'],
-  minContentLength: 50,
+  minContentLength: 0, // No minimum content length
   maxTokensPerChunk: 8000, // Default to 8000 tokens (just under OpenAI's 8192 limit)
   embeddingStrategy: 'idle',
   idleTimeThreshold: 60000, // 1 minute of idle time before indexing

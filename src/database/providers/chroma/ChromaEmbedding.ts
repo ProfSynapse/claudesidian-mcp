@@ -217,9 +217,9 @@ export class ChromaEmbeddingProvider extends BaseEmbeddingProvider implements IT
       totalTokens += this.tokenTracker.estimateTokenCount(text);
     }
     
-    // Use the same pricing as the legacy system from TokenTrackingMixin
-    const costPerThousandTokens = (this.tokenTracker as any).costPerThousandTokens;
-    const costPerToken = (costPerThousandTokens[this.model] || costPerThousandTokens['text-embedding-3-small'] || 0.00002) / 1000;
+    // Use provider-aware cost calculation to handle Ollama free models
+    const costPerThousandTokens = (this.tokenTracker as any).getProviderCostPerThousand(this.model, this.provider);
+    const costPerToken = costPerThousandTokens / 1000;
     
     return totalTokens * costPerToken;
   }

@@ -1,0 +1,55 @@
+{
+  "name": "claudesidian-mcp-tests",
+  "version": "1.0.0",
+  "description": "Comprehensive test suite for HNSW initialization debugging",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:debug": "DEBUG_TESTS=1 jest --verbose",
+    "test:hnsw": "jest --testPathPattern=HnswStartupFlow",
+    "test:fresh": "node -e \"require('./integration/HnswStartupFlow.test').debugHnswInitialization('fresh_startup')\"",
+    "test:stale": "node -e \"require('./integration/HnswStartupFlow.test').debugHnswInitialization('stale_indexes')\"",
+    "test:coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^18.15.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>"
+    ],
+    "testMatch": [
+      "**/*.test.ts"
+    ],
+    "collectCoverageFrom": [
+      "**/*.ts",
+      "!**/*.d.ts",
+      "!**/node_modules/**",
+      "!**/fixtures/**"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/setup.ts"
+    ],
+    "moduleNameMapping": {
+      "^@/(.*)$": "<rootDir>/../src/$1"
+    },
+    "modulePaths": [
+      "<rootDir>/node_modules",
+      "<rootDir>/../node_modules"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(hnswlib-wasm)/)"
+    ],
+    "testTimeout": 30000
+  },
+  "dependencies": {
+    "hnswlib-wasm": "^0.8.2",
+    "obsidian": "^1.8.7"
+  }
+}
