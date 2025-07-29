@@ -5,6 +5,7 @@
 
 import { UniversalSearchResult, UniversalSearchResultItem, SearchResultCategory } from '../../../../types';
 import { ConsolidatedSearchResult } from './ResultConsolidator';
+import { UniversalSearchValidator } from '../validation/UniversalSearchValidator';
 
 export interface FormattingOptions {
   includeSnippets?: boolean;
@@ -25,6 +26,11 @@ export interface FormattingResult {
  * Follows SRP by focusing only on result formatting operations
  */
 export class ResultFormatter {
+  private validator: UniversalSearchValidator;
+
+  constructor() {
+    this.validator = new UniversalSearchValidator();
+  }
   /**
    * Format consolidated results into final universal search result
    */
@@ -249,12 +255,22 @@ export class ResultFormatter {
   }
 
   /**
-   * Highlight query terms in text
+   * Highlight query terms in text with validation to prevent split() errors
    */
   private highlightQueryTerms(text: string, query: string): string {
-    if (!query || !text) return text;
+    const context = this.validator.createValidationContext('ResultFormatter', 'highlightQueryTerms', 'query_validation');
+    
+    if (!text) return text;
 
-    const terms = query.toLowerCase().split(/\s+/).filter(term => term.length > 0);
+    // Validate query parameter before string operations to prevent errors
+    const validatedQuery = this.validator.validateQuery(query, context);
+    
+    if (validatedQuery.length === 0) {
+      return text;
+    }
+    
+    // Safe to perform string operations - guaranteed valid string
+    const terms = validatedQuery.toLowerCase().split(/\s+/).filter(term => term.length > 0);
     let highlighted = text;
 
     for (const term of terms) {
@@ -273,7 +289,7 @@ export class ResultFormatter {
   }
 
   /**
-   * Combine snippets into a single text
+   * Combine snippets into a single text with content validation
    */
   private combineSnippets(
     snippets: Array<{ content: string; searchMethod: string; score: number }>,
@@ -281,13 +297,22 @@ export class ResultFormatter {
   ): string {
     if (!snippets || snippets.length === 0) return '';
 
+    const context = this.validator.createValidationContext('ResultFormatter', 'combineSnippets', 'content_validation');
+    
+    // Validate all snippet content to prevent undefined values in join()
+    const validatedSnippets = this.validator.validateSnippetsArray(snippets, context);
+    
+    if (validatedSnippets.length === 0) {
+      return '';
+    }
+
     // Sort by score
-    const sortedSnippets = snippets.sort((a, b) => b.score - a.score);
+    const sortedSnippets = validatedSnippets.sort((a, b) => b.score - a.score);
 
     // Take the best snippets
     const topSnippets = sortedSnippets.slice(0, 3);
 
-    // Combine and format
+    // Combine and format - now safe as all content is validated
     let combined = topSnippets.map(s => s.content).join(' ... ');
 
     // Apply length limit

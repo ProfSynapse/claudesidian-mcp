@@ -5,6 +5,7 @@
 
 import { TFile } from 'obsidian';
 import { UniversalSearchResultItem } from '../../../../types';
+import { UniversalSearchValidator } from '../validation/UniversalSearchValidator';
 
 export interface SearchSnippet {
   content: string;
@@ -33,6 +34,11 @@ export interface ConsolidationResult {
  * Follows SRP by focusing only on result consolidation operations
  */
 export class ResultConsolidator {
+  private validator: UniversalSearchValidator;
+
+  constructor() {
+    this.validator = new UniversalSearchValidator();
+  }
   /**
    * Consolidate search results by file path
    */
@@ -127,20 +133,33 @@ export class ResultConsolidator {
   }
 
   /**
-   * Remove duplicate snippets
+   * Remove duplicate snippets with validation to prevent split() errors
    */
   private removeDuplicateSnippets(snippets: SearchSnippet[]): SearchSnippet[] {
+    const context = this.validator.createValidationContext('ResultConsolidator', 'removeDuplicateSnippets', 'content_validation');
     const seen = new Set<string>();
     const unique: SearchSnippet[] = [];
 
     for (const snippet of snippets) {
-      const key = snippet.content.toLowerCase().trim();
+      // Validate content before string operations to prevent errors
+      const validatedContent = this.validator.validateSnippetContent(snippet.content, context);
+      
+      if (validatedContent.length === 0) {
+        continue;
+      }
+      
+      // Safe to perform string operations - guaranteed valid string
+      const key = validatedContent.toLowerCase().trim();
+      
       if (key && !seen.has(key)) {
         seen.add(key);
-        unique.push(snippet);
+        unique.push({
+          ...snippet,
+          content: validatedContent // Update with validated content
+        });
       }
     }
-
+    
     // Sort by score
     return unique.sort((a, b) => b.score - a.score);
   }

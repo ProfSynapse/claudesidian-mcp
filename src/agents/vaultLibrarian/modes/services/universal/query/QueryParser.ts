@@ -4,6 +4,7 @@
  */
 
 import { PropertyFilter } from '../../../../../../database/services/MetadataSearchService';
+import { UniversalSearchValidator } from '../validation/UniversalSearchValidator';
 
 export interface ParsedSearchQuery {
   cleanQuery: string;
@@ -22,6 +23,11 @@ export interface QueryParsingResult {
  * Follows SRP by focusing only on query parsing operations
  */
 export class QueryParser {
+  private validator: UniversalSearchValidator;
+
+  constructor() {
+    this.validator = new UniversalSearchValidator();
+  }
   /**
    * Parse search query into components
    */
@@ -51,10 +57,21 @@ export class QueryParser {
       // Extract property filters (e.g., property:value)
       const propertyMatches = query.match(/(\w+):([^\s]+)/g);
       if (propertyMatches) {
+        const context = this.validator.createValidationContext('QueryParser', 'parseSearchQuery', 'property_parsing');
+        
         parsed.properties = propertyMatches.map(match => {
-          const [key, value] = match.split(':');
-          return { key, value };
-        });
+          // MEDIUM RISK FIX: Validate match before split() operation
+          const validatedMatch = this.validator.validateQuery(match, context);
+          
+          if (validatedMatch.length === 0 || !validatedMatch.includes(':')) {
+            return { key: '', value: '' };
+          }
+          
+          // Now safe to split - guaranteed valid string
+          const [key, value] = validatedMatch.split(':');
+          return { key: key || '', value: value || '' };
+        }).filter(prop => prop.key.length > 0); // Remove invalid properties
+        
         // Remove property filters from the clean query
         parsed.cleanQuery = parsed.cleanQuery.replace(/\w+:[^\s]+/g, '').trim();
       }
@@ -82,11 +99,29 @@ export class QueryParser {
   }
 
   /**
-   * Extract search terms from query
+   * Extract search terms from query with validation to prevent split() errors
    */
   extractSearchTerms(query: string): string[] {
-    const normalized = this.normalizeQuery(query);
-    return normalized.split(/\s+/).filter(term => term.length > 0);
+    const context = this.validator.createValidationContext('QueryParser', 'extractSearchTerms', 'term_extraction');
+    
+    // Validate query before normalization and split()
+    const validatedQuery = this.validator.validateQuery(query, context);
+    
+    if (validatedQuery.length === 0) {
+      return [];
+    }
+    
+    const normalized = this.normalizeQuery(validatedQuery);
+    
+    // Validate normalized query as well (defensive programming)
+    const validatedNormalized = this.validator.validateQuery(normalized, context);
+    
+    if (validatedNormalized.length === 0) {
+      return [];
+    }
+    
+    // Now safe to split - guaranteed valid string
+    return validatedNormalized.split(/\s+/).filter(term => term.length > 0);
   }
 
   /**

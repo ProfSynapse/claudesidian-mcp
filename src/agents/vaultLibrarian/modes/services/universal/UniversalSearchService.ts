@@ -23,6 +23,7 @@ import { MetadataSearchStrategy } from './strategies/MetadataSearchStrategy';
 import { ResultConsolidator, ConsolidatedSearchResult } from './results/ResultConsolidator';
 import { ResultFormatter } from './results/ResultFormatter';
 import { ServiceInitializer } from './initialization/ServiceInitializer';
+import { globalValidationErrorMonitor, ValidationErrorMonitor } from './validation/ValidationErrorMonitor';
 
 /**
  * Refactored UniversalSearchService following SOLID principles
@@ -125,34 +126,21 @@ export class UniversalSearchService {
       const startTime = performance.now();
       const { query, limit = 5 } = params;
 
-      console.log('[UNIVERSAL_SEARCH] 🚀 Starting consolidated search pipeline...');
-      console.log('[UNIVERSAL_SEARCH] Query:', query);
-      console.log('[UNIVERSAL_SEARCH] Limit:', limit);
 
       // 1. Parse query
-      console.log('[UNIVERSAL_SEARCH] 🔄 Stage 1: Parsing query...');
       const parseStart = performance.now();
       const parseResult = this.queryParser.parseSearchQuery(query);
       const parseTime = performance.now() - parseStart;
       
       if (!parseResult.success) {
-        console.error('[UNIVERSAL_SEARCH] ❌ Query parsing failed:', parseResult.error);
         throw new Error(parseResult.error);
       }
 
       const parsedQuery = parseResult.parsed!;
-      console.log('[UNIVERSAL_SEARCH] ✅ Query parsed in', parseTime.toFixed(2), 'ms');
-      console.log('[UNIVERSAL_SEARCH] Parsed components:', {
-        cleanQuery: parsedQuery.cleanQuery,
-        tags: parsedQuery.tags,
-        properties: parsedQuery.properties,
-        originalQuery: query
-      });
 
       // 2. Filter files by metadata if needed
       let filteredFiles: TFile[] | undefined;
       if (parsedQuery.tags.length > 0 || parsedQuery.properties.length > 0) {
-        console.log('[UNIVERSAL_SEARCH] 🔄 Stage 2: Filtering files by metadata...');
         const filterStart = performance.now();
         
         const criteria: MetadataSearchCriteria = {
@@ -164,15 +152,10 @@ export class UniversalSearchService {
         if (this.metadataSearchService) {
           filteredFiles = await this.metadataSearchService.getFilesMatchingMetadata(criteria);
           const filterTime = performance.now() - filterStart;
-          console.log('[UNIVERSAL_SEARCH] ✅ Metadata filtering completed in', filterTime.toFixed(2), 'ms');
-          console.log('[UNIVERSAL_SEARCH] Files matching metadata:', filteredFiles?.length || 0);
         }
-      } else {
-        console.log('[UNIVERSAL_SEARCH] ⏩ Stage 2: No metadata filters, searching all files');
       }
 
       // 3. Search content
-      console.log('[UNIVERSAL_SEARCH] 🔄 Stage 3: Searching content...');
       const contentStart = performance.now();
       const contentResult = await this.contentSearchStrategy.searchContent(
         parsedQuery.cleanQuery,
@@ -181,12 +164,8 @@ export class UniversalSearchService {
         params
       );
       const contentTime = performance.now() - contentStart;
-      
-      console.log('[UNIVERSAL_SEARCH] ✅ Content search completed in', contentTime.toFixed(2), 'ms');
-      console.log('[UNIVERSAL_SEARCH] Content search results:', contentResult.results?.length || 0);
 
       // 4. Consolidate results
-      console.log('[UNIVERSAL_SEARCH] 🔄 Stage 4: Consolidating results...');
       const consolidateStart = performance.now();
       const consolidateResult = await this.resultConsolidator.consolidateResultsByFile(
         contentResult.results || []
@@ -194,27 +173,14 @@ export class UniversalSearchService {
       const consolidateTime = performance.now() - consolidateStart;
 
       if (!consolidateResult.success) {
-        console.error('[UNIVERSAL_SEARCH] ❌ Result consolidation failed:', consolidateResult.error);
         throw new Error(consolidateResult.error);
       }
 
       const totalTime = performance.now() - startTime;
-      console.log('[UNIVERSAL_SEARCH] ✅ Consolidation completed in', consolidateTime.toFixed(2), 'ms');
-      console.log('[UNIVERSAL_SEARCH] 🎉 Search pipeline completed successfully:');
-      console.log('[UNIVERSAL_SEARCH] - Total time:', totalTime.toFixed(2), 'ms');
-      console.log('[UNIVERSAL_SEARCH] - Parse time:', parseTime.toFixed(2), 'ms');
-      console.log('[UNIVERSAL_SEARCH] - Content search time:', contentTime.toFixed(2), 'ms');
-      console.log('[UNIVERSAL_SEARCH] - Consolidation time:', consolidateTime.toFixed(2), 'ms');
-      console.log('[UNIVERSAL_SEARCH] - Final results:', consolidateResult.results?.length || 0);
 
       return consolidateResult.results || [];
     } catch (error) {
-      console.error('[UNIVERSAL_SEARCH] ❌ Consolidated search failed:', error);
-      console.error('[UNIVERSAL_SEARCH] Error details:', {
-        query: params.query,
-        limit: params.limit,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      console.error('[UNIVERSAL_SEARCH] Consolidated search failed:', error);
       return [];
     }
   }
