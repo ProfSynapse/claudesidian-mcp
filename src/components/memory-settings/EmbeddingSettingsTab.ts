@@ -171,18 +171,21 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
                 })
             );
             
-        new Setting(containerEl)
-            .setName('Semantic Search Threshold')
-            .setDesc('Minimum similarity score (0-1) for vector similarity search (lower = more results)')
-            .addSlider(slider => slider
-                .setLimits(0, 1, 0.05)
-                .setValue(this.settings.semanticThreshold)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.settings.semanticThreshold = value;
-                    await this.saveSettings();
-                })
-            );
+        // REMOVED: Semantic Search Threshold setting
+        // The plugin now uses pure score-based ranking instead of threshold filtering
+        // This provides more consistent and intuitive search results
+        
+        // Migration notice for users who had threshold settings
+        if (this.settings.semanticThreshold !== undefined && this.settings.semanticThreshold !== 0.5) {
+            const notice = containerEl.createDiv('setting-item');
+            notice.createDiv('setting-item-info').innerHTML = `
+                <div class="setting-item-name" style="color: #e69138;">🔄 Settings Updated</div>
+                <div class="setting-item-description">
+                    Semantic threshold setting has been replaced with score-based ranking for better search results.
+                    Your search experience will be improved with more consistent relevance ordering.
+                </div>
+            `;
+        }
             
         new Setting(containerEl)
             .setName('Enable Backlink Boost')

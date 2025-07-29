@@ -4,7 +4,6 @@
  */
 
 import { Plugin } from 'obsidian';
-import { HnswSearchService } from '../../../../../../database/services/hnsw/HnswSearchService';
 import { MetadataSearchService } from '../../../../../../database/services/MetadataSearchService';
 import { HybridSearchService } from '../../../../../../database/services/search';
 import { EmbeddingService } from '../../../../../../database/services/EmbeddingService';
@@ -16,7 +15,6 @@ export interface ServiceInitializationResult {
   error?: string;
   services?: {
     metadataSearchService: MetadataSearchService;
-    hnswSearchService?: HnswSearchService;
     hybridSearchService?: HybridSearchService;
     embeddingService?: EmbeddingService;
     memoryService?: MemoryService;
@@ -26,7 +24,6 @@ export interface ServiceInitializationResult {
 
 export interface ServiceAvailability {
   metadataSearch: boolean;
-  hnswSearch: boolean;
   hybridSearch: boolean;
   embedding: boolean;
   memory: boolean;
@@ -40,7 +37,6 @@ export interface ServiceAvailability {
 export class ServiceInitializer {
   private services: {
     metadataSearchService?: MetadataSearchService;
-    hnswSearchService?: HnswSearchService;
     hybridSearchService?: HybridSearchService;
     embeddingService?: EmbeddingService;
     memoryService?: MemoryService;
@@ -54,35 +50,51 @@ export class ServiceInitializer {
    */
   async initializeServices(
     providedServices?: {
-      hnswSearchService?: HnswSearchService;
       embeddingService?: EmbeddingService;
       memoryService?: MemoryService;
       workspaceService?: WorkspaceService;
     }
   ): Promise<ServiceInitializationResult> {
     try {
+      console.log('[SERVICE_INIT] 🚀 Starting service initialization for UniversalSearchService...');
+      
       // Initialize metadata search service (always available)
+      console.log('[SERVICE_INIT] 🔄 Initializing MetadataSearchService...');
       this.services.metadataSearchService = new MetadataSearchService(this.plugin.app);
+      console.log('[SERVICE_INIT] ✅ MetadataSearchService initialized');
 
       // Initialize provided services
       if (providedServices) {
-        this.services.hnswSearchService = providedServices.hnswSearchService;
+        console.log('[SERVICE_INIT] 📦 Using provided services:', {
+          embeddingService: !!providedServices.embeddingService,
+          memoryService: !!providedServices.memoryService,
+          workspaceService: !!providedServices.workspaceService
+        });
         this.services.embeddingService = providedServices.embeddingService;
         this.services.memoryService = providedServices.memoryService;
         this.services.workspaceService = providedServices.workspaceService;
       }
 
       // Try to get services from plugin if not provided
+      console.log('[SERVICE_INIT] 🔄 Attempting to get services from plugin...');
       await this.tryGetServicesFromPlugin();
 
-      // Initialize hybrid search service if HNSW is available
+      // Initialize hybrid search service with ChromaDB integration
+      console.log('[SERVICE_INIT] 🔄 Initializing HybridSearchService...');
       await this.initializeHybridSearchService();
+
+      const availability = this.getServiceAvailability();
+      console.log('[SERVICE_INIT] ✅ Service initialization completed successfully:');
+      console.log('[SERVICE_INIT] - MetadataSearch:', availability.metadataSearch ? '✅' : '❌');
+      console.log('[SERVICE_INIT] - HybridSearch:', availability.hybridSearch ? '✅' : '❌');
+      console.log('[SERVICE_INIT] - Embedding:', availability.embedding ? '✅' : '❌');
+      console.log('[SERVICE_INIT] - Memory:', availability.memory ? '✅' : '❌');
+      console.log('[SERVICE_INIT] - Workspace:', availability.workspace ? '✅' : '❌');
 
       return {
         success: true,
         services: {
           metadataSearchService: this.services.metadataSearchService!,
-          hnswSearchService: this.services.hnswSearchService,
           hybridSearchService: this.services.hybridSearchService,
           embeddingService: this.services.embeddingService,
           memoryService: this.services.memoryService,
@@ -90,6 +102,7 @@ export class ServiceInitializer {
         }
       };
     } catch (error) {
+      console.error('[SERVICE_INIT] ❌ Service initialization failed:', error);
       return {
         success: false,
         error: `Service initialization failed: ${error instanceof Error ? error.message : String(error)}`
@@ -123,14 +136,7 @@ export class ServiceInitializer {
    */
   private async tryGetServicesFromServiceManager(serviceManager: any): Promise<void> {
     try {
-      // Get HNSW service
-      if (!this.services.hnswSearchService) {
-        try {
-          this.services.hnswSearchService = await serviceManager.get('hnswSearchService');
-        } catch (error) {
-          console.warn('[ServiceInitializer] Failed to get HNSW service from service manager:', error);
-        }
-      }
+      // HNSW service removed
 
       // Get embedding service
       if (!this.services.embeddingService) {
@@ -168,10 +174,7 @@ export class ServiceInitializer {
    */
   private async tryGetServicesFromDirectAccess(services: any): Promise<void> {
     try {
-      // Get HNSW service
-      if (!this.services.hnswSearchService && services.hnswSearchService) {
-        this.services.hnswSearchService = services.hnswSearchService;
-      }
+      // HNSW service removed
 
       // Get embedding service
       if (!this.services.embeddingService && services.embeddingService) {
@@ -193,17 +196,50 @@ export class ServiceInitializer {
   }
 
   /**
-   * Initialize hybrid search service
+   * Initialize hybrid search service with ChromaDB integration
    */
   private async initializeHybridSearchService(): Promise<void> {
     try {
-      if (this.services.hnswSearchService && !this.services.hybridSearchService) {
-        this.services.hybridSearchService = new HybridSearchService(
-          this.services.hnswSearchService
-        );
+      if (!this.services.hybridSearchService) {
+        console.log('[SERVICE_INIT] 🔄 Attempting to initialize HybridSearchService...');
+        
+        // Try to get vectorStore and embeddingService from plugin
+        let vectorStore: any = undefined;
+        let embeddingService: any = undefined;
+        
+        try {
+          console.log('[SERVICE_INIT] 🔍 Looking for vectorStore and embeddingService in plugin...');
+          const plugin = this.plugin as any;
+          if (plugin.services) {
+            vectorStore = plugin.services.vectorStore;
+            embeddingService = this.services.embeddingService || plugin.services.embeddingService;
+            console.log('[SERVICE_INIT] 📦 Found plugin services:', {
+              hasServices: !!plugin.services,
+              hasVectorStore: !!vectorStore,
+              hasEmbeddingService: !!embeddingService
+            });
+          } else {
+            console.log('[SERVICE_INIT] ❌ Plugin.services not available');
+          }
+        } catch (error) {
+          console.warn('[SERVICE_INIT] ❌ Could not get vectorStore/embeddingService from plugin:', error);
+        }
+
+        // Initialize with direct ChromaDB access (HNSW completely removed)
+        console.log('[SERVICE_INIT] 🔧 Creating HybridSearchService with ChromaDB-only configuration...');
+        this.services.hybridSearchService = new HybridSearchService(vectorStore, embeddingService);
+        
+        const semanticAvailable = this.services.hybridSearchService.isSemanticSearchAvailable();
+        console.log('[SERVICE_INIT] ✅ HybridSearchService initialized:');
+        console.log('[SERVICE_INIT] - ChromaDB vectorStore:', !!vectorStore ? '✅' : '❌');
+        console.log('[SERVICE_INIT] - EmbeddingService:', !!embeddingService ? '✅' : '❌');
+        console.log('[SERVICE_INIT] - Semantic search available:', semanticAvailable ? '✅' : '❌');
+        console.log('[SERVICE_INIT] - Search modes: Keyword ✅, Fuzzy ✅, Semantic', semanticAvailable ? '✅' : '❌');
+      } else {
+        console.log('[SERVICE_INIT] ✅ HybridSearchService already initialized');
       }
     } catch (error) {
-      console.warn('[ServiceInitializer] Failed to initialize hybrid search service:', error);
+      console.error('[SERVICE_INIT] ❌ Failed to initialize HybridSearchService:', error);
     }
   }
 
@@ -213,7 +249,6 @@ export class ServiceInitializer {
   getServiceAvailability(): ServiceAvailability {
     return {
       metadataSearch: !!this.services.metadataSearchService,
-      hnswSearch: !!this.services.hnswSearchService,
       hybridSearch: !!this.services.hybridSearchService,
       embedding: !!this.services.embeddingService,
       memory: !!this.services.memoryService,
@@ -226,7 +261,6 @@ export class ServiceInitializer {
    */
   getServices(): {
     metadataSearchService?: MetadataSearchService;
-    hnswSearchService?: HnswSearchService;
     hybridSearchService?: HybridSearchService;
     embeddingService?: EmbeddingService;
     memoryService?: MemoryService;
@@ -240,11 +274,7 @@ export class ServiceInitializer {
    */
   updateService(serviceName: string, service: any): void {
     switch (serviceName) {
-      case 'hnswSearchService':
-        this.services.hnswSearchService = service;
-        // Reinitialize hybrid search if HNSW changed
-        this.initializeHybridSearchService();
-        break;
+      // HNSW service removed
       case 'embeddingService':
         this.services.embeddingService = service;
         break;
@@ -261,7 +291,7 @@ export class ServiceInitializer {
    * Check if semantic search is available
    */
   isSemanticSearchAvailable(): boolean {
-    return !!this.services.hnswSearchService;
+    return !!this.services.hybridSearchService && this.services.hybridSearchService.isSemanticSearchAvailable();
   }
 
   /**
@@ -282,15 +312,7 @@ export class ServiceInitializer {
     try {
       const indexesPopulated: string[] = [];
 
-      // Populate HNSW indexes if available
-      if (this.services.hnswSearchService) {
-        try {
-          // HNSW indexes are populated through the vector store
-          indexesPopulated.push('HNSW');
-        } catch (error) {
-          console.warn('[ServiceInitializer] Failed to populate HNSW indexes:', error);
-        }
-      }
+      // ChromaDB indexes are automatically populated through the vector store - no explicit action needed
 
       // Populate hybrid search indexes if available
       if (this.services.hybridSearchService) {
@@ -331,15 +353,7 @@ export class ServiceInitializer {
     };
 
     try {
-      // Get HNSW status
-      if (this.services.hnswSearchService) {
-        try {
-          const hnswStats = this.services.hnswSearchService.getIndexStats('file_embeddings');
-          diagnostics.hnswIndexStatus = `${hnswStats?.itemCount || 0} items indexed`;
-        } catch (error) {
-          diagnostics.hnswIndexStatus = 'Error getting stats';
-        }
-      }
+      // ChromaDB semantic search status now handled through hybrid search service
 
       // Get hybrid status
       if (this.services.hybridSearchService) {

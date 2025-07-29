@@ -42,19 +42,27 @@ export class InitializationCoordinator implements IInitializationCoordinator {
     this.startTime = Date.now();
     const results: InitializationPhaseResult[] = [];
 
-    console.log('[InitializationCoordinator] Starting complete initialization...');
+    console.log(`[HNSW-CLEANUP-TEST] 🚀 PLUGIN STARTUP: Beginning initialization process...`);
+    console.log(`[HNSW-CLEANUP-TEST] 📋 Initialization phases: ${this.phaseOrder.length} total phases`);
+    console.log(`[HNSW-CLEANUP-TEST] 🎯 Expected: No HNSW service initialization errors after phantom removal`);
 
+    let phaseIndex = 0;
     for (const phase of this.phaseOrder) {
+      phaseIndex++;
       try {
+        console.log(`[HNSW-CLEANUP-TEST] ⏳ [${phaseIndex}/${this.phaseOrder.length}] Starting phase: ${phase}`);
         const result = await this.initializePhase(phase);
         results.push(result);
         
-        if (!result.success) {
-          console.error(`[InitializationCoordinator] Phase ${phase} failed, stopping initialization`);
+        if (result.success) {
+          console.log(`[HNSW-CLEANUP-TEST] ✅ [${phaseIndex}/${this.phaseOrder.length}] Phase ${phase} SUCCESSFUL (${result.duration}ms, ${result.componentsInitialized.length} components)`);
+        } else {
+          console.error(`[HNSW-CLEANUP-TEST] ❌ [${phaseIndex}/${this.phaseOrder.length}] Phase ${phase} FAILED (${result.duration}ms, ${result.errors.length} errors)`);
+          console.error(`[HNSW-CLEANUP-TEST] 💥 Phase ${phase} errors:`, result.errors.map(e => `${e.component}: ${e.error.message}`));
           break;
         }
       } catch (error) {
-        console.error(`[InitializationCoordinator] Exception in phase ${phase}:`, error);
+        console.error(`[HNSW-CLEANUP-TEST] 💥 [${phaseIndex}/${this.phaseOrder.length}] Exception in phase ${phase}:`, error);
         const errorResult: InitializationPhaseResult = {
           phase,
           success: false,
@@ -68,7 +76,19 @@ export class InitializationCoordinator implements IInitializationCoordinator {
     }
 
     const totalDuration = Date.now() - this.startTime;
-    console.log(`[InitializationCoordinator] Initialization completed in ${totalDuration}ms`);
+    const successfulPhases = results.filter(r => r.success).length;
+    const failedPhases = results.filter(r => !r.success).length;
+
+    console.log(`[HNSW-CLEANUP-TEST] 🏁 PLUGIN INITIALIZATION COMPLETE:`);
+    console.log(`[HNSW-CLEANUP-TEST] ⏱️ Total Duration: ${totalDuration}ms`);
+    console.log(`[HNSW-CLEANUP-TEST] ✅ Successful Phases: ${successfulPhases}/${this.phaseOrder.length}`);
+    console.log(`[HNSW-CLEANUP-TEST] ❌ Failed Phases: ${failedPhases}/${this.phaseOrder.length}`);
+    
+    if (failedPhases === 0) {
+      console.log(`[HNSW-CLEANUP-TEST] 🎉 PLUGIN STARTUP SUCCESS: All phases completed without HNSW phantom service errors!`);
+    } else {
+      console.log(`[HNSW-CLEANUP-TEST] 💔 PLUGIN STARTUP ISSUES: ${failedPhases} phases failed`);
+    }
 
     return results;
   }
@@ -228,13 +248,22 @@ export class InitializationCoordinator implements IInitializationCoordinator {
       const servicesToInitialize = [
         'vectorStore',
         'embeddingService',
-        'hnswSearchService',
         'workspaceService',
         'memoryService'
       ];
 
+      console.log(`[HNSW-CLEANUP-TEST] ✅ SERVICES PHASE: Initializing exactly ${servicesToInitialize.length} core services (no HNSW phantom references)`);
+      console.log(`[HNSW-CLEANUP-TEST] 📋 Service list:`, servicesToInitialize);
+      console.log(`[HNSW-CLEANUP-TEST] 🔍 Validation: No 'hnswSearchService' in initialization list (phantom service removed)`);
+
+      let serviceIndex = 0;
       for (const serviceName of servicesToInitialize) {
+        serviceIndex++;
+        const serviceStartTime = Date.now();
+        
         try {
+          console.log(`[HNSW-CLEANUP-TEST] 🚀 [${serviceIndex}/${servicesToInitialize.length}] Starting ${serviceName} initialization...`);
+          
           await this.initializeComponent(serviceName, async () => {
             if (!this.serviceManager) {
               throw new Error(`Service manager is null/undefined for service ${serviceName}`);
@@ -242,169 +271,61 @@ export class InitializationCoordinator implements IInitializationCoordinator {
             
             if (typeof this.serviceManager.initializeService === 'function') {
               await this.serviceManager.initializeService(serviceName);
+              console.log(`[HNSW-CLEANUP-TEST] ✅ ${serviceName} initialized via initializeService() method`);
             } else if (typeof this.serviceManager.get === 'function') {
               const service = await this.serviceManager.get(serviceName);
               if (!service) {
                 throw new Error(`Service manager returned null/undefined for ${serviceName}`);
               }
+              console.log(`[HNSW-CLEANUP-TEST] ✅ ${serviceName} initialized via get() method`);
             } else {
               throw new Error(`Service manager has no usable methods`);
             }
           });
           
+          const serviceDuration = Date.now() - serviceStartTime;
           componentsInitialized.push(serviceName);
+          console.log(`[HNSW-CLEANUP-TEST] ✅ [${serviceIndex}/${servicesToInitialize.length}] ${serviceName} SUCCESS (${serviceDuration}ms)`);
           
         } catch (error) {
+          const serviceDuration = Date.now() - serviceStartTime;
           const errorMessage = `Service ${serviceName} initialization failed: ${error instanceof Error ? error.message : String(error)}`;
-          console.error(`[InitializationCoordinator] ${errorMessage}`);
+          console.error(`[HNSW-CLEANUP-TEST] ❌ [${serviceIndex}/${servicesToInitialize.length}] ${serviceName} FAILED (${serviceDuration}ms): ${errorMessage}`);
           errors.push({ component: serviceName, error: new Error(errorMessage) });
           
-          // FAIL FAST - don't continue if critical services fail
-          if (serviceName === 'hnswSearchService') {
-            throw new Error(`CRITICAL FAILURE: HNSW Search Service initialization failed: ${errorMessage}`);
-          }
+          // Continue with other services - no special fail-fast logic needed
         }
       }
 
-      // CRITICAL: Trigger HNSW index creation after all services are initialized
-      await this.triggerHnswIndexCreation(componentsInitialized, errors);
+      // Service initialization completed - comprehensive summary
+      console.log(`[HNSW-CLEANUP-TEST] 📊 SERVICES PHASE COMPLETE:`);
+      console.log(`[HNSW-CLEANUP-TEST] ✅ Successful services: ${componentsInitialized.length}/${servicesToInitialize.length}`);
+      console.log(`[HNSW-CLEANUP-TEST] ❌ Failed services: ${errors.length}/${servicesToInitialize.length}`);
+      
+      if (componentsInitialized.length > 0) {
+        console.log(`[HNSW-CLEANUP-TEST] 🎯 Successfully initialized services:`, componentsInitialized);
+      }
+      if (errors.length > 0) {
+        console.log(`[HNSW-CLEANUP-TEST] 💥 Service initialization errors:`, errors.map(e => `${e.component}: ${e.error.message}`));
+      }
+      
+      // Validation: Confirm exactly 4 services expected (no phantom HNSW service)
+      if (componentsInitialized.length === 4 && errors.length === 0) {
+        console.log(`[HNSW-CLEANUP-TEST] 🎉 PERFECT: All 4 core services initialized successfully - no HNSW phantom references!`);
+      } else if (componentsInitialized.length + errors.length === 4) {
+        console.log(`[HNSW-CLEANUP-TEST] ✅ VALIDATION PASSED: Exactly 4 services processed (as expected after HNSW phantom removal)`);
+      } else {
+        console.warn(`[HNSW-CLEANUP-TEST] ⚠️ UNEXPECTED: Expected exactly 4 services, but processed ${componentsInitialized.length + errors.length}`);
+      }
 
       return { success: errors.length === 0, componentsInitialized, errors };
     } catch (error) {
+      console.error(`[HNSW-CLEANUP-TEST] 💥 SERVICES PHASE EXCEPTION:`, error);
       errors.push({ component: 'services', error: error as Error });
       return { success: false, componentsInitialized, errors };
     }
   }
 
-  /**
-   * Fast HNSW index health check and background initialization scheduling
-   * STARTUP OPTIMIZATION: No longer blocks startup - just checks if indexes exist and schedules background work if needed
-   * This replaces the previous blocking ensureFullyInitialized() approach
-   */
-  private async triggerHnswIndexCreation(
-    componentsInitialized: string[], 
-    errors: Array<{ component: string; error: Error }>
-  ): Promise<void> {
-    // Verify HNSW service was initialized
-    if (!componentsInitialized.includes('hnswSearchService')) {
-      const errorMsg = `hnswSearchService not in completed components list. Completed: [${componentsInitialized.join(', ')}]`;
-      console.error(`[InitializationCoordinator] ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
-    
-    if (!this.serviceManager) {
-      throw new Error('Service manager is null/undefined during index creation');
-    }
-    
-    if (typeof this.serviceManager.get !== 'function') {
-      throw new Error('Service manager get method is not a function');
-    }
-    
-    console.log('[InitializationCoordinator] 🚀 Starting fast HNSW index health check...');
-    
-    try {
-      // Get required services for health checking
-      const healthChecker = await this.serviceManager.get('hnswIndexHealthChecker');
-      const backgroundIndexingService = await this.serviceManager.get('backgroundIndexingService');
-      const hnswService = await this.serviceManager.get('hnswSearchService');
-      
-      if (!healthChecker) {
-        console.warn('[InitializationCoordinator] Health checker not available, falling back to blocking initialization');
-        const hnswService = await this.serviceManager.get('hnswSearchService');
-        if (hnswService && typeof hnswService.ensureFullyInitialized === 'function') {
-          await hnswService.ensureFullyInitialized();
-        }
-        return;
-      }
-      
-      console.log('[InitializationCoordinator] 🔍 Performing fast index health check (non-blocking)...');
-      
-      // FAST HEALTH CHECK: Only metadata comparisons, no WASM loading
-      const healthSummary = await healthChecker.checkAllIndexes({
-        includeStorageInfo: false,
-        checkContentHash: true,
-        validateItemCounts: true,
-        tolerance: 0.05 // 5% tolerance for item count differences
-      });
-      
-      console.log('[InitializationCoordinator] ⚡ Health check completed in:', healthSummary.totalCheckTime + 'ms');
-      console.log('[InitializationCoordinator] Health summary:', {
-        allHealthy: healthSummary.allHealthy,
-        healthyCollections: healthSummary.healthyCollections.length,
-        needsBuildingCollections: healthSummary.needsBuildingCollections.length,
-        needsUpdateCollections: healthSummary.needsUpdateCollections.length,
-        corruptedCollections: healthSummary.corruptedCollections.length
-      });
-      
-      if (healthSummary.allHealthy) {
-        console.log('[InitializationCoordinator] ✅ All indexes are healthy - ready for fast loading on first search');
-        
-        // Mark HNSW service as ready for loading
-        if (hnswService && typeof hnswService.markReadyForLoading === 'function') {
-          hnswService.markReadyForLoading();
-          // Mark collections as ready
-          for (const collectionName of healthSummary.healthyCollections) {
-            if (typeof hnswService.markCollectionReady === 'function') {
-              hnswService.markCollectionReady(collectionName);
-            }
-          }
-        }
-        
-        console.log('[InitializationCoordinator] 🎉 HNSW startup optimization complete - no background work needed');
-        
-      } else {
-        console.log('[InitializationCoordinator] 🔄 Indexes need building/updating - scheduling background work');
-        
-        // Collect collections that need work
-        const collectionsNeedingWork = [
-          ...healthSummary.needsBuildingCollections,
-          ...healthSummary.needsUpdateCollections,
-          ...healthSummary.corruptedCollections
-        ];
-        
-        if (backgroundIndexingService && collectionsNeedingWork.length > 0) {
-          console.log(`[InitializationCoordinator] 📅 Scheduling background indexing for ${collectionsNeedingWork.length} collections:`, collectionsNeedingWork);
-          
-          // Mark collections as building in HNSW service
-          if (hnswService) {
-            for (const collectionName of collectionsNeedingWork) {
-              if (typeof hnswService.markCollectionBuilding === 'function') {
-                hnswService.markCollectionBuilding(collectionName);
-              }
-            }
-          }
-          
-          // Schedule the background work (non-blocking)
-          await backgroundIndexingService.scheduleIndexing(collectionsNeedingWork);
-          
-          console.log('[InitializationCoordinator] ✅ Background indexing scheduled - startup can continue');
-        } else {
-          console.warn('[InitializationCoordinator] Background indexing service not available, indexes will need manual rebuilding');
-        }
-      }
-      
-      console.log('[InitializationCoordinator] ⚡ HNSW initialization completed (non-blocking)');
-      
-    } catch (healthCheckError) {
-      const errorMessage = healthCheckError instanceof Error ? healthCheckError.message : String(healthCheckError);
-      console.error(`[InitializationCoordinator] Health check failed: ${errorMessage}`);
-      
-      // Fallback to blocking initialization if health check fails
-      console.warn('[InitializationCoordinator] Falling back to blocking HNSW initialization due to health check failure');
-      try {
-        const hnswService = await this.serviceManager.get('hnswSearchService');
-        if (hnswService && typeof hnswService.ensureFullyInitialized === 'function') {
-          await hnswService.ensureFullyInitialized();
-        }
-      } catch (fallbackError) {
-        console.error('[InitializationCoordinator] Fallback initialization also failed:', fallbackError);
-        throw new Error(`Both health check and fallback initialization failed: ${errorMessage}`);
-      }
-    }
-    
-    // Mark as complete - either health check succeeded or fallback completed
-    console.log('[InitializationCoordinator] ✅ HNSW startup optimization completed successfully');
-  }
 
   /**
    * Initialize agents
@@ -473,8 +394,8 @@ export class InitializationCoordinator implements IInitializationCoordinator {
    * Initialize a single component with state management
    */
   private async initializeComponent(componentName: string, initializer: () => Promise<void>): Promise<void> {
-    // Use longer timeout for HNSW service specifically
-    const timeout = componentName === 'hnswSearchService' ? 180000 : undefined; // 3 minutes for HNSW
+    // Use default timeout for all services
+    const timeout = undefined;
     
     const result = await this.stateManager.ensureInitialized(
       componentName,

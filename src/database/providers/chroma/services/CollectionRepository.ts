@@ -1,13 +1,12 @@
 /**
  * CollectionRepository - Manages in-memory collection data operations
  * Applies Single Responsibility Principle by focusing only on data management
- * Now with HNSW-accelerated vector search for O(log n) performance
+ * Uses ChromaDB for semantic search and vector operations
  */
 
 import { DatabaseItem } from './FilterEngine';
 import { VectorCalculator } from './VectorCalculator';
 import { FilterEngine, WhereClause } from './FilterEngine';
-import { HnswSearchService } from '../../../services/hnsw/HnswSearchService';
 
 export interface CollectionData {
   items: Map<string, DatabaseItem>;
@@ -22,12 +21,10 @@ export interface ItemWithDistance {
 export class CollectionRepository {
   private items: Map<string, DatabaseItem>;
   private collectionMetadata: Record<string, any>;
-  private hnswService?: HnswSearchService;
   private collectionName: string;
-  private hnswEnabled = true;
   private persistentPath?: string;
 
-  constructor(metadata: Record<string, any> = {}, collectionName = 'default', persistentPath?: string, hnswService?: HnswSearchService) {
+  constructor(metadata: Record<string, any> = {}, collectionName = 'default', persistentPath?: string) {
     this.items = new Map();
     this.collectionMetadata = {
       ...metadata,
@@ -35,7 +32,7 @@ export class CollectionRepository {
     };
     this.collectionName = collectionName;
     this.persistentPath = persistentPath;
-    this.hnswService = hnswService; // Use injected service
+    // HNSW service injection removed - semantic search now handled through ChromaDB directly
   }
 
   /**
@@ -106,14 +103,7 @@ export class CollectionRepository {
       };
       this.items.set(ids[i], item);
       
-      // Add to HNSW index if enabled and item has embedding
-      if (this.hnswEnabled && item.embedding.length > 0) {
-        this.hnswService?.addItemToIndex(this.collectionName, item).then(() => {
-          console.log(`[CollectionRepository] Added item ${item.id} to HNSW index`);
-        }).catch(error => {
-          console.warn(`Failed to add item ${item.id} to HNSW index:`, error);
-        });
-      }
+      // HNSW index integration removed - semantic search now handled through ChromaDB directly
     }
   }
 
@@ -178,24 +168,14 @@ export class CollectionRepository {
     if (ids) {
       for (const id of ids) {
         this.items.delete(id);
-        // Remove from HNSW index
-        if (this.hnswEnabled) {
-          this.hnswService?.removeItemFromIndex(this.collectionName, id).catch(error => {
-            console.warn(`Failed to remove item ${id} from HNSW index:`, error);
-          });
-        }
+        // HNSW index integration removed - semantic search now handled through ChromaDB directly
       }
     } else if (where) {
       // Delete by where filter
       const itemsToDelete = FilterEngine.filterByWhere(this.getAllItems(), where);
       for (const item of itemsToDelete) {
         this.items.delete(item.id);
-        // Remove from HNSW index
-        if (this.hnswEnabled) {
-          this.hnswService?.removeItemFromIndex(this.collectionName, item.id).catch(error => {
-            console.warn(`Failed to remove item ${item.id} from HNSW index:`, error);
-          });
-        }
+        // HNSW index integration removed - semantic search now handled through ChromaDB directly
       }
     }
   }
@@ -214,17 +194,18 @@ export class CollectionRepository {
     const queries = queryEmbeddings.length > 0 ? queryEmbeddings : [[]];
 
     for (const queryEmbedding of queries) {
-      if (this.hnswEnabled && queryEmbedding.length > 0 && this.hnswService?.hasIndex(this.collectionName)) {
+      // HNSW search removed - using ChromaDB semantic search instead
+      if (false) {
         try {
           // Use HNSW for fast O(log n) search
           console.log(`[CollectionRepository] Attempting HNSW search for collection: ${this.collectionName}`);
           const searchOptions = { limit: nResults, includeContent: true };
           const searchResults = where 
-            ? await this.hnswService.searchWithMetadataFilter(this.collectionName, queryEmbedding, where, searchOptions)
-            : await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, searchOptions);
+            // HNSW search calls removed - semantic search now handled through ChromaDB directly
+            ? [] : [];
           
           // Convert SearchResult[] to ItemWithDistance[] for compatibility
-          const hnswResults = searchResults.map(result => ({
+          const hnswResults = searchResults.map((result: any) => ({
             item: {
               id: result.id,
               document: result.content || result.snippet,
@@ -245,11 +226,11 @@ export class CollectionRepository {
           console.error('[CollectionRepository] HNSW search failed, falling back to brute force:', error);
         }
       } else {
-        if (!this.hnswEnabled) {
+        if (!false) {
           console.log('[CollectionRepository] HNSW disabled, using brute force search');
         } else if (queryEmbedding.length === 0) {
           console.log('[CollectionRepository] No query embedding provided, using brute force search');
-        } else if (!this.hnswService?.hasIndex(this.collectionName)) {
+        } else {
           console.log(`[CollectionRepository] No HNSW index found for collection ${this.collectionName}, using brute force search`);
         }
       }
@@ -266,18 +247,19 @@ export class CollectionRepository {
    * Async HNSW search helper - properly integrates with HNSW service
    */
   private async performHnswSearch(queryEmbedding: number[], nResults: number, where?: WhereClause): Promise<ItemWithDistance[]> {
-    if (!this.hnswService || !this.hnswEnabled) {
+    // HNSW service removed - semantic search now handled through ChromaDB directly
+    if (true) {
       return [];
     }
 
     try {
       const searchOptions = { limit: nResults, includeContent: true };
       const searchResults = where 
-        ? await this.hnswService.searchWithMetadataFilter(this.collectionName, queryEmbedding, where, searchOptions)
-        : await this.hnswService.searchSimilar(this.collectionName, queryEmbedding, searchOptions);
+        // HNSW search calls removed - semantic search now handled through ChromaDB directly
+        ? [] : [];
       
       // Convert SearchResult[] to ItemWithDistance[] for compatibility  
-      return searchResults.map(result => ({
+      return searchResults.map((result: any) => ({
         item: {
           id: result.id,
           document: result.content || result.snippet,
@@ -368,21 +350,18 @@ export class CollectionRepository {
    */
   private loadOrCreateHnswIndex(): void {
     // Call the optimized indexing method without blocking
-    this.hnswService?.indexCollection(this.collectionName, this.getAllItems()).catch(error => {
-      console.error(`[CollectionRepository] Failed to load/create HNSW index:`, error);
-      this.hnswEnabled = false; // Disable HNSW if it fails
-    });
+    // HNSW index creation removed - semantic search now handled through ChromaDB directly
   }
 
   /**
    * Force rebuild of HNSW index (public method for manual refresh)
    */
   public async forceRebuildHnswIndex(): Promise<void> {
-    if (!this.hnswEnabled) return;
+    if (!false) return;
     
     const items = this.getAllItems();
     if (items.length > 0) {
-      await this.hnswService?.forceRebuildIndex(this.collectionName, items);
+      // HNSW force rebuild removed - semantic search now handled through ChromaDB directly
     }
   }
 
@@ -391,8 +370,8 @@ export class CollectionRepository {
    */
   getHnswStats(): { enabled: boolean; stats: any } {
     return {
-      enabled: this.hnswEnabled,
-      stats: this.hnswEnabled ? this.hnswService?.getIndexStats(this.collectionName) : null
+      enabled: false,
+      stats: null // HNSW stats removed - semantic search now handled through ChromaDB directly
     };
   }
 
@@ -400,11 +379,11 @@ export class CollectionRepository {
    * Enable or disable HNSW search
    */
   setHnswEnabled(enabled: boolean): void {
-    this.hnswEnabled = enabled;
+    // HNSW enable/disable removed - semantic search now handled through ChromaDB directly
     if (enabled && this.items.size > 0) {
       this.loadOrCreateHnswIndex();
     } else if (!enabled) {
-      this.hnswService?.removeIndex(this.collectionName);
+      // HNSW index removal removed - semantic search now handled through ChromaDB directly
     }
   }
 

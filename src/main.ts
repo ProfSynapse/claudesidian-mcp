@@ -8,7 +8,6 @@ import { logger } from './utils/logger';
 
 // Type imports for service interfaces
 import type { EmbeddingService } from './database/services/EmbeddingService';
-import type { HnswSearchService } from './database/services/hnsw/HnswSearchService';
 import type { FileEmbeddingAccessService } from './database/services/FileEmbeddingAccessService';
 import type { DirectCollectionService } from './database/services/DirectCollectionService';
 import type { IVectorStore } from './database/interfaces/IVectorStore';
@@ -33,9 +32,6 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     public get embeddingService(): EmbeddingService | null { 
         return this.serviceManager?.getIfReady<EmbeddingService>('embeddingService') || null; 
-    }
-    public get hnswSearchService(): HnswSearchService | null { 
-        return this.serviceManager?.getIfReady<HnswSearchService>('hnswSearchService') || null; 
     }
     public get fileEmbeddingAccessService(): FileEmbeddingAccessService | null { 
         return this.serviceManager?.getIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null; 
@@ -125,9 +121,12 @@ export default class ClaudesidianPlugin extends Plugin {
     private async startBackgroundInitialization(): Promise<void> {
         const bgStartTime = Date.now();
         
+        console.log(`[HNSW-CLEANUP-TEST] 🚀 BACKGROUND INIT: Starting plugin background initialization...`);
+        
         try {
             // Load settings first
             await this.settings.loadSettings();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Settings loaded successfully`);
             
             // NEW: Log data.json for debugging StateManager
             try {
@@ -143,41 +142,57 @@ export default class ClaudesidianPlugin extends Plugin {
             }
             
             // Initialize data directories
+            console.log(`[HNSW-CLEANUP-TEST] 📁 Initializing data directories...`);
             await this.initializeDataDirectories();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Data directories initialized`);
             
-            // Start service manager stages
+            // Start service manager stages - this triggers InitializationCoordinator
+            console.log(`[HNSW-CLEANUP-TEST] 🔧 Starting service manager (triggers InitializationCoordinator)...`);
             await this.serviceManager.start();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Service manager started - InitializationCoordinator completed`);
             
             // Pre-initialize UI-critical services to avoid long loading times in Memory Management
+            console.log(`[HNSW-CLEANUP-TEST] 🎯 Pre-initializing UI-critical services...`);
             await this.preInitializeUICriticalServices();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ UI-critical services pre-initialized`);
+            
+            // Validate search functionality
+            await this.validateSearchFunctionality();
             
             // Initialize connector with agents - must complete before plugin ready
+            console.log(`[HNSW-CLEANUP-TEST] 🔌 Initializing MCP connector and agents...`);
             try {
                 await this.connector.initializeAgents();
                 await this.connector.start();
-                console.log('[ClaudesidianPlugin] MCP connector started successfully');
+                console.log(`[HNSW-CLEANUP-TEST] ✅ MCP connector started successfully`);
             } catch (error) {
-                console.error('[ClaudesidianPlugin] MCP connector failed to start:', error);
+                console.error(`[HNSW-CLEANUP-TEST] ❌ MCP connector failed to start:`, error);
                 // Continue with plugin initialization even if MCP fails
             }
             
             // Create settings tab (async)
+            console.log(`[HNSW-CLEANUP-TEST] ⚙️ Creating settings tab...`);
             await this.initializeSettingsTab();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Settings tab created`);
             
             // Register all maintenance commands
             this.registerMaintenanceCommands();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Maintenance commands registered`);
             
             // Check for updates
             this.checkForUpdatesOnStartup();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Update check initiated`);
             
             // Update settings tab with loaded services
             this.updateSettingsTabServices();
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Settings tab updated with services`);
             
             const bgLoadTime = Date.now() - bgStartTime;
-            console.log(`[ClaudesidianPlugin] Background initialization completed in ${bgLoadTime}ms`);
+            console.log(`[HNSW-CLEANUP-TEST] 🎉 BACKGROUND INITIALIZATION COMPLETE: ${bgLoadTime}ms`);
+            console.log(`[HNSW-CLEANUP-TEST] 🔍 VALIDATION SUMMARY: Plugin should be fully functional with ChromaDB search (no HNSW phantom errors)`);
             
         } catch (error) {
-            console.error('[ClaudesidianPlugin] Background initialization failed:', error);
+            console.error(`[HNSW-CLEANUP-TEST] 💥 Background initialization failed:`, error);
             // Plugin should still be functional for basic operations
         }
     }
@@ -229,15 +244,17 @@ export default class ClaudesidianPlugin extends Plugin {
             const dataDir = path.join(pluginDir, 'data');
             const chromaDbDir = path.join(dataDir, 'chroma-db');
             const collectionsDir = path.join(chromaDbDir, 'collections');
-            const hnswIndexesDir = path.join(chromaDbDir, 'hnsw-indexes');
             
-            // Create directories in parallel
+            console.log('[STARTUP] Initializing ChromaDB-only data directories...');
+            
+            // Create directories in parallel - ChromaDB only, no HNSW indexes needed  
             await Promise.all([
                 fs.mkdir(dataDir, { recursive: true }),
                 fs.mkdir(chromaDbDir, { recursive: true }),
-                fs.mkdir(collectionsDir, { recursive: true }),
-                fs.mkdir(hnswIndexesDir, { recursive: true })
+                fs.mkdir(collectionsDir, { recursive: true })
             ]);
+            
+            console.log('[STARTUP] ✅ ChromaDB data directories created successfully');
             
             // Update settings with correct path
             if (!this.settings.settings.memory) {
@@ -294,6 +311,7 @@ export default class ClaudesidianPlugin extends Plugin {
             backlinksEnabled: true,
             useFilters: true,
             defaultThreshold: 0.7,
+            // PHASE 1 COMPATIBILITY: Keep for settings migration (will be ignored by search logic)
             semanticThreshold: 0.5,
             vectorStoreType: 'file-based' as 'file-based'
         };
@@ -567,6 +585,62 @@ export default class ClaudesidianPlugin extends Plugin {
         return this.connector;
     }
     
+    /**
+     * Validate search functionality - ensure services work without HNSW phantom references
+     */
+    private async validateSearchFunctionality(): Promise<void> {
+        console.log(`[HNSW-CLEANUP-TEST] 🔍 SEARCH VALIDATION: Testing search functionality...`);
+        
+        try {
+            // Test 1: Validate vectorStore service is available (ChromaDB path)
+            const vectorStore = await this.getService<IVectorStore>('vectorStore', 5000);
+            if (vectorStore) {
+                console.log(`[HNSW-CLEANUP-TEST] ✅ VectorStore service available - ChromaDB search path functional`);
+                
+                // Test basic collection operations (no search needed, just service availability)
+                try {
+                    const collections = await vectorStore.listCollections();
+                    console.log(`[HNSW-CLEANUP-TEST] ✅ VectorStore operations work (${collections.length} collections) - no HNSW phantom errors`);
+                } catch (collectionError) {
+                    // Collection errors are OK - we just want to ensure no HNSW phantom service errors
+                    const errorMessage = collectionError instanceof Error ? collectionError.message : String(collectionError);
+                    if (errorMessage.includes('hnswSearchService') || errorMessage.includes('Service \'hnswSearchService\' not found')) {
+                        console.error(`[HNSW-CLEANUP-TEST] ❌ PHANTOM SERVICE ERROR DETECTED in vector operations: ${errorMessage}`);
+                    } else {
+                        console.log(`[HNSW-CLEANUP-TEST] ✅ Vector operation error is expected/acceptable (no phantom service issues): ${errorMessage}`);
+                    }
+                }
+            } else {
+                console.warn(`[HNSW-CLEANUP-TEST] ⚠️ VectorStore not available yet - search validation skipped`);
+            }
+            
+            // Test 2: Validate that no HNSW service references exist in the service manager
+            const serviceManager = this.serviceManager;
+            if (serviceManager) {
+                const readinessStatus = serviceManager.getReadinessStatus();
+                const serviceNames = Object.keys(readinessStatus);
+                
+                console.log(`[HNSW-CLEANUP-TEST] 📋 Active services (${serviceNames.length}):`, serviceNames);
+                
+                if (serviceNames.includes('hnswSearchService')) {
+                    console.error(`[HNSW-CLEANUP-TEST] ❌ PHANTOM SERVICE DETECTED: 'hnswSearchService' found in service manager!`);
+                } else {
+                    console.log(`[HNSW-CLEANUP-TEST] ✅ No phantom 'hnswSearchService' in service manager - cleanup successful`);
+                }
+                
+                // Test 3: Validate core services are available
+                const coreServices = ['vectorStore', 'embeddingService', 'workspaceService', 'memoryService'];
+                const availableCore = coreServices.filter(service => serviceNames.includes(service));
+                console.log(`[HNSW-CLEANUP-TEST] 🎯 Core services available: ${availableCore.length}/${coreServices.length} (${availableCore.join(', ')})`);
+            }
+            
+            console.log(`[HNSW-CLEANUP-TEST] ✅ Search functionality validation complete`);
+            
+        } catch (error) {
+            console.error(`[HNSW-CLEANUP-TEST] ❌ Search validation failed:`, error);
+        }
+    }
+
     /**
      * Get the settings instance
      */

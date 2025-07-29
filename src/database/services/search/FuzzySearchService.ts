@@ -18,6 +18,19 @@ export interface FuzzySearchResult {
     fuzzyMatches: FuzzyMatch[];
     editDistance: number;
     similarity: number;
+    // ✅ ENHANCED QUALITY METADATA
+    qualityTier?: 'high' | 'medium' | 'low' | 'minimal';
+    confidenceLevel?: number;
+    matchType?: string;
+    qualityDescription?: string;
+    matchCount?: number;
+    searchTermCount?: number;
+    matchRatio?: number;
+    averageEditDistance?: number;
+    exactMatches?: number;
+    typoMatches?: number;
+    phoneticMatches?: number;
+    scoreMethod?: string;
   };
   content?: string;
 }
@@ -63,18 +76,34 @@ export class FuzzySearchService {
 
   /**
    * Search documents using fuzzy matching
+   * ENHANCED: Score-based ranking with quality classification
    */
   search(
     query: string,
     fuzzyTerms: string[],
     limit = 10,
-    threshold = 0.6,
+    threshold = 0.6, // Preserved for API compatibility but ignored when threshold = 0
     filteredFiles?: TFile[]
   ): FuzzySearchResult[] {
     if (!query.trim() && fuzzyTerms.length === 0) return [];
 
     const searchTerms = fuzzyTerms.length > 0 ? fuzzyTerms : [query];
-    const results: Array<{ doc: FuzzyDocument; score: number; matches: FuzzyMatch[]; distance: number }> = [];
+    const results: Array<{ 
+      doc: FuzzyDocument; 
+      score: number; 
+      matches: FuzzyMatch[]; 
+      distance: number;
+      qualityAssessment?: {
+        tier: 'high' | 'medium' | 'low' | 'minimal';
+        confidence: number;
+        matchType: string;
+        description: string;
+      };
+    }> = [];
+    const useThresholdFiltering = threshold > 0; // Enable score-based ranking when threshold is 0
+
+    console.log('[FUZZY_SEARCH] Search mode:', useThresholdFiltering ? 'threshold-filtered' : 'score-based ranking');
+    console.log('[FUZZY_SEARCH] Processing', this.documents.size, 'documents...');
 
     for (const [docId, doc] of this.documents) {
       // Apply file filtering if provided
@@ -87,14 +116,26 @@ export class FuzzySearchService {
 
       const matchResult = this.calculateFuzzyMatches(doc, searchTerms);
       
-      if (matchResult.score >= threshold) {
+      // ✅ INCLUDE ALL FUZZY MATCHES WHEN THRESHOLD = 0 (score-based ranking)
+      if (!useThresholdFiltering || matchResult.score >= threshold) {
+        // ✅ QUALITY CLASSIFICATION FOR ALL MATCHES
+        const qualityAssessment = this.classifyFuzzyQuality(matchResult, searchTerms);
+        
         results.push({
           doc,
           score: matchResult.score,
           matches: matchResult.matches,
-          distance: matchResult.totalDistance
+          distance: matchResult.totalDistance,
+          qualityAssessment
         });
       }
+    }
+
+    console.log('[FUZZY_SEARCH] Found', results.length, 'fuzzy matches');
+    
+    if (!useThresholdFiltering && results.length > 0) {
+      const qualityDistribution = this.calculateFuzzyQualityDistribution(results);
+      console.log('[FUZZY_SEARCH] Quality distribution:', qualityDistribution);
     }
 
     // Sort by score (higher is better)
@@ -112,7 +153,27 @@ export class FuzzySearchService {
         timestamp: Date.now(),
         fuzzyMatches: result.matches,
         editDistance: result.distance,
-        similarity: result.score
+        similarity: result.score,
+        
+        // ✅ ENHANCED QUALITY METADATA
+        ...(result.qualityAssessment && {
+          qualityTier: result.qualityAssessment.tier,
+          confidenceLevel: result.qualityAssessment.confidence,
+          matchType: result.qualityAssessment.matchType,
+          qualityDescription: result.qualityAssessment.description,
+          
+          // ✅ FUZZY-SPECIFIC METADATA
+          matchCount: result.matches.length,
+          searchTermCount: searchTerms.length,
+          matchRatio: result.matches.length / searchTerms.length,
+          averageEditDistance: result.distance / Math.max(result.matches.length, 1),
+          
+          // ✅ MATCH DETAILS
+          exactMatches: result.matches.filter(m => m.distance === 0).length,
+          typoMatches: result.matches.filter(m => m.distance === 1).length,
+          phoneticMatches: result.matches.filter(m => m.matchType === 'phonetic').length,
+          scoreMethod: 'fuzzy'
+        })
       }
     }));
   }
@@ -467,17 +528,89 @@ export class FuzzySearchService {
   }
 
   /**
+   * Classify fuzzy search result quality
+   */
+  private classifyFuzzyQuality(
+    matchResult: { score: number; matches: FuzzyMatch[]; totalDistance: number }, 
+    searchTerms: string[]
+  ): {
+    tier: 'high' | 'medium' | 'low' | 'minimal';
+    confidence: number;
+    matchType: string;
+    description: string;
+  } {
+    const score = matchResult.score;
+    const matchRatio = matchResult.matches.length / searchTerms.length;
+    const avgDistance = matchResult.totalDistance / Math.max(matchResult.matches.length, 1);
+    
+    if (score >= 0.95 && avgDistance === 0) {
+      return {
+        tier: 'high',
+        confidence: score,
+        matchType: 'exact-match',
+        description: 'Perfect character match'
+      };
+    } else if (score >= 0.8 && avgDistance <= 1) {
+      return {
+        tier: 'high',
+        confidence: score,
+        matchType: 'minor-typo',
+        description: 'Near-perfect match with minor typos'
+      };
+    } else if (score >= 0.6 && matchRatio >= 0.8) {
+      return {
+        tier: 'medium',
+        confidence: score,
+        matchType: 'major-typo',
+        description: 'Good match with some typos'
+      };
+    } else if (score >= 0.4 && matchRatio >= 0.5) {
+      return {
+        tier: 'low',
+        confidence: score,
+        matchType: 'partial-match',
+        description: 'Partial match, potentially useful'
+      };
+    } else {
+      return {
+        tier: 'minimal',
+        confidence: score,
+        matchType: 'weak-fuzzy-match',
+        description: 'Very weak fuzzy connection'
+      };
+    }
+  }
+
+  /**
+   * Calculate quality distribution for fuzzy results
+   */
+  private calculateFuzzyQualityDistribution(results: any[]): Record<string, number> {
+    const distribution = { high: 0, medium: 0, low: 0, minimal: 0 };
+    
+    results.forEach(result => {
+      const tier = result.qualityAssessment?.tier || 'minimal';
+      if (tier in distribution) {
+        distribution[tier as keyof typeof distribution]++;
+      }
+    });
+    
+    return distribution;
+  }
+
+  /**
    * Get search statistics
    */
   getStats(): {
     totalDocuments: number;
     cachedStems: number;
     synonymMappings: number;
+    scoreBasedRanking?: boolean;
   } {
     return {
       totalDocuments: this.documents.size,
       cachedStems: this.stemCache.size,
-      synonymMappings: this.synonymMap.size
+      synonymMappings: this.synonymMap.size,
+      scoreBasedRanking: true // ✅ Indicator of enhanced functionality
     };
   }
 }

@@ -18,6 +18,16 @@ export interface KeywordSearchResult {
     fieldMatches: FieldMatch[];
     exactMatches: number;
     phraseMatches: number;
+    // ✅ ENHANCED QUALITY METADATA FOR SCORE-BASED RANKING
+    originalBM25Score?: number;
+    normalizedScore?: number;
+    maxBM25InSet?: number;
+    minBM25InSet?: number;
+    qualityTier?: 'high' | 'medium' | 'low' | 'minimal';
+    confidenceLevel?: number;
+    matchType?: string;
+    qualityDescription?: string;
+    scoreMethod?: string;
   };
   content?: string;
 }

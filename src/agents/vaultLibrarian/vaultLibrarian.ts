@@ -11,7 +11,6 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
-import { HnswSearchService } from '../../database/services/hnsw/HnswSearchService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
 
@@ -24,7 +23,6 @@ export class VaultLibrarianAgent extends BaseAgent {
   private embeddingProvider: any | null = null;
   private embeddingService: EmbeddingService | null = null;
   private memoryService: MemoryService | null = null;
-  private hnswSearchService: HnswSearchService | null = null;
   private workspaceService: WorkspaceService | null = null;
   private settings: MemorySettings;
   
@@ -79,9 +77,6 @@ export class VaultLibrarianAgent extends BaseAgent {
               this.memoryService = services.memoryService;
             }
             
-            if (services.hnswSearchService) {
-              this.hnswSearchService = services.hnswSearchService;
-            }
             
             if (services.workspaceService) {
               this.workspaceService = services.workspaceService;
@@ -97,7 +92,6 @@ export class VaultLibrarianAgent extends BaseAgent {
     // Always register SearchMode (universal search with intelligent fallbacks)
     this.registerMode(new SearchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.hnswSearchService || undefined,
       this.embeddingService || undefined, 
       this.memoryService || undefined,
       this.workspaceService || undefined
@@ -118,7 +112,6 @@ export class VaultLibrarianAgent extends BaseAgent {
     // Always register BatchMode (supports both semantic and non-semantic users)
     this.registerMode(new BatchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.hnswSearchService || undefined,
       this.embeddingService || undefined,
       this.memoryService || undefined,
       this.workspaceService || undefined
@@ -178,48 +171,12 @@ export class VaultLibrarianAgent extends BaseAgent {
   }
   
   /**
-   * Initialize the search service
-   * HNSW service loading is now non-blocking and happens in background
+   * Initialize the search service (HNSW removed)
    */
   async initializeSearchService(): Promise<void> {
-    // If we already have the service, we're done
-    if (this.hnswSearchService) {
-      return;
-    }
-
-    // Try to get the HNSW service from the service manager - NON-BLOCKING
-    try {
-      const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
-      if (plugin?.serviceManager) {
-        // Check if service is already ready - if not, schedule background loading
-        if (plugin.serviceManager.isReady('hnswSearchService')) {
-          this.hnswSearchService = plugin.serviceManager.getIfReady('hnswSearchService');
-        } else {
-          // Schedule non-blocking background loading
-          this.scheduleHnswServiceLoading(plugin.serviceManager);
-        }
-        return;
-      }
-    } catch (error) {
-      console.warn('Failed to setup HNSW search service loading:', error);
-    }
-
-    console.warn('⚠️  Semantic search service not available in VaultLibrarian');
+    console.log('[VaultLibrarian] Search service initialization completed (HNSW removed)');
   }
 
-  /**
-   * Schedule HNSW service loading in background without blocking initialization
-   */
-  private scheduleHnswServiceLoading(serviceManager: any): void {
-    // Load HNSW service in background without blocking
-    setTimeout(async () => {
-      try {
-        this.hnswSearchService = await serviceManager.get('hnswSearchService');
-      } catch (error) {
-        console.warn('Background HNSW service loading failed:', error);
-      }
-    }, 100); // Small delay to ensure it's truly background
-  }
   
   /**
    * Clean up resources when the agent is unloaded

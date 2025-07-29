@@ -67,7 +67,10 @@ export interface MemorySettings {
   // Advanced query settings
   useFilters: boolean;
   defaultThreshold: number;
-  semanticThreshold: number;
+  
+  // PHASE 1 COMPATIBILITY: Keep for settings migration
+  /** @deprecated Will be removed in next major version. Using score-based ranking instead. */
+  semanticThreshold?: number;
   
   // Memory Manager session settings
   autoCreateSessions?: boolean;
@@ -157,7 +160,9 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   backlinksEnabled: true,
   useFilters: true,
   defaultThreshold: 0.3,
-  semanticThreshold: 0.5,
+  
+  // PHASE 1 COMPATIBILITY: Keep for settings migration
+  semanticThreshold: 0.5, // Will be ignored by search logic
   
   // Memory Manager session settings
   autoCreateSessions: true,

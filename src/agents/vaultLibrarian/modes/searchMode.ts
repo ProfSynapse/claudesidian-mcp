@@ -1,6 +1,5 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { HnswSearchService } from '../../../database/services/hnsw/HnswSearchService';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
@@ -13,7 +12,7 @@ import { UniversalSearchService } from './services/UniversalSearchService';
 
 /**
  * Universal search mode that searches across all content types intelligently
- * Updated to use HnswSearchService for semantic search
+ * Uses ChromaDB for semantic search via HybridSearchService
  */
 export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchResult> {
   private universalSearchService: UniversalSearchService;
@@ -21,7 +20,6 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
 
   constructor(
     plugin: Plugin,
-    hnswSearchService?: HnswSearchService,
     embeddingService?: EmbeddingService,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService
@@ -31,7 +29,6 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
     this.plugin = plugin;
     this.universalSearchService = new UniversalSearchService(
       plugin,
-      hnswSearchService,
       embeddingService, 
       memoryService,
       workspaceService
@@ -42,39 +39,97 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
    * Execute universal search across all content types
    */
   async execute(params: UniversalSearchParams): Promise<any> {
+    const startTime = performance.now();
+    
     try {
+      console.log('[VAULT_LIBRARIAN] 🚀 Starting Universal Search...');
+      console.log('[VAULT_LIBRARIAN] Query:', params.query);
+      // PHASE 1 COMPATIBILITY: Log comprehensive deprecation warning if semanticThreshold is used
+      if (params.semanticThreshold !== undefined) {
+        console.warn('\n' + '='.repeat(80));
+        console.warn('[SearchMode] 🚨 SEMANTIC THRESHOLD DEPRECATION WARNING');
+        console.warn('='.repeat(80));
+        console.warn('[SearchMode] ⚠️  semanticThreshold parameter is DEPRECATED and will be IGNORED.');
+        console.warn('[SearchMode] 🎯 New behavior: Results are now ranked by similarity score (best first).');
+        console.warn('[SearchMode] 📊 Use limit parameter to control result count instead of filtering.');
+        console.warn('[SearchMode] 🔧 Migration: Remove semanticThreshold from your MCP calls.');
+        console.warn(`[SearchMode] 📝 Received threshold: ${params.semanticThreshold} → IGNORED`);
+        console.warn('[SearchMode] ✅ Score-based ranking active: All results ranked by relevance.');
+        console.warn('='.repeat(80) + '\n');
+      }
+      
+      console.log('[VAULT_LIBRARIAN] 📋 Search Parameters:');
+      console.log('[VAULT_LIBRARIAN] - Query:', params.query);
+      console.log('[VAULT_LIBRARIAN] - Limit:', params.limit);
+      console.log('[VAULT_LIBRARIAN] - Include Content:', params.includeContent);
+      console.log('[VAULT_LIBRARIAN] - Query Type:', params.queryType);
+      if (params.semanticThreshold !== undefined) {
+        console.log('[VAULT_LIBRARIAN] - Semantic Threshold: [DEPRECATED - IGNORED]', params.semanticThreshold);
+        console.log('[VAULT_LIBRARIAN] 🎯 SCORE-BASED RANKING: Active (threshold-free approach)');
+      } else {
+        console.log('[VAULT_LIBRARIAN] 🎯 SCORE-BASED RANKING: Active (no threshold parameter)');
+      }
+      
       // Validate required parameters
       if (!params.query || params.query.trim().length === 0) {
+        console.log('[VAULT_LIBRARIAN] ❌ Validation failed: Empty query');
         return {
           success: false,
           error: 'Query parameter is required and cannot be empty'
         };
       }
 
-      // Get default threshold from plugin settings
-      const defaultThreshold = (this.plugin as any).settings?.settings?.memory?.defaultThreshold || 0.7;
-      
-      // Set default values
+      // Set default values (semanticThreshold removed - using pure score-based ranking)
       const searchParams: UniversalSearchParams = {
         ...params,
         limit: params.limit || 5,
-        includeContent: params.includeContent !== false,
-        semanticThreshold: params.semanticThreshold || defaultThreshold
+        includeContent: params.includeContent !== false
+        // semanticThreshold parameter ignored - now using score-based ranking
       };
+
+      console.log('[VAULT_LIBRARIAN] Final search parameters:', searchParams);
+      console.log('[VAULT_LIBRARIAN] 🔄 Executing consolidated search...');
 
       // Execute the consolidated search (new format)
       const consolidatedResults = await this.universalSearchService.executeConsolidatedSearch(searchParams);
+      
+      const executionTime = performance.now() - startTime;
+      console.log('\n' + '='.repeat(60));
+      console.log('[VAULT_LIBRARIAN] 🎉 SEARCH COMPLETED SUCCESSFULLY');
+      console.log('='.repeat(60));
+      console.log('[VAULT_LIBRARIAN] 📊 Results Summary:');
+      console.log('[VAULT_LIBRARIAN] - Results found:', consolidatedResults.length);
+      console.log('[VAULT_LIBRARIAN] - Total execution time:', executionTime.toFixed(2), 'ms');
+      console.log('[VAULT_LIBRARIAN] - Ranking method: Score-based (best first)');
+      console.log('[VAULT_LIBRARIAN] - Quality filtering: None (all results included)');
+      
+      if (consolidatedResults.length > 0) {
+        console.log('[VAULT_LIBRARIAN] 🏆 Top Results Preview:');
+        consolidatedResults.slice(0, Math.min(3, consolidatedResults.length)).forEach((result, i) => {
+          const title = result.filePath.split('/').pop()?.replace(/\.md$/, '') || 'Untitled';
+          const snippetCount = result.snippets?.length || 0;
+          console.log(`[VAULT_LIBRARIAN] ${i + 1}. "${title}" (${snippetCount} snippet${snippetCount !== 1 ? 's' : ''})`);
+        });
+      }
+      console.log('='.repeat(60) + '\n');
       
       return {
         success: true,
         query: params.query,
         results: consolidatedResults,
         totalResults: consolidatedResults.length,
-        executionTime: performance.now()
+        executionTime
       };
       
     } catch (error) {
-      console.error('Universal search failed:', error);
+      const executionTime = performance.now() - startTime;
+      console.error('[VAULT_LIBRARIAN] ❌ Universal search failed:', error);
+      console.error('[VAULT_LIBRARIAN] Error details:', {
+        query: params.query,
+        executionTime: executionTime.toFixed(2) + 'ms',
+        error: getErrorMessage(error)
+      });
+      
       return {
         success: false,
         error: `Search failed: ${getErrorMessage(error)}`
@@ -165,9 +220,10 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
         },
         semanticThreshold: {
           type: 'number',
-          description: 'Similarity threshold for semantic search (0-1, uses plugin settings default if not specified)',
+          description: '[DEPRECATED] This parameter is ignored. Results are now ranked by similarity score. Use limit parameter to control result count.',
           minimum: 0,
-          maximum: 1
+          maximum: 1,
+          deprecated: true
         },
         // Graph boost options
         useGraphBoost: {

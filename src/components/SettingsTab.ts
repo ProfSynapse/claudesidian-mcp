@@ -16,7 +16,6 @@ import { EmbeddingService } from '../database/services/EmbeddingService';
 import { WorkspaceService } from '../database/services/WorkspaceService';
 import { MemoryService } from '../database/services/MemoryService';
 import { FileEmbeddingAccessService } from '../database/services/FileEmbeddingAccessService';
-import { HnswSearchService } from '../database/services/hnsw/HnswSearchService';
 import { EmbeddingManager } from '../database/services/embeddingManager';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
 import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
@@ -34,7 +33,7 @@ export class SettingsTab extends PluginSettingTab {
     private embeddingService: EmbeddingService | undefined;
     private memoryService: MemoryService | undefined;
     private fileEmbeddingAccessService: FileEmbeddingAccessService | undefined;
-    private hnswSearchService: HnswSearchService | undefined;
+    // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
     private embeddingManager: EmbeddingManager | undefined;
     
     // Agent references
@@ -67,7 +66,7 @@ export class SettingsTab extends PluginSettingTab {
             memoryService?: MemoryService,
             vectorStore?: IVectorStore,
             fileEmbeddingAccessService?: FileEmbeddingAccessService,
-            hnswSearchService?: HnswSearchService
+            // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         },
         vaultLibrarian?: VaultLibrarianAgent,
         memoryManager?: MemoryManagerAgent,
@@ -84,7 +83,7 @@ export class SettingsTab extends PluginSettingTab {
             this.memoryService = services.memoryService;
             // Removed assignment to unused property: this.vectorStore = services.vectorStore;
             this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
-            this.hnswSearchService = services.hnswSearchService;
+            // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
             
             // Create embedding manager instance if we have app access
             if (window.app && !this.embeddingManager && services.embeddingService) {
@@ -110,13 +109,13 @@ export class SettingsTab extends PluginSettingTab {
         memoryService?: MemoryService,
         vectorStore?: IVectorStore,
         fileEmbeddingAccessService?: FileEmbeddingAccessService,
-        hnswSearchService?: HnswSearchService
+        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
     }): void {
         // Update service references
         this.embeddingService = services.embeddingService;
         this.memoryService = services.memoryService;
         this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
-        this.hnswSearchService = services.hnswSearchService;
+        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         
         // Create embedding manager if we have the service
         if (window.app && !this.embeddingManager && services.embeddingService) {
@@ -128,7 +127,6 @@ export class SettingsTab extends PluginSettingTab {
             this.memoryManagementAccordion.updateServices(
                 this.embeddingService,
                 this.fileEmbeddingAccessService,
-                this.hnswSearchService,
                 this.memoryService,
                 this.vaultLibrarian,
                 this.embeddingManager
@@ -282,7 +280,6 @@ export class SettingsTab extends PluginSettingTab {
             this.settingsManager,
             this.embeddingService,
             this.fileEmbeddingAccessService, // Now properly injected from services
-            this.hnswSearchService, // Now properly injected from services
             this.memoryService,
             this.vaultLibrarian,
             embeddingManager,

@@ -1,6 +1,5 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { HnswSearchService } from '../../../database/services/hnsw/HnswSearchService';
 import { EmbeddingService } from '../../../database/services/EmbeddingService';
 import { MemoryService } from '../../../database/services/MemoryService';
 import { WorkspaceService } from '../../../database/services/WorkspaceService';
@@ -21,7 +20,6 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
 
   constructor(
     plugin: Plugin,
-    hnswSearchService?: HnswSearchService,
     embeddingService?: EmbeddingService,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService
@@ -30,7 +28,6 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
     
     this.universalSearchService = new UniversalSearchService(
       plugin,
-      hnswSearchService,
       embeddingService,
       memoryService,
       workspaceService
@@ -259,10 +256,11 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
               },
               semanticThreshold: {
                 type: 'number',
-                description: 'Similarity threshold for semantic search (0-1)',
+                description: '[DEPRECATED] This parameter is ignored. Results are now ranked by similarity score. Use limit parameter to control result count.',
                 minimum: 0,
                 maximum: 1,
-                default: 0.7
+                default: 0.7,
+                deprecated: true
               }
             },
             required: ['query']
