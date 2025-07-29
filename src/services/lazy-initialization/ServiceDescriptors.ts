@@ -20,6 +20,10 @@ import {
   IInitializationCoordinator,
   createInitializationServices
 } from '../initialization';
+import { HnswIndexHealthChecker } from '../../database/services/hnsw/health/HnswIndexHealthChecker';
+import { BackgroundIndexingService } from '../background/BackgroundIndexingService';
+import { HnswMetadataManager } from '../../database/services/hnsw/persistence/HnswMetadataManager';
+import { MetadataManager } from '../../database/providers/chroma/collection/metadata/MetadataManager';
 
 /**
  * Service Descriptors - Configuration-driven service definitions
@@ -198,6 +202,8 @@ export class ServiceDescriptors {
             this.createVectorStoreDescriptor(),
             this.createEmbeddingServiceDescriptor(),
             this.createHnswSearchServiceDescriptor(),
+            this.createHnswIndexHealthCheckerDescriptor(), // NEW: Health checker for startup optimization
+            this.createBackgroundIndexingServiceDescriptor(), // NEW: Background indexing service
             this.createWorkspaceServiceDescriptor(),
             this.createMemoryServiceDescriptor(),
             this.createFileEventManagerDescriptor(),
@@ -320,6 +326,73 @@ export class ServiceDescriptors {
                 console.log('[ServiceDescriptors] HNSW service created (initialization deferred to coordination system)');
                 
                 return service;
+            }
+        };
+    }
+
+    // NEW: Health checker service for startup optimization
+    private createHnswIndexHealthCheckerDescriptor(): IServiceDescriptor<HnswIndexHealthChecker> {
+        return {
+            name: 'hnswIndexHealthChecker',
+            dependencies: ['vectorStore'],
+            stage: LoadingStage.IMMEDIATE, // Critical for fast startup health checks
+            create: async () => {
+                const vectorStore = await this.dependencyResolver('vectorStore');
+                
+                // Create metadata managers needed for health checking
+                const basePath = this.plugin.settings?.settings?.memory?.dbStoragePath || '.';
+                const fs = require('fs');
+                const persistenceManager = new (await import('../../database/providers/chroma/services/PersistenceManager')).PersistenceManager(fs);
+                const hnswMetadataManager = new HnswMetadataManager(persistenceManager, basePath);
+                
+                // Create ChromaDB metadata manager - need to get it from vectorStore
+                let chromaMetadataManager: MetadataManager;
+                if (vectorStore && typeof (vectorStore as any).getMetadataManager === 'function') {
+                    chromaMetadataManager = (vectorStore as any).getMetadataManager();
+                } else {
+                    // Fallback: create a basic metadata manager with minimal repository
+                    const fallbackRepository = new (await import('../../database/providers/chroma/services/CollectionRepository')).CollectionRepository({}, 'fallback-collection');
+                    chromaMetadataManager = new MetadataManager(fallbackRepository, 'fallback-collection');
+                }
+                
+                console.log('[ServiceDescriptors] Created HNSW index health checker for startup optimization');
+                return new HnswIndexHealthChecker(hnswMetadataManager, chromaMetadataManager);
+            }
+        };
+    }
+
+    // NEW: Background indexing service for non-blocking index building
+    private createBackgroundIndexingServiceDescriptor(): IServiceDescriptor<BackgroundIndexingService> {
+        return {
+            name: 'backgroundIndexingService',
+            dependencies: ['hnswSearchService', 'hnswIndexHealthChecker'],
+            stage: LoadingStage.BACKGROUND_SLOW, // Can load after startup
+            create: async () => {
+                const hnswService = await this.dependencyResolver('hnswSearchService');
+                const healthChecker = await this.dependencyResolver('hnswIndexHealthChecker');
+                
+                const options = {
+                    batchSize: 3,
+                    processingDelay: 1000,
+                    maxConcurrent: 1,
+                    enableProgressLogging: true,
+                    retryFailedTasks: true
+                };
+                
+                const backgroundService = new BackgroundIndexingService(
+                    this.plugin,
+                    hnswService,
+                    healthChecker,
+                    options
+                );
+                
+                // Inject background service into HNSW service for progress tracking
+                if (hnswService && typeof hnswService.setBackgroundIndexingService === 'function') {
+                    hnswService.setBackgroundIndexingService(backgroundService);
+                }
+                
+                console.log('[ServiceDescriptors] Created background indexing service for startup optimization');
+                return backgroundService;
             }
         };
     }

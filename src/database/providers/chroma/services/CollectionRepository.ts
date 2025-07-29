@@ -408,4 +408,58 @@ export class CollectionRepository {
     }
   }
 
+  /**
+   * Get bulk file metadata for multiple file paths with single query
+   * Optimized for bulk hash comparison operations
+   * @param filePaths Array of normalized file paths to query
+   * @returns Array of metadata objects for found files
+   */
+  getBulkFileMetadata(filePaths: string[]): Array<{ filePath: string; contentHash?: string; metadata: Record<string, any> }> {
+    const results: Array<{ filePath: string; contentHash?: string; metadata: Record<string, any> }> = [];
+    
+    try {
+      // Get all items that match any of the file paths
+      const matchingItems = this.getAllItems().filter(item => 
+        item.metadata && 
+        item.metadata.filePath && 
+        filePaths.includes(item.metadata.filePath)
+      );
+      
+      // Group by file path (in case there are multiple chunks per file)
+      const fileMetadataMap = new Map<string, { contentHash?: string; metadata: Record<string, any> }>();
+      
+      for (const item of matchingItems) {
+        const filePath = item.metadata.filePath;
+        if (!fileMetadataMap.has(filePath)) {
+          fileMetadataMap.set(filePath, {
+            contentHash: item.metadata.contentHash,
+            metadata: { ...item.metadata }
+          });
+        } else {
+          // If we already have metadata for this file, ensure we have the contentHash
+          const existing = fileMetadataMap.get(filePath)!;
+          if (!existing.contentHash && item.metadata.contentHash) {
+            existing.contentHash = item.metadata.contentHash;
+          }
+        }
+      }
+      
+      // Convert map to results array
+      for (const [filePath, data] of fileMetadataMap.entries()) {
+        results.push({
+          filePath,
+          contentHash: data.contentHash,
+          metadata: data.metadata
+        });
+      }
+      
+      console.log(`[CollectionRepository] Bulk metadata query: ${filePaths.length} requested, ${results.length} found`);
+      return results;
+      
+    } catch (error) {
+      console.error(`[CollectionRepository] Error in bulk metadata query:`, error);
+      return [];
+    }
+  }
+
 }

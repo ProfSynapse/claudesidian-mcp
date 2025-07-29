@@ -277,10 +277,9 @@ export class InitializationCoordinator implements IInitializationCoordinator {
   }
 
   /**
-   * Trigger HNSW index creation from loaded collections
-   * This is the missing piece - collections are loaded but indexes aren't created
-   * CRITICAL FIX: Actually verify that indexes were built, not just that the method completed
-   * NEW: Check processed files state to avoid re-processing on every startup
+   * Fast HNSW index health check and background initialization scheduling
+   * STARTUP OPTIMIZATION: No longer blocks startup - just checks if indexes exist and schedules background work if needed
+   * This replaces the previous blocking ensureFullyInitialized() approach
    */
   private async triggerHnswIndexCreation(
     componentsInitialized: string[], 
@@ -301,125 +300,110 @@ export class InitializationCoordinator implements IInitializationCoordinator {
       throw new Error('Service manager get method is not a function');
     }
     
-    const hnswService = await this.serviceManager.get('hnswSearchService');
-    
-    if (!hnswService) {
-      throw new Error('Service manager returned null/undefined for hnswSearchService despite successful initialization');
-    }
-    
-    if (typeof hnswService.ensureFullyInitialized !== 'function') {
-      throw new Error('hnswService.ensureFullyInitialized is not a function');
-    }
-    
-    // Get vector store to check collection count
-    const vectorStore = await this.serviceManager.get('vectorStore');
-    if (!vectorStore) {
-      console.warn('[InitializationCoordinator] Vector store not available for index verification');
-    }
-    
-    // NEW: Check processed files state to avoid unnecessary processing
-    const stateManager = await this.serviceManager.get('stateManager');
-    if (stateManager) {
-      const processedCount = stateManager.getProcessedFilesCount();
-      const vaultFiles = this.plugin.app.vault.getMarkdownFiles();
-      const totalFiles = vaultFiles.length;
-      
-      console.log(`[StateManager] InitializationCoordinator state check: ${processedCount} processed files, ${totalFiles} total files`);
-      
-      // If all files are processed and we have a reasonable collection count, skip full initialization
-      if (processedCount > 0 && vectorStore) {
-        try {
-          const collectionCount = await vectorStore.count('file_embeddings');
-          console.log(`[StateManager] Collection count: ${collectionCount}`);
-          
-          // Skip full initialization if:
-          // 1. We have processed files in state
-          // 2. Collection has embeddings
-          // 3. State count is reasonable relative to vault size
-          if (collectionCount > 0 && processedCount >= Math.min(totalFiles, collectionCount / 5)) {
-            console.log('[StateManager] ⚡ Skipping full initialization - files already processed');
-            return;
-          } else {
-            console.log(`[StateManager] Proceeding with initialization:`, {
-              processedCount,
-              totalFiles,
-              collectionCount,
-              threshold: Math.min(totalFiles, collectionCount / 5),
-              shouldSkip: processedCount >= Math.min(totalFiles, collectionCount / 5)
-            });
-          }
-        } catch (countError) {
-          console.warn('[StateManager] Could not check collection count, proceeding with initialization:', countError);
-        }
-      } else {
-        console.log(`[StateManager] Not skipping initialization: processedCount=${processedCount}, hasVectorStore=${!!vectorStore}`);
-      }
-    } else {
-      console.warn('[StateManager] No state manager available, proceeding with full initialization');
-    }
+    console.log('[InitializationCoordinator] 🚀 Starting fast HNSW index health check...');
     
     try {
-      console.log('[InitializationCoordinator] 🔧 Calling ensureFullyInitialized to trigger index building');
-      await hnswService.ensureFullyInitialized();
+      // Get required services for health checking
+      const healthChecker = await this.serviceManager.get('hnswIndexHealthChecker');
+      const backgroundIndexingService = await this.serviceManager.get('backgroundIndexingService');
+      const hnswService = await this.serviceManager.get('hnswSearchService');
       
-      // CRITICAL FIX: Verify that indexes were actually built by checking if they exist and have data
-      console.log('[InitializationCoordinator] 🔍 Verifying index creation after ensureFullyInitialized');
+      if (!healthChecker) {
+        console.warn('[InitializationCoordinator] Health checker not available, falling back to blocking initialization');
+        const hnswService = await this.serviceManager.get('hnswSearchService');
+        if (hnswService && typeof hnswService.ensureFullyInitialized === 'function') {
+          await hnswService.ensureFullyInitialized();
+        }
+        return;
+      }
       
-      let indexVerified = false;
-      let indexCount = 0;
+      console.log('[InitializationCoordinator] 🔍 Performing fast index health check (non-blocking)...');
       
-      if (typeof hnswService.hasIndex === 'function') {
-        const hasFileEmbeddingsIndex = hnswService.hasIndex('file_embeddings');
-        console.log('[InitializationCoordinator] Has file_embeddings index:', hasFileEmbeddingsIndex);
+      // FAST HEALTH CHECK: Only metadata comparisons, no WASM loading
+      const healthSummary = await healthChecker.checkAllIndexes({
+        includeStorageInfo: false,
+        checkContentHash: true,
+        validateItemCounts: true,
+        tolerance: 0.05 // 5% tolerance for item count differences
+      });
+      
+      console.log('[InitializationCoordinator] ⚡ Health check completed in:', healthSummary.totalCheckTime + 'ms');
+      console.log('[InitializationCoordinator] Health summary:', {
+        allHealthy: healthSummary.allHealthy,
+        healthyCollections: healthSummary.healthyCollections.length,
+        needsBuildingCollections: healthSummary.needsBuildingCollections.length,
+        needsUpdateCollections: healthSummary.needsUpdateCollections.length,
+        corruptedCollections: healthSummary.corruptedCollections.length
+      });
+      
+      if (healthSummary.allHealthy) {
+        console.log('[InitializationCoordinator] ✅ All indexes are healthy - ready for fast loading on first search');
         
-        if (hasFileEmbeddingsIndex && typeof hnswService.getIndexStats === 'function') {
-          const stats = hnswService.getIndexStats('file_embeddings');
-          console.log('[InitializationCoordinator] Index stats for file_embeddings:', stats);
-          
-          if (stats && stats.itemCount > 0) {
-            indexVerified = true;
-            indexCount = stats.itemCount;
-            console.log(`[InitializationCoordinator] ✅ Index verified: ${indexCount} items in file_embeddings index`);
-          } else {
-            console.log('[InitializationCoordinator] ⚠️ Index exists but has no items');
+        // Mark HNSW service as ready for loading
+        if (hnswService && typeof hnswService.markReadyForLoading === 'function') {
+          hnswService.markReadyForLoading();
+          // Mark collections as ready
+          for (const collectionName of healthSummary.healthyCollections) {
+            if (typeof hnswService.markCollectionReady === 'function') {
+              hnswService.markCollectionReady(collectionName);
+            }
           }
-        } else if (hasFileEmbeddingsIndex) {
-          // Index exists but we can't verify item count - still consider it a success
-          indexVerified = true;
-          console.log('[InitializationCoordinator] ✅ Index exists (cannot verify item count)');
+        }
+        
+        console.log('[InitializationCoordinator] 🎉 HNSW startup optimization complete - no background work needed');
+        
+      } else {
+        console.log('[InitializationCoordinator] 🔄 Indexes need building/updating - scheduling background work');
+        
+        // Collect collections that need work
+        const collectionsNeedingWork = [
+          ...healthSummary.needsBuildingCollections,
+          ...healthSummary.needsUpdateCollections,
+          ...healthSummary.corruptedCollections
+        ];
+        
+        if (backgroundIndexingService && collectionsNeedingWork.length > 0) {
+          console.log(`[InitializationCoordinator] 📅 Scheduling background indexing for ${collectionsNeedingWork.length} collections:`, collectionsNeedingWork);
+          
+          // Mark collections as building in HNSW service
+          if (hnswService) {
+            for (const collectionName of collectionsNeedingWork) {
+              if (typeof hnswService.markCollectionBuilding === 'function') {
+                hnswService.markCollectionBuilding(collectionName);
+              }
+            }
+          }
+          
+          // Schedule the background work (non-blocking)
+          await backgroundIndexingService.scheduleIndexing(collectionsNeedingWork);
+          
+          console.log('[InitializationCoordinator] ✅ Background indexing scheduled - startup can continue');
+        } else {
+          console.warn('[InitializationCoordinator] Background indexing service not available, indexes will need manual rebuilding');
         }
       }
       
-      // Also check if collections have data that should be indexed
-      if (vectorStore && typeof vectorStore.count === 'function') {
-        try {
-          const collectionCount = await vectorStore.count('file_embeddings');
-          console.log(`[InitializationCoordinator] Collection file_embeddings has ${collectionCount} items`);
-          
-          if (collectionCount > 0 && !indexVerified) {
-            console.warn(`[InitializationCoordinator] ⚠️ Collection has ${collectionCount} items but no index was built - this indicates a problem`);
-            throw new Error(`Collection has ${collectionCount} items but no HNSW index was created`);
-          } else if (collectionCount === 0) {
-            console.log('[InitializationCoordinator] Collection is empty - no index expected');
-            indexVerified = true; // Empty collection is valid
-          }
-        } catch (countError) {
-          console.warn('[InitializationCoordinator] Could not verify collection count:', countError);
+      console.log('[InitializationCoordinator] ⚡ HNSW initialization completed (non-blocking)');
+      
+    } catch (healthCheckError) {
+      const errorMessage = healthCheckError instanceof Error ? healthCheckError.message : String(healthCheckError);
+      console.error(`[InitializationCoordinator] Health check failed: ${errorMessage}`);
+      
+      // Fallback to blocking initialization if health check fails
+      console.warn('[InitializationCoordinator] Falling back to blocking HNSW initialization due to health check failure');
+      try {
+        const hnswService = await this.serviceManager.get('hnswSearchService');
+        if (hnswService && typeof hnswService.ensureFullyInitialized === 'function') {
+          await hnswService.ensureFullyInitialized();
         }
+      } catch (fallbackError) {
+        console.error('[InitializationCoordinator] Fallback initialization also failed:', fallbackError);
+        throw new Error(`Both health check and fallback initialization failed: ${errorMessage}`);
       }
-      
-      if (!indexVerified) {
-        throw new Error('ensureFullyInitialized completed but no valid indexes were found');
-      }
-      
-    } catch (methodError) {
-      const errorMessage = methodError instanceof Error ? methodError.message : String(methodError);
-      console.error(`[InitializationCoordinator] Index creation failed: ${errorMessage}`);
-      throw new Error(`Index creation failed: ${errorMessage}`);
     }
     
-    componentsInitialized.push('hnswIndexes');
-    console.log('[InitializationCoordinator] ✅ HNSW index creation verified successfully');
+    // Mark as complete - either health check succeeded or fallback completed
+    console.log('[InitializationCoordinator] ✅ HNSW startup optimization completed successfully');
   }
 
   /**

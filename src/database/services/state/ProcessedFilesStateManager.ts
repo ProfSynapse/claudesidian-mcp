@@ -31,22 +31,11 @@ export class ProcessedFilesStateManager {
             const data = await this.plugin.loadData();
             const processedFilesData = data?.processedFiles;
             
-            // Check for migration from old state file
+            // Initialize with empty state if no data found
             if (!processedFilesData) {
-                console.log('[StateManager] No processed files data found in data.json');
-                await this.migrateFromOldStateFile();
-                
-                // Try loading again after migration
-                const updatedData = await this.plugin.loadData();
-                const migratedData = updatedData?.processedFiles;
-                
-                if (!migratedData) {
-                    console.log('[StateManager] No data after migration, starting fresh');
-                    this.loaded = true;
-                    return;
-                }
-                
-                console.log(`[StateManager] ✅ Migrated ${Object.keys(migratedData.files || {}).length} files from old state file`);
+                console.log('[StateManager] No processed files data found in data.json, starting fresh');
+                this.loaded = true;
+                return;
             }
 
             // Load processed files data
@@ -215,52 +204,6 @@ export class ProcessedFilesStateManager {
         }
     }
 
-    /**
-     * Migrate from old state file to data.json
-     * This provides backward compatibility for existing installations
-     */
-    private async migrateFromOldStateFile(): Promise<void> {
-        try {
-            const oldStateFile = this.plugin.app.vault.getAbstractFileByPath('processed-files-state.json');
-            if (!oldStateFile) {
-                console.log('[StateManager] No old state file found, skipping migration');
-                return;
-            }
-
-            console.log('[StateManager] 🔄 Migrating from old state file');
-            const oldContent = await this.plugin.app.vault.read(oldStateFile as any);
-            const oldStateData = JSON.parse(oldContent);
-            
-            if (oldStateData.version && oldStateData.processedFiles) {
-                // Load existing plugin data
-                const data = await this.plugin.loadData() || {};
-                
-                // Migrate old format to new format
-                data.processedFiles = {
-                    version: '1.0.0',
-                    lastUpdated: Date.now(),
-                    files: oldStateData.processedFiles
-                };
-                
-                // Save migrated data
-                await this.plugin.saveData(data);
-                
-                // Delete old state file
-                await this.plugin.app.vault.delete(oldStateFile);
-                
-                console.log('[StateManager] ✅ Successfully migrated and cleaned up old state file');
-            }
-        } catch (error) {
-            console.error('[StateManager] ❌ CRITICAL: Failed to migrate old state file:', error);
-            console.error('[StateManager] ❌ DIAGNOSTIC: Migration failure details:', {
-                hasPlugin: !!this.plugin,
-                hasApp: !!(this.plugin?.app),
-                hasVault: !!(this.plugin?.app?.vault),
-                error: error instanceof Error ? error.message : String(error)
-            });
-            throw new Error(`ProcessedFilesStateManager migration failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
 
     private isValidProcessedFileState(state: any): boolean {
         return (

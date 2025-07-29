@@ -103,10 +103,10 @@ export class HnswPersistenceOrchestrator {
    * Delegates to existing discovery service and validation
    */
   async canLoadPersistedIndex(collectionName: string, currentItems: DatabaseItem[]): Promise<boolean> {
-    logger.systemLog(`[HNSW-UPDATE] Checking if we can load persisted index for ${collectionName} (${currentItems.length} current items)`, 'HnswPersistenceOrchestrator');
+    logger.systemLog(`Checking if we can load persisted index for ${collectionName} (${currentItems.length} current items)`, 'HnswPersistenceOrchestrator');
     
     if (!this.config.persistence.enabled) {
-      logger.systemLog(`[HNSW-UPDATE] ❌ Persistence disabled for ${collectionName}`, 'HnswPersistenceOrchestrator');
+      logger.systemLog(`Persistence disabled for ${collectionName}`, 'HnswPersistenceOrchestrator');
       return false;
     }
 
@@ -115,18 +115,18 @@ export class HnswPersistenceOrchestrator {
       const hasMetadata = await this.metadataManager.hasMetadata(collectionName);
       
       if (!hasMetadata) {
-        logger.systemLog(`[HNSW-UPDATE] ❌ No metadata found for ${collectionName}`, 'HnswPersistenceOrchestrator');
+        logger.systemLog(`No metadata found for ${collectionName}`, 'HnswPersistenceOrchestrator');
         return false;
       }
 
       // Load metadata from cache (managed by CacheManager)
       const metadata = await this.loadIndexMetadata(collectionName);
       if (!metadata) {
-        logger.systemLog(`[HNSW-UPDATE] ❌ Could not load metadata for ${collectionName}`, 'HnswPersistenceOrchestrator');
+        logger.systemLog(`Could not load metadata for ${collectionName}`, 'HnswPersistenceOrchestrator');
         return false;
       }
 
-      logger.systemLog(`[HNSW-UPDATE] Found metadata for ${collectionName}: ${metadata.itemCount} items, ${metadata.dimension}D`, 'HnswPersistenceOrchestrator');
+      logger.systemLog(`Found metadata for ${collectionName}: ${metadata.itemCount} items, ${metadata.dimension}D`, 'HnswPersistenceOrchestrator');
 
       // PHASE2 FIX: Check for stale metadata (claims items exist but collection is empty)
       if (metadata.itemCount > 0 && currentItems.length === 0) {
@@ -139,18 +139,18 @@ export class HnswPersistenceOrchestrator {
       }
 
       // Validate using existing validation patterns
-      logger.systemLog(`[HNSW-UPDATE] Validating metadata for ${collectionName}`, 'HnswPersistenceOrchestrator');
+      logger.systemLog(`Validating metadata for ${collectionName}`, 'HnswPersistenceOrchestrator');
       const validationResult = this.validateIndexMetadata(metadata, currentItems);
       if (!validationResult.isValid) {
-        logger.systemLog(`[HNSW-UPDATE] ❌ Metadata validation failed for ${collectionName}: ${validationResult.reason}`, 'HnswPersistenceOrchestrator');
+        logger.systemLog(`Metadata validation failed for ${collectionName}: ${validationResult.reason}`, 'HnswPersistenceOrchestrator');
         await this.cleanupPersistedIndex(collectionName);
         return false;
       }
 
-      logger.systemLog(`[HNSW-UPDATE] ✅ Metadata validation passed for ${collectionName}`, 'HnswPersistenceOrchestrator');
+      logger.systemLog(`Metadata validation passed for ${collectionName}`, 'HnswPersistenceOrchestrator');
 
       // CRITICAL FIX: Perform a quick verification that the index file actually exists and contains data
-      logger.systemLog(`[HNSW-UPDATE] Verifying index file exists for ${collectionName}`, 'HnswPersistenceOrchestrator');
+      logger.systemLog(`Verifying index file exists for ${collectionName}`, 'HnswPersistenceOrchestrator');
       try {
         let quickLoadTest: any;
         
@@ -161,7 +161,7 @@ export class HnswPersistenceOrchestrator {
         }
         
         if (!quickLoadTest.success) {
-          logger.systemLog(`[HNSW-UPDATE] ❌ Index file verification failed for ${collectionName}: ${quickLoadTest.errorReason}`, 'HnswPersistenceOrchestrator');
+          logger.systemLog(`Index file verification failed for ${collectionName}: ${quickLoadTest.errorReason}`, 'HnswPersistenceOrchestrator');
           await this.cleanupPersistedIndex(collectionName);
           return false;
         }
@@ -172,7 +172,7 @@ export class HnswPersistenceOrchestrator {
           if (quickLoadTest.partitions && Array.isArray(quickLoadTest.partitions)) {
             const expectedPartitions = metadata.partitionCount || 1;
             if (quickLoadTest.partitions.length !== expectedPartitions) {
-              logger.systemLog(`[HNSW-UPDATE] ❌ Partition count mismatch for ${collectionName}: expected ${expectedPartitions}, found ${quickLoadTest.partitions.length}`, 'HnswPersistenceOrchestrator');
+              logger.systemLog(`Partition count mismatch for ${collectionName}: expected ${expectedPartitions}, found ${quickLoadTest.partitions.length}`, 'HnswPersistenceOrchestrator');
               await this.cleanupPersistedIndex(collectionName);
               return false;
             }
@@ -182,16 +182,16 @@ export class HnswPersistenceOrchestrator {
           if (quickLoadTest.index?.getCurrentCount) {
             const actualCount = quickLoadTest.index.getCurrentCount();
             if (actualCount === 0 && metadata.itemCount > 0) {
-              logger.systemLog(`[HNSW-UPDATE] ❌ Index file is empty for ${collectionName}: expected ${metadata.itemCount} items but found ${actualCount}`, 'HnswPersistenceOrchestrator');
+              logger.systemLog(`Index file is empty for ${collectionName}: expected ${metadata.itemCount} items but found ${actualCount}`, 'HnswPersistenceOrchestrator');
               await this.cleanupPersistedIndex(collectionName);
               return false;
             }
           }
         }
         
-        logger.systemLog(`[HNSW-UPDATE] ✅ Index verification passed for ${collectionName}`, 'HnswPersistenceOrchestrator');
+        logger.systemLog(`Index verification passed for ${collectionName}`, 'HnswPersistenceOrchestrator');
       } catch (error) {
-        logger.systemLog(`[HNSW-UPDATE] ❌ Index verification error for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`, 'HnswPersistenceOrchestrator');
+        logger.systemLog(`Index verification error for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`, 'HnswPersistenceOrchestrator');
         await this.cleanupPersistedIndex(collectionName);
         return false;
       }
@@ -199,7 +199,7 @@ export class HnswPersistenceOrchestrator {
       return true;
     } catch (error) {
       logger.systemError(
-        new Error(`[HNSW-UPDATE] Error checking persistence for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`),
+        new Error(`Error checking persistence for ${collectionName}: ${error instanceof Error ? error.message : String(error)}`),
         'HnswPersistenceOrchestrator'
       );
       return false;

@@ -1,11 +1,19 @@
 /**
  * ContentHashService - Handles content hashing and change detection
  * Follows Single Responsibility Principle by focusing only on content hashing operations
+ * 
+ * Imports:
+ * - crypto: Node.js crypto module for MD5 hash generation
+ * - Plugin, TFile: Obsidian API types for plugin integration and file handling
+ * - ProcessedFilesStateManager: State management for file processing tracking
+ * - FileUtils: Common file validation and path normalization utilities
+ * - AdaptiveBulkHashService: Bulk hash comparison optimization (lazy imported)
  */
 
 import * as crypto from 'crypto';
 import { Plugin, TFile } from 'obsidian';
 import { ProcessedFilesStateManager } from '../state/ProcessedFilesStateManager';
+import { FileUtils } from '../../utils/FileUtils';
 
 export class ContentHashService {
   private plugin: Plugin;
@@ -35,8 +43,7 @@ export class ContentHashService {
     try {
       // Read current file content and generate hash
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
-      if (!file || 'children' in file) {
-        console.log(`[ContentHashService] ${filePath} - file not found or is folder`);
+      if (!FileUtils.isValidFile(file)) {
         return false; // Skip if file doesn't exist or is a folder
       }
 
@@ -51,14 +58,13 @@ export class ContentHashService {
       // First check if the collection exists and has items
       const collectionExists = await vectorStore.hasCollection('file_embeddings');
       if (!collectionExists) {
-        console.log(`[ContentHashService] ${filePath} - file_embeddings collection does not exist`);
         return true;
       }
 
       const collectionCount = await vectorStore.count('file_embeddings');
 
       // Normalize the file path to match database format (forward slashes)
-      const normalizedPath = filePath.replace(/\\/g, '/');
+      const normalizedPath = FileUtils.normalizePath(filePath);
 
       // Query for existing embeddings for this file using metadata filtering
       // Use metadata-only query without queryTexts to avoid embedding function dependency
@@ -68,34 +74,15 @@ export class ContentHashService {
         include: ['metadatas']
       });
 
-      // Log result only if useful for debugging
-      if (queryResult.ids?.[0]?.length === 0 && collectionCount > 0) {
-        console.log(`[ContentHashService] ${filePath} - query found no embeddings despite collection having ${collectionCount} items`);
-      }
-
-      // Debug: Let's see what file paths are actually in the database
-      if (queryResult.ids?.[0]?.length === 0) {
-        // Get a few random items to see what file paths look like
-        const sampleQuery = await vectorStore.query('file_embeddings', {
-          where: {},
-          nResults: 5,
-          include: ['metadatas']
-        });
-        
-        const samplePaths = sampleQuery.metadatas?.[0]?.map((m: any) => m.filePath || 'no-filePath').slice(0, 5) || [];
-        // Debug info available but not logged to reduce clutter
-      }
 
       // If no existing embeddings found, file needs embedding
       if (!queryResult.ids || queryResult.ids.length === 0 || queryResult.ids[0].length === 0) {
-        console.log(`[ContentHashService] ${filePath} - no existing embeddings found, needs embedding`);
         return true;
       }
 
       // Check if we have metadata with content hash
       const metadata = queryResult.metadatas?.[0]?.[0];
       if (!metadata || !metadata.contentHash) {
-        console.log(`[ContentHashService] ${filePath} - no content hash in metadata, needs embedding`);
         return true;
       }
 
@@ -111,9 +98,6 @@ export class ContentHashService {
         return false;
       }
       
-      // Only log when hashes don't match (file actually changed)
-      console.log(`[ContentHashService] ${filePath} - content changed, needs re-embedding`);
-      
       return true; // Return true if hashes don't match (needs re-embedding)
     } catch (error) {
       console.error(`[ContentHashService] Error checking if file needs embedding for ${filePath}:`, error);
@@ -121,53 +105,6 @@ export class ContentHashService {
     }
   }
 
-  /**
-   * Add content hash to embedding that doesn't have one
-   * @param filePath Path to the file
-   * @param contentHash Content hash to add
-   * @param vectorStore Vector store instance
-   * @returns Promise resolving to true if hash was added successfully
-   */
-  async addContentHashToEmbedding(filePath: string, contentHash: string, vectorStore: any): Promise<boolean> {
-    try {
-      // Normalize the file path to match database format
-      const normalizedPath = filePath.replace(/\\/g, '/');
-      
-      // Query for existing embeddings for this file
-      const queryResult = await vectorStore.query('file_embeddings', {
-        where: { filePath: { $eq: normalizedPath } },
-        nResults: 1000, // Get all chunks for this file
-        include: ['metadatas']
-      });
-      
-      if (!queryResult.ids || queryResult.ids.length === 0 || queryResult.ids[0].length === 0) {
-        console.log(`[ContentHashService] No embeddings found to update for ${filePath}`);
-        return false;
-      }
-      
-      // Update all chunks for this file to include the content hash
-      const chunkIds = queryResult.ids[0];
-      const existingMetadatas = queryResult.metadatas?.[0] || [];
-      
-      // Create updated metadata array
-      const updatedMetadatas = existingMetadatas.map((metadata: any) => ({
-        ...metadata,
-        contentHash: contentHash
-      }));
-      
-      // Update the embeddings with the new metadata
-      await vectorStore.updateItems('file_embeddings', {
-        ids: chunkIds,
-        metadatas: updatedMetadatas
-      });
-      
-      console.log(`[ContentHashService] Added content hash to ${chunkIds.length} existing chunks for ${filePath}`);
-      return true;
-    } catch (error) {
-      console.error(`[ContentHashService] Error adding content hash to embedding for ${filePath}:`, error);
-      return false;
-    }
-  }
 
   /**
    * Get content hash for a file
@@ -177,7 +114,7 @@ export class ContentHashService {
   async getFileContentHash(filePath: string): Promise<string | null> {
     try {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
-      if (!file || 'children' in file) {
+      if (!FileUtils.isValidFile(file)) {
         return null;
       }
 
@@ -189,24 +126,6 @@ export class ContentHashService {
     }
   }
 
-  /**
-   * Compare content hashes
-   * @param hash1 First hash
-   * @param hash2 Second hash
-   * @returns True if hashes match
-   */
-  compareHashes(hash1: string, hash2: string): boolean {
-    return hash1 === hash2;
-  }
-
-  /**
-   * Validate hash format
-   * @param hash Hash to validate
-   * @returns True if hash appears to be valid MD5
-   */
-  validateHash(hash: string): boolean {
-    return typeof hash === 'string' && hash.length === 32 && /^[a-f0-9]+$/i.test(hash);
-  }
 
   /**
    * Mark file as successfully processed
@@ -240,5 +159,54 @@ export class ContentHashService {
   async removeFileFromState(filePath: string): Promise<void> {
     this.stateManager.removeFile(filePath);
     await this.stateManager.saveState();
+  }
+
+  /**
+   * Check multiple files need embedding using bulk comparison optimization
+   * @param filePaths Array of file paths to check
+   * @param vectorStore Vector store instance
+   * @returns Promise resolving to array of bulk hash results
+   */
+  async checkBulkFilesNeedEmbedding(filePaths: string[], vectorStore: any): Promise<Array<{
+    filePath: string;
+    needsEmbedding: boolean;
+    currentHash?: string;
+    storedHash?: string;
+    error?: string;
+    skipped?: boolean;
+    reason?: string;
+  }>> {
+    // Lazy import to avoid circular dependency
+    const { AdaptiveBulkHashService } = await import('./AdaptiveBulkHashService');
+    
+    try {
+      const bulkHashService = new AdaptiveBulkHashService(this.plugin, this, this.stateManager);
+      return await bulkHashService.processBulkComparison(filePaths, vectorStore);
+    } catch (error) {
+      console.error(`[ContentHashService] Error in bulk comparison:`, error);
+      
+      // Fallback to individual processing
+      const results = [];
+      for (const filePath of filePaths) {
+        try {
+          const needsEmbedding = await this.checkIfFileNeedsEmbedding(filePath, vectorStore);
+          results.push({
+            filePath: FileUtils.normalizePath(filePath),
+            needsEmbedding,
+            reason: 'Individual processing (fallback from bulk error)'
+          });
+        } catch (individualError) {
+          console.error(`[ContentHashService] Error in individual fallback for ${filePath}:`, individualError);
+          results.push({
+            filePath: FileUtils.normalizePath(filePath),
+            needsEmbedding: true, // Assume needs embedding on error
+            error: individualError instanceof Error ? individualError.message : String(individualError),
+            reason: 'Error during individual processing'
+          });
+        }
+      }
+      
+      return results;
+    }
   }
 }

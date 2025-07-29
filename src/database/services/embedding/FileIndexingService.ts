@@ -1,3 +1,14 @@
+/**
+ * FileIndexingService - Handles batch processing of files for embedding generation
+ * 
+ * Now includes bulk hash comparison optimization for improved startup performance.
+ * Uses ContentHashService.checkBulkFilesNeedEmbedding() for memory-safe bulk operations
+ * instead of individual file-by-file hash comparisons.
+ * 
+ * Key optimization: In incremental mode (!batchMode), performs bulk hash comparison
+ * to filter out files that don't need re-embedding before processing.
+ */
+
 import { TFile } from 'obsidian';
 import { v4 as uuidv4 } from 'uuid';
 import { FileEmbedding } from '../../workspace-types';
@@ -129,11 +140,34 @@ export class FileIndexingService {
         await stateManager.updateBatchProgress(batch, i / filePaths.length);
       }
       
-      // Process batch in parallel
-      const results = await Promise.allSettled(batch.map(async (filePath) => {
+      // NEW: Use bulk hash comparison for better performance (incremental mode only)
+      let filesToProcess = batch;
+      if (!batchMode) {
         try {
-          // Check if file needs embedding (for incremental mode)
-          if (!batchMode) {
+          console.log(`[FileIndexingService] Using bulk hash comparison for batch of ${batch.length} files`);
+          const bulkResults = await this.contentHashService.checkBulkFilesNeedEmbedding(batch, vectorStore);
+          
+          // Filter to only files that need embedding
+          filesToProcess = bulkResults
+            .filter(result => result.needsEmbedding && !result.error)
+            .map(result => result.filePath);
+          
+          const skippedCount = batch.length - filesToProcess.length;
+          if (skippedCount > 0) {
+            console.log(`[FileIndexingService] Bulk comparison: ${filesToProcess.length} need embedding, ${skippedCount} skipped`);
+          }
+        } catch (bulkError) {
+          console.error(`[FileIndexingService] Bulk comparison failed, falling back to individual checks:`, bulkError);
+          // Fall back to individual processing on bulk error
+          filesToProcess = batch;
+        }
+      }
+      
+      // Process files that need embedding in parallel
+      const results = await Promise.allSettled(filesToProcess.map(async (filePath) => {
+        try {
+          // Double-check individual files only if bulk mode failed
+          if (!batchMode && filesToProcess === batch) {
             const needsEmbedding = await this.contentHashService.checkIfFileNeedsEmbedding(filePath, vectorStore);
             if (!needsEmbedding) {
               return { ids: [], tokens: 0, chunks: 0, skipped: true };
@@ -170,7 +204,7 @@ export class FileIndexingService {
       
       for (let j = 0; j < results.length; j++) {
         const result = results[j];
-        const filePath = batch[j];
+        const filePath = filesToProcess[j]; // Use filesToProcess instead of batch
         
         if (result.status === 'fulfilled' && result.value) {
           if (!result.value.skipped) {
@@ -182,6 +216,13 @@ export class FileIndexingService {
           failedFiles.push(filePath);
           batchFailedFiles.push(filePath);
         }
+      }
+      
+      // NEW: Account for files skipped by bulk comparison
+      if (!batchMode && filesToProcess.length < batch.length) {
+        const skippedFiles = batch.filter(path => !filesToProcess.includes(path));
+        // Skipped files are considered "completed" for progress tracking purposes
+        processedFiles.push(...skippedFiles);
       }
       
       // Update state after each batch if tracking enabled

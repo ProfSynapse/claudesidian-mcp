@@ -145,14 +145,14 @@ class HnswCoordinator {
    * Replaces complex discovery with direct ChromaDB queries
    */
   private async getChromaCollections(): Promise<Array<{name: string, items: DatabaseItem[], count: number}>> {
-    logger.systemLog('[HNSW-UPDATE] Getting ChromaDB collections directly', 'HnswCoordinator');
+    logger.systemLog('Getting ChromaDB collections directly', 'HnswCoordinator');
     
     try {
       const collections: Array<{name: string, items: DatabaseItem[], count: number}> = [];
       
       // Get all available collection names (returns string[])
       const collectionNames = await this.vectorStore.listCollections();
-      logger.systemLog(`[HNSW-UPDATE] Found collections: ${collectionNames.join(', ')}`, 'HnswCoordinator');
+      logger.systemLog(`Found collections: ${collectionNames.join(', ')}`, 'HnswCoordinator');
       
       // Process each collection
       for (const collectionName of collectionNames) {
@@ -160,14 +160,14 @@ class HnswCoordinator {
           // Check if collection exists
           const hasCollection = await this.vectorStore.hasCollection(collectionName);
           if (!hasCollection) {
-            logger.systemWarn(`[HNSW-UPDATE] Collection ${collectionName} doesn't exist, skipping`, 'HnswCoordinator');
+            logger.systemWarn(`Collection ${collectionName} doesn't exist, skipping`, 'HnswCoordinator');
             continue;
           }
 
           // Get collection count first
           const count = await this.vectorStore.count(collectionName);
           if (count === 0) {
-            logger.systemLog(`[HNSW-UPDATE] Collection ${collectionName} is empty, skipping`, 'HnswCoordinator');
+            logger.systemLog(`Collection ${collectionName} is empty, skipping`, 'HnswCoordinator');
             continue;
           }
 
@@ -178,7 +178,7 @@ class HnswCoordinator {
           });
 
           if (!allItems.ids || allItems.ids.length === 0) {
-            logger.systemLog(`[HNSW-UPDATE] Collection ${collectionName} has no items, skipping`, 'HnswCoordinator');
+            logger.systemLog(`Collection ${collectionName} has no items, skipping`, 'HnswCoordinator');
             continue;
           }
 
@@ -199,19 +199,19 @@ class HnswCoordinator {
             count: items.length
           });
 
-          logger.systemLog(`[HNSW-UPDATE] Loaded collection ${collectionName} with ${items.length} items`, 'HnswCoordinator');
+          logger.systemLog(`Loaded collection ${collectionName} with ${items.length} items`, 'HnswCoordinator');
 
         } catch (collectionError) {
-          logger.systemWarn(`[HNSW-UPDATE] Failed to load collection ${collectionName}: ${collectionError instanceof Error ? collectionError.message : String(collectionError)}`, 'HnswCoordinator');
+          logger.systemWarn(`Failed to load collection ${collectionName}: ${collectionError instanceof Error ? collectionError.message : String(collectionError)}`, 'HnswCoordinator');
         }
       }
       
-      logger.systemLog(`[HNSW-UPDATE] Successfully loaded ${collections.length} collections for processing`, 'HnswCoordinator');
+      logger.systemLog(`Successfully loaded ${collections.length} collections for processing`, 'HnswCoordinator');
       return collections;
       
     } catch (error) {
       logger.systemError(
-        new Error(`[HNSW-UPDATE] Failed to get ChromaDB collections: ${error instanceof Error ? error.message : String(error)}`),
+        new Error(`Failed to get ChromaDB collections: ${error instanceof Error ? error.message : String(error)}`),
         'HnswCoordinator'
       );
       return [];
@@ -225,42 +225,42 @@ class HnswCoordinator {
   private async processCollection(collection: {name: string, items: DatabaseItem[], count: number}): Promise<{action: 'built' | 'loaded' | 'skipped'}> {
     const { name, items, count } = collection;
     
-    logger.systemLog(`[HNSW-UPDATE] Processing collection ${name} (${count} items)`, 'HnswCoordinator');
+    logger.systemLog(`Processing collection ${name} (${count} items)`, 'HnswCoordinator');
 
     try {
       // Step 1: Check if we already have an HNSW index in memory
       if (this.indexManager.hasIndex(name)) {
         const indexStats = this.indexManager.getIndexStatistics(name);
-        logger.systemLog(`[HNSW-UPDATE] Collection ${name} already has in-memory index (${indexStats?.totalItems || 0} items)`, 'HnswCoordinator');
+        logger.systemLog(`Collection ${name} already has in-memory index (${indexStats?.totalItems || 0} items)`, 'HnswCoordinator');
         
         if (indexStats && indexStats.totalItems === count) {
-          logger.systemLog(`[HNSW-UPDATE] Collection ${name} index is current, skipping`, 'HnswCoordinator');
+          logger.systemLog(`Collection ${name} index is current, skipping`, 'HnswCoordinator');
           return { action: 'skipped' };
         }
       }
 
       // Step 2: Check if we can load from persisted IndexedDB
-      logger.systemLog(`[HNSW-UPDATE] Checking persisted index for ${name}`, 'HnswCoordinator');
+      logger.systemLog(`Checking persisted index for ${name}`, 'HnswCoordinator');
       const canLoadPersisted = await this.persistenceService.canLoadPersistedIndex(name, items);
-      logger.systemLog(`[HNSW-UPDATE] Collection ${name} can load persisted: ${canLoadPersisted}`, 'HnswCoordinator');
+      logger.systemLog(`Collection ${name} can load persisted: ${canLoadPersisted}`, 'HnswCoordinator');
       
       if (canLoadPersisted) {
         // Try to load from IndexedDB
         try {
           const indexResult = await this.indexManager.createOrUpdateIndex(name, items);
           if (indexResult.success && indexResult.itemsIndexed > 0) {
-            logger.systemLog(`[HNSW-UPDATE] Collection ${name} loaded from IndexedDB (${indexResult.itemsIndexed} items)`, 'HnswCoordinator');
+            logger.systemLog(`Collection ${name} loaded from IndexedDB (${indexResult.itemsIndexed} items)`, 'HnswCoordinator');
             return { action: 'loaded' };
           } else {
-            logger.systemWarn(`[HNSW-UPDATE] Collection ${name} load failed, will rebuild`, 'HnswCoordinator');
+            logger.systemWarn(`Collection ${name} load failed, will rebuild`, 'HnswCoordinator');
           }
         } catch (loadError) {
-          logger.systemWarn(`[HNSW-UPDATE] Collection ${name} load error: ${loadError instanceof Error ? loadError.message : String(loadError)}, will rebuild`, 'HnswCoordinator');
+          logger.systemWarn(`Collection ${name} load error: ${loadError instanceof Error ? loadError.message : String(loadError)}, will rebuild`, 'HnswCoordinator');
         }
       }
 
       // Step 3: No valid persisted index, rebuild from scratch
-      logger.systemLog(`[HNSW-UPDATE] Collection ${name} needs rebuild - creating new index`, 'HnswCoordinator');
+      logger.systemLog(`Collection ${name} needs rebuild - creating new index`, 'HnswCoordinator');
       
       // Clear any existing index first
       this.indexManager.removeIndex(name);
@@ -269,7 +269,7 @@ class HnswCoordinator {
       const buildResult = await this.indexManager.createOrUpdateIndex(name, items);
       
       if (buildResult.success && buildResult.itemsIndexed > 0) {
-        logger.systemLog(`[HNSW-UPDATE] Collection ${name} successfully rebuilt (${buildResult.itemsIndexed} items, ${buildResult.indexType})`, 'HnswCoordinator');
+        logger.systemLog(`Collection ${name} successfully rebuilt (${buildResult.itemsIndexed} items, ${buildResult.indexType})`, 'HnswCoordinator');
         return { action: 'built' };
       } else {
         throw new Error(`Index creation failed: ${buildResult.itemsSkipped} items skipped`);
@@ -277,7 +277,7 @@ class HnswCoordinator {
 
     } catch (error) {
       logger.systemError(
-        new Error(`[HNSW-UPDATE] Collection ${name} processing failed: ${error instanceof Error ? error.message : String(error)}`),
+        new Error(`Collection ${name} processing failed: ${error instanceof Error ? error.message : String(error)}`),
         'HnswCoordinator'
       );
       throw error;
@@ -306,13 +306,13 @@ class HnswCoordinator {
 
     if (healthyServices === totalServices) {
       status = 'healthy';
-      message = '[HNSW-UPDATE] All services operational';
+      message = 'All services operational';
     } else if (healthyServices >= 2) {
       status = 'degraded';
-      message = `[HNSW-UPDATE] ${healthyServices}/${totalServices} services operational`;
+      message = `${healthyServices}/${totalServices} services operational`;
     } else {
       status = 'unhealthy';
-      message = `[HNSW-UPDATE] Only ${healthyServices}/${totalServices} services operational`;
+      message = `Only ${healthyServices}/${totalServices} services operational`;
     }
 
     logger.systemLog(message, 'HnswCoordinator');

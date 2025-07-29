@@ -107,6 +107,12 @@ export class HnswSearchService {
   private fullyInitialized = false;
   private isFullyReady = false;
   
+  // Background indexing state management (NEW for startup optimization)
+  private indexingStatus: 'ready' | 'loading' | 'building' | 'error' = 'ready';
+  private readyCollections: Set<string> = new Set();
+  private buildingCollections: Set<string> = new Set();
+  private backgroundIndexingService?: any; // Will be injected later
+  
   // Initialization coordination (injected)
   private initializationStateManager: IInitializationStateManager | null = null;
   private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
@@ -131,7 +137,7 @@ export class HnswSearchService {
     // Note: ServiceInitializer removed - incompatible with IndexedDB/WASM persistence
     // Services are now created directly in HnswCoordinator
     
-    logger.systemLog('[HNSW-UPDATE] HnswSearchService constructor completed', 'HnswSearchService');
+    logger.systemLog('HnswSearchService constructor completed', 'HnswSearchService');
 
     // Note: Lightweight services will be initialized async in initialize() method
     // This prevents async operations in constructor
@@ -145,21 +151,14 @@ export class HnswSearchService {
     stateManager: IInitializationStateManager,
     collectionCoordinator: ICollectionLoadingCoordinator
   ): void {
-    console.log('[HNSW-UPDATE] 🎯 setInitializationCoordination called - injecting coordination services');
     this.initializationStateManager = stateManager;
     this.collectionCoordinator = collectionCoordinator;
     
-    console.log('[HNSW-UPDATE] 🔥 Coordination services injected:', {
-      hasStateManager: !!this.initializationStateManager,
-      hasCollectionCoordinator: !!this.collectionCoordinator
-    });
     
     // Trigger initialization now that coordination services are available
-    console.log('[HNSW-UPDATE] 🚀 Coordination services injected, triggering deferred initialization');
     this.initialize().then(() => {
-      console.log('[HNSW-UPDATE] ✅ Deferred initialization completed successfully');
+      logger.systemLog('Deferred initialization completed successfully', 'HnswSearchService');
     }).catch(error => {
-      console.error('[HNSW-UPDATE] ❌ Failed to initialize after coordination injection:', error);
       logger.systemError(new Error(`Failed to initialize after coordination injection: ${error instanceof Error ? error.message : String(error)}`), 'HnswSearchService');
     });
   }
@@ -171,36 +170,26 @@ export class HnswSearchService {
    * CRITICAL FIX: Only initialize if coordination services are available
    */
   async initialize(): Promise<void> {
-    console.log('[HNSW-UPDATE] 🎯 initialize() called, checking coordination services');
     
     // CRITICAL: Do not auto-initialize until coordination services are injected
     // This prevents the ServiceLifecycleManager from calling the old initialization path
     if (!this.initializationStateManager) {
-      console.log('[HNSW-UPDATE] ⏸️ Coordination services not injected yet, deferring initialization');
       // Return without initializing - coordination system will handle it later
       return;
     }
 
-    console.log('[HNSW-UPDATE] ✅ Coordination services available, proceeding with initialization');
-
     // Use coordination system to prevent duplicate initialization
-    console.log('[HNSW-UPDATE] 🔄 Calling ensureInitialized for hnsw_basic_init');
     const result = await this.initializationStateManager.ensureInitialized(
       'hnsw_basic_init',
       async () => {
-        console.log('[HNSW-UPDATE] 🚀 Running performBasicInitialization callback');
         await this.performBasicInitialization();
       }
     );
     
-    console.log('[HNSW-UPDATE] 📊 ensureInitialized result:', { success: result.success, hasError: !!result.error });
     
     if (!result.success) {
-      console.error('[HNSW-UPDATE] ❌ ensureInitialized failed:', result.error);
       throw result.error || new Error('HNSW basic initialization failed');
     }
-    
-    console.log('[HNSW-UPDATE] ✅ initialize() completed successfully');
   }
   
   
@@ -208,29 +197,16 @@ export class HnswSearchService {
    * Perform the actual basic initialization
    */
   private async performBasicInitialization(): Promise<void> {
-    console.log('[HNSW-UPDATE] 🎯 performBasicInitialization() called');
-    console.log('[HNSW-UPDATE] 📊 Current state:', {
-      isInitialized: this.isInitialized,
-      fullyInitialized: this.fullyInitialized,
-      hasServices: !!this.services,
-      hasHnswLib: !!this.hnswLib
-    });
     
     if (this.isInitialized) {
-      console.log('[HNSW-UPDATE] ⏸️ Already initialized, skipping basic initialization');
       return;
     }
-    
-    console.log('[HNSW-UPDATE] 🚀 Starting HNSW basic initialization with proper service creation order');
 
     try {
       // STEP 1: Load HNSW WASM library
-      console.log('[HNSW-UPDATE] 🔄 STEP 1: Loading HNSW WASM library');
       this.hnswLib = await loadHnswlib();
-      console.log('[HNSW-UPDATE] ✅ HNSW WASM library loaded successfully');
 
       // STEP 2: Create all services using factory
-      console.log('[HNSW-UPDATE] 🔄 STEP 2: Creating HNSW services using factory');
       const services = HnswServiceFactory.createServices(this.config, this.hnswLib, this.plugin, this.persistentPath);
       
       // Load state manager
@@ -238,10 +214,8 @@ export class HnswSearchService {
       
       // Assign services to instance
       this.services = services;
-      console.log('[HNSW-UPDATE] ✅ All HNSW services created via factory');
 
       // STEP 3: Initialize coordinator with services
-      console.log('[HNSW-UPDATE] 🔄 STEP 3: Creating HnswCoordinator');
       this.initializationOrchestrator = new HnswCoordinator(
         this.config,
         this.services.persistenceService,
@@ -254,14 +228,12 @@ export class HnswSearchService {
       if (this.collectionCoordinator) {
         this.initializationOrchestrator.setCollectionCoordinator(this.collectionCoordinator);
       }
-      console.log('[HNSW-UPDATE] ✅ HnswCoordinator created');
 
       this.isInitialized = true;
-      console.log('[HNSW-UPDATE] 🎉 HNSW basic initialization completed successfully');
       
     } catch (error) {
       logger.systemError(
-        new Error(`[HNSW-UPDATE] Failed HNSW initialization: ${error instanceof Error ? error.message : String(error)}`),
+        new Error(`Failed HNSW initialization: ${error instanceof Error ? error.message : String(error)}`),
         'HnswSearchService'
       );
       throw error;
@@ -310,17 +282,17 @@ export class HnswSearchService {
    * CRITICAL FIX: Verify orchestrator exists before calling executeFullInitialization
    */
   private async performFullInitialization(): Promise<void> {
-    logger.systemLog('[HNSW-UPDATE] Starting full HNSW initialization', 'HnswSearchService');
+    logger.systemLog('Starting full HNSW initialization', 'HnswSearchService');
 
     if (this.fullyInitialized) {
-      logger.systemLog('[HNSW-UPDATE] Already fully initialized, skipping', 'HnswSearchService');
+      logger.systemLog('Already fully initialized, skipping', 'HnswSearchService');
       return;
     }
 
     try {
       // CRITICAL FIX: Ensure basic initialization completed before proceeding
       if (!this.initializationOrchestrator) {
-        logger.systemLog('[HNSW-UPDATE] ⚠️ Orchestrator not available, ensuring basic initialization completes', 'HnswSearchService');
+        logger.systemLog('Orchestrator not available, ensuring basic initialization completes', 'HnswSearchService');
         await this.performBasicInitialization();
         
         if (!this.initializationOrchestrator) {
@@ -334,14 +306,14 @@ export class HnswSearchService {
         logger.systemLog('HNSW waiting for collections completed', 'HnswSearchService');
       }
       
-      logger.systemLog('[HNSW-UPDATE] 🔥 Calling orchestrator.executeFullInitialization with verified orchestrator', 'HnswSearchService');
+      logger.systemLog('Calling orchestrator.executeFullInitialization with verified orchestrator', 'HnswSearchService');
       const result = await this.initializationOrchestrator.executeFullInitialization();
       
       // Always mark as initialized to prevent repeated attempts
       this.fullyInitialized = true;
       this.isFullyReady = result.success;
       
-      logger.systemLog(`[HNSW-UPDATE] Service marked as fully initialized - success: ${result.success}`, 'HnswSearchService');
+      logger.systemLog(`Service marked as fully initialized - success: ${result.success}`, 'HnswSearchService');
       
       if (result.success) {
         logger.systemLog('[STARTUP] HNSW initialization completed successfully', 'HnswSearchService');
@@ -698,6 +670,164 @@ export class HnswSearchService {
     }
 
     return { status, details, recommendations };
+  }
+
+  // =====================================
+  // NEW: Background Indexing State Management for Startup Optimization
+  // =====================================
+
+  /**
+   * Mark service as ready for fast loading from IndexedDB
+   * Called after health check determines indexes are available
+   */
+  markReadyForLoading(): void {
+    this.indexingStatus = 'ready';
+    console.log('[HnswSearchService] Marked as ready for fast loading');
+  }
+
+  /**
+   * Check if service can handle searches (indexes are ready or loaded)
+   */
+  isReadyForLoading(): boolean {
+    return this.indexingStatus === 'ready' && this.readyCollections.size > 0;
+  }
+
+  /**
+   * Check if a specific collection is ready for searching
+   */
+  isCollectionReady(collectionName: string): boolean {
+    return this.readyCollections.has(collectionName);
+  }
+
+  /**
+   * Fast loading from IndexedDB for specific collection
+   * Used when health check confirmed indexes are available
+   */
+  async loadIndexOnDemand(collectionName: string): Promise<void> {
+    if (this.readyCollections.has(collectionName)) {
+      return; // Already loaded
+    }
+
+    if (this.buildingCollections.has(collectionName)) {
+      throw new Error(`Collection '${collectionName}' is currently being built in background`);
+    }
+
+    try {
+      this.indexingStatus = 'loading';
+      console.log(`[HnswSearchService] Loading index on-demand for collection: ${collectionName}`);
+
+      // Ensure basic initialization first
+      await this.initialize();
+
+      // Load the specific index using IndexManager (this should be fast if persisted)
+      if (this.services.indexManager && this.vectorStore) {
+        // Get collection items to pass to createOrUpdateIndex (required parameter)
+        const allItems = await this.vectorStore.getAllItems(collectionName, {
+          limit: undefined,
+          offset: 0
+        });
+        
+        if (allItems.ids && allItems.ids.length > 0) {
+          // Convert to DatabaseItem[] format
+          const items: DatabaseItem[] = [];
+          for (let i = 0; i < allItems.ids.length; i++) {
+            items.push({
+              id: allItems.ids[i],
+              document: allItems.documents?.[i] || '',
+              embedding: allItems.embeddings?.[i] || [],
+              metadata: allItems.metadatas?.[i] || {}
+            });
+          }
+          
+          // Use IndexManager to create/load the index (handles both persisted and new)
+          await this.services.indexManager.createOrUpdateIndex(collectionName, items);
+        }
+      } else {
+        // Fallback to full initialization if services unavailable
+        await this.ensureFullyInitialized();
+      }
+
+      this.readyCollections.add(collectionName);
+      this.indexingStatus = 'ready';
+
+      console.log(`[HnswSearchService] Successfully loaded index for collection: ${collectionName}`);
+
+    } catch (error) {
+      this.indexingStatus = 'error';
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[HnswSearchService] Failed to load index for ${collectionName}:`, errorMessage);
+      throw new Error(`Failed to load index on-demand for collection '${collectionName}': ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Get progress information from background indexing service
+   * Used for MCP error responses when indexes are building
+   */
+  getIndexingProgress(): any {
+    if (this.backgroundIndexingService && typeof this.backgroundIndexingService.getProgress === 'function') {
+      return this.backgroundIndexingService.getProgress();
+    }
+    
+    // Return default progress if background service not available
+    return {
+      isActive: this.indexingStatus === 'building',
+      completed: 0,
+      total: this.buildingCollections.size,
+      percentage: 0,
+      phase: this.indexingStatus,
+      currentCollection: Array.from(this.buildingCollections)[0],
+      completedCollections: Array.from(this.readyCollections),
+      failedCollections: [],
+      errors: []
+    };
+  }
+
+  /**
+   * Inject background indexing service (called by service descriptors)
+   */
+  setBackgroundIndexingService(backgroundService: any): void {
+    this.backgroundIndexingService = backgroundService;
+    console.log('[HnswSearchService] Background indexing service injected');
+  }
+
+  /**
+   * Get collections that are currently building
+   */
+  getBuildingCollections(): string[] {
+    return Array.from(this.buildingCollections);
+  }
+
+  /**
+   * Get collections that are ready for searching
+   */
+  getReadyCollections(): string[] {
+    return Array.from(this.readyCollections);
+  }
+
+  /**
+   * Mark collection as building (called by background service)
+   */
+  markCollectionBuilding(collectionName: string): void {
+    this.buildingCollections.add(collectionName);
+    this.readyCollections.delete(collectionName);
+    this.indexingStatus = 'building';
+    console.log(`[HnswSearchService] Marked collection as building: ${collectionName}`);
+  }
+
+  /**
+   * Mark collection as ready (called by background service when complete)
+   */
+  markCollectionReady(collectionName: string): void {
+    this.buildingCollections.delete(collectionName);
+    this.readyCollections.add(collectionName);
+    
+    // If no more collections building, mark service as ready
+    if (this.buildingCollections.size === 0) {
+      this.indexingStatus = 'ready';
+    }
+    
+    console.log(`[HnswSearchService] Marked collection as ready: ${collectionName}`);
   }
 
 }

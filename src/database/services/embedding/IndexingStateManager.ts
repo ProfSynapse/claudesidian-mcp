@@ -28,21 +28,17 @@ export class IndexingStateManager {
      */
     async loadState(): Promise<IndexingState | null> {
         try {
-            console.log('DEBUG: Loading indexing state from localStorage key:', this.stateKey);
             const stateStr = localStorage.getItem(this.stateKey);
-            console.log('DEBUG: Raw localStorage value:', stateStr);
             
             if (!stateStr) {
-                console.log('DEBUG: No indexing state found in localStorage');
                 return null;
             }
             
             const state = JSON.parse(stateStr) as IndexingState;
-            console.log('DEBUG: Parsed indexing state:', state);
             
             // Enhanced validation
             if (!this.isValidState(state)) {
-                console.warn('DEBUG: Invalid state detected, clearing localStorage');
+                console.warn('Invalid indexing state detected, clearing localStorage');
                 await this.clearState();
                 return null;
             }
@@ -50,7 +46,6 @@ export class IndexingStateManager {
             return state;
         } catch (error) {
             console.error('Failed to load indexing state:', error);
-            console.error('DEBUG: Clearing corrupted localStorage entry');
             await this.clearState();
             return null;
         }
@@ -138,25 +133,16 @@ export class IndexingStateManager {
      * Check if there's a resumable indexing operation
      */
     async hasResumableIndexing(): Promise<boolean> {
-        console.log('DEBUG: hasResumableIndexing called');
         const state = await this.loadState();
-        console.log('DEBUG: State loaded:', state);
         
         if (!state) {
-            console.log('DEBUG: No state found, returning false');
             return false;
         }
         
         const hasValidStatus = state.status === 'paused' || state.status === 'indexing';
         const hasPendingFiles = state.pendingFiles && state.pendingFiles.length > 0;
         
-        console.log('DEBUG: hasValidStatus:', hasValidStatus, '(status:', state.status, ')');
-        console.log('DEBUG: hasPendingFiles:', hasPendingFiles, '(pending count:', state.pendingFiles?.length, ')');
-        
-        const isResumable = state !== null && hasValidStatus && hasPendingFiles;
-        console.log('DEBUG: isResumable:', isResumable);
-        
-        return isResumable;
+        return state !== null && hasValidStatus && hasPendingFiles;
     }
     
     /**
