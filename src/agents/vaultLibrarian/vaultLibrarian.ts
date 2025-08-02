@@ -11,18 +11,20 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
+import { MemoryTraceService } from '../../database/services/memory/MemoryTraceService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Agent for searching and navigating the vault
- * Updated to use HnswSearchService for semantic search
+ * Updated to use vector search for semantic search
  */
 export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
   private embeddingProvider: any | null = null;
   private embeddingService: EmbeddingService | null = null;
   private memoryService: MemoryService | null = null;
+  private memoryTraceService: MemoryTraceService | null = null;
   private workspaceService: WorkspaceService | null = null;
   private settings: MemorySettings;
   
@@ -78,6 +80,10 @@ export class VaultLibrarianAgent extends BaseAgent {
             }
             
             
+            if (services.memoryTraceService) {
+              this.memoryTraceService = services.memoryTraceService;
+            }
+            
             if (services.workspaceService) {
               this.workspaceService = services.workspaceService;
             }
@@ -85,7 +91,6 @@ export class VaultLibrarianAgent extends BaseAgent {
         }
       }
     } catch (error) {
-      console.error("Error initializing services:", getErrorMessage(error));
       this.embeddingProvider = null;
     }
     
@@ -106,7 +111,8 @@ export class VaultLibrarianAgent extends BaseAgent {
       plugin || ({ app } as any),
       this.memoryService || undefined,
       this.workspaceService || undefined,
-      this.embeddingService || undefined
+      this.embeddingService || undefined,
+      this.memoryTraceService || undefined
     ));
     
     // Always register BatchMode (supports both semantic and non-semantic users)
@@ -148,10 +154,8 @@ export class VaultLibrarianAgent extends BaseAgent {
         if (this.embeddingService) {
           this.embeddingProvider = this.embeddingService.getProvider();
         } else {
-          console.warn('EmbeddingService not available, VaultLibrarian will use traditional search only');
         }
       } catch (error) {
-        console.error('Error getting shared embedding provider:', getErrorMessage(error));
         this.embeddingProvider = null;
       }
     }
@@ -166,15 +170,13 @@ export class VaultLibrarianAgent extends BaseAgent {
     
     // Initialize search service in background - non-blocking
     this.initializeSearchService().catch(error => {
-      console.error('Error initializing search service:', error);
     });
   }
   
   /**
-   * Initialize the search service (HNSW removed)
+   * Initialize the search service
    */
   async initializeSearchService(): Promise<void> {
-    console.log('[VaultLibrarian] Search service initialization completed (HNSW removed)');
   }
 
   
@@ -192,7 +194,6 @@ export class VaultLibrarianAgent extends BaseAgent {
       // Call parent class onunload if it exists
       super.onunload?.();
     } catch (error) {
-      console.error('Error unloading VaultLibrarian agent:', getErrorMessage(error));
     }
   }
 }

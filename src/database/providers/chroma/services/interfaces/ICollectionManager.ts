@@ -1,4 +1,5 @@
 import { Collection } from '../../PersistentChromaClient';
+import { ObsidianPathManager } from '../../../../../core/ObsidianPathManager';
 
 /**
  * Interface for collection management operations
@@ -75,4 +76,11 @@ export interface ICollectionManager {
    * @param collection Collection instance
    */
   registerCollection(collectionName: string, collection: Collection): void;
+
+  /**
+   * Set ObsidianPathManager for consistent path handling
+   * Called during service initialization to prevent path duplication
+   * @param pathManager ObsidianPathManager instance
+   */
+  setPathManager(pathManager: ObsidianPathManager): void;
 }

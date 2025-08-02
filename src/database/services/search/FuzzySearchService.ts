@@ -102,8 +102,6 @@ export class FuzzySearchService {
     }> = [];
     const useThresholdFiltering = threshold > 0; // Enable score-based ranking when threshold is 0
 
-    console.log('[FUZZY_SEARCH] Search mode:', useThresholdFiltering ? 'threshold-filtered' : 'score-based ranking');
-    console.log('[FUZZY_SEARCH] Processing', this.documents.size, 'documents...');
 
     for (const [docId, doc] of this.documents) {
       // Apply file filtering if provided
@@ -131,11 +129,9 @@ export class FuzzySearchService {
       }
     }
 
-    console.log('[FUZZY_SEARCH] Found', results.length, 'fuzzy matches');
     
     if (!useThresholdFiltering && results.length > 0) {
       const qualityDistribution = this.calculateFuzzyQualityDistribution(results);
-      console.log('[FUZZY_SEARCH] Quality distribution:', qualityDistribution);
     }
 
     // Sort by score (higher is better)

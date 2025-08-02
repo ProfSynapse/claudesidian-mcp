@@ -100,7 +100,6 @@ export class UniversalSearchService {
         );
       }
     } catch (error) {
-      console.error('[UniversalSearchService] Failed to initialize services:', error);
     }
   }
 
@@ -111,10 +110,8 @@ export class UniversalSearchService {
     try {
       const result = await this.serviceInitializer.populateHybridSearchIndexes();
       if (!result.success) {
-        console.warn('[UniversalSearchService] Failed to populate indexes:', result.error);
       }
     } catch (error) {
-      console.error('[UniversalSearchService] Error populating indexes:', error);
     }
   }
 
@@ -180,7 +177,6 @@ export class UniversalSearchService {
 
       return consolidateResult.results || [];
     } catch (error) {
-      console.error('[UNIVERSAL_SEARCH] Consolidated search failed:', error);
       return [];
     }
   }
@@ -266,7 +262,6 @@ export class UniversalSearchService {
       return {
         services: {
           metadataSearch: false,
-          hnswSearch: false,
           hybridSearch: false,
           embedding: false,
           memory: false,
@@ -320,7 +315,7 @@ export class UniversalSearchService {
     memoryService?: MemoryService;
     workspaceService?: WorkspaceService;
   }): void {
-    // Update service references (HNSW service removed)
+    // Update service references
     
     if (services.embeddingService) {
       this.embeddingService = services.embeddingService;

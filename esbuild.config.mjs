@@ -31,7 +31,6 @@ const context = await esbuild.context({
     ...builtins,
     "onnxruntime-node",
     "sharp",
-    "chromadb",
     "@xenova/transformers",
     "chromadb-default-embed",
   ],

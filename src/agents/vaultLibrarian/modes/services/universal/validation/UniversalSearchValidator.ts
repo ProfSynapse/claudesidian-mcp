@@ -49,7 +49,6 @@ export class UniversalSearchValidator {
     try {
       // Fast path for valid strings
       if (typeof query === 'string' && query.trim().length > 0) {
-        console.log(`${contextInfo} ✅ Query validation passed - valid string`);
         
         // Record successful validation
         if (context) {
@@ -61,7 +60,6 @@ export class UniversalSearchValidator {
       
       // Handle edge cases with defensive conversions
       if (query === null || query === undefined) {
-        console.log(`${contextInfo} ⚠️ Query is null/undefined - using empty string fallback`);
         
         // Record validation error for monitoring
         if (context) {
@@ -83,22 +81,18 @@ export class UniversalSearchValidator {
       // Convert numeric/boolean values safely
       if (typeof query === 'number' || typeof query === 'boolean') {
         const converted = String(query);
-        console.log(`${contextInfo} ⚠️ Query converted from ${typeof query} to string: "${converted}"`);
         return converted;
       }
       
       // Handle objects/arrays safely
       if (typeof query === 'object') {
-        console.warn(`${contextInfo} ❌ Query is object type - cannot convert safely`);
         return '';
       }
       
       // Fallback for other types
-      console.warn(`${contextInfo} ❌ Query has unsupported type: ${typeof query}`);
       return '';
       
     } catch (error) {
-      console.error(`${contextInfo} ERROR during query validation:`, error);
       return '';
     }
   }
@@ -114,20 +108,17 @@ export class UniversalSearchValidator {
       // Use existing validation patterns from ContentSearchStrategy
       if (this.isValidStringContent(content)) {
         const sanitized = this.sanitizeContent(content as string);
-        console.log(`${contextInfo} ✅ Content validation passed - ${sanitized.length} chars`);
         return sanitized;
       }
       
       // Handle edge cases
       if (content === null || content === undefined) {
-        console.log(`${contextInfo} ⚠️ Content is null/undefined - using empty string fallback`);
         return '';
       }
       
       // Convert other types safely
       if (typeof content === 'number' || typeof content === 'boolean') {
         const converted = String(content);
-        console.log(`${contextInfo} ⚠️ Content converted from ${typeof content} to string`);
         return this.sanitizeContent(converted);
       }
       
@@ -136,24 +127,19 @@ export class UniversalSearchValidator {
         // Try to extract meaningful content from objects
         const obj = content as any;
         if (obj.content && typeof obj.content === 'string') {
-          console.log(`${contextInfo} ⚠️ Extracted content from object.content property`);
           return this.validateSnippetContent(obj.content, context);
         }
         if (obj.text && typeof obj.text === 'string') {
-          console.log(`${contextInfo} ⚠️ Extracted content from object.text property`);
           return this.validateSnippetContent(obj.text, context);
         }
         if (obj.snippet && typeof obj.snippet === 'string') {
-          console.log(`${contextInfo} ⚠️ Extracted content from object.snippet property`);
           return this.validateSnippetContent(obj.snippet, context);
         }
       }
       
-      console.warn(`${contextInfo} ❌ Content cannot be converted to valid string - using empty fallback`);
       return '';
       
     } catch (error) {
-      console.error(`${contextInfo} ERROR during content validation:`, error);
       return '';
     }
   }
@@ -191,7 +177,6 @@ export class UniversalSearchValidator {
       }
       
       if (errors.length > 0) {
-        console.log(`${contextInfo} ❌ Result validation failed:`, errors);
         return { isValid: false, errors, data: null };
       }
       
@@ -202,11 +187,9 @@ export class UniversalSearchValidator {
         score: isNaN(r.score) ? 0 : Math.max(0, Math.min(1, r.score))
       };
       
-      console.log(`${contextInfo} ✅ Result validation passed`);
       return { isValid: true, data: sanitizedResult, errors: [] };
       
     } catch (error) {
-      console.error(`${contextInfo} ERROR during result validation:`, error);
       return {
         isValid: false,
         errors: [`Validation error: ${error instanceof Error ? error.message : String(error)}`],
@@ -237,7 +220,6 @@ export class UniversalSearchValidator {
     const contextInfo = context ? `[${context.component}:${context.stage}]` : '[SNIPPETS_VALIDATION]';
     
     if (!Array.isArray(snippets)) {
-      console.warn(`${contextInfo} ❌ Snippets is not an array, returning empty array`);
       return [];
     }
     
@@ -247,7 +229,6 @@ export class UniversalSearchValidator {
       const snippet = snippets[i];
       
       if (typeof snippet !== 'object' || snippet === null) {
-        console.warn(`${contextInfo} ❌ Snippet ${i} is not an object, skipping`);
         continue;
       }
       
@@ -258,7 +239,6 @@ export class UniversalSearchValidator {
       
       // Skip empty content snippets
       if (validatedContent.length === 0) {
-        console.log(`${contextInfo} ⚠️ Snippet ${i} has no valid content, skipping`);
         continue;
       }
       
@@ -269,7 +249,6 @@ export class UniversalSearchValidator {
       });
     }
     
-    console.log(`${contextInfo} ✅ Validated ${validatedSnippets.length}/${snippets.length} snippets`);
     return validatedSnippets;
   }
 
@@ -371,7 +350,6 @@ export class UniversalSearchValidator {
     try {
       // Fast path for valid strings
       if (typeof filePath === 'string' && filePath.trim().length > 0) {
-        console.log(`${contextInfo} ✅ FilePath validation passed - valid string: "${filePath}"`);
         
         // Record successful validation
         if (context) {
@@ -383,7 +361,6 @@ export class UniversalSearchValidator {
       
       // Handle null/undefined cases
       if (filePath === null || filePath === undefined) {
-        console.log(`${contextInfo} ⚠️ FilePath is null/undefined - using 'unknown-file' fallback`);
         
         // Record validation error for monitoring
         if (context) {
@@ -404,7 +381,6 @@ export class UniversalSearchValidator {
       
       // Handle empty string cases
       if (typeof filePath === 'string' && filePath.trim().length === 0) {
-        console.log(`${contextInfo} ⚠️ FilePath is empty string - using 'untitled-file' fallback`);
         
         if (context) {
           this.errorMonitor.recordValidationError(ValidationErrorMonitor.createError(
@@ -424,7 +400,6 @@ export class UniversalSearchValidator {
       
       // Handle non-string types
       if (typeof filePath !== 'string') {
-        console.warn(`${contextInfo} ❌ FilePath has invalid type: ${typeof filePath} - using type-based fallback`);
         
         if (context) {
           this.errorMonitor.recordValidationError(ValidationErrorMonitor.createError(
@@ -443,11 +418,9 @@ export class UniversalSearchValidator {
       }
       
       // Fallback for any other edge cases
-      console.warn(`${contextInfo} ❌ FilePath validation failed for unexpected case - using generic fallback`);
       return 'unknown-file';
       
     } catch (error) {
-      console.error(`${contextInfo} ERROR during filePath validation:`, error);
       
       if (context) {
         this.errorMonitor.recordValidationError(ValidationErrorMonitor.createError(
@@ -467,7 +440,6 @@ export class UniversalSearchValidator {
       // Record performance metrics
       const validationTime = performance.now() - startTime;
       if (context && validationTime > 1) { // Only log if validation took >1ms
-        console.log(`${contextInfo} 📊 FilePath validation took ${validationTime.toFixed(2)}ms`);
       }
     }
   }

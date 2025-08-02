@@ -88,7 +88,6 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
           try {
             const title = validatedFilePath.split('/').pop()?.replace(/\.md$/, '') || 'Untitled';
           } catch (splitError) {
-            console.error(`[VAULT_LIBRARIAN] Split() error despite validation:`, splitError);
             throw splitError;
           }
         });
@@ -105,7 +104,6 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
       
     } catch (error) {
       const executionTime = performance.now() - startTime;
-      console.error('[VAULT_LIBRARIAN] Universal search failed:', error);
       
       return {
         success: false,

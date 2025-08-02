@@ -16,9 +16,11 @@ import {
   MemoryTraceService,
   SessionService,
   SnapshotService,
-  DatabaseMaintenanceService,
-  CollectionManagerService
+  DatabaseMaintenanceService
 } from './memory';
+import { CollectionManager } from '../providers/chroma/services/CollectionManager';
+import { DirectoryService } from '../providers/chroma/services/DirectoryService';
+import { ObsidianPathManager } from '../../core/ObsidianPathManager';
 
 /**
  * Refactored MemoryService using composition pattern.
@@ -36,7 +38,7 @@ export class MemoryService {
   private sessionService: SessionService;
   private snapshotService: SnapshotService;
   private databaseMaintenanceService: DatabaseMaintenanceService;
-  private collectionManagerService: CollectionManagerService;
+  private collectionManager: CollectionManager;
 
   /**
    * Legacy collection references for backward compatibility
@@ -78,8 +80,22 @@ export class MemoryService {
     this.embeddingService = embeddingService;
     this.settings = settings;
 
-    // Initialize composed services
-    this.collectionManagerService = new CollectionManagerService(vectorStore);
+    // Initialize collection manager with proper dependencies
+    const directoryService = new DirectoryService(this.plugin);
+    // Extract ChromaClient from vectorStore - assuming ChromaVectorStore has client property
+    const chromaClient = (vectorStore as any).client;
+    if (!chromaClient) {
+      throw new Error('ChromaClient not available in the provided vector store');
+    }
+    
+    // Get persistence path from ChromaClient if available
+    const persistentPath = (chromaClient as any).persistentPath || null;
+    
+    this.collectionManager = new CollectionManager(chromaClient, directoryService, persistentPath);
+    
+    // CRITICAL FIX: Inject ObsidianPathManager to prevent path duplication
+    const pathManager = new ObsidianPathManager(this.plugin.app.vault, this.plugin.manifest);
+    this.collectionManager.setPathManager(pathManager);
     this.databaseMaintenanceService = new DatabaseMaintenanceService(
       vectorStore,
       null as any, // Will be set after collection creation
@@ -133,7 +149,7 @@ export class MemoryService {
   private async initializeServices(): Promise<void> {
     try {
       // Initialize the collection manager
-      await this.collectionManagerService.initialize();
+      await this.collectionManager.refreshCollections();
 
       // Initialize each collection separately to better handle individual failures
       await this.memoryTraces.initialize().catch(error => {
@@ -181,14 +197,14 @@ export class MemoryService {
 
   //#endregion
 
-  //#region ChromaDB Collection Management (delegated to CollectionManagerService)
+  //#region ChromaDB Collection Management (delegated to CollectionManager)
 
   /**
    * Get the raw ChromaDB collection manager
-   * @returns ChromaCollectionManager instance
+   * @returns CollectionManager instance
    */
   getCollectionManager() {
-    return this.collectionManagerService.getCollectionManager();
+    return this.collectionManager;
   }
 
   /**
@@ -196,7 +212,7 @@ export class MemoryService {
    * @returns The vector store used by this service
    */
   getVectorStore(): IVectorStore {
-    return this.collectionManagerService.getVectorStore();
+    return this.vectorStore;
   }
 
   /**
@@ -206,7 +222,8 @@ export class MemoryService {
    * @returns The created collection
    */
   async createCollection(name: string, metadata?: Record<string, any>): Promise<any> {
-    return this.collectionManagerService.createCollection(name, metadata);
+    await this.collectionManager.createCollection(name, metadata);
+    return await this.collectionManager.getOrCreateCollection(name);
   }
 
   /**
@@ -215,7 +232,11 @@ export class MemoryService {
    * @returns The collection or null if not found
    */
   async getCollection(name: string): Promise<any> {
-    return this.collectionManagerService.getCollection(name);
+    const hasCollection = await this.collectionManager.hasCollection(name);
+    if (!hasCollection) {
+      return null;
+    }
+    return await this.collectionManager.getOrCreateCollection(name);
   }
 
   /**
@@ -225,7 +246,11 @@ export class MemoryService {
    * @returns The collection
    */
   async getOrCreateCollection(name: string, metadata?: Record<string, any>): Promise<any> {
-    return this.collectionManagerService.getOrCreateCollection(name, metadata);
+    const hasCollection = await this.collectionManager.hasCollection(name);
+    if (!hasCollection && metadata) {
+      await this.collectionManager.createCollection(name, metadata);
+    }
+    return await this.collectionManager.getOrCreateCollection(name);
   }
 
   /**
@@ -234,7 +259,7 @@ export class MemoryService {
    * @returns Whether the collection exists
    */
   async hasCollection(name: string): Promise<boolean> {
-    return this.collectionManagerService.hasCollection(name);
+    return this.collectionManager.hasCollection(name);
   }
 
   /**
@@ -242,7 +267,7 @@ export class MemoryService {
    * @returns Array of collection names
    */
   async listCollections(): Promise<string[]> {
-    return this.collectionManagerService.listCollections();
+    return this.collectionManager.listCollections();
   }
 
   /**
@@ -250,7 +275,19 @@ export class MemoryService {
    * @returns Array of collection details
    */
   async getCollectionDetails(): Promise<Array<{ name: string; metadata?: Record<string, any> }>> {
-    return this.collectionManagerService.getCollectionDetails();
+    const collections = await this.collectionManager.listCollections();
+    const details = [];
+    for (const name of collections) {
+      try {
+        const collection = await this.collectionManager.getOrCreateCollection(name);
+        const metadata = collection.metadata || {};
+        details.push({ name, metadata });
+      } catch (error) {
+        console.warn(`Failed to get details for collection ${name}:`, error);
+        details.push({ name });
+      }
+    }
+    return details;
   }
 
   /**
@@ -258,7 +295,7 @@ export class MemoryService {
    * @param name Collection name
    */
   async deleteCollection(name: string): Promise<void> {
-    return this.collectionManagerService.deleteCollection(name);
+    return this.collectionManager.deleteCollection(name);
   }
 
   /**
@@ -272,7 +309,8 @@ export class MemoryService {
     metadatas?: Record<string, any>[];
     documents?: string[];
   }): Promise<void> {
-    return this.collectionManagerService.addItems(name, items);
+    const collection = await this.collectionManager.getOrCreateCollection(name);
+    await collection.add(items);
   }
 
   /**
@@ -286,7 +324,13 @@ export class MemoryService {
     where?: Record<string, any>;
     include?: string[];
   }) {
-    return this.collectionManagerService.query(name, queryEmbedding, options);
+    const collection = await this.collectionManager.getOrCreateCollection(name);
+    return await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults: options?.nResults || 10,
+      where: options?.where,
+      include: (options?.include as any) || ['embeddings', 'metadatas', 'documents', 'distances']
+    });
   }
 
   /**
@@ -296,7 +340,11 @@ export class MemoryService {
    * @param include What to include in the response
    */
   async getItems(name: string, ids: string[], include?: string[]): Promise<any> {
-    return this.collectionManagerService.getItems(name, ids, include);
+    const collection = await this.collectionManager.getOrCreateCollection(name);
+    return await collection.get({
+      ids,
+      include: (include as any) || ['embeddings', 'metadatas', 'documents']
+    });
   }
 
   /**
@@ -310,7 +358,8 @@ export class MemoryService {
     metadatas?: Record<string, any>[];
     documents?: string[];
   }): Promise<void> {
-    return this.collectionManagerService.updateItems(name, items);
+    const collection = await this.collectionManager.getOrCreateCollection(name);
+    await collection.update(items);
   }
 
   /**
@@ -319,7 +368,8 @@ export class MemoryService {
    * @param ids IDs of items to delete
    */
   async deleteItems(name: string, ids: string[]): Promise<void> {
-    return this.collectionManagerService.deleteItems(name, ids);
+    const collection = await this.collectionManager.getOrCreateCollection(name);
+    await collection.delete({ ids });
   }
 
   /**
@@ -328,7 +378,8 @@ export class MemoryService {
    * @returns Number of items
    */
   async countItems(name: string): Promise<number> {
-    return this.collectionManagerService.countItems(name);
+    const collection = await this.collectionManager.getOrCreateCollection(name);
+    return await collection.count();
   }
 
   //#endregion

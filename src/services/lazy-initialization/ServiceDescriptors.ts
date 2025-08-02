@@ -7,6 +7,10 @@ import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddin
 import { DirectCollectionService } from '../../database/services/DirectCollectionService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { MemoryService } from '../../database/services/MemoryService';
+import { MemoryTraceService } from '../../database/services/memory/MemoryTraceService';
+import { SessionService } from '../../database/services/memory/SessionService';
+import { DatabaseMaintenanceService } from '../../database/services/memory/DatabaseMaintenanceService';
+import { ToolCallCaptureService } from '../toolcall-capture/ToolCallCaptureService';
 import { EventManager } from '../EventManager';
 import { FileEventManagerModular } from '../file-events/FileEventManagerModular';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
@@ -19,7 +23,8 @@ import {
   IInitializationCoordinator,
   createInitializationServices
 } from '../initialization';
-import { MetadataManager } from '../../database/providers/chroma/collection/metadata/MetadataManager';
+// MetadataManager removed with broken collection ecosystem
+import { ServiceRegistry, ServicePriority } from '../registry/ServiceRegistry';
 
 /**
  * Service Descriptors - Configuration-driven service definitions
@@ -133,7 +138,7 @@ export class ServiceDescriptors {
             console.warn('[StateManager] ❌ Vector store missing setCollectionCoordinator method');
         }
 
-        console.log('[ServiceDescriptors] ✅ Coordination injection completed (HNSW services removed)');
+        console.log('[ServiceDescriptors] ✅ Coordination injection completed');
     }
 
     /**
@@ -154,6 +159,9 @@ export class ServiceDescriptors {
             this.createEmbeddingServiceDescriptor(),
             this.createWorkspaceServiceDescriptor(),
             this.createMemoryServiceDescriptor(),
+            this.createMemoryTraceServiceDescriptor(),
+            this.createSessionServiceDescriptor(),
+            this.createToolCallCaptureServiceDescriptor(),
             this.createFileEventManagerDescriptor(),
             this.createUsageStatsServiceDescriptor(),
             this.createFileEmbeddingAccessServiceDescriptor(),
@@ -218,13 +226,28 @@ export class ServiceDescriptors {
             create: async () => {
                 const startTime = Date.now();
                 
-                const vectorStore = await this.createVectorStore();
+                // CRITICAL FIX: Use ServiceRegistry to enforce singleton pattern
+                const serviceRegistry = ServiceRegistry.getInstance();
+                
+                const vectorStore = await serviceRegistry.getOrCreateService(
+                    'vectorStore',
+                    async () => {
+                        console.log('[ServiceDescriptors] Creating VectorStore singleton via ServiceRegistry');
+                        return await this.createVectorStoreSingleton();
+                    },
+                    {
+                        timeout: 30000,
+                        retryCount: 1,
+                        priority: ServicePriority.CRITICAL,
+                        dependencies: []
+                    }
+                );
                 
                 // Note: Collection coordinator injection will be handled by LazyServiceManager
                 // after both vectorStore and coordination services are initialized
                 
                 const totalTime = Date.now() - startTime;
-                console.log(`[STARTUP] VectorStore created in ${totalTime}ms`);
+                console.log(`[STARTUP] VectorStore singleton accessed in ${totalTime}ms`);
                 
                 return vectorStore;
             }
@@ -280,6 +303,72 @@ export class ServiceDescriptors {
                 const vectorStore = await this.dependencyResolver('vectorStore');
                 const embeddingService = await this.dependencyResolver('embeddingService');
                 return new MemoryService(this.plugin, vectorStore, embeddingService, this.plugin.settings);
+            }
+        };
+    }
+
+    private createMemoryTraceServiceDescriptor(): IServiceDescriptor<MemoryTraceService> {
+        return {
+            name: 'memoryTraceService',
+            dependencies: ['vectorStore', 'embeddingService'],
+            stage: LoadingStage.BACKGROUND_SLOW,
+            create: async () => {
+                const vectorStore = await this.dependencyResolver('vectorStore');
+                const embeddingService = await this.dependencyResolver('embeddingService');
+                
+                // Get memory trace collection from vector store
+                const memoryTraces = await vectorStore.getMemoryTraceCollection();
+                
+                // Create database maintenance service
+                const maintenanceService = new DatabaseMaintenanceService(
+                    vectorStore,
+                    memoryTraces,
+                    await vectorStore.getSessionCollection(),
+                    this.plugin.settings.settings.memory || {}
+                );
+                
+                return new MemoryTraceService(memoryTraces, embeddingService, maintenanceService);
+            }
+        };
+    }
+
+    private createSessionServiceDescriptor(): IServiceDescriptor<SessionService> {
+        return {
+            name: 'sessionService',
+            dependencies: ['vectorStore'],
+            stage: LoadingStage.BACKGROUND_SLOW,
+            create: async () => {
+                const vectorStore = await this.dependencyResolver('vectorStore');
+                
+                // Get session collection from vector store
+                const sessions = await vectorStore.getSessionCollection();
+                
+                // Create database maintenance service
+                const maintenanceService = new DatabaseMaintenanceService(
+                    vectorStore,
+                    await vectorStore.getMemoryTraceCollection(),
+                    sessions,
+                    this.plugin.settings.settings.memory || {}
+                );
+                
+                return new SessionService(this.plugin, sessions, maintenanceService);
+            }
+        };
+    }
+
+    private createToolCallCaptureServiceDescriptor(): IServiceDescriptor<ToolCallCaptureService> {
+        return {
+            name: 'toolCallCaptureService',
+            dependencies: ['memoryTraceService', 'sessionService', 'embeddingService'],
+            stage: LoadingStage.BACKGROUND_SLOW,
+            create: async () => {
+                const memoryTraceService = await this.dependencyResolver('memoryTraceService');
+                const sessionService = await this.dependencyResolver('sessionService');
+                const embeddingService = await this.dependencyResolver('embeddingService');
+                
+                // Use SimpleMemoryService for immediate functionality
+                const simpleMemoryService = await this.dependencyResolver('simpleMemoryService');
+                return new ToolCallCaptureService(simpleMemoryService, sessionService);
             }
         };
     }
@@ -343,7 +432,7 @@ export class ServiceDescriptors {
                 return new UsageStatsService(
                     embeddingService,
                     vectorStore,
-                    this.plugin.settings.settings.memory,
+                    this.plugin.settings.settings.memory || {},
                     eventManager
                 );
             }
@@ -400,7 +489,7 @@ export class ServiceDescriptors {
     }
 
     // Factory methods
-    private async createVectorStore(): Promise<IVectorStore> {
+    private async createVectorStoreSingleton(): Promise<IVectorStore> {
         const path = require('path');
         
         let basePath;
@@ -410,8 +499,9 @@ export class ServiceDescriptors {
             throw new Error('FileSystemAdapter not available');
         }
         
-        const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.plugin.manifest.id);
-        const dataDir = path.join(pluginDir, 'data', 'chroma-db');
+        // Use simple string concatenation to avoid path duplication in Electron environment
+        const pluginDir = `${basePath}/.obsidian/plugins/${this.plugin.manifest.id}`;
+        const dataDir = `${pluginDir}/data/chroma-db`;
         
         const memorySettings = this.plugin.settings.settings.memory;
         if (!memorySettings) {

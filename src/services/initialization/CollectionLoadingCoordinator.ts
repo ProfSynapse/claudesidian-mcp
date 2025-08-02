@@ -12,7 +12,7 @@ import {
   CollectionMetadata 
 } from './interfaces/ICollectionLoadingCoordinator';
 import { IInitializationStateManager } from './interfaces/IInitializationStateManager';
-import { CollectionLoader } from '../../database/providers/chroma/client/lifecycle/CollectionLoader';
+// CollectionLoader removed - functionality moved to CollectionManager
 import { PersistenceManager, FileSystemInterface } from '../../database/providers/chroma/services/PersistenceManager';
 
 export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinator {
@@ -22,19 +22,21 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
   private loadedCollections = new Map<string, any>();
   private collectionMetadata = new Map<string, CollectionMetadata>();
   private lastResult: CollectionLoadingResult | null = null;
-  private collectionLoader: CollectionLoader | null = null;
+  // CollectionLoader removed - functionality moved to CollectionManager
 
   constructor(
     private readonly plugin: Plugin,
     private readonly stateManager: IInitializationStateManager,
     private readonly vectorStore: any // Will be injected as dependency
   ) {
-    this.initializeCollectionLoader();
+    // TODO: Replace CollectionLoader with CollectionManager functionality
+    // this.initializeCollectionLoader();
   }
   
   /**
    * Initialize the collection loader with proper file system interface
    */
+  /* TODO: Replace CollectionLoader with CollectionManager functionality
   private initializeCollectionLoader(): void {
     try {
       const fs = require('fs');
@@ -48,8 +50,9 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
         throw new Error('FileSystemAdapter not available');
       }
       
-      const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.plugin.manifest.id);
-      const dataDir = path.join(pluginDir, 'data', 'chroma-db');
+      // Use simple string concatenation to avoid path duplication in Electron environment
+      const pluginDir = `${basePath}/.obsidian/plugins/${this.plugin.manifest.id}`;
+      const dataDir = `${pluginDir}/data/chroma-db`;
       
       // Create file system interface
       const fsInterface: FileSystemInterface = {
@@ -65,15 +68,16 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
       };
       
       // Initialize collection loader
-      this.collectionLoader = new CollectionLoader(
-        dataDir,
-        fsInterface,
-        new PersistenceManager(fsInterface)
-      );
+      // this.collectionLoader = new CollectionLoader(
+      //   dataDir,
+      //   fsInterface,
+      //   new PersistenceManager(fsInterface)
+      // );
     } catch (error) {
       console.error('[CollectionLoadingCoordinator] Failed to initialize collection loader:', error);
     }
   }
+  */
 
   /**
    * Ensures all collections are loaded exactly once
@@ -111,6 +115,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
   /**
    * Performs the actual collection loading using the CollectionLoader
    */
+  /* TODO: Replace CollectionLoader with CollectionManager functionality
   private async performCollectionLoading(): Promise<CollectionLoadingResult> {
     const startTime = Date.now();
     const errors: Array<{ collectionName: string; error: Error }> = [];
@@ -286,5 +291,16 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
     }
 
     throw new Error(`Failed to load collections: ${result.error?.message || 'Unknown error'}`);
+  }
+
+  // Temporary stub implementation until CollectionManager integration is complete
+  private async performCollectionLoading(): Promise<CollectionLoadingResult> {
+    console.log('[CollectionLoadingCoordinator] Using stub implementation - CollectionManager integration pending');
+    return {
+      success: true,
+      collectionsLoaded: 0,
+      loadTime: 0,
+      errors: []
+    };
   }
 }

@@ -11,14 +11,14 @@ export interface IChromaClientFactory {
    * @param options Storage configuration options
    * @returns Configured ChromaDB client instance
    */
-  createClient(options: IStorageOptions): InstanceType<typeof ChromaClient>;
+  createClient(options: IStorageOptions): Promise<InstanceType<typeof ChromaClient>>;
 
   /**
    * Validate client configuration
    * @param options Storage configuration options
    * @returns true if configuration is valid, false otherwise
    */
-  validateConfiguration(options: IStorageOptions): boolean;
+  validateConfiguration(options: IStorageOptions): Promise<boolean>;
 
   /**
    * Get the storage path for the client

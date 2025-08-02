@@ -177,15 +177,9 @@ export class ServiceLifecycleManager implements IServiceLifecycle {
         // Create the service instance
         const instance = await descriptor.create();
         
-        // CRITICAL FIX: Do not call initialize() on HNSW service - coordination system handles it
-        // Initialize the service if it has an initialize method (except for hnswSearchService)
+        // Initialize the service if it has an initialize method  
         if (instance && typeof (instance as any).initialize === 'function') {
-            // Special handling for HNSW service - let coordination system handle initialization
-            if (descriptor.name === 'hnswSearchService') {
-                console.log('[ServiceLifecycle] HNSW service created - initialization deferred to coordination system');
-            } else {
-                await (instance as any).initialize();
-            }
+            await (instance as any).initialize();
         }
         
         return instance;

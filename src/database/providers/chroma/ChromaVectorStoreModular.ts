@@ -17,11 +17,15 @@ import { IChromaClientFactory } from './services/interfaces/IChromaClientFactory
 import { ICollectionManager } from './services/interfaces/ICollectionManager';
 import { IDiagnosticsService, RepairResult, ValidationResult } from './services/interfaces/IDiagnosticsService';
 import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorService';
-import { CollectionLoader } from './client/lifecycle/CollectionLoader';
 import { PersistenceManager, FileSystemInterface } from './services/PersistenceManager';
 
 // Import initialization coordination
 import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
+
+// Import collection lifecycle management
+import { CollectionLifecycleManager, CollectionCreationResult } from '../../services/CollectionLifecycleManager';
+import { CollectionHealthMonitor } from '../../services/CollectionHealthMonitor';
+import { ObsidianPathManager } from '../../../core/ObsidianPathManager';
 
 // Define standard include types for vector store compatibility
 type StoreIncludeType = 'embeddings' | 'metadatas' | 'documents' | 'distances';
@@ -45,7 +49,6 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   private collectionManager!: ICollectionManager;
   private diagnosticsService!: IDiagnosticsService;
   private sizeCalculatorService!: ISizeCalculatorService;
-  private collectionLoader!: CollectionLoader;
   
   // ChromaDB client
   private client: InstanceType<typeof ChromaClient> | null = null;
@@ -55,6 +58,10 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   
   // Collection loading coordinator (injected)
   private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
+  
+  // Collection lifecycle management
+  private collectionLifecycleManager: CollectionLifecycleManager | null = null;
+  private collectionHealthMonitor: CollectionHealthMonitor | null = null;
 
   /**
    * Create a new modular ChromaDB vector store
@@ -81,8 +88,8 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    * This demonstrates Dependency Inversion Principle - we depend on abstractions
    */
   private initializeServices(): void {
-    // Create directory service (no dependencies)
-    this.directoryService = new DirectoryService();
+    // Create directory service (requires plugin)
+    this.directoryService = new DirectoryService(this.plugin);
     
     // Create client factory (depends on directory service)
     this.clientFactory = new ChromaClientFactory(this.directoryService, this.plugin);
@@ -95,25 +102,45 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    */
   async initialize(): Promise<void> {
     try {
+      console.log('[ChromaVectorStoreModular] Starting initialization...');
+      console.log('[ChromaVectorStoreModular] Initial config:', this.config);
+      
       // Resolve configuration with sensible defaults
       this.resolveConfiguration();
+      console.log('[ChromaVectorStoreModular] Config after resolution:', this.config);
       
       // Validate configuration
-      if (!this.clientFactory.validateConfiguration(this.config)) {
+      console.log('[ChromaVectorStoreModular] Validating configuration...');
+      const isValid = await this.clientFactory.validateConfiguration(this.config);
+      console.log(`[ChromaVectorStoreModular] Configuration valid: ${isValid}`);
+      
+      if (!isValid) {
+        console.error('[ChromaVectorStoreModular] Configuration validation failed');
         throw new Error('Invalid ChromaDB configuration');
       }
       
       // Create client using factory
-      this.client = this.clientFactory.createClient(this.config);
+      this.client = await this.clientFactory.createClient(this.config);
       
       // Initialize remaining services that depend on the client
       this.initializeClientDependentServices();
       
+      // CRITICAL FIX: Set initialized flag AFTER client and services are ready
+      // This must happen BEFORE ensureStandardCollections() so hasCollection() works
+      this.initialized = true;
+      
       // Load existing collections using coordination system
       await this.loadCollectionsWithCoordination();
       
-      this.initialized = true;
+      // CRITICAL FIX: Ensure standard collections exist after loading
+      await this.ensureStandardCollections();
+      
+      // Initialize collection health monitoring
+      await this.initializeHealthMonitoring();
+      
     } catch (error) {
+      // Reset initialized flag on error
+      this.initialized = false;
       throw new Error(`ChromaDB initialization failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -133,6 +160,10 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       this.config.persistentPath
     );
     
+    // CRITICAL FIX: Inject ObsidianPathManager to prevent path duplication
+    const pathManager = new ObsidianPathManager(this.plugin.app.vault, this.plugin.manifest);
+    this.collectionManager.setPathManager(pathManager);
+    
     // Create collection loader (depends on directory service)
     // Create FileSystemInterface adapter from DirectoryService
     const fs = require('fs');
@@ -148,11 +179,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       rmdirSync: (path: string) => fs.rmdirSync(path)
     };
     
-    this.collectionLoader = new CollectionLoader(
-      this.config.persistentPath!,
-      fsInterface,
-      new PersistenceManager(fsInterface)
-    );
+    // CollectionManager handles collection loading and recovery
     
     // Create size calculator service (depends on directory and collection services)
     this.sizeCalculatorService = new SizeCalculatorService(
@@ -197,28 +224,116 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Collections will be loaded by coordinator in proper initialization phase
     }
   }
+
+  /**
+   * Ensure all standard collections exist and are properly initialized
+   * ENHANCED: Now checks filesystem first before creating collections
+   */
+  private async ensureStandardCollections(): Promise<void> {
+    try {
+      console.log('[ChromaVectorStore] Ensuring standard collections exist...');
+      
+      // Define standard collections
+      const standardCollections = [
+        'file_embeddings',
+        'memory_traces', 
+        'sessions',
+        'workspace_context'
+      ];
+      
+      let createdCount = 0;
+      let existingCount = 0;
+      let recoveredCount = 0;
+      
+      for (const collectionName of standardCollections) {
+        try {
+          // CRITICAL FIX: Use enhanced hasCollection() with filesystem detection
+          const exists = await this.collectionManager.hasCollection(collectionName);
+          
+          if (exists) {
+            console.log(`[ChromaVectorStore] ✅ Collection ${collectionName} exists and loaded`);
+            existingCount++;
+          } else {
+            // Collection doesn't exist - create it
+            console.log(`[ChromaVectorStore] Creating missing collection: ${collectionName}`);
+            await this.collectionManager.createCollection(collectionName, {
+              'hnsw:space': 'cosine',
+              description: `Standard collection: ${collectionName}`,
+              createdBy: 'ChromaVectorStoreModular',
+              createdAt: new Date().toISOString()
+            });
+            createdCount++;
+          }
+        } catch (collectionError) {
+          console.warn(`[ChromaVectorStore] Failed to ensure collection ${collectionName}:`, collectionError);
+          // Continue with other collections
+        }
+      }
+      
+      // Initialize collection lifecycle manager after collections are ready
+      if (!this.collectionLifecycleManager && (existingCount > 0 || createdCount > 0)) {
+        this.collectionLifecycleManager = new CollectionLifecycleManager(
+          this, 
+          this.collectionManager
+        );
+        console.log('[ChromaVectorStore] ✅ Collection lifecycle manager initialized');
+      }
+      
+      console.log(`[ChromaVectorStore] ✅ Standard collections ready: ${existingCount} existing, ${createdCount} created, ${recoveredCount} recovered`);
+      
+      // Final refresh to ensure collection manager state is synchronized
+      await this.collectionManager.refreshCollections();
+      
+    } catch (error) {
+      const errorMsg = `Standard collection initialization failed: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(`[ChromaVectorStore] ❌ ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+  }
+
+  /**
+   * Initialize collection health monitoring (optional)
+   */
+  private async initializeHealthMonitoring(): Promise<void> {
+    try {
+      if (!this.collectionLifecycleManager) {
+        return; // Skip if lifecycle manager not available
+      }
+      
+      // Initialize health monitor
+      this.collectionHealthMonitor = new CollectionHealthMonitor(
+        this,
+        this.collectionLifecycleManager
+      );
+      
+      // Start monitoring (non-blocking)
+      this.collectionHealthMonitor.startMonitoring().catch(error => {
+        console.warn('[ChromaVectorStore] Health monitoring startup failed:', error);
+        // Continue without health monitoring - it's not critical
+      });
+      
+      console.log('[ChromaVectorStore] ✅ Collection health monitoring initialized');
+      
+    } catch (error) {
+      console.warn('[ChromaVectorStore] Health monitoring initialization failed:', error);
+      // Continue without health monitoring - it's not critical for core functionality
+    }
+  }
   
   /**
-   * Load existing collections from disk with actual data (fallback method)
-   * This replaces the simple refreshCollections() with proper data loading
+   * Load collections from disk during initialization
+   * Delegates to CollectionManager which handles filesystem recovery
    */
   private async loadCollectionsFromDisk(): Promise<void> {
     try {
-      // Use CollectionLoader to load collections with their data
-      const loadResult = await this.collectionLoader.loadCollectionsFromDisk();
-      
-      if (loadResult.success && loadResult.loadedCollections) {
-        // Register loaded collections with the CollectionManager
-        for (const [collectionName, collection] of loadResult.loadedCollections) {
-          this.collectionManager.registerCollection(collectionName, collection);
-        }
-      } else {
-        // Fallback to the old method if loading fails
-        await this.collectionManager.refreshCollections();
-      }
-    } catch (error) {
-      // Fallback to the old method on error
+      // CollectionManager handles filesystem recovery automatically during initialization
+      // The recoverCollectionsFromFilesystem() method is called internally
       await this.collectionManager.refreshCollections();
+      
+      console.log('[ChromaVectorStoreModular] Collections loaded from disk via CollectionManager');
+    } catch (error) {
+      console.error('[ChromaVectorStoreModular] Error loading collections from disk:', error);
+      throw error;
     }
   }
 
@@ -240,6 +355,12 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    */
   async close(): Promise<void> {
     try {
+      // Stop health monitoring
+      if (this.collectionHealthMonitor) {
+        await this.collectionHealthMonitor.stopMonitoring();
+        this.collectionHealthMonitor = null;
+      }
+      
       if (this.client && !this.config.inMemory) {
         // Use diagnostics service to ensure proper shutdown
         if (typeof (this.client as any).saveAllCollections === 'function') {
@@ -255,6 +376,9 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
         this.collectionManager.clearCache();
       }
       
+      // Cleanup lifecycle manager
+      this.collectionLifecycleManager = null;
+      
       this.client = null;
       this.initialized = false;
     } catch (error) {
@@ -262,6 +386,8 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Reset state even if there was an error
       this.client = null;
       this.initialized = false;
+      this.collectionLifecycleManager = null;
+      this.collectionHealthMonitor = null;
     }
   }
 
@@ -534,6 +660,62 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   }> {
     this.ensureInitialized();
     return await this.diagnosticsService.runHealthCheck();
+  }
+
+  /**
+   * Get collection lifecycle manager for advanced collection operations
+   */
+  getCollectionLifecycleManager(): CollectionLifecycleManager | null {
+    return this.collectionLifecycleManager;
+  }
+
+  /**
+   * Get collection health monitor for health monitoring operations
+   */
+  getCollectionHealthMonitor(): CollectionHealthMonitor | null {
+    return this.collectionHealthMonitor;
+  }
+
+  /**
+   * Perform collection health check on all collections
+   * Exposes lifecycle manager functionality
+   */
+  async performCollectionHealthCheck(): Promise<any> {
+    this.ensureInitialized();
+    
+    if (!this.collectionLifecycleManager) {
+      throw new Error('Collection lifecycle manager not initialized');
+    }
+    
+    return await this.collectionLifecycleManager.performHealthCheck();
+  }
+
+  /**
+   * Validate specific collection health
+   * Exposes lifecycle manager functionality  
+   */
+  async validateCollectionHealth(collectionName: string): Promise<any> {
+    this.ensureInitialized();
+    
+    if (!this.collectionLifecycleManager) {
+      throw new Error('Collection lifecycle manager not initialized');
+    }
+    
+    return await this.collectionLifecycleManager.validateCollection(collectionName);
+  }
+
+  /**
+   * Recover a specific collection
+   * Exposes lifecycle manager functionality
+   */
+  async recoverCollection(collectionName: string, strategy: 'soft' | 'hard' | 'data' = 'soft'): Promise<any> {
+    this.ensureInitialized();
+    
+    if (!this.collectionLifecycleManager) {
+      throw new Error('Collection lifecycle manager not initialized');
+    }
+    
+    return await this.collectionLifecycleManager.recoverCollection(collectionName, strategy);
   }
 
   // Utility methods

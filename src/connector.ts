@@ -4,7 +4,7 @@ import { MCPServer } from './server';
 import { EventManager } from './services/EventManager';
 import { AgentManager } from './services/AgentManager';
 import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
-import { LazyServiceManager } from './services/LazyServiceManager';
+import { SimpleServiceManager } from './services/SimpleServiceManager';
 import {
     ContentManagerAgent,
     CommandManagerAgent,
@@ -20,6 +20,7 @@ import { LLMProviderManager } from './services/LLMProviderManager';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from './types';
 import { LLMValidationService } from './services/LLMValidationService';
 import { EmbeddingProviderManager } from './database/services/embedding/EmbeddingProviderManager';
+import { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
 
 /**
  * Interface for agent-mode tool call parameters
@@ -40,7 +41,9 @@ export class MCPConnector {
     private eventManager: EventManager;
     private sessionContextManager: SessionContextManager;
     private customPromptStorage?: CustomPromptStorageService;
-    private serviceManager?: LazyServiceManager;
+    private serviceManager?: SimpleServiceManager;
+    private toolCallCaptureService?: ToolCallCaptureService;
+    private pendingToolCalls = new Map<string, any>();
     
     constructor(
         private app: App,
@@ -70,27 +73,109 @@ export class MCPConnector {
             this.sessionContextManager, 
             undefined, 
             this.customPromptStorage,
-            this.serviceManager ? (toolName: string, params: any) => this.onToolCall(toolName, params) : undefined
+            this.serviceManager ? (toolName: string, params: any) => this.onToolCall(toolName, params) : undefined,
+            this.serviceManager ? (toolName: string, params: any, response: any, success: boolean, executionTime: number) => this.onToolResponse(toolName, params, response, success, executionTime) : undefined
         );
         
         // Full initialization deferred to start() method
     }
     
     /**
-     * Handle tool calls to trigger lazy loading
+     * Handle tool call responses - capture completed tool calls
+     */
+    private async onToolResponse(toolName: string, params: any, response: any, success: boolean, executionTime: number): Promise<void> {
+        console.log('[MCPConnector] 🎯 onToolResponse triggered:', toolName, 'success:', success, 'executionTime:', executionTime + 'ms');
+        
+        try {
+            // Find the matching pending tool call
+            const pendingEntries = Array.from(this.pendingToolCalls.entries());
+            const matchingEntry = pendingEntries.find(([toolCallId, capture]) => {
+                return capture.agent === toolName.split('_')[0] && capture.mode === toolName.split('_')[1];
+            });
+            
+            if (matchingEntry) {
+                const [toolCallId, captureInfo] = matchingEntry;
+                console.log('[MCPConnector] 🎯 MEMORY-TRACE: Capturing tool call response for:', toolCallId);
+                
+                // Initialize tool call capture service if not already done
+                await this.initializeToolCallCaptureService();
+                
+                if (this.toolCallCaptureService) {
+                    // Create response object
+                    const toolResponse: any = {
+                        result: response,
+                        success: success,
+                        executionTime: executionTime,
+                        timestamp: Date.now(),
+                        resultType: this.inferResultType(response),
+                        resultSummary: this.generateResultSummary(response),
+                        affectedResources: this.extractAffectedResources(response, params)
+                    };
+                    
+                    // Add error information if unsuccessful
+                    if (!success && response?.error) {
+                        toolResponse.error = {
+                            type: 'ExecutionError',
+                            message: response.error,
+                            code: 'TOOL_EXECUTION_FAILED'
+                        };
+                    }
+                    
+                    await this.toolCallCaptureService.captureResponse(toolCallId, toolResponse);
+                    console.log('[MCPConnector] 🎯 MEMORY-TRACE: Response captured successfully for toolCallId:', toolCallId);
+                    
+                    // Remove from pending
+                    this.pendingToolCalls.delete(toolCallId);
+                } else {
+                    console.warn('[MCPConnector] 🚨 ToolCallCaptureService not available for response capture:', toolName);
+                }
+            } else {
+                console.warn('[MCPConnector] 🚨 No matching pending tool call found for response:', toolName);
+            }
+        } catch (error) {
+            console.error('[MCPConnector] Error in onToolResponse capture:', error);
+        }
+    }
+    
+    /**
+     * Handle tool calls - services now load on demand automatically
      */
     private async onToolCall(toolName: string, params: any): Promise<void> {
-        // Trigger vector store loading on any tool call
-        if (this.serviceManager) {
-            await this.serviceManager.onToolCall();
+        console.log('[MCPConnector] 🎯 onToolCall triggered:', toolName, 'with params:', params);
+        
+        try {
+            // Initialize tool call capture service if not already done
+            await this.initializeToolCallCaptureService();
             
-            // If this is a workspace-related operation, trigger workspace caching
-            if (this.isWorkspaceOperation(toolName, params)) {
-                const workspaceId = this.extractWorkspaceId(params);
-                if (workspaceId) {
-                    await this.serviceManager.onWorkspaceLoad(workspaceId);
-                }
+            if (this.toolCallCaptureService) {
+                // Parse tool name to get agent and mode
+                const [agent, mode] = toolName.split('_');
+                
+                // Generate unique tool call ID
+                const toolCallId = this.generateToolCallId();
+                
+                // Create tool call request
+                const request = {
+                    toolCallId,
+                    agent,
+                    mode,
+                    params,
+                    timestamp: Date.now(),
+                    source: 'mcp-client' as const,
+                    workspaceContext: this.extractWorkspaceContext(params)
+                };
+                
+                console.log('[MCPConnector] 🎯 MEMORY-TRACE: Capturing tool call request:', toolCallId, agent, mode);
+                await this.toolCallCaptureService.captureRequest(request);
+                
+                // Store for response capture later
+                this.pendingToolCalls.set(toolCallId, { agent, mode, params, captureStartTime: Date.now() });
+                
+            } else {
+                console.warn('[MCPConnector] 🚨 ToolCallCaptureService not available for tool call:', toolName);
             }
+        } catch (error) {
+            console.error('[MCPConnector] Error in onToolCall capture:', error);
         }
     }
     
@@ -367,7 +452,7 @@ export class MCPConnector {
     }
     
     /**
-     * Call a tool using the new agent-mode architecture
+     * Call a tool using the new agent-mode architecture with integrated tool call capture
      *
      * @param params The agent, mode, and parameters for the tool call
      * @returns Promise that resolves with the result of the tool call
@@ -385,8 +470,43 @@ export class MCPConnector {
      * });
      */
     async callTool(params: AgentModeParams): Promise<any> {
+        const captureStartTime = Date.now();
+        let toolCallId: string | undefined;
+        let captureContext: any = null;
+        
         try {
             const { agent, mode, params: modeParams } = params;
+            
+            // Initialize tool call capture service if not already done
+            console.log('[MCPConnector] 🔍 DIAGNOSTIC: Attempting to initialize ToolCallCaptureService...');
+            await this.initializeToolCallCaptureService();
+            console.log('[MCPConnector] 🔍 DIAGNOSTIC: ToolCallCaptureService initialization completed, service available:', !!this.toolCallCaptureService);
+            
+            // Generate unique tool call ID for capture
+            toolCallId = this.generateToolCallId();
+            
+            
+            // CAPTURE REQUEST (Non-blocking)
+            if (this.toolCallCaptureService) {
+                console.log('[MCPConnector] 🎯 CAPTURE DEBUG: ToolCallCaptureService found, capturing request for', agent, mode);
+                try {
+                    captureContext = await this.toolCallCaptureService.captureRequest({
+                        toolCallId,
+                        agent,
+                        mode,
+                        params: modeParams,
+                        timestamp: captureStartTime,
+                        source: 'mcp-client',
+                        workspaceContext: this.extractWorkspaceContext(modeParams)
+                    });
+                    console.log('[MCPConnector] 🎯 CAPTURE DEBUG: Request captured successfully for toolCallId:', toolCallId);
+                } catch (captureError) {
+                    // Don't fail the tool call if capture fails
+                    console.warn('[MCPConnector] Tool call request capture failed:', captureError);
+                }
+            } else {
+                console.warn('[MCPConnector] 🚨 CAPTURE DEBUG: ToolCallCaptureService NOT FOUND - no capture will happen');
+            }
             
             // Validate batch operations if they exist
             if (modeParams && modeParams.operations && Array.isArray(modeParams.operations)) {
@@ -430,8 +550,50 @@ export class MCPConnector {
             }
             
             // Execute the mode using the server's executeAgentMode method
-            return await this.server.executeAgentMode(agent, mode, modeParams);
+            const result = await this.server.executeAgentMode(agent, mode, modeParams);
+            
+            // CAPTURE SUCCESSFUL RESPONSE (Non-blocking)
+            if (this.toolCallCaptureService && toolCallId) {
+                try {
+                    await this.toolCallCaptureService.captureResponse(toolCallId, {
+                        result: result,
+                        success: true,
+                        executionTime: Date.now() - captureStartTime,
+                        timestamp: Date.now(),
+                        resultType: this.inferResultType(result),
+                        resultSummary: this.generateResultSummary(result),
+                        affectedResources: this.extractAffectedResources(result, modeParams)
+                    });
+                } catch (captureError) {
+                    // Don't fail the tool call if capture fails
+                    console.warn('[MCPConnector] Tool call response capture failed:', captureError);
+                }
+            }
+            
+            return result;
+            
         } catch (error) {
+            // CAPTURE ERROR RESPONSE (Non-blocking)
+            if (this.toolCallCaptureService && toolCallId) {
+                try {
+                    await this.toolCallCaptureService.captureResponse(toolCallId, {
+                        result: null,
+                        success: false,
+                        error: {
+                            type: (error as Error).constructor.name,
+                            message: (error as Error).message,
+                            code: (error as any).code,
+                            stack: (error as Error).stack
+                        },
+                        executionTime: Date.now() - captureStartTime,
+                        timestamp: Date.now()
+                    });
+                } catch (captureError) {
+                    // Don't fail the tool call if capture fails
+                    console.warn('[MCPConnector] Tool call error capture failed:', captureError);
+                }
+            }
+            
             if (error instanceof McpError) {
                 throw error;
             }
@@ -444,6 +606,168 @@ export class MCPConnector {
         }
     }
     
+    
+    /**
+     * Initialize the tool call capture service - now guaranteed to be ready immediately
+     * @private
+     */
+    private async initializeToolCallCaptureService(): Promise<void> {
+        if (this.toolCallCaptureService) {
+            return; // Already initialized
+        }
+        
+        try {
+            const plugin = this.plugin as any;
+            console.log('[MCPConnector] 🔍 DIAGNOSTIC: Plugin available:', !!plugin);
+            console.log('[MCPConnector] 🔍 DIAGNOSTIC: ServiceManager available:', !!plugin.serviceManager);
+            
+            // With SimpleServiceManager, toolCallCaptureService is immediately available
+            if (plugin.serviceManager) {
+                const service = plugin.serviceManager.getIfReady('toolCallCaptureService');
+                console.log('[MCPConnector] 🔍 DIAGNOSTIC: ToolCallCaptureService from serviceManager:', !!service);
+                if (service) {
+                    console.log('[MCPConnector] 🎯 ToolCallCaptureService successfully retrieved from SimpleServiceManager');
+                    this.toolCallCaptureService = service;
+                    return;
+                } else {
+                    console.warn('[MCPConnector] 🚨 DIAGNOSTIC: ToolCallCaptureService not ready in SimpleServiceManager');
+                }
+            }
+            
+            // Fallback: check plugin directly
+            if (plugin.toolCallCaptureService) {
+                console.log('[MCPConnector] 🔍 DIAGNOSTIC: Using fallback - ToolCallCaptureService from plugin directly');
+                this.toolCallCaptureService = plugin.toolCallCaptureService;
+                return;
+            }
+            
+            throw new Error('ToolCallCaptureService should be immediately available with SimpleServiceManager');
+            
+        } catch (error) {
+            console.warn('[MCPConnector] Failed to initialize tool call capture service:', error);
+            // Don't throw - capture is optional
+        }
+    }
+    
+    /**
+     * Generate a unique tool call ID
+     * @private
+     */
+    private generateToolCallId(): string {
+        return `tool_call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    /**
+     * Extract workspace context from parameters
+     * @private
+     */
+    private extractWorkspaceContext(params: any): any {
+        // Direct workspace context
+        if (params?.workspaceContext) {
+            return params.workspaceContext;
+        }
+        
+        // Try to extract from session context
+        if (params?.sessionId) {
+            return {
+                sessionId: params.sessionId,
+                workspaceId: 'unknown'
+            };
+        }
+        
+        // Extract from file paths
+        if (params?.filePath) {
+            return {
+                workspaceId: this.detectWorkspaceFromPath(params.filePath),
+                workspacePath: [params.filePath.split('/')[0]]
+            };
+        }
+        
+        // Extract from batch operations
+        if (params?.operations && Array.isArray(params.operations)) {
+            const firstOperation = params.operations[0];
+            if (firstOperation?.params?.filePath) {
+                return {
+                    workspaceId: this.detectWorkspaceFromPath(firstOperation.params.filePath),
+                    workspacePath: [firstOperation.params.filePath.split('/')[0]]
+                };
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Detect workspace from file path (simple implementation)
+     * @private
+     */
+    private detectWorkspaceFromPath(filePath: string): string {
+        // Simple workspace detection - could be enhanced
+        return 'default-workspace';
+    }
+    
+    /**
+     * Infer the result type from the result object
+     * @private
+     */
+    private inferResultType(result: any): string {
+        if (result === null || result === undefined) return 'null';
+        if (Array.isArray(result)) return 'array';
+        return typeof result;
+    }
+    
+    /**
+     * Generate a summary of the result
+     * @private
+     */
+    private generateResultSummary(result: any): string {
+        if (!result) return 'no result';
+        if (typeof result === 'string') {
+            return result.length > 100 ? `${result.substring(0, 100)}...` : result;
+        }
+        if (typeof result === 'object') {
+            if (Array.isArray(result)) {
+                return `array with ${result.length} items`;
+            }
+            const keys = Object.keys(result);
+            return `object with ${keys.length} properties (${keys.slice(0, 3).join(', ')})${keys.length > 3 ? '...' : ''}`;
+        }
+        return String(result);
+    }
+    
+    /**
+     * Extract affected resources from result and parameters
+     * @private
+     */
+    private extractAffectedResources(result: any, params: any): string[] {
+        const resources: string[] = [];
+        
+        // From parameters
+        if (params?.filePath) resources.push(params.filePath);
+        if (params?.paths && Array.isArray(params.paths)) {
+            resources.push(...params.paths);
+        }
+        if (params?.operations && Array.isArray(params.operations)) {
+            for (const op of params.operations) {
+                if (op.params?.filePath) resources.push(op.params.filePath);
+                if (op.path) resources.push(op.path);
+            }
+        }
+        
+        // From result
+        if (result?.affectedFiles && Array.isArray(result.affectedFiles)) {
+            resources.push(...result.affectedFiles);
+        }
+        if (result?.createdFiles && Array.isArray(result.createdFiles)) {
+            resources.push(...result.createdFiles);
+        }
+        if (result?.modifiedFiles && Array.isArray(result.modifiedFiles)) {
+            resources.push(...result.modifiedFiles);
+        }
+        
+        // Remove duplicates
+        return Array.from(new Set(resources));
+    }
     
     /**
      * Start the MCP server

@@ -54,7 +54,7 @@ export class ValidationErrorMonitor {
 
     // Log immediately for critical errors
     if (this.isCriticalError(error)) {
-      console.error('[UNIVERSAL_SEARCH_VALIDATION] 🚨 CRITICAL ERROR:', {
+      console.error('[ValidationErrorMonitor] Critical validation error:', {
         component: error.component,
         stage: error.stage,
         operation: error.operation,
@@ -64,7 +64,7 @@ export class ValidationErrorMonitor {
         timestamp: new Date(error.timestamp).toISOString()
       });
     } else if (error.severity === 'high') {
-      console.warn('[UNIVERSAL_SEARCH_VALIDATION] ⚠️ HIGH SEVERITY ERROR:', {
+      console.warn('[ValidationErrorMonitor] High severity validation error:', {
         component: error.component,
         stage: error.stage,
         errorType: error.errorType,
@@ -87,7 +87,6 @@ export class ValidationErrorMonitor {
   recordValidationSuccess(component: string, stage: string, operation: string): void {
     // For now, just log successful validations in debug mode
     // Could be extended to track success rates
-    console.log(`[VALIDATION_SUCCESS] ${component}:${stage}:${operation} completed successfully`);
   }
 
   /**
@@ -183,7 +182,6 @@ export class ValidationErrorMonitor {
    */
   clearErrors(): void {
     this.errors = [];
-    console.log('[VALIDATION_ERROR_MONITOR] All validation errors cleared');
   }
 
   /**
@@ -221,7 +219,6 @@ export class ValidationErrorMonitor {
     
     const removedCount = initialCount - this.errors.length;
     if (removedCount > 0) {
-      console.log(`[VALIDATION_ERROR_MONITOR] Cleaned up ${removedCount} old validation errors`);
     }
   }
 

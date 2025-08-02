@@ -8,7 +8,7 @@ export interface IDirectoryService {
    * @param path Directory path to ensure exists
    * @throws Error if directory creation fails
    */
-  ensureDirectoryExists(path: string): void;
+  ensureDirectoryExists(path: string): Promise<void>;
 
   /**
    * Calculate the size of a directory in MB
@@ -22,28 +22,28 @@ export interface IDirectoryService {
    * @param path Directory path to validate
    * @returns true if permissions are OK, false otherwise
    */
-  validateDirectoryPermissions(path: string): boolean;
+  validateDirectoryPermissions(path: string): Promise<boolean>;
 
   /**
    * Check if a directory exists
    * @param path Directory path to check
    * @returns true if directory exists, false otherwise
    */
-  directoryExists(path: string): boolean;
+  directoryExists(path: string): Promise<boolean>;
 
   /**
    * Get directory contents
    * @param path Directory path to read
    * @returns Array of file/directory names
    */
-  readDirectory(path: string): string[];
+  readDirectory(path: string): Promise<string[]>;
 
   /**
    * Get file/directory stats
    * @param path Path to get stats for
    * @returns File stats object
    */
-  getStats(path: string): any;
+  getStats(path: string): Promise<any>;
 
   /**
    * Calculate size of specific memory collections
@@ -66,4 +66,19 @@ export interface IDirectoryService {
    * @returns Object mapping collection names to their sizes in MB
    */
   getCollectionSizeBreakdown(collectionsPath: string): Promise<Record<string, number>>;
+
+  /**
+   * Check if a file exists
+   * @param filePath Path to the file to check
+   * @returns true if file exists, false otherwise
+   */
+  fileExists(filePath: string): Promise<boolean>;
+
+  /**
+   * Read file contents
+   * @param filePath Path to the file to read
+   * @param encoding File encoding (optional, defaults to utf8)
+   * @returns File contents as string
+   */
+  readFile(filePath: string, encoding?: string): Promise<string>;
 }

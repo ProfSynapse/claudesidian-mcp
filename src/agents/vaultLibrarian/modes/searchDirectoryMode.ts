@@ -100,7 +100,6 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
       };
       
     } catch (error) {
-      console.error('Directory search failed:', error);
       return {
         success: false,
         query: params.query,
@@ -156,7 +155,6 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
           return regex.test(item.path) || regex.test(name);
         });
       } catch (error) {
-        console.warn('Invalid regex pattern:', params.pattern);
       }
     }
 

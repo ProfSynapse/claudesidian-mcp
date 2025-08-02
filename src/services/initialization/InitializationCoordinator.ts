@@ -42,27 +42,19 @@ export class InitializationCoordinator implements IInitializationCoordinator {
     this.startTime = Date.now();
     const results: InitializationPhaseResult[] = [];
 
-    console.log(`[HNSW-CLEANUP-TEST] 🚀 PLUGIN STARTUP: Beginning initialization process...`);
-    console.log(`[HNSW-CLEANUP-TEST] 📋 Initialization phases: ${this.phaseOrder.length} total phases`);
-    console.log(`[HNSW-CLEANUP-TEST] 🎯 Expected: No HNSW service initialization errors after phantom removal`);
 
     let phaseIndex = 0;
     for (const phase of this.phaseOrder) {
       phaseIndex++;
       try {
-        console.log(`[HNSW-CLEANUP-TEST] ⏳ [${phaseIndex}/${this.phaseOrder.length}] Starting phase: ${phase}`);
         const result = await this.initializePhase(phase);
         results.push(result);
         
         if (result.success) {
-          console.log(`[HNSW-CLEANUP-TEST] ✅ [${phaseIndex}/${this.phaseOrder.length}] Phase ${phase} SUCCESSFUL (${result.duration}ms, ${result.componentsInitialized.length} components)`);
         } else {
-          console.error(`[HNSW-CLEANUP-TEST] ❌ [${phaseIndex}/${this.phaseOrder.length}] Phase ${phase} FAILED (${result.duration}ms, ${result.errors.length} errors)`);
-          console.error(`[HNSW-CLEANUP-TEST] 💥 Phase ${phase} errors:`, result.errors.map(e => `${e.component}: ${e.error.message}`));
           break;
         }
       } catch (error) {
-        console.error(`[HNSW-CLEANUP-TEST] 💥 [${phaseIndex}/${this.phaseOrder.length}] Exception in phase ${phase}:`, error);
         const errorResult: InitializationPhaseResult = {
           phase,
           success: false,
@@ -79,15 +71,9 @@ export class InitializationCoordinator implements IInitializationCoordinator {
     const successfulPhases = results.filter(r => r.success).length;
     const failedPhases = results.filter(r => !r.success).length;
 
-    console.log(`[HNSW-CLEANUP-TEST] 🏁 PLUGIN INITIALIZATION COMPLETE:`);
-    console.log(`[HNSW-CLEANUP-TEST] ⏱️ Total Duration: ${totalDuration}ms`);
-    console.log(`[HNSW-CLEANUP-TEST] ✅ Successful Phases: ${successfulPhases}/${this.phaseOrder.length}`);
-    console.log(`[HNSW-CLEANUP-TEST] ❌ Failed Phases: ${failedPhases}/${this.phaseOrder.length}`);
     
     if (failedPhases === 0) {
-      console.log(`[HNSW-CLEANUP-TEST] 🎉 PLUGIN STARTUP SUCCESS: All phases completed without HNSW phantom service errors!`);
     } else {
-      console.log(`[HNSW-CLEANUP-TEST] 💔 PLUGIN STARTUP ISSUES: ${failedPhases} phases failed`);
     }
 
     return results;
@@ -252,9 +238,6 @@ export class InitializationCoordinator implements IInitializationCoordinator {
         'memoryService'
       ];
 
-      console.log(`[HNSW-CLEANUP-TEST] ✅ SERVICES PHASE: Initializing exactly ${servicesToInitialize.length} core services (no HNSW phantom references)`);
-      console.log(`[HNSW-CLEANUP-TEST] 📋 Service list:`, servicesToInitialize);
-      console.log(`[HNSW-CLEANUP-TEST] 🔍 Validation: No 'hnswSearchService' in initialization list (phantom service removed)`);
 
       let serviceIndex = 0;
       for (const serviceName of servicesToInitialize) {
@@ -262,7 +245,6 @@ export class InitializationCoordinator implements IInitializationCoordinator {
         const serviceStartTime = Date.now();
         
         try {
-          console.log(`[HNSW-CLEANUP-TEST] 🚀 [${serviceIndex}/${servicesToInitialize.length}] Starting ${serviceName} initialization...`);
           
           await this.initializeComponent(serviceName, async () => {
             if (!this.serviceManager) {
@@ -271,13 +253,11 @@ export class InitializationCoordinator implements IInitializationCoordinator {
             
             if (typeof this.serviceManager.initializeService === 'function') {
               await this.serviceManager.initializeService(serviceName);
-              console.log(`[HNSW-CLEANUP-TEST] ✅ ${serviceName} initialized via initializeService() method`);
             } else if (typeof this.serviceManager.get === 'function') {
               const service = await this.serviceManager.get(serviceName);
               if (!service) {
                 throw new Error(`Service manager returned null/undefined for ${serviceName}`);
               }
-              console.log(`[HNSW-CLEANUP-TEST] ✅ ${serviceName} initialized via get() method`);
             } else {
               throw new Error(`Service manager has no usable methods`);
             }
@@ -285,12 +265,10 @@ export class InitializationCoordinator implements IInitializationCoordinator {
           
           const serviceDuration = Date.now() - serviceStartTime;
           componentsInitialized.push(serviceName);
-          console.log(`[HNSW-CLEANUP-TEST] ✅ [${serviceIndex}/${servicesToInitialize.length}] ${serviceName} SUCCESS (${serviceDuration}ms)`);
           
         } catch (error) {
           const serviceDuration = Date.now() - serviceStartTime;
           const errorMessage = `Service ${serviceName} initialization failed: ${error instanceof Error ? error.message : String(error)}`;
-          console.error(`[HNSW-CLEANUP-TEST] ❌ [${serviceIndex}/${servicesToInitialize.length}] ${serviceName} FAILED (${serviceDuration}ms): ${errorMessage}`);
           errors.push({ component: serviceName, error: new Error(errorMessage) });
           
           // Continue with other services - no special fail-fast logic needed
@@ -298,29 +276,20 @@ export class InitializationCoordinator implements IInitializationCoordinator {
       }
 
       // Service initialization completed - comprehensive summary
-      console.log(`[HNSW-CLEANUP-TEST] 📊 SERVICES PHASE COMPLETE:`);
-      console.log(`[HNSW-CLEANUP-TEST] ✅ Successful services: ${componentsInitialized.length}/${servicesToInitialize.length}`);
-      console.log(`[HNSW-CLEANUP-TEST] ❌ Failed services: ${errors.length}/${servicesToInitialize.length}`);
       
       if (componentsInitialized.length > 0) {
-        console.log(`[HNSW-CLEANUP-TEST] 🎯 Successfully initialized services:`, componentsInitialized);
       }
       if (errors.length > 0) {
-        console.log(`[HNSW-CLEANUP-TEST] 💥 Service initialization errors:`, errors.map(e => `${e.component}: ${e.error.message}`));
       }
       
       // Validation: Confirm exactly 4 services expected (no phantom HNSW service)
       if (componentsInitialized.length === 4 && errors.length === 0) {
-        console.log(`[HNSW-CLEANUP-TEST] 🎉 PERFECT: All 4 core services initialized successfully - no HNSW phantom references!`);
       } else if (componentsInitialized.length + errors.length === 4) {
-        console.log(`[HNSW-CLEANUP-TEST] ✅ VALIDATION PASSED: Exactly 4 services processed (as expected after HNSW phantom removal)`);
       } else {
-        console.warn(`[HNSW-CLEANUP-TEST] ⚠️ UNEXPECTED: Expected exactly 4 services, but processed ${componentsInitialized.length + errors.length}`);
       }
 
       return { success: errors.length === 0, componentsInitialized, errors };
     } catch (error) {
-      console.error(`[HNSW-CLEANUP-TEST] 💥 SERVICES PHASE EXCEPTION:`, error);
       errors.push({ component: 'services', error: error as Error });
       return { success: false, componentsInitialized, errors };
     }

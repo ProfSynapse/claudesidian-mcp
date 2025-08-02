@@ -50,7 +50,8 @@ export class MCPServer implements IMCPServer {
         private sessionContextManager?: SessionContextManager,
         serverName?: string,
         private customPromptStorage?: CustomPromptStorageService,
-        private onToolCall?: (toolName: string, params: any) => Promise<void>
+        private onToolCall?: (toolName: string, params: any) => Promise<void>,
+        private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
     ) {
         // Initialize configuration service
         this.configuration = new ServerConfiguration(app, { serverName });
@@ -112,7 +113,8 @@ export class MCPServer implements IMCPServer {
                 true, // isVaultEnabled
                 this.configuration.getSanitizedVaultName(),
                 this.sessionContextManager,
-                this.customPromptStorage
+                this.customPromptStorage,
+                this.onToolResponse
             );
         } catch (error) {
             logger.systemError(error as Error, 'Request Router Initialization');

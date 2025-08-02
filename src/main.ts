@@ -3,7 +3,7 @@ import { UpdateManager } from './utils/UpdateManager';
 import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { SettingsTab } from './components/SettingsTab';
-import { LazyServiceManager } from './services/LazyServiceManager';
+import { ServiceContainer } from './core/ServiceContainer';
 import { logger } from './utils/logger';
 
 // Type imports for service interfaces
@@ -18,101 +18,123 @@ import type { FileEventManagerModular } from './services/file-events/FileEventMa
 import type { UsageStatsService } from './database/services/UsageStatsService';
 import type { CacheManager } from './database/services/CacheManager';
 import type { ProcessedFilesStateManager } from './database/services/state/ProcessedFilesStateManager';
+import type { MemoryTraceService } from './database/services/memory/MemoryTraceService';
+import type { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
     private connector!: MCPConnector;
     private settingsTab!: SettingsTab;
-    private serviceManager!: LazyServiceManager;
+    private serviceContainer!: ServiceContainer;
+    private isInitialized: boolean = false;
     private startTime: number = Date.now();
     
-    // Legacy service properties - now proxied through lazy service manager with graceful fallbacks
+    // Service properties - now proxied through ServiceContainer for singleton management
     public get vectorStore(): IVectorStore | null { 
-        return this.serviceManager?.getIfReady<IVectorStore>('vectorStore') || null; 
+        return this.serviceContainer?.getIfReady<IVectorStore>('vectorStore') || null; 
     }
     public get embeddingService(): EmbeddingService | null { 
-        return this.serviceManager?.getIfReady<EmbeddingService>('embeddingService') || null; 
+        return this.serviceContainer?.getIfReady<EmbeddingService>('embeddingService') || null; 
     }
     public get fileEmbeddingAccessService(): FileEmbeddingAccessService | null { 
-        return this.serviceManager?.getIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null; 
+        return this.serviceContainer?.getIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null; 
     }
     public get directCollectionService(): DirectCollectionService | null { 
-        return this.serviceManager?.getIfReady<DirectCollectionService>('directCollectionService') || null; 
+        return this.serviceContainer?.getIfReady<DirectCollectionService>('directCollectionService') || null; 
     }
     public get workspaceService(): WorkspaceService | null { 
-        return this.serviceManager?.getIfReady<WorkspaceService>('workspaceService') || null; 
+        return this.serviceContainer?.getIfReady<WorkspaceService>('workspaceService') || null; 
     }
     public get memoryService(): MemoryService | null { 
-        return this.serviceManager?.getIfReady<MemoryService>('memoryService') || null; 
+        return this.serviceContainer?.getIfReady<MemoryService>('memoryService') || null; 
     }
     public get fileEventManager(): FileEventManagerModular | null { 
-        return this.serviceManager?.getIfReady<FileEventManagerModular>('fileEventManager') || null; 
+        return this.serviceContainer?.getIfReady<FileEventManagerModular>('fileEventManager') || null; 
     }
     public get eventManager(): EventManager | null { 
-        return this.serviceManager?.getIfReady<EventManager>('eventManager') || null; 
+        return this.serviceContainer?.getIfReady<EventManager>('eventManager') || null; 
     }
     public get usageStatsService(): UsageStatsService | null { 
-        return this.serviceManager?.getIfReady<UsageStatsService>('usageStatsService') || null; 
+        return this.serviceContainer?.getIfReady<UsageStatsService>('usageStatsService') || null; 
     }
     public get cacheManager(): CacheManager | null { 
-        return this.serviceManager?.getIfReady<CacheManager>('cacheManager') || null; 
+        return this.serviceContainer?.getIfReady<CacheManager>('cacheManager') || null; 
     }
     public get stateManager(): ProcessedFilesStateManager | null { 
-        return this.serviceManager?.getIfReady<ProcessedFilesStateManager>('stateManager') || null; 
+        return this.serviceContainer?.getIfReady<ProcessedFilesStateManager>('stateManager') || null; 
+    }
+    public get memoryTraceService(): MemoryTraceService | null { 
+        return this.serviceContainer?.getIfReady<MemoryTraceService>('memoryTraceService') || null; 
+    }
+    public get toolCallCaptureService(): ToolCallCaptureService | null { 
+        return this.serviceContainer?.getIfReady<ToolCallCaptureService>('toolCallCaptureService') || null; 
     }
     
     /**
      * Get a service asynchronously, waiting for it to be ready if needed
      */
     public async getService<T>(name: string, timeoutMs: number = 10000): Promise<T | null> {
-        if (!this.serviceManager) {
+        if (!this.serviceContainer) {
             return null;
         }
         
         // If already ready, return immediately
-        if (this.serviceManager.isReady(name)) {
-            return this.serviceManager.getIfReady<T>(name);
+        if (this.serviceContainer.isReady(name)) {
+            return this.serviceContainer.getIfReady<T>(name);
         }
         
         // Otherwise try to get it (will initialize if needed)
         try {
-            return await this.serviceManager.get<T>(name);
+            return await this.serviceContainer.get<T>(name);
         } catch (error) {
             console.warn(`[ClaudesidianPlugin] Failed to get service '${name}':`, error);
             return null;
         }
     }
     
-    // Service registry - now returns initialized services from lazy manager
+    // Service registry - returns initialized services from container
     public get services(): Record<string, any> {
-        return this.serviceManager?.getAllInitialized() || {};
+        if (!this.serviceContainer) return {};
+        
+        const services: Record<string, any> = {};
+        for (const serviceName of this.serviceContainer.getReadyServices()) {
+            services[serviceName] = this.serviceContainer.getIfReady(serviceName);
+        }
+        return services;
     }
     
     async onload() {
         const startTime = Date.now();
         
-        // PHASE 1: Absolute minimum to appear "loaded" - must complete <50ms
-        // Initialize settings instance only (no loading)
-        this.settings = new Settings(this);
-        
-        // Initialize service manager (stage framework only)
-        this.serviceManager = new LazyServiceManager(this.app, this);
-        
-        // Initialize connector skeleton (no agents yet)
-        this.connector = new MCPConnector(this.app, this);
-        
-        // Settings tab will be added later in initializeSettingsTab()
-        
-        // Plugin is now "loaded" - defer everything else to background
-        const loadTime = Date.now() - startTime;
-        console.log(`[ClaudesidianPlugin] Plugin loaded in ${loadTime}ms`);
-        
-        // PHASE 2: Start background initialization after onload completes (truly non-blocking)
-        setTimeout(() => {
-            this.startBackgroundInitialization().catch(error => {
-                console.error('[ClaudesidianPlugin] Background initialization failed:', error);
-            });
-        }, 0);
+        try {
+            // PHASE 1: Foundation - Create service container and settings (<50ms)
+            this.settings = new Settings(this);
+            this.serviceContainer = new ServiceContainer();
+            
+            // PHASE 2: Register core services (no initialization yet)
+            this.registerCoreServices();
+            
+            // PHASE 3: Initialize essential services only
+            await this.initializeEssentialServices();
+            
+            // Initialize connector skeleton (no agents yet)
+            this.connector = new MCPConnector(this.app, this);
+            
+            // Plugin is now "loaded" - defer full initialization to background
+            const loadTime = Date.now() - startTime;
+            console.log(`[ClaudesidianPlugin] Plugin loaded in ${loadTime}ms`);
+            
+            // PHASE 4: Start background initialization after onload completes
+            setTimeout(() => {
+                this.startBackgroundInitialization().catch(error => {
+                    console.error('[ClaudesidianPlugin] Background initialization failed:', error);
+                });
+            }, 0);
+            
+        } catch (error) {
+            console.error('[ClaudesidianPlugin] Critical initialization failure:', error);
+            this.enableFallbackMode();
+        }
     }
     
     /**
@@ -121,14 +143,11 @@ export default class ClaudesidianPlugin extends Plugin {
     private async startBackgroundInitialization(): Promise<void> {
         const bgStartTime = Date.now();
         
-        console.log(`[HNSW-CLEANUP-TEST] 🚀 BACKGROUND INIT: Starting plugin background initialization...`);
-        
         try {
             // Load settings first
             await this.settings.loadSettings();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Settings loaded successfully`);
             
-            // NEW: Log data.json for debugging StateManager
+            // Log data.json for debugging StateManager
             try {
                 const data = await this.loadData();
                 console.log('[StateManager] Plugin data.json loaded:', {
@@ -142,86 +161,213 @@ export default class ClaudesidianPlugin extends Plugin {
             }
             
             // Initialize data directories
-            console.log(`[HNSW-CLEANUP-TEST] 📁 Initializing data directories...`);
             await this.initializeDataDirectories();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Data directories initialized`);
             
-            // Start service manager stages - this triggers InitializationCoordinator
-            console.log(`[HNSW-CLEANUP-TEST] 🔧 Starting service manager (triggers InitializationCoordinator)...`);
-            await this.serviceManager.start();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Service manager started - InitializationCoordinator completed`);
+            // Initialize core services in proper dependency order
+            await this.initializeBusinessServices();
             
-            // Pre-initialize UI-critical services to avoid long loading times in Memory Management
-            console.log(`[HNSW-CLEANUP-TEST] 🎯 Pre-initializing UI-critical services...`);
+            // Pre-initialize UI-critical services to avoid long loading times
             await this.preInitializeUICriticalServices();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ UI-critical services pre-initialized`);
             
             // Validate search functionality
             await this.validateSearchFunctionality();
             
-            // Initialize connector with agents - must complete before plugin ready
-            console.log(`[HNSW-CLEANUP-TEST] 🔌 Initializing MCP connector and agents...`);
+            // Initialize connector with agents
             try {
                 await this.connector.initializeAgents();
                 await this.connector.start();
-                console.log(`[HNSW-CLEANUP-TEST] ✅ MCP connector started successfully`);
             } catch (error) {
-                console.error(`[HNSW-CLEANUP-TEST] ❌ MCP connector failed to start:`, error);
-                // Continue with plugin initialization even if MCP fails
+                console.warn('[ClaudesidianPlugin] MCP initialization failed:', error);
             }
             
-            // Create settings tab (async)
-            console.log(`[HNSW-CLEANUP-TEST] ⚙️ Creating settings tab...`);
+            // Create settings tab
             await this.initializeSettingsTab();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Settings tab created`);
             
             // Register all maintenance commands
             this.registerMaintenanceCommands();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Maintenance commands registered`);
             
             // Check for updates
             this.checkForUpdatesOnStartup();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Update check initiated`);
             
             // Update settings tab with loaded services
             this.updateSettingsTabServices();
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Settings tab updated with services`);
+            
+            // Mark as fully initialized
+            this.isInitialized = true;
             
             const bgLoadTime = Date.now() - bgStartTime;
-            console.log(`[HNSW-CLEANUP-TEST] 🎉 BACKGROUND INITIALIZATION COMPLETE: ${bgLoadTime}ms`);
-            console.log(`[HNSW-CLEANUP-TEST] 🔍 VALIDATION SUMMARY: Plugin should be fully functional with ChromaDB search (no HNSW phantom errors)`);
+            console.log(`[ClaudesidianPlugin] Background initialization completed in ${bgLoadTime}ms`);
             
         } catch (error) {
-            console.error(`[HNSW-CLEANUP-TEST] 💥 Background initialization failed:`, error);
-            // Plugin should still be functional for basic operations
+            console.error('[ClaudesidianPlugin] Background initialization failed:', error);
         }
     }
     
     /**
-     * Register only essential commands that must be available immediately
+     * Register core services with ServiceContainer
      */
-    private registerEssentialCommands(): void {
-        // Only register commands that work without full service initialization
-        this.addCommand({
-            id: 'check-service-readiness',
-            name: 'Check service readiness status',
-            callback: async () => {
-                const notice = new Notice('Checking service readiness...', 0);
-                
-                if (!this.serviceManager) {
-                    notice.setMessage('Service manager not available');
-                    setTimeout(() => notice.hide(), 3000);
-                    return;
-                }
-                
-                const readinessStatus = this.serviceManager.getReadinessStatus();
-                const readyServices = Object.values(readinessStatus).filter(s => s.ready).length;
-                const totalServices = Object.keys(readinessStatus).length;
-                
-                notice.setMessage(`Services: ${readyServices}/${totalServices} ready`);
-                setTimeout(() => notice.hide(), 5000);
-            }
+    private registerCoreServices(): void {
+        console.log('[ClaudesidianPlugin] Registering core services...');
+        
+        // Foundation services (no dependencies)
+        this.serviceContainer.register('eventManager', async () => {
+            const { EventManager } = await import('./services/EventManager');
+            return new EventManager();
         });
+        
+        this.serviceContainer.register('stateManager', async () => {
+            const { ProcessedFilesStateManager } = await import('./database/services/state/ProcessedFilesStateManager');
+            return new ProcessedFilesStateManager(this);
+        });
+        
+        // Memory services
+        this.serviceContainer.register('simpleMemoryService', async () => {
+            const { SimpleMemoryService } = await import('./services/memory/SimpleMemoryService');
+            return new SimpleMemoryService();
+        });
+        
+        this.serviceContainer.register('sessionService', async () => {
+            const { SessionService } = await import('./services/session/SessionService');
+            const memoryService = await this.serviceContainer.get<any>('simpleMemoryService');
+            return new SessionService(memoryService);
+        }, { dependencies: ['simpleMemoryService'] });
+        
+        this.serviceContainer.register('toolCallCaptureService', async () => {
+            const { ToolCallCaptureService } = await import('./services/toolcall-capture/ToolCallCaptureService');
+            const memoryService = await this.serviceContainer.get<any>('simpleMemoryService');
+            const sessionService = await this.serviceContainer.get<any>('sessionService');
+            return new ToolCallCaptureService(memoryService, sessionService);
+        }, { dependencies: ['simpleMemoryService', 'sessionService'] });
+        
+        // Vector store - CRITICAL: Single instance with proper initialization
+        this.serviceContainer.register('vectorStore', async () => {
+            console.log('[ServiceContainer] 🚀 Creating SINGLE vectorStore instance');
+            const { ChromaVectorStoreModular } = await import('./database/providers/chroma/ChromaVectorStoreModular');
+            
+            // Get embedding configuration from settings based on actual provider
+            const memorySettings = this.settings.settings.memory;
+            if (!memorySettings?.apiProvider || !memorySettings?.providerSettings) {
+                throw new Error('Memory settings not configured - cannot determine embedding dimensions');
+            }
+            
+            const activeProvider = memorySettings.apiProvider;
+            const providerSettings = memorySettings.providerSettings[activeProvider];
+            
+            if (!providerSettings?.dimensions) {
+                throw new Error(`Embedding dimensions not configured for provider '${activeProvider}'`);
+            }
+            
+            const embeddingConfig = {
+                dimension: providerSettings.dimensions,
+                model: providerSettings.model
+            };
+            
+            console.log(`[VectorStore] Using embedding config for provider '${activeProvider}':`, embeddingConfig);
+            
+            // Create vectorStore with proper embedding configuration
+            const vectorStore = new ChromaVectorStoreModular(this, {
+                embedding: embeddingConfig,
+                persistentPath: memorySettings.dbStoragePath,
+                inMemory: false,
+                cache: {
+                    enabled: true,
+                    maxItems: 1000,
+                    ttl: 3600000
+                }
+            });
+            
+            await vectorStore.initialize();
+            console.log('[ServiceContainer] ✅ VectorStore initialized successfully with embedding dimension:', embeddingConfig.dimension);
+            return vectorStore;
+        });
+        
+        // Business services with dependencies
+        this.serviceContainer.register('embeddingService', async (deps) => {
+            const { EmbeddingService } = await import('./database/services/EmbeddingService');
+            return new EmbeddingService(this, deps.stateManager);
+        }, { dependencies: ['stateManager'] });
+        
+        this.serviceContainer.register('memoryService', async (deps) => {
+            const { MemoryService } = await import('./database/services/MemoryService');
+            return new MemoryService(this, deps.vectorStore, deps.embeddingService, this.settings.settings.memory || {});
+        }, { dependencies: ['vectorStore', 'embeddingService'] });
+        
+        this.serviceContainer.register('workspaceService', async (deps) => {
+            const { WorkspaceService } = await import('./database/services/WorkspaceService');
+            return new WorkspaceService(this, deps.vectorStore, deps.embeddingService);
+        }, { dependencies: ['vectorStore', 'embeddingService'] });
+        
+        console.log('[ClaudesidianPlugin] Core services registered successfully');
+    }
+    
+    /**
+     * Initialize essential services that must be ready immediately
+     */
+    private async initializeEssentialServices(): Promise<void> {
+        console.log('[ClaudesidianPlugin] Initializing essential services...');
+        
+        try {
+            // Initialize only the most critical services synchronously
+            await this.serviceContainer.get('eventManager');
+            await this.serviceContainer.get('stateManager');
+            await this.serviceContainer.get('simpleMemoryService');
+            
+            console.log('[ClaudesidianPlugin] Essential services initialized');
+        } catch (error) {
+            console.error('[ClaudesidianPlugin] Essential service initialization failed:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Initialize business services with proper dependency resolution
+     */
+    private async initializeBusinessServices(): Promise<void> {
+        console.log('[ClaudesidianPlugin] Initializing business services...');
+        
+        try {
+            // Initialize in dependency order to prevent multiple VectorStore instances
+            const vectorStore = await this.serviceContainer.get('vectorStore');
+            console.log('[ClaudesidianPlugin] ✅ Single VectorStore instance created');
+            
+            // Initialize dependent services
+            await Promise.allSettled([
+                this.serviceContainer.get('embeddingService'),
+                this.serviceContainer.get('memoryService'),
+                this.serviceContainer.get('workspaceService')
+            ]);
+            
+            console.log('[ClaudesidianPlugin] Business services initialized');
+        } catch (error) {
+            console.error('[ClaudesidianPlugin] Business service initialization failed:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Enable fallback mode with minimal functionality
+     */
+    private enableFallbackMode(): void {
+        try {
+            this.addCommand({
+                id: 'troubleshoot-services',
+                name: 'Troubleshoot service initialization',
+                callback: () => {
+                    const stats = this.serviceContainer?.getStats() || { registered: 0, instantiated: 0 };
+                    const message = `Service initialization failed. Registered: ${stats.registered}, Ready: ${stats.instantiated}`;
+                    new Notice(message, 10000);
+                    console.log('[ClaudesidianPlugin] Service troubleshooting:', {
+                        isInitialized: this.isInitialized,
+                        containerStats: stats,
+                        registeredServices: this.serviceContainer?.getRegisteredServices() || []
+                    });
+                }
+            });
+            
+            console.log('[ClaudesidianPlugin] Fallback mode enabled');
+        } catch (error) {
+            console.error('[ClaudesidianPlugin] Fallback mode setup failed:', error);
+        }
     }
     
     /**
@@ -229,7 +375,6 @@ export default class ClaudesidianPlugin extends Plugin {
      */
     private async initializeDataDirectories(): Promise<void> {
         const fs = require('fs').promises;
-        const path = require('path');
         
         try {
             let basePath;
@@ -240,14 +385,15 @@ export default class ClaudesidianPlugin extends Plugin {
                 return;
             }
             
-            const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.manifest.id);
-            const dataDir = path.join(pluginDir, 'data');
-            const chromaDbDir = path.join(dataDir, 'chroma-db');
-            const collectionsDir = path.join(chromaDbDir, 'collections');
+            // Use simple string concatenation to avoid path duplication in Electron environment
+            const pluginDir = `${basePath}/.obsidian/plugins/${this.manifest.id}`;
+            const dataDir = `${pluginDir}/data`;
+            const chromaDbDir = `${dataDir}/chroma-db`;
+            const collectionsDir = `${chromaDbDir}/collections`;
             
             console.log('[STARTUP] Initializing ChromaDB-only data directories...');
             
-            // Create directories in parallel - ChromaDB only, no HNSW indexes needed  
+            // Create directories in parallel - ChromaDB only  
             await Promise.all([
                 fs.mkdir(dataDir, { recursive: true }),
                 fs.mkdir(chromaDbDir, { recursive: true }),
@@ -337,12 +483,11 @@ export default class ClaudesidianPlugin extends Plugin {
                 this.services, // Pass current services (may be empty initially)
                 vaultLibrarian || undefined,
                 memoryManager || undefined,
-                this.serviceManager
+                this.serviceContainer as any // Pass service container for compatibility
             );
             this.addSettingTab(this.settingsTab);
             
-            // Services will be updated when they become available
-            // No need for active monitoring - just update UI when ready
+            console.log('[STARTUP] Settings tab created successfully');
             
         } catch (error) {
             console.error('[STARTUP] Settings tab initialization failed:', error);
@@ -354,7 +499,7 @@ export default class ClaudesidianPlugin extends Plugin {
      * Pre-initialize UI-critical services to avoid Memory Management loading delays
      */
     private async preInitializeUICriticalServices(): Promise<void> {
-        if (!this.serviceManager) return;
+        if (!this.serviceContainer) return;
         
         console.log('[STARTUP] Pre-initializing UI-critical services...');
         const startTime = Date.now();
@@ -362,19 +507,20 @@ export default class ClaudesidianPlugin extends Plugin {
         try {
             // Initialize services that Memory Management accordion depends on
             const uiCriticalServices = [
-                'vectorStore',
                 'fileEmbeddingAccessService',
-                'embeddingService',
-                'memoryService',
-                'usageStatsService'
+                'usageStatsService',
+                'cacheManager'
             ];
+            
+            // Register additional services if not already registered
+            this.registerAdditionalServices();
             
             // Initialize in parallel where possible
             await Promise.allSettled(
                 uiCriticalServices.map(async (serviceName) => {
                     try {
                         const serviceStart = Date.now();
-                        await this.serviceManager.get(serviceName);
+                        await this.serviceContainer.get(serviceName);
                         const serviceTime = Date.now() - serviceStart;
                         console.log(`[STARTUP] ${serviceName} initialized in ${serviceTime}ms`);
                     } catch (error) {
@@ -385,6 +531,21 @@ export default class ClaudesidianPlugin extends Plugin {
             
             const totalTime = Date.now() - startTime;
             console.log(`[STARTUP] UI-critical services pre-initialization completed in ${totalTime}ms`);
+            
+            // Inject vector store into SimpleMemoryService for persistence
+            try {
+                const vectorStore = this.serviceContainer.getIfReady('vectorStore');
+                const simpleMemoryService = this.serviceContainer.getIfReady<any>('simpleMemoryService');
+                
+                if (vectorStore && simpleMemoryService && typeof simpleMemoryService.setVectorStore === 'function') {
+                    simpleMemoryService.setVectorStore(vectorStore);
+                    console.log('[STARTUP] ✅ Vector store injected into SimpleMemoryService for memory trace persistence');
+                } else {
+                    console.warn('[STARTUP] ❌ Vector store or SimpleMemoryService not available for injection');
+                }
+            } catch (error) {
+                console.error('[STARTUP] Failed to inject vector store:', error);
+            }
             
         } catch (error) {
             console.error('[STARTUP] UI-critical services pre-initialization failed:', error);
@@ -397,6 +558,47 @@ export default class ClaudesidianPlugin extends Plugin {
     private updateSettingsTabServices(): void {
         if (this.settingsTab) {
             this.settingsTab.updateServices(this.services);
+        }
+    }
+    
+    /**
+     * Register additional services needed by UI components
+     */
+    private registerAdditionalServices(): void {
+        // Register services that weren't included in core registration
+        if (!this.serviceContainer.has('fileEmbeddingAccessService')) {
+            this.serviceContainer.register('fileEmbeddingAccessService', async (deps) => {
+                const { FileEmbeddingAccessService } = await import('./database/services/FileEmbeddingAccessService');
+                return new FileEmbeddingAccessService(this, deps.vectorStore);
+            }, { dependencies: ['vectorStore'] });
+        }
+        
+        if (!this.serviceContainer.has('usageStatsService')) {
+            this.serviceContainer.register('usageStatsService', async (deps) => {
+                const { UsageStatsService } = await import('./database/services/UsageStatsService');
+                return new UsageStatsService(deps.embeddingService, deps.vectorStore, this.settings.settings.memory || {});
+            }, { dependencies: ['embeddingService', 'vectorStore'] });
+        }
+        
+        if (!this.serviceContainer.has('cacheManager')) {
+            this.serviceContainer.register('cacheManager', async (deps) => {
+                const { CacheManager } = await import('./database/services/CacheManager');
+                return new CacheManager(this.app, deps.workspaceService, deps.memoryService);
+            }, { dependencies: ['workspaceService', 'memoryService'] });
+        }
+        
+        if (!this.serviceContainer.has('memoryTraceService')) {
+            this.serviceContainer.register('memoryTraceService', async (deps) => {
+                const { MemoryTraceService } = await import('./database/services/memory/MemoryTraceService');
+                const { VectorStoreFactory } = await import('./database/factory/VectorStoreFactory');
+                
+                // Create memory trace collection through factory
+                const memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(deps.vectorStore);
+                const sessionCollection = VectorStoreFactory.createSessionCollection(deps.vectorStore, deps.embeddingService);
+                const maintenanceService = await import('./database/services/memory/DatabaseMaintenanceService').then(m => new m.DatabaseMaintenanceService(deps.vectorStore, memoryTraceCollection, sessionCollection, {}));
+                
+                return new MemoryTraceService(memoryTraceCollection, deps.embeddingService, maintenanceService);
+            }, { dependencies: ['vectorStore', 'embeddingService'] });
         }
     }
     
@@ -442,6 +644,48 @@ export default class ClaudesidianPlugin extends Plugin {
         });
         
         this.addCommand({
+            id: 'cleanup-obsolete-collections',
+            name: 'Clean up obsolete HNSW collections',
+            callback: async () => {
+                try {
+                    const notice = new Notice('Cleaning up obsolete HNSW collections...', 0);
+                    
+                    const vectorStore = await this.getService<IVectorStore>('vectorStore', 15000);
+                    if (!vectorStore) {
+                        notice.setMessage('Vector store not available or failed to initialize');
+                        setTimeout(() => notice.hide(), 5000);
+                        return;
+                    }
+                    
+                    // Access the collection manager through the vector store
+                    const collectionManager = (vectorStore as any).collectionManager;
+                    if (!collectionManager || typeof collectionManager.cleanupObsoleteCollections !== 'function') {
+                        notice.setMessage('Collection cleanup not available');
+                        setTimeout(() => notice.hide(), 5000);
+                        return;
+                    }
+                    
+                    const result = await collectionManager.cleanupObsoleteCollections();
+                    
+                    if (result.cleaned.length > 0) {
+                        notice.setMessage(`Cleaned up ${result.cleaned.length} collections: ${result.cleaned.join(', ')}`);
+                    } else {
+                        notice.setMessage('No obsolete collections found to clean up');
+                    }
+                    
+                    if (result.errors.length > 0) {
+                        console.warn('Collection cleanup errors:', result.errors);
+                    }
+                    
+                    setTimeout(() => notice.hide(), 8000);
+                } catch (error) {
+                    new Notice(`Cleanup failed: ${(error as Error).message}`);
+                    console.error('Collection cleanup error:', error);
+                }
+            }
+        });
+        
+        this.addCommand({
             id: 'check-vector-storage',
             name: 'Check vector storage status',
             callback: async () => {
@@ -482,29 +726,24 @@ export default class ClaudesidianPlugin extends Plugin {
                 try {
                     const notice = new Notice('Checking service readiness...', 0);
                     
-                    if (!this.serviceManager) {
-                        notice.setMessage('Service manager not available');
+                    if (!this.serviceContainer) {
+                        notice.setMessage('Service container not available');
                         setTimeout(() => notice.hide(), 5000);
                         return;
                     }
                     
-                    const readinessStatus = this.serviceManager.getReadinessStatus();
-                    const stageStatus = {
-                        immediate: this.serviceManager.isStageReady(1),
-                        backgroundFast: this.serviceManager.isStageReady(2),
-                        backgroundSlow: this.serviceManager.isStageReady(3),
-                        onDemand: this.serviceManager.isStageReady(4)
-                    };
+                    const stats = this.serviceContainer.getStats();
+                    const metadata = this.serviceContainer.getAllServiceMetadata();
                     
-                    const readyServices = Object.values(readinessStatus).filter(s => s.ready).length;
-                    const totalServices = Object.keys(readinessStatus).length;
+                    const readyServices = Object.values(metadata).filter(m => m.initialized).length;
+                    const totalServices = Object.keys(metadata).length;
                     
                     const message = [
                         `Services: ${readyServices}/${totalServices} ready`,
-                        `Stage 1 (Immediate): ${stageStatus.immediate ? 'Ready' : 'Loading'}`,
-                        `Stage 2 (Background Fast): ${stageStatus.backgroundFast ? 'Ready' : 'Loading'}`,
-                        `Stage 3 (Background Slow): ${stageStatus.backgroundSlow ? 'Ready' : 'Loading'}`,
-                        `Stage 4 (On-Demand): ${stageStatus.onDemand ? 'Ready' : 'Pending'}`
+                        `Registered: ${stats.registered}`,
+                        `Instantiated: ${stats.instantiated}`,
+                        `Singletons: ${stats.singletons}`,
+                        `Plugin initialized: ${this.isInitialized ? 'Yes' : 'No'}`
                     ].join('\n');
                     
                     notice.setMessage(message);
@@ -563,19 +802,17 @@ export default class ClaudesidianPlugin extends Plugin {
      * Reload configuration for all services after settings change
      */
     reloadConfiguration(): void {
-        
-        if (this.serviceManager?.isReady('fileEventManager')) {
-            const fileEventManager = this.serviceManager.getIfReady('fileEventManager');
+        if (this.serviceContainer?.isReady('fileEventManager')) {
+            const fileEventManager = this.serviceContainer.getIfReady('fileEventManager');
             if (fileEventManager && typeof (fileEventManager as any).reloadConfiguration === 'function') {
                 try {
                     (fileEventManager as any).reloadConfiguration();
+                    console.log('[ClaudesidianPlugin] File event manager configuration reloaded');
                 } catch (error) {
                     console.warn('Error reloading file event manager configuration:', error);
                 }
             }
-        } else {
         }
-        
     }
     
     /**
@@ -586,58 +823,37 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
-     * Validate search functionality - ensure services work without HNSW phantom references
+     * Validate search functionality - ensure core services are available
      */
     private async validateSearchFunctionality(): Promise<void> {
-        console.log(`[HNSW-CLEANUP-TEST] 🔍 SEARCH VALIDATION: Testing search functionality...`);
-        
         try {
-            // Test 1: Validate vectorStore service is available (ChromaDB path)
+            // Test 1: Validate vectorStore service is available (ChromaDB)
             const vectorStore = await this.getService<IVectorStore>('vectorStore', 5000);
             if (vectorStore) {
-                console.log(`[HNSW-CLEANUP-TEST] ✅ VectorStore service available - ChromaDB search path functional`);
-                
-                // Test basic collection operations (no search needed, just service availability)
+                // Test basic collection operations
                 try {
                     const collections = await vectorStore.listCollections();
-                    console.log(`[HNSW-CLEANUP-TEST] ✅ VectorStore operations work (${collections.length} collections) - no HNSW phantom errors`);
+                    console.log('[VALIDATION] ✅ VectorStore collections accessible');
                 } catch (collectionError) {
-                    // Collection errors are OK - we just want to ensure no HNSW phantom service errors
-                    const errorMessage = collectionError instanceof Error ? collectionError.message : String(collectionError);
-                    if (errorMessage.includes('hnswSearchService') || errorMessage.includes('Service \'hnswSearchService\' not found')) {
-                        console.error(`[HNSW-CLEANUP-TEST] ❌ PHANTOM SERVICE ERROR DETECTED in vector operations: ${errorMessage}`);
-                    } else {
-                        console.log(`[HNSW-CLEANUP-TEST] ✅ Vector operation error is expected/acceptable (no phantom service issues): ${errorMessage}`);
-                    }
+                    console.warn('[VALIDATION] Collection access error (may be normal during startup):', collectionError);
                 }
             } else {
-                console.warn(`[HNSW-CLEANUP-TEST] ⚠️ VectorStore not available yet - search validation skipped`);
+                console.warn('[VALIDATION] ⚠️ VectorStore service not available');
             }
             
-            // Test 2: Validate that no HNSW service references exist in the service manager
-            const serviceManager = this.serviceManager;
-            if (serviceManager) {
-                const readinessStatus = serviceManager.getReadinessStatus();
-                const serviceNames = Object.keys(readinessStatus);
+            // Test 2: Validate core services are available
+            const serviceContainer = this.serviceContainer;
+            if (serviceContainer) {
+                const metadata = serviceContainer.getAllServiceMetadata();
+                const serviceNames = Object.keys(metadata);
                 
-                console.log(`[HNSW-CLEANUP-TEST] 📋 Active services (${serviceNames.length}):`, serviceNames);
-                
-                if (serviceNames.includes('hnswSearchService')) {
-                    console.error(`[HNSW-CLEANUP-TEST] ❌ PHANTOM SERVICE DETECTED: 'hnswSearchService' found in service manager!`);
-                } else {
-                    console.log(`[HNSW-CLEANUP-TEST] ✅ No phantom 'hnswSearchService' in service manager - cleanup successful`);
-                }
-                
-                // Test 3: Validate core services are available
                 const coreServices = ['vectorStore', 'embeddingService', 'workspaceService', 'memoryService'];
                 const availableCore = coreServices.filter(service => serviceNames.includes(service));
-                console.log(`[HNSW-CLEANUP-TEST] 🎯 Core services available: ${availableCore.length}/${coreServices.length} (${availableCore.join(', ')})`);
+                console.log(`[VALIDATION] Core services available: ${availableCore.length}/${coreServices.length}`);
             }
             
-            console.log(`[HNSW-CLEANUP-TEST] ✅ Search functionality validation complete`);
-            
         } catch (error) {
-            console.error(`[HNSW-CLEANUP-TEST] ❌ Search validation failed:`, error);
+            console.warn('[VALIDATION] Service validation error:', error);
         }
     }
 
@@ -656,10 +872,17 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
-     * Get service manager instance
+     * Get service container instance (compatibility method)
      */
-    getServiceManager(): LazyServiceManager {
-        return this.serviceManager;
+    getServiceManager(): ServiceContainer {
+        return this.serviceContainer;
+    }
+    
+    /**
+     * Get service container for direct access
+     */
+    getServiceContainer(): ServiceContainer {
+        return this.serviceContainer;
     }
     
     async onunload() {
@@ -677,9 +900,9 @@ export default class ClaudesidianPlugin extends Plugin {
                 (this.settingsTab as any).cleanup();
             }
             
-            // Cleanup service manager (handles all service cleanup)
-            if (this.serviceManager) {
-                await this.serviceManager.cleanup();
+            // Cleanup service container (handles all service cleanup)
+            if (this.serviceContainer) {
+                this.serviceContainer.clear();
             }
             
             // Stop the MCP connector

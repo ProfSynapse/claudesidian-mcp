@@ -39,7 +39,8 @@ export class RequestRouter {
         private isVaultEnabled: boolean,
         private vaultName?: string,
         private sessionContextManager?: SessionContextManager,
-        private customPromptStorage?: CustomPromptStorageService
+        private customPromptStorage?: CustomPromptStorageService,
+        private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
     ) {
         this.initializeDependencies();
         this.initializeStrategies();
@@ -71,7 +72,8 @@ export class RequestRouter {
             new ToolExecutionStrategy(
                 this.dependencies,
                 this.getAgent.bind(this),
-                this.sessionContextManager
+                this.sessionContextManager,
+                this.onToolResponse
             ),
             new ResourceListStrategy(
                 this.dependencies,

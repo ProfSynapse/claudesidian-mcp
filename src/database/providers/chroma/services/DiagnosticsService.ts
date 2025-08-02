@@ -180,9 +180,9 @@ export class DiagnosticsService implements IDiagnosticsService {
       };
 
       // Get metadata if available
-      if (typeof collection.metadata === 'function') {
+      if (collection.metadata) {
         try {
-          details.metadata = await collection.metadata();
+          details.metadata = collection.metadata;
         } catch (metadataError) {
           details.metadataError = 'Unable to retrieve metadata';
         }
@@ -262,9 +262,9 @@ export class DiagnosticsService implements IDiagnosticsService {
     }
 
     try {
-      const dataDirectoryExists = this.directoryService.directoryExists(this.config.persistentPath);
+      const dataDirectoryExists = await this.directoryService.directoryExists(this.config.persistentPath);
       const filePermissionsOk = dataDirectoryExists ? 
-        this.directoryService.validateDirectoryPermissions(this.config.persistentPath) : false;
+        await this.directoryService.validateDirectoryPermissions(this.config.persistentPath) : false;
       
       const totalSize = await this.sizeCalculatorService.calculateTotalDatabaseSize();
       const memorySize = await this.sizeCalculatorService.calculateMemoryDatabaseSize();

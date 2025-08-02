@@ -22,8 +22,8 @@ export class ChromaClientFactory implements IChromaClientFactory {
    * Create a ChromaDB client based on configuration
    * Uses Strategy pattern to select appropriate client type
    */
-  createClient(options: IStorageOptions): InstanceType<typeof ChromaClient> {
-    const resolvedOptions = this.resolveConfiguration(options);
+  async createClient(options: IStorageOptions): Promise<InstanceType<typeof ChromaClient>> {
+    const resolvedOptions = await this.resolveConfiguration(options);
 
     if (resolvedOptions.inMemory) {
       return this.createInMemoryClient();
@@ -37,24 +37,31 @@ export class ChromaClientFactory implements IChromaClientFactory {
   /**
    * Validate client configuration
    */
-  validateConfiguration(options: IStorageOptions): boolean {
+  async validateConfiguration(options: IStorageOptions): Promise<boolean> {
     try {
+      console.log('[ChromaClientFactory] Validating configuration:', options);
+      
       // Basic validation
       if (options.inMemory) {
+        console.log('[ChromaClientFactory] In-memory configuration - always valid');
         return true; // In-memory always valid
       }
 
       if (options.server?.host) {
+        console.log('[ChromaClientFactory] Validating remote server configuration');
         return this.validateRemoteConfiguration(options);
       }
 
       if (options.persistentPath) {
-        return this.validatePersistentConfiguration(options);
+        console.log('[ChromaClientFactory] Validating persistent storage configuration');
+        return await this.validatePersistentConfiguration(options);
       }
 
       // If no specific config, we'll use default persistent path
+      console.log('[ChromaClientFactory] No specific config provided - using defaults (valid)');
       return true;
     } catch (error) {
+      console.error('[ChromaClientFactory] Configuration validation error:', error);
       return false;
     }
   }
@@ -68,6 +75,18 @@ export class ChromaClientFactory implements IChromaClientFactory {
     }
 
     if (options.persistentPath) {
+      console.log(`[ChromaClientFactory] Using provided persistent path: ${options.persistentPath}`);
+      
+      // Ensure we only work with relative paths for Obsidian vault adapter
+      const isAbsolute = /^[A-Za-z]:\\|^\//.test(options.persistentPath);
+      if (isAbsolute) {
+        console.warn(`[ChromaClientFactory] Converting absolute path to relative: ${options.persistentPath}`);
+        // Extract the relative portion after the plugin directory
+        const relativePart = options.persistentPath.replace(/.*[\\\/](\.obsidian[\\\/]plugins[\\\/][^\\\/]+[\\\/].*)$/, '$1');
+        console.log(`[ChromaClientFactory] Extracted relative path: ${relativePart}`);
+        return relativePart.replace(/\\/g, '/'); // Normalize to forward slashes
+      }
+      
       return options.persistentPath;
     }
 
@@ -78,7 +97,7 @@ export class ChromaClientFactory implements IChromaClientFactory {
   /**
    * Resolve and validate configuration options
    */
-  private resolveConfiguration(options: IStorageOptions): IStorageOptions {
+  private async resolveConfiguration(options: IStorageOptions): Promise<IStorageOptions> {
     const resolved = { ...options };
 
     // If no persistent path is provided and we're not in memory or remote, generate one
@@ -88,7 +107,7 @@ export class ChromaClientFactory implements IChromaClientFactory {
 
     // Ensure directories exist for persistent storage
     if (resolved.persistentPath && !resolved.inMemory) {
-      this.ensureStorageDirectories(resolved.persistentPath);
+      await this.ensureStorageDirectories(resolved.persistentPath);
     }
 
     return resolved;
@@ -98,7 +117,7 @@ export class ChromaClientFactory implements IChromaClientFactory {
    * Create an in-memory client
    */
   private createInMemoryClient(): InstanceType<typeof ChromaClient> {
-    return new ChromaClient();
+    return new ChromaClient({ plugin: this.plugin });
   }
 
   /**
@@ -110,21 +129,25 @@ export class ChromaClientFactory implements IChromaClientFactory {
     const host = options.server!.host;
 
     return new ChromaClient({
-      path: `${protocol}://${host}:${port}`
+      path: `${protocol}://${host}:${port}`,
+      plugin: this.plugin
     });
   }
 
   /**
    * Create a persistent client
    */
-  private createPersistentClient(options: IStorageOptions): InstanceType<typeof ChromaClient> {
-    const storagePath = options.persistentPath!;
+  private async createPersistentClient(options: IStorageOptions): Promise<InstanceType<typeof ChromaClient>> {
+    // CRITICAL FIX: Use getStoragePath() to ensure relative path conversion
+    const storagePath = this.getStoragePath(options)!;
+    console.log(`[ChromaClientFactory] Creating persistent client with corrected path: ${storagePath}`);
     
-    // Ensure storage directories exist
-    this.ensureStorageDirectories(storagePath);
+    // Ensure storage directories exist - use original path for directory operations
+    await this.ensureStorageDirectories(options.persistentPath!);
 
     return new ChromaClient({
-      path: storagePath
+      path: storagePath,
+      plugin: this.plugin
     });
   }
 
@@ -154,19 +177,39 @@ export class ChromaClientFactory implements IChromaClientFactory {
   /**
    * Validate persistent storage configuration
    */
-  private validatePersistentConfiguration(options: IStorageOptions): boolean {
+  private async validatePersistentConfiguration(options: IStorageOptions): Promise<boolean> {
     const path = options.persistentPath;
     if (!path) {
+      console.log('[ChromaClientFactory] No persistent path provided');
       return false;
     }
 
     try {
-      // Check if we can create the directory
-      this.directoryService.ensureDirectoryExists(path);
+      console.log(`[ChromaClientFactory] Validating path: ${path}`);
       
-      // Check if we have write permissions
-      return this.directoryService.validateDirectoryPermissions(path);
+      // Convert absolute path to relative if needed
+      let relativePath = path;
+      const isAbsolute = /^[A-Za-z]:\\|^\//.test(path);
+      if (isAbsolute) {
+        console.warn(`[ChromaClientFactory] Converting absolute path to relative: ${path}`);
+        const relativePart = path.replace(/.*[\\\/](\.obsidian[\\\/]plugins[\\\/][^\\\/]+[\\\/].*)$/, '$1');
+        if (relativePart && relativePart !== path) {
+          relativePath = relativePart.replace(/\\/g, '/');
+          console.log(`[ChromaClientFactory] Using relative path: ${relativePath}`);
+        }
+      }
+      
+      // Check if we can create the directory
+      await this.directoryService.ensureDirectoryExists(path); // Still pass original for error messages
+      console.log(`[ChromaClientFactory] Directory created/exists: ${path}`);
+      
+      // Check if we have write permissions - use the relative path
+      const hasPermissions = await this.directoryService.validateDirectoryPermissions(relativePath);
+      console.log(`[ChromaClientFactory] Write permissions: ${hasPermissions}`);
+      
+      return hasPermissions;
     } catch (error) {
+      console.error(`[ChromaClientFactory] Validation failed for ${path}:`, error);
       return false;
     }
   }
@@ -175,33 +218,22 @@ export class ChromaClientFactory implements IChromaClientFactory {
    * Generate default storage path based on plugin configuration
    */
   private generateDefaultPath(): string {
-    const path = require('path');
-    
-    // Get the vault's base path using FileSystemAdapter
-    let basePath;
-    if (this.plugin.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
-      basePath = (this.plugin.app.vault.adapter as any).getBasePath();
-    } else {
-      throw new Error('FileSystemAdapter not available');
-    }
-
-    // Construct the correct plugin directory within the vault
-    const pluginDir = path.join(basePath, '.obsidian', 'plugins', this.plugin.manifest.id);
-    return path.join(pluginDir, 'data', 'chroma-db');
+    // Always use relative path - Obsidian's vault adapter handles absolute path resolution
+    const relativePath = 'data/chroma-db';
+    console.log(`[ChromaClientFactory] Generated default path: ${relativePath}`);
+    return relativePath;
   }
 
   /**
    * Ensure storage directories exist
    */
-  private ensureStorageDirectories(storagePath: string): void {
-    const path = require('path');
-    
+  private async ensureStorageDirectories(storagePath: string): Promise<void> {
     // Ensure the main storage directory exists
-    this.directoryService.ensureDirectoryExists(storagePath);
+    await this.directoryService.ensureDirectoryExists(storagePath);
     
     // Ensure the collections subdirectory exists
-    const collectionsDir = path.join(storagePath, 'collections');
-    this.directoryService.ensureDirectoryExists(collectionsDir);
+    const collectionsDir = `${storagePath}/collections`;
+    await this.directoryService.ensureDirectoryExists(collectionsDir);
   }
 
   /**
@@ -225,7 +257,7 @@ export class ChromaClientFactory implements IChromaClientFactory {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const client = this.createClient(options);
+        const client = await this.createClient(options);
         
         // Test connectivity
         const isConnected = await this.testClientConnectivity(client);

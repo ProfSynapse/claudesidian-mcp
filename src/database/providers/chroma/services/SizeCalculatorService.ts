@@ -51,8 +51,8 @@ export class SizeCalculatorService implements ISizeCalculatorService {
     }
 
     try {
-      const path = require('path');
-      const collectionsDir = path.join(this.persistentPath, 'collections');
+      // Use simple string concatenation to avoid path duplication in Electron environment
+      const collectionsDir = `${this.persistentPath}/collections`;
       
       if (!this.directoryService.directoryExists(collectionsDir)) {
         return 0;
@@ -74,8 +74,8 @@ export class SizeCalculatorService implements ISizeCalculatorService {
     }
 
     try {
-      const path = require('path');
-      const collectionsDir = path.join(this.persistentPath, 'collections');
+      // Use simple string concatenation to avoid path duplication in Electron environment
+      const collectionsDir = `${this.persistentPath}/collections`;
       
       return await this.directoryService.calculateCollectionSize(collectionsDir, collectionName);
     } catch (error) {
@@ -93,8 +93,8 @@ export class SizeCalculatorService implements ISizeCalculatorService {
     }
 
     try {
-      const path = require('path');
-      const collectionsDir = path.join(this.persistentPath, 'collections');
+      // Use simple string concatenation to avoid path duplication in Electron environment
+      const collectionsDir = `${this.persistentPath}/collections`;
       
       if (!this.directoryService.directoryExists(collectionsDir)) {
         return {};

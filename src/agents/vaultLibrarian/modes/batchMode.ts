@@ -13,7 +13,7 @@ import { UniversalSearchService } from './services/UniversalSearchService';
 
 /**
  * Batch mode for executing multiple universal searches concurrently
- * Updated to use HnswSearchService for semantic search
+ * Updated to use vector search for semantic search
  */
 export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUniversalSearchResult> {
   private universalSearchService: UniversalSearchService;
@@ -96,7 +96,6 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
       }
       
     } catch (error) {
-      console.error('Batch universal search failed:', error);
       return {
         success: false,
         error: `Batch search failed: ${getErrorMessage(error)}`
@@ -126,7 +125,6 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
           
           return await this.universalSearchService.executeUniversalSearch(searchParams);
         } catch (error) {
-          console.warn(`Search failed for query "${searchParams.query}":`, error);
           return {
             success: false,
             error: `Search failed: ${getErrorMessage(error)}`
