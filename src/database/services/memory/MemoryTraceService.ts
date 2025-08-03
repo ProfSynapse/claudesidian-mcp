@@ -8,7 +8,6 @@ export interface MemoryTraceSearchOptions {
   workspaceId?: string;
   workspacePath?: string[];
   limit?: number;
-  threshold?: number;
   sessionId?: string;
 }
 
@@ -243,7 +242,7 @@ export class MemoryTraceService {
    * ```typescript
    * const results = await memoryTraceService.searchMemoryTraces(
    *   'How to handle user authentication?',
-   *   { workspaceId: 'workspace-123', limit: 10, threshold: 0.7 }
+   *   { workspaceId: 'workspace-123', limit: 10 }
    * );
    * ```
    */

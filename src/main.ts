@@ -233,12 +233,31 @@ export default class ClaudesidianPlugin extends Plugin {
             return new SessionService(memoryService);
         }, { dependencies: ['simpleMemoryService'] });
         
-        this.serviceContainer.register('toolCallCaptureService', async () => {
+        this.serviceContainer.register('toolCallCaptureService', async (deps) => {
             const { ToolCallCaptureService } = await import('./services/toolcall-capture/ToolCallCaptureService');
-            const memoryService = await this.serviceContainer.get<any>('simpleMemoryService');
-            const sessionService = await this.serviceContainer.get<any>('sessionService');
-            return new ToolCallCaptureService(memoryService, sessionService);
-        }, { dependencies: ['simpleMemoryService', 'sessionService'] });
+            const memoryService = deps.simpleMemoryService;
+            const sessionService = deps.sessionService;
+            
+            // Create service with simple storage initially
+            const service = new ToolCallCaptureService(memoryService, sessionService);
+            
+            // Enable full functionality with embeddings if services are available
+            try {
+                const memoryTraceService = deps.memoryTraceService;
+                const embeddingService = deps.embeddingService;
+                
+                if (memoryTraceService && embeddingService) {
+                    await service.upgrade(memoryTraceService, embeddingService);
+                    console.log('[ToolCallCapture] ✅ Initialized with full functionality');
+                } else {
+                    console.log('[ToolCallCapture] ⏳ Using simple storage mode');
+                }
+            } catch (error) {
+                console.warn('[ToolCallCapture] Failed to enable full functionality:', error);
+            }
+            
+            return service;
+        }, { dependencies: ['simpleMemoryService', 'sessionService', 'memoryTraceService', 'embeddingService'] });
         
         // Vector store - CRITICAL: Single instance with proper initialization
         this.serviceContainer.register('vectorStore', async () => {
@@ -298,6 +317,19 @@ export default class ClaudesidianPlugin extends Plugin {
             return new WorkspaceService(this, deps.vectorStore, deps.embeddingService);
         }, { dependencies: ['vectorStore', 'embeddingService'] });
         
+        // Memory trace service - moved from registerAdditionalServices to ensure availability
+        this.serviceContainer.register('memoryTraceService', async (deps) => {
+            const { MemoryTraceService } = await import('./database/services/memory/MemoryTraceService');
+            const { VectorStoreFactory } = await import('./database/factory/VectorStoreFactory');
+            
+            // Create memory trace collection through factory
+            const memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(deps.vectorStore);
+            const sessionCollection = VectorStoreFactory.createSessionCollection(deps.vectorStore, deps.embeddingService);
+            const maintenanceService = await import('./database/services/memory/DatabaseMaintenanceService').then(m => new m.DatabaseMaintenanceService(deps.vectorStore, memoryTraceCollection, sessionCollection, {}));
+            
+            return new MemoryTraceService(memoryTraceCollection, deps.embeddingService, maintenanceService);
+        }, { dependencies: ['vectorStore', 'embeddingService'] });
+        
         console.log('[ClaudesidianPlugin] Core services registered successfully');
     }
     
@@ -343,6 +375,10 @@ export default class ClaudesidianPlugin extends Plugin {
             console.log('[ClaudesidianPlugin] Initializing workspaceService...');
             await this.serviceContainer.get('workspaceService');
             console.log('[ClaudesidianPlugin] ✅ WorkspaceService initialized');
+            
+            console.log('[ClaudesidianPlugin] Initializing memoryTraceService...');
+            await this.serviceContainer.get('memoryTraceService');
+            console.log('[ClaudesidianPlugin] ✅ MemoryTraceService initialized');
             
             console.log('[ClaudesidianPlugin] Business services initialized');
         } catch (error) {
@@ -594,19 +630,7 @@ export default class ClaudesidianPlugin extends Plugin {
             }, { dependencies: ['workspaceService', 'memoryService'] });
         }
         
-        if (!this.serviceContainer.has('memoryTraceService')) {
-            this.serviceContainer.register('memoryTraceService', async (deps) => {
-                const { MemoryTraceService } = await import('./database/services/memory/MemoryTraceService');
-                const { VectorStoreFactory } = await import('./database/factory/VectorStoreFactory');
-                
-                // Create memory trace collection through factory
-                const memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(deps.vectorStore);
-                const sessionCollection = VectorStoreFactory.createSessionCollection(deps.vectorStore, deps.embeddingService);
-                const maintenanceService = await import('./database/services/memory/DatabaseMaintenanceService').then(m => new m.DatabaseMaintenanceService(deps.vectorStore, memoryTraceCollection, sessionCollection, {}));
-                
-                return new MemoryTraceService(memoryTraceCollection, deps.embeddingService, maintenanceService);
-            }, { dependencies: ['vectorStore', 'embeddingService'] });
-        }
+        // memoryTraceService is now registered in registerCoreServices() to ensure proper initialization order
     }
     
     /**

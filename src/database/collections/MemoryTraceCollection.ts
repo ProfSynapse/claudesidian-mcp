@@ -189,7 +189,6 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
     workspaceId?: string;
     workspacePath?: string[];
     limit?: number;
-    threshold?: number;
     sessionId?: string;
   }): Promise<Array<{
     trace: WorkspaceMemoryTrace;
@@ -214,7 +213,6 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
     // Query by similarity
     const results = await this.query(embedding, {
       limit: options?.limit || 10,
-      threshold: options?.threshold || 0.7,
       where: Object.keys(where).length > 0 ? where : undefined
     });
     
@@ -235,7 +233,6 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
     workspaceId?: string;
     workspacePath?: string[];
     limit?: number;
-    threshold?: number;
     sessionId?: string;
   }): Promise<Array<{
     similarity: number;
@@ -292,10 +289,7 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
         // Convert distance to similarity
         const similarity = 1 - distance;
         
-        // Skip if below threshold
-        if (options?.threshold !== undefined && similarity < options.threshold) {
-          continue;
-        }
+        // Note: No threshold filtering - return all results sorted by similarity
         
         matches.push({
           similarity,

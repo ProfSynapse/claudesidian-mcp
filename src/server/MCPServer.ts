@@ -108,6 +108,8 @@ export class MCPServer implements IMCPServer {
      */
     private initializeRequestRouter(): void {
         try {
+            console.log('[MCPServer] 🔍 INIT RequestRouter - onToolResponse callback available:', !!this.onToolResponse);
+            console.log('[MCPServer] 🔍 INIT RequestRouter - callback type:', typeof this.onToolResponse);
             this.requestRouter = new RequestRouter(
                 this.app,
                 this.agentRegistry.getAgents(),
@@ -299,6 +301,8 @@ export class MCPServer implements IMCPServer {
     reinitializeRequestRouter(): void {
         try {
             console.log('[MCPServer] 🚨🚨🚨 REINITIALIZING RequestRouter with callback:', !!this.onToolResponse);
+            console.log('[MCPServer] 🚨🚨🚨 REINIT - callback type:', typeof this.onToolResponse);
+            console.log('[MCPServer] 🚨🚨🚨 REINIT - callback function preview:', this.onToolResponse?.toString().substring(0, 100));
             this.requestRouter = new RequestRouter(
                 this.app,
                 this.agentRegistry.getAgents(),
@@ -306,7 +310,7 @@ export class MCPServer implements IMCPServer {
                 this.configuration.getSanitizedVaultName(),
                 this.sessionContextManager,
                 this.customPromptStorage,
-                this.onToolResponse // MISSING PARAMETER - FIX!
+                this.onToolResponse // Callback should be available as class property
             );
             
             // Reinitialize request handlers with new router

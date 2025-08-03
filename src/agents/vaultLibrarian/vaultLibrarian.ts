@@ -66,27 +66,27 @@ export class VaultLibrarianAgent extends BaseAgent {
             }
           }
           
-          // Safely access services
-          const services = pluginAny.services;
-          if (services) {
-            // Access services safely
-            if (services.embeddingService) {
-              this.embeddingService = services.embeddingService;
+          // Access services from ServiceContainer (new pattern)
+          console.log('[VaultLibrarian] 🔍 Attempting to access services from ServiceContainer...');
+          try {
+            // Use ServiceContainer getIfReady to avoid waiting for initialization
+            if (pluginAny.serviceContainer) {
+              this.embeddingService = pluginAny.serviceContainer.getIfReady('embeddingService');
+              this.memoryService = pluginAny.serviceContainer.getIfReady('memoryService');
+              this.workspaceService = pluginAny.serviceContainer.getIfReady('workspaceService');
+              this.memoryTraceService = pluginAny.serviceContainer.getIfReady('memoryTraceService');
+              
+              console.log('[VaultLibrarian] ✅ Services accessed from ServiceContainer:', {
+                embeddingService: !!this.embeddingService,
+                memoryService: !!this.memoryService,
+                workspaceService: !!this.workspaceService,
+                memoryTraceService: !!this.memoryTraceService
+              });
+            } else {
+              console.warn('[VaultLibrarian] ServiceContainer not available');
             }
-            
-            
-            if (services.memoryService) {
-              this.memoryService = services.memoryService;
-            }
-            
-            
-            if (services.memoryTraceService) {
-              this.memoryTraceService = services.memoryTraceService;
-            }
-            
-            if (services.workspaceService) {
-              this.workspaceService = services.workspaceService;
-            }
+          } catch (error) {
+            console.warn('[VaultLibrarian] Failed to access services:', error);
           }
         }
       }

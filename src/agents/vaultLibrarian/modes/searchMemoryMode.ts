@@ -26,7 +26,8 @@ export interface SearchMemoryParams extends CommonParameters {
   };
   // Search method selection
   searchMethod?: 'semantic' | 'exact' | 'mixed';
-  similarityThreshold?: number;
+  // Session filtering control
+  filterBySession?: boolean; // If true, only return traces from the current sessionId
 }
 
 export interface MemorySearchResult {
@@ -120,20 +121,43 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       const memoryTypes = params.memoryTypes || ['traces', 'toolCalls', 'sessions', 'states', 'workspaces'];
       const limit = params.limit || 20;
       const searchMethod = params.searchMethod || 'mixed';
-      const similarityThreshold = params.similarityThreshold || 0.7;
       const results: MemorySearchResult[] = [];
+
+      // Access services from ServiceContainer
+      const memoryService = this.getMemoryService();
+      const workspaceService = this.getWorkspaceService();
+      
+      console.log('[SearchMemoryMode] Service access status:', {
+        memoryService: !!memoryService,
+        workspaceService: !!workspaceService,
+        memoryTypes: memoryTypes,
+        query: params.query
+      });
+      
+      // Try async access for MemoryTraceService if sync access fails
+      let memoryTraceService = this.getMemoryTraceService();
+      console.log('[SearchMemoryMode] Initial MemoryTraceService access:', !!memoryTraceService);
+      
+      if (!memoryTraceService) {
+        try {
+          memoryTraceService = await this.getMemoryTraceServiceAsync() || undefined;
+          console.log('[SearchMemoryMode] Async MemoryTraceService access:', !!memoryTraceService);
+        } catch (error) {
+          console.warn('[SearchMemoryMode] Failed to access MemoryTraceService:', error);
+        }
+      }
 
 
       // Search memory traces (legacy traces)
-      if (memoryTypes.includes('traces') && this.memoryService) {
+      if (memoryTypes.includes('traces') && (memoryService || this.memoryService)) {
+        const activeMemoryService = memoryService || this.memoryService;
         try {
-          const traceResults = await this.memoryService.searchMemoryTraces(
+          const traceResults = await activeMemoryService!.searchMemoryTraces(
             params.query,
             {
               workspaceId: params.workspace,
               limit: limit,
-              sessionId: params.sessionId,
-              threshold: similarityThreshold
+              sessionId: params.sessionId
             }
           );
 
@@ -167,21 +191,31 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       }
       
       // Search tool call traces (enhanced memory traces)
-      if (memoryTypes.includes('toolCalls') && this.memoryTraceService) {
+      if (memoryTypes.includes('toolCalls') && (memoryTraceService || this.memoryTraceService)) {
+        const activeMemoryTraceService = memoryTraceService || this.memoryTraceService;
+        console.log('[SearchMemoryMode] Searching toolCalls with activeMemoryTraceService:', !!activeMemoryTraceService);
+        
         try {
           let toolCallResults: any[] = [];
           
           if (searchMethod === 'semantic' || searchMethod === 'mixed') {
             // Use semantic search
-            const semanticResults = await this.memoryTraceService.searchMemoryTraces(
+            console.log('[SearchMemoryMode] Performing semantic search with options:', {
+              query: params.query,
+              workspaceId: params.workspace,
+              sessionId: params.sessionId,
+              limit: limit
+            });
+            
+            const semanticResults = await activeMemoryTraceService!.searchMemoryTraces(
               params.query,
               {
                 workspaceId: params.workspace,
                 limit: limit,
-                sessionId: params.sessionId,
-                threshold: similarityThreshold
+                sessionId: params.sessionId
               }
             );
+            console.log('[SearchMemoryMode] Semantic search returned:', semanticResults.length, 'results');
             toolCallResults.push(...semanticResults);
           }
           
@@ -201,13 +235,20 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
           
           // Remove duplicates and sort by score
           const uniqueResults = this.deduplicateResults(toolCallResults);
+          console.log('[SearchMemoryMode] After deduplication:', uniqueResults.length, 'unique results');
           
           for (const result of uniqueResults) {
             const trace = result.trace;
             
             // Apply filters
-            if (!this.passesFilters(trace, params)) continue;
-            if (!this.passesToolCallFilters(trace, params.toolCallFilters)) continue;
+            if (!this.passesFilters(trace, params)) {
+              console.log('[SearchMemoryMode] Trace failed general filters:', trace.id);
+              continue;
+            }
+            if (!this.passesToolCallFilters(trace, params.toolCallFilters)) {
+              console.log('[SearchMemoryMode] Trace failed tool call filters:', trace.id);
+              continue;
+            }
             
             // Check if this is a tool call trace (has toolCallId)
             const isToolCall = !!(trace as any).toolCallId;
@@ -267,9 +308,10 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       }
 
       // Search sessions
-      if (memoryTypes.includes('sessions') && this.memoryService) {
+      if (memoryTypes.includes('sessions') && (memoryService || this.memoryService)) {
+        const activeMemoryService = memoryService || this.memoryService;
         try {
-          const sessions = await this.memoryService.getAllSessions();
+          const sessions = await activeMemoryService!.getAllSessions();
           const queryLower = params.query.toLowerCase();
           
           for (const session of sessions) {
@@ -316,9 +358,10 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       }
 
       // Search states
-      if (memoryTypes.includes('states') && this.memoryService) {
+      if (memoryTypes.includes('states') && (memoryService || this.memoryService)) {
+        const activeMemoryService = memoryService || this.memoryService;
         try {
-          const states = await this.memoryService.getSnapshots();
+          const states = await activeMemoryService!.getSnapshots();
           const queryLower = params.query.toLowerCase();
           
           for (const state of states) {
@@ -372,9 +415,10 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       }
 
       // Search workspaces
-      if (memoryTypes.includes('workspaces') && this.workspaceService) {
+      if (memoryTypes.includes('workspaces') && (workspaceService || this.workspaceService)) {
+        const activeWorkspaceService = workspaceService || this.workspaceService;
         try {
-          const workspaces = await this.workspaceService.getWorkspaces();
+          const workspaces = await activeWorkspaceService!.getWorkspaces();
           const queryLower = params.query.toLowerCase();
           
           for (const workspace of workspaces) {
@@ -406,6 +450,13 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       // Sort results by score (highest first) and apply limit
       results.sort((a, b) => b.score - a.score);
       const limitedResults = results.slice(0, limit);
+
+      console.log('[SearchMemoryMode] Final search results:', {
+        totalFound: results.length,
+        limitedTo: limitedResults.length,
+        query: params.query,
+        memoryTypes: memoryTypes
+      });
 
       return {
         success: true,
@@ -505,12 +556,10 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
           description: 'Search method to use',
           default: 'mixed'
         },
-        similarityThreshold: {
-          type: 'number',
-          description: 'Minimum similarity threshold for semantic search (0-1)',
-          default: 0.7,
-          minimum: 0,
-          maximum: 1
+        filterBySession: {
+          type: 'boolean',
+          description: 'If true, only return traces from the current sessionId. If false or omitted, search across all sessions.',
+          default: false
         }
       },
       required: ['query']
@@ -596,6 +645,14 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
    * @private
    */
   private passesFilters(trace: any, params: SearchMemoryParams): boolean {
+    console.log('[SearchMemoryMode] Checking filters for trace:', {
+      traceId: trace.id,
+      traceSessionId: trace.sessionId,
+      paramSessionId: params.sessionId,
+      hasDateRange: !!params.dateRange,
+      traceTimestamp: trace.timestamp
+    });
+    
     // Apply date filter if specified
     if (params.dateRange) {
       const traceDate = new Date(trace.timestamp).getTime();
@@ -603,15 +660,23 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       const endDate = params.dateRange.end ? new Date(params.dateRange.end).getTime() : Date.now();
       
       if (traceDate < startDate || traceDate > endDate) {
+        console.log('[SearchMemoryMode] Trace failed date filter:', {
+          traceDate, startDate, endDate
+        });
         return false;
       }
     }
 
-    // Apply session filter if specified
-    if (params.sessionId && trace.sessionId !== params.sessionId) {
+    // Apply session filter ONLY if explicitly requested via filterBySession parameter
+    if (params.filterBySession && params.sessionId && trace.sessionId !== params.sessionId) {
+      console.log('[SearchMemoryMode] Trace failed session filter (filterBySession=true):', {
+        traceSessionId: trace.sessionId,
+        paramSessionId: params.sessionId
+      });
       return false;
     }
     
+    console.log('[SearchMemoryMode] Trace passed all filters');
     return true;
   }
   
@@ -739,14 +804,18 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       toolCallFilters?: SearchMemoryParams['toolCallFilters'];
     }
   ): Promise<any[]> {
-    if (!this.memoryTraceService) return [];
+    let memoryTraceService = this.getMemoryTraceService() || this.memoryTraceService;
+    if (!memoryTraceService) {
+      memoryTraceService = await this.getMemoryTraceServiceAsync() || undefined;
+    }
+    if (!memoryTraceService) return [];
     
     try {
       // Get all memory traces for the workspace/session
       const traces = options.workspaceId 
-        ? await this.memoryTraceService.getMemoryTraces(options.workspaceId, options.limit)
+        ? await memoryTraceService.getMemoryTraces(options.workspaceId, options.limit)
         : options.sessionId
-        ? await this.memoryTraceService.getSessionTraces(options.sessionId, options.limit)
+        ? await memoryTraceService.getSessionTraces(options.sessionId, options.limit)
         : [];
       
       const queryLower = query.toLowerCase();
@@ -810,5 +879,79 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
     }
     
     return unique;
+  }
+
+  /**
+   * Get MemoryService from ServiceContainer
+   * @private
+   */
+  private getMemoryService(): MemoryService | undefined {
+    try {
+      const plugin = (this.plugin as any)?.app?.plugins?.getPlugin('claudesidian-mcp');
+      if (plugin?.serviceContainer) {
+        return plugin.serviceContainer.getIfReady('memoryService') || undefined;
+      }
+      return undefined;
+    } catch (error) {
+      console.warn('[SearchMemoryMode] Failed to get MemoryService:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get MemoryTraceService from ServiceContainer with async wait
+   * @private
+   */
+  private async getMemoryTraceServiceAsync(): Promise<MemoryTraceService | undefined> {
+    try {
+      const plugin = (this.plugin as any)?.app?.plugins?.getPlugin('claudesidian-mcp');
+      
+      if (plugin?.getService) {
+        return await plugin.getService('memoryTraceService', 5000);
+      }
+      
+      // Fallback to synchronous access
+      if (plugin?.serviceContainer) {
+        return plugin.serviceContainer.getIfReady('memoryTraceService');
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.warn('[SearchMemoryMode] Failed to get MemoryTraceService:', error);
+      return undefined;
+    }
+  }
+
+  private getMemoryTraceService(): MemoryTraceService | undefined {
+    try {
+      const plugin = (this.plugin as any)?.app?.plugins?.getPlugin('claudesidian-mcp');
+      
+      if (plugin?.serviceContainer) {
+        const service = plugin.serviceContainer.getIfReady('memoryTraceService');
+        return service || undefined;
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.warn('[SearchMemoryMode] Failed to get MemoryTraceService:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get WorkspaceService from ServiceContainer
+   * @private
+   */
+  private getWorkspaceService(): WorkspaceService | undefined {
+    try {
+      const plugin = (this.plugin as any)?.app?.plugins?.getPlugin('claudesidian-mcp');
+      if (plugin?.serviceContainer) {
+        return plugin.serviceContainer.getIfReady('workspaceService') || undefined;
+      }
+      return undefined;
+    } catch (error) {
+      console.warn('[SearchMemoryMode] Failed to get WorkspaceService:', error);
+      return undefined;
+    }
   }
 }

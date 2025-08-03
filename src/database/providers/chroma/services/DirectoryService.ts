@@ -44,12 +44,13 @@ export class DirectoryService implements IDirectoryService {
    * Calculate the size of a directory in MB
    */
   async calculateDirectorySize(directoryPath: string): Promise<number> {
-    const calculateSize = async (dirPath: string): Promise<number> => {
+    const calculateSize = async (dirPath: string, isAlreadyNormalized: boolean = false): Promise<number> => {
       let totalSize = 0;
       
       try {
-        const normalizedPath = normalizePath(dirPath);
-        const listing = await this.plugin.app.vault.adapter.list(normalizedPath);
+        // Only normalize path if it hasn't been normalized already (first call)
+        const pathToUse = isAlreadyNormalized ? dirPath : normalizePath(dirPath);
+        const listing = await this.plugin.app.vault.adapter.list(pathToUse);
         
         // Calculate size of files
         for (const file of listing.files) {
@@ -65,8 +66,9 @@ export class DirectoryService implements IDirectoryService {
         }
         
         // Recursively calculate size of subdirectories
+        // Note: listing.folders contains already normalized paths from Obsidian
         for (const folder of listing.folders) {
-          totalSize += await calculateSize(folder);
+          totalSize += await calculateSize(folder, true);
         }
       } catch (error) {
         // If we can't read a directory, skip it and continue

@@ -147,8 +147,6 @@ export class ToolCallCaptureService {
     try {
       this.stats.totalCalls++;
 
-      // Log tool call capture for validation
-      console.log('[ToolCallCapture] 🎯 CAPTURE DEBUG: Capturing request for', request.agent, request.mode, 'toolCallId:', request.toolCallId);
 
       // Extract or create session context
       const sessionContext = await this.extractSessionContext(request);
@@ -473,7 +471,6 @@ export class ToolCallCaptureService {
         // Store as proper memory trace instead of just in-memory
         await (this.memoryStorage as SimpleMemoryService).storeTrace(toolCallTrace.id, toolCallTrace);
         
-        console.log(`[MEMORY-TRACE-TEST] Stored tool call trace: ${capture.request.agent}.${capture.request.mode} (${toolCallTrace.id}) | HasEmbedding: false | SearchableContent: "${toolCallTrace.content.substring(0, 50)}..."`);
       }
       
       this.stats.successfulCaptures++;

@@ -412,7 +412,6 @@ export class MemoryService {
     workspaceId?: string;
     workspacePath?: string[];
     limit?: number;
-    threshold?: number;
     sessionId?: string;
   }) {
     return this.memoryTraceService.searchMemoryTraces(query, options);
@@ -427,7 +426,6 @@ export class MemoryService {
     workspaceId?: string;
     workspacePath?: string[];
     limit?: number;
-    threshold?: number;
     sessionId?: string;
   }) {
     return this.memoryTraceService.searchMemoryTracesByEmbedding(embedding, options);
