@@ -199,9 +199,9 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 // Try to initialize vector services on-demand
                 try {
                     const plugin = (this.app as any).plugins?.plugins?.['claudesidian-mcp'];
-                    if (plugin?.getServiceManager) {
-                        const serviceManager = plugin.getServiceManager();
-                        const fileEventManager = await serviceManager.get('fileEventManager');
+                    if (plugin?.getServiceContainer) {
+                        const serviceContainer = plugin.getServiceContainer();
+                        const fileEventManager = await serviceContainer.get('fileEventManager');
                         if (fileEventManager && typeof fileEventManager.activateVectorServices === 'function') {
                             await fileEventManager.activateVectorServices();
                         }

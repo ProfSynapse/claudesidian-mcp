@@ -120,50 +120,16 @@ export class SessionService {
       // Session doesn't exist and auto-create is enabled, create a new one
       console.log(`Auto-creating session with ID: ${id}`);
       
-      // Try to get the default workspace
+      // Use default workspace to avoid circular dependency with workspaceService
+      // This prevents MemoryService → SessionService → WorkspaceService circular dependency
       let workspaceId: string;
       try {
-        const plugin = this.plugin as any;
-        const workspaceService = plugin.services?.workspaceService;
-        
-        if (workspaceService) {
-          const workspaces = await workspaceService.getWorkspaces({ 
-            sortBy: 'lastAccessed', 
-            sortOrder: 'desc', 
-          });
-          
-          if (workspaces && workspaces.length > 0) {
-            workspaceId = workspaces[0].id;
-          } else {
-            // Create a default workspace if none exists
-            const defaultWorkspace = await workspaceService.createWorkspace({
-              name: 'Default Workspace',
-              description: 'Automatically created default workspace',
-              rootFolder: '/',
-              hierarchyType: 'workspace',
-              created: Date.now(),
-              lastAccessed: Date.now(),
-              childWorkspaces: [],
-              path: [],
-              relatedFolders: [],
-              relevanceSettings: {
-                folderProximityWeight: 0.5,
-                recencyWeight: 0.7,
-                frequencyWeight: 0.3
-              },
-              activityHistory: [],
-              completionStatus: {},
-              status: 'active'
-            });
-            workspaceId = defaultWorkspace.id;
-          }
-        } else {
-          // No workspace service, use a default ID
-          workspaceId = 'default-workspace';
-        }
+        // Use a predictable default workspace ID
+        // The workspace will be created by WorkspaceService if it doesn't exist
+        workspaceId = 'default-workspace';
       } catch (error) {
         // Fallback to a default workspace ID
-        console.warn(`Error getting default workspace: ${getErrorMessage(error)}`);
+        console.warn(`Error setting default workspace: ${getErrorMessage(error)}`);
         workspaceId = 'default-workspace';
       }
       

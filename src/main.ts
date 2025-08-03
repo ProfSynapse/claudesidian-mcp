@@ -330,12 +330,18 @@ export default class ClaudesidianPlugin extends Plugin {
             const vectorStore = await this.serviceContainer.get('vectorStore');
             console.log('[ClaudesidianPlugin] ✅ Single VectorStore instance created');
             
-            // Initialize dependent services
-            await Promise.allSettled([
-                this.serviceContainer.get('embeddingService'),
-                this.serviceContainer.get('memoryService'),
-                this.serviceContainer.get('workspaceService')
-            ]);
+            // Initialize dependent services sequentially to avoid circular dependency issues
+            console.log('[ClaudesidianPlugin] Initializing embeddingService...');
+            await this.serviceContainer.get('embeddingService');
+            console.log('[ClaudesidianPlugin] ✅ EmbeddingService initialized');
+            
+            console.log('[ClaudesidianPlugin] Initializing memoryService...');
+            await this.serviceContainer.get('memoryService');
+            console.log('[ClaudesidianPlugin] ✅ MemoryService initialized');
+            
+            console.log('[ClaudesidianPlugin] Initializing workspaceService...');
+            await this.serviceContainer.get('workspaceService');
+            console.log('[ClaudesidianPlugin] ✅ WorkspaceService initialized');
             
             console.log('[ClaudesidianPlugin] Business services initialized');
         } catch (error) {

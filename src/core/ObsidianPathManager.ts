@@ -113,11 +113,12 @@ export class ObsidianPathManager {
   }
 
   /**
-   * Get collection path for ChromaDB
+   * Get collection path for ChromaDB - use correct vault-relative path
    */
   getCollectionPath(collectionName: string): string {
     const safeName = this.sanitizePath(collectionName);
-    return this.normalizePath(`${this.getPluginDataPath()}/collections/${safeName}`);
+    // Use vault-relative path that matches where Obsidian actually stores plugin data
+    return this.normalizePath(`.obsidian/plugins/${this.manifest.id}/data/chroma-db/collections/${safeName}`);
   }
 
   /**

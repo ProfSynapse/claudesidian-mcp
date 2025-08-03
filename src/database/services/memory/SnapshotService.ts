@@ -208,9 +208,16 @@ export class SnapshotService {
     description?: string,
     context?: ContextSnapshotData
   ): Promise<string> {
-    // Get workspace data
-    const workspace = (context?.workspace) || 
-      await this.plugin.app.plugins.getPlugin('claudesidian-mcp')?.services?.workspaceService?.getWorkspace(workspaceId);
+    // Get workspace data - use provided context or create minimal workspace to avoid circular dependency
+    const workspace = context?.workspace || {
+      id: workspaceId,
+      name: 'Default Workspace',
+      description: 'Auto-created workspace for snapshot',
+      created: Date.now(),
+      lastAccessed: Date.now(),
+      hierarchyType: 'workspace',
+      status: 'active'
+    };
     
     if (!workspace) {
       throw new Error(`Workspace with ID ${workspaceId} not found`);
@@ -268,11 +275,9 @@ export class SnapshotService {
       // Get information about the source session
       let sessionName: string | undefined;
       try {
-        // Note: This would need to be injected to avoid circular dependency
-        const plugin = this.plugin as any;
-        const memoryService = plugin.services?.memoryService;
-        if (memoryService) {
-          const sourceSession = await memoryService.getSession(snapshot.sessionId);
+        // Use injected memoryTraceService instead of accessing plugin.services to avoid circular dependency
+        if (this.memoryTraceService) {
+          const sourceSession = await this.memoryTraceService.getSession(snapshot.sessionId);
           if (sourceSession) {
             sessionName = sourceSession.name;
           }

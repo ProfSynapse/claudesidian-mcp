@@ -190,8 +190,8 @@ export class CollectionManager implements ICollectionManager {
       return `${this.persistentPath}/collections/${collectionName}`;
     }
     
-    // Ultimate fallback
-    return `.obsidian/plugins/claudesidian-mcp/data/chroma-db/collections/${collectionName}`;
+    // Ultimate fallback - use correct path structure to match PersistentChromaClient
+    return `data/chroma-db/collections/${collectionName}`;
   }
 
   /**

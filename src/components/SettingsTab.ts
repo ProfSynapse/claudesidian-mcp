@@ -19,7 +19,7 @@ import { FileEmbeddingAccessService } from '../database/services/FileEmbeddingAc
 import { EmbeddingManager } from '../database/services/embeddingManager';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
 import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
-import { LazyServiceManager } from '../services/LazyServiceManager';
+import type { ServiceContainer } from '../core/ServiceContainer';
 
 /**
  * Settings tab for the Claudesidian MCP plugin
@@ -40,8 +40,8 @@ export class SettingsTab extends PluginSettingTab {
     private vaultLibrarian: VaultLibrarianAgent | undefined;
     private memoryManager: MemoryManagerAgent | undefined;
     
-    // Service manager
-    private serviceManager: LazyServiceManager | undefined;
+    // Service container
+    private serviceContainer: ServiceContainer | undefined;
     
     // Accordion references for updating
     private memoryManagementAccordion: MemoryManagementAccordion | undefined;
@@ -54,7 +54,7 @@ export class SettingsTab extends PluginSettingTab {
      * @param services Service references
      * @param vaultLibrarian VaultLibrarian agent instance
      * @param memoryManager Memory Manager agent instance
-     * @param serviceManager LazyServiceManager instance
+     * @param serviceContainer ServiceContainer instance
      */
     constructor(
         app: App, 
@@ -70,7 +70,7 @@ export class SettingsTab extends PluginSettingTab {
         },
         vaultLibrarian?: VaultLibrarianAgent,
         memoryManager?: MemoryManagerAgent,
-        serviceManager?: LazyServiceManager
+        serviceContainer?: ServiceContainer
     ) {
         super(app, plugin);
         this.settings = settingsManager;
@@ -95,8 +95,8 @@ export class SettingsTab extends PluginSettingTab {
         this.vaultLibrarian = vaultLibrarian;
         this.memoryManager = memoryManager;
         
-        // Store service manager reference
-        this.serviceManager = serviceManager;
+        // Store service container reference
+        this.serviceContainer = serviceContainer;
     }
 
     /**
@@ -283,7 +283,7 @@ export class SettingsTab extends PluginSettingTab {
             this.memoryService,
             this.vaultLibrarian,
             embeddingManager,
-            this.serviceManager
+            this.serviceContainer
         );
 
         // Agent Management accordion

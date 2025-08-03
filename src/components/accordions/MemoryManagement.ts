@@ -7,7 +7,7 @@ import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddin
 // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
 import { MemoryService } from '../../database/services/MemoryService';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
-import { LazyServiceManager } from '../../services/LazyServiceManager';
+import type { ServiceContainer } from '../../core/ServiceContainer';
 
 /**
  * Memory Management accordion component
@@ -28,7 +28,7 @@ export class MemoryManagementAccordion extends Accordion {
     private vaultLibrarian: VaultLibrarianAgent | undefined;
     
     private memorySettingsTab: MemorySettingsTab | null = null;
-    private serviceManager: LazyServiceManager | undefined;
+    private serviceContainer: ServiceContainer | undefined;
     private readinessCheckInterval: NodeJS.Timeout | null = null;
     private statusElement: HTMLElement | null = null;
     
@@ -42,7 +42,7 @@ export class MemoryManagementAccordion extends Accordion {
      * @param memoryService MemoryService for memory traces and sessions
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
      * @param embeddingManager EmbeddingManager for managing embedding providers (optional)
-     * @param serviceManager LazyServiceManager instance for checking service readiness (optional)
+     * @param serviceContainer ServiceContainer instance for checking service readiness (optional)
      */
     constructor(
         containerEl: HTMLElement, 
@@ -53,7 +53,7 @@ export class MemoryManagementAccordion extends Accordion {
         memoryService?: MemoryService,
         vaultLibrarian?: VaultLibrarianAgent,
         embeddingManager?: EmbeddingManager,
-        serviceManager?: LazyServiceManager
+        serviceContainer?: ServiceContainer
     ) {
         super(containerEl, 'Memory Management', false);
         this.settings = settings;
@@ -63,7 +63,7 @@ export class MemoryManagementAccordion extends Accordion {
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
         this.embeddingManager = embeddingManager;
-        this.serviceManager = serviceManager;
+        this.serviceContainer = serviceContainer;
         
         const contentEl = this.getContentEl();
         
@@ -106,11 +106,11 @@ export class MemoryManagementAccordion extends Accordion {
      */
     private areServicesReady(): boolean {
         // If we have a service manager, use it to check readiness
-        if (this.serviceManager) {
-            const embeddingReady = this.serviceManager.isReady('embeddingService');
-            const fileAccessReady = this.serviceManager.isReady('fileEmbeddingAccessService');
+        if (this.serviceContainer) {
+            const embeddingReady = this.serviceContainer.isReady('embeddingService');
+            const fileAccessReady = this.serviceContainer.isReady('fileEmbeddingAccessService');
             // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
-            const memoryReady = this.serviceManager.isReady('memoryService');
+            const memoryReady = this.serviceContainer.isReady('memoryService');
             
             return embeddingReady && fileAccessReady && memoryReady;
         }
@@ -177,15 +177,15 @@ export class MemoryManagementAccordion extends Accordion {
         ];
         
         services.forEach(service => {
-            const isReady = this.serviceManager ? 
-                this.serviceManager.isReady(service.key) : 
+            const isReady = this.serviceContainer ? 
+                this.serviceContainer.isReady(service.key) : 
                 !!service.instance;
             
             const listItem = serviceList.createEl('li');
             
             // Check dependency status for services that have dependencies
-            if (service.dependency && this.serviceManager) {
-                const depReady = this.serviceManager.isReady(service.dependency);
+            if (service.dependency && this.serviceContainer) {
+                const depReady = this.serviceContainer.isReady(service.dependency);
                 const depStatus = depReady ? '✅' : '⏳';
                 listItem.innerHTML = `${service.name}: ${isReady ? '✅ Ready' : `⏳ Loading... (${service.dependency}: ${depStatus})`}`;
             } else {
@@ -324,7 +324,7 @@ export class MemoryManagementAccordion extends Accordion {
             });
             
             // Show detailed service status for debugging
-            if (this.serviceManager) {
+            if (this.serviceContainer) {
                 const statusEl = errorEl.createEl('div', {
                     cls: 'service-status-debug'
                 });
@@ -336,7 +336,7 @@ export class MemoryManagementAccordion extends Accordion {
                 const statusList = statusEl.createEl('ul');
                 
                 services.forEach(serviceName => {
-                    const isReady = this.serviceManager!.isReady(serviceName);
+                    const isReady = this.serviceContainer!.isReady(serviceName);
                     const listItem = statusList.createEl('li');
                     listItem.innerHTML = `${serviceName}: ${isReady ? '✅ Ready' : '❌ Not Ready'}`;
                 });
@@ -348,8 +348,8 @@ export class MemoryManagementAccordion extends Accordion {
             return;
         }
         
-        // Get services from LazyServiceManager if available, otherwise use direct references
-        const embeddingService = this.serviceManager?.getIfReady<EmbeddingService>('embeddingService') || this.embeddingService;
+        // Get services from ServiceContainer if available, otherwise use direct references
+        const embeddingService = this.serviceContainer?.getIfReady<EmbeddingService>('embeddingService') || this.embeddingService;
         // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         
         // Initialize the MemorySettingsTab with our services and agent

@@ -4,7 +4,7 @@ import { MCPServer } from './server';
 import { EventManager } from './services/EventManager';
 import { AgentManager } from './services/AgentManager';
 import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
-import { SimpleServiceManager } from './services/SimpleServiceManager';
+import type { ServiceContainer } from './core/ServiceContainer';
 import {
     ContentManagerAgent,
     CommandManagerAgent,
@@ -41,7 +41,7 @@ export class MCPConnector {
     private eventManager: EventManager;
     private sessionContextManager: SessionContextManager;
     private customPromptStorage?: CustomPromptStorageService;
-    private serviceManager?: SimpleServiceManager;
+    private serviceContainer?: ServiceContainer;
     private toolCallCaptureService?: ToolCallCaptureService;
     private pendingToolCalls = new Map<string, any>();
     
@@ -54,9 +54,9 @@ export class MCPConnector {
         this.sessionContextManager = new SessionContextManager();
         this.agentManager = new AgentManager(app, plugin, this.eventManager);
         
-        // Get service manager reference but don't connect yet
-        if (this.plugin && (this.plugin as any).getServiceManager) {
-            this.serviceManager = (this.plugin as any).getServiceManager();
+        // Get service container reference but don't connect yet
+        if (this.plugin && (this.plugin as any).getServiceContainer) {
+            this.serviceContainer = (this.plugin as any).getServiceContainer();
         }
         
         // Initialize custom prompt storage if possible
@@ -73,8 +73,8 @@ export class MCPConnector {
             this.sessionContextManager, 
             undefined, 
             this.customPromptStorage,
-            this.serviceManager ? (toolName: string, params: any) => this.onToolCall(toolName, params) : undefined,
-            this.serviceManager ? (toolName: string, params: any, response: any, success: boolean, executionTime: number) => this.onToolResponse(toolName, params, response, success, executionTime) : undefined
+            (toolName: string, params: any) => this.onToolCall(toolName, params),
+            (toolName: string, params: any, response: any, success: boolean, executionTime: number) => this.onToolResponse(toolName, params, response, success, executionTime)
         );
         
         // Full initialization deferred to start() method
@@ -280,8 +280,8 @@ export class MCPConnector {
             );
             
             // CommandManager with lazy memory service - NON-BLOCKING
-            const memoryService = this.serviceManager ? 
-                this.serviceManager.getIfReady('memoryService') : null;
+            const memoryService = this.serviceContainer ? 
+                this.serviceContainer.getIfReady('memoryService') : null;
             const commandManagerAgent = new CommandManagerAgent(
                 this.app, 
                 memoryService as any
@@ -337,12 +337,12 @@ export class MCPConnector {
                 );
                 
                 // If vector modes are enabled, set up lazy initialization of search service
-                if (enableVectorModes && this.serviceManager) {
+                if (enableVectorModes && this.serviceContainer) {
                     // Wait for service manager to complete initialization, then initialize search service
                     setTimeout(async () => {
                         try {
                             // Check if vector store is ready (don't trigger initialization here)
-                            const vectorStore = this.serviceManager?.getIfReady('vectorStore');
+                            const vectorStore = this.serviceContainer?.getIfReady('vectorStore');
                             if (vectorStore && vaultLibrarianAgent) {
                                 // Initialize search service in background to avoid blocking
                                 vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
@@ -608,7 +608,7 @@ export class MCPConnector {
     
     
     /**
-     * Initialize the tool call capture service - now guaranteed to be ready immediately
+     * Initialize the tool call capture service using Direct Property Access pattern
      * @private
      */
     private async initializeToolCallCaptureService(): Promise<void> {
@@ -618,30 +618,26 @@ export class MCPConnector {
         
         try {
             const plugin = this.plugin as any;
-            console.log('[MCPConnector] 🔍 DIAGNOSTIC: Plugin available:', !!plugin);
-            console.log('[MCPConnector] 🔍 DIAGNOSTIC: ServiceManager available:', !!plugin.serviceManager);
             
-            // With SimpleServiceManager, toolCallCaptureService is immediately available
-            if (plugin.serviceManager) {
-                const service = plugin.serviceManager.getIfReady('toolCallCaptureService');
-                console.log('[MCPConnector] 🔍 DIAGNOSTIC: ToolCallCaptureService from serviceManager:', !!service);
-                if (service) {
-                    console.log('[MCPConnector] 🎯 ToolCallCaptureService successfully retrieved from SimpleServiceManager');
-                    this.toolCallCaptureService = service;
-                    return;
-                } else {
-                    console.warn('[MCPConnector] 🚨 DIAGNOSTIC: ToolCallCaptureService not ready in SimpleServiceManager');
-                }
-            }
-            
-            // Fallback: check plugin directly
-            if (plugin.toolCallCaptureService) {
-                console.log('[MCPConnector] 🔍 DIAGNOSTIC: Using fallback - ToolCallCaptureService from plugin directly');
-                this.toolCallCaptureService = plugin.toolCallCaptureService;
+            // Use Direct Property Access pattern (fastest, no async needed)
+            const service = plugin.toolCallCaptureService;
+            if (service) {
+                console.log('[MCPConnector] ✅ ToolCallCaptureService accessed via direct property');
+                this.toolCallCaptureService = service;
                 return;
             }
             
-            throw new Error('ToolCallCaptureService should be immediately available with SimpleServiceManager');
+            // Fallback: Try async service access if direct access fails
+            if (plugin.getService) {
+                const asyncService = await plugin.getService('toolCallCaptureService');
+                if (asyncService) {
+                    console.log('[MCPConnector] ✅ ToolCallCaptureService retrieved via async access');
+                    this.toolCallCaptureService = asyncService;
+                    return;
+                }
+            }
+            
+            console.warn('[MCPConnector] ToolCallCaptureService not available - capture will be disabled');
             
         } catch (error) {
             console.warn('[MCPConnector] Failed to initialize tool call capture service:', error);

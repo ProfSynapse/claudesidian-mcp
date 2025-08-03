@@ -191,8 +191,18 @@ export class ServiceInitializer {
         } catch (error) {
         }
 
-        // Initialize with direct ChromaDB access
-        this.services.hybridSearchService = new HybridSearchService(vectorStore, embeddingService);
+        // Get collectionLifecycleManager from vectorStore if available
+        let collectionLifecycleManager: any = undefined;
+        if (vectorStore && typeof vectorStore.getCollectionLifecycleManager === 'function') {
+          try {
+            collectionLifecycleManager = vectorStore.getCollectionLifecycleManager();
+          } catch (error) {
+            console.warn('[ServiceInitializer] Could not get collectionLifecycleManager from vectorStore:', error);
+          }
+        }
+
+        // Initialize with direct ChromaDB access including collectionLifecycleManager
+        this.services.hybridSearchService = new HybridSearchService(vectorStore, embeddingService, collectionLifecycleManager);
         
         const semanticAvailable = this.services.hybridSearchService.isSemanticSearchAvailable();
       } else {

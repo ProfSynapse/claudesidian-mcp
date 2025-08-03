@@ -157,21 +157,21 @@ export class FileMonitor implements IFileMonitor {
         try {
             // Get the plugin instance and check if services are available
             const plugin = (this.app as any).plugins?.plugins?.['claudesidian-mcp'];
-            if (!plugin?.getServiceManager) {
+            if (!plugin?.getServiceContainer) {
                 return false;
             }
 
-            const serviceManager = plugin.getServiceManager();
+            const serviceContainer = plugin.getServiceContainer();
             
             // Check if vector services are ready before trying to use them
-            if (!serviceManager.isReady('vectorStore') || !serviceManager.isReady('embeddingService')) {
+            if (!serviceContainer.isReady('vectorStore') || !serviceContainer.isReady('embeddingService')) {
                 // Services not ready yet - assume file needs embedding to be safe
                 return false;
             }
             
             // Get vector store and embedding service (they should be ready now)
-            const vectorStore = serviceManager.getIfReady('vectorStore');
-            const embeddingService = serviceManager.getIfReady('embeddingService');
+            const vectorStore = serviceContainer.getIfReady('vectorStore');
+            const embeddingService = serviceContainer.getIfReady('embeddingService');
             
             if (!vectorStore || !embeddingService) {
                 return false;
