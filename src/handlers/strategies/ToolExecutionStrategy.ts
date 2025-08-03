@@ -21,12 +21,22 @@ interface ToolExecutionResponse {
 }
 
 export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequest, ToolExecutionResponse> {
+    private readonly instanceId = `TES_V2_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    private readonly buildVersion = 'BUILD_20250803_1755'; // Force new instances
+    
     constructor(
         private dependencies: IRequestHandlerDependencies,
         private getAgent: (name: string) => IAgent,
         private sessionContextManager?: SessionContextManager,
         private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
-    ) {}
+    ) {
+        console.log(`[ToolExecutionStrategy] 🚨🚨🚨 NEW CONSTRUCTOR V2 [${this.instanceId}] [${this.buildVersion}] - onToolResponse available:`, !!this.onToolResponse);
+        if (!this.onToolResponse) {
+            console.error(`[ToolExecutionStrategy] 🚨🚨🚨 MISSING CALLBACK V2 [${this.instanceId}] - this will cause errors!`);
+        } else {
+            console.log(`[ToolExecutionStrategy] ✅ CALLBACK PROPERLY SET V2 [${this.instanceId}] - ready for tool responses`);
+        }
+    }
 
     canHandle(request: ToolExecutionRequest): boolean {
         return !!(request.params && request.params.name && request.params.arguments);
@@ -61,6 +71,11 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
                     console.warn('[ToolExecutionStrategy] Response capture failed:', captureError);
                 }
             } else {
+                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 CALLBACK MISSING AT RUNTIME [${this.instanceId}] for:`, request.params.name);
+                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 onToolResponse is [${this.instanceId}]:`, this.onToolResponse);
+                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 This should NOT happen if constructor was called properly! [${this.instanceId}]`);
+                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 STACK TRACE [${this.instanceId}]:`);
+                console.trace();
                 console.warn('[ToolExecutionStrategy] 🚨 No response callback available for:', request.params.name);
             }
             

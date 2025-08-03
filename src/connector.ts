@@ -66,6 +66,7 @@ export class MCPConnector {
         }
         
         // Create server skeleton - full initialization deferred
+        console.log('[MCPConnector] 🔍 DEBUG: Creating MCPServer with callbacks, serviceContainer available:', !!this.serviceContainer);
         this.server = new MCPServer(
             app, 
             plugin, 

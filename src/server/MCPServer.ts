@@ -53,6 +53,7 @@ export class MCPServer implements IMCPServer {
         private onToolCall?: (toolName: string, params: any) => Promise<void>,
         private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
     ) {
+        console.log('[MCPServer] 🚨🚨🚨 CONSTRUCTOR CALLED with onToolResponse:', !!this.onToolResponse);
         // Initialize configuration service
         this.configuration = new ServerConfiguration(app, { serverName });
         
@@ -297,13 +298,15 @@ export class MCPServer implements IMCPServer {
      */
     reinitializeRequestRouter(): void {
         try {
+            console.log('[MCPServer] 🚨🚨🚨 REINITIALIZING RequestRouter with callback:', !!this.onToolResponse);
             this.requestRouter = new RequestRouter(
                 this.app,
                 this.agentRegistry.getAgents(),
                 true, // isVaultEnabled
                 this.configuration.getSanitizedVaultName(),
                 this.sessionContextManager,
-                this.customPromptStorage
+                this.customPromptStorage,
+                this.onToolResponse // MISSING PARAMETER - FIX!
             );
             
             // Reinitialize request handlers with new router

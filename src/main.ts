@@ -104,6 +104,7 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     async onload() {
+        console.log('[ClaudesidianPlugin] 🚨🚨🚨 PLUGIN ONLOAD CALLED - FRESH START V2:', Date.now());
         const startTime = Date.now();
         
         try {
