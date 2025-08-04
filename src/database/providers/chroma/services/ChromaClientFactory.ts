@@ -200,8 +200,8 @@ export class ChromaClientFactory implements IChromaClientFactory {
       }
       
       // Check if we can create the directory
-      await this.directoryService.ensureDirectoryExists(path); // Still pass original for error messages
-      console.log(`[ChromaClientFactory] Directory created/exists: ${path}`);
+      await this.directoryService.ensureDirectoryExists(relativePath);
+      console.log(`[ChromaClientFactory] Directory created/exists: ${relativePath}`);
       
       // Check if we have write permissions - use the relative path
       const hasPermissions = await this.directoryService.validateDirectoryPermissions(relativePath);

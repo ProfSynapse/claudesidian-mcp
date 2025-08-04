@@ -1,61 +1,48 @@
 import { IDirectoryService } from './interfaces/IDirectoryService';
 import { getErrorMessage } from '../../../../utils/errorUtils';
 import { Plugin, normalizePath } from 'obsidian';
-import { PathManager } from '../../../../utils/PathManager';
 
 /**
  * Directory service implementation
  * Handles all filesystem operations using Obsidian's Plugin API
  * Follows SRP - only responsible for directory/file operations
- * Uses PathManager for consistent path handling across the plugin
+ * Uses Obsidian's native normalizePath for path handling
  */
 export class DirectoryService implements IDirectoryService {
   private plugin: Plugin;
-  private pathManager: PathManager;
 
   constructor(plugin: Plugin) {
     this.plugin = plugin;
-    this.pathManager = new PathManager(plugin.app, plugin);
   }
 
   /**
    * Ensure a directory exists, creating it if necessary
-   * Uses PathManager for consistent path handling
    */
   async ensureDirectoryExists(path: string): Promise<void> {
-    console.log(`[DirectoryService] ensureDirectoryExists called with: ${path}`);
-    
-    return this.pathManager.safePathOperation(
-      path,
-      async (validPath) => {
-        if (!await this.plugin.app.vault.adapter.exists(validPath)) {
-          console.log(`[DirectoryService] Creating directory: ${validPath}`);
-          await this.plugin.app.vault.adapter.mkdir(validPath);
-          console.log(`[DirectoryService] ✅ Directory created: ${validPath}`);
-        } else {
-          console.log(`[DirectoryService] Directory already exists: ${validPath}`);
-        }
-      },
-      'ensureDirectoryExists'
-    );
+    try {
+      const normalizedPath = normalizePath(path);
+      if (!await this.plugin.app.vault.adapter.exists(normalizedPath)) {
+        await this.plugin.app.vault.adapter.mkdir(normalizedPath);
+      }
+    } catch (error) {
+      throw new Error(`Failed to ensure directory exists ${path}: ${getErrorMessage(error)}`);
+    }
   }
 
   /**
    * Calculate the size of a directory in MB
    */
   async calculateDirectorySize(directoryPath: string): Promise<number> {
-    const calculateSize = async (dirPath: string, isAlreadyNormalized: boolean = false): Promise<number> => {
+    const calculateSize = async (dirPath: string): Promise<number> => {
       let totalSize = 0;
       
       try {
-        // Only normalize path if it hasn't been normalized already (first call)
-        const pathToUse = isAlreadyNormalized ? dirPath : normalizePath(dirPath);
-        const listing = await this.plugin.app.vault.adapter.list(pathToUse);
+        const listing = await this.plugin.app.vault.adapter.list(dirPath);
         
         // Calculate size of files
         for (const file of listing.files) {
           try {
-            const stat = await this.plugin.app.vault.adapter.stat(normalizePath(file));
+            const stat = await this.plugin.app.vault.adapter.stat(file);
             if (stat?.size) {
               totalSize += stat.size;
             }
@@ -66,9 +53,8 @@ export class DirectoryService implements IDirectoryService {
         }
         
         // Recursively calculate size of subdirectories
-        // Note: listing.folders contains already normalized paths from Obsidian
         for (const folder of listing.folders) {
-          totalSize += await calculateSize(folder, true);
+          totalSize += await calculateSize(folder);
         }
       } catch (error) {
         // If we can't read a directory, skip it and continue
@@ -79,7 +65,8 @@ export class DirectoryService implements IDirectoryService {
     };
     
     try {
-      const sizeInBytes = await calculateSize(directoryPath);
+      const normalizedPath = normalizePath(directoryPath);
+      const sizeInBytes = await calculateSize(normalizedPath);
       return sizeInBytes / (1024 * 1024); // Convert to MB
     } catch (error) {
       console.error(`Error calculating size of directory ${directoryPath}:`, error);
@@ -89,59 +76,36 @@ export class DirectoryService implements IDirectoryService {
 
   /**
    * Validate directory permissions (read/write access)
-   * Uses PathManager for consistent path handling
    */
   async validateDirectoryPermissions(path: string): Promise<boolean> {
-    console.log(`[DirectoryService] Checking permissions for: ${path}`);
-    
     try {
-      return await this.pathManager.safePathOperation(
-        path,
-        async (validPath) => {
-          if (!await this.directoryExists(validPath)) {
-            console.log(`[DirectoryService] Directory does not exist: ${validPath}`);
-            return false;
-          }
-          
-          // Try to write a test file to check permissions
-          const testFilePath = normalizePath(`${validPath}/.test_write`);
-          console.log(`[DirectoryService] Testing write to: ${testFilePath}`);
-          
-          await this.plugin.app.vault.adapter.write(testFilePath, 'test');
-          await this.plugin.app.vault.adapter.remove(testFilePath);
-          
-          console.log(`[DirectoryService] ✅ Write permissions OK for: ${validPath}`);
-          return true;
-        },
-        'validateDirectoryPermissions'
-      );
+      const normalizedPath = normalizePath(path);
+      
+      if (!await this.directoryExists(normalizedPath)) {
+        return false;
+      }
+      
+      // Try to write a test file to check permissions
+      const testFilePath = normalizePath(`${normalizedPath}/.test_write`);
+      await this.plugin.app.vault.adapter.write(testFilePath, 'test');
+      await this.plugin.app.vault.adapter.remove(testFilePath);
+      
+      return true;
     } catch (error) {
-      console.error(`[DirectoryService] Permission check failed for ${path}:`, error);
+      console.error(`Permission check failed for ${path}:`, error);
       return false;
     }
   }
 
   /**
    * Check if a directory exists
-   * Uses PathManager for consistent path handling
    */
   async directoryExists(path: string): Promise<boolean> {
     try {
-      return await this.pathManager.safePathOperation(
-        path,
-        async (validPath) => {
-          console.log(`[DirectoryService] Checking if directory exists: ${validPath}`);
-          
-          const stat = await this.plugin.app.vault.adapter.stat(validPath);
-          const exists = stat?.type === 'folder';
-          
-          console.log(`[DirectoryService] Directory ${validPath} exists: ${exists}`);
-          return exists;
-        },
-        'directoryExists'
-      );
+      const normalizedPath = normalizePath(path);
+      const stat = await this.plugin.app.vault.adapter.stat(normalizedPath);
+      return stat?.type === 'folder';
     } catch (error) {
-      console.log(`[DirectoryService] Directory check failed for ${path}:`, error);
       return false;
     }
   }
@@ -151,10 +115,10 @@ export class DirectoryService implements IDirectoryService {
    */
   async readDirectory(path: string): Promise<string[]> {
     try {
-      if (!await this.directoryExists(path)) {
+      const normalizedPath = normalizePath(path);
+      if (!await this.plugin.app.vault.adapter.exists(normalizedPath)) {
         return [];
       }
-      const normalizedPath = normalizePath(path);
       const listing = await this.plugin.app.vault.adapter.list(normalizedPath);
       // Return both files and folders, extract just the names
       return [...listing.files, ...listing.folders].map(fullPath => {
@@ -165,6 +129,27 @@ export class DirectoryService implements IDirectoryService {
       throw new Error(`Failed to read directory ${path}: ${getErrorMessage(error)}`);
     }
   }
+
+  /**
+   * Internal method to read directory contents without path processing
+   * @private
+   */
+  private async readDirectoryInternal(normalizedPath: string): Promise<string[]> {
+    try {
+      if (!await this.plugin.app.vault.adapter.exists(normalizedPath)) {
+        return [];
+      }
+      const listing = await this.plugin.app.vault.adapter.list(normalizedPath);
+      // Return both files and folders, extract just the names
+      return [...listing.files, ...listing.folders].map(fullPath => {
+        const parts = fullPath.split('/');
+        return parts[parts.length - 1];
+      });
+    } catch (error) {
+      throw new Error(`Failed to read directory ${normalizedPath}: ${getErrorMessage(error)}`);
+    }
+  }
+
 
   /**
    * Get file/directory stats
@@ -186,17 +171,18 @@ export class DirectoryService implements IDirectoryService {
     let totalSize = 0;
 
     try {
-      if (!this.directoryExists(collectionsPath)) {
+      const normalizedCollectionsPath = normalizePath(collectionsPath);
+      
+      if (!await this.directoryExists(normalizedCollectionsPath)) {
         return 0;
       }
 
       for (const collectionName of memoryCollections) {
-        // Use simple string concatenation to avoid path duplication in Electron environment
-        const collectionPath = `${collectionsPath}/${collectionName}`;
+        const collectionPath = normalizePath(`${normalizedCollectionsPath}/${collectionName}`);
         
         if (await this.directoryExists(collectionPath)) {
-          const sizeInBytes = await this.calculateDirectorySize(collectionPath);
-          totalSize += sizeInBytes;
+          const sizeInMB = await this.calculateDirectorySize(collectionPath);
+          totalSize += sizeInMB;
         }
       }
 
@@ -212,8 +198,8 @@ export class DirectoryService implements IDirectoryService {
    */
   async calculateCollectionSize(collectionsPath: string, collectionName: string): Promise<number> {
     try {
-      // Use simple string concatenation to avoid path duplication in Electron environment
-      const collectionPath = `${collectionsPath}/${collectionName}`;
+      const normalizedCollectionsPath = normalizePath(collectionsPath);
+      const collectionPath = normalizePath(`${normalizedCollectionsPath}/${collectionName}`);
       
       if (!await this.directoryExists(collectionPath)) {
         return 0;
@@ -233,15 +219,16 @@ export class DirectoryService implements IDirectoryService {
     const breakdown: Record<string, number> = {};
 
     try {
-      if (!await this.directoryExists(collectionsPath)) {
+      const normalizedCollectionsPath = normalizePath(collectionsPath);
+      
+      if (!await this.directoryExists(normalizedCollectionsPath)) {
         return breakdown;
       }
 
-      const collections = await this.readDirectory(collectionsPath);
+      const collections = await this.readDirectory(normalizedCollectionsPath);
       
       for (const collectionName of collections) {
-        // Use simple string concatenation to avoid path duplication in Electron environment
-        const collectionPath = `${collectionsPath}/${collectionName}`;
+        const collectionPath = normalizePath(`${normalizedCollectionsPath}/${collectionName}`);
         
         if (await this.directoryExists(collectionPath)) {
           breakdown[collectionName] = await this.calculateDirectorySize(collectionPath);

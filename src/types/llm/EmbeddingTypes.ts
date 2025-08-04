@@ -50,27 +50,10 @@ export interface MemorySettings {
   dbStoragePath: string;
   vectorStoreType: 'file-based' | 'chromadb-server';
   
-  // Maintenance settings
-  autoCleanOrphaned: boolean;
-  maxDbSize: number;
-  pruningStrategy: 'oldest' | 'least-used' | 'manual';
+  // Maintenance settings (simplified)
+  // Orphaned embeddings are automatically deleted when files are removed
   reindexThreshold?: number;  // Days before reindexing files
   
-  // Search settings
-  defaultResultLimit: number;
-  includeNeighbors: boolean;
-  graphBoostFactor: number;
-  
-  // Backlink integration
-  backlinksEnabled: boolean;
-  
-  // Advanced query settings
-  useFilters: boolean;
-  defaultThreshold: number;
-  
-  // PHASE 1 COMPATIBILITY: Keep for settings migration
-  /** @deprecated Will be removed in next major version. Using score-based ranking instead. */
-  semanticThreshold?: number;
   
   // Memory Manager session settings
   autoCreateSessions?: boolean;
@@ -151,18 +134,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   idleTimeThreshold: 60000, // 1 minute of idle time before indexing
   dbStoragePath: '',
   vectorStoreType: 'file-based',
-  autoCleanOrphaned: true,
-  maxDbSize: 500,
-  pruningStrategy: 'least-used',
-  defaultResultLimit: 10,
-  includeNeighbors: true,
-  graphBoostFactor: 0.3,
-  backlinksEnabled: true,
-  useFilters: true,
-  defaultThreshold: 0.3,
-  
-  // PHASE 1 COMPATIBILITY: Keep for settings migration
-  semanticThreshold: 0.5, // Will be ignored by search logic
+  // Orphaned embeddings automatically cleaned up
   
   // Memory Manager session settings
   autoCreateSessions: true,

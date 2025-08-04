@@ -65,7 +65,7 @@ export class VectorStoreConfig implements IStorageOptions {
   
   /**
    * Get default configuration for Obsidian plugin
-   * @param pluginPath Path to the plugin directory
+   * @param pluginPath Path to the plugin directory (should be relative like '.obsidian/plugins/plugin-id')
    * @returns Default configuration
    */
   static getDefaultConfig(pluginPath: string): VectorStoreConfig {

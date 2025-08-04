@@ -26,7 +26,7 @@ export class MetadataSearchStrategy {
   /**
    * Search tags
    */
-  async searchTags(query: string, limit = 5): Promise<MetadataSearchResult> {
+  async searchTags(query: string, limit = 10): Promise<MetadataSearchResult> {
     try {
       if (!query || query.trim().length === 0) {
         return {
@@ -84,7 +84,7 @@ export class MetadataSearchStrategy {
   /**
    * Search properties
    */
-  async searchProperties(query: string, limit = 5): Promise<MetadataSearchResult> {
+  async searchProperties(query: string, limit = 10): Promise<MetadataSearchResult> {
     try {
       if (!query || query.trim().length === 0) {
         return {
@@ -128,7 +128,7 @@ export class MetadataSearchStrategy {
   /**
    * Search property values
    */
-  async searchPropertyValues(propertyKey: string, query: string, limit = 5): Promise<MetadataSearchResult> {
+  async searchPropertyValues(propertyKey: string, query: string, limit = 10): Promise<MetadataSearchResult> {
     try {
       if (!propertyKey || !query || query.trim().length === 0) {
         return {
@@ -309,7 +309,7 @@ export class MetadataSearchStrategy {
   /**
    * Search both tags and properties
    */
-  async searchMetadata(query: string, limit = 5): Promise<MetadataSearchResult> {
+  async searchMetadata(query: string, limit = 10): Promise<MetadataSearchResult> {
     try {
       const [tagResults, propertyResults] = await Promise.all([
         this.searchTags(query, Math.ceil(limit / 2)),

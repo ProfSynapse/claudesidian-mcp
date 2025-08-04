@@ -417,31 +417,20 @@ export default class ClaudesidianPlugin extends Plugin {
      * Initialize data directories asynchronously in background
      */
     private async initializeDataDirectories(): Promise<void> {
-        const fs = require('fs').promises;
-        
         try {
-            let basePath;
-            if (this.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
-                basePath = (this.app.vault.adapter as any).getBasePath();
-            } else {
-                console.warn('[ClaudesidianPlugin] FileSystemAdapter not available, using defaults');
-                return;
-            }
-            
-            // Use simple string concatenation to avoid path duplication in Electron environment
-            const pluginDir = `${basePath}/.obsidian/plugins/${this.manifest.id}`;
+            // Use vault-relative paths for Obsidian adapter
+            const pluginDir = `.obsidian/plugins/${this.manifest.id}`;
             const dataDir = `${pluginDir}/data`;
             const chromaDbDir = `${dataDir}/chroma-db`;
             const collectionsDir = `${chromaDbDir}/collections`;
             
             console.log('[STARTUP] Initializing ChromaDB-only data directories...');
             
-            // Create directories in parallel - ChromaDB only  
-            await Promise.all([
-                fs.mkdir(dataDir, { recursive: true }),
-                fs.mkdir(chromaDbDir, { recursive: true }),
-                fs.mkdir(collectionsDir, { recursive: true })
-            ]);
+            // Create directories using Obsidian's vault adapter
+            const { normalizePath } = require('obsidian');
+            await this.app.vault.adapter.mkdir(normalizePath(dataDir));
+            await this.app.vault.adapter.mkdir(normalizePath(chromaDbDir));
+            await this.app.vault.adapter.mkdir(normalizePath(collectionsDir));
             
             console.log('[STARTUP] ✅ ChromaDB data directories created successfully');
             
@@ -494,14 +483,6 @@ export default class ClaudesidianPlugin extends Plugin {
             autoCleanOrphaned: true,
             maxDbSize: 500,
             pruningStrategy: 'least-used' as 'least-used',
-            defaultResultLimit: 10,
-            includeNeighbors: true,
-            graphBoostFactor: 0.3,
-            backlinksEnabled: true,
-            useFilters: true,
-            defaultThreshold: 0.7,
-            // PHASE 1 COMPATIBILITY: Keep for settings migration (will be ignored by search logic)
-            semanticThreshold: 0.5,
             vectorStoreType: 'file-based' as 'file-based'
         };
     }

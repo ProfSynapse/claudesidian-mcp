@@ -64,7 +64,7 @@ export interface UniversalSearchParams extends CommonParameters, GraphBoostOptio
   queryType?: 'exact' | 'conceptual' | 'exploratory' | 'mixed';
   
   /**
-   * Maximum number of results per category (default: 5)
+   * Maximum number of results per category (default: 10)
    */
   limit?: number;
   

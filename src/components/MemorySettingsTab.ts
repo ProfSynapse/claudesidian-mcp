@@ -5,7 +5,6 @@ import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../database/services/embeddingManager';
 import { EmbeddingService } from '../database/services/EmbeddingService';
 import {
-    ApiSettingsTab,
     EmbeddingSettingsTab, 
     UsageStatsComponent,
     UsageSettingsTab
@@ -21,10 +20,9 @@ export class MemorySettingsTab {
     private settings: MemorySettings;
     private settingsManager: Settings;
     private app: App;
-    private activeTabKey = 'api'; // Track the active tab
+    private activeTabKey = 'embedding'; // Track the active tab
     
     // Component tabs
-    private apiSettingsTab: ApiSettingsTab;
     private embeddingSettingsTab: EmbeddingSettingsTab;
     private usageSettingsTab: UsageSettingsTab;
     private usageStatsComponent: UsageStatsComponent;
@@ -72,14 +70,13 @@ export class MemorySettingsTab {
         }
         
         // Initialize tab components
-        this.apiSettingsTab = new ApiSettingsTab(
+        this.embeddingSettingsTab = new EmbeddingSettingsTab(
             this.settings, 
             this.settingsManager, 
             this.app,
             this.embeddingManager || undefined,
             this.embeddingService || undefined
         );
-        this.embeddingSettingsTab = new EmbeddingSettingsTab(this.settings, this.settingsManager, this.app);
         this.usageSettingsTab = new UsageSettingsTab(
             this.settings, 
             this.settingsManager, 
@@ -98,7 +95,6 @@ export class MemorySettingsTab {
         );
         
         // Register refresh callbacks
-        this.apiSettingsTab.onSettingsChanged = () => this.display();
         this.embeddingSettingsTab.onSettingsChanged = () => this.display();
         this.usageSettingsTab.onSettingsChanged = () => this.display();
         this.usageStatsComponent.onSettingsChanged = () => this.display();
@@ -116,7 +112,6 @@ export class MemorySettingsTab {
 
         // Create tabs using unified tabs component
         const tabConfigs: UnifiedTabConfig[] = [
-            { key: 'api', label: 'API' },
             { key: 'embedding', label: 'Embedding' },
             { key: 'usage', label: 'Usage' }
         ];
@@ -131,11 +126,9 @@ export class MemorySettingsTab {
         });
 
         // Render each tab's content using the specialized components
-        const apiContent = this.unifiedTabs.getTabContent('api');
         const embeddingContent = this.unifiedTabs.getTabContent('embedding');
         const usageContent = this.unifiedTabs.getTabContent('usage');
         
-        if (apiContent) this.apiSettingsTab.display(apiContent);
         if (embeddingContent) this.embeddingSettingsTab.display(embeddingContent);
         if (usageContent) this.usageSettingsTab.display(usageContent);
         
@@ -166,7 +159,6 @@ export class MemorySettingsTab {
         }
         
         // Update settings in all tab components
-        this.apiSettingsTab.updateSettings(this.settings);
         this.embeddingSettingsTab.updateSettings(this.settings);
         this.usageSettingsTab.updateSettings(this.settings);
         this.usageStatsComponent.updateSettings(this.settings);

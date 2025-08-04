@@ -121,7 +121,7 @@ export class UniversalSearchService {
   async executeConsolidatedSearch(params: UniversalSearchParams): Promise<ConsolidatedSearchResult[]> {
     try {
       const startTime = performance.now();
-      const { query, limit = 5 } = params;
+      const { query, limit = 10 } = params;
 
 
       // 1. Parse query
@@ -187,7 +187,7 @@ export class UniversalSearchService {
   async executeUniversalSearch(params: UniversalSearchParams): Promise<UniversalSearchResult> {
     try {
       const startTime = performance.now();
-      const { query, limit = 5 } = params;
+      const { query, limit = 10 } = params;
 
       // 1. Parse query
       const parseResult = this.queryParser.parseSearchQuery(query);

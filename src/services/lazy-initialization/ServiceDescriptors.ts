@@ -319,12 +319,11 @@ export class ServiceDescriptors {
                 // Get memory trace collection from vector store
                 const memoryTraces = await vectorStore.getMemoryTraceCollection();
                 
-                // Create database maintenance service
+                // Create database maintenance service with no user settings
                 const maintenanceService = new DatabaseMaintenanceService(
                     vectorStore,
                     memoryTraces,
-                    await vectorStore.getSessionCollection(),
-                    this.plugin.settings.settings.memory || {}
+                    await vectorStore.getSessionCollection()
                 );
                 
                 return new MemoryTraceService(memoryTraces, embeddingService, maintenanceService);
@@ -343,12 +342,11 @@ export class ServiceDescriptors {
                 // Get session collection from vector store
                 const sessions = await vectorStore.getSessionCollection();
                 
-                // Create database maintenance service
+                // Create database maintenance service with no user settings
                 const maintenanceService = new DatabaseMaintenanceService(
                     vectorStore,
                     await vectorStore.getMemoryTraceCollection(),
-                    sessions,
-                    this.plugin.settings.settings.memory || {}
+                    sessions
                 );
                 
                 return new SessionService(this.plugin, sessions, maintenanceService);
@@ -499,8 +497,8 @@ export class ServiceDescriptors {
             throw new Error('FileSystemAdapter not available');
         }
         
-        // Use simple string concatenation to avoid path duplication in Electron environment
-        const pluginDir = `${basePath}/.obsidian/plugins/${this.plugin.manifest.id}`;
+        // Use vault-relative paths for Obsidian adapter
+        const pluginDir = `.obsidian/plugins/${this.plugin.manifest.id}`;
         const dataDir = `${pluginDir}/data/chroma-db`;
         
         const memorySettings = this.plugin.settings.settings.memory;

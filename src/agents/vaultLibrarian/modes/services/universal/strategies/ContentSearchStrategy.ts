@@ -36,7 +36,7 @@ export class ContentSearchStrategy {
   async searchContent(
     query: string, 
     filteredFiles?: TFile[], 
-    limit = 5, 
+    limit = 10, 
     params?: UniversalSearchParams
   ): Promise<ContentSearchResult> {
     const searchStartTime = performance.now();
@@ -76,7 +76,7 @@ export class ContentSearchStrategy {
   private async performHybridSearch(
     query: string, 
     filteredFiles?: TFile[], 
-    limit = 5, 
+    limit = 10, 
     params?: UniversalSearchParams
   ): Promise<ContentSearchResult> {
     const hybridSearchStartTime = performance.now();
@@ -174,7 +174,7 @@ export class ContentSearchStrategy {
   private async performKeywordSearch(
     query: string, 
     filteredFiles?: TFile[], 
-    limit = 5
+    limit = 10
   ): Promise<ContentSearchResult> {
     try {
       // Simple keyword search implementation

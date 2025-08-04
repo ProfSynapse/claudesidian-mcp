@@ -61,7 +61,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
       // Set default values (semanticThreshold removed - using pure score-based ranking)
       const searchParams: UniversalSearchParams = {
         ...params,
-        limit: params.limit || 5,
+        limit: params.limit || 10,
         includeContent: params.includeContent !== false
         // semanticThreshold parameter ignored - now using score-based ranking
       };

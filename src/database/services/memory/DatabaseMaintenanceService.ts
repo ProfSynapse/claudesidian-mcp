@@ -5,9 +5,9 @@ import { SessionCollection } from '../../collections/SessionCollection';
 export type PruningStrategy = 'oldest' | 'least-used' | 'manual';
 
 export interface DatabaseMaintenanceSettings {
-  /** Maximum database size in MB */
+  /** Maximum database size in MB (always 500MB) */
   maxDbSize?: number;
-  /** Strategy for pruning data when over limit */
+  /** Strategy for pruning data when over limit (always 'oldest') */
   pruningStrategy?: PruningStrategy;
 }
 
@@ -32,7 +32,7 @@ export class DatabaseMaintenanceService {
     private readonly vectorStore: IVectorStore,
     private readonly memoryTraces: MemoryTraceCollection,
     private readonly sessions: SessionCollection,
-    private readonly settings: DatabaseMaintenanceSettings
+    private readonly settings: DatabaseMaintenanceSettings = {}
   ) {}
 
   /**
@@ -51,7 +51,7 @@ export class DatabaseMaintenanceService {
     try {
       const diagnostics = await this.vectorStore.getDiagnostics();
       const currentSize = diagnostics.memoryDbSizeMB || 0;
-      const maxSize = this.settings.maxDbSize || 500;
+      const maxSize = 500; // Fixed at 500MB, no user configuration needed
       
       console.log(`Memory database size: ${currentSize.toFixed(2)} MB / ${maxSize} MB`);
       return currentSize <= maxSize;
@@ -79,22 +79,10 @@ export class DatabaseMaintenanceService {
         return; // Within limits, no action needed
       }
       
-      const pruningStrategy = this.settings.pruningStrategy || 'oldest';
-      console.log(`Memory database over limit, applying pruning strategy: ${pruningStrategy}`);
+      console.log('Memory database over limit, applying automatic pruning (oldest entries first)');
       
-      switch (pruningStrategy) {
-        case 'oldest':
-          await this.pruneOldestEntries();
-          break;
-        case 'least-used':
-          await this.pruneLeastUsedEntries();
-          break;
-        case 'manual':
-          console.warn('Memory database over limit but manual pruning strategy selected. Data may be lost.');
-          break;
-        default:
-          await this.pruneOldestEntries();
-      }
+      // Always prune oldest entries - no user configuration needed
+      await this.pruneOldestEntries();
     } catch (error) {
       console.error('Error enforcing database size limit:', error);
     }

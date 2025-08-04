@@ -22,7 +22,7 @@ export class FileSearchStrategy {
   /**
    * Search files by name using fuzzy search
    */
-  async searchFiles(query: string, limit = 5): Promise<FileSearchResult> {
+  async searchFiles(query: string, limit = 10): Promise<FileSearchResult> {
     try {
       if (!query || query.trim().length === 0) {
         return {
@@ -87,7 +87,7 @@ export class FileSearchStrategy {
   /**
    * Search files by path
    */
-  async searchFilesByPath(query: string, limit = 5): Promise<FileSearchResult> {
+  async searchFilesByPath(query: string, limit = 10): Promise<FileSearchResult> {
     try {
       if (!query || query.trim().length === 0) {
         return {
@@ -153,7 +153,7 @@ export class FileSearchStrategy {
   /**
    * Search files by extension
    */
-  async searchFilesByExtension(extension: string, limit = 5): Promise<FileSearchResult> {
+  async searchFilesByExtension(extension: string, limit = 10): Promise<FileSearchResult> {
     try {
       if (!extension || extension.trim().length === 0) {
         return {
@@ -206,7 +206,7 @@ export class FileSearchStrategy {
   /**
    * Get recently modified files
    */
-  async getRecentFiles(limit = 5): Promise<FileSearchResult> {
+  async getRecentFiles(limit = 10): Promise<FileSearchResult> {
     try {
       const allFiles = this.plugin.app.vault.getMarkdownFiles();
       
