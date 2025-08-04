@@ -315,10 +315,8 @@ export default class ClaudesidianPlugin extends Plugin {
             
             // Create memory trace collection through factory
             const memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(deps.vectorStore);
-            const sessionCollection = VectorStoreFactory.createSessionCollection(deps.vectorStore, deps.embeddingService);
-            const maintenanceService = await import('./database/services/memory/DatabaseMaintenanceService').then(m => new m.DatabaseMaintenanceService(deps.vectorStore, memoryTraceCollection, sessionCollection, {}));
             
-            return new MemoryTraceService(memoryTraceCollection, deps.embeddingService, maintenanceService);
+            return new MemoryTraceService(memoryTraceCollection, deps.embeddingService);
         }, { dependencies: ['vectorStore', 'embeddingService'] });
         
     }

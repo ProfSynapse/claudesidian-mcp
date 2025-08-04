@@ -9,7 +9,6 @@ import { WorkspaceService } from '../../database/services/WorkspaceService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { MemoryTraceService } from '../../database/services/memory/MemoryTraceService';
 import { SessionService } from '../../database/services/memory/SessionService';
-import { DatabaseMaintenanceService } from '../../database/services/memory/DatabaseMaintenanceService';
 import { ToolCallCaptureService } from '../toolcall-capture/ToolCallCaptureService';
 import { EventManager } from '../EventManager';
 import { FileEventManagerModular } from '../file-events/FileEventManagerModular';
@@ -305,14 +304,7 @@ export class ServiceDescriptors {
                 // Get memory trace collection from vector store
                 const memoryTraces = await vectorStore.getMemoryTraceCollection();
                 
-                // Create database maintenance service with no user settings
-                const maintenanceService = new DatabaseMaintenanceService(
-                    vectorStore,
-                    memoryTraces,
-                    await vectorStore.getSessionCollection()
-                );
-                
-                return new MemoryTraceService(memoryTraces, embeddingService, maintenanceService);
+                return new MemoryTraceService(memoryTraces, embeddingService);
             }
         };
     }
@@ -328,14 +320,7 @@ export class ServiceDescriptors {
                 // Get session collection from vector store
                 const sessions = await vectorStore.getSessionCollection();
                 
-                // Create database maintenance service with no user settings
-                const maintenanceService = new DatabaseMaintenanceService(
-                    vectorStore,
-                    await vectorStore.getMemoryTraceCollection(),
-                    sessions
-                );
-                
-                return new SessionService(this.plugin, sessions, maintenanceService);
+                return new SessionService(this.plugin, sessions);
             }
         };
     }

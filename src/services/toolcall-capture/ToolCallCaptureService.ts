@@ -126,7 +126,6 @@ export class ToolCallCaptureService {
     // Start background processing
     this.startBackgroundProcessing();
 
-    console.log('[ToolCallCapture] Service initialized with simple memory storage');
   }
 
   /**
@@ -354,7 +353,6 @@ export class ToolCallCaptureService {
    * Upgrade to full functionality with MemoryTraceService
    */
   async upgrade(memoryTraceService: MemoryTraceService, embeddingService?: EmbeddingService): Promise<void> {
-    console.log('[ToolCallCapture] Upgrading to full functionality...');
     
     // Migrate existing data from simple storage to full service
     if (this.memoryStorage instanceof SimpleMemoryService) {
@@ -376,7 +374,6 @@ export class ToolCallCaptureService {
     this.embeddingService = embeddingService;
     this.isUpgraded = true;
     
-    console.log('[ToolCallCapture] Successfully upgraded to full functionality');
   }
 
   /**
@@ -519,9 +516,6 @@ export class ToolCallCaptureService {
       }
 
       const processingTime = performance.now() - processingStartTime;
-      if (completedCaptures.length > 0) {
-        console.log(`[ToolCallCapture] Processed ${completedCaptures.length} captures in ${processingTime.toFixed(2)}ms`);
-      }
 
     } catch (error) {
       console.error('[ToolCallCapture] Queue processing failed:', error);

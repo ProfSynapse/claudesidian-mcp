@@ -254,10 +254,8 @@ export class HybridSearchService {
 
     if (this.searchValidator) {
       try {
-        console.log('[HybridSearchService] Validating search dependencies...');
         await this.searchValidator.ensureCollectionsReady('hybrid');
         searchCapabilities.semantic = this.isSemanticSearchAvailable();
-        console.log('[HybridSearchService] All collections ready for hybrid search');
       } catch (error) {
         if (error instanceof SearchDependencyError) {
           console.warn('[HybridSearchService] Search dependency issues detected:', error.message);
@@ -342,8 +340,7 @@ export class HybridSearchService {
     searchResults.forEach((results, i) => {
       if (results.length > 0) {
         const scores = results.map((r: any) => r.score);
-        console.log(`[HybridSearchService] ${methods[i]} results: ${results.length} items, scores: ${scores.slice(0, 3).map(s => s.toFixed(3)).join(', ')}${scores.length > 3 ? '...' : ''}`);
-      }
+        }
     });
     
     const fusionStart = Date.now();
@@ -355,10 +352,6 @@ export class HybridSearchService {
       const fusedScores = fusedResults.map(r => r.score);
       const isFusedOrdered = fusedScores.every((score, i) => i === 0 || fusedScores[i-1] >= score);
       
-      // Show top 3 fused results for verification
-      fusedResults.slice(0, 3).forEach((result, i) => {
-        console.log(`[HybridSearchService] Fused #${i+1}: ${result.title.substring(0, 30)}... score=${result.score.toFixed(3)}`);
-      });
     }
 
     // Stage 4: Apply hybrid ranking with content type and exact match boosts
@@ -371,12 +364,6 @@ export class HybridSearchService {
       const finalScores = rankedResults.map(r => r.score);
       const isFinalOrdered = finalScores.every((score, i) => i === 0 || finalScores[i-1] >= score);
       
-      // Show ranking boosts applied
-      rankedResults.slice(0, 3).forEach((result, i) => {
-        const contentBoost = result.metadata.contentTypeBoost || 1.0;
-        const exactBoost = result.metadata.exactMatchBoost || 1.0;
-        console.log(`[HybridSearchService] Final #${i+1}: ${result.title.substring(0, 30)}... score=${result.score.toFixed(3)} (content: ${contentBoost.toFixed(2)}x, exact: ${exactBoost.toFixed(2)}x)`);
-      });
     }
 
     // Stage 5: Format final results
@@ -393,11 +380,6 @@ export class HybridSearchService {
 
     const totalTime = Date.now() - searchStart - searchTime; // Excluding parallel search time
     
-    // Final validation and quality distribution analysis
-    if (finalResults.length > 0) {
-      const qualityDistribution = this.calculateQualityDistribution(finalResults);
-      console.log(`[HybridSearchService] Quality distribution:`, qualityDistribution);
-    }
     
     return finalResults;
   }
@@ -418,7 +400,6 @@ export class HybridSearchService {
       return [];
     }
     
-    console.log(`[HybridSearchService] Executing semantic search (threshold-free, score-based ranking)`);
 
     try {
       // Additional collection validation if validator is available
@@ -445,7 +426,6 @@ export class HybridSearchService {
         throw new Error('Failed to generate embedding for query');
       }
       
-      console.log(`[HybridSearchService] Generated embedding in ${embeddingTime}ms`);
       
       // Direct ChromaDB semantic search using query method
       const queryStart = Date.now();
@@ -462,21 +442,17 @@ export class HybridSearchService {
       );
       const queryTime = Date.now() - queryStart;
       
-      console.log(`[HybridSearchService] ChromaDB query completed in ${queryTime}ms, found ${queryResult.ids[0]?.length || 0} results`);
 
       // Convert query result to expected format
       const results = [];
       
       if (queryResult.ids[0]) {
-        console.log(`[HybridSearchService] Processing ${queryResult.ids[0].length} semantic results...`);
         
         for (let i = 0; i < queryResult.ids[0].length; i++) {
           const distance = queryResult.distances?.[0]?.[i] || 0;
           const score = Math.max(0, 1 - distance); // Convert distance to similarity score
           const fileId = queryResult.ids[0][i];
           const metadata = queryResult.metadatas?.[0]?.[i] || {};
-          
-          console.log(`[HybridSearchService] Result #${i+1}: distance=${distance.toFixed(3)}, score=${score.toFixed(3)}, id=${fileId}`);
           
           // Include all results, ranked by similarity score
           const qualityAssessment = this.classifySemanticQuality(score);
@@ -500,18 +476,6 @@ export class HybridSearchService {
         }
       }
 
-      // Quality distribution analysis
-      if (results.length > 0) {
-        const qualityDistribution = this.calculateQualityDistribution(results);
-        console.log(`[HybridSearchService] Semantic quality distribution:`, qualityDistribution);
-      }
-      
-      // Score ordering validation
-      if (results.length > 1) {
-        const scores = results.map(r => r.score);
-        const isProperlyOrdered = scores.every((score, i) => i === 0 || scores[i-1] >= score);
-        console.log(`[HybridSearchService] Semantic results properly ordered: ${isProperlyOrdered}`);
-      }
 
       // Format results for hybrid search compatibility
       const formattedResults = this.formatSemanticResults(results, query, analysis);
@@ -520,7 +484,6 @@ export class HybridSearchService {
       const duration = Date.now() - startTime;
       this.performanceMetrics.recordSemanticSearch(duration, formattedResults.length);
 
-      console.log(`[HybridSearchService] Semantic search completed in ${duration}ms, returning ${formattedResults.length} results`);
 
       return formattedResults;
     } catch (error) {
@@ -565,7 +528,6 @@ export class HybridSearchService {
     threshold: number,
     filteredFiles?: TFile[]
   ): Promise<KeywordSearchResult[]> {
-    console.log(`[HybridSearchService] Executing keyword search with ${threshold > 0 ? 'threshold=' + threshold : 'score-based ranking'}`);
     
     const useThresholdFiltering = threshold > 0;
     
@@ -579,11 +541,7 @@ export class HybridSearchService {
     
     if (rawResults.length > 0) {
       const scores = rawResults.map(r => r.score);
-      console.log(`[HybridSearchService] Keyword search found ${rawResults.length} results, scores: ${scores.slice(0, 3).map(s => s.toFixed(3)).join(', ')}${scores.length > 3 ? '...' : ''}`);
       
-      // Validate score ordering
-      const isProperlyOrdered = scores.every((score, i) => i === 0 || scores[i-1] >= score);
-      console.log(`[HybridSearchService] Keyword results properly ordered: ${isProperlyOrdered}`);
     }
     
     // Process with quality classification instead of filtering
@@ -594,10 +552,6 @@ export class HybridSearchService {
       ? processedResults.filter(result => result.score >= threshold)
       : processedResults; // Include all results for score-based ranking
     
-    if (!useThresholdFiltering && finalResults.length > 0) {
-      const qualityDistribution = this.calculateQualityDistribution(finalResults);
-      console.log(`[HybridSearchService] Keyword quality distribution:`, qualityDistribution);
-    }
     
     return finalResults;
   }
@@ -613,7 +567,6 @@ export class HybridSearchService {
     threshold: number,
     filteredFiles?: TFile[]
   ): Promise<FuzzySearchResult[]> {
-    console.log(`[HybridSearchService] Executing fuzzy search with ${threshold > 0 ? 'threshold=' + threshold : 'score-based ranking'}`);
     
     const useThresholdFiltering = threshold > 0;
     
@@ -630,20 +583,7 @@ export class HybridSearchService {
     
     if (results.length > 0) {
       const scores = results.map(r => r.score);
-      console.log(`[HybridSearchService] Fuzzy search found ${results.length} results, scores: ${scores.slice(0, 3).map(s => s.toFixed(3)).join(', ')}${scores.length > 3 ? '...' : ''}`);
       
-      // Validate score ordering
-      const isProperlyOrdered = scores.every((score, i) => i === 0 || scores[i-1] >= score);
-      console.log(`[HybridSearchService] Fuzzy results properly ordered: ${isProperlyOrdered}`);
-      
-      // Quality analysis (FuzzySearchService already includes quality metadata)
-      if (!useThresholdFiltering) {
-        const qualityStats = results.map(r => r.metadata?.qualityTier || 'minimal').reduce((acc: any, tier: any) => {
-          acc[tier] = (acc[tier] || 0) + 1;
-          return acc;
-        }, {});
-        console.log(`[HybridSearchService] Fuzzy quality distribution:`, qualityStats);
-      }
     }
     
     return results;
@@ -1109,7 +1049,6 @@ export class HybridSearchService {
       // Quality classification instead of filtering
       const qualityAssessment = this.classifyKeywordQuality(result.score, normalizedScore, query);
       
-      console.log(`[HybridSearchService] Keyword result #${index+1}: BM25=${result.score.toFixed(3)} → normalized=${normalizedScore.toFixed(3)} (${qualityAssessment.tier})`);
       
       return {
         ...result,

@@ -1,7 +1,6 @@
 import { Plugin } from 'obsidian';
 import { WorkspaceStateSnapshot } from '../../workspace-types';
 import { SnapshotCollection } from '../../collections/SnapshotCollection';
-import { DatabaseMaintenanceService } from './DatabaseMaintenanceService';
 
 export interface ContextSnapshotData {
   workspace?: any;
@@ -37,12 +36,10 @@ export class SnapshotService {
    * Creates a new SnapshotService instance
    * @param plugin - Obsidian plugin instance
    * @param snapshots - Snapshot collection
-   * @param maintenanceService - Service for database maintenance
    */
   constructor(
     private readonly plugin: Plugin,
     private readonly snapshots: SnapshotCollection,
-    private readonly maintenanceService: DatabaseMaintenanceService,
     private memoryTraceService?: any // Will be injected later to avoid circular dependency
   ) {}
 
@@ -55,14 +52,11 @@ export class SnapshotService {
   }
 
   /**
-   * Create a workspace state snapshot with database size enforcement
+   * Create a workspace state snapshot
    * @param snapshot - Snapshot data excluding ID
    * @returns Promise resolving to the created snapshot
    */
   async createSnapshot(snapshot: Omit<WorkspaceStateSnapshot, 'id'>): Promise<WorkspaceStateSnapshot> {
-    // Enforce database size limits before adding new data
-    await this.maintenanceService.enforceDbSizeLimit();
-    
     return this.snapshots.createSnapshot(snapshot);
   }
 

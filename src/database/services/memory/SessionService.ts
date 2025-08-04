@@ -1,7 +1,6 @@
 import { Plugin } from 'obsidian';
 import { WorkspaceSession } from '../../workspace-types';
 import { SessionCollection } from '../../collections/SessionCollection';
-import { DatabaseMaintenanceService } from './DatabaseMaintenanceService';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { generateSessionId } from '../../../utils/sessionUtils';
 
@@ -30,12 +29,10 @@ export class SessionService {
    * Creates a new SessionService instance
    * @param plugin - Obsidian plugin instance
    * @param sessions - Session collection
-   * @param maintenanceService - Service for database maintenance
    */
   constructor(
     private readonly plugin: Plugin,
     private readonly sessions: SessionCollection,
-    private readonly maintenanceService: DatabaseMaintenanceService,
     private memoryTraceService?: any, // Will be injected later to avoid circular dependency
     private snapshotService?: any // Will be injected later to avoid circular dependency
   ) {}
@@ -57,14 +54,11 @@ export class SessionService {
   }
 
   /**
-   * Create a new session with database size enforcement
+   * Create a new session
    * @param session - Session data excluding ID
    * @returns Promise resolving to the created session
    */
   async createSession(session: Omit<WorkspaceSession, 'id'>): Promise<WorkspaceSession> {
-    // Enforce database size limits before adding new data
-    await this.maintenanceService.enforceDbSizeLimit();
-    
     return this.sessions.createSession(session);
   }
 

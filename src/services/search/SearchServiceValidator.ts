@@ -107,11 +107,9 @@ export class SearchServiceValidator {
             recommendations: []
         };
 
-        console.log(`[SearchServiceValidator] Validating dependencies for ${searchType} search`);
 
         // If no collections required (e.g., fuzzy search), mark as valid
         if (dependencies.requiredCollections.length === 0) {
-            console.log(`[SearchServiceValidator] ${searchType} search requires no collections - validation passed`);
             return results;
         }
 
@@ -130,7 +128,6 @@ export class SearchServiceValidator {
                     console.warn(`[SearchServiceValidator] Collection unhealthy: ${collectionName}, issues: ${health.issues.join(', ')}`);
                 } else {
                     results.readyCollections.push(collectionName);
-                    console.log(`[SearchServiceValidator] Collection healthy: ${collectionName} (${health.itemCount} items)`);
                 }
             } catch (error) {
                 console.error(`[SearchServiceValidator] Error checking collection ${collectionName}:`, error);
@@ -152,12 +149,6 @@ export class SearchServiceValidator {
             }
         }
 
-        console.log(`[SearchServiceValidator] Validation result for ${searchType}:`, {
-            valid: results.valid,
-            ready: results.readyCollections.length,
-            missing: results.missingCollections.length,
-            corrupted: results.corruptedCollections.length
-        });
 
         return results;
     }
@@ -170,7 +161,6 @@ export class SearchServiceValidator {
         const validation = await this.validateSearchDependencies(searchType);
         
         if (validation.valid) {
-            console.log(`[SearchServiceValidator] All collections ready for ${searchType} search`);
             return;
         }
 

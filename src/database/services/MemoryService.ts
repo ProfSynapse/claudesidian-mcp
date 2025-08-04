@@ -15,8 +15,7 @@ import { EmbeddingService } from './EmbeddingService';
 import {
   MemoryTraceService,
   SessionService,
-  SnapshotService,
-  DatabaseMaintenanceService
+  SnapshotService
 } from './memory';
 import { CollectionManager } from '../providers/chroma/services/CollectionManager';
 import { DirectoryService } from '../providers/chroma/services/DirectoryService';
@@ -37,7 +36,6 @@ export class MemoryService {
   private memoryTraceService: MemoryTraceService;
   private sessionService: SessionService;
   private snapshotService: SnapshotService;
-  private databaseMaintenanceService: DatabaseMaintenanceService;
   private collectionManager: CollectionManager;
 
   /**
@@ -96,15 +94,6 @@ export class MemoryService {
     // CRITICAL FIX: Inject ObsidianPathManager to prevent path duplication
     const pathManager = new ObsidianPathManager(this.plugin.app.vault, this.plugin.manifest);
     this.collectionManager.setPathManager(pathManager);
-    this.databaseMaintenanceService = new DatabaseMaintenanceService(
-      vectorStore,
-      null as any, // Will be set after collection creation
-      null as any, // Will be set after collection creation
-      {
-        maxDbSize: settings.maxDbSize,
-        pruningStrategy: settings.pruningStrategy
-      }
-    );
 
     // Create specialized collections
     this.memoryTraces = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
@@ -114,25 +103,18 @@ export class MemoryService {
     // Initialize services with collections
     this.memoryTraceService = new MemoryTraceService(
       this.memoryTraces,
-      embeddingService,
-      this.databaseMaintenanceService
+      embeddingService
     );
 
     this.sessionService = new SessionService(
       plugin,
-      this.sessions,
-      this.databaseMaintenanceService
+      this.sessions
     );
 
     this.snapshotService = new SnapshotService(
       plugin,
-      this.snapshots,
-      this.databaseMaintenanceService
+      this.snapshots
     );
-
-    // Update database maintenance service with collections
-    (this.databaseMaintenanceService as any).memoryTraces = this.memoryTraces;
-    (this.databaseMaintenanceService as any).sessions = this.sessions;
 
     // Set up cross-service dependencies to avoid circular imports
     this.memoryTraceService.setSessionService(this.sessionService);
@@ -177,25 +159,6 @@ export class MemoryService {
     await this.initializeServices();
   }
 
-  //#region Database Size Management (delegated to DatabaseMaintenanceService)
-
-  /**
-   * Check if the memory database is within size limits
-   * @returns true if within limits, false if over limit
-   */
-  async isWithinSizeLimit(): Promise<boolean> {
-    return this.databaseMaintenanceService.isWithinSizeLimit();
-  }
-
-  /**
-   * Get database statistics and usage information
-   * @returns Database statistics
-   */
-  async getDatabaseStats() {
-    return this.databaseMaintenanceService.getDatabaseStats();
-  }
-
-  //#endregion
 
   //#region ChromaDB Collection Management (delegated to CollectionManager)
 

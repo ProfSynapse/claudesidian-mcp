@@ -1,7 +1,6 @@
 import { WorkspaceMemoryTrace } from '../../workspace-types';
 import { MemoryTraceCollection } from '../../collections/MemoryTraceCollection';
 import { EmbeddingService } from '../EmbeddingService';
-import { DatabaseMaintenanceService } from './DatabaseMaintenanceService';
 import type { PendingToolCallCapture } from '../../../services/toolcall-capture/ToolCallCaptureService';
 
 export interface MemoryTraceSearchOptions {
@@ -146,13 +145,11 @@ export class MemoryTraceService {
    * Creates a new MemoryTraceService instance
    * @param memoryTraces - Memory traces collection
    * @param embeddingService - Service for generating embeddings
-   * @param maintenanceService - Service for database maintenance
    * @param sessionService - Service for session management (for incrementing tool calls)
    */
   constructor(
     private readonly memoryTraces: MemoryTraceCollection,
     private readonly embeddingService: EmbeddingService,
-    private readonly maintenanceService: DatabaseMaintenanceService,
     private sessionService?: any // Will be injected later to avoid circular dependency
   ) {}
 
@@ -166,14 +163,12 @@ export class MemoryTraceService {
 
   /**
    * Store a memory trace with intelligent embedding generation.
-   * Automatically enforces database size limits before storing.
    * 
    * @param trace - Memory trace data (excluding id and embedding)
    * @returns Promise resolving to the ID of the created trace
    * 
    * @remarks
    * This method:
-   * - Enforces database size limits before storing
    * - Intelligently generates embeddings only when needed
    * - Skips embeddings for automated file events (unless importance >= 0.8)
    * - Updates session tool call counts when sessionId is provided
@@ -190,8 +185,6 @@ export class MemoryTraceService {
    * ```
    */
   async storeMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id' | 'embedding'>): Promise<string> {
-    // Enforce database size limits before adding new data
-    await this.maintenanceService.enforceDbSizeLimit();
     
     // Only generate embeddings for memory traces if explicitly needed
     // Skip embeddings for automated file event traces to prevent excessive API usage
@@ -360,7 +353,6 @@ export class MemoryTraceService {
    * - Generates intelligent embeddings based on tool call importance
    * - Creates enhanced metadata with execution context
    * - Maintains relationships and search optimization data
-   * - Enforces database size limits before storing
    * 
    * @example
    * ```typescript
@@ -369,9 +361,6 @@ export class MemoryTraceService {
    */
   async storeToolCallTrace(pendingCapture: PendingToolCallCapture): Promise<string> {
     try {
-      // Enforce database size limits before adding new data
-      await this.maintenanceService.enforceDbSizeLimit();
-      
       const request = pendingCapture.request;
       const response = pendingCapture.response;
       const sessionContext = pendingCapture.sessionContext;

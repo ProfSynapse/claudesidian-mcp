@@ -20,7 +20,6 @@ export class SessionService {
   private activeSessionId: string | null = null;
   
   constructor(private simpleMemoryService: SimpleMemoryService) {
-    console.log('[SessionService] Simple session service initialized');
   }
   
   /**
