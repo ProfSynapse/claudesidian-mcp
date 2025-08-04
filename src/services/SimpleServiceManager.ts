@@ -71,7 +71,6 @@ export class SimpleServiceManager {
             );
             this.services.set('toolCallCaptureService', toolCallCaptureService);
             
-            console.log('[SimpleServiceManager] Tier 1 services initialized successfully');
         } catch (error) {
             console.error('[SimpleServiceManager] Failed to initialize immediate services:', error);
             const message = error instanceof Error ? error.message : String(error);
@@ -88,7 +87,6 @@ export class SimpleServiceManager {
             // For now, just mark as ready - defer complex service creation
             this.fastServicesReady = true;
             this.services.get('eventManager')?.emit('fast-services-ready');
-            console.log('[SimpleServiceManager] Tier 2 services marked ready (deferred creation)');
         } catch (error) {
             console.error('[SimpleServiceManager] Fast services initialization error:', error);
             // Don't throw - these are non-critical services
@@ -195,12 +193,10 @@ export class SimpleServiceManager {
      * ENHANCED: Now uses ServiceRegistry to prevent duplicate creation
      */
     private async createBackgroundService(serviceName: string): Promise<any> {
-        console.log(`[SimpleServiceManager] Lazy loading background service: ${serviceName}`);
         
         // CRITICAL FIX: Use ServiceRegistry first to check for existing instances
         const existingService = this.serviceRegistry.getService(serviceName);
         if (existingService) {
-            console.log(`[SimpleServiceManager] ✅ Found existing ${serviceName} in ServiceRegistry`);
             return existingService;
         }
         
@@ -210,7 +206,6 @@ export class SimpleServiceManager {
             const lazyManager = new LazyServiceManager(this.app, this.plugin);
             
             const service = await lazyManager.get(serviceName);
-            console.log(`[SimpleServiceManager] ✅ Successfully loaded ${serviceName} via LazyServiceManager`);
             return service;
             
         } catch (error) {
@@ -228,7 +223,6 @@ export class SimpleServiceManager {
             await currentService.upgrade(enhancedService);
         }
         this.services.set(serviceName, enhancedService);
-        console.log(`[SimpleServiceManager] Upgraded ${serviceName} to enhanced functionality`);
     }
 
     /**
@@ -243,7 +237,6 @@ export class SimpleServiceManager {
             const simpleMemoryService = this.services.get('simpleMemoryService');
             if (simpleMemoryService && typeof simpleMemoryService.setVectorStore === 'function') {
                 simpleMemoryService.setVectorStore(vectorStore);
-                console.log('[SimpleServiceManager] ✅ Vector store injected into SimpleMemoryService with validated collections');
             } else {
                 console.warn('[SimpleServiceManager] SimpleMemoryService not found or missing setVectorStore method');
             }
@@ -275,7 +268,6 @@ export class SimpleServiceManager {
             
             if (lifecycleManager) {
                 // Perform comprehensive health check
-                console.log('[SimpleServiceManager] Validating collection health...');
                 const healthCheck = await lifecycleManager.performHealthCheck();
                 
                 if (!healthCheck.healthy) {
@@ -295,14 +287,12 @@ export class SimpleServiceManager {
                         throw new Error(`Failed to recover memory_traces collection: ${recoveryResult.errors.join(', ')}`);
                     }
                     
-                    console.log('[SimpleServiceManager] ✅ Memory traces collection recovered successfully');
                 }
                 
             } else {
                 // Fallback validation without lifecycle manager
                 const hasMemoryTraces = await vectorStore.hasCollection('memory_traces');
                 if (!hasMemoryTraces) {
-                    console.log('[SimpleServiceManager] Creating missing memory_traces collection...');
                     await vectorStore.createCollection('memory_traces', {
                         'hnsw:space': 'cosine',
                         description: 'Memory traces for tool calls and user interactions',
@@ -312,7 +302,6 @@ export class SimpleServiceManager {
                 }
             }
             
-            console.log('[SimpleServiceManager] ✅ Vector store collections validated successfully');
             
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -330,13 +319,10 @@ export class SimpleServiceManager {
         for (const collectionName of criticalCollections) {
             const collectionHealth = healthCheck.collections[collectionName];
             if (collectionHealth && (!collectionHealth.exists || !collectionHealth.accessible)) {
-                console.log(`[SimpleServiceManager] Recovering critical collection: ${collectionName}`);
                 
                 try {
                     const recoveryResult = await lifecycleManager.recoverCollection(collectionName, 'soft');
-                    if (recoveryResult.success) {
-                        console.log(`[SimpleServiceManager] ✅ Recovered ${collectionName} successfully`);
-                    } else {
+                    if (!recoveryResult.success) {
                         console.warn(`[SimpleServiceManager] ⚠️  Recovery failed for ${collectionName}:`, recoveryResult.errors);
                     }
                 } catch (recoveryError) {
@@ -385,6 +371,5 @@ export class SimpleServiceManager {
         // Simple cleanup - clear services
         this.services.clear();
         this.backgroundServices.clear();
-        console.log('[SimpleServiceManager] Cleanup completed');
     }
 }

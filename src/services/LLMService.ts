@@ -69,10 +69,8 @@ export class LLMService {
     // Only initialize adapters for providers with API keys
     if (providers.openai?.apiKey && providers.openai.enabled) {
       try {
-        console.log('Initializing OpenAI adapter...');
         const adapter = new OpenAIAdapter(providers.openai.apiKey);
         this.adapters.set('openai', adapter);
-        console.log('OpenAI adapter initialized successfully');
       } catch (error) {
         console.error('Failed to initialize OpenAI adapter:', error);
         console.error('Error details:', {

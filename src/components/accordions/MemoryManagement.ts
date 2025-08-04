@@ -4,7 +4,6 @@ import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian'
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddingAccessService';
-// HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
 import { MemoryService } from '../../database/services/MemoryService';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 import type { ServiceContainer } from '../../core/ServiceContainer';
@@ -20,7 +19,6 @@ export class MemoryManagementAccordion extends Accordion {
     // ChromaDB Services
     private embeddingService: EmbeddingService | undefined;
     private fileEmbeddingAccessService: FileEmbeddingAccessService | undefined;
-    // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
     private memoryService: MemoryService | undefined;
     private embeddingManager: EmbeddingManager | undefined;
     
@@ -38,7 +36,6 @@ export class MemoryManagementAccordion extends Accordion {
      * @param settings Plugin settings
      * @param embeddingService EmbeddingService for generating and managing embeddings
      * @param fileEmbeddingAccessService FileEmbeddingAccessService for file embedding access
-     * @param hnswSearchService HnswSearchService for search operations
      * @param memoryService MemoryService for memory traces and sessions
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
      * @param embeddingManager EmbeddingManager for managing embedding providers (optional)
@@ -49,7 +46,6 @@ export class MemoryManagementAccordion extends Accordion {
         settings: Settings,
         embeddingService?: EmbeddingService,
         fileEmbeddingAccessService?: FileEmbeddingAccessService,
-        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         memoryService?: MemoryService,
         vaultLibrarian?: VaultLibrarianAgent,
         embeddingManager?: EmbeddingManager,
@@ -59,7 +55,6 @@ export class MemoryManagementAccordion extends Accordion {
         this.settings = settings;
         this.embeddingService = embeddingService;
         this.fileEmbeddingAccessService = fileEmbeddingAccessService;
-        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
         this.embeddingManager = embeddingManager;
@@ -109,7 +104,6 @@ export class MemoryManagementAccordion extends Accordion {
         if (this.serviceContainer) {
             const embeddingReady = this.serviceContainer.isReady('embeddingService');
             const fileAccessReady = this.serviceContainer.isReady('fileEmbeddingAccessService');
-            // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
             const memoryReady = this.serviceContainer.isReady('memoryService');
             
             return embeddingReady && fileAccessReady && memoryReady;
@@ -172,7 +166,6 @@ export class MemoryManagementAccordion extends Accordion {
         const services = [
             { name: 'Embedding Service', key: 'embeddingService', instance: this.embeddingService },
             { name: 'File Access Service', key: 'fileEmbeddingAccessService', instance: this.fileEmbeddingAccessService, dependency: 'vectorStore' },
-            // HNSW Search Service removed - semantic search now handled through ChromaDB via HybridSearchService
             { name: 'Memory Service', key: 'memoryService', instance: this.memoryService }
         ];
         
@@ -287,7 +280,6 @@ export class MemoryManagementAccordion extends Accordion {
     ): void {
         this.embeddingService = embeddingService;
         this.fileEmbeddingAccessService = fileEmbeddingAccessService;
-        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
         this.embeddingManager = embeddingManager;
@@ -332,7 +324,7 @@ export class MemoryManagementAccordion extends Accordion {
                     text: 'Service Status:'
                 });
                 
-                const services = ['embeddingService', 'fileEmbeddingAccessService', 'hnswSearchService', 'memoryService'];
+                const services = ['embeddingService', 'fileEmbeddingAccessService', 'memoryService'];
                 const statusList = statusEl.createEl('ul');
                 
                 services.forEach(serviceName => {
@@ -350,7 +342,6 @@ export class MemoryManagementAccordion extends Accordion {
         
         // Get services from ServiceContainer if available, otherwise use direct references
         const embeddingService = this.serviceContainer?.getIfReady<EmbeddingService>('embeddingService') || this.embeddingService;
-        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         
         // Initialize the MemorySettingsTab with our services and agent
         this.memorySettingsTab = new MemorySettingsTab(

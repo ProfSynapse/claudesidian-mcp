@@ -289,7 +289,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     async processStartupQueue(): Promise<void> {
         const queuedEvents = this.dependencies.fileEventQueue.getEvents();
         
-        console.log('[HNSW-STARTUP-DEBUG] Processing startup queue:', {
+        console.log('[FileEventCoordinator] Processing startup queue:', {
             queuedEventsCount: queuedEvents.length,
             hasEmbeddingScheduler: !!this.dependencies.embeddingScheduler,
             hasFileEventProcessor: !!this.dependencies.fileEventProcessor,
@@ -297,7 +297,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         });
         
         if (queuedEvents.length === 0) {
-            console.log('[HNSW-STARTUP-DEBUG] No events in startup queue');
+            console.log('[FileEventCoordinator] No events in startup queue');
             return;
         }
 
@@ -319,7 +319,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             if (invalidCount > 0) {
             }
             
-            console.log('[HNSW-STARTUP-DEBUG] Event filtering results:', {
+            console.log('[FileEventCoordinator] Event filtering results:', {
                 totalEvents: queuedEvents.length,
                 validEvents: validEvents.length,
                 invalidCount,

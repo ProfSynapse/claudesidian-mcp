@@ -94,13 +94,6 @@ export interface UniversalSearchParams extends CommonParameters, GraphBoostOptio
   forceSemanticSearch?: boolean;
   
   /**
-   * @deprecated Similarity threshold for semantic search (0-1, default: 0.7)
-   * This parameter is deprecated and will be ignored. Results are now ranked by similarity score.
-   * Use limit parameter to control result count.
-   */
-  semanticThreshold?: number;
-  
-  /**
    * Additional metadata filters (alternative to query syntax)
    */
   metadataFilters?: {

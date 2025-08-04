@@ -77,10 +77,8 @@ export class UsageStatsComponent extends BaseSettingsTab {
         // Use the global service if available, otherwise fall back to creating a new one
         if (pluginObj?.services?.usageStatsService) {
             this.usageStatsService = pluginObj.services.usageStatsService;
-            console.log('Using global UsageStatsService instance');
         } else if (pluginObj?.usageStatsService) {
             this.usageStatsService = pluginObj.usageStatsService;
-            console.log('Using global UsageStatsService instance from plugin');
         } else {
             // Fallback to local service creation (should rarely happen)
             const vectorStore = pluginObj?.vectorStore || (this.searchService?.vectorStore);

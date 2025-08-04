@@ -53,7 +53,6 @@ export class MCPServer implements IMCPServer {
         private onToolCall?: (toolName: string, params: any) => Promise<void>,
         private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
     ) {
-        console.log('[MCPServer] 🚨🚨🚨 CONSTRUCTOR CALLED with onToolResponse:', !!this.onToolResponse);
         // Initialize configuration service
         this.configuration = new ServerConfiguration(app, { serverName });
         
@@ -108,8 +107,6 @@ export class MCPServer implements IMCPServer {
      */
     private initializeRequestRouter(): void {
         try {
-            console.log('[MCPServer] 🔍 INIT RequestRouter - onToolResponse callback available:', !!this.onToolResponse);
-            console.log('[MCPServer] 🔍 INIT RequestRouter - callback type:', typeof this.onToolResponse);
             this.requestRouter = new RequestRouter(
                 this.app,
                 this.agentRegistry.getAgents(),
@@ -300,9 +297,6 @@ export class MCPServer implements IMCPServer {
      */
     reinitializeRequestRouter(): void {
         try {
-            console.log('[MCPServer] 🚨🚨🚨 REINITIALIZING RequestRouter with callback:', !!this.onToolResponse);
-            console.log('[MCPServer] 🚨🚨🚨 REINIT - callback type:', typeof this.onToolResponse);
-            console.log('[MCPServer] 🚨🚨🚨 REINIT - callback function preview:', this.onToolResponse?.toString().substring(0, 100));
             this.requestRouter = new RequestRouter(
                 this.app,
                 this.agentRegistry.getAgents(),

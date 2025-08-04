@@ -17,7 +17,6 @@ export class ProcessedFilesStateManager {
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
-        console.log('[StateManager] Initialized with plugin data.json storage');
     }
 
     async loadState(): Promise<void> {

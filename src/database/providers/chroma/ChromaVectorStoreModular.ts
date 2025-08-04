@@ -102,17 +102,11 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    */
   async initialize(): Promise<void> {
     try {
-      console.log('[ChromaVectorStoreModular] Starting initialization...');
-      console.log('[ChromaVectorStoreModular] Initial config:', this.config);
-      
       // Resolve configuration with sensible defaults
       this.resolveConfiguration();
-      console.log('[ChromaVectorStoreModular] Config after resolution:', this.config);
       
       // Validate configuration
-      console.log('[ChromaVectorStoreModular] Validating configuration...');
       const isValid = await this.clientFactory.validateConfiguration(this.config);
-      console.log(`[ChromaVectorStoreModular] Configuration valid: ${isValid}`);
       
       if (!isValid) {
         console.error('[ChromaVectorStoreModular] Configuration validation failed');
@@ -231,7 +225,6 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    */
   private async ensureStandardCollections(): Promise<void> {
     try {
-      console.log('[ChromaVectorStore] Ensuring standard collections exist...');
       
       // Define standard collections
       const standardCollections = [
@@ -251,11 +244,9 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
           const exists = await this.collectionManager.hasCollection(collectionName);
           
           if (exists) {
-            console.log(`[ChromaVectorStore] ✅ Collection ${collectionName} exists and loaded`);
             existingCount++;
           } else {
             // Collection doesn't exist - create it
-            console.log(`[ChromaVectorStore] Creating missing collection: ${collectionName}`);
             await this.collectionManager.createCollection(collectionName, {
               'hnsw:space': 'cosine',
               description: `Standard collection: ${collectionName}`,
@@ -276,10 +267,8 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
           this, 
           this.collectionManager
         );
-        console.log('[ChromaVectorStore] ✅ Collection lifecycle manager initialized');
       }
       
-      console.log(`[ChromaVectorStore] ✅ Standard collections ready: ${existingCount} existing, ${createdCount} created, ${recoveredCount} recovered`);
       
       // Final refresh to ensure collection manager state is synchronized
       await this.collectionManager.refreshCollections();
@@ -312,7 +301,6 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
         // Continue without health monitoring - it's not critical
       });
       
-      console.log('[ChromaVectorStore] ✅ Collection health monitoring initialized');
       
     } catch (error) {
       console.warn('[ChromaVectorStore] Health monitoring initialization failed:', error);
@@ -330,7 +318,6 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // The recoverCollectionsFromFilesystem() method is called internally
       await this.collectionManager.refreshCollections();
       
-      console.log('[ChromaVectorStoreModular] Collections loaded from disk via CollectionManager');
     } catch (error) {
       console.error('[ChromaVectorStoreModular] Error loading collections from disk:', error);
       throw error;

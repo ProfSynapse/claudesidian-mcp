@@ -30,12 +30,7 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
         private sessionContextManager?: SessionContextManager,
         private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
     ) {
-        console.log(`[ToolExecutionStrategy] 🚨🚨🚨 NEW CONSTRUCTOR V2 [${this.instanceId}] [${this.buildVersion}] - onToolResponse available:`, !!this.onToolResponse);
-        if (!this.onToolResponse) {
-            console.error(`[ToolExecutionStrategy] 🚨🚨🚨 MISSING CALLBACK V2 [${this.instanceId}] - this will cause errors!`);
-        } else {
-            console.log(`[ToolExecutionStrategy] ✅ CALLBACK PROPERLY SET V2 [${this.instanceId}] - ready for tool responses`);
-        }
+        // ToolExecutionStrategy initialized with callback support
     }
 
     canHandle(request: ToolExecutionRequest): boolean {
@@ -58,7 +53,6 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             if (this.onToolResponse) {
                 try {
                     const executionTime = Date.now() - startTime;
-                    console.log('[ToolExecutionStrategy] 🎯 RESPONSE-CAPTURE: Triggering response callback for:', request.params.name);
                     await this.onToolResponse(
                         request.params.name,
                         context.params,
@@ -66,17 +60,9 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
                         success,
                         executionTime
                     );
-                    console.log('[ToolExecutionStrategy] 🎯 RESPONSE-CAPTURE: Response callback completed for:', request.params.name);
                 } catch (captureError) {
                     console.warn('[ToolExecutionStrategy] Response capture failed:', captureError);
                 }
-            } else {
-                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 CALLBACK MISSING AT RUNTIME [${this.instanceId}] for:`, request.params.name);
-                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 onToolResponse is [${this.instanceId}]:`, this.onToolResponse);
-                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 This should NOT happen if constructor was called properly! [${this.instanceId}]`);
-                console.error(`[ToolExecutionStrategy] 🚨🚨🚨 STACK TRACE [${this.instanceId}]:`);
-                console.trace();
-                console.warn('[ToolExecutionStrategy] 🚨 No response callback available for:', request.params.name);
             }
             
             return this.dependencies.responseFormatter.formatToolExecutionResponse(
@@ -88,7 +74,6 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             if (this.onToolResponse && context) {
                 try {
                     const executionTime = Date.now() - startTime;
-                    console.log('[ToolExecutionStrategy] 🎯 ERROR-CAPTURE: Triggering error response callback for:', request.params.name);
                     await this.onToolResponse(
                         request.params.name,
                         context.params,
@@ -96,12 +81,9 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
                         false,
                         executionTime
                     );
-                    console.log('[ToolExecutionStrategy] 🎯 ERROR-CAPTURE: Error response callback completed for:', request.params.name);
                 } catch (captureError) {
                     console.warn('[ToolExecutionStrategy] Error response capture failed:', captureError);
                 }
-            } else {
-                console.warn('[ToolExecutionStrategy] 🚨 No error response callback available for:', request.params.name);
             }
             
             if (error instanceof McpError) {

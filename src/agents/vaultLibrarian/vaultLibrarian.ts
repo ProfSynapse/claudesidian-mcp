@@ -67,7 +67,6 @@ export class VaultLibrarianAgent extends BaseAgent {
           }
           
           // Access services from ServiceContainer (new pattern)
-          console.log('[VaultLibrarian] 🔍 Attempting to access services from ServiceContainer...');
           try {
             // Use ServiceContainer getIfReady to avoid waiting for initialization
             if (pluginAny.serviceContainer) {
@@ -76,14 +75,6 @@ export class VaultLibrarianAgent extends BaseAgent {
               this.workspaceService = pluginAny.serviceContainer.getIfReady('workspaceService');
               this.memoryTraceService = pluginAny.serviceContainer.getIfReady('memoryTraceService');
               
-              console.log('[VaultLibrarian] ✅ Services accessed from ServiceContainer:', {
-                embeddingService: !!this.embeddingService,
-                memoryService: !!this.memoryService,
-                workspaceService: !!this.workspaceService,
-                memoryTraceService: !!this.memoryTraceService
-              });
-            } else {
-              console.warn('[VaultLibrarian] ServiceContainer not available');
             }
           } catch (error) {
             console.warn('[VaultLibrarian] Failed to access services:', error);

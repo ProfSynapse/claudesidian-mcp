@@ -133,8 +133,6 @@ export class StartupPerformanceMonitor {
       console.error(`[StartupPerformanceMonitor] 🔴 ${componentName} exceeded error threshold: ${duration}ms > ${threshold.errorThreshold}ms`);
     } else if (duration > threshold.warningThreshold) {
       console.warn(`[StartupPerformanceMonitor] 🟡 ${componentName} exceeded warning threshold: ${duration}ms > ${threshold.warningThreshold}ms`);
-    } else {
-      console.log(`[StartupPerformanceMonitor] ✅ ${componentName} completed in ${duration}ms`);
     }
   }
 

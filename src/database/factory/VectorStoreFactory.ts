@@ -110,7 +110,6 @@ export class VectorStoreFactory {
    */
   static clearEmbeddingProviderCache(): void {
     this.embeddingProviderCache.clear();
-    console.log('Embedding provider cache cleared');
   }
   
   

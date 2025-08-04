@@ -42,7 +42,6 @@ export class RequestRouter {
         private customPromptStorage?: CustomPromptStorageService,
         private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
     ) {
-        console.log('[RequestRouter] 🚨🚨🚨 CONSTRUCTOR CALLED - creating fresh strategies with callback:', !!this.onToolResponse);
         this.initializeDependencies();
         this.initializeStrategies();
     }
@@ -63,7 +62,6 @@ export class RequestRouter {
     }
 
     private initializeStrategies(): void {
-        console.log('[RequestRouter] 🔍 DEBUG: Initializing strategies, onToolResponse callback available:', !!this.onToolResponse);
         this.strategies = [
             new ToolListStrategy(
                 this.dependencies,

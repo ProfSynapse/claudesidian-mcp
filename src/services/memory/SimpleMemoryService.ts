@@ -92,13 +92,11 @@ export class SimpleMemoryService {
                 this.sessionService || null as any
             );
             
-            console.log('[SimpleMemoryService] Storage coordinator initialized for guaranteed persistence');
         }
 
         // Legacy collection creation for backward compatibility
         this.memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
         
-        console.log('[SimpleMemoryService] Vector store and storage coordinator initialized');
         
         // Attempt to persist any traces that were captured before vector store was available
         this.persistPendingTraces();
@@ -114,20 +112,16 @@ export class SimpleMemoryService {
             timestamp: Date.now(),
             stored: new Date().toISOString()
         });
-        console.log(`[SimpleMemoryService] Stored trace in memory: ${traceId}`);
 
         // Attempt persistence via storage coordinator
         if (this.storageCoordinator) {
             try {
                 const result: StorageResult = await this.storageCoordinator.storeMemoryTrace(traceId, trace);
                 
-                if (result.success) {
-                    console.log(`[SimpleMemoryService] Successfully persisted trace ${traceId} via ${result.persistenceMethod}`);
-                    if (result.warning) {
-                        console.warn(`[SimpleMemoryService] Persistence warning for ${traceId}:`, result.warning);
-                    }
-                } else {
+                if (!result.success) {
                     console.error(`[SimpleMemoryService] Failed to persist trace ${traceId}`);
+                } else if (result.warning) {
+                    console.warn(`[SimpleMemoryService] Persistence warning for ${traceId}:`, result.warning);
                 }
 
             } catch (error) {
@@ -157,8 +151,7 @@ export class SimpleMemoryService {
                     }
                 };
 
-                const createdTrace = await this.memoryTraceCollection.createMemoryTrace(memoryTraceData);
-                console.log(`[SimpleMemoryService] Legacy persistence successful: ${trace.agent}.${trace.mode} (${createdTrace.id})`);
+                await this.memoryTraceCollection.createMemoryTrace(memoryTraceData);
             } catch (error) {
                 console.error('[SimpleMemoryService] Legacy persistence failed:', error);
             }
@@ -168,7 +161,6 @@ export class SimpleMemoryService {
                 this.pendingTraces = new Map();
             }
             this.pendingTraces.set(traceId, trace);
-            console.log(`[SimpleMemoryService] Queued trace ${traceId} for later persistence`);
         }
     }
     
@@ -259,16 +251,12 @@ export class SimpleMemoryService {
             return;
         }
 
-        console.log(`[SimpleMemoryService] Persisting ${this.pendingTraces.size} pending traces`);
 
         const persistencePromises: Promise<any>[] = [];
         
         for (const [traceId, trace] of this.pendingTraces.entries()) {
             const promise = this.storageCoordinator.storeMemoryTrace(traceId, trace)
                 .then(result => {
-                    if (result.success) {
-                        console.log(`[SimpleMemoryService] Successfully persisted pending trace ${traceId}`);
-                    }
                     return { traceId, success: result.success };
                 })
                 .catch(error => {
@@ -282,7 +270,6 @@ export class SimpleMemoryService {
         const results = await Promise.allSettled(persistencePromises);
         const successCount = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
         
-        console.log(`[SimpleMemoryService] Pending trace persistence complete: ${successCount}/${this.pendingTraces.size} successful`);
         
         // Clear pending traces after persistence attempt
         this.pendingTraces.clear();

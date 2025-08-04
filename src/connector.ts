@@ -66,7 +66,6 @@ export class MCPConnector {
         }
         
         // Create server skeleton - full initialization deferred
-        console.log('[MCPConnector] 🔍 DEBUG: Creating MCPServer with callbacks, serviceContainer available:', !!this.serviceContainer);
         this.server = new MCPServer(
             app, 
             plugin, 
@@ -85,7 +84,6 @@ export class MCPConnector {
      * Handle tool call responses - capture completed tool calls
      */
     private async onToolResponse(toolName: string, params: any, response: any, success: boolean, executionTime: number): Promise<void> {
-        console.log('[MCPConnector] 🎯 onToolResponse triggered:', toolName, 'success:', success, 'executionTime:', executionTime + 'ms');
         
         try {
             // Find the matching pending tool call
@@ -96,7 +94,6 @@ export class MCPConnector {
             
             if (matchingEntry) {
                 const [toolCallId, captureInfo] = matchingEntry;
-                console.log('[MCPConnector] 🎯 MEMORY-TRACE: Capturing tool call response for:', toolCallId);
                 
                 // Initialize tool call capture service if not already done
                 await this.initializeToolCallCaptureService();
@@ -123,7 +120,6 @@ export class MCPConnector {
                     }
                     
                     await this.toolCallCaptureService.captureResponse(toolCallId, toolResponse);
-                    console.log('[MCPConnector] 🎯 MEMORY-TRACE: Response captured successfully for toolCallId:', toolCallId);
                     
                     // Remove from pending
                     this.pendingToolCalls.delete(toolCallId);
@@ -142,7 +138,6 @@ export class MCPConnector {
      * Handle tool calls - services now load on demand automatically
      */
     private async onToolCall(toolName: string, params: any): Promise<void> {
-        console.log('[MCPConnector] 🎯 onToolCall triggered:', toolName, 'with params:', params);
         
         try {
             // Initialize tool call capture service if not already done
@@ -166,7 +161,6 @@ export class MCPConnector {
                     workspaceContext: this.extractWorkspaceContext(params)
                 };
                 
-                console.log('[MCPConnector] 🎯 MEMORY-TRACE: Capturing tool call request:', toolCallId, agent, mode);
                 await this.toolCallCaptureService.captureRequest(request);
                 
                 // Store for response capture later
@@ -479,9 +473,7 @@ export class MCPConnector {
             const { agent, mode, params: modeParams } = params;
             
             // Initialize tool call capture service if not already done
-            console.log('[MCPConnector] 🔍 DIAGNOSTIC: Attempting to initialize ToolCallCaptureService...');
             await this.initializeToolCallCaptureService();
-            console.log('[MCPConnector] 🔍 DIAGNOSTIC: ToolCallCaptureService initialization completed, service available:', !!this.toolCallCaptureService);
             
             // Generate unique tool call ID for capture
             toolCallId = this.generateToolCallId();
@@ -489,7 +481,6 @@ export class MCPConnector {
             
             // CAPTURE REQUEST (Non-blocking)
             if (this.toolCallCaptureService) {
-                console.log('[MCPConnector] 🎯 CAPTURE DEBUG: ToolCallCaptureService found, capturing request for', agent, mode);
                 try {
                     captureContext = await this.toolCallCaptureService.captureRequest({
                         toolCallId,
@@ -500,7 +491,6 @@ export class MCPConnector {
                         source: 'mcp-client',
                         workspaceContext: this.extractWorkspaceContext(modeParams)
                     });
-                    console.log('[MCPConnector] 🎯 CAPTURE DEBUG: Request captured successfully for toolCallId:', toolCallId);
                 } catch (captureError) {
                     // Don't fail the tool call if capture fails
                     console.warn('[MCPConnector] Tool call request capture failed:', captureError);
@@ -623,7 +613,6 @@ export class MCPConnector {
             // Use Direct Property Access pattern (fastest, no async needed)
             const service = plugin.toolCallCaptureService;
             if (service) {
-                console.log('[MCPConnector] ✅ ToolCallCaptureService accessed via direct property');
                 this.toolCallCaptureService = service;
                 return;
             }
@@ -632,7 +621,6 @@ export class MCPConnector {
             if (plugin.getService) {
                 const asyncService = await plugin.getService('toolCallCaptureService');
                 if (asyncService) {
-                    console.log('[MCPConnector] ✅ ToolCallCaptureService retrieved via async access');
                     this.toolCallCaptureService = asyncService;
                     return;
                 }

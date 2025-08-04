@@ -214,19 +214,19 @@ export class FileEventManagerModular {
         try {
             // First, discover and queue existing files if queue is empty
             const initialQueueSize = this.dependencies.fileEventQueue.size();
-            console.log('[HNSW-STARTUP-DEBUG] Starting startup queue processing:', {
+            console.log('[FileEventManager] Starting startup queue processing:', {
                 initialQueueSize,
                 hasEmbeddingScheduler: !!this.dependencies.embeddingScheduler
             });
             
             if (initialQueueSize === 0) {
-                console.log('[HNSW-STARTUP-DEBUG] Queue is empty, running initial vault scan');
+                console.log('[FileEventManager] Queue is empty, running initial vault scan');
                 await this.discoverAndQueueExistingFiles();
             }
             
             const queueSize = this.dependencies.fileEventQueue.size();
             if (queueSize === 0) {
-                console.log('[HNSW-STARTUP-DEBUG] No files to process after initial scan');
+                console.log('[FileEventManager] No files to process after initial scan');
                 return;
             }
 

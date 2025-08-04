@@ -226,33 +226,10 @@ export class InitializationDiagnostics {
   printReport(): void {
     const report = this.generateInitializationReport();
     
-    console.log('\n=== INITIALIZATION DIAGNOSTIC REPORT ===');
-    console.log(`Total Duration: ${report.totalDuration}ms`);
-    console.log(`Components Initialized: ${report.componentsInitialized.length}`);
-    console.log(`Duplicate Initializations: ${report.duplicateInitializations.length}`);
-    console.log(`Errors: ${report.errors.length}`);
-    console.log(`Total Wasted Time: ${report.performanceMetrics.totalWastedTime}ms`);
-    
-    if (report.duplicateInitializations.length > 0) {
-      console.log('\n--- DUPLICATE INITIALIZATIONS ---');
-      report.duplicateInitializations.forEach(dup => {
-        console.log(`${dup.component}: ${dup.attempts} attempts, ${dup.wastes.duration}ms wasted`);
-      });
+    // Only report significant issues to reduce noise
+    if (report.duplicateInitializations.length > 0 || report.errors.length > 0 || report.performanceMetrics.totalWastedTime > 1000) {
+      console.log(`[InitializationDiagnostics] Issues detected: ${report.duplicateInitializations.length} duplicates, ${report.errors.length} errors, ${report.performanceMetrics.totalWastedTime}ms wasted`);
     }
-    
-    if (report.errors.length > 0) {
-      console.log('\n--- ERRORS ---');
-      report.errors.forEach(error => {
-        console.log(`${error.component}: ${error.error}`);
-      });
-    }
-    
-    console.log('\n--- RECOMMENDATIONS ---');
-    report.recommendations.forEach(rec => {
-      console.log(rec);
-    });
-    
-    console.log('\n=== END DIAGNOSTIC REPORT ===\n');
   }
 
   /**

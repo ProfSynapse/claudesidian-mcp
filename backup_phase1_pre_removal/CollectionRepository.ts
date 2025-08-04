@@ -173,7 +173,7 @@ export class CollectionRepository {
   }
 
   /**
-   * Query items with vector similarity using cosine distance
+   * Query items with vector similarity - now using HNSW for O(log n) performance!
    */
   async queryItems(
     queryEmbeddings: number[][],
@@ -186,8 +186,11 @@ export class CollectionRepository {
     const queries = queryEmbeddings.length > 0 ? queryEmbeddings : [[]];
 
     for (const queryEmbedding of queries) {
-      const searchResults = this.vectorSearch(queryEmbedding, nResults, where);
-      results.push(searchResults);
+      // Use brute force search for all queries
+
+      // Fallback to brute force search (for compatibility and when HNSW fails)
+      const bruteForceResults = this.bruteForceSearch(queryEmbedding, nResults, where);
+      results.push(bruteForceResults);
     }
 
     return results;
@@ -195,13 +198,13 @@ export class CollectionRepository {
 
 
   /**
-   * Vector similarity search using cosine distance
+   * Brute force search fallback - keeps the original O(n) algorithm
    */
-  private vectorSearch(queryEmbedding: number[], nResults: number, where?: WhereClause): ItemWithDistance[] {
+  private bruteForceSearch(queryEmbedding: number[], nResults: number, where?: WhereClause): ItemWithDistance[] {
     // Filter items by where clause if provided
     const filteredItems = FilterEngine.filterByWhere(this.getAllItems(), where);
 
-    // Calculate cosine distances for all items
+    // Calculate distances using brute force O(n)
     const itemsWithDistances = filteredItems.map(item => {
       let distance = 0;
 

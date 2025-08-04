@@ -283,7 +283,6 @@ export class CollectionManager implements ICollectionManager {
         // Remove invalid cache entry
         this.collections.delete(collectionName);
         this.collectionCache.delete(collectionName);
-        console.log(`[CollectionManager] Removed invalid cache entry for ${collectionName}`);
       }
     }
     
@@ -303,7 +302,6 @@ export class CollectionManager implements ICollectionManager {
           
           // Validate required fields
           if (metadata.collectionName === collectionName && metadata.version) {
-            console.log(`[CollectionManager] ✅ Found ${collectionName} on filesystem - loading into memory`);
             
             // Load collection into memory and cache
             await this.loadAndCacheCollection(collectionName, collectionPath, metadata);
@@ -318,7 +316,6 @@ export class CollectionManager implements ICollectionManager {
           console.warn(`[CollectionManager] Failed to parse metadata for ${collectionName}:`, error);
         }
       } else {
-        console.log(`[CollectionManager] Collection ${collectionName} not found on filesystem`);
       }
     }
     
@@ -328,7 +325,6 @@ export class CollectionManager implements ICollectionManager {
       const exists = collections.some(c => this.extractCollectionName(c) === collectionName);
       
       if (exists) {
-        console.log(`[CollectionManager] Found ${collectionName} in ChromaDB client - caching`);
         // Load into cache
         const collection = await this.client.getCollection(collectionName);
         this.registerCollection(collectionName, collection);
@@ -377,11 +373,9 @@ export class CollectionManager implements ICollectionManager {
       let collection: Collection;
       try {
         collection = await this.client.getCollection(collectionName);
-        console.log(`[CollectionManager] Collection ${collectionName} already exists in ChromaDB client`);
       } catch (getError) {
         // Collection not in client, need to create it in client and potentially load data
         collection = await this.client.createCollection(collectionName, metadata);
-        console.log(`[CollectionManager] Created collection ${collectionName} in ChromaDB client`);
         
         // Check if we need to load data
         const currentCount = await collection.count();
@@ -395,7 +389,6 @@ export class CollectionManager implements ICollectionManager {
           
           if (await this.directoryService.fileExists(itemsPath)) {
             await this.loadCollectionData(collection, itemsPath);
-            console.log(`[CollectionManager] ✅ Loaded ${expectedCount} items into ${collectionName} from filesystem`);
           }
         }
       }
@@ -613,7 +606,6 @@ export class CollectionManager implements ICollectionManager {
         `${this.persistentPath}/collections`;
       
       if (!await this.directoryService.directoryExists(collectionsDir)) {
-        console.log('[CollectionManager] Collections directory does not exist, skipping recovery');
         return;
       }
       
@@ -621,7 +613,6 @@ export class CollectionManager implements ICollectionManager {
       let recoveredCount = 0;
       let loadedCount = 0;
       
-      console.log(`[CollectionManager] Scanning ${dirs.length} directories for existing collections`);
       
       for (const dir of dirs) {
         // CRITICAL FIX: Use ObsidianPathManager to prevent path duplication
@@ -651,7 +642,6 @@ export class CollectionManager implements ICollectionManager {
           `${collectionPath}/items.json`;
         
         if (!await this.directoryService.fileExists(metadataPath)) {
-          console.log(`[CollectionManager] Skipping ${dir} - no metadata.json found`);
           continue;
         }
         
@@ -668,7 +658,6 @@ export class CollectionManager implements ICollectionManager {
           const itemsExists = await this.directoryService.fileExists(itemsPath);
           const itemCount = metadata.itemCount || 0;
           
-          console.log(`[CollectionManager] Found valid collection: ${dir} (${itemCount} items, data file: ${itemsExists})`);
           
           // CRITICAL FIX: Load existing collection instead of creating new one
           try {
@@ -676,18 +665,15 @@ export class CollectionManager implements ICollectionManager {
             let collection: Collection;
             try {
               collection = await this.client.getCollection(dir);
-              console.log(`[CollectionManager] Collection ${dir} already exists in ChromaDB client`);
             } catch (getError) {
               // Collection not in client, need to create it in client and load data
               collection = await this.client.createCollection(dir, metadata);
-              console.log(`[CollectionManager] Created collection ${dir} in ChromaDB client`);
               
               // Load data if items exist and collection is empty
               const currentCount = await collection.count();
               if (currentCount === 0 && itemsExists && itemCount > 0) {
                 await this.loadCollectionData(collection, itemsPath);
                 loadedCount++;
-                console.log(`[CollectionManager] ✅ Loaded ${itemCount} items into ${dir} from filesystem`);
               }
             }
             
@@ -708,9 +694,7 @@ export class CollectionManager implements ICollectionManager {
       }
       
       if (recoveredCount > 0) {
-        console.log(`[CollectionManager] ✅ Successfully recovered ${recoveredCount} collections from filesystem (${loadedCount} with data loaded)`);
       } else {
-        console.log('[CollectionManager] No collections found to recover from filesystem');
       }
       
     } catch (error) {
@@ -728,7 +712,6 @@ export class CollectionManager implements ICollectionManager {
       const items = JSON.parse(itemsContent);
       
       if (!Array.isArray(items) || items.length === 0) {
-        console.log('[CollectionManager] No items to load from filesystem');
         return;
       }
       
@@ -750,7 +733,6 @@ export class CollectionManager implements ICollectionManager {
         });
       }
       
-      console.log(`[CollectionManager] Loaded ${items.length} items from filesystem`);
       
     } catch (error) {
       throw new Error(`Failed to load collection data: ${getErrorMessage(error)}`);
@@ -833,7 +815,6 @@ export class CollectionManager implements ICollectionManager {
         if (await this.hasCollection(collectionName)) {
           await this.deleteCollection(collectionName);
           cleaned.push(collectionName);
-          console.log(`[CollectionManager] ✅ Cleaned up obsolete collection: ${collectionName}`);
         }
       } catch (error) {
         const errorMsg = `Failed to clean up ${collectionName}: ${error instanceof Error ? error.message : String(error)}`;

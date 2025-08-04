@@ -104,7 +104,6 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     async onload() {
-        console.log('[ClaudesidianPlugin] 🚨🚨🚨 PLUGIN ONLOAD CALLED - FRESH START V2:', Date.now());
         const startTime = Date.now();
         
         try {
@@ -123,7 +122,6 @@ export default class ClaudesidianPlugin extends Plugin {
             
             // Plugin is now "loaded" - defer full initialization to background
             const loadTime = Date.now() - startTime;
-            console.log(`[ClaudesidianPlugin] Plugin loaded in ${loadTime}ms`);
             
             // PHASE 4: Start background initialization after onload completes
             setTimeout(() => {
@@ -197,7 +195,6 @@ export default class ClaudesidianPlugin extends Plugin {
             this.isInitialized = true;
             
             const bgLoadTime = Date.now() - bgStartTime;
-            console.log(`[ClaudesidianPlugin] Background initialization completed in ${bgLoadTime}ms`);
             
         } catch (error) {
             console.error('[ClaudesidianPlugin] Background initialization failed:', error);
@@ -208,7 +205,6 @@ export default class ClaudesidianPlugin extends Plugin {
      * Register core services with ServiceContainer
      */
     private registerCoreServices(): void {
-        console.log('[ClaudesidianPlugin] Registering core services...');
         
         // Foundation services (no dependencies)
         this.serviceContainer.register('eventManager', async () => {
@@ -248,9 +244,7 @@ export default class ClaudesidianPlugin extends Plugin {
                 
                 if (memoryTraceService && embeddingService) {
                     await service.upgrade(memoryTraceService, embeddingService);
-                    console.log('[ToolCallCapture] ✅ Initialized with full functionality');
                 } else {
-                    console.log('[ToolCallCapture] ⏳ Using simple storage mode');
                 }
             } catch (error) {
                 console.warn('[ToolCallCapture] Failed to enable full functionality:', error);
@@ -261,7 +255,6 @@ export default class ClaudesidianPlugin extends Plugin {
         
         // Vector store - CRITICAL: Single instance with proper initialization
         this.serviceContainer.register('vectorStore', async () => {
-            console.log('[ServiceContainer] 🚀 Creating SINGLE vectorStore instance');
             const { ChromaVectorStoreModular } = await import('./database/providers/chroma/ChromaVectorStoreModular');
             
             // Get embedding configuration from settings based on actual provider
@@ -282,7 +275,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 model: providerSettings.model
             };
             
-            console.log(`[VectorStore] Using embedding config for provider '${activeProvider}':`, embeddingConfig);
             
             // Create vectorStore with proper embedding configuration
             const vectorStore = new ChromaVectorStoreModular(this, {
@@ -297,7 +289,6 @@ export default class ClaudesidianPlugin extends Plugin {
             });
             
             await vectorStore.initialize();
-            console.log('[ServiceContainer] ✅ VectorStore initialized successfully with embedding dimension:', embeddingConfig.dimension);
             return vectorStore;
         });
         
@@ -330,22 +321,17 @@ export default class ClaudesidianPlugin extends Plugin {
             return new MemoryTraceService(memoryTraceCollection, deps.embeddingService, maintenanceService);
         }, { dependencies: ['vectorStore', 'embeddingService'] });
         
-        console.log('[ClaudesidianPlugin] Core services registered successfully');
     }
     
     /**
      * Initialize essential services that must be ready immediately
      */
     private async initializeEssentialServices(): Promise<void> {
-        console.log('[ClaudesidianPlugin] Initializing essential services...');
-        
         try {
             // Initialize only the most critical services synchronously
             await this.serviceContainer.get('eventManager');
             await this.serviceContainer.get('stateManager');
             await this.serviceContainer.get('simpleMemoryService');
-            
-            console.log('[ClaudesidianPlugin] Essential services initialized');
         } catch (error) {
             console.error('[ClaudesidianPlugin] Essential service initialization failed:', error);
             throw error;
@@ -356,31 +342,16 @@ export default class ClaudesidianPlugin extends Plugin {
      * Initialize business services with proper dependency resolution
      */
     private async initializeBusinessServices(): Promise<void> {
-        console.log('[ClaudesidianPlugin] Initializing business services...');
         
         try {
             // Initialize in dependency order to prevent multiple VectorStore instances
             const vectorStore = await this.serviceContainer.get('vectorStore');
-            console.log('[ClaudesidianPlugin] ✅ Single VectorStore instance created');
             
             // Initialize dependent services sequentially to avoid circular dependency issues
-            console.log('[ClaudesidianPlugin] Initializing embeddingService...');
             await this.serviceContainer.get('embeddingService');
-            console.log('[ClaudesidianPlugin] ✅ EmbeddingService initialized');
-            
-            console.log('[ClaudesidianPlugin] Initializing memoryService...');
             await this.serviceContainer.get('memoryService');
-            console.log('[ClaudesidianPlugin] ✅ MemoryService initialized');
-            
-            console.log('[ClaudesidianPlugin] Initializing workspaceService...');
             await this.serviceContainer.get('workspaceService');
-            console.log('[ClaudesidianPlugin] ✅ WorkspaceService initialized');
-            
-            console.log('[ClaudesidianPlugin] Initializing memoryTraceService...');
             await this.serviceContainer.get('memoryTraceService');
-            console.log('[ClaudesidianPlugin] ✅ MemoryTraceService initialized');
-            
-            console.log('[ClaudesidianPlugin] Business services initialized');
         } catch (error) {
             console.error('[ClaudesidianPlugin] Business service initialization failed:', error);
             throw error;
@@ -407,7 +378,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 }
             });
             
-            console.log('[ClaudesidianPlugin] Fallback mode enabled');
         } catch (error) {
             console.error('[ClaudesidianPlugin] Fallback mode setup failed:', error);
         }
@@ -424,7 +394,6 @@ export default class ClaudesidianPlugin extends Plugin {
             const chromaDbDir = `${dataDir}/chroma-db`;
             const collectionsDir = `${chromaDbDir}/collections`;
             
-            console.log('[STARTUP] Initializing ChromaDB-only data directories...');
             
             // Create directories using Obsidian's vault adapter
             const { normalizePath } = require('obsidian');
@@ -432,7 +401,6 @@ export default class ClaudesidianPlugin extends Plugin {
             await this.app.vault.adapter.mkdir(normalizePath(chromaDbDir));
             await this.app.vault.adapter.mkdir(normalizePath(collectionsDir));
             
-            console.log('[STARTUP] ✅ ChromaDB data directories created successfully');
             
             // Update settings with correct path
             if (!this.settings.settings.memory) {
@@ -446,7 +414,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 console.warn('[ClaudesidianPlugin] Failed to save settings after directory init:', error);
             });
             
-            console.log('[ClaudesidianPlugin] Data directories initialized');
             
         } catch (error) {
             console.error('[ClaudesidianPlugin] Failed to initialize data directories:', error);
@@ -492,7 +459,6 @@ export default class ClaudesidianPlugin extends Plugin {
      * Services will be loaded and UI will update when ready
      */
     private async initializeSettingsTab(): Promise<void> {
-        console.log('[STARTUP] Creating Settings UI in background...');
         
         try {
             // Get agent references - may not be available yet
@@ -511,7 +477,6 @@ export default class ClaudesidianPlugin extends Plugin {
             );
             this.addSettingTab(this.settingsTab);
             
-            console.log('[STARTUP] Settings tab created successfully');
             
         } catch (error) {
             console.error('[STARTUP] Settings tab initialization failed:', error);
@@ -525,7 +490,6 @@ export default class ClaudesidianPlugin extends Plugin {
     private async preInitializeUICriticalServices(): Promise<void> {
         if (!this.serviceContainer) return;
         
-        console.log('[STARTUP] Pre-initializing UI-critical services...');
         const startTime = Date.now();
         
         try {
@@ -546,7 +510,6 @@ export default class ClaudesidianPlugin extends Plugin {
                         const serviceStart = Date.now();
                         await this.serviceContainer.get(serviceName);
                         const serviceTime = Date.now() - serviceStart;
-                        console.log(`[STARTUP] ${serviceName} initialized in ${serviceTime}ms`);
                     } catch (error) {
                         console.warn(`[STARTUP] Failed to pre-initialize ${serviceName}:`, error);
                     }
@@ -554,7 +517,6 @@ export default class ClaudesidianPlugin extends Plugin {
             );
             
             const totalTime = Date.now() - startTime;
-            console.log(`[STARTUP] UI-critical services pre-initialization completed in ${totalTime}ms`);
             
             // Inject vector store into SimpleMemoryService for persistence
             try {
@@ -563,7 +525,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 
                 if (vectorStore && simpleMemoryService && typeof simpleMemoryService.setVectorStore === 'function') {
                     simpleMemoryService.setVectorStore(vectorStore);
-                    console.log('[STARTUP] ✅ Vector store injected into SimpleMemoryService for memory trace persistence');
                 } else {
                     console.warn('[STARTUP] ❌ Vector store or SimpleMemoryService not available for injection');
                 }
@@ -819,7 +780,6 @@ export default class ClaudesidianPlugin extends Plugin {
             if (fileEventManager && typeof (fileEventManager as any).reloadConfiguration === 'function') {
                 try {
                     (fileEventManager as any).reloadConfiguration();
-                    console.log('[ClaudesidianPlugin] File event manager configuration reloaded');
                 } catch (error) {
                     console.warn('Error reloading file event manager configuration:', error);
                 }
@@ -845,7 +805,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 // Test basic collection operations
                 try {
                     const collections = await vectorStore.listCollections();
-                    console.log('[VALIDATION] ✅ VectorStore collections accessible');
                 } catch (collectionError) {
                     console.warn('[VALIDATION] Collection access error (may be normal during startup):', collectionError);
                 }
@@ -861,7 +820,6 @@ export default class ClaudesidianPlugin extends Plugin {
                 
                 const coreServices = ['vectorStore', 'embeddingService', 'workspaceService', 'memoryService'];
                 const availableCore = coreServices.filter(service => serviceNames.includes(service));
-                console.log(`[VALIDATION] Core services available: ${availableCore.length}/${coreServices.length}`);
             }
             
         } catch (error) {
@@ -904,7 +862,6 @@ export default class ClaudesidianPlugin extends Plugin {
             const stateManager = this.stateManager;
             if (stateManager) {
                 await stateManager.saveState();
-                console.log('[ClaudesidianPlugin] Processed files state saved');
             }
             
             // Cleanup settings tab accordions

@@ -58,12 +58,11 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
         };
       }
 
-      // Set default values (semanticThreshold removed - using pure score-based ranking)
+      // Set default values
       const searchParams: UniversalSearchParams = {
         ...params,
         limit: params.limit || 10,
         includeContent: params.includeContent !== false
-        // semanticThreshold parameter ignored - now using score-based ranking
       };
 
 
@@ -192,13 +191,6 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
           type: 'boolean',
           description: 'Force semantic search even for categories that typically use exact matching (default: auto-detect)',
           default: false
-        },
-        semanticThreshold: {
-          type: 'number',
-          description: '[DEPRECATED] This parameter is ignored. Results are now ranked by similarity score. Use limit parameter to control result count.',
-          minimum: 0,
-          maximum: 1,
-          deprecated: true
         },
         // Graph boost options
         useGraphBoost: {

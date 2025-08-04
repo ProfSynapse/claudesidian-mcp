@@ -39,12 +39,10 @@ export class CollectionHealthMonitor {
      */
     async startMonitoring(): Promise<void> {
         if (this.monitoringActive) {
-            console.log('[CollectionHealthMonitor] Monitoring already active');
             return;
         }
 
         this.monitoringActive = true;
-        console.log('[CollectionHealthMonitor] Starting collection health monitoring');
 
         try {
             // Initial health check for all collections
@@ -53,7 +51,6 @@ export class CollectionHealthMonitor {
             // Start periodic monitoring
             this.schedulePeriodicHealthChecks();
 
-            console.log(`[CollectionHealthMonitor] ✅ Health monitoring started with ${this.checkInterval}ms interval`);
 
         } catch (error) {
             this.monitoringActive = false;
@@ -77,7 +74,6 @@ export class CollectionHealthMonitor {
             this.intervalHandle = null;
         }
 
-        console.log('[CollectionHealthMonitor] Health monitoring stopped');
     }
 
     /**
@@ -228,7 +224,6 @@ export class CollectionHealthMonitor {
      */
     configureThresholds(thresholds: Partial<HealthThresholds>): void {
         this.alertThresholds = { ...this.alertThresholds, ...thresholds };
-        console.log('[CollectionHealthMonitor] Health thresholds updated:', this.alertThresholds);
     }
 
     /**
@@ -246,7 +241,6 @@ export class CollectionHealthMonitor {
             this.schedulePeriodicHealthChecks();
         }
         
-        console.log(`[CollectionHealthMonitor] Monitoring interval set to ${intervalMs}ms`);
     }
 
     /**
@@ -255,7 +249,6 @@ export class CollectionHealthMonitor {
     private async performInitialHealthCheck(): Promise<void> {
         const standardCollections = ['file_embeddings', 'memory_traces', 'sessions', 'snapshots', 'workspaces'];
         
-        console.log('[CollectionHealthMonitor] Performing initial health check');
         
         for (const collectionName of standardCollections) {
             try {
@@ -264,8 +257,6 @@ export class CollectionHealthMonitor {
                 if (!healthStatus.healthy) {
                     console.warn(`[CollectionHealthMonitor] ⚠️  Initial health check failed for ${collectionName}:`, healthStatus.issues);
                     await this.handleUnhealthyCollection(collectionName, healthStatus);
-                } else {
-                    console.log(`[CollectionHealthMonitor] ✅ Collection ${collectionName} is healthy`);
                 }
 
             } catch (error) {
@@ -285,7 +276,6 @@ export class CollectionHealthMonitor {
             }
         }
         
-        console.log(`[CollectionHealthMonitor] Initial health check completed for ${standardCollections.length} collections`);
     }
 
     /**
@@ -343,14 +333,11 @@ export class CollectionHealthMonitor {
 
         // Check if automatic recovery should be triggered
         if (healthStatus.consecutiveFailures >= this.alertThresholds.failureCount) {
-            console.log(`[CollectionHealthMonitor] Triggering automatic recovery for ${collectionName} after ${healthStatus.consecutiveFailures} consecutive failures`);
             
             try {
                 const recoveryResult = await this.collectionLifecycleManager.recoverCollection(collectionName, 'soft');
                 
                 if (recoveryResult.success) {
-                    console.log(`[CollectionHealthMonitor] ✅ Automatic recovery successful for ${collectionName}`);
-                    
                     // Reset failure count and re-check health
                     await this.checkCollectionHealth(collectionName);
                 } else {

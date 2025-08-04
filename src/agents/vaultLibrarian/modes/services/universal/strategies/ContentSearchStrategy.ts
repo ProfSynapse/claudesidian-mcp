@@ -92,7 +92,6 @@ export class ContentSearchStrategy {
         limit,
         includeContent: true,
         forceSemanticSearch: false,
-        // semanticThreshold parameter ignored - using pure score-based ranking
         keywordThreshold: 0.3,
         fuzzyThreshold: 0.6,
         queryType: params?.queryType

@@ -126,10 +126,6 @@ export interface HybridSearchOptions {
   limit?: number;
   includeContent?: boolean;
   forceSemanticSearch?: boolean;
-  // DEPRECATED: semanticThreshold is deprecated and will be ignored
-  // Results are now ranked by similarity score. Use limit parameter to control result count.
-  /** @deprecated Will be ignored. Use limit parameter instead. */
-  semanticThreshold?: number;
   keywordThreshold?: number;
   fuzzyThreshold?: number;
   queryType?: 'exact' | 'conceptual' | 'exploratory' | 'mixed';
@@ -171,7 +167,6 @@ export class HybridSearchService {
     // Initialize search validator if we have the required dependencies
     if (vectorStore && collectionLifecycleManager) {
       this.searchValidator = new SearchServiceValidator(vectorStore, collectionLifecycleManager);
-      console.log('[HybridSearchService] Initialized with collection validation support');
     } else {
       console.warn('[HybridSearchService] Initialized without collection validation - search errors may occur');
     }
@@ -246,7 +241,6 @@ export class HybridSearchService {
     const {
       limit = 10,
       includeContent = false,
-      semanticThreshold = 0.5, // Legacy parameter - will be ignored
       keywordThreshold = 0.3,
       fuzzyThreshold = 0.6
     } = options;
@@ -291,19 +285,6 @@ export class HybridSearchService {
       searchCapabilities.semantic = this.isSemanticSearchAvailable();
     }
 
-    // PHASE 1 COMPATIBILITY: Log comprehensive deprecation warning if semanticThreshold is used
-    if (options.semanticThreshold !== undefined) {
-      console.warn('\n' + '='.repeat(80));
-      console.warn('[HybridSearchService] 🚨 SEMANTIC THRESHOLD DEPRECATION WARNING');
-      console.warn('='.repeat(80));
-      console.warn('[HybridSearchService] ⚠️  semanticThreshold parameter is DEPRECATED and will be IGNORED.');
-      console.warn('[HybridSearchService] 🎯 New behavior: Results are now ranked by similarity score (best first).');
-      console.warn('[HybridSearchService] 📊 Use limit parameter to control result count instead of filtering.');
-      console.warn('[HybridSearchService] 🔧 Migration: Remove semanticThreshold from your HybridSearchOptions.');
-      console.warn(`[HybridSearchService] 📝 Received threshold: ${options.semanticThreshold} → IGNORED`);
-      console.warn('[HybridSearchService] ✅ Score-based ranking active: All results ranked by relevance.');
-      console.warn('='.repeat(80) + '\n');
-    }
 
     // Stage 1: Determine search strategy (LLM-provided or auto-analyze)
     let analysis: QueryAnalysis;

@@ -52,7 +52,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
         // Set up storage event listener for collection deletion events
         this.storageEventHandler = (e: StorageEvent) => {
             if (e.key === 'claudesidian-collection-deleted' || e.key === 'claudesidian-collections-purged') {
-                console.log(`UsageSettingsTab: Detected collection change via localStorage: ${e.key}`);
                 // Use setTimeout to avoid immediate refresh that could cause cycles
                 setTimeout(() => {
                     if (!this.isRefreshing) {
@@ -82,8 +81,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
             // Try to get the service asynchronously with a timeout
             this.usageStatsService = await plugin.getService('usageStatsService', 5000);
             if (this.usageStatsService) {
-                console.log('UsageSettingsTab: Using global UsageStatsService from service manager');
-                
                 // Also get other required services
                 this.vectorStore = await plugin.getService('vectorStore', 5000);
                 this.embeddingService = await plugin.getService('embeddingService', 5000);
@@ -100,10 +97,8 @@ export class UsageSettingsTab extends BaseSettingsTab {
         // First try to get the global service instance
         if (plugin.services?.usageStatsService) {
             this.usageStatsService = plugin.services.usageStatsService;
-            console.log('UsageSettingsTab: Using global UsageStatsService from services');
         } else if (plugin.usageStatsService) {
             this.usageStatsService = plugin.usageStatsService;
-            console.log('UsageSettingsTab: Using global UsageStatsService from plugin');
         } else {
             // If we couldn't get the global instance, create a new one (this should rarely happen)
             console.warn('UsageSettingsTab: Global UsageStatsService not found, creating local instance (fallback)');
@@ -118,7 +113,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
                     this.settings,
                     plugin.eventManager // Pass the global event manager
                 );
-                console.log('Created new local UsageStatsService instance (fallback)');
             } else {
                 console.warn('Missing dependencies for UsageStatsService', {
                     embeddingService: !!embeddingService,
@@ -205,7 +199,9 @@ export class UsageSettingsTab extends BaseSettingsTab {
                     return; // Success!
                 }
             } catch (error) {
-                console.warn(`Service initialization attempt ${attempt + 1} failed:`, error);
+                if (attempt === maxRetries - 1) {
+                    console.warn(`Service initialization failed after ${maxRetries} attempts:`, error);
+                }
             }
             
             attempt++;
@@ -249,11 +245,8 @@ export class UsageSettingsTab extends BaseSettingsTab {
     private async refreshStats(): Promise<void> {
         // Prevent recursive refreshes
         if (this.isRefreshing) {
-            console.log('UsageSettingsTab: Already refreshing, skipping duplicate refresh');
             return;
         }
-        
-        console.log('UsageSettingsTab: Refreshing usage stats...');
         
         try {
             this.isRefreshing = true;
@@ -263,16 +256,13 @@ export class UsageSettingsTab extends BaseSettingsTab {
             
             // If we have the UsageStatsService, use it to refresh stats 
             if (this.usageStatsService) {
-                console.log('UsageSettingsTab: Refreshing via UsageStatsService');
                 const stats = await this.usageStatsService.refreshStats();
-                console.log('UsageSettingsTab: Stats refreshed:', stats);
             } else {
                 console.warn('UsageSettingsTab: No UsageStatsService available for refresh');
             }
             
             // If we have the UsageStatsComponent, use it to refresh the UI
             if (this.usageStatsComponent) {
-                console.log('UsageSettingsTab: Refreshing UsageStatsComponent');
                 await this.usageStatsComponent.refresh();
             } else {
                 console.warn('UsageSettingsTab: No UsageStatsComponent available for refresh');
@@ -280,7 +270,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
             
             // Refresh collection management component
             if (this.collectionManagementComponent) {
-                console.log('UsageSettingsTab: Refreshing collection management component');
                 await this.collectionManagementComponent.display();
             }
             
@@ -295,9 +284,6 @@ export class UsageSettingsTab extends BaseSettingsTab {
                             newValue: savedUsage,
                             storageArea: localStorage
                         }));
-                        console.log('UsageSettingsTab: Dispatched storage event');
-                    } else {
-                        console.log('StorageEvent not supported in this browser, skipping dispatch');
                     }
                 }
             } catch (storageError) {

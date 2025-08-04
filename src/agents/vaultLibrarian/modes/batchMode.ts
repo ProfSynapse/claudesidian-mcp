@@ -251,14 +251,6 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
                 type: 'boolean',
                 description: 'Force semantic search for this query',
                 default: false
-              },
-              semanticThreshold: {
-                type: 'number',
-                description: '[DEPRECATED] This parameter is ignored. Results are now ranked by similarity score. Use limit parameter to control result count.',
-                minimum: 0,
-                maximum: 1,
-                default: 0.7,
-                deprecated: true
               }
             },
             required: ['query']

@@ -38,16 +38,11 @@ export class EmbeddingProviderManager {
           try {
             const usageTracker = new UsageTracker('embeddings', settings);
             (this.embeddingProvider as any).setUsageTracker(usageTracker);
-            console.log('Injected UsageTracker into embedding provider');
           } catch (error) {
             console.error('Failed to inject UsageTracker into embedding provider:', error);
           }
         }
         
-        // Only log if this is actually a new provider (not from cache)
-        if (!this.initialized) {
-          console.log(`Initialized ${settings.apiProvider} embedding provider successfully`);
-        }
         this.initialized = true;
       }
     } catch (providerError) {

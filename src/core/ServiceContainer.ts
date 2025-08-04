@@ -69,7 +69,6 @@ export class ServiceContainer {
     // Build dependency graph
     this.dependencyGraph.set(name, new Set(dependencies));
 
-    console.log(`[ServiceContainer] Registered service '${name}' (${singleton ? 'singleton' : 'transient'})`);
   }
 
   /**
@@ -105,8 +104,6 @@ export class ServiceContainer {
       }
 
       // Create service instance
-      console.log(`[ServiceContainer] Creating service '${name}'${dependencies.length > 0 ? ` with dependencies: ${dependencies.join(', ')}` : ''}`);
-      
       const instance = await registration.factory(resolvedDependencies || {});
 
       // Store if singleton
@@ -114,7 +111,6 @@ export class ServiceContainer {
         this.services.set(name, instance);
       }
 
-      console.log(`[ServiceContainer] ✅ Service '${name}' created successfully`);
       return instance;
 
     } catch (error) {
@@ -209,7 +205,6 @@ export class ServiceContainer {
   async preInitialize(name: string): Promise<void> {
     try {
       await this.get(name);
-      console.log(`[ServiceContainer] Service '${name}' pre-initialized`);
     } catch (error) {
       console.warn(`[ServiceContainer] Failed to pre-initialize service '${name}':`, error);
     }
@@ -317,7 +312,6 @@ export class ServiceContainer {
     }
 
     this.services.set(name, instance);
-    console.log(`[ServiceContainer] Service '${name}' replaced`);
   }
 
   /**
@@ -330,7 +324,6 @@ export class ServiceContainer {
     if (instance && typeof instance.cleanup === 'function') {
       try {
         instance.cleanup();
-        console.log(`[ServiceContainer] Service '${name}' cleanup completed`);
       } catch (error) {
         console.error(`[ServiceContainer] Service '${name}' cleanup failed:`, error);
       }
@@ -340,14 +333,12 @@ export class ServiceContainer {
     this.factories.delete(name);
     this.dependencyGraph.delete(name);
 
-    console.log(`[ServiceContainer] Service '${name}' removed`);
   }
 
   /**
    * Clear all services with proper cleanup
    */
   clear(): void {
-    console.log('[ServiceContainer] Starting cleanup of all services...');
 
     // Get services in reverse dependency order for cleanup
     const allServices = Array.from(this.services.keys());
@@ -360,7 +351,6 @@ export class ServiceContainer {
       if (service && typeof service.cleanup === 'function') {
         try {
           service.cleanup();
-          console.log(`[ServiceContainer] ✅ Cleaned up service '${serviceName}'`);
         } catch (error) {
           console.error(`[ServiceContainer] ❌ Cleanup failed for service '${serviceName}':`, error);
         }
@@ -373,7 +363,6 @@ export class ServiceContainer {
     this.dependencyGraph.clear();
     this.initializationStack = [];
 
-    console.log('[ServiceContainer] All services cleared');
   }
 
   /**

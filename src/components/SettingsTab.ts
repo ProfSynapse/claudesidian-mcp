@@ -33,7 +33,6 @@ export class SettingsTab extends PluginSettingTab {
     private embeddingService: EmbeddingService | undefined;
     private memoryService: MemoryService | undefined;
     private fileEmbeddingAccessService: FileEmbeddingAccessService | undefined;
-    // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
     private embeddingManager: EmbeddingManager | undefined;
     
     // Agent references
@@ -66,7 +65,6 @@ export class SettingsTab extends PluginSettingTab {
             memoryService?: MemoryService,
             vectorStore?: IVectorStore,
             fileEmbeddingAccessService?: FileEmbeddingAccessService,
-            // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         },
         vaultLibrarian?: VaultLibrarianAgent,
         memoryManager?: MemoryManagerAgent,
@@ -83,7 +81,6 @@ export class SettingsTab extends PluginSettingTab {
             this.memoryService = services.memoryService;
             // Removed assignment to unused property: this.vectorStore = services.vectorStore;
             this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
-            // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
             
             // Create embedding manager instance if we have app access
             if (window.app && !this.embeddingManager && services.embeddingService) {
@@ -109,13 +106,11 @@ export class SettingsTab extends PluginSettingTab {
         memoryService?: MemoryService,
         vectorStore?: IVectorStore,
         fileEmbeddingAccessService?: FileEmbeddingAccessService,
-        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
     }): void {
         // Update service references
         this.embeddingService = services.embeddingService;
         this.memoryService = services.memoryService;
         this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
-        // HNSW service removed - semantic search now handled through ChromaDB via HybridSearchService
         
         // Create embedding manager if we have the service
         if (window.app && !this.embeddingManager && services.embeddingService) {

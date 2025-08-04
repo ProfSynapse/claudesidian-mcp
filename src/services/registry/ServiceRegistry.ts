@@ -68,7 +68,6 @@ export class ServiceRegistry {
      * Private constructor to enforce singleton pattern
      */
     private constructor() {
-        console.log('[ServiceRegistry] Singleton instance created');
     }
     
     /**
@@ -93,18 +92,15 @@ export class ServiceRegistry {
         // Fast path: Check if service is already ready
         const existingInstance = this.services.get(serviceName);
         if (existingInstance && existingInstance.status === ServiceStatus.Ready) {
-            console.log(`[ServiceRegistry] ✅ Returning existing ${serviceName} instance`);
             return existingInstance.service as T;
         }
         
         // Check if service is currently being created (promise deduplication)
         if (this.creationPromises.has(serviceName)) {
-            console.log(`[ServiceRegistry] 🔄 Waiting for existing ${serviceName} creation`);
             return await this.creationPromises.get(serviceName) as T;
         }
         
         // Start new service creation
-        console.log(`[ServiceRegistry] 🚀 Creating new ${serviceName} instance`);
         const creationPromise = this.createServiceWithTimeout(serviceName, factory, options);
         this.creationPromises.set(serviceName, creationPromise);
         
@@ -127,7 +123,6 @@ export class ServiceRegistry {
             // Notify lifecycle listeners
             this.notifyLifecycleListeners(serviceName, service);
             
-            console.log(`[ServiceRegistry] ✅ Successfully created ${serviceName} instance`);
             return service;
             
         } catch (error) {
@@ -179,9 +174,6 @@ export class ServiceRegistry {
                     factory(),
                     timeoutPromise
                 ]);
-                
-                const creationTime = Date.now() - startTime;
-                console.log(`[ServiceRegistry] ${serviceName} created in ${creationTime}ms (attempt ${attempt})`);
                 
                 return service;
                 
@@ -238,7 +230,6 @@ export class ServiceRegistry {
             throw new Error(`Cannot upgrade non-existent service: ${serviceName}`);
         }
         
-        console.log(`[ServiceRegistry] 🔄 Upgrading ${serviceName} with strategy: ${strategy}`);
         
         // Mark as upgrading
         existingInstance.status = ServiceStatus.Upgrading;
@@ -283,7 +274,6 @@ export class ServiceRegistry {
             // Notify listeners
             this.notifyLifecycleListeners(serviceName, finalService);
             
-            console.log(`[ServiceRegistry] ✅ Successfully upgraded ${serviceName}`);
             
         } catch (error) {
             existingInstance.status = ServiceStatus.Failed;
@@ -299,7 +289,6 @@ export class ServiceRegistry {
         this.services.delete(serviceName);
         this.creationPromises.delete(serviceName);
         this.lifecycleListeners.delete(serviceName);
-        console.log(`[ServiceRegistry] 🗑️ Cleared ${serviceName} instance`);
     }
     
     /**
@@ -365,7 +354,6 @@ export class ServiceRegistry {
      * Clean up all services (for testing or shutdown)
      */
     public cleanup(): void {
-        console.log('[ServiceRegistry] 🧹 Cleaning up all services');
         this.services.clear();
         this.creationPromises.clear();
         this.lifecycleListeners.clear();

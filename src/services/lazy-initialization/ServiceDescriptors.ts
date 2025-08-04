@@ -74,7 +74,6 @@ export class ServiceDescriptors {
         }
         
         this.serviceManager = serviceManager;
-        console.log('[ServiceDescriptors] ✅ Valid service manager reference set:', serviceManager.constructor.name);
     }
 
     /**
@@ -93,7 +92,6 @@ export class ServiceDescriptors {
                 throw new Error('CRITICAL: VectorStore must be initialized before coordination services');
             }
             
-            console.log('[ServiceDescriptors] Creating initialization services with LazyServiceManager:', this.serviceManager.constructor.name);
             
             this.initializationServices = createInitializationServices(
                 this.plugin,
@@ -108,29 +106,22 @@ export class ServiceDescriptors {
      * Boy Scout Rule: Clean method for post-creation coordination setup
      */
     async injectCoordinationIntoServices(): Promise<void> {
-        console.log('[ServiceDescriptors] 🔥 Starting coordination injection into services');
         
         if (!this.initializationServices) {
             console.warn('[ServiceDescriptors] No coordination services available for injection');
             return;
         }
         
-        console.log('[ServiceDescriptors] ✅ Coordination services available for injection');
 
         // NEW: Inject into vector store if available
         const vectorStore = this.serviceManager.getIfReady('vectorStore');
-        console.log('[StateManager] Vector store available:', !!vectorStore);
-        console.log('[StateManager] Vector store methods:', vectorStore ? Object.getOwnPropertyNames(Object.getPrototypeOf(vectorStore)) : 'none');
         
         if (vectorStore && 'setCollectionCoordinator' in vectorStore) {
-            console.log('[StateManager] Injecting collection coordinator into vector store');
             vectorStore.setCollectionCoordinator(this.initializationServices.collectionCoordinator);
             
             // Load collections with coordination to register them
             if ('loadCollectionsWithCoordination' in vectorStore) {
-                console.log('[StateManager] Loading collections with coordination');
                 await vectorStore.loadCollectionsWithCoordination();
-                console.log('[StateManager] ✅ Collections loaded and registered with vector store');
             } else {
                 console.warn('[StateManager] ❌ Vector store missing loadCollectionsWithCoordination method');
             }
@@ -138,7 +129,6 @@ export class ServiceDescriptors {
             console.warn('[StateManager] ❌ Vector store missing setCollectionCoordinator method');
         }
 
-        console.log('[ServiceDescriptors] ✅ Coordination injection completed');
     }
 
     /**
@@ -186,7 +176,6 @@ export class ServiceDescriptors {
             dependencies: [],
             stage: LoadingStage.IMMEDIATE,
             create: async () => {
-                console.log('[StateManager] Creating StateManager with plugin data.json');
                 
                 // Validate plugin instance before creating StateManager
                 if (!this.plugin) {
@@ -232,7 +221,6 @@ export class ServiceDescriptors {
                 const vectorStore = await serviceRegistry.getOrCreateService(
                     'vectorStore',
                     async () => {
-                        console.log('[ServiceDescriptors] Creating VectorStore singleton via ServiceRegistry');
                         return await this.createVectorStoreSingleton();
                     },
                     {
@@ -246,8 +234,6 @@ export class ServiceDescriptors {
                 // Note: Collection coordinator injection will be handled by LazyServiceManager
                 // after both vectorStore and coordination services are initialized
                 
-                const totalTime = Date.now() - startTime;
-                console.log(`[STARTUP] VectorStore singleton accessed in ${totalTime}ms`);
                 
                 return vectorStore;
             }
@@ -410,7 +396,6 @@ export class ServiceDescriptors {
                 // Process startup queue directly without coordination during creation
                 // Coordination will be applied in post-creation phase
                 await fileEventManager.processStartupQueue();
-                console.log('[ServiceDescriptors] Startup queue processed (coordination deferred)');
                 
                 return fileEventManager;
             }
@@ -453,8 +438,6 @@ export class ServiceDescriptors {
                 const service = new FileEmbeddingAccessService(this.plugin, vectorStore);
                 const serviceTime = Date.now() - serviceStart;
                 
-                const totalTime = Date.now() - startTime;
-                console.log(`[STARTUP] FileEmbeddingAccessService initialized in ${totalTime}ms (vectorStore: ${vectorStoreTime}ms, service: ${serviceTime}ms)`);
                 
                 return service;
             }
@@ -528,7 +511,6 @@ export class ServiceDescriptors {
             // Initialize vector store without collection loading
             // Collection loading will be handled by CollectionLoadingCoordinator
             await vectorStore.initialize();
-            console.log('[ServiceDescriptors] Vector store initialized (collections will be loaded by coordinator)');
         } finally {
             vectorStore.endSystemOperation();
         }
