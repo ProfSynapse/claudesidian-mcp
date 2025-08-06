@@ -1,6 +1,6 @@
 // Export all AgentManager modes
-export { ListPromptsMode } from './listPromptsMode';
-export { GetPromptMode } from './getPromptMode';
+export { ListPromptsMode } from './ListPromptsMode';
+export { GetPromptMode } from './GetPromptMode';
 export { CreatePromptMode } from './createPromptMode';
 export { UpdatePromptMode } from './updatePromptMode';
 export { DeletePromptMode } from './deletePromptMode';

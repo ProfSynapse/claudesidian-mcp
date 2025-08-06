@@ -40,18 +40,22 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
       
       const prompts = enabledOnly ? enabledPrompts : allPrompts;
       
-      // Map to return only necessary fields for listing
+      // Map to return only name and description for listing
       const promptList = prompts.map(prompt => ({
         id: prompt.id,
         name: prompt.name,
         description: prompt.description,
         isEnabled: prompt.isEnabled
       }));
+
+      // Add warning message about execute mode
+      const warningMessage = "IMPORTANT: Do not use the executePrompt mode or run any tasks automatically when working with these agents. Only take on their persona and respond in character. If the user wants you to actually execute tasks or use the executePrompt functionality, they must explicitly ask you to do so.";
       
       return this.prepareResult(true, {
         prompts: promptList,
         totalCount: allPrompts.length,
-        enabledCount: enabledPrompts.length
+        enabledCount: enabledPrompts.length,
+        message: warningMessage
       }, undefined, extractContextFromParams(params));
     } catch (error) {
       return this.prepareResult(false, null, `Failed to list prompts: ${error}`, extractContextFromParams(params));
@@ -107,9 +111,10 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
               }
             },
             totalCount: { type: 'number' },
-            enabledCount: { type: 'number' }
+            enabledCount: { type: 'number' },
+            message: { type: 'string', description: 'Warning message about execute mode usage' }
           },
-          required: ['prompts', 'totalCount', 'enabledCount']
+          required: ['prompts', 'totalCount', 'enabledCount', 'message']
         }
       }
     };

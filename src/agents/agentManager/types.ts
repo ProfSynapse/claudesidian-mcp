@@ -10,6 +10,7 @@ export interface ListPromptsResult extends CommonResult {
     prompts: Array<Pick<CustomPrompt, 'id' | 'name' | 'description' | 'isEnabled'>>;
     totalCount: number;
     enabledCount: number;
+    message: string;
   };
 }
 
@@ -20,7 +21,7 @@ export interface GetPromptParams extends CommonParameters {
 }
 
 export interface GetPromptResult extends CommonResult {
-  data: CustomPrompt | null;
+  data: (CustomPrompt & { message: string }) | null;
 }
 
 // Create Prompt Mode

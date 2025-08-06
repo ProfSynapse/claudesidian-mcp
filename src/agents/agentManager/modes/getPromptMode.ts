@@ -51,8 +51,18 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
         const identifier = id ? `ID "${id}"` : `name "${name}"`;
         return this.prepareResult(false, null, `Prompt with ${identifier} not found`, extractContextFromParams(params));
       }
+
+      // Create message with persona instruction and warning (prompt content is already in the prompt field)
+      const message = `You are now taking on the persona of "${prompt.name}".
+
+IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Only take on the persona and respond in character. If the user wants you to actually execute tasks or use the executePrompt functionality, they must explicitly ask you to do so.`;
       
-      return this.prepareResult(true, prompt, undefined, extractContextFromParams(params));
+      const resultWithMessage = {
+        ...prompt,
+        message: message
+      };
+      
+      return this.prepareResult(true, resultWithMessage, undefined, extractContextFromParams(params));
     } catch (error) {
       return this.prepareResult(false, null, `Failed to get prompt: ${error}`, extractContextFromParams(params));
     }
@@ -107,9 +117,10 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
                 name: { type: 'string' },
                 description: { type: 'string' },
                 prompt: { type: 'string' },
-                isEnabled: { type: 'boolean' }
+                isEnabled: { type: 'boolean' },
+                message: { type: 'string', description: 'Complete persona instructions and warning about execute mode usage' }
               },
-              required: ['id', 'name', 'description', 'prompt', 'isEnabled']
+              required: ['id', 'name', 'description', 'prompt', 'isEnabled', 'message']
             }
           ]
         }
