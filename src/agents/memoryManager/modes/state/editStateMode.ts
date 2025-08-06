@@ -132,7 +132,9 @@ export class EditStateMode extends BaseMode<EditStateParams, StateResult> {
         if (tagsChanged) {
           // We need to make a deep copy of the state to modify the nested metadata
           updatedState.state = {
-            ...state.state,
+            workspace: state.state?.workspace || {},
+            recentTraces: state.state?.recentTraces || [],
+            contextFiles: state.state?.contextFiles || [],
             metadata: {
               ...(state.state?.metadata || {}),
               tags: updatedTags

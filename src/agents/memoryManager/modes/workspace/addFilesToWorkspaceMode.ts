@@ -60,11 +60,9 @@ export class AddFilesToWorkspaceMode extends BaseMode<AddFilesToWorkspaceParamet
     try {
       // Get workspace service asynchronously
       const workspaceService = await this.getWorkspaceService();
-      console.log('[AddFilesToWorkspaceMode] Workspace service available:', !!workspaceService);
       
       // Check if workspace service is available
       if (!workspaceService) {
-        console.log('[AddFilesToWorkspaceMode] ERROR: Workspace service not available');
         const errorResult = {
           filesAdded: 0,
           foldersAdded: 0,

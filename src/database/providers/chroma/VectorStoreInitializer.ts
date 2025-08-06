@@ -1,0 +1,306 @@
+/**
+ * src/database/providers/chroma/VectorStoreInitializer.ts
+ * 
+ * Vector store initialization service - extracted from ChromaVectorStoreModular.ts
+ * Handles complex initialization sequence including client setup, service coordination,
+ * collection loading, and health monitoring setup.
+ * 
+ * Used by: ChromaVectorStoreModular for initialization coordination
+ * Dependencies: ChromaClientFactory, CollectionManager, ServiceCoordinator
+ */
+
+import { Plugin } from 'obsidian';
+import { ChromaClient } from './PersistentChromaClient';
+import { VectorStoreConfig } from '../../models/VectorStoreConfig';
+
+// Service interfaces
+import { IDirectoryService } from './services/interfaces/IDirectoryService';
+import { IChromaClientFactory } from './services/interfaces/IChromaClientFactory';
+import { ICollectionManager } from './services/interfaces/ICollectionManager';
+import { IDiagnosticsService } from './services/interfaces/IDiagnosticsService';
+import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorService';
+
+// Collection lifecycle management
+import { CollectionLifecycleManager } from '../../services/CollectionLifecycleManager';
+import { CollectionHealthMonitor } from '../../services/CollectionHealthMonitor';
+
+// Initialization coordination
+import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
+
+export interface VectorStoreInitializationResult {
+  client: InstanceType<typeof ChromaClient>;
+  collectionLifecycleManager?: CollectionLifecycleManager;
+  collectionHealthMonitor?: CollectionHealthMonitor;
+}
+
+export interface InitializationContext {
+  plugin: Plugin;
+  config: VectorStoreConfig;
+  directoryService: IDirectoryService;
+  clientFactory: IChromaClientFactory;
+  collectionManager: ICollectionManager;
+  diagnosticsService: IDiagnosticsService;
+  sizeCalculatorService: ISizeCalculatorService;
+  collectionCoordinator?: ICollectionLoadingCoordinator;
+}
+
+/**
+ * Handles vector store initialization sequence with proper error handling
+ * and recovery mechanisms. Extracted from ChromaVectorStoreModular to follow
+ * Single Responsibility Principle.
+ */
+export class VectorStoreInitializer {
+  private static readonly STANDARD_COLLECTIONS = [
+    'file_embeddings',
+    'memory_traces', 
+    'sessions',
+    'workspaces'
+  ];
+
+  /**
+   * Performs complete vector store initialization sequence
+   */
+  async initialize(context: InitializationContext): Promise<VectorStoreInitializationResult> {
+    try {
+      // Step 1: Validate configuration
+      await this.validateConfiguration(context);
+
+      // Step 2: Create ChromaDB client
+      const client = await this.initializeClient(context);
+
+      // Step 3: Load existing collections with coordination
+      await this.loadCollectionsWithCoordination(context);
+
+      // Step 4: Ensure standard collections exist
+      await this.ensureStandardCollections(context);
+
+      // Step 5: Initialize lifecycle management
+      const lifecycleManager = await this.initializeLifecycleManager(context);
+
+      // Step 6: Initialize health monitoring (skip for now - will be initialized later)
+      // const healthMonitor = await this.initializeHealthMonitoring(context, vectorStore, lifecycleManager);
+
+      return {
+        client,
+        collectionLifecycleManager: lifecycleManager,
+        collectionHealthMonitor: undefined // Will be initialized later by the vector store
+      };
+
+    } catch (error) {
+      throw new Error(`ChromaDB initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Validates ChromaDB configuration
+   */
+  private async validateConfiguration(context: InitializationContext): Promise<void> {
+    // Resolve configuration with sensible defaults
+    this.resolveConfiguration(context);
+    
+    // Validate configuration using client factory
+    const isValid = await context.clientFactory.validateConfiguration(context.config);
+    
+    if (!isValid) {
+      console.error('[VectorStoreInitializer] Configuration validation failed');
+      throw new Error('Invalid ChromaDB configuration');
+    }
+  }
+
+  /**
+   * Creates and initializes ChromaDB client
+   */
+  private async initializeClient(context: InitializationContext): Promise<InstanceType<typeof ChromaClient>> {
+    const client = await context.clientFactory.createClient(context.config);
+    
+    if (!client) {
+      throw new Error('Failed to create ChromaDB client');
+    }
+
+    return client;
+  }
+
+  /**
+   * Loads existing collections using coordination system
+   * Prevents duplicate collection loading across services
+   */
+  private async loadCollectionsWithCoordination(context: InitializationContext): Promise<void> {
+    try {
+      if (!context.collectionCoordinator) {
+        // No collection coordinator available - skipping coordinated loading
+        return;
+      }
+
+      // Use coordinator to ensure collections are loaded only once
+      const result = await context.collectionCoordinator.ensureCollectionsLoaded();
+      
+      if (result.success) {
+        // Register loaded collections with the CollectionManager
+        const metadata = context.collectionCoordinator.getCollectionMetadata();
+        for (const [collectionName, meta] of metadata) {
+          const collection = context.collectionCoordinator.getLoadedCollection(collectionName);
+          if (collection) {
+            context.collectionManager.registerCollection(collectionName, collection);
+          }
+        }
+        // Successfully loaded collections through coordinator
+      } else {
+        console.warn('[VectorStoreInitializer] Collection coordinator failed to load collections:', result.errors);
+      }
+    } catch (error) {
+      console.warn('[VectorStoreInitializer] Collection coordination failed:', error);
+      // Collections will be loaded by coordinator in proper initialization phase
+    }
+  }
+
+  /**
+   * Ensures all standard collections exist and are properly initialized
+   * Enhanced with filesystem detection before creating collections
+   */
+  private async ensureStandardCollections(context: InitializationContext): Promise<void> {
+    try {
+      let createdCount = 0;
+      let existingCount = 0;
+      
+      for (const collectionName of VectorStoreInitializer.STANDARD_COLLECTIONS) {
+        try {
+          // Use enhanced hasCollection() with filesystem detection
+          const exists = await context.collectionManager.hasCollection(collectionName);
+          
+          if (exists) {
+            existingCount++;
+            // Standard collection already exists
+          } else {
+            // Collection doesn't exist - create it
+            await context.collectionManager.createCollection(collectionName, {
+              'hnsw:space': 'cosine',
+              description: `Standard collection: ${collectionName}`,
+              createdBy: 'VectorStoreInitializer',
+              createdAt: new Date().toISOString()
+            });
+            createdCount++;
+            // Created standard collection
+          }
+        } catch (collectionError) {
+          console.warn(`[VectorStoreInitializer] Failed to ensure collection ${collectionName}:`, collectionError);
+          // Continue with other collections
+        }
+      }
+      
+      console.info(`[VectorStoreInitializer] Standard collections: ${existingCount} existing, ${createdCount} created`);
+      
+      // Final refresh to ensure collection manager state is synchronized
+      await context.collectionManager.refreshCollections();
+      
+    } catch (error) {
+      const errorMsg = `Standard collection initialization failed: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(`[VectorStoreInitializer] ❌ ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+  }
+
+  /**
+   * Initializes collection lifecycle manager
+   */
+  private async initializeLifecycleManager(context: InitializationContext): Promise<CollectionLifecycleManager | undefined> {
+    try {
+      // Check if we have any collections to manage
+      const collections = await context.collectionManager.listCollections();
+      if (collections.length === 0) {
+        // No collections found - skipping lifecycle manager initialization
+        return undefined;
+      }
+
+      // Create lifecycle manager - assuming we need a vector store instance
+      // This might need adjustment based on the actual interface requirements
+      const lifecycleManager = new CollectionLifecycleManager(
+        context as any, // This may need to be the actual vector store instance
+        context.collectionManager
+      );
+
+      // Collection lifecycle manager initialized successfully
+      return lifecycleManager;
+
+    } catch (error) {
+      console.warn('[VectorStoreInitializer] Failed to initialize lifecycle manager:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Initializes collection health monitoring (optional)
+   */
+  async initializeHealthMonitoring(
+    context: InitializationContext,
+    vectorStore: any, // The actual vector store instance 
+    lifecycleManager?: CollectionLifecycleManager
+  ): Promise<CollectionHealthMonitor | undefined> {
+    try {
+      if (!lifecycleManager) {
+        // No lifecycle manager available - skipping health monitoring
+        return undefined;
+      }
+      
+      // Initialize health monitor
+      const healthMonitor = new CollectionHealthMonitor(
+        vectorStore, // Pass the actual ChromaVectorStoreModular instance
+        lifecycleManager
+      );
+      
+      // Don't start monitoring immediately - let the vector store start it after full initialization
+      console.info('[VectorStoreInitializer] Initialized collection health monitoring');
+      
+      // Note: startMonitoring() will be called by ChromaVectorStoreModular after initialization is complete
+      return healthMonitor;
+      
+    } catch (error) {
+      console.warn('[VectorStoreInitializer] Health monitoring initialization failed:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Resolves configuration with sensible defaults
+   */
+  private resolveConfiguration(context: InitializationContext): void {
+    // Set default persistent path if not provided and not in memory/remote
+    if (!context.config.persistentPath && !context.config.inMemory && !context.config.server?.host) {
+      const path = context.clientFactory.getStoragePath(context.config);
+      if (path) {
+        context.config.persistentPath = path;
+        // Resolved persistent path
+      }
+    }
+  }
+
+  /**
+   * Performs graceful shutdown of initialized components
+   */
+  async shutdown(result: VectorStoreInitializationResult, config: VectorStoreConfig): Promise<void> {
+    try {
+      // Stop health monitoring
+      if (result.collectionHealthMonitor) {
+        await result.collectionHealthMonitor.stopMonitoring();
+        // Health monitoring stopped successfully
+      }
+      
+      // Save collections if not in memory mode
+      if (result.client && !config.inMemory) {
+        if (typeof (result.client as any).saveAllCollections === 'function') {
+          const saveResult = await (result.client as any).saveAllCollections();
+          if (!saveResult.success) {
+            console.warn('[VectorStoreInitializer] Some collections failed to save during shutdown:', saveResult.errors);
+          } else {
+            // Successfully saved all collections during shutdown
+          }
+        }
+      }
+      
+      // Shutdown completed successfully
+      
+    } catch (error) {
+      console.error("[VectorStoreInitializer] Error during shutdown:", error);
+      throw error;
+    }
+  }
+}

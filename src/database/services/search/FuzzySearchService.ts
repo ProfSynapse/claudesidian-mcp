@@ -1,60 +1,34 @@
 /**
- * FuzzySearchService - Handles typos, variations, stemming, and synonym matching
- * Provides intelligent fuzzy matching with domain-specific enhancements
+ * Location: src/database/services/search/FuzzySearchService.ts
+ * 
+ * Summary: Handles typos, variations, stemming, and synonym matching with intelligent
+ * fuzzy matching capabilities including domain-specific enhancements for typo tolerance,
+ * phonetic matching, and quality classification.
+ * 
+ * Used by: HybridSearchService and search coordinators for fuzzy text matching when
+ * exact matches fail, providing fallback search capabilities with quality scoring.
  */
 
 import { TFile } from 'obsidian';
-
-export interface FuzzySearchResult {
-  id: string;
-  title: string;
-  snippet: string;
-  score: number;
-  searchMethod: 'fuzzy';
-  metadata: {
-    filePath: string;
-    fileId: string;
-    timestamp: number;
-    fuzzyMatches: FuzzyMatch[];
-    editDistance: number;
-    similarity: number;
-    // ✅ ENHANCED QUALITY METADATA
-    qualityTier?: 'high' | 'medium' | 'low' | 'minimal';
-    confidenceLevel?: number;
-    matchType?: string;
-    qualityDescription?: string;
-    matchCount?: number;
-    searchTermCount?: number;
-    matchRatio?: number;
-    averageEditDistance?: number;
-    exactMatches?: number;
-    typoMatches?: number;
-    phoneticMatches?: number;
-    scoreMethod?: string;
-  };
-  content?: string;
-}
-
-export interface FuzzyMatch {
-  original: string;
-  matched: string;
-  distance: number;
-  similarity: number;
-  matchType: 'typo' | 'stem' | 'synonym' | 'phonetic';
-}
-
-export interface FuzzyDocument {
-  id: string;
-  title: string;
-  content: string;
-  filePath: string;
-  metadata: Record<string, any>;
-}
+import {
+  FuzzySearchResult,
+  FuzzyMatch,
+  FuzzyDocument,
+  FuzzyMatchResult,
+  FuzzyQualityAssessment,
+  FuzzySearchStats,
+  FuzzyQualityDistribution,
+  FuzzySearchOptions,
+  FUZZY_SEARCH_DEFAULTS,
+  SynonymMappings,
+  StemCache,
+  SoundexMapping
+} from '../../../types/search/FuzzySearchTypes';
 
 export class FuzzySearchService {
   private documents: Map<string, FuzzyDocument> = new Map();
-  private stemCache: Map<string, string> = new Map();
-  private synonymMap: Map<string, string[]> = new Map();
+  private stemCache: StemCache = new Map();
+  private synonymMap: Record<string, string[]> = {};
 
   constructor() {
     this.initializeSynonymMap();
@@ -81,8 +55,8 @@ export class FuzzySearchService {
   search(
     query: string,
     fuzzyTerms: string[],
-    limit = 10,
-    threshold = 0.6, // Preserved for API compatibility but ignored when threshold = 0
+    limit = FUZZY_SEARCH_DEFAULTS.LIMIT,
+    threshold = FUZZY_SEARCH_DEFAULTS.THRESHOLD, // Preserved for API compatibility but ignored when threshold = 0
     filteredFiles?: TFile[]
   ): FuzzySearchResult[] {
     if (!query.trim() && fuzzyTerms.length === 0) return [];
@@ -93,22 +67,17 @@ export class FuzzySearchService {
       score: number; 
       matches: FuzzyMatch[]; 
       distance: number;
-      qualityAssessment?: {
-        tier: 'high' | 'medium' | 'low' | 'minimal';
-        confidence: number;
-        matchType: string;
-        description: string;
-      };
+      qualityAssessment?: FuzzyQualityAssessment;
     }> = [];
     const useThresholdFiltering = threshold > 0; // Enable score-based ranking when threshold is 0
 
 
-    for (const [docId, doc] of this.documents) {
+    this.documents.forEach((doc, docId) => {
       // Apply file filtering if provided
       if (filteredFiles) {
         const allowedPaths = filteredFiles.map(f => f.path);
         if (!allowedPaths.includes(doc.filePath)) {
-          continue;
+          return; // Skip this document
         }
       }
 
@@ -127,7 +96,7 @@ export class FuzzySearchService {
           qualityAssessment
         });
       }
-    }
+    });
 
     
     if (!useThresholdFiltering && results.length > 0) {
@@ -180,7 +149,7 @@ export class FuzzySearchService {
   private calculateFuzzyMatches(
     doc: FuzzyDocument, 
     searchTerms: string[]
-  ): { score: number; matches: FuzzyMatch[]; totalDistance: number } {
+  ): FuzzyMatchResult {
     const allText = (doc.title + ' ' + doc.content).toLowerCase();
     const words = this.tokenize(allText);
     
@@ -223,7 +192,7 @@ export class FuzzySearchService {
 
     for (const word of words) {
       // Skip very short words unless they're exact matches
-      if (word.length < 3 && word !== term) continue;
+      if (word.length < FUZZY_SEARCH_DEFAULTS.MIN_WORD_LENGTH && word !== term) continue;
 
       // Try different match types
       const typoMatch = this.tryTypoMatch(term, word);
@@ -242,7 +211,7 @@ export class FuzzySearchService {
     // Sort by similarity (best first) and return top matches
     return matches
       .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, 3); // Keep top 3 matches per term
+      .slice(0, FUZZY_SEARCH_DEFAULTS.TOP_MATCHES_PER_TERM); // Keep top matches per term
   }
 
   /**
@@ -250,12 +219,12 @@ export class FuzzySearchService {
    */
   private tryTypoMatch(term: string, word: string): FuzzyMatch | null {
     const distance = this.levenshteinDistance(term, word);
-    const maxDistance = Math.max(2, Math.floor(term.length * 0.3)); // Allow 30% character changes
+    const maxDistance = Math.max(2, Math.floor(term.length * FUZZY_SEARCH_DEFAULTS.MAX_EDIT_DISTANCE_RATIO)); // Allow configurable % character changes
     
     if (distance <= maxDistance && distance > 0) {
       const similarity = 1 - (distance / Math.max(term.length, word.length));
       
-      if (similarity >= 0.6) {
+      if (similarity >= FUZZY_SEARCH_DEFAULTS.SIMILARITY_WEIGHTS.TYPO_MIN) {
         return {
           original: term,
           matched: word,
@@ -276,12 +245,12 @@ export class FuzzySearchService {
     const termStem = this.stem(term);
     const wordStem = this.stem(word);
     
-    if (termStem === wordStem && termStem.length > 3) {
+    if (termStem === wordStem && termStem.length > FUZZY_SEARCH_DEFAULTS.MIN_STEM_LENGTH) {
       return {
         original: term,
         matched: word,
         distance: 0,
-        similarity: 0.9, // High similarity for stem matches
+        similarity: FUZZY_SEARCH_DEFAULTS.SIMILARITY_WEIGHTS.STEM, // High similarity for stem matches
         matchType: 'stem'
       };
     }
@@ -293,26 +262,26 @@ export class FuzzySearchService {
    * Try to match based on synonyms
    */
   private trySynonymMatch(term: string, word: string): FuzzyMatch | null {
-    const synonyms = this.synonymMap.get(term) || [];
+    const synonyms = this.synonymMap[term] || [];
     
     if (synonyms.includes(word)) {
       return {
         original: term,
         matched: word,
         distance: 0,
-        similarity: 0.8, // Good similarity for synonyms
+        similarity: FUZZY_SEARCH_DEFAULTS.SIMILARITY_WEIGHTS.SYNONYM, // Good similarity for synonyms
         matchType: 'synonym'
       };
     }
     
     // Check reverse mapping
-    for (const [key, values] of this.synonymMap) {
+    for (const [key, values] of Object.entries(this.synonymMap)) {
       if (values.includes(term) && key === word) {
         return {
           original: term,
           matched: word,
           distance: 0,
-          similarity: 0.8,
+          similarity: FUZZY_SEARCH_DEFAULTS.SIMILARITY_WEIGHTS.SYNONYM,
           matchType: 'synonym'
         };
       }
@@ -333,7 +302,7 @@ export class FuzzySearchService {
         original: term,
         matched: word,
         distance: 1,
-        similarity: 0.7, // Moderate similarity for phonetic matches
+        similarity: FUZZY_SEARCH_DEFAULTS.SIMILARITY_WEIGHTS.PHONETIC, // Moderate similarity for phonetic matches
         matchType: 'phonetic'
       };
     }
@@ -407,7 +376,7 @@ export class FuzzySearchService {
     
     let soundex = cleaned[0].toUpperCase();
     
-    const mapping: Record<string, string> = {
+    const mapping: SoundexMapping = {
       'b': '1', 'f': '1', 'p': '1', 'v': '1',
       'c': '2', 'g': '2', 'j': '2', 'k': '2', 'q': '2', 's': '2', 'x': '2', 'z': '2',
       'd': '3', 't': '3',
@@ -416,21 +385,21 @@ export class FuzzySearchService {
       'r': '6'
     };
     
-    for (let i = 1; i < cleaned.length && soundex.length < 4; i++) {
+    for (let i = 1; i < cleaned.length && soundex.length < FUZZY_SEARCH_DEFAULTS.SOUNDEX_LENGTH; i++) {
       const code = mapping[cleaned[i]];
       if (code && code !== soundex[soundex.length - 1]) {
         soundex += code;
       }
     }
     
-    return soundex.padEnd(4, '0').substring(0, 4);
+    return soundex.padEnd(FUZZY_SEARCH_DEFAULTS.SOUNDEX_LENGTH, '0').substring(0, FUZZY_SEARCH_DEFAULTS.SOUNDEX_LENGTH);
   }
 
   /**
    * Initialize domain-specific synonym mappings
    */
   private initializeSynonymMap(): void {
-    const synonyms: Record<string, string[]> = {
+    const synonyms = {
       'clustering': ['grouping', 'classification', 'segmentation', 'partitioning'],
       'algorithm': ['method', 'procedure', 'technique', 'approach'],
       'machine': ['automated', 'artificial', 'computer'],
@@ -446,14 +415,14 @@ export class FuzzySearchService {
     };
     
     for (const [key, values] of Object.entries(synonyms)) {
-      this.synonymMap.set(key, values);
+      this.synonymMap[key] = values;
     }
   }
 
   /**
    * Generate a snippet highlighting fuzzy matches
    */
-  private generateSnippet(doc: FuzzyDocument, searchTerms: string[], maxLength = 300): string {
+  private generateSnippet(doc: FuzzyDocument, searchTerms: string[], maxLength = FUZZY_SEARCH_DEFAULTS.SNIPPET_MAX_LENGTH): string {
     const content = doc.content;
     
     if (!content || content.length === 0) {
@@ -469,7 +438,7 @@ export class FuzzySearchService {
     let bestStart = 0;
     let maxRelevance = 0;
     
-    const windowSize = Math.min(50, words.length);
+    const windowSize = Math.min(FUZZY_SEARCH_DEFAULTS.WINDOW_SIZE, words.length);
     for (let i = 0; i <= words.length - windowSize; i++) {
       const window = words.slice(i, i + windowSize).join(' ').toLowerCase();
       
@@ -527,40 +496,35 @@ export class FuzzySearchService {
    * Classify fuzzy search result quality
    */
   private classifyFuzzyQuality(
-    matchResult: { score: number; matches: FuzzyMatch[]; totalDistance: number }, 
+    matchResult: FuzzyMatchResult, 
     searchTerms: string[]
-  ): {
-    tier: 'high' | 'medium' | 'low' | 'minimal';
-    confidence: number;
-    matchType: string;
-    description: string;
-  } {
+  ): FuzzyQualityAssessment {
     const score = matchResult.score;
     const matchRatio = matchResult.matches.length / searchTerms.length;
     const avgDistance = matchResult.totalDistance / Math.max(matchResult.matches.length, 1);
     
-    if (score >= 0.95 && avgDistance === 0) {
+    if (score >= FUZZY_SEARCH_DEFAULTS.SCORE_THRESHOLDS.HIGH_EXACT && avgDistance === 0) {
       return {
         tier: 'high',
         confidence: score,
         matchType: 'exact-match',
         description: 'Perfect character match'
       };
-    } else if (score >= 0.8 && avgDistance <= 1) {
+    } else if (score >= FUZZY_SEARCH_DEFAULTS.SCORE_THRESHOLDS.HIGH_TYPO && avgDistance <= 1) {
       return {
         tier: 'high',
         confidence: score,
         matchType: 'minor-typo',
         description: 'Near-perfect match with minor typos'
       };
-    } else if (score >= 0.6 && matchRatio >= 0.8) {
+    } else if (score >= FUZZY_SEARCH_DEFAULTS.SCORE_THRESHOLDS.MEDIUM && matchRatio >= 0.8) {
       return {
         tier: 'medium',
         confidence: score,
         matchType: 'major-typo',
         description: 'Good match with some typos'
       };
-    } else if (score >= 0.4 && matchRatio >= 0.5) {
+    } else if (score >= FUZZY_SEARCH_DEFAULTS.SCORE_THRESHOLDS.LOW && matchRatio >= 0.5) {
       return {
         tier: 'low',
         confidence: score,
@@ -580,13 +544,13 @@ export class FuzzySearchService {
   /**
    * Calculate quality distribution for fuzzy results
    */
-  private calculateFuzzyQualityDistribution(results: any[]): Record<string, number> {
-    const distribution = { high: 0, medium: 0, low: 0, minimal: 0 };
+  private calculateFuzzyQualityDistribution(results: Array<{ qualityAssessment?: FuzzyQualityAssessment }>): FuzzyQualityDistribution {
+    const distribution: FuzzyQualityDistribution = { high: 0, medium: 0, low: 0, minimal: 0 };
     
     results.forEach(result => {
       const tier = result.qualityAssessment?.tier || 'minimal';
       if (tier in distribution) {
-        distribution[tier as keyof typeof distribution]++;
+        distribution[tier]++;
       }
     });
     
@@ -596,17 +560,15 @@ export class FuzzySearchService {
   /**
    * Get search statistics
    */
-  getStats(): {
-    totalDocuments: number;
-    cachedStems: number;
-    synonymMappings: number;
-    scoreBasedRanking?: boolean;
-  } {
+  getStats(): FuzzySearchStats {
     return {
       totalDocuments: this.documents.size,
       cachedStems: this.stemCache.size,
-      synonymMappings: this.synonymMap.size,
+      synonymMappings: Object.keys(this.synonymMap).length,
       scoreBasedRanking: true // ✅ Indicator of enhanced functionality
     };
   }
 }
+
+// Re-export types for backward compatibility
+export type { FuzzySearchResult, FuzzyDocument } from '../../../types/search/FuzzySearchTypes';

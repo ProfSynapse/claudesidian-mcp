@@ -92,16 +92,35 @@ export class WorkspaceResolver {
     }
 
     /**
-     * Create a default workspace
+     * Create a default workspace using simple schema
      */
     private async createDefaultWorkspace(workspaceService: any): Promise<any> {
         return await workspaceService.createWorkspace({
             name: 'Default Workspace',
-            description: 'Automatically created default workspace',
             rootFolder: '/',
-            hierarchyType: 'workspace',
             created: Date.now(),
             lastAccessed: Date.now(),
+            // Optional context for new schema compatibility
+            context: {
+                purpose: 'Default workspace for general use',
+                currentGoal: 'Organize and manage notes',
+                status: 'Active and ready to use',
+                workflows: [{
+                    name: 'General Note Taking',
+                    when: 'When creating or organizing notes',
+                    steps: ['Create note', 'Add content', 'Organize in folders']
+                }],
+                keyFiles: [{
+                    category: 'Getting Started',
+                    files: {}
+                }],
+                preferences: ['Keep organized', 'Use clear naming'],
+                agents: [],
+                nextActions: ['Start creating notes']
+            },
+            // Legacy fields for backward compatibility - minimal values
+            description: 'Automatically created default workspace',
+            hierarchyType: 'workspace',
             childWorkspaces: [],
             path: [],
             relatedFolders: [],

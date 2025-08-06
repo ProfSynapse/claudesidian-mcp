@@ -7,6 +7,13 @@ import { EmbeddingService } from './EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
+ * Constants for the global workspace
+ */
+export const GLOBAL_WORKSPACE_ID = 'global-workspace-default';
+export const GLOBAL_WORKSPACE_NAME = 'Global Workspace';
+export const GLOBAL_WORKSPACE_DESCRIPTION = 'Default workspace for global states and general work that doesn\'t belong to a specific workspace';
+
+/**
  * Service for managing workspaces
  */
 export class WorkspaceService {
@@ -45,10 +52,89 @@ export class WorkspaceService {
    */
   async initialize(): Promise<void> {
     await this.collection.initialize();
+    await this.ensureGlobalWorkspaceExists();
+  }
+
+  /**
+   * Ensure the global workspace exists, creating it if necessary
+   */
+  private async ensureGlobalWorkspaceExists(): Promise<void> {
+    try {
+      // Check if global workspace already exists
+      const existingGlobal = await this.collection.get(GLOBAL_WORKSPACE_ID);
+      
+      if (!existingGlobal) {
+        
+        // Create the global workspace
+        const globalWorkspace: ProjectWorkspace = {
+          id: GLOBAL_WORKSPACE_ID,
+          name: GLOBAL_WORKSPACE_NAME,
+          description: GLOBAL_WORKSPACE_DESCRIPTION,
+          created: Date.now(),
+          lastAccessed: Date.now(),
+          hierarchyType: 'workspace',
+          parentId: undefined,
+          childWorkspaces: [],
+          path: [],
+          rootFolder: '/', // Root of the vault
+          relatedFolders: [],
+          relevanceSettings: {
+            folderProximityWeight: 0.3,
+            recencyWeight: 0.4,
+            frequencyWeight: 0.3
+          },
+          activityHistory: [],
+          completionStatus: {},
+          status: 'active',
+          // Modern workspace context
+          context: {
+            purpose: 'Default workspace for general work and global states',
+            currentGoal: 'Organize and manage vault-wide activities',
+            status: 'Active and available for global state management',
+            workflows: [
+              {
+                name: 'general-note-taking',
+                when: 'For general notes and documentation',
+                steps: ['Create note', 'Add content', 'Organize in folders']
+              },
+              {
+                name: 'cross-workspace-research',
+                when: 'For research that spans multiple workspaces',
+                steps: ['Identify topics', 'Gather sources', 'Synthesize findings']
+              }
+            ],
+            keyFiles: [
+              {
+                category: 'System',
+                files: {
+                  'Root': 'Vault root directory - all global content'
+                }
+              }
+            ],
+            preferences: [],
+            agents: [],
+            nextActions: []
+          }
+        };
+        
+        await this.collection.add(globalWorkspace);
+      } else {
+      }
+    } catch (error) {
+      // Don't throw - this should not prevent the service from initializing
+    }
+  }
+
+  /**
+   * Get the global workspace ID (for use by other services)
+   */
+  getGlobalWorkspaceId(): string {
+    return GLOBAL_WORKSPACE_ID;
   }
   
   /**
    * Get all workspaces
+   * Enhanced with comprehensive logging and error handling
    * @param params Optional filter parameters
    */
   async getWorkspaces(params?: {
@@ -57,29 +143,57 @@ export class WorkspaceService {
     sortBy?: 'name' | 'created' | 'lastAccessed';
     sortOrder?: 'asc' | 'desc';
   }): Promise<ProjectWorkspace[]> {
+    
     let workspaces: ProjectWorkspace[] = [];
     
-    if (params?.parentId) {
-      workspaces = await this.collection.getWorkspacesByParent(params.parentId);
-    } else if (params?.hierarchyType) {
-      workspaces = await this.collection.getWorkspacesByType(params.hierarchyType);
-    } else {
-      workspaces = await this.collection.getAll();
-    }
-    
-    // Apply sorting if requested
-    if (params?.sortBy) {
-      const sortOrder = params.sortOrder === 'desc' ? -1 : 1;
-      workspaces.sort((a, b) => {
-        if (params.sortBy === 'name') {
-          return sortOrder * a.name.localeCompare(b.name);
-        } else if (params.sortBy === 'created') {
-          return sortOrder * (a.created - b.created);
-        } else if (params.sortBy === 'lastAccessed') {
-          return sortOrder * (a.lastAccessed - b.lastAccessed);
-        }
-        return 0;
-      });
+    try {
+      // First, check collection status
+      const count = await this.collection.count();
+      
+      if (count === 0) {
+        return [];
+      }
+      
+      // Retrieve workspaces based on parameters
+      if (params?.parentId) {
+        workspaces = await this.collection.getWorkspacesByParent(params.parentId);
+      } else if (params?.hierarchyType) {
+        workspaces = await this.collection.getWorkspacesByType(params.hierarchyType);
+      } else {
+        workspaces = await this.collection.getAll();
+      }
+      
+      
+      // Log workspace details for debugging
+      if (workspaces.length > 0) {
+      } else {
+      }
+      
+      // Apply sorting if requested
+      if (params?.sortBy && workspaces.length > 0) {
+        const sortOrder = params.sortOrder === 'desc' ? -1 : 1;
+        
+        workspaces.sort((a, b) => {
+          try {
+            if (params.sortBy === 'name') {
+              return sortOrder * (a.name || '').localeCompare(b.name || '');
+            } else if (params.sortBy === 'created') {
+              return sortOrder * ((a.created || 0) - (b.created || 0));
+            } else if (params.sortBy === 'lastAccessed') {
+              return sortOrder * ((a.lastAccessed || 0) - (b.lastAccessed || 0));
+            }
+            return 0;
+          } catch (sortError) {
+            return 0;
+          }
+        });
+        
+      }
+      
+    } catch (error) {
+      
+      // Return empty array on error to prevent breaking the UI
+      workspaces = [];
     }
     
     return workspaces;
@@ -118,9 +232,9 @@ export class WorkspaceService {
     
     if (parent) {
       // Update parent's children if the child isn't already in the list
-      if (!parent.childWorkspaces.includes(childId)) {
+      if (!(parent.childWorkspaces || []).includes(childId)) {
         await this.collection.update(parentId, {
-          childWorkspaces: [...parent.childWorkspaces, childId],
+          childWorkspaces: [...(parent.childWorkspaces || []), childId],
           lastAccessed: Date.now()
         });
       }
@@ -146,7 +260,7 @@ export class WorkspaceService {
         const oldParent = await this.collection.get(workspace.parentId);
         if (oldParent) {
           await this.collection.update(workspace.parentId, {
-            childWorkspaces: oldParent.childWorkspaces.filter(cid => cid !== id),
+            childWorkspaces: (oldParent.childWorkspaces || []).filter(cid => cid !== id),
             lastAccessed: Date.now()
           });
         }
@@ -181,13 +295,13 @@ export class WorkspaceService {
     }
     
     // If deleteChildren is true, recursively delete child workspaces
-    if (options?.deleteChildren && workspace.childWorkspaces.length > 0) {
-      for (const childId of workspace.childWorkspaces) {
+    if (options?.deleteChildren && (workspace.childWorkspaces?.length || 0) > 0) {
+      for (const childId of (workspace.childWorkspaces || [])) {
         await this.deleteWorkspace(childId, options);
       }
-    } else if (workspace.childWorkspaces.length > 0) {
+    } else if ((workspace.childWorkspaces?.length || 0) > 0) {
       // If not deleting children, update their parentId to the parent of this workspace
-      for (const childId of workspace.childWorkspaces) {
+      for (const childId of (workspace.childWorkspaces || [])) {
         const child = await this.collection.get(childId);
         if (child) {
           await this.collection.update(childId, { parentId: workspace.parentId });
@@ -200,7 +314,7 @@ export class WorkspaceService {
       const parent = await this.collection.get(workspace.parentId);
       if (parent) {
         await this.collection.update(workspace.parentId, {
-          childWorkspaces: parent.childWorkspaces.filter(cid => cid !== id),
+          childWorkspaces: (parent.childWorkspaces || []).filter(cid => cid !== id),
           lastAccessed: Date.now()
         });
       }
@@ -215,17 +329,15 @@ export class WorkspaceService {
    * @param workspaceId Workspace ID
    * @param activity Activity data
    */
-  async addActivity(workspaceId: string, activity: ProjectWorkspace['activityHistory'][0]): Promise<void> {
+  async addActivity(workspaceId: string, activity: NonNullable<ProjectWorkspace['activityHistory']>[0]): Promise<void> {
     // Prevent recursive calls and implement rate limiting
     if (this.isRecordingActivity) {
-      console.log(`[WorkspaceService] Skipping activity recording to prevent recursion for workspace ${workspaceId}`);
       return;
     }
     
     // Check rate limiting
     const now = Date.now();
     if (now - this.lastActivityTime < this.activityRateLimit) {
-      console.log(`[WorkspaceService] Rate limiting activity recording for workspace ${workspaceId} (too frequent)`);
       return;
     }
     
@@ -233,31 +345,25 @@ export class WorkspaceService {
     this.isRecordingActivity = true;
     this.lastActivityTime = now;
     
-    console.log(`[WorkspaceService] Adding activity to workspace ${workspaceId}:`, activity);
     
     try {
       const workspace = await this.collection.get(workspaceId);
       
       if (!workspace) {
-        console.error(`[WorkspaceService] Workspace with ID ${workspaceId} not found`);
         this.isRecordingActivity = false; // Reset flag before throwing
         throw new Error(`Workspace with ID ${workspaceId} not found`);
       }
       
-      console.log(`[WorkspaceService] Current activity history for workspace ${workspaceId} has ${workspace.activityHistory.length} entries`);
       
       // Add the activity and update last accessed
-      const newHistory = [...workspace.activityHistory, activity];
-      console.log(`[WorkspaceService] New activity history will have ${newHistory.length} entries`);
+      const newHistory = [...(workspace.activityHistory || []), activity];
       
       await this.collection.update(workspaceId, {
         activityHistory: newHistory,
         lastAccessed: activity.timestamp
       });
       
-      console.log(`[WorkspaceService] Successfully updated activity history for workspace ${workspaceId}`);
     } catch (error) {
-      console.error(`[WorkspaceService] Failed to add activity to workspace ${workspaceId}:`, error);
       throw error;
     } finally {
       // Always reset the flag when done
@@ -270,33 +376,28 @@ export class WorkspaceService {
    * @param workspaceId Workspace ID
    * @param activity Activity data
    */
-  async recordActivity(workspaceId: string, activity: ProjectWorkspace['activityHistory'][0]): Promise<void> {
+  async recordActivity(workspaceId: string, activity: NonNullable<ProjectWorkspace['activityHistory']>[0]): Promise<void> {
     // Prevent recursive calls and implement rate limiting
     if (this.isRecordingActivity) {
-      console.log(`[WorkspaceService] Skipping recordActivity to prevent recursion for workspace ${workspaceId}`);
       return;
     }
     
     // Check rate limiting
     const now = Date.now();
     if (now - this.lastActivityTime < this.activityRateLimit) {
-      console.log(`[WorkspaceService] Rate limiting recordActivity for workspace ${workspaceId} (too frequent)`);
       return;
     }
     
-    console.log(`[WorkspaceService] Recording activity for workspace ${workspaceId}:`, activity);
     
     try {
       // First check if the workspace exists
       const workspace = await this.collection.get(workspaceId);
       
       if (!workspace) {
-        console.error(`[WorkspaceService] Cannot record activity - workspace ${workspaceId} not found`);
         throw new Error(`Workspace with ID ${workspaceId} not found`);
       }
       
       // Extra verification - log current activity history
-      console.log(`[WorkspaceService] Pre-verification: Workspace ${workspaceId} has ${workspace.activityHistory.length} activities`);
       
       // Add the activity (addActivity already handles the recursion flags)
       await this.addActivity(workspaceId, activity);
@@ -307,19 +408,10 @@ export class WorkspaceService {
         const updatedWorkspace = await this.collection.get(workspaceId);
         
         if (updatedWorkspace) {
-          console.log(`[WorkspaceService] Post-verification: Workspace ${workspaceId} now has ${updatedWorkspace.activityHistory.length} activities`);
-          
-          // Check if the most recent activity matches
-          if (updatedWorkspace.activityHistory.length > 0) {
-            const lastActivity = updatedWorkspace.activityHistory[updatedWorkspace.activityHistory.length - 1];
-            console.log(`[WorkspaceService] Last activity: action=${lastActivity.action}, timestamp=${lastActivity.timestamp}`);
-          }
         } else {
-          console.error(`[WorkspaceService] Failed to verify activity addition - workspace ${workspaceId} not found after update`);
         }
       }
     } catch (error) {
-      console.error(`[WorkspaceService] Error in recordActivity: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
   }
@@ -449,7 +541,6 @@ export class WorkspaceService {
     const workspace = await this.collection.get(workspaceId);
     
     if (!workspace) {
-      console.warn(`[WorkspaceService] Cannot add associated note - workspace ${workspaceId} not found`);
       return;
     }
     
@@ -463,7 +554,6 @@ export class WorkspaceService {
         lastAccessed: Date.now()
       });
       
-      console.log(`[WorkspaceService] Added associated note ${filePath} to workspace ${workspaceId}`);
     }
   }
   
@@ -487,7 +577,6 @@ export class WorkspaceService {
       lastAccessed: Date.now()
     });
     
-    console.log(`[WorkspaceService] Removed associated note ${filePath} from workspace ${workspaceId}`);
   }
   
   /**
@@ -503,5 +592,25 @@ export class WorkspaceService {
     }
     
     return workspace.associatedNotes || [];
+  }
+  
+  /**
+   * Get diagnostic information about workspace storage
+   * Enhanced debugging for backward compatibility issues
+   * @returns Diagnostic information about workspace collection
+   */
+  async getDiagnostics(): Promise<any> {
+    
+    try {
+      const diagnostics = await this.collection.getDiagnosticInfo();
+      return diagnostics;
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : String(error),
+        totalItems: 0,
+        sampleItems: [],
+        formatAnalysis: { legacyCount: 0, modernCount: 0, invalidCount: 0 }
+      };
+    }
   }
 }

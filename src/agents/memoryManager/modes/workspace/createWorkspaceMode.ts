@@ -1,332 +1,442 @@
-import { App, Plugin } from 'obsidian';
+import { App } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
 import { 
   CreateWorkspaceParameters, 
-  CreateWorkspaceResult,
-  ProjectWorkspace,
-  WorkspaceStatus
-} from '../../../../database/workspace-types';
+  CreateWorkspaceResult
+} from '../../../../database/types/workspace/ParameterTypes';
+import { ProjectWorkspace, WorkspaceContext } from '../../../../database/types/workspace/WorkspaceTypes';
 import { WorkspaceService } from '../../../../database/services/WorkspaceService';
 import { createErrorMessage } from '../../../../utils/errorUtils';
-
-// Define a custom interface for the Claudesidian plugin
-import { ClaudesidianPlugin } from '../utils/pluginTypes';
-import { extractContextFromParams } from '../../../../utils/contextUtils';
+import { createServiceIntegration } from '../../utils/ServiceIntegration';
+import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';
 
 /**
- * Mode to create a new workspace
+ * Mode to create a new workspace with robust service integration and error handling
  */
 export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, CreateWorkspaceResult> {
   private app: App;
+  private serviceIntegration: ReturnType<typeof createServiceIntegration>;
   
-  /**
-   * Create a new CreateWorkspaceMode
-   * @param app Obsidian app instance
-   */
   constructor(app: App) {
     super(
       'createWorkspace',
       'Create Workspace',
-      'Create a new workspace, phase, or task',
-      '1.0.0'
+      'Create a new workspace with structured context data',
+      '2.0.0'
     );
     this.app = app;
+    this.serviceIntegration = createServiceIntegration(app, {
+      logLevel: 'warn',
+      maxRetries: 2,
+      fallbackBehavior: 'warn'
+    });
   }
   
   /**
-   * Get workspace service asynchronously
+   * Get workspace service with robust error handling and retry logic
    */
   private async getWorkspaceService(): Promise<WorkspaceService | null> {
-    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
-    if (!plugin) {
-      return null;
+    const result = await this.serviceIntegration.getWorkspaceService();
+    
+    if (!result.success) {
     }
     
-    try {
-      return await plugin.getService<WorkspaceService>('workspaceService');
-    } catch (error) {
-      console.warn('[CreateWorkspaceMode] Failed to get workspace service:', error);
-      return null;
-    }
+    return result.service;
   }
   
   /**
-   * Execute the mode
-   * @param params Mode parameters
-   * @returns Promise resolving to the result
+   * Execute the mode - validate LLM input and create workspace with robust error handling
    */
   async execute(params: CreateWorkspaceParameters): Promise<CreateWorkspaceResult> {
+    const startTime = Date.now();
+    
     try {
-      // Get workspace service asynchronously
-      const workspaceService = await this.getWorkspaceService();
-      if (!workspaceService) {
-        return this.prepareResult(false, undefined, 'Workspace service not available');
+      // Get workspace service with comprehensive error handling
+      const serviceResult = await this.serviceIntegration.getWorkspaceService();
+      if (!serviceResult.success || !serviceResult.service) {
+        const error = memoryManagerErrorHandler.handleServiceUnavailable(
+          'Create Workspace',
+          'createWorkspace',
+          'WorkspaceService',
+          serviceResult.error,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext, {});
       }
       
-      // Validate parameters
-      if (!params.name) {
-        return this.prepareResult(false, undefined, 'Workspace name is required');
+      const workspaceService = serviceResult.service;
+      
+      // Validate required fields with structured error handling
+      const validationErrors = this.validateParameters(params);
+      if (validationErrors.length > 0) {
+        const firstError = validationErrors[0];
+        const error = memoryManagerErrorHandler.handleValidationError(
+          'Create Workspace',
+          'createWorkspace',
+          firstError.field,
+          firstError.value,
+          firstError.requirement,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext, {});
       }
       
-      if (!params.rootFolder) {
-        return this.prepareResult(false, undefined, 'Root folder is required');
-      }
+      console.log('[CreateWorkspaceMode] Parameter validation successful');
       
-      // Check if the root folder exists and create it if it doesn't
+      // Ensure root folder exists
       try {
-        // Try to get folder utility from the app
-        let folderCreated = false;
-        const app = this.app;
-        
-        // Check if FileOperations utility is available
-        if (typeof app.plugins.getPlugin('claudesidian-mcp')?.services?.FileOperations?.ensureFolder === 'function') {
-          const FileOperations = app.plugins.getPlugin('claudesidian-mcp').services.FileOperations;
-          await FileOperations.ensureFolder(app, params.rootFolder);
-          folderCreated = true;
-        } else {
-          // Try to import FileOperations if it's not available as a service
-          try {
-            // Try to dynamically import the FileOperations class
-            const { FileOperations } = await import('../../../vaultManager/utils/FileOperations');
-            await FileOperations.ensureFolder(app, params.rootFolder);
-            folderCreated = true;
-          } catch (importError) {
-            // Fallback to basic folder creation if import fails
-            const folder = app.vault.getAbstractFileByPath(params.rootFolder);
-            if (!folder) {
-              await app.vault.createFolder(params.rootFolder);
-            }
-            folderCreated = true;
-          }
-        }
-        
-        if (!folderCreated) {
-          console.log(`Attempted to create root folder '${params.rootFolder}' but could not access the required utilities.`);
+        const folder = this.app.vault.getAbstractFileByPath(params.rootFolder);
+        if (!folder) {
+          await this.app.vault.createFolder(params.rootFolder);
         }
       } catch (folderError) {
-        console.error(`Error ensuring root folder exists: ${folderError}`);
-        // Continue with workspace creation even if folder creation fails
-        // The folder might already exist or the user might need to create it manually
+        console.warn(`Could not create root folder: ${folderError}`);
+        // Continue anyway - folder might exist or user can create manually
       }
       
-      // Determine hierarchy type and path
-      const hierarchyType = params.hierarchyType || 'workspace';
-      let path: string[] = [];
-      let parentWorkspace: ProjectWorkspace | undefined;
+      // Auto-detect keyFiles (no LLM input needed)
+      const autoDetectedKeyFiles = await this.detectKeyFiles(params.rootFolder);
       
-      // If this is a child workspace, get the parent and validate
-      if (params.parentId && hierarchyType !== 'workspace') {
-        parentWorkspace = await workspaceService.getWorkspace(params.parentId);
-        
-        if (!parentWorkspace) {
-          return this.prepareResult(
-            false, 
-            undefined, 
-            `Parent workspace with ID ${params.parentId} not found`
-          );
-        }
-        
-        // Phases can only be parented by workspaces
-        if (hierarchyType === 'phase' && parentWorkspace.hierarchyType !== 'workspace') {
-          return this.prepareResult(
-            false, 
-            undefined, 
-            'A phase can only be created under a workspace, not another phase or task'
-          );
-        }
-        
-        // Tasks can only be parented by phases
-        if (hierarchyType === 'task' && parentWorkspace.hierarchyType !== 'phase') {
-          return this.prepareResult(
-            false, 
-            undefined, 
-            'A task can only be created under a phase, not a workspace or another task'
-          );
-        }
-        
-        // Build the path based on parent
-        path = [...parentWorkspace.path, params.parentId];
-      }
+      // Build the workspace context from LLM input
+      const context: WorkspaceContext = {
+        purpose: params.purpose,
+        currentGoal: params.currentGoal,
+        status: params.status || 'Starting workspace setup',
+        workflows: params.workflows,
+        keyFiles: autoDetectedKeyFiles,
+        preferences: params.preferences || [],
+        agents: params.agents || [],
+        nextActions: params.nextActions
+      };
       
-      // Create the workspace object
+      // Create the simple workspace
       const now = Date.now();
-      
-      // Use context parameter to enhance the description if provided
-      let enhancedDescription = params.description || '';
-      const contextString = typeof params.context === 'string' ? params.context : 
-                           (typeof params.context === 'object' && params.context?.toolContext ? params.context.toolContext : '');
-      if (contextString && (!enhancedDescription || enhancedDescription.trim() === '')) {
-        enhancedDescription = contextString;
-      } else if (contextString && enhancedDescription) {
-        // If both exist, append context to description with a separator if not already included
-        if (!enhancedDescription.includes(contextString)) {
-          enhancedDescription = `${enhancedDescription}\n\nPurpose: ${contextString}`;
-        }
-      }
-      
-      // Add information about root folder to the description if appropriate
-      if (params.rootFolder && !enhancedDescription.includes(params.rootFolder)) {
-        enhancedDescription = `${enhancedDescription}\n\nRoot folder: ${params.rootFolder}`;
-      }
-      
-      // Define default key file instructions if not provided
-      const defaultKeyFileInstructions = 
-        "Key files can be designated in two ways:\n" +
-        "1. Add 'key: true' to the file's YAML frontmatter\n" +
-        "2. Use a standard filename like readme.md, index.md, summary.md, or moc.md";
-      
       const workspaceData: Omit<ProjectWorkspace, 'id'> = {
         name: params.name,
-        description: enhancedDescription,
+        context: context,
+        rootFolder: params.rootFolder,
         created: now,
         lastAccessed: now,
         
-        // Hierarchy information
-        hierarchyType,
+        // Legacy fields for backward compatibility (optional)
+        description: params.description,
+        hierarchyType: params.hierarchyType || 'workspace',
         parentId: params.parentId,
         childWorkspaces: [],
-        path,
-        
-        // Context boundaries
-        rootFolder: params.rootFolder,
+        path: [],
         relatedFolders: params.relatedFolders || [],
         relatedFiles: params.relatedFiles || [],
-        associatedNotes: [], // Initialize empty array for automatically tracked external files
-        
-        // Instructions for key files
-        keyFileInstructions: params.keyFileInstructions || defaultKeyFileInstructions,
-        
-        // Memory parameters
+        associatedNotes: [],
+        keyFileInstructions: params.keyFileInstructions,
         relevanceSettings: {
           folderProximityWeight: 0.5,
           recencyWeight: 0.7,
           frequencyWeight: 0.3
         },
-        
-        // Activity history
         activityHistory: [{
           timestamp: now,
           action: 'create',
           toolName: 'CreateWorkspaceMode',
-          // Store the context in activity history including root folder information
-          context: params.context ? 
-            `${params.context} (Root folder: ${params.rootFolder})` : 
-            `Workspace created with root folder: ${params.rootFolder}`
+          context: `Created workspace: ${params.purpose}`
         }],
-        
-        // User preferences
-        preferences: params.preferences || {},
-        
-        // Progress tracking
+        preferences: params.preferences ? { userPreferences: params.preferences } : undefined,
+        projectPlan: undefined,
+        checkpoints: [],
         completionStatus: {},
-        
-        // Overall status
-        status: 'active' as WorkspaceStatus
+        status: 'active'
       };
       
-      // Save the workspace using the workspace service
-      const newWorkspace = await workspaceService.createWorkspace(workspaceData);
+      // Save the workspace with error handling
+      console.log('[CreateWorkspaceMode] Creating workspace in service...');
+      let newWorkspace: ProjectWorkspace;
+      try {
+        newWorkspace = await workspaceService.createWorkspace(workspaceData);
+        console.log(`[CreateWorkspaceMode] Workspace created successfully with ID: ${newWorkspace.id}`);
+      } catch (createError) {
+        console.error('[CreateWorkspaceMode] Failed to create workspace:', createError);
+        const error = memoryManagerErrorHandler.handleUnexpected(
+          'Create Workspace',
+          'createWorkspace',
+          createError,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext, {});
+      }
       
-      const workspaceContext = {
-        workspaceId: newWorkspace.id,
-        workspacePath: [...path, newWorkspace.id]
-      };
-
-      // Pass the context from parameters to result  
-      const resultContextString = typeof params.context === 'string' ? 
-        `Created workspace "${params.name}" with purpose: ${params.context}` :
-        (typeof params.context === 'object' && params.context?.toolContext ? 
-          `Created workspace "${params.name}" with purpose: ${params.context.toolContext}` :
-          `Created workspace "${params.name}"`);
-        
-      return this.prepareResult(
+      // Generate post-creation validation prompt
+      const validationPrompt = this.generatePostCreationPrompt(params, autoDetectedKeyFiles);
+      
+      const result = this.prepareResult(
         true,
         {
           workspaceId: newWorkspace.id,
-          workspace: newWorkspace
+          workspace: newWorkspace,
+          validationPrompt: validationPrompt,
+          performance: {
+            totalDuration: Date.now() - startTime,
+            serviceAccessTime: serviceResult.diagnostics?.duration || 0,
+            validationTime: 0, // Could be measured if needed
+            creationTime: Date.now() - startTime // Approximation
+          }
         },
         undefined,
-        resultContextString,
-        workspaceContext
+        `Created workspace "${params.name}" with purpose: ${params.purpose}`,
+        this.getInheritedWorkspaceContext(params) || undefined
       );
       
+      console.log(`[CreateWorkspaceMode] Operation completed successfully in ${Date.now() - startTime}ms`);
+      return result;
+      
     } catch (error: any) {
-      return this.prepareResult(
-        false, 
-        undefined,
-        createErrorMessage('Failed to create workspace: ', error)
+      console.error(`[CreateWorkspaceMode] Unexpected error after ${Date.now() - startTime}ms:`, error);
+      return createMemoryManagerError<CreateWorkspaceResult>(
+        'Create Workspace',
+        'createWorkspace',
+        error,
+        params.workspaceContext,
+        params
       );
     }
   }
   
   /**
-   * Get the parameter schema
+   * Validate workspace creation parameters
+   */
+  private validateParameters(params: CreateWorkspaceParameters): Array<{field: string; value: any; requirement: string}> {
+    const errors: Array<{field: string; value: any; requirement: string}> = [];
+    
+    if (!params.name) {
+      errors.push({
+        field: 'name',
+        value: params.name,
+        requirement: 'Workspace name is required and must be a non-empty string'
+      });
+    }
+    
+    if (!params.rootFolder) {
+      errors.push({
+        field: 'rootFolder',
+        value: params.rootFolder,
+        requirement: 'Root folder path is required for workspace organization'
+      });
+    }
+    
+    if (!params.purpose) {
+      errors.push({
+        field: 'purpose',
+        value: params.purpose,
+        requirement: 'Workspace purpose is required. Provide a clear description of what this workspace is for (e.g., "Apply for marketing manager positions")'
+      });
+    }
+    
+    if (!params.currentGoal) {
+      errors.push({
+        field: 'currentGoal',
+        value: params.currentGoal,
+        requirement: 'Current goal is required. Specify what you are trying to accomplish right now (e.g., "Submit 10 applications this week")'
+      });
+    }
+    
+    if (!params.workflows || params.workflows.length === 0) {
+      errors.push({
+        field: 'workflows',
+        value: params.workflows,
+        requirement: 'At least one workflow is required. Provide workflows with name, when to use, and steps (e.g., [{"name": "New Application", "when": "When applying to new position", "steps": ["Research company", "Customize cover letter", "Apply", "Track"]}])'
+      });
+    }
+    
+    if (!params.nextActions || params.nextActions.length === 0) {
+      errors.push({
+        field: 'nextActions',
+        value: params.nextActions,
+        requirement: 'Next actions are required. Provide specific next steps to take (e.g., ["Follow up on Google application", "Apply to Stripe position"])'
+      });
+    }
+    
+    return errors;
+  }
+  
+  /**
+   * Get the parameter schema - prompts LLM to provide complete structure
    */
   getParameterSchema(): any {
-    // Create the mode-specific schema
-    const modeSchema = {
+    return {
       type: 'object',
       properties: {
         name: {
           type: 'string',
-          description: 'Name of the workspace (REQUIRED)'
-        },
-        description: {
-          type: 'string',
-          description: 'Optional description of the workspace'
-        },
-        context: {
-          type: 'string',
-          description: 'Purpose or goal of this workspace - IMPORTANT: This will be stored with the workspace and used in memory operations',
-          minLength: 1
+          description: 'Workspace name (REQUIRED)'
         },
         rootFolder: {
           type: 'string',
           description: 'Root folder path for this workspace (REQUIRED)'
         },
-        relatedFolders: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Additional related folders'
-        },
-        relatedFiles: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Additional individual files to include in workspace context (paths relative to vault root)'
-        },
-        keyFileInstructions: {
+        purpose: {
           type: 'string',
-          description: 'Instructions for how to designate key files within this workspace - these will be provided to AI to help it correctly work with key files'
+          description: 'What is this workspace for? (REQUIRED) Example: "Apply for marketing manager positions"'
         },
+        currentGoal: {
+          type: 'string',
+          description: 'What are you trying to accomplish right now? (REQUIRED) Example: "Submit 10 applications this week"'
+        },
+        status: {
+          type: 'string',
+          description: 'What\'s the current state of progress? Example: "5 sent, 2 pending responses (Google, Meta), need 5 more"'
+        },
+        workflows: {
+          type: 'array',
+          description: 'Workflows for different situations (REQUIRED)',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Workflow name like "New Application" or "Follow-up"' },
+              when: { type: 'string', description: 'When to use this workflow like "When applying to new position"' },
+              steps: { 
+                type: 'array', 
+                items: { type: 'string' },
+                description: 'Step-by-step process like ["Research company", "Customize cover letter", "Apply", "Track"]'
+              }
+            },
+            required: ['name', 'when', 'steps']
+          },
+          minItems: 1
+        },
+        // keyFiles are auto-detected from directory structure
+        // To create key files: name files index.md, readme.md, summary.md, moc.md, overview.md 
+        // OR add 'key: true' to any file's frontmatter
         preferences: {
-          type: 'object',
-          description: 'Custom workspace settings'
+          type: 'array',
+          description: 'User preferences as actionable guidelines (optional - can be added later)',
+          items: { type: 'string' },
+          example: '["Use professional tone", "Focus on tech companies", "Keep cover letters under 300 words"]'
         },
-        hierarchyType: {
-          type: 'string',
-          enum: ['workspace', 'phase', 'task'],
-          description: 'Type of hierarchy node (default: workspace)'
+        agents: {
+          type: 'array',
+          description: 'Agents to associate with this workspace (optional)',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Agent name like "CoverLetterAgent"' },
+              when: { type: 'string', description: 'When to use like "When customizing cover letters"' },
+              purpose: { type: 'string', description: 'What it does like "Adapts letters to job requirements"' }
+            },
+            required: ['name', 'when', 'purpose']
+          }
         },
-        parentId: {
-          type: 'string',
-          description: 'Parent workspace/phase ID if applicable'
-        }
+        nextActions: {
+          type: 'array',
+          description: 'Next actions to take (REQUIRED)',
+          items: { type: 'string' },
+          minItems: 1,
+          example: '["Follow up on Google application", "Apply to Stripe position", "Update LinkedIn profile"]'
+        },
+        
+        // Legacy fields for backward compatibility
+        description: { type: 'string', description: 'Optional description' },
+        relatedFolders: { type: 'array', items: { type: 'string' }, description: 'Additional related folders' },
+        relatedFiles: { type: 'array', items: { type: 'string' }, description: 'Additional individual files' },
+        hierarchyType: { type: 'string', enum: ['workspace', 'phase', 'task'], description: 'Type of hierarchy node' },
+        parentId: { type: 'string', description: 'Parent workspace ID if applicable' },
+        keyFileInstructions: { type: 'string', description: 'Instructions for key file designation' }
       },
-      required: ['name', 'rootFolder']
+      required: ['name', 'rootFolder', 'purpose', 'currentGoal', 'workflows', 'nextActions']
     };
-    
-    // Merge with common schema (workspace context and handoff)
-    return this.getMergedSchema(modeSchema);
   }
   
+  /**
+   * Auto-detect key files in workspace folder
+   * Scans for index.md, readme.md, files with 'key: true' metadata
+   */
+  private async detectKeyFiles(rootFolder: string): Promise<Array<{category: string; files: Record<string, string>}>> {
+    try {
+      const detectedFiles: Record<string, string> = {};
+      
+      // Get all files in the root folder
+      const folder = this.app.vault.getAbstractFileByPath(rootFolder);
+      if (folder && 'children' in folder && Array.isArray(folder.children)) {
+        for (const child of folder.children as any[]) {
+          if (child.path.endsWith('.md')) {
+            const fileName = child.name.toLowerCase();
+            
+            // Check for standard key file names
+            if (['index.md', 'readme.md', 'summary.md', 'moc.md', 'overview.md'].includes(fileName)) {
+              detectedFiles[fileName.replace('.md', '')] = child.path;
+            }
+            
+            // Check for 'key: true' in frontmatter
+            try {
+              if ('cachedData' in child && child.cachedData?.frontmatter?.key === true) {
+                detectedFiles[child.name.replace('.md', '')] = child.path;
+              }
+            } catch (error) {
+              // Ignore frontmatter parsing errors
+            }
+          }
+        }
+      }
+      
+      // Return detected files in structured format
+      if (Object.keys(detectedFiles).length > 0) {
+        return [{
+          category: 'Key Files',
+          files: detectedFiles
+        }];
+      }
+      
+      // Return empty structure if no key files found
+      return [{
+        category: 'Key Files',
+        files: {}
+      }];
+    } catch (error) {
+      console.warn('[CreateWorkspaceMode] Error detecting key files:', error);
+      return [{
+        category: 'Key Files',
+        files: {}
+      }];
+    }
+  }
+
+  /**
+   * Generate post-creation validation prompt
+   */
+  private generatePostCreationPrompt(params: CreateWorkspaceParameters, autoDetectedKeyFiles: Array<{category: string; files: Record<string, string>}>): string {
+    const prompts: string[] = [];
+    
+    // Check if keyFiles were auto-detected
+    const keyFilesCategory = autoDetectedKeyFiles.find(category => category.category === 'Key Files');
+    const keyFileCount = keyFilesCategory ? Object.keys(keyFilesCategory.files).length : 0;
+    
+    if (keyFileCount > 0) {
+      prompts.push(`Auto-detected ${keyFileCount} key files in the workspace.`);
+    } else {
+      prompts.push('No key files detected. Create index.md, readme.md, or add "key: true" to file frontmatter to designate key files.');
+    }
+    
+    // Check if preferences were provided
+    if (!params.preferences || params.preferences.length === 0) {
+      prompts.push('Consider adding user preferences as you work in this workspace.');
+    }
+    
+    // Check if agents were provided  
+    if (!params.agents || params.agents.length === 0) {
+      prompts.push('You can associate AI agents with this workspace for specific tasks.');
+    }
+    
+    // Always suggest loading the workspace to see current state
+    prompts.push('Load the workspace to see the current directory structure and validate the setup.');
+    
+    return prompts.length > 0 
+      ? `Workspace created successfully! ${prompts.join(' ')}`
+      : 'Workspace created successfully! Load it to see the current directory structure.';
+  }
+
   /**
    * Get the result schema
    */
   getResultSchema(): any {
-    // Use the base result schema from BaseMode, which includes common result properties
     const baseSchema = super.getResultSchema();
     
-    // Add mode-specific data properties
     baseSchema.properties.data = {
       type: 'object',
       properties: {
@@ -336,37 +446,15 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
         },
         workspace: {
           type: 'object',
-          description: 'The full workspace object that was created',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            description: { 
-              type: 'string',
-              description: 'Workspace description including purpose/goal'
-            },
-            hierarchyType: { 
-              type: 'string',
-              enum: ['workspace', 'phase', 'task']
-            },
-            path: {
-              type: 'array',
-              items: { type: 'string' }
-            },
-            // Other workspace properties omitted for brevity
-          }
+          description: 'The full workspace object that was created'
         },
-        purpose: {
+        validationPrompt: {
           type: 'string',
-          description: 'The purpose or goal of this workspace, extracted from context parameter'
+          description: 'Post-creation validation suggestions and next steps'
         }
       },
-      required: ['workspaceId', 'workspace']
+      required: ['workspaceId', 'workspace', 'validationPrompt']
     };
-    
-    // Modify the context property description
-    if (baseSchema.properties.context) {
-      baseSchema.properties.context.description = 'The purpose and context of this workspace creation';
-    }
     
     return baseSchema;
   }

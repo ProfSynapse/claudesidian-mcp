@@ -249,7 +249,6 @@ export class CollectionHealthMonitor {
     private async performInitialHealthCheck(): Promise<void> {
         const standardCollections = ['file_embeddings', 'memory_traces', 'sessions', 'snapshots', 'workspaces'];
         
-        
         for (const collectionName of standardCollections) {
             try {
                 const healthStatus = await this.checkCollectionHealth(collectionName);
@@ -258,7 +257,6 @@ export class CollectionHealthMonitor {
                     console.warn(`[CollectionHealthMonitor] ⚠️  Initial health check failed for ${collectionName}:`, healthStatus.issues);
                     await this.handleUnhealthyCollection(collectionName, healthStatus);
                 }
-
             } catch (error) {
                 console.error(`[CollectionHealthMonitor] ❌ Initial health check error for ${collectionName}:`, error);
                 
@@ -275,7 +273,6 @@ export class CollectionHealthMonitor {
                 await this.handleUnhealthyCollection(collectionName, errorStatus);
             }
         }
-        
     }
 
     /**
@@ -318,7 +315,6 @@ export class CollectionHealthMonitor {
                 if (!healthStatus.healthy) {
                     await this.handleUnhealthyCollection(collectionName, healthStatus);
                 }
-
             } catch (error) {
                 console.error(`[CollectionHealthMonitor] Periodic check error for ${collectionName}:`, error);
             }
@@ -333,7 +329,6 @@ export class CollectionHealthMonitor {
 
         // Check if automatic recovery should be triggered
         if (healthStatus.consecutiveFailures >= this.alertThresholds.failureCount) {
-            
             try {
                 const recoveryResult = await this.collectionLifecycleManager.recoverCollection(collectionName, 'soft');
                 
@@ -343,7 +338,6 @@ export class CollectionHealthMonitor {
                 } else {
                     console.error(`[CollectionHealthMonitor] ❌ Automatic recovery failed for ${collectionName}:`, recoveryResult.errors);
                 }
-
             } catch (error) {
                 console.error(`[CollectionHealthMonitor] ❌ Recovery error for ${collectionName}:`, error);
             }

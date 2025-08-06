@@ -2,6 +2,7 @@ export * from './listDirectoryMode';
 export * from './createFolderMode';
 export * from './editFolderMode';
 export * from './deleteFolderMode';
+export * from './deleteNoteMode';
 export * from './moveNoteMode';
 export * from './moveFolderMode';
 export * from './duplicateNoteMode';

@@ -123,7 +123,7 @@ export class PrefetchManager extends EventEmitter {
                 if (state.sessionId) {
                     const siblingStates = snapshots
                         .filter(s => s.sessionId === state.sessionId && s.id !== stateId)
-                        .sort((a, b) => b.timestamp - a.timestamp)
+                        .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
                         .slice(0, 3);
 
                     for (const sibling of siblingStates) {

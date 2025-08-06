@@ -5,112 +5,19 @@ import { getErrorMessage } from '../../../../utils/errorUtils';
 import { ObsidianPathManager } from '../../../../core/ObsidianPathManager';
 import { VaultOperations } from '../../../../core/VaultOperations';
 import { StructuredLogger } from '../../../../core/StructuredLogger';
+import { VaultOperationsDirectoryServiceAdapter } from './adapters/VaultOperationsDirectoryServiceAdapter';
+import { CollectionValidator } from '../../../services/CollectionValidator';
+import { CollectionMetadataManager } from '../../../services/CollectionMetadataManager';
 
 /**
- * Vault Operations Directory Service Adapter
- * Adapts VaultOperations to IDirectoryService interface for backward compatibility
- */
-class VaultOperationsDirectoryServiceAdapter implements IDirectoryService {
-  constructor(
-    private vaultOps: VaultOperations,
-    private pathManager: ObsidianPathManager,
-    private logger: StructuredLogger
-  ) {}
-
-  async ensureDirectoryExists(path: string): Promise<void> {
-    await this.vaultOps.ensureDirectory(path);
-  }
-
-  async calculateDirectorySize(directoryPath: string): Promise<number> {
-    const sizeBytes = await this.vaultOps.calculateDirectorySize(directoryPath);
-    return sizeBytes / (1024 * 1024); // Convert to MB
-  }
-
-  async validateDirectoryPermissions(path: string): Promise<boolean> {
-    try {
-      const exists = await this.vaultOps.folderExists(path);
-      if (exists) {
-        // Test by trying to create a temp file
-        const testPath = this.pathManager.joinPath(path, '.test');
-        const writeSuccess = await this.vaultOps.writeFile(testPath, 'test');
-        if (writeSuccess) {
-          await this.vaultOps.deleteFile(testPath);
-        }
-        return writeSuccess;
-      }
-      return false;
-    } catch (error) {
-      this.logger.warn('Permission validation failed', error, 'VaultOpsAdapter');
-      return false;
-    }
-  }
-
-  async directoryExists(path: string): Promise<boolean> {
-    return await this.vaultOps.folderExists(path);
-  }
-
-  async readDirectory(path: string): Promise<string[]> {
-    const listing = await this.vaultOps.listDirectory(path);
-    return [...listing.files, ...listing.folders];
-  }
-
-  async getStats(path: string): Promise<any> {
-    return await this.vaultOps.getStats(path);
-  }
-
-  async calculateMemoryCollectionsSize(collectionsPath: string): Promise<number> {
-    const memoryCollections = ['memory_traces', 'sessions', 'snapshots'];
-    let totalSize = 0;
-    
-    for (const collection of memoryCollections) {
-      const collectionPath = this.pathManager.joinPath(collectionsPath, collection);
-      if (await this.vaultOps.folderExists(collectionPath)) {
-        const sizeBytes = await this.vaultOps.calculateDirectorySize(collectionPath);
-        totalSize += sizeBytes;
-      }
-    }
-    
-    return totalSize / (1024 * 1024); // Convert to MB
-  }
-
-  async calculateCollectionSize(collectionsPath: string, collectionName: string): Promise<number> {
-    const collectionPath = this.pathManager.joinPath(collectionsPath, collectionName);
-    if (await this.vaultOps.folderExists(collectionPath)) {
-      const sizeBytes = await this.vaultOps.calculateDirectorySize(collectionPath);
-      return sizeBytes / (1024 * 1024); // Convert to MB
-    }
-    return 0;
-  }
-
-  async getCollectionSizeBreakdown(collectionsPath: string): Promise<Record<string, number>> {
-    const breakdown: Record<string, number> = {};
-    const listing = await this.vaultOps.listDirectory(collectionsPath);
-    
-    for (const folder of listing.folders) {
-      const folderName = this.pathManager.getFileName(folder);
-      const sizeBytes = await this.vaultOps.calculateDirectorySize(folder);
-      breakdown[folderName] = sizeBytes / (1024 * 1024); // Convert to MB
-    }
-    
-    return breakdown;
-  }
-
-  async fileExists(filePath: string): Promise<boolean> {
-    return await this.vaultOps.fileExists(filePath);
-  }
-
-  async readFile(filePath: string, encoding?: string): Promise<string> {
-    const content = await this.vaultOps.readFile(filePath, false);
-    return content || '';
-  }
-}
-
-/**
- * Collection manager implementation
- * Handles collection lifecycle, intelligent caching, and validation
- * Follows SRP - only responsible for collection operations
- * Uses ObsidianPathManager for consistent path handling
- * UPDATED: Now uses VaultOperations for all file I/O operations
+ * Location: src/database/providers/chroma/services/CollectionManager.ts
+ * 
+ * Summary: Handles collection lifecycle management with intelligent caching and validation.
+ * Now uses extracted services (CollectionValidator, CollectionMetadataManager) via dependency injection
+ * to follow Single Responsibility Principle and reduce complexity.
+ * 
+ * Used by: ChromaDB service layer for all collection operations
+ * Dependencies: ChromaClient, IDirectoryService, CollectionValidator, CollectionMetadataManager
  */
 export class CollectionManager implements ICollectionManager {
   private client: InstanceType<typeof ChromaClient>;
@@ -123,15 +30,24 @@ export class CollectionManager implements ICollectionManager {
   private pathManager: ObsidianPathManager | null = null;
   private vaultOps: VaultOperations | null = null;
   private logger: StructuredLogger | null = null;
+  private validator: CollectionValidator;
+  private metadataManager: CollectionMetadataManager;
 
   constructor(
     client: InstanceType<typeof ChromaClient>,
     directoryService: IDirectoryService,
-    persistentPath: string | null = null
+    persistentPath: string | null = null,
+    validator?: CollectionValidator,
+    metadataManager?: CollectionMetadataManager
   ) {
     this.client = client;
     this.directoryService = directoryService;
     this.persistentPath = persistentPath;
+    
+    // Initialize extracted services with dependency injection
+    this.validator = validator || new CollectionValidator(client, directoryService);
+    this.metadataManager = metadataManager || new CollectionMetadataManager(client, directoryService, null, persistentPath);
+    
     // ObsidianPathManager and VaultOperations will be injected via setters when available
   }
 
@@ -141,6 +57,8 @@ export class CollectionManager implements ICollectionManager {
    */
   setPathManager(pathManager: ObsidianPathManager): void {
     this.pathManager = pathManager;
+    this.validator.setPathManager(pathManager);
+    this.metadataManager.setPathManager(pathManager);
     this.updateDirectoryServiceAdapter();
   }
 
@@ -177,21 +95,10 @@ export class CollectionManager implements ICollectionManager {
   }
 
   /**
-   * Get collection path using ObsidianPathManager or fallback to string concatenation
-   * CRITICAL FIX: Use ObsidianPathManager to prevent path duplication issues
+   * Get collection path using metadata manager
    */
   private getCollectionPath(collectionName: string): string {
-    if (this.pathManager) {
-      return this.pathManager.getCollectionPath(collectionName);
-    }
-    
-    // Fallback to string concatenation if ObsidianPathManager not available
-    if (this.persistentPath) {
-      return `${this.persistentPath}/collections/${collectionName}`;
-    }
-    
-    // Ultimate fallback - use correct path structure to match PersistentChromaClient
-    return `data/chroma-db/collections/${collectionName}`;
+    return this.metadataManager.getCollectionPath(collectionName);
   }
 
   /**
@@ -204,8 +111,8 @@ export class CollectionManager implements ICollectionManager {
     if (this.collectionCache.has(collectionName)) {
       const cachedCollection = this.collectionCache.get(collectionName)!;
       
-      // Validate cached collection
-      if (await this.validateCachedCollection(cachedCollection)) {
+      // Validate cached collection using validator service
+      if (await this.validator.validateCachedCollection(cachedCollection)) {
         this.cacheHits++;
         return cachedCollection;
       } else {
@@ -247,7 +154,7 @@ export class CollectionManager implements ICollectionManager {
           }
           
           // Validate and cache if not already cached
-          await this.validateAndCache(collectionName);
+          await this.metadataManager.validateAndCache(collectionName, this.collectionCache, this.collections);
         }
       }
       
@@ -261,7 +168,7 @@ export class CollectionManager implements ICollectionManager {
       
       // Recovery: Check filesystem for collections that might not be loaded
       if (this.persistentPath) {
-        await this.recoverCollectionsFromFilesystem();
+        await this.metadataManager.recoverCollectionsFromFilesystem(this.collections, this.collectionCache);
       }
       
     } catch (error) {
@@ -276,8 +183,8 @@ export class CollectionManager implements ICollectionManager {
   async hasCollection(collectionName: string): Promise<boolean> {
     // Fast path: Check in-memory cache first
     if (this.collections.has(collectionName)) {
-      // Validate cache entry is still valid
-      if (await this.validateCacheEntry(collectionName)) {
+      // Validate cache entry is still valid using validator service
+      if (await this.validator.validateCacheEntry(collectionName, this.persistentPath)) {
         return true;
       } else {
         // Remove invalid cache entry
@@ -303,8 +210,8 @@ export class CollectionManager implements ICollectionManager {
           // Validate required fields
           if (metadata.collectionName === collectionName && metadata.version) {
             
-            // Load collection into memory and cache
-            await this.loadAndCacheCollection(collectionName, collectionPath, metadata);
+            // Load collection into memory and cache using metadata manager
+            await this.metadataManager.loadAndCacheCollection(collectionName, collectionPath, metadata, this.collectionCache, this.collections);
             return true;
           } else {
             console.warn(`[CollectionManager] Invalid metadata for ${collectionName}:`, {
@@ -325,9 +232,9 @@ export class CollectionManager implements ICollectionManager {
       const exists = collections.some(c => this.extractCollectionName(c) === collectionName);
       
       if (exists) {
-        // Load into cache
+        // Load into cache using metadata manager
         const collection = await this.client.getCollection(collectionName);
-        this.registerCollection(collectionName, collection);
+        this.metadataManager.registerCollection(collectionName, collection, this.collections, this.collectionCache);
         return true;
       }
     } catch (error) {
@@ -337,70 +244,7 @@ export class CollectionManager implements ICollectionManager {
     return false;
   }
   
-  /**
-   * Validate that a cached collection entry is still valid
-   */
-  private async validateCacheEntry(collectionName: string): Promise<boolean> {
-    if (!this.persistentPath) {
-      return true; // Can't validate without filesystem access
-    }
-    
-    try {
-      // CRITICAL FIX: Use ObsidianPathManager to prevent path duplication
-      const collectionPath = this.getCollectionPath(collectionName);
-      const metadataPath = this.pathManager ? 
-        this.pathManager.joinPath(collectionPath, 'metadata.json') :
-        `${collectionPath}/metadata.json`;
-      
-      if (!await this.directoryService.fileExists(metadataPath)) {
-        return false; // Collection disappeared from filesystem
-      }
-      
-      // Basic validation - could be enhanced with timestamp checks
-      return true;
-    } catch (error) {
-      console.warn(`[CollectionManager] Cache validation failed for ${collectionName}:`, error);
-      return false;
-    }
-  }
   
-  /**
-   * Load and cache a collection from filesystem
-   */
-  private async loadAndCacheCollection(collectionName: string, collectionPath: string, metadata: any): Promise<void> {
-    try {
-      // First, try to get collection from ChromaDB (might already be loaded)
-      let collection: Collection;
-      try {
-        collection = await this.client.getCollection(collectionName);
-      } catch (getError) {
-        // Collection not in client, need to create it in client and potentially load data
-        collection = await this.client.createCollection(collectionName, metadata);
-        
-        // Check if we need to load data
-        const currentCount = await collection.count();
-        const expectedCount = metadata.itemCount || 0;
-        
-        if (currentCount === 0 && expectedCount > 0) {
-          // CRITICAL FIX: Use ObsidianPathManager to prevent path duplication
-          const itemsPath = this.pathManager ? 
-            this.pathManager.joinPath(collectionPath, 'items.json') :
-            `${collectionPath}/items.json`;
-          
-          if (await this.directoryService.fileExists(itemsPath)) {
-            await this.loadCollectionData(collection, itemsPath);
-          }
-        }
-      }
-      
-      // Register collection with manager
-      this.registerCollection(collectionName, collection);
-      
-    } catch (error) {
-      console.error(`[CollectionManager] Failed to load and cache collection ${collectionName}:`, error);
-      throw error;
-    }
-  }
 
   /**
    * List all available collections
@@ -418,11 +262,8 @@ export class CollectionManager implements ICollectionManager {
     }
     
     try {
-      await this.client.createCollection(collectionName, {
-        'hnsw:space': 'cosine',
-        ...metadata,
-        createdAt: new Date().toISOString()
-      });
+      const collectionMetadata = this.metadataManager.createCollectionMetadata(collectionName, metadata);
+      await this.client.createCollection(collectionName, collectionMetadata);
       
       this.collections.add(collectionName);
     } catch (error) {
@@ -457,15 +298,7 @@ export class CollectionManager implements ICollectionManager {
    * Validate a collection by performing basic operations
    */
   async validateCollection(collectionName: string): Promise<boolean> {
-    try {
-      const collection = await this.client.getCollection(collectionName);
-      
-      // Try to perform a basic operation
-      await collection.count();
-      return true;
-    } catch (error) {
-      return false;
-    }
+    return await this.validator.validateCollection(collectionName);
   }
 
   /**
@@ -488,20 +321,6 @@ export class CollectionManager implements ICollectionManager {
     };
   }
 
-  /**
-   * Validate a cached collection
-   */
-  private async validateCachedCollection(collection: Collection): Promise<boolean> {
-    try {
-      if (typeof collection.count === 'function') {
-        await collection.count();
-        return true;
-      }
-      return false;
-    } catch (error) {
-      return false;
-    }
-  }
 
   /**
    * Create or recover a collection with error handling
@@ -520,10 +339,8 @@ export class CollectionManager implements ICollectionManager {
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           // Create new collection
-          collection = await this.client.createCollection(collectionName, {
-            'hnsw:space': 'cosine',
-            createdAt: new Date().toISOString()
-          });
+          const collectionMetadata = this.metadataManager.createCollectionMetadata(collectionName);
+          collection = await this.client.createCollection(collectionName, collectionMetadata);
         } else {
           // Collection exists but is corrupted, try to recreate
           try {
@@ -532,12 +349,8 @@ export class CollectionManager implements ICollectionManager {
             // Continue even if delete fails
           }
           
-          collection = await this.client.createCollection(collectionName, {
-            'hnsw:space': 'cosine',
-            createdAt: new Date().toISOString(),
-            recoveredAt: new Date().toISOString(),
-            recoveryReason: 'validation_failed'
-          });
+          const recoveryMetadata = this.metadataManager.createRecoveryMetadata(collectionName, 'validation_failed');
+          collection = await this.client.createCollection(collectionName, recoveryMetadata);
           
           isRecreated = true;
         }
@@ -557,187 +370,11 @@ export class CollectionManager implements ICollectionManager {
    * Extract collection name from various collection object formats
    */
   private extractCollectionName(collection: any): string {
-    if (typeof collection === 'string') {
-      return collection;
-    } else if (typeof collection === 'object' && collection !== null) {
-      if (collection.name) {
-        return String(collection.name);
-      }
-    }
-    return '';
+    return this.metadataManager.extractCollectionName(collection);
   }
 
-  /**
-   * Validate and cache a collection if not already cached
-   */
-  private async validateAndCache(collectionName: string): Promise<void> {
-    if (this.collectionCache.has(collectionName)) {
-      return;
-    }
-    
-    try {
-      const collection = await this.client.getCollection(collectionName);
-      
-      // Validate by calling count
-      await collection.count();
-      
-      // Cache if valid
-      this.collectionCache.set(collectionName, collection);
-    } catch (error) {
-      // Remove from collections set if we can't access it
-      this.collections.delete(collectionName);
-    }
-  }
 
-  /**
-   * Recover collections from filesystem that might not be loaded in memory
-   * CRITICAL FIX: Load existing collections instead of creating new ones
-   * CRITICAL FIX: Use ObsidianPathManager to prevent path duplication
-   */
-  private async recoverCollectionsFromFilesystem(): Promise<void> {
-    if (!this.persistentPath) {
-      return;
-    }
-    
-    try {
-      // CRITICAL FIX: Use ObsidianPathManager for collections directory path
-      const collectionsDir = this.pathManager ?
-        this.pathManager.joinPath(this.pathManager.getChromaDbPath(), 'collections') :
-        `${this.persistentPath}/collections`;
-      
-      if (!await this.directoryService.directoryExists(collectionsDir)) {
-        return;
-      }
-      
-      const dirs = await this.directoryService.readDirectory(collectionsDir);
-      let recoveredCount = 0;
-      let loadedCount = 0;
-      
-      
-      for (const dir of dirs) {
-        // CRITICAL FIX: Use ObsidianPathManager to prevent path duplication
-        const collectionPath = this.pathManager ?
-          this.pathManager.joinPath(collectionsDir, dir) :
-          `${collectionsDir}/${dir}`;
-        
-        // Skip system directories or already known collections
-        if (dir.startsWith('.') || 
-            this.collections.has(dir) ||
-            this.shouldSkipSystemDirectory(dir)) {
-          continue;
-        }
-        
-        // Check if it's actually a directory
-        if (!await this.directoryService.directoryExists(collectionPath)) {
-          continue;
-        }
-        
-        // CRITICAL: Check if this is a valid collection directory with data
-        // CRITICAL FIX: Use ObsidianPathManager to prevent path duplication
-        const metadataPath = this.pathManager ?
-          this.pathManager.joinPath(collectionPath, 'metadata.json') :
-          `${collectionPath}/metadata.json`;
-        const itemsPath = this.pathManager ?
-          this.pathManager.joinPath(collectionPath, 'items.json') :
-          `${collectionPath}/items.json`;
-        
-        if (!await this.directoryService.fileExists(metadataPath)) {
-          continue;
-        }
-        
-        try {
-          // Load and validate metadata
-          const metadataContent = await this.directoryService.readFile(metadataPath, 'utf8');
-          const metadata = JSON.parse(metadataContent);
-          
-          if (!metadata.collectionName || metadata.collectionName !== dir) {
-            console.warn(`[CollectionManager] Invalid metadata for ${dir}: name mismatch`);
-            continue;
-          }
-          
-          const itemsExists = await this.directoryService.fileExists(itemsPath);
-          const itemCount = metadata.itemCount || 0;
-          
-          
-          // CRITICAL FIX: Load existing collection instead of creating new one
-          try {
-            // First, try to get collection from ChromaDB (might already be loaded)
-            let collection: Collection;
-            try {
-              collection = await this.client.getCollection(dir);
-            } catch (getError) {
-              // Collection not in client, need to create it in client and load data
-              collection = await this.client.createCollection(dir, metadata);
-              
-              // Load data if items exist and collection is empty
-              const currentCount = await collection.count();
-              if (currentCount === 0 && itemsExists && itemCount > 0) {
-                await this.loadCollectionData(collection, itemsPath);
-                loadedCount++;
-              }
-            }
-            
-            // Register collection with manager
-            this.collections.add(dir);
-            this.collectionCache.set(dir, collection);
-            recoveredCount++;
-            
-          } catch (loadError) {
-            console.error(`[CollectionManager] Failed to load collection ${dir}:`, loadError);
-            // Continue with other collections
-          }
-          
-        } catch (parseError) {
-          console.warn(`[CollectionManager] Failed to parse metadata for ${dir}:`, parseError);
-          continue;
-        }
-      }
-      
-      if (recoveredCount > 0) {
-      } else {
-      }
-      
-    } catch (error) {
-      // Don't throw, just log the issue
-      console.warn(`[CollectionManager] Failed to recover collections from filesystem: ${getErrorMessage(error)}`);
-    }
-  }
   
-  /**
-   * Load collection data from filesystem items.json file
-   */
-  private async loadCollectionData(collection: Collection, itemsPath: string): Promise<void> {
-    try {
-      const itemsContent = await this.directoryService.readFile(itemsPath, 'utf8');
-      const items = JSON.parse(itemsContent);
-      
-      if (!Array.isArray(items) || items.length === 0) {
-        return;
-      }
-      
-      // Batch loading for performance
-      const batchSize = 100;
-      for (let i = 0; i < items.length; i += batchSize) {
-        const batch = items.slice(i, i + batchSize);
-        
-        const ids = batch.map((item: any, index: number) => item.id || `item_${i + index}`);
-        const embeddings = batch.map((item: any) => item.embedding);
-        const metadatas = batch.map((item: any) => item.metadata || {});
-        const documents = batch.map((item: any) => item.document || '');
-        
-        await collection.add({
-          ids,
-          embeddings,
-          metadatas,
-          documents
-        });
-      }
-      
-      
-    } catch (error) {
-      throw new Error(`Failed to load collection data: ${getErrorMessage(error)}`);
-    }
-  }
 
   /**
    * Get collection with retry logic
@@ -768,16 +405,7 @@ export class CollectionManager implements ICollectionManager {
    * Batch validate multiple collections
    */
   async batchValidateCollections(collectionNames: string[]): Promise<Record<string, boolean>> {
-    const results: Record<string, boolean> = {};
-    
-    const validationPromises = collectionNames.map(async (name) => {
-      const isValid = await this.validateCollection(name);
-      results[name] = isValid;
-      return { name, isValid };
-    });
-    
-    await Promise.all(validationPromises);
-    return results;
+    return await this.validator.batchValidateCollections(collectionNames);
   }
 
   /**
@@ -785,21 +413,9 @@ export class CollectionManager implements ICollectionManager {
    * Used when collections are loaded from disk with actual data
    */
   registerCollection(collectionName: string, collection: Collection): void {
-    // Add to collections set
-    this.collections.add(collectionName);
-    
-    // Add to cache
-    this.collectionCache.set(collectionName, collection);
+    this.metadataManager.registerCollection(collectionName, collection, this.collections, this.collectionCache);
   }
 
-  /**
-   * Check if a directory should be skipped during collection discovery
-   * Prevents HNSW indexes and other system directories from being treated as collections
-   */
-  private shouldSkipSystemDirectory(name: string): boolean {
-    const systemDirectories = ['hnsw-indexes', '.git', 'node_modules', '.tmp'];
-    return systemDirectories.includes(name);
-  }
 
   /**
    * Clean up obsolete HNSW collections only
@@ -819,7 +435,9 @@ export class CollectionManager implements ICollectionManager {
       } catch (error) {
         const errorMsg = `Failed to clean up ${collectionName}: ${error instanceof Error ? error.message : String(error)}`;
         errors.push(errorMsg);
-        console.warn(`[CollectionManager] ⚠️ ${errorMsg}`);
+        if (this.logger) {
+          this.logger.warn(`Failed to clean up obsolete collection: ${errorMsg}`, undefined, 'CollectionManager');
+        }
       }
     }
 

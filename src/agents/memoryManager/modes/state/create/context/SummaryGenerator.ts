@@ -14,6 +14,27 @@ export interface StateSummary {
   traceCount: number;
   tags: string[];
   reason?: string;
+  // Enhanced context for better restoration
+  conversationReconstruction?: {
+    keyTopics: string[];
+    decisions: string[];
+    openQuestions: string[];
+    conversationQuality: string;
+    progressMade: string[];
+  };
+  activeTaskContext?: {
+    currentGoal: string;
+    taskType: string;
+    nextSteps: string[];
+    blockers: string[];
+    estimatedCompletion: string;
+  };
+  restorationGuidance?: {
+    immediateActions: string[];
+    contextToReestablish: string[];
+    recommendedStartingPoint: string;
+    continuationStrategy: string;
+  };
 }
 
 /**
@@ -22,7 +43,7 @@ export interface StateSummary {
  */
 export class SummaryGenerator {
   /**
-   * Generate comprehensive state summary
+   * Generate comprehensive state summary with enhanced context
    */
   generateStateSummary(
     workspace: any,
@@ -31,12 +52,28 @@ export class SummaryGenerator {
     files: any[],
     metadata: any,
     name: string,
-    description: string
+    description: string,
+    enhancedContext?: any
   ): StateSummary {
     const summary = this.buildComprehensiveSummary(workspace, session, traces, files);
     const purpose = this.extractPurpose(description, metadata.reason);
     const sessionMemory = this.generateSessionMemory(session, traces);
     const toolContext = this.generateToolContext(traces, metadata.reason, name);
+    
+    // Generate enhanced context if available
+    const conversationReconstruction = enhancedContext?.conversationContext 
+      ? this.generateConversationReconstruction(enhancedContext.conversationContext, traces)
+      : undefined;
+    
+    const activeTaskContext = enhancedContext?.activeTask
+      ? this.generateActiveTaskContext(enhancedContext.activeTask)
+      : undefined;
+    
+    const restorationGuidance = this.generateRestorationGuidance(
+      traces, 
+      enhancedContext?.activeTask, 
+      enhancedContext?.conversationContext
+    );
     
     return {
       summary,
@@ -46,7 +83,10 @@ export class SummaryGenerator {
       files: files.map(f => f.path || f.name || 'unknown'),
       traceCount: traces.length,
       tags: metadata.tags || [],
-      reason: metadata.reason
+      reason: metadata.reason,
+      conversationReconstruction,
+      activeTaskContext,
+      restorationGuidance
     };
   }
 
@@ -240,6 +280,264 @@ export class SummaryGenerator {
         return 'research activity';
       default:
         return trace.activityType;
+    }
+  }
+
+  /**
+   * Generate conversation reconstruction summary
+   */
+  private generateConversationReconstruction(conversationContext: any, traces: WorkspaceMemoryTrace[]): {
+    keyTopics: string[];
+    decisions: string[];
+    openQuestions: string[];
+    conversationQuality: string;
+    progressMade: string[];
+  } {
+    return {
+      keyTopics: conversationContext.mainTopics || [],
+      decisions: (conversationContext.decisions || []).map((d: any) => d.description),
+      openQuestions: conversationContext.openQuestions || [],
+      conversationQuality: this.assessConversationQuality(traces, conversationContext),
+      progressMade: this.extractProgressMade(traces, conversationContext)
+    };
+  }
+
+  /**
+   * Generate active task context summary
+   */
+  private generateActiveTaskContext(activeTask: any): {
+    currentGoal: string;
+    taskType: string;
+    nextSteps: string[];
+    blockers: string[];
+    estimatedCompletion: string;
+  } {
+    return {
+      currentGoal: activeTask.currentGoal || 'Continue current work',
+      taskType: activeTask.taskType || 'general',
+      nextSteps: (activeTask.nextSteps || []).map((step: any) => step.description),
+      blockers: activeTask.progress?.blockers || [],
+      estimatedCompletion: this.formatEstimatedTime(activeTask.estimatedTimeToComplete)
+    };
+  }
+
+  /**
+   * Generate restoration guidance
+   */
+  private generateRestorationGuidance(
+    traces: WorkspaceMemoryTrace[], 
+    activeTask?: any, 
+    conversationContext?: any
+  ): {
+    immediateActions: string[];
+    contextToReestablish: string[];
+    recommendedStartingPoint: string;
+    continuationStrategy: string;
+  } {
+    const immediateActions = this.identifyImmediateActions(traces, activeTask, conversationContext);
+    const contextToReestablish = this.identifyContextToReestablish(traces, conversationContext);
+    const recommendedStartingPoint = this.determineStartingPoint(traces, activeTask);
+    const continuationStrategy = this.developContinuationStrategy(traces, activeTask, conversationContext);
+
+    return {
+      immediateActions,
+      contextToReestablish,
+      recommendedStartingPoint,
+      continuationStrategy
+    };
+  }
+
+  /**
+   * Assess conversation quality
+   */
+  private assessConversationQuality(traces: WorkspaceMemoryTrace[], conversationContext: any): string {
+    const traceCount = traces.length;
+    const topicCount = conversationContext?.mainTopics?.length || 0;
+    const decisionCount = conversationContext?.decisions?.length || 0;
+
+    if (traceCount >= 10 && topicCount >= 3 && decisionCount >= 1) {
+      return 'High - comprehensive conversation with clear topics and decisions';
+    } else if (traceCount >= 5 && topicCount >= 2) {
+      return 'Good - meaningful conversation with identifiable themes';
+    } else if (traceCount >= 3) {
+      return 'Moderate - basic conversation context available';
+    } else {
+      return 'Limited - minimal conversation context';
+    }
+  }
+
+  /**
+   * Extract progress made from traces and conversation
+   */
+  private extractProgressMade(traces: WorkspaceMemoryTrace[], conversationContext: any): string[] {
+    const progress: string[] = [];
+    
+    // Look for completion indicators
+    const completionTraces = traces.filter(t => t.activityType === 'completion');
+    completionTraces.forEach(trace => {
+      progress.push(`Completed: ${trace.content?.substring(0, 50) || 'task'}`);
+    });
+
+    // Look for decisions made
+    if (conversationContext?.decisions?.length > 0) {
+      progress.push(`Made ${conversationContext.decisions.length} key decisions`);
+    }
+
+    // Look for research or planning activities
+    const researchCount = traces.filter(t => t.activityType === 'research').length;
+    if (researchCount > 0) {
+      progress.push(`Conducted ${researchCount} research activities`);
+    }
+
+    const planningCount = traces.filter(t => t.activityType === 'project_plan').length;
+    if (planningCount > 0) {
+      progress.push(`Completed ${planningCount} planning activities`);
+    }
+
+    return progress.length > 0 ? progress : ['Session initiated and context established'];
+  }
+
+  /**
+   * Identify immediate actions for restoration
+   */
+  private identifyImmediateActions(traces: WorkspaceMemoryTrace[], activeTask?: any, conversationContext?: any): string[] {
+    const actions: string[] = [];
+    
+    // If there's an active task with next steps
+    if (activeTask?.nextSteps?.length > 0) {
+      const highPrioritySteps = activeTask.nextSteps
+        .filter((step: any) => step.priority === 'high' || step.priority === 'urgent')
+        .slice(0, 2);
+      
+      highPrioritySteps.forEach((step: any) => {
+        actions.push(step.description);
+      });
+    }
+
+    // If there are open questions, suggest addressing them
+    if (conversationContext?.openQuestions?.length > 0) {
+      actions.push(`Address ${conversationContext.openQuestions.length} open questions from previous session`);
+    }
+
+    // If no specific actions, provide general guidance
+    if (actions.length === 0) {
+      if (traces.length > 0) {
+        const recentActivity = traces.sort((a, b) => b.timestamp - a.timestamp)[0];
+        actions.push(`Continue ${recentActivity.activityType.replace('_', ' ')} work from previous session`);
+      } else {
+        actions.push('Review captured context and determine next steps');
+      }
+    }
+
+    return actions;
+  }
+
+  /**
+   * Identify context that needs reestablishing
+   */
+  private identifyContextToReestablish(traces: WorkspaceMemoryTrace[], conversationContext?: any): string[] {
+    const context: string[] = [];
+    
+    // Topics that were being discussed
+    if (conversationContext?.mainTopics?.length > 0) {
+      context.push(`Main discussion topics: ${conversationContext.mainTopics.slice(0, 3).join(', ')}`);
+    }
+
+    // Recent tool usage context
+    const toolsUsed = [...new Set(traces.map(t => t.metadata?.tool).filter(Boolean))];
+    if (toolsUsed.length > 0) {
+      context.push(`Recently used tools: ${toolsUsed.join(', ')}`);
+    }
+
+    // Activity context
+    const recentActivities = [...new Set(traces.slice(-5).map(t => t.activityType))];
+    if (recentActivities.length > 0) {
+      context.push(`Recent activity types: ${recentActivities.join(', ')}`);
+    }
+
+    return context;
+  }
+
+  /**
+   * Determine recommended starting point
+   */
+  private determineStartingPoint(traces: WorkspaceMemoryTrace[], activeTask?: any): string {
+    // If there's a clear active task goal
+    if (activeTask?.currentGoal) {
+      return `Resume work on: ${activeTask.currentGoal}`;
+    }
+
+    // If there are recent traces, continue from there
+    if (traces.length > 0) {
+      const recentTrace = traces.sort((a, b) => b.timestamp - a.timestamp)[0];
+      return `Continue from last activity: ${recentTrace.activityType.replace('_', ' ')}`;
+    }
+
+    return 'Begin by reviewing captured context and files';
+  }
+
+  /**
+   * Develop continuation strategy
+   */
+  private developContinuationStrategy(traces: WorkspaceMemoryTrace[], activeTask?: any, conversationContext?: any): string {
+    let strategy = '';
+
+    // Base strategy on task type and progress
+    if (activeTask?.taskType) {
+      switch (activeTask.taskType) {
+        case 'research':
+          strategy = 'Continue systematic research, building on previous findings and addressing remaining questions.';
+          break;
+        case 'development':
+          strategy = 'Resume development work, reviewing recent code changes and implementing next features.';
+          break;
+        case 'writing':
+          strategy = 'Continue writing project, reviewing previous sections and expanding content.';
+          break;
+        case 'analysis':
+          strategy = 'Proceed with analysis, building on previous insights and exploring new angles.';
+          break;
+        case 'planning':
+          strategy = 'Advance planning efforts, refining previous plans and addressing implementation details.';
+          break;
+        case 'review':
+          strategy = 'Continue review process, addressing previous feedback and completing evaluation.';
+          break;
+        default:
+          strategy = 'Proceed methodically, building on previous progress and maintaining momentum.';
+      }
+    } else {
+      strategy = 'Review captured context, understand previous progress, and proceed with logical next steps.';
+    }
+
+    // Add specific guidance based on conversation context
+    if (conversationContext?.decisions?.length > 0) {
+      strategy += ' Pay attention to recent decisions made and ensure implementation follows through.';
+    }
+
+    if (conversationContext?.openQuestions?.length > 0) {
+      strategy += ' Address outstanding questions to remove blockers and clarify direction.';
+    }
+
+    return strategy;
+  }
+
+  /**
+   * Format estimated time for display
+   */
+  private formatEstimatedTime(minutes?: number): string {
+    if (!minutes || minutes <= 0) {
+      return 'Unknown';
+    }
+
+    if (minutes < 60) {
+      return `${Math.round(minutes)} minutes`;
+    } else if (minutes < 1440) { // Less than 24 hours
+      const hours = Math.round(minutes / 60 * 10) / 10; // Round to 1 decimal
+      return `${hours} hours`;
+    } else {
+      const days = Math.round(minutes / 1440 * 10) / 10;
+      return `${days} days`;
     }
   }
 

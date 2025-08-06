@@ -1,11 +1,10 @@
-import { CommonResult } from '../../types';
-import { WorkspaceParameters } from '../../database/workspace-types';
+import { CommonResult, CommonParameters } from '../../types';
 import { WorkspaceContext } from '../../utils/contextUtils';
 
 /**
  * Base parameters for memory management operations
  */
-export interface MemoryParameters extends WorkspaceParameters {
+export interface MemoryParameters extends CommonParameters {
   /**
    * Optional context depth for memory operations
    * - minimal: Just basic information
@@ -13,12 +12,6 @@ export interface MemoryParameters extends WorkspaceParameters {
    * - comprehensive: Maximum detail and context
    */
   contextDepth?: 'minimal' | 'standard' | 'comprehensive';
-  
-  /**
-   * Session ID for tracking operations
-   * Required by CommonParameters
-   */
-  sessionId: string;
 }
 
 /**
@@ -82,7 +75,7 @@ export interface CreateSessionParams extends MemoryParameters {
    * This allows creating a session with a specific session ID rather than using the tracking ID.
    * Note: This is distinct from the required sessionId in MemoryParameters which tracks the tool call itself.
    */
-  sessionId: string;
+  newSessionId?: string;
   
   /**
    * Workspace context (optional)
@@ -115,12 +108,17 @@ export interface ListSessionsParams extends MemoryParameters {
   tags?: string[];
 }
 
-// Parameters for editing a session
-export interface EditSessionParams extends MemoryParameters {
+// Parameters for editing a session  
+export interface EditSessionParams extends Omit<MemoryParameters, 'sessionId'> {
   /**
-   * ID of the session to edit
+   * Session ID for tracking this tool call
    */
   sessionId: string;
+  
+  /**
+   * ID of the session to edit (same as sessionId for backward compatibility)
+   */
+  targetSessionId?: string;
   
   /**
    * New session name (optional)
@@ -154,11 +152,16 @@ export interface EditSessionParams extends MemoryParameters {
 }
 
 // Parameters for deleting a session
-export interface DeleteSessionParams extends MemoryParameters {
+export interface DeleteSessionParams extends Omit<MemoryParameters, 'sessionId'> {
   /**
-   * ID of the session to delete
+   * Session ID for tracking this tool call
    */
   sessionId: string;
+  
+  /**
+   * ID of the session to delete (same as sessionId for backward compatibility)
+   */
+  targetSessionId?: string;
   
   /**
    * Whether to also delete associated memory traces
@@ -250,11 +253,16 @@ export interface SessionResult extends MemoryResult {
 /**
  * Parameters for loading a session
  */
-export interface LoadSessionParams extends MemoryParameters {
+export interface LoadSessionParams extends Omit<MemoryParameters, 'sessionId'> {
   /**
-   * ID of the session to load
+   * Session ID for tracking this tool call
    */
   sessionId: string;
+  
+  /**
+   * ID of the session to load (same as sessionId for backward compatibility)
+   */
+  targetSessionId?: string;
   
   /**
    * Custom name for the new continuation session (optional)

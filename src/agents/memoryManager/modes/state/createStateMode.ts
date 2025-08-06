@@ -1,295 +1,471 @@
 /**
- * CreateStateMode - Refactored version using service composition
- * Orchestrates specialized services following SOLID principles
- * Maintains backward compatibility while providing clean, focused architecture
+ * CreateStateMode - Robust state creation with comprehensive service integration and error handling
  */
 
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../memoryManager';
-import { CreateStateParams, StateResult } from '../../types';
-import { extractContextFromParams } from '../../../../utils/contextUtils';
-
-// Import specialized services
-import {
-  ParameterValidator,
-  WorkspaceValidator,
-  SessionValidator
-} from './create/validation';
-
-import {
-  ContextBuilder,
-  SummaryGenerator
-} from './create/context';
-
-import { StateCreator } from './create/state';
-import { MemoryTracer } from './create/tracing';
+import { CreateStateParameters, StateResult } from '../../../../database/types/workspace/ParameterTypes';
+import { StateSnapshot, State } from '../../../../database/types/session/SessionTypes';
+import { MemoryService } from '../../../../database/services/MemoryService';
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../../database/services/WorkspaceService';
+import { App } from 'obsidian';
+import { createServiceIntegration } from '../../utils/ServiceIntegration';
+import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';
 
 /**
- * Refactored CreateStateMode using service composition
- * Each service handles a specific concern following SRP
+ * Robust state creation with comprehensive service integration, validation, and error recovery
  */
-export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
-  // Service instances - initialized lazily in execute method
-  private parameterValidator!: ParameterValidator;
-  private workspaceValidator!: WorkspaceValidator;
-  private sessionValidator!: SessionValidator;
-  private contextBuilder!: ContextBuilder;
-  private summaryGenerator!: SummaryGenerator;
-  private stateCreator!: StateCreator;
-  private memoryTracer!: MemoryTracer;
+export class CreateStateMode extends BaseMode<CreateStateParameters, StateResult> {
+  private app: App;
+  private serviceIntegration: ReturnType<typeof createServiceIntegration>;
 
-  constructor(private agent: MemoryManagerAgent) {
+  constructor(app: App) {
     super(
       'createState',
       'Create State',
-      'Creates a workspace state with rich context',
-      '1.0.0'
+      'Create a state with restoration context',
+      '2.0.0'
     );
-
-    // Initialize services - lazy initialization in execute method for service availability
-  }
-
-  /**
-   * Execute the mode using service composition
-   */
-  async execute(params: CreateStateParams): Promise<StateResult> {
-    try {
-      // Initialize services
-      this.initializeServices();
-
-      // Phase 1: Parameter Validation
-      const validation = this.parameterValidator.validate(params);
-      if (!validation.isValid) {
-        return this.prepareResult(false, undefined, validation.error);
-      }
-
-      // Log validation warnings if any
-      if (validation.warnings && validation.warnings.length > 0) {
-        console.warn('Parameter validation warnings:', validation.warnings);
-      }
-
-      // Sanitize parameters
-      const sanitizedParams = this.parameterValidator.sanitizeParameters(params);
-
-      // Phase 2: Workspace Resolution
-      const workspaceResult = await this.workspaceValidator.resolveWorkspace(sanitizedParams);
-      if (!workspaceResult.success) {
-        return this.prepareResult(
-          false, 
-          undefined, 
-          workspaceResult.error,
-          extractContextFromParams(params)
-        );
-      }
-
-      const { workspaceId, workspace } = workspaceResult;
-      console.log(`Using workspace: ${workspace!.name} (${workspaceId})`);
-
-      // Phase 3: Session Resolution
-      const sessionResult = await this.sessionValidator.resolveSession(
-        workspaceId!,
-        sanitizedParams.targetSessionId,
-        sanitizedParams.name
-      );
-      if (!sessionResult.success) {
-        return this.prepareResult(
-          false, 
-          undefined, 
-          sessionResult.error,
-          extractContextFromParams(params)
-        );
-      }
-
-      const { sessionId, session } = sessionResult;
-      console.log(`Using session: ${session!.name} (${sessionId})`);
-
-      // Phase 4: Context Building
-      const contextData = await this.contextBuilder.buildContext(
-        workspaceId!,
-        sessionId!,
-        workspace!,
-        sanitizedParams.description || '',
-        {
-          maxFiles: sanitizedParams.maxFiles || 10,
-          maxTraces: sanitizedParams.maxTraces || 20,
-          includeFileContents: sanitizedParams.includeFileContents || false,
-          tags: sanitizedParams.tags || [],
-          reason: sanitizedParams.reason
-        }
-      );
-
-      // Phase 5: State Creation
-      const stateResult = await this.stateCreator.createState({
-        workspaceId: workspaceId!,
-        sessionId: sessionId!,
-        name: sanitizedParams.name,
-        description: contextData.enhancedDescription,
-        workspace: workspace!,
-        contextData
-      });
-
-      if (!stateResult.success) {
-        // Create failure trace
-        await this.memoryTracer.createStateFailureTrace(
-          workspaceId!,
-          sessionId!,
-          sanitizedParams.name,
-          stateResult.error || 'Unknown error',
-          sanitizedParams.reason
-        );
-
-        return this.prepareResult(
-          false, 
-          undefined, 
-          stateResult.error,
-          extractContextFromParams(params)
-        );
-      }
-
-      // Phase 6: Summary Generation
-      const summary = this.summaryGenerator.generateStateSummary(
-        workspace!,
-        session!,
-        contextData.traces,
-        contextData.files,
-        contextData.enhancedMetadata,
-        sanitizedParams.name,
-        contextData.enhancedDescription
-      );
-
-      // Phase 7: Memory Trace Creation
-      await this.memoryTracer.createStateCreationTrace(
-        workspaceId!,
-        sessionId!,
-        stateResult.stateId!,
-        sanitizedParams.name,
-        summary
-      );
-
-      // Prepare successful result
-      const resultData = {
-        stateId: stateResult.stateId!,
-        name: sanitizedParams.name,
-        workspaceId: workspaceId!,
-        sessionId: sessionId!,
-        timestamp: Date.now(),
-        capturedContext: summary
-      };
-
-      return this.prepareResult(
-        true,
-        resultData,
-        `State "${sanitizedParams.name}" created successfully`,
-        extractContextFromParams(params)
-      );
-
-    } catch (error) {
-      console.error('Unexpected error in createState:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      return this.prepareResult(
-        false,
-        undefined,
-        `Unexpected error: ${errorMessage}`,
-        extractContextFromParams(params)
-      );
-    }
-  }
-
-  /**
-   * Initialize services with available dependencies
-   */
-  private initializeServices(): void {
-    // Get services from agent
-    const memoryService = this.agent.getMemoryService();
-    const workspaceService = this.agent.getWorkspaceService();
     
-    if (!memoryService || !workspaceService) {
-      throw new Error('Memory or workspace services not available');
-    }
-
-    // Get activity embedder for backward compatibility
-    const activityEmbedder = (this.agent as any).plugin?.getActivityEmbedder?.();
-
-    // Initialize all services
-    this.parameterValidator = new ParameterValidator();
-    this.workspaceValidator = new WorkspaceValidator(workspaceService);
-    this.sessionValidator = new SessionValidator(memoryService, activityEmbedder);
-    this.contextBuilder = new ContextBuilder(memoryService, workspaceService);
-    this.summaryGenerator = new SummaryGenerator();
-    this.stateCreator = new StateCreator(memoryService, activityEmbedder);
-    this.memoryTracer = new MemoryTracer(memoryService);
+    this.app = app;
+    this.serviceIntegration = createServiceIntegration(app, {
+      logLevel: 'warn',
+      maxRetries: 3,
+      fallbackBehavior: 'warn',
+      timeoutMs: 5000
+    });
   }
 
   /**
-   * Get the JSON schema for the mode's parameters
+   * Execute state creation with robust service integration and comprehensive error handling
+   */
+  async execute(params: CreateStateParameters): Promise<StateResult> {
+    const startTime = Date.now();
+    
+    try {
+      // Get services with comprehensive error handling
+      const [memoryResult, workspaceResult] = await Promise.all([
+        this.serviceIntegration.getMemoryService(),
+        this.serviceIntegration.getWorkspaceService()
+      ]);
+      
+      if (!memoryResult.success || !memoryResult.service) {
+        const error = memoryManagerErrorHandler.handleServiceUnavailable(
+          'Create State',
+          'createState',
+          'MemoryService',
+          memoryResult.error,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+      }
+      
+      if (!workspaceResult.success || !workspaceResult.service) {
+        const error = memoryManagerErrorHandler.handleServiceUnavailable(
+          'Create State',
+          'createState',
+          'WorkspaceService',
+          workspaceResult.error,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+      }
+      
+      const memoryService = memoryResult.service;
+      const workspaceService = workspaceResult.service;
+      
+      console.log(`[CreateStateMode] Services obtained successfully (${Date.now() - startTime}ms)`);
+      
+      // Validate required fields with structured error handling
+      const validationErrors = this.validateParameters(params);
+      if (validationErrors.length > 0) {
+        const firstError = validationErrors[0];
+        const error = memoryManagerErrorHandler.handleValidationError(
+          'Create State',
+          'createState',
+          firstError.field,
+          firstError.value,
+          firstError.requirement,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+      }
+      
+      console.log('[CreateStateMode] Parameter validation successful');
+      
+      // Get current workspace context using inherited utility
+      const workspaceContextData = this.getInheritedWorkspaceContext(params);
+      
+      // Use global workspace if no workspaceId provided
+      let workspaceId: string;
+      if (!workspaceContextData || !workspaceContextData.workspaceId) {
+        workspaceId = GLOBAL_WORKSPACE_ID;
+        console.log('[CreateStateMode] No workspaceId provided, using global workspace:', workspaceId);
+      } else {
+        workspaceId = workspaceContextData.workspaceId;
+        console.log('[CreateStateMode] Using provided workspaceId:', workspaceId);
+      }
+      
+      // Get the workspace to capture its current context
+      let workspace;
+      try {
+        workspace = await workspaceService.getWorkspace(workspaceId);
+        if (!workspace) {
+          const error = memoryManagerErrorHandler.handleNotFound(
+            'Create State',
+            'createState',
+            'Workspace',
+            workspaceId,
+            params
+          );
+          return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+        }
+        console.log(`[CreateStateMode] Workspace ${workspaceId} retrieved successfully`);
+      } catch (workspaceError) {
+        console.error('[CreateStateMode] Failed to retrieve workspace:', workspaceError);
+        const error = memoryManagerErrorHandler.handleUnexpected(
+          'Create State',
+          'createState',
+          workspaceError,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+      }
+      
+      // Extract workspace context or create basic one for legacy workspaces
+      let currentWorkspaceContext;
+      if (workspace.context) {
+        currentWorkspaceContext = workspace.context;
+      } else {
+        // Create basic context for legacy workspace
+        currentWorkspaceContext = {
+          purpose: workspace.description || `Work in ${workspace.name}`,
+          currentGoal: 'Continue workspace tasks',
+          status: 'In progress',
+          workflows: [],
+          keyFiles: [],
+          preferences: [],
+          agents: [],
+          nextActions: []
+        };
+      }
+      
+      // Build the state snapshot from LLM input
+      const snapshot: StateSnapshot = {
+        workspaceContext: currentWorkspaceContext,
+        conversationContext: params.conversationContext,
+        activeTask: params.activeTask,
+        activeFiles: params.activeFiles,
+        nextSteps: params.nextSteps,
+        reasoning: params.reasoning
+      };
+      
+      // Create the simple state
+      const now = Date.now();
+      const stateData: Omit<State, 'id'> = {
+        name: params.name,
+        workspaceId: workspaceId,
+        created: now,
+        snapshot: snapshot
+      };
+      
+      // CRITICAL FIX: Actually persist the state using MemoryService
+      // Build WorkspaceStateSnapshot for storage following the architecture design
+      const snapshotData: Omit<import('../../../../database/workspace-types').WorkspaceStateSnapshot, 'id'> = {
+        workspaceId: workspaceId,
+        sessionId: params.targetSessionId || params.sessionId || 'current',
+        timestamp: now,
+        name: params.name,
+        created: now,
+        description: `${params.activeTask} - ${params.reasoning}`,
+        snapshot: snapshot,
+        state: {
+          workspace,
+          recentTraces: [], // Could be populated from current session
+          contextFiles: params.activeFiles || [],
+          metadata: {
+            createdBy: 'CreateStateMode',
+            version: '2.0.0',
+            creationMethod: 'manual'
+          }
+        }
+      };
+      
+      // STEP 1: Persist to MemoryService with comprehensive error handling
+      console.log('[CreateStateMode] Persisting state to MemoryService...');
+      let savedSnapshot;
+      try {
+        savedSnapshot = await memoryService.createSnapshot(snapshotData);
+        console.log(`[CreateStateMode] State persisted successfully with ID: ${savedSnapshot.id}`);
+      } catch (persistError) {
+        console.error('[CreateStateMode] Failed to persist state:', persistError);
+        const error = memoryManagerErrorHandler.handleUnexpected(
+          'Create State',
+          'createState',
+          persistError,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+      }
+      
+      // STEP 2: Verify persistence (data integrity check)
+      let verification;
+      try {
+        verification = await this.verifyStatePersistence(savedSnapshot.id, memoryService);
+        if (!verification.success) {
+          console.warn(`[CreateStateMode] State verification failed: ${verification.error}`);
+          // Rollback if verification fails
+          await this.rollbackState(savedSnapshot.id, memoryService);
+          const error = memoryManagerErrorHandler.handleDataCorruption(
+            'Create State',
+            'createState',
+            `State verification failed: ${verification.error}`,
+            undefined,
+            params
+          );
+          return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+        }
+        console.log(`[CreateStateMode] State verification successful for ID: ${savedSnapshot.id}`);
+      } catch (verificationError) {
+        console.error('[CreateStateMode] Verification process failed:', verificationError);
+        await this.rollbackState(savedSnapshot.id, memoryService);
+        const error = memoryManagerErrorHandler.handleUnexpected(
+          'Create State',
+          'createState',
+          verificationError,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
+      }
+      
+      // STEP 3: Return success with comprehensive performance data
+      const result = this.prepareResult(
+        true,
+        {
+          stateId: savedSnapshot.id,
+          name: savedSnapshot.name,
+          workspaceId: savedSnapshot.workspaceId,
+          sessionId: savedSnapshot.sessionId,
+          timestamp: savedSnapshot.timestamp,
+          created: savedSnapshot.created,
+          summary: `State "${params.name}" saved successfully. Task: ${params.activeTask}`,
+          metadata: {
+            persistenceVerified: true,
+            workspaceName: workspace.name,
+            totalActiveFiles: params.activeFiles.length,
+            nextStepsCount: params.nextSteps.length
+          },
+          capturedContext: {
+            summary: `${params.activeTask} - ${params.reasoning}`,
+            conversationContext: params.conversationContext,
+            activeFiles: params.activeFiles,
+            nextSteps: params.nextSteps
+          },
+          performance: {
+            totalDuration: Date.now() - startTime,
+            serviceAccessTime: (memoryResult.diagnostics?.duration || 0) + (workspaceResult.diagnostics?.duration || 0),
+            validationTime: 0, // Could be measured if needed
+            persistenceTime: Date.now() - startTime // Approximation
+          }
+        },
+        undefined, // no error
+        `State "${params.name}" created and persisted successfully with ID: ${savedSnapshot.id}`, // context string
+        workspaceContextData || undefined // workspaceContext
+      );
+      
+      console.log(`[CreateStateMode] Operation completed successfully in ${Date.now() - startTime}ms`);
+      return result;
+      
+    } catch (error: any) {
+      console.error(`[CreateStateMode] Unexpected error after ${Date.now() - startTime}ms:`, error);
+      return createMemoryManagerError<StateResult>(
+        'Create State',
+        'createState',
+        error,
+        params.workspaceContext,
+        params
+      );
+    }
+  }
+  
+  /**
+   * Validate state creation parameters
+   */
+  private validateParameters(params: CreateStateParameters): Array<{field: string; value: any; requirement: string}> {
+    const errors: Array<{field: string; value: any; requirement: string}> = [];
+    
+    if (!params.name) {
+      errors.push({
+        field: 'name',
+        value: params.name,
+        requirement: 'State name is required and must be a descriptive, non-empty string'
+      });
+    }
+    
+    if (!params.conversationContext) {
+      errors.push({
+        field: 'conversationContext',
+        value: params.conversationContext,
+        requirement: 'Conversation context is required. Provide a summary of what was happening when you decided to save this state'
+      });
+    }
+    
+    if (!params.activeTask) {
+      errors.push({
+        field: 'activeTask',
+        value: params.activeTask,
+        requirement: 'Active task description is required. Be specific about the current task you were working on'
+      });
+    }
+    
+    if (!params.activeFiles || params.activeFiles.length === 0) {
+      errors.push({
+        field: 'activeFiles',
+        value: params.activeFiles,
+        requirement: 'Active files list is required. Specify which files were being edited or referenced'
+      });
+    }
+    
+    if (!params.nextSteps || params.nextSteps.length === 0) {
+      errors.push({
+        field: 'nextSteps',
+        value: params.nextSteps,
+        requirement: 'Next steps are required. Provide specific actionable steps for when you resume'
+      });
+    }
+    
+    if (!params.reasoning) {
+      errors.push({
+        field: 'reasoning',
+        value: params.reasoning,
+        requirement: 'Reasoning for saving state is required. Explain why you are saving the state at this point'
+      });
+    }
+    
+    return errors;
+  }
+
+  /**
+   * Verify that a state was properly persisted
+   * @private
+   * @param stateId - ID of the state to verify
+   * @param memoryService - Memory service instance
+   * @returns Verification result
+   */
+  private async verifyStatePersistence(stateId: string, memoryService: MemoryService): Promise<{success: boolean, error?: string}> {
+    try {
+      const retrieved = await memoryService.getSnapshot(stateId);
+      if (!retrieved) {
+        return { success: false, error: 'State not found after creation' };
+      }
+      
+      if (!retrieved.snapshot || !retrieved.snapshot.activeTask) {
+        return { success: false, error: 'State data incomplete after persistence' };
+      }
+
+      if (!retrieved.workspaceId || !retrieved.name) {
+        return { success: false, error: 'Critical state fields missing after persistence' };
+      }
+      
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: `Verification failed: ${error.message}` };
+    }
+  }
+
+  /**
+   * Rollback a state creation if verification fails
+   * @private
+   * @param stateId - ID of the state to rollback
+   * @param memoryService - Memory service instance
+   */
+  private async rollbackState(stateId: string, memoryService: MemoryService): Promise<void> {
+    try {
+      await memoryService.deleteSnapshot(stateId);
+      console.warn(`[CreateStateMode] Rolled back state ${stateId} due to verification failure`);
+    } catch (error: any) {
+      console.error(`[CreateStateMode] Failed to rollback state ${stateId}:`, error);
+      // Don't throw here - verification failure is the primary issue
+    }
+  }
+
+  /**
+   * Get parameter schema - prompts LLM to provide complete StateSnapshot structure
    */
   getParameterSchema(): any {
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         name: {
           type: 'string',
-          description: 'Name for the state'
+          description: 'State name (REQUIRED)'
         },
-        description: {
+        conversationContext: {
           type: 'string',
-          description: 'Description of the state (optional)'
+          description: 'What was happening when you decided to save this state? (REQUIRED) Provide a summary of the conversation and what you were working on. Example: "We were customizing the cover letter for Google\'s Marketing Manager position. We researched their team and identified key requirements."'
         },
-        workspaceContext: {
-          description: 'Workspace context (optional, will use current workspace if not provided)'
-        },
-        targetSessionId: {
+        activeTask: {
           type: 'string',
-          description: 'Target session ID (optional, will use active session if not provided)'
+          description: 'What task were you actively working on? (REQUIRED) Be specific about the current task. Example: "Finishing the cover letter paragraph about data-driven campaign optimization results"'
         },
-        includeSummary: {
-          type: 'boolean',
-          description: 'Whether to include a summary in the state (default: true)'
-        },
-        includeFileContents: {
-          type: 'boolean',
-          description: 'Whether to include file contents in the state (default: false)'
-        },
-        maxFiles: {
-          type: 'number',
-          description: 'Maximum number of files to include (default: 10)'
-        },
-        maxTraces: {
-          type: 'number', 
-          description: 'Maximum number of memory traces to include (default: 20)'
-        },
-        tags: {
+        activeFiles: {
           type: 'array',
-          items: {
-            type: 'string'
-          },
-          description: 'Tags to associate with the state (optional)'
+          items: { type: 'string' },
+          description: 'Which files were you working with? (REQUIRED) List the files that were being edited or referenced. Example: ["cover-letter-google.md", "application-tracker.md"]'
         },
-        reason: {
+        nextSteps: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'What are the immediate next steps when you resume? (REQUIRED) Provide specific actionable next steps. Example: ["Complete cover letter customization", "Review resume for Google-specific keywords", "Submit application"]'
+        },
+        reasoning: {
           type: 'string',
-          description: 'Reason for creating this state (optional)'
+          description: 'Why are you saving this state right now? (REQUIRED) Explain the reason for saving at this point. Example: "Saving before context limit, about to submit application"'
+        },
+        
+        // Legacy fields for backward compatibility
+        description: { type: 'string', description: 'Optional description' },
+        targetSessionId: { type: 'string', description: 'Target session ID (optional)' },
+        includeSummary: { type: 'boolean', description: 'Whether to include a summary' },
+        includeFileContents: { type: 'boolean', description: 'Whether to include file contents' },
+        maxFiles: { type: 'number', description: 'Maximum number of files to include' },
+        maxTraces: { type: 'number', description: 'Maximum number of memory traces to include' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags to associate with the state' },
+        reason: { type: 'string', description: 'Reason for creating this state' }
+      },
+      required: ['name', 'conversationContext', 'activeTask', 'activeFiles', 'nextSteps', 'reasoning']
+    };
+    
+    // Get merged schema with common parameters
+    const mergedSchema = this.getMergedSchema(modeSchema);
+    
+    // Override workspaceContext to be OPTIONAL for state creation
+    // States will be saved to the global workspace if no workspaceId is provided
+    mergedSchema.properties.workspaceContext = {
+      type: 'object',
+      properties: {
+        workspaceId: { 
+          type: 'string',
+          description: 'Workspace ID where this state should be saved (OPTIONAL - will use global workspace if not provided)' 
         }
       },
-      required: ['name']
+      description: 'Workspace context - OPTIONAL. If workspaceId is not provided, the state will be saved to the global workspace for general use.'
     };
+    
+    return mergedSchema;
   }
 
   /**
-   * Get the JSON schema for the mode's result
+   * Get result schema
    */
   getResultSchema(): any {
-    // Use the base result schema from BaseMode
     const baseSchema = super.getResultSchema();
     
-    // Add mode-specific data properties
     baseSchema.properties.data = {
       type: 'object',
       properties: {
         stateId: {
           type: 'string',
-          description: 'ID of the created state'
+          description: 'ID of the created and persisted state'
         },
         name: {
           type: 'string',
@@ -307,59 +483,63 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
           type: 'number',
           description: 'State creation timestamp'
         },
+        created: {
+          type: 'number',
+          description: 'State creation timestamp (same as timestamp)'
+        },
+        summary: {
+          type: 'string',
+          description: 'Summary of the state creation operation'
+        },
+        metadata: {
+          type: 'object',
+          properties: {
+            persistenceVerified: {
+              type: 'boolean',
+              description: 'Whether persistence was verified'
+            },
+            workspaceName: {
+              type: 'string',
+              description: 'Name of the workspace'
+            },
+            totalActiveFiles: {
+              type: 'number',
+              description: 'Number of active files in the state'
+            },
+            nextStepsCount: {
+              type: 'number',
+              description: 'Number of next steps defined'
+            }
+          },
+          description: 'Additional metadata about the created state'
+        },
         capturedContext: {
           type: 'object',
-          description: 'Information about the captured context',
           properties: {
             summary: {
               type: 'string',
-              description: 'Summary of the workspace state at save time'
+              description: 'Summary of the captured context'
             },
-            purpose: {
+            conversationContext: {
               type: 'string',
-              description: 'The primary goal of this state derived from context parameter'
+              description: 'Conversation context at time of state creation'
             },
-            sessionMemory: {
-              type: 'string',
-              description: 'Conversation summary at the time of state creation'
-            },
-            toolContext: {
-              type: 'string',
-              description: 'Context for why this state was created'
-            },
-            files: {
+            activeFiles: {
               type: 'array',
-              items: {
-                type: 'string'
-              },
-              description: 'List of key files included in the state'
+              items: { type: 'string' },
+              description: 'Files that were active when state was created'
             },
-            traceCount: {
-              type: 'number',
-              description: 'Number of memory traces included'
-            },
-            tags: {
+            nextSteps: {
               type: 'array',
-              items: {
-                type: 'string'
-              },
-              description: 'Tags associated with this state'
-            },
-            reason: {
-              type: 'string',
-              description: 'State creation reason'
+              items: { type: 'string' },
+              description: 'Next steps defined in the state'
             }
           },
-          required: ['files', 'traceCount', 'tags']
+          description: 'Detailed context captured in the state'
         }
       },
-      required: ['stateId', 'name', 'workspaceId', 'timestamp', 'capturedContext']
+      required: ['stateId', 'name', 'workspaceId', 'sessionId', 'timestamp', 'created', 'summary', 'metadata']
     };
-    
-    // Modify the context property description
-    if (baseSchema.properties.context) {
-      baseSchema.properties.context.description = 'The purpose and context of this state creation';
-    }
     
     return baseSchema;
   }

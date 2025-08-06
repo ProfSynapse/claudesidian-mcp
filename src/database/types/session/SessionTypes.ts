@@ -1,7 +1,9 @@
 /**
  * Session Types
- * Extracted from workspace-types.ts for better organization
+ * Simple session and state types focused on LLM restoration
  */
+
+import { WorkspaceContext } from '../workspace/WorkspaceTypes';
 
 /**
  * Session tracking for workspace activities
@@ -54,61 +56,64 @@ export interface WorkspaceSession {
 }
 
 /**
- * Workspace state snapshot for persistence
+ * State snapshot data - everything needed to resume work
  */
-export interface WorkspaceStateSnapshot {
+export interface StateSnapshot {
   /**
-   * Unique snapshot identifier
+   * Workspace context at save time
    */
+  workspaceContext: WorkspaceContext;
+  
+  /**
+   * What was happening when you decided to save this state?
+   */
+  conversationContext: string;
+  
+  /**
+   * What task were you actively working on?
+   */
+  activeTask: string;
+  
+  /**
+   * Which files were you working with?
+   */
+  activeFiles: string[];
+  
+  /**
+   * What are the immediate next steps when you resume?
+   */
+  nextSteps: string[];
+  
+  /**
+   * Why are you saving this state right now?
+   */
+  reasoning: string;
+}
+
+/**
+ * Simple state interface - our agreed-upon clean schema
+ */
+export interface State {
   id: string;
-  
-  /**
-   * Associated workspace ID
-   */
-  workspaceId: string;
-  
-  /**
-   * Associated session ID
-   */
-  sessionId: string;
-  
-  /**
-   * Snapshot creation timestamp
-   */
-  timestamp: number;
-  
-  /**
-   * User-friendly snapshot name
-   */
   name: string;
-  
-  /**
-   * Optional snapshot description
-   */
+  workspaceId: string;
+  created: number;
+  snapshot: StateSnapshot;
+}
+
+/**
+ * Legacy WorkspaceStateSnapshot interface for backward compatibility
+ * Extends the simple State with optional legacy fields
+ */
+export interface WorkspaceStateSnapshot extends State {
+  // Legacy fields for backward compatibility
+  sessionId?: string;
+  timestamp?: number;
   description?: string;
-  
-  /**
-   * Snapshot state data
-   */
-  state: {
-    /**
-     * Workspace data at snapshot time
-     */
-    workspace: any; // Reference to ProjectWorkspace (to avoid circular dependency)
-    
-    /**
-     * IDs of recent memory traces
-     */
+  state?: {
+    workspace: any;
     recentTraces: string[];
-    
-    /**
-     * Key files at snapshot time
-     */
     contextFiles: string[];
-    
-    /**
-     * Custom metadata for the snapshot
-     */
     metadata: Record<string, any>;
   };
 }

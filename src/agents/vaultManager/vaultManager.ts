@@ -6,6 +6,7 @@ import {
   CreateFolderMode, 
   EditFolderMode,
   DeleteFolderMode,
+  DeleteNoteMode,
   MoveFolderMode,
   DuplicateNoteMode,
   OpenNoteMode
@@ -40,6 +41,7 @@ export class VaultManagerAgent extends BaseAgent {
     this.registerMode(new CreateFolderMode(app));
     this.registerMode(new EditFolderMode(app));
     this.registerMode(new DeleteFolderMode(app));
+    this.registerMode(new DeleteNoteMode(app));
     this.registerMode(new MoveNoteMode(app));
     this.registerMode(new MoveFolderMode(app));
     this.registerMode(new DuplicateNoteMode(app));

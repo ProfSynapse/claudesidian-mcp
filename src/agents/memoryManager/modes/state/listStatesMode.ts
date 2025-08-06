@@ -5,6 +5,7 @@ import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 // Memory service is used indirectly through the agent
 import { WorkspaceStateSnapshot } from '../../../../database/workspace-types';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
+import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';
 
 /**
  * Mode for listing workspace states with filtering options
@@ -29,6 +30,8 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
    * @returns Promise that resolves with result
    */
   async execute(params: ListStatesParams): Promise<StateResult> {
+    const startTime = Date.now();
+    
     try {
       // Get the memory service
       const memoryService = this.agent.getMemoryService();
@@ -79,9 +82,15 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
           states = await memoryService.getSnapshots();
           console.log(`Broader search retrieved ${states.length} snapshots`);
         }
-      } catch (error) {
-        console.error(`Error retrieving snapshots:`, error);
-        return this.prepareResult(false, undefined, `Error retrieving snapshots: ${error instanceof Error ? error.message : String(error)}`);
+      } catch (retrievalError) {
+        console.error(`Error retrieving snapshots:`, retrievalError);
+        const error = memoryManagerErrorHandler.handleUnexpected(
+          'List States',
+          'listStates',
+          retrievalError,
+          params
+        );
+        return memoryManagerErrorHandler.createErrorResult(error, params.workspaceContext);
       }
 
       // Apply tags filtering if provided
@@ -104,9 +113,11 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       
       // Sort states by timestamp
       states.sort((a: WorkspaceStateSnapshot, b: WorkspaceStateSnapshot) => {
+        const aTime = a.timestamp ?? 0;
+        const bTime = b.timestamp ?? 0;
         return order === 'desc' 
-          ? b.timestamp - a.timestamp 
-          : a.timestamp - b.timestamp;
+          ? bTime - aTime 
+          : aTime - bTime;
       });
       
       // Apply limit
@@ -133,9 +144,9 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
           id: state.id,
           name: state.name,
           workspaceId: state.workspaceId,
-          sessionId: state.sessionId,
-          timestamp: state.timestamp,
-          description: state.description,
+          sessionId: state.sessionId || '',
+          timestamp: state.timestamp || 0,
+          description: state.description || '',
         };
         
         // Add context if requested
@@ -159,13 +170,30 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         return result;
       });
       
-      // Return result
-      return this.prepareResult(true, {
+      // Return result with performance data
+      const result = this.prepareResult(true, {
         states: mappedStates,
-        total: totalCount
-      });
+        total: totalCount,
+        performance: {
+          totalDuration: Date.now() - startTime,
+          serviceAccessTime: 0, // Could be measured if needed
+          queryTime: Date.now() - startTime, // Approximation
+          processedStateCount: states.length,
+          filteredStateCount: mappedStates.length
+        }
+      }, undefined, `Listed ${mappedStates.length} states successfully`, this.getInheritedWorkspaceContext(params) || undefined);
+      
+      console.log(`[ListStatesMode] Operation completed successfully in ${Date.now() - startTime}ms, returned ${mappedStates.length} of ${totalCount} states`);
+      return result;
     } catch (error) {
-      return this.prepareResult(false, undefined, `Error listing states: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`[ListStatesMode] Unexpected error after ${Date.now() - startTime}ms:`, error);
+      return createMemoryManagerError<StateResult>(
+        'List States',
+        'listStates',
+        error,
+        params.workspaceContext,
+        params
+      );
     }
   }
   

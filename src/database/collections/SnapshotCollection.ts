@@ -2,6 +2,7 @@ import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceStateSnapshot } from '../workspace-types';
 import { EmbeddingService } from '../services/EmbeddingService';
+import { WorkspaceContext } from '../types/workspace/WorkspaceTypes';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -52,10 +53,10 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
       description: snapshot.description || '',
       
       // Store workspace data as serialized JSON
-      workspaceData: JSON.stringify(snapshot.state.workspace),
-      recentTraces: JSON.stringify(snapshot.state.recentTraces),
-      contextFiles: JSON.stringify(snapshot.state.contextFiles),
-      stateMetadata: JSON.stringify(snapshot.state.metadata),
+      workspaceData: JSON.stringify(snapshot.state?.workspace || {}),
+      recentTraces: JSON.stringify(snapshot.state?.recentTraces || []),
+      contextFiles: JSON.stringify(snapshot.state?.contextFiles || []),
+      stateMetadata: JSON.stringify(snapshot.state?.metadata || {}),
       
       // Metadata field for searching
       isSnapshot: true,
@@ -95,12 +96,34 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
   }): WorkspaceStateSnapshot {
     // If no metadata is provided, we'll create a minimal snapshot
     if (!storage.metadata) {
+      const now = Date.now();
       return {
         id: storage.id,
         workspaceId: '',
         sessionId: '',
-        timestamp: Date.now(),
+        timestamp: now,
         name: 'Unknown Snapshot',
+        created: now,
+        snapshot: {
+          workspaceContext: {
+            purpose: 'Unknown snapshot',
+            currentGoal: 'Unknown goal',
+            status: 'Unknown status',
+            workflows: [],
+            keyFiles: [{
+              category: 'Unknown',
+              files: {}
+            }],
+            preferences: [],
+            agents: [],
+            nextActions: []
+          } as WorkspaceContext,
+          conversationContext: 'Unknown snapshot',
+          activeTask: 'Unknown',
+          activeFiles: [],
+          nextSteps: [],
+          reasoning: 'Unknown snapshot'
+        },
         state: {
           workspace: {
             id: '',
@@ -135,6 +158,27 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
       sessionId: storage.metadata.sessionId,
       timestamp: storage.metadata.timestamp,
       name: storage.metadata.name,
+      created: storage.metadata.timestamp,
+      snapshot: {
+        workspaceContext: {
+          purpose: 'Restored snapshot',
+          currentGoal: 'Restore state',
+          status: 'Restored',
+          workflows: [],
+          keyFiles: [{
+            category: 'Restored',
+            files: {}
+          }],
+          preferences: [],
+          agents: [],
+          nextActions: []
+        } as WorkspaceContext,
+        conversationContext: storage.metadata.description || 'Restored snapshot',
+        activeTask: 'Restored operation',
+        activeFiles: [],
+        nextSteps: [],
+        reasoning: storage.metadata.description || 'Restored snapshot'
+      },
       description: storage.metadata.description || undefined,
       state: {
         workspace: JSON.parse(storage.metadata.workspaceData),
@@ -158,21 +202,21 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
       document += `Description: ${snapshot.description}\n`;
     }
     
-    document += `Workspace: ${snapshot.workspaceId} (${snapshot.state.workspace.name})\n`;
+    document += `Workspace: ${snapshot.workspaceId} (${snapshot.state?.workspace?.name || 'Unknown'})\n`;
     document += `Session: ${snapshot.sessionId}\n`;
-    document += `Created: ${new Date(snapshot.timestamp).toISOString()}\n`;
+    document += `Created: ${new Date(snapshot.timestamp || Date.now()).toISOString()}\n`;
     
     // Add context files
-    if (snapshot.state.contextFiles.length > 0) {
+    if ((snapshot.state?.contextFiles?.length || 0) > 0) {
       document += 'Context Files:\n';
-      snapshot.state.contextFiles.forEach(file => {
+      (snapshot.state?.contextFiles || []).forEach(file => {
         document += `- ${file}\n`;
       });
     }
     
     // Add workspace metadata
-    document += `Status: ${snapshot.state.workspace.status}\n`;
-    document += `Hierarchy: ${snapshot.state.workspace.hierarchyType}\n`;
+    document += `Status: ${snapshot.state?.workspace?.status || 'unknown'}\n`;
+    document += `Hierarchy: ${snapshot.state?.workspace?.hierarchyType || 'unknown'}\n`;
     
     return document;
   }

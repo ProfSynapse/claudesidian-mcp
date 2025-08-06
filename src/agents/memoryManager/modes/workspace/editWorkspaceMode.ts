@@ -8,43 +8,45 @@ import {
   ProjectWorkspace
 } from '../../../../database/workspace-types';
 import { WorkspaceService } from '../../../../database/services/WorkspaceService';
-import { ClaudesidianPlugin } from '../utils/pluginTypes';
+import { createServiceIntegration } from '../../utils/ServiceIntegration';
+import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';
 
 /**
- * Mode to edit an existing workspace
+ * Mode to edit an existing workspace with robust service integration and error handling
  */
 export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, WorkspaceResult> {
   private app: App;
+  private serviceIntegration: ReturnType<typeof createServiceIntegration>;
   
   /**
-   * Create a new EditWorkspaceMode
+   * Create a new EditWorkspaceMode with enhanced service integration
    * @param app Obsidian app instance
    */
   constructor(app: App) {
     super(
       'editWorkspace',
       'Edit Workspace',
-      'Update an existing workspace properties',
+      'Update an existing workspace properties with comprehensive error handling',
       '1.0.0'
     );
     this.app = app;
+    this.serviceIntegration = createServiceIntegration(app, {
+      logLevel: 'warn',
+      maxRetries: 2,
+      fallbackBehavior: 'warn'
+    });
   }
   
   /**
-   * Get workspace service asynchronously
+   * Get workspace service with robust error handling and retry logic
    */
   private async getWorkspaceService(): Promise<WorkspaceService | null> {
-    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
-    if (!plugin) {
-      return null;
+    const result = await this.serviceIntegration.getWorkspaceService();
+    
+    if (!result.success) {
     }
     
-    try {
-      return await plugin.getService<WorkspaceService>('workspaceService');
-    } catch (error) {
-      console.warn('[EditWorkspaceMode] Failed to get workspace service:', error);
-      return null;
-    }
+    return result.service;
   }
   
   /**
@@ -123,7 +125,7 @@ export class EditWorkspaceMode extends BaseMode<EditWorkspaceParameters, Workspa
           }
           
           // Update the path - WorkspaceService will handle parent-child relationships
-          updates.path = [...newParent.path, newParent.id];
+          updates.path = [...(newParent.path || []), newParent.id];
         } else {
           // Removing parent (making it a root workspace)
           // This is only allowed for workspaces, not phases or tasks

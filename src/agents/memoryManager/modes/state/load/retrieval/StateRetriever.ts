@@ -47,12 +47,12 @@ export class StateRetriever {
       const originalSessionId = state.sessionId;
       const stateTimestamp = state.timestamp;
       const stateName = state.name;
-      const stateCreatedAt = new Date(stateTimestamp).toLocaleString();
+      const stateCreatedAt = new Date(stateTimestamp || Date.now()).toLocaleString();
       
       // Try to get the original session information
       let originalSessionName = 'Unknown session';
       try {
-        const originalSession = await this.memoryService.getSession(originalSessionId);
+        const originalSession = await this.memoryService.getSession(originalSessionId || '');
         if (originalSession) {
           originalSessionName = originalSession.name || 'Unnamed session';
         }
@@ -65,9 +65,9 @@ export class StateRetriever {
         state,
         metadata: {
           workspaceId,
-          originalSessionId,
-          stateTimestamp,
-          stateName,
+          originalSessionId: originalSessionId || '',
+          stateTimestamp: stateTimestamp || 0,
+          stateName: stateName || '',
           stateCreatedAt,
           originalSessionName
         }
@@ -119,11 +119,11 @@ export class StateRetriever {
       const historyStates = await this.memoryService.getSnapshots(workspaceId);
       
       // Sort by timestamp
-      historyStates.sort((a, b) => a.timestamp - b.timestamp);
+      historyStates.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
       
       // Build history timeline
       const continuationHistory = historyStates.map(snap => ({
-        timestamp: snap.timestamp,
+        timestamp: snap.timestamp || 0,
         description: `State: "${snap.name}"`
       }));
       

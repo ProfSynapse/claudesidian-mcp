@@ -75,12 +75,12 @@ export class DeleteWorkspaceMode extends BaseMode<DeleteWorkspaceParameters, Wor
       // Store the workspace context for the response
       const workspaceContext = {
         workspaceId: params.id,
-        workspacePath: [...workspace.path, workspace.id]
+        workspacePath: [...(workspace.path || []), workspace.id]
       };
       
       // If the workspace has children and deleteChildren is false, check if it's safe to delete
-      if (workspace.childWorkspaces.length > 0 && params.deleteChildren !== true) {
-        return this.prepareResult(false, undefined, `Workspace has ${workspace.childWorkspaces.length} child workspaces. Set deleteChildren to true to delete them as well.`, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      if ((workspace.childWorkspaces?.length || 0) > 0 && params.deleteChildren !== true) {
+        return this.prepareResult(false, undefined, `Workspace has ${workspace.childWorkspaces?.length || 0} child workspaces. Set deleteChildren to true to delete them as well.`, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       }
       
       // Delete the workspace (WorkspaceService will handle parent-child relationships)

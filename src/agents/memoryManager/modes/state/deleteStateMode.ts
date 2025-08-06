@@ -72,7 +72,7 @@ export class DeleteStateMode extends BaseMode<DeleteStateParams, StateResult> {
       try {
         if (workspace) {
           const traceContent = `Deleted state "${state.name}" from workspace "${workspace.name}"
-State was created on ${new Date(state.timestamp).toLocaleString()}
+State was created on ${new Date(state.timestamp || Date.now()).toLocaleString()}
 ${state.description ? `Description: ${state.description}` : ''}`;
           
           // Get an active session for the workspace

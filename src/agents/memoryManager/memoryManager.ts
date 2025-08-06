@@ -62,9 +62,9 @@ export class MemoryManagerAgent extends BaseAgent {
     this.registerMode(new Modes.LoadSessionMode(this));
     
     // Register state modes
-    this.registerMode(new Modes.CreateStateMode(this));
+    this.registerMode(new Modes.CreateStateMode(this.app));
     this.registerMode(new Modes.ListStatesMode(this));
-    this.registerMode(new Modes.LoadStateMode(this));
+    this.registerMode(new Modes.LoadStateMode(this.app));
     this.registerMode(new Modes.EditStateMode(this));
     this.registerMode(new Modes.DeleteStateMode(this));
     

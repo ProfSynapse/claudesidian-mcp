@@ -1,54 +1,258 @@
 /**
  * Workspace Parameter Types
- * Extracted from workspace-types.ts for better organization
+ * Parameter types that prompt LLMs to provide the correct structured workspace data
  */
 
 import { CommonParameters, CommonResult } from '../../../types/mcp';
-import { DirectoryTreeNode } from '../../../utils/directoryTreeUtils';
-import { ProjectWorkspace, HierarchyType, WorkspaceStatus } from './WorkspaceTypes';
+import { ProjectWorkspace, WorkspaceContext, HierarchyType, WorkspaceStatus } from './WorkspaceTypes';
+import { StateSnapshot } from '../session/SessionTypes';
 
 /**
- * Parameter interface for workspace operations
+ * Create workspace parameters - LLM must provide complete WorkspaceContext structure
  */
-export interface WorkspaceParameters extends CommonParameters {
+export interface CreateWorkspaceParameters extends CommonParameters {
   /**
-   * Context depth for operations
-   * - minimal: Just basic information
-   * - standard: Regular level of detail (default)
-   * - comprehensive: Maximum detail and context
+   * Workspace name (required)
    */
-  contextDepth?: 'minimal' | 'standard' | 'comprehensive';
+  name: string;
+  
+  /**
+   * Root folder path (required)
+   */
+  rootFolder: string;
+  
+  /**
+   * What is this workspace for? (required)
+   * Example: "Apply for marketing manager positions"
+   */
+  purpose: string;
+  
+  /**
+   * What are you trying to accomplish right now? (required)
+   * Example: "Submit 10 applications this week"
+   */
+  currentGoal: string;
+  
+  /**
+   * What's the current state of progress? (required)
+   * Example: "5 sent, 2 pending responses (Google, Meta), need 5 more"
+   */
+  status: string;
+  
+  /**
+   * Workflows for different situations (required)
+   * Provide an array of workflows with name, when to use, and steps
+   * Example: [{"name": "New Application", "when": "When applying to new position", "steps": ["Research company", "Customize cover letter", "Apply", "Track"]}]
+   */
+  workflows: Array<{
+    name: string;
+    when: string;
+    steps: string[];
+  }>;
+  
+  /**
+   * Key files organized by category (required)
+   * Provide files organized into logical groups
+   * Example: [{"category": "Core Documents", "files": {"resume": "path/to/resume.pdf", "portfolio": "path/to/portfolio.md"}}]
+   */
+  keyFiles: Array<{
+    category: string;
+    files: Record<string, string>;
+  }>;
+  
+  /**
+   * User preferences as actionable guidelines (required)
+   * Provide specific preferences about how to work
+   * Example: ["Use professional tone", "Focus on tech companies", "Keep cover letters under 300 words"]
+   */
+  preferences: string[];
+  
+  /**
+   * Agents to associate with this workspace (optional)
+   * Specify which agents should be recommended and when
+   * Example: [{"name": "CoverLetterAgent", "when": "When customizing cover letters", "purpose": "Adapts letters to job requirements"}]
+   */
+  agents?: Array<{
+    name: string;
+    when: string;
+    purpose: string;
+  }>;
+  
+  /**
+   * Next actions to take (required)
+   * Provide specific actionable next steps
+   * Example: ["Follow up on Google application", "Apply to Stripe position", "Update LinkedIn profile"]
+   */
+  nextActions: string[];
+  
+  // Optional legacy fields for backward compatibility
+  description?: string;
+  relatedFolders?: string[];
+  relatedFiles?: string[];
+  hierarchyType?: HierarchyType;
+  parentId?: string;
+  keyFileInstructions?: string;
 }
 
 /**
- * Result interface for workspace operations
+ * Create workspace result
  */
-export interface WorkspaceResult extends CommonResult {
-  data?: {
-    workspace?: ProjectWorkspace;
-    context?: {
-      recentFiles: string[];
-      keyFiles: string[];
-      relatedConcepts: string[];
-      allFiles?: string[];
-    };
-    summary?: string;
+export interface CreateWorkspaceResult extends CommonResult {
+  data: {
+    workspaceId: string;
+    workspace: ProjectWorkspace;
   };
 }
 
 /**
- * List workspaces parameters
+ * Load workspace result - returns actionable briefing instead of raw data
  */
-export interface ListWorkspacesParameters extends WorkspaceParameters {
+export interface LoadWorkspaceResult extends CommonResult {
+  data: {
+    context: string;
+    workflow: string;
+    keyFiles: Record<string, string>;
+    preferences: string;
+    nextActions: string[];
+  };
+}
+
+/**
+ * Create state parameters - LLM must provide complete StateSnapshot structure
+ */
+export interface CreateStateParameters extends CommonParameters {
+  /**
+   * State name (required)
+   */
+  name: string;
+  
+  /**
+   * What was happening when you decided to save this state? (required)
+   * Provide a summary of the conversation and what you were working on
+   * Example: "We were customizing the cover letter for Google's Marketing Manager position. We researched their team and identified key requirements."
+   */
+  conversationContext: string;
+  
+  /**
+   * What task were you actively working on? (required)
+   * Be specific about the current task
+   * Example: "Finishing the cover letter paragraph about data-driven campaign optimization results"
+   */
+  activeTask: string;
+  
+  /**
+   * Which files were you working with? (required)
+   * List the files that were being edited or referenced
+   * Example: ["cover-letter-google.md", "application-tracker.md"]
+   */
+  activeFiles: string[];
+  
+  /**
+   * What are the immediate next steps when you resume? (required)
+   * Provide specific actionable next steps
+   * Example: ["Complete cover letter customization", "Review resume for Google-specific keywords", "Submit application"]
+   */
+  nextSteps: string[];
+  
+  /**
+   * Why are you saving this state right now? (required)
+   * Explain the reason for saving at this point
+   * Example: "Saving before context limit, about to submit application"
+   */
+  reasoning: string;
+  
+  // Optional legacy fields
+  description?: string;
+  workspaceContext?: any;
+  targetSessionId?: string;
+  includeSummary?: boolean;
+  includeFileContents?: boolean;
+  maxFiles?: number;
+  maxTraces?: number;
+  tags?: string[];
+  reason?: string;
+}
+
+/**
+ * Load state result - returns actionable restoration context
+ */
+export interface LoadStateResult extends CommonResult {
+  data: {
+    resumingFrom: string;
+    workspaceContext: string;
+    whereYouLeftOff: string;
+    currentTask: string;
+    activeFiles: string[];
+    nextSteps: string[];
+    workflow: string;
+  };
+}
+
+// Legacy parameter types for backward compatibility
+export interface LoadWorkspaceParameters extends CommonParameters {
+  id: string;
+  includeChildren?: boolean;
+  includeFileDetails?: boolean;
+  includeDirectoryStructure?: boolean;
+  includeSessionContext?: boolean;
+}
+
+export interface LoadStateParams extends CommonParameters {
+  stateId: string;
+  sessionName?: string;
+  sessionDescription?: string;
+  restorationGoal?: string;
+  createContinuationSession?: boolean;
+  contextDepth?: 'minimal' | 'standard' | 'comprehensive';
+  tags?: string[];
+}
+
+export interface ListWorkspacesParameters extends CommonParameters {
   sortBy?: 'name' | 'created' | 'lastAccessed';
   order?: 'asc' | 'desc';
   parentId?: string;
   hierarchyType?: HierarchyType;
 }
 
-/**
- * List workspaces result
- */
+export interface EditWorkspaceParameters extends CommonParameters {
+  id: string;
+  name?: string;
+  description?: string;
+  rootFolder?: string;
+  relatedFolders?: string[];
+  relatedFiles?: string[];
+  preferences?: Record<string, any>;
+  status?: WorkspaceStatus;
+  parentId?: string;
+  keyFileInstructions?: string;
+}
+
+export interface DeleteWorkspaceParameters extends CommonParameters {
+  id: string;
+  deleteChildren?: boolean;
+  preserveSettings?: boolean;
+}
+
+export interface AddFilesToWorkspaceParameters extends CommonParameters {
+  workspaceId: string;
+  files?: string[];
+  folders?: string[];
+  addAsRelated?: boolean;
+  markAsKeyFiles?: boolean;
+}
+
+// Legacy result types
+export interface StateResult extends CommonResult {
+  data?: {
+    stateId: string;
+    name: string;
+    workspaceId: string;
+    sessionId: string;
+    timestamp: number;
+    capturedContext?: any;
+  };
+}
+
 export interface ListWorkspacesResult extends CommonResult {
   data: {
     workspaces: Array<{
@@ -65,227 +269,15 @@ export interface ListWorkspacesResult extends CommonResult {
   };
 }
 
-/**
- * Create workspace parameters
- */
-export interface CreateWorkspaceParameters extends WorkspaceParameters {
-  name: string;
-  description?: string;
-  rootFolder: string;
-  relatedFolders?: string[];
-  relatedFiles?: string[];
-  preferences?: Record<string, any>;
-  hierarchyType?: HierarchyType;
-  parentId?: string;
-  /**
-   * Instructions for how to designate key files within this workspace
-   * This will be displayed to AI to help it correctly mark or identify key files
-   */
-  keyFileInstructions?: string;
-}
-
-/**
- * Create workspace result
- */
-export interface CreateWorkspaceResult extends WorkspaceResult {
-  data: {
-    workspaceId: string;
-    workspace: ProjectWorkspace;
-  };
-}
-
-/**
- * Edit workspace parameters
- */
-export interface EditWorkspaceParameters extends WorkspaceParameters {
-  id: string;
-  name?: string;
-  description?: string;
-  rootFolder?: string;
-  relatedFolders?: string[];
-  relatedFiles?: string[];
-  preferences?: Record<string, any>;
-  status?: WorkspaceStatus;
-  parentId?: string;
-  /**
-   * Instructions for how to designate key files within this workspace
-   * This will be displayed to AI to help it correctly mark or identify key files
-   */
-  keyFileInstructions?: string;
-}
-
-/**
- * Delete workspace parameters
- */
-export interface DeleteWorkspaceParameters extends WorkspaceParameters {
-  id: string;
-  deleteChildren?: boolean;
-  preserveSettings?: boolean;
-}
-
-/**
- * Load workspace parameters
- */
-export interface LoadWorkspaceParameters extends WorkspaceParameters {
-  id: string;
-  contextDepth?: 'minimal' | 'standard' | 'comprehensive';
-  includeChildren?: boolean;
-  specificPhaseId?: string;
-  /**
-   * Whether to include directory structure in the result
-   */
-  includeDirectoryStructure?: boolean;
-  /**
-   * Maximum depth for directory tree traversal (0 = unlimited)
-   */
-  directoryTreeMaxDepth?: number;
-  /**
-   * Maximum number of recent files to return (default: 5)
-   */
-  recentFilesLimit?: number;
-}
-
-/**
- * Load workspace result
- */
-export interface LoadWorkspaceResult extends CommonResult {
-  data: {
-    workspace?: {
-      id: string;
-      name: string;
-      description?: string;
-      rootFolder: string;
-      summary: string;
-      hierarchyType: HierarchyType;
-      path: string[];
-      keyFileInstructions?: string;
-      children?: Array<{
-        id: string;
-        name: string;
-        hierarchyType: HierarchyType;
-      }>;
-    };
-    context: {
-      recentFiles: string[];
-      keyFiles: string[];
-      relatedConcepts: string[];
-      /**
-       * Files associated with the workspace that are OUTSIDE the workspace root folder
-       */
-      associatedNotes: string[];
-      /**
-       * Sessions associated with this workspace
-       */
-      sessions: Array<{
-        id: string;
-        name: string;
-        isActive: boolean;
-        startTime: number;
-        endTime?: number;
-      }>;
-      /**
-       * Saved states associated with this workspace
-       */
-      states: Array<{
-        id: string;
-        name: string;
-        timestamp: number;
-      }>;
-      /**
-       * Hierarchical directory structure of the workspace
-       * Provides a complete tree view of folders and files
-       */
-      directoryStructure?: {
-        /**
-         * Root folder directory tree
-         */
-        rootTree?: DirectoryTreeNode;
-        /**
-         * Directory trees for related folders
-         */
-        relatedTrees?: DirectoryTreeNode[];
-        /**
-         * Statistics about the directory structure
-         */
-        stats?: {
-          totalFiles: number;
-          totalFolders: number;
-          keyFiles: number;
-          relatedFiles: number;
-          maxDepth: number;
-        };
-        /**
-         * Text representation of the directory tree for easy reading
-         */
-        textView?: string;
-      };
-    };
-  };
-}
-
-/**
- * Add files to workspace parameters
- * Simplified interface for adding individual files or folders to a workspace
- */
-export interface AddFilesToWorkspaceParameters extends WorkspaceParameters {
-  /**
-   * ID of the workspace to modify
-   */
-  workspaceId: string;
-  
-  /**
-   * Individual file paths to add
-   */
-  files?: string[];
-  
-  /**
-   * Folder paths to add (all files in these folders will be included)
-   */
-  folders?: string[];
-  
-  /**
-   * Whether to add files to relatedFiles (true) or try to move them to rootFolder (false)
-   * Default: true (safer option - doesn't move files)
-   */
-  addAsRelated?: boolean;
-  
-  /**
-   * Whether to mark added files as key files
-   */
-  markAsKeyFiles?: boolean;
-}
-
-/**
- * Add files to workspace result
- */
 export interface AddFilesToWorkspaceResult extends CommonResult {
   data: {
-    /**
-     * Number of files successfully added
-     */
     filesAdded: number;
-    
-    /**
-     * Number of folders successfully added
-     */
     foldersAdded: number;
-    
-    /**
-     * Files that were added
-     */
     addedFiles: string[];
-    
-    /**
-     * Files that failed to add (with reasons)
-     */
     failedFiles: Array<{
       path: string;
       reason: string;
     }>;
-    
-    /**
-     * Updated workspace summary
-     */
     workspace: {
       id: string;
       name: string;
@@ -295,43 +287,7 @@ export interface AddFilesToWorkspaceResult extends CommonResult {
   };
 }
 
-/**
- * Quick workspace creation parameters
- * Simplified interface for creating workspaces with automatic file discovery
- */
-export interface QuickCreateWorkspaceParameters extends WorkspaceParameters {
-  /**
-   * Workspace name
-   */
-  name: string;
-  
-  /**
-   * Optional description
-   */
-  description?: string;
-  
-  /**
-   * Root folder path
-   */
-  rootFolder: string;
-  
-  /**
-   * Whether to automatically discover and add all files in root folder
-   */
-  autoDiscoverFiles?: boolean;
-  
-  /**
-   * Whether to automatically detect key files
-   */
-  autoDetectKeyFiles?: boolean;
-  
-  /**
-   * Additional files to include (outside of root folder)
-   */
-  additionalFiles?: string[];
-  
-  /**
-   * Additional folders to include
-   */
-  additionalFolders?: string[];
-}
+// Legacy exports for backward compatibility
+export interface WorkspaceParameters extends LoadWorkspaceParameters {}
+export interface WorkspaceResult extends LoadWorkspaceResult {}
+export interface QuickCreateWorkspaceParameters extends CreateWorkspaceParameters {}

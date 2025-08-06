@@ -99,11 +99,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     ));
     
     this.registerMode(new SearchMemoryMode(
-      plugin || ({ app } as any),
-      this.memoryService || undefined,
-      this.workspaceService || undefined,
-      this.embeddingService || undefined,
-      this.memoryTraceService || undefined
+      plugin || ({ app } as any)
     ));
     
     // Always register BatchMode (supports both semantic and non-semantic users)

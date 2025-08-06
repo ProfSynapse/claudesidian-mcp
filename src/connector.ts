@@ -1,43 +1,35 @@
 import { App, Plugin } from 'obsidian';
 import ClaudesidianPlugin from './main';
-import { MCPServer } from './server';
 import { EventManager } from './services/EventManager';
-import { AgentManager } from './services/AgentManager';
 import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
 import type { ServiceContainer } from './core/ServiceContainer';
-import {
-    ContentManagerAgent,
-    CommandManagerAgent,
-    VaultManagerAgent,
-    VaultLibrarianAgent,
-    MemoryManagerAgent,
-    AgentManagerAgent
-} from './agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from './database/services/CustomPromptStorageService';
-import { LLMProviderManager } from './services/LLMProviderManager';
-import { DEFAULT_LLM_PROVIDER_SETTINGS } from './types';
-import { LLMValidationService } from './services/LLMValidationService';
-import { EmbeddingProviderManager } from './database/services/embedding/EmbeddingProviderManager';
 import { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
 
-/**
- * Interface for agent-mode tool call parameters
- */
-export interface AgentModeParams {
-    agent: string;
-    mode: string;
-    params: Record<string, any>;
-}
+// Extracted services
+import { MCPConnectionManager, MCPConnectionManagerInterface } from './services/mcp/MCPConnectionManager';
+import { ToolCallRouter, ToolCallRouterInterface } from './services/mcp/ToolCallRouter';
+import { AgentRegistrationService, AgentRegistrationServiceInterface } from './services/agent/AgentRegistrationService';
+
+// Type definitions
+import { AgentModeParams } from './types/agent/AgentTypes';
+import { VaultLibrarianAgent } from './agents';
+import { MemoryManagerAgent } from './agents';
+
 
 /**
  * MCP Connector
- * Connects the plugin to the MCP server and initializes all agents
+ * Orchestrates MCP server operations through extracted services:
+ * - MCPConnectionManager: Handles server lifecycle
+ * - ToolCallRouter: Routes tool calls to agents/modes  
+ * - AgentRegistrationService: Manages agent initialization and registration
  */
 export class MCPConnector {
-    private server: MCPServer;
-    private agentManager: AgentManager;
+    private connectionManager: MCPConnectionManagerInterface;
+    private toolRouter: ToolCallRouterInterface;
+    private agentRegistry: AgentRegistrationServiceInterface;
     private eventManager: EventManager;
     private sessionContextManager: SessionContextManager;
     private customPromptStorage?: CustomPromptStorageService;
@@ -49,12 +41,11 @@ export class MCPConnector {
         private app: App,
         private plugin: Plugin | ClaudesidianPlugin
     ) {
-        // Initialize core components only - defer service connections
+        // Initialize core components
         this.eventManager = new EventManager();
         this.sessionContextManager = new SessionContextManager();
-        this.agentManager = new AgentManager(app, plugin, this.eventManager);
         
-        // Get service container reference but don't connect yet
+        // Get service container reference
         if (this.plugin && (this.plugin as any).getServiceContainer) {
             this.serviceContainer = (this.plugin as any).getServiceContainer();
         }
@@ -65,19 +56,26 @@ export class MCPConnector {
             this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
         }
         
-        // Create server skeleton - full initialization deferred
-        this.server = new MCPServer(
-            app, 
-            plugin, 
-            this.eventManager, 
-            this.sessionContextManager, 
-            undefined, 
+        // Initialize extracted services
+        this.connectionManager = new MCPConnectionManager(
+            this.app,
+            this.plugin,
+            this.eventManager,
+            this.sessionContextManager,
             this.customPromptStorage,
             (toolName: string, params: any) => this.onToolCall(toolName, params),
             (toolName: string, params: any, response: any, success: boolean, executionTime: number) => this.onToolResponse(toolName, params, response, success, executionTime)
         );
         
-        // Full initialization deferred to start() method
+        this.toolRouter = new ToolCallRouter();
+        
+        this.agentRegistry = new AgentRegistrationService(
+            this.app,
+            this.plugin,
+            this.eventManager,
+            this.serviceContainer,
+            this.customPromptStorage
+        );
     }
     
     /**
@@ -200,216 +198,33 @@ export class MCPConnector {
     }
     
     /**
-     * Validate embedding provider configuration
-     * Uses EmbeddingProviderManager to properly handle providers that don't require API keys (like Ollama)
-     */
-    private async validateEmbeddingApiKeys(): Promise<boolean> {
-        try {
-            const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
-            if (!memorySettings?.embeddingsEnabled) {
-                return false;
-            }
-
-            // Use EmbeddingProviderManager to validate settings (handles Ollama and other providers correctly)
-            const embeddingManager = new EmbeddingProviderManager();
-            const isValid = embeddingManager['validateProviderSettings'](memorySettings);
-            
-            return isValid;
-        } catch (error) {
-            console.error('Error validating embedding provider configuration:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Validate API keys for LLM providers used in agent modes
-     */
-    private async validateLLMApiKeys(): Promise<boolean> {
-        try {
-            const pluginSettings = (this.plugin as any)?.settings?.settings;
-            const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
-            
-            const defaultProvider = llmProviderSettings.defaultModel?.provider;
-            if (!defaultProvider) {
-                return false;
-            }
-
-            const providerConfig = llmProviderSettings.providers?.[defaultProvider];
-            if (!providerConfig?.apiKey) {
-                return false;
-            }
-
-            // Validate the API key
-            const validation = await LLMValidationService.validateApiKey(defaultProvider, providerConfig.apiKey);
-            return validation.success;
-        } catch (error) {
-            console.error('Error validating LLM API keys:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Initialize all agents - public method to be called from main plugin
+     * Initialize all agents - delegates to AgentRegistrationService
      */
     public async initializeAgents(): Promise<void> {
         try {
-            // Get memory settings to determine what to enable
-            const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
-            const isMemoryEnabled = memorySettings?.enabled && memorySettings?.embeddingsEnabled;
+            // Initialize connection manager first
+            await this.connectionManager.initialize();
             
-            // Validate API keys following the memory pattern
-            const hasValidEmbeddingKeys = await this.validateEmbeddingApiKeys();
-            const hasValidLLMKeys = await this.validateLLMApiKeys();
+            // Set up tool router with server reference
+            const server = this.connectionManager.getServer();
+            if (server) {
+                this.toolRouter.setServer(server);
+            }
             
-            // Enable vector modes only if memory is enabled AND valid embedding API keys exist
-            const enableVectorModes = isMemoryEnabled && hasValidEmbeddingKeys;
+            // Initialize all agents through the registration service
+            await this.agentRegistry.initializeAllAgents();
             
-            // Enable LLM-dependent modes only if valid LLM API keys exist
-            const enableLLMModes = hasValidLLMKeys;
-            
-            
-            // Always register these agents (no vector database dependency)
-            const contentManagerAgent = new ContentManagerAgent(
-                this.app, 
-                this.plugin as ClaudesidianPlugin
-            );
-            
-            // CommandManager with lazy memory service - NON-BLOCKING
-            const memoryService = this.serviceContainer ? 
-                this.serviceContainer.getIfReady('memoryService') : null;
-            const commandManagerAgent = new CommandManagerAgent(
-                this.app, 
-                memoryService as any
-            );
-            
-            
-            const vaultManagerAgent = new VaultManagerAgent(
-                this.app
-            );
-            
-            // Always register AgentManager (prompt management)
-            const agentManagerAgent = this.customPromptStorage ? new AgentManagerAgent((this.plugin as any).settings) : null;
-            
-            // Initialize LLM Provider Manager if AgentManager exists
-            if (agentManagerAgent) {
-                try {
-                    // Get LLM provider settings from plugin settings or use defaults
-                    const pluginSettings = (this.plugin as any)?.settings?.settings;
-                    const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
-                    
-                    // Debug logging to see what settings we're getting
-                    
-                    // Create LLM Provider Manager
-                    const llmProviderManager = new LLMProviderManager(llmProviderSettings);
-                    
-                    // Set up the provider manager on the agent
-                    agentManagerAgent.setProviderManager(llmProviderManager);
-                    
-                    // Set the vault adapter for file reading
-                    llmProviderManager.setVaultAdapter(this.app.vault.adapter);
-                    
-                    agentManagerAgent.setParentAgentManager(this.agentManager);
-                    
-                    // Create and inject LLM usage tracker (non-blocking)
-                    import('./services/UsageTracker').then(({ UsageTracker }) => {
-                        const llmUsageTracker = new UsageTracker('llm', pluginSettings);
-                        agentManagerAgent.setUsageTracker(llmUsageTracker);
-                    }).catch(error => {
-                        console.error('Failed to load UsageTracker:', error);
-                    });
-                    
-                } catch (error) {
-                    console.error('Failed to initialize LLM Provider Manager:', error);
+            // Register agents with server through the registration service
+            this.agentRegistry.registerAgentsWithServer((agent: any) => {
+                if (server) {
+                    server.registerAgent(agent);
                 }
-            }
-            
-            // Always register VaultLibrarian (has non-vector modes like search)
-            let vaultLibrarianAgent: VaultLibrarianAgent | null = null;
-            try {
-                vaultLibrarianAgent = new VaultLibrarianAgent(
-                    this.app,
-                    enableVectorModes  // Pass vector modes enabled status (memory + valid API keys)
-                );
-                
-                // If vector modes are enabled, set up lazy initialization of search service
-                if (enableVectorModes && this.serviceContainer) {
-                    // Wait for service manager to complete initialization, then initialize search service
-                    setTimeout(async () => {
-                        try {
-                            // Check if vector store is ready (don't trigger initialization here)
-                            const vectorStore = this.serviceContainer?.getIfReady('vectorStore');
-                            if (vectorStore && vaultLibrarianAgent) {
-                                // Initialize search service in background to avoid blocking
-                                vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
-                                    console.error('Error initializing VaultLibrarian search service:', error)
-                                );
-                                
-                                // Update VaultLibrarian with memory settings
-                                if (memorySettings) {
-                                    vaultLibrarianAgent.updateSettings(memorySettings);
-                                }
-                            } else {
-                                console.log('[MCPConnector] Vector store not ready, deferring VaultLibrarian initialization');
-                            }
-                        } catch (error) {
-                            console.error('Error setting up VaultLibrarian search service:', error);
-                        }
-                    }, 15000); // Wait 15 seconds for service manager to complete
-                }
-                
-            } catch (error) {
-                console.error("Error creating VaultLibrarianAgent:", error);
-                console.warn("Will continue without VaultLibrarian agent");
-                vaultLibrarianAgent = null;
-            }
-            
-            // Initialize memory manager (always available for basic workspace management)
-            let memoryManagerAgent;
-            try {
-                memoryManagerAgent = new MemoryManagerAgent(
-                    this.app,
-                    this.plugin
-                );
-            } catch (error) {
-                console.error("Error creating MemoryManagerAgent:", error);
-                console.warn("Will continue without memory manager");
-            }
-            
-            // Register core agents
-            this.agentManager.registerAgent(contentManagerAgent);
-            this.agentManager.registerAgent(commandManagerAgent);
-            this.agentManager.registerAgent(vaultManagerAgent);
-            if (agentManagerAgent) {
-                this.agentManager.registerAgent(agentManagerAgent);
-            }
-            
-            // Register VaultLibrarian if created successfully
-            if (vaultLibrarianAgent) {
-                this.agentManager.registerAgent(vaultLibrarianAgent);
-            }
-            
-            // Register memory manager if created successfully
-            if (memoryManagerAgent) {
-                this.agentManager.registerAgent(memoryManagerAgent);
-            }
-            
-            // Log conditional mode availability status
-            if (!enableVectorModes && !enableLLMModes) {
-                console.log("No valid API keys found - modes requiring API keys will be disabled");
-            } else {
-                if (!enableVectorModes) {
-                    console.log("Vector modes disabled - no valid embedding API keys or memory disabled");
-                }
-                if (!enableLLMModes) {
-                    console.log("LLM modes disabled - no valid LLM API keys configured");
-                }
-            }
-            
-            // Register all agents from the agent manager with the server
-            this.registerAgentsWithServer();
+            });
             
             // Reinitialize request router with registered agents
-            this.server.reinitializeRequestRouter();
+            this.connectionManager.reinitializeRequestRouter();
+            
+            logger.systemLog('Agent initialization completed successfully');
         } catch (error) {
             if (error instanceof McpError) {
                 throw error;
@@ -424,50 +239,12 @@ export class MCPConnector {
     }
     
     /**
-     * Register all agents from the agent manager with the server
-     */
-    private registerAgentsWithServer(): void {
-        try {
-            const agents = this.agentManager.getAgents();
-            
-            for (const agent of agents) {
-                this.server.registerAgent(agent);
-            }
-        } catch (error) {
-            if (error instanceof McpError) {
-                throw error;
-            }
-            logger.systemError(error as Error, 'Agent Registration');
-            throw new McpError(
-                ErrorCode.InternalError,
-                'Failed to register agents with server',
-                error
-            );
-        }
-    }
-    
-    /**
      * Call a tool using the new agent-mode architecture with integrated tool call capture
-     *
-     * @param params The agent, mode, and parameters for the tool call
-     * @returns Promise that resolves with the result of the tool call
-     *
-     * @example
-     * // Call the contentManager agent in replaceContent mode
-     * connector.callTool({
-     *   agent: "contentManager",
-     *   mode: "replaceContent",
-     *   params: {
-     *     filePath: "file/root",
-     *     search: "old text",
-     *     replace: "new text"
-     *   }
-     * });
+     * Now delegates to ToolCallRouter service for validation and execution
      */
     async callTool(params: AgentModeParams): Promise<any> {
         const captureStartTime = Date.now();
         let toolCallId: string | undefined;
-        let captureContext: any = null;
         
         try {
             const { agent, mode, params: modeParams } = params;
@@ -478,11 +255,10 @@ export class MCPConnector {
             // Generate unique tool call ID for capture
             toolCallId = this.generateToolCallId();
             
-            
             // CAPTURE REQUEST (Non-blocking)
             if (this.toolCallCaptureService) {
                 try {
-                    captureContext = await this.toolCallCaptureService.captureRequest({
+                    await this.toolCallCaptureService.captureRequest({
                         toolCallId,
                         agent,
                         mode,
@@ -492,56 +268,13 @@ export class MCPConnector {
                         workspaceContext: this.extractWorkspaceContext(modeParams)
                     });
                 } catch (captureError) {
-                    // Don't fail the tool call if capture fails
                     console.warn('[MCPConnector] Tool call request capture failed:', captureError);
                 }
-            } else {
-                console.warn('[MCPConnector] 🚨 CAPTURE DEBUG: ToolCallCaptureService NOT FOUND - no capture will happen');
             }
             
-            // Validate batch operations if they exist
-            if (modeParams && modeParams.operations && Array.isArray(modeParams.operations)) {
-                // Validate each operation in the batch
-                modeParams.operations.forEach((operation: any, index: number) => {
-                    if (!operation || typeof operation !== 'object') {
-                        throw new McpError(
-                            ErrorCode.InvalidParams,
-                            `Invalid operation at index ${index} in batch operations: operation must be an object`
-                        );
-                    }
-                    
-                    if (!operation.type) {
-                        throw new McpError(
-                            ErrorCode.InvalidParams,
-                            `Invalid operation at index ${index} in batch operations: missing 'type' property`
-                        );
-                    }
-                    
-                    // Check for either filePath in params or path at the operation level
-                    if ((!operation.params || !operation.params.filePath) && !operation.path) {
-                        throw new McpError(
-                            ErrorCode.InvalidParams,
-                            `Invalid operation at index ${index} in batch operations: missing 'filePath' property in params`
-                        );
-                    }
-                });
-            }
-            
-            // Validate batch read paths if they exist
-            if (modeParams && modeParams.paths && Array.isArray(modeParams.paths)) {
-                // Validate each path in the batch
-                modeParams.paths.forEach((path: any, index: number) => {
-                    if (typeof path !== 'string') {
-                        throw new McpError(
-                            ErrorCode.InvalidParams,
-                            `Invalid path at index ${index} in batch paths: path must be a string`
-                        );
-                    }
-                });
-            }
-            
-            // Execute the mode using the server's executeAgentMode method
-            const result = await this.server.executeAgentMode(agent, mode, modeParams);
+            // Delegate validation and execution to ToolCallRouter
+            this.toolRouter.validateBatchOperations(modeParams);
+            const result = await this.toolRouter.executeAgentMode(agent, mode, modeParams);
             
             // CAPTURE SUCCESSFUL RESPONSE (Non-blocking)
             if (this.toolCallCaptureService && toolCallId) {
@@ -556,7 +289,6 @@ export class MCPConnector {
                         affectedResources: this.extractAffectedResources(result, modeParams)
                     });
                 } catch (captureError) {
-                    // Don't fail the tool call if capture fails
                     console.warn('[MCPConnector] Tool call response capture failed:', captureError);
                 }
             }
@@ -564,7 +296,7 @@ export class MCPConnector {
             return result;
             
         } catch (error) {
-            // CAPTURE ERROR RESPONSE (Non-blocking)
+            // CAPTURE ERROR RESPONSE (Non-blocking) 
             if (this.toolCallCaptureService && toolCallId) {
                 try {
                     await this.toolCallCaptureService.captureResponse(toolCallId, {
@@ -580,7 +312,6 @@ export class MCPConnector {
                         timestamp: Date.now()
                     });
                 } catch (captureError) {
-                    // Don't fail the tool call if capture fails
                     console.warn('[MCPConnector] Tool call error capture failed:', captureError);
                 }
             }
@@ -588,7 +319,6 @@ export class MCPConnector {
             if (error instanceof McpError) {
                 throw error;
             }
-            // Remove operational logging to avoid console noise
             throw new McpError(
                 ErrorCode.InvalidParams,
                 (error as Error).message || 'Failed to call tool',
@@ -755,11 +485,11 @@ export class MCPConnector {
     }
     
     /**
-     * Start the MCP server
+     * Start the MCP server - delegates to MCPConnectionManager
      */
     async start(): Promise<void> {
         try {
-            await this.server.start();
+            await this.connectionManager.start();
         } catch (error) {
             if (error instanceof McpError) {
                 throw error;
@@ -774,11 +504,11 @@ export class MCPConnector {
     }
     
     /**
-     * Stop the MCP server
+     * Stop the MCP server - delegates to MCPConnectionManager
      */
     async stop(): Promise<void> {
         try {
-            await this.server.stop();
+            await this.connectionManager.stop();
         } catch (error) {
             if (error instanceof McpError) {
                 throw error;
@@ -793,17 +523,31 @@ export class MCPConnector {
     }
     
     /**
-     * Get the MCP server instance
+     * Get the MCP server instance - delegates to MCPConnectionManager
      */
-    getServer(): MCPServer {
-        return this.server;
+    getServer(): any {
+        return this.connectionManager.getServer();
     }
     
     /**
-     * Get the agent manager instance
+     * Get the connection manager instance
      */
-    getAgentManager(): AgentManager {
-        return this.agentManager;
+    getConnectionManager(): MCPConnectionManagerInterface {
+        return this.connectionManager;
+    }
+    
+    /**
+     * Get the tool router instance
+     */
+    getToolRouter(): ToolCallRouterInterface {
+        return this.toolRouter;
+    }
+    
+    /**
+     * Get the agent registry instance
+     */
+    getAgentRegistry(): AgentRegistrationServiceInterface {
+        return this.agentRegistry;
     }
     
     /**
@@ -813,27 +557,18 @@ export class MCPConnector {
         return this.eventManager;
     }
     
-    
     /**
-     * Get the vault librarian instance
+     * Get the vault librarian instance - delegates to AgentRegistrationService
      */
     getVaultLibrarian(): VaultLibrarianAgent | null {
-        try {
-            return this.agentManager.getAgent('vaultLibrarian') as VaultLibrarianAgent;
-        } catch (error) {
-            return null;
-        }
+        return this.agentRegistry.getAgent('vaultLibrarian') as VaultLibrarianAgent | null;
     }
     
     /**
-     * Get the memory manager instance
+     * Get the memory manager instance - delegates to AgentRegistrationService
      */
     getMemoryManager(): MemoryManagerAgent | null {
-        try {
-            return this.agentManager.getAgent('memoryManager') as MemoryManagerAgent;
-        } catch (error) {
-            return null;
-        }
+        return this.agentRegistry.getAgent('memoryManager') as MemoryManagerAgent | null;
     }
     
     

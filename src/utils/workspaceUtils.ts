@@ -23,7 +23,7 @@ export function fileIsInWorkspace(filePath: string, workspace: ProjectWorkspace)
   }
   
   // Check related folders
-  for (const folder of workspace.relatedFolders) {
+  for (const folder of (workspace.relatedFolders || [])) {
     const normalizedFolder = normalizePath(folder);
     if (normalizedFilePath.startsWith(normalizedFolder + '/') || 
         normalizedFilePath === normalizedFolder) {
@@ -104,13 +104,16 @@ export async function getBestWorkspaceForFile(
   // Sort workspaces by hierarchy type - prioritize "task" level, then "phase", then "workspace"
   // This ensures we assign the file to the most specific context possible
   workspaces.sort((a, b) => {
-    const hierarchyOrder = {
+    const hierarchyOrder: Record<string, number> = {
       task: 0,
       phase: 1,
       workspace: 2
     };
     
-    return hierarchyOrder[a.hierarchyType] - hierarchyOrder[b.hierarchyType];
+    const aOrder = hierarchyOrder[a.hierarchyType || 'workspace'] || 2;
+    const bOrder = hierarchyOrder[b.hierarchyType || 'workspace'] || 2;
+    
+    return aOrder - bOrder;
   });
   
   // If hierarchy types are the same, prioritize by folder path length (longer paths are more specific)

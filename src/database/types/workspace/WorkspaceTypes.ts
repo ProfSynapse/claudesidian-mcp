@@ -1,6 +1,6 @@
 /**
  * Core Workspace Types
- * Extracted from workspace-types.ts for better organization
+ * Simple, clean workspace types focused on LLM usability
  */
 
 /**
@@ -20,108 +20,97 @@ export type WorkspaceStatus = 'active' | 'paused' | 'completed';
 export type ItemStatus = 'not_started' | 'in_progress' | 'completed';
 
 /**
- * Project workspace interface
- * Defines a workspace, phase, or task within the workspace hierarchy
+ * Simple workspace context for LLM understanding
  */
-export interface ProjectWorkspace {
+export interface WorkspaceContext {
   /**
-   * Unique workspace identifier
+   * What is this workspace for?
+   * Example: "Apply for marketing manager positions"
    */
+  purpose: string;
+  
+  /**
+   * What are you trying to accomplish right now?
+   * Example: "Submit 10 applications this week"
+   */
+  currentGoal: string;
+  
+  /**
+   * What's the current state of progress?
+   * Example: "5 sent, 2 pending responses (Google, Meta), need 5 more"
+   */
+  status: string;
+  
+  /**
+   * Workflows for different situations
+   */
+  workflows: Array<{
+    name: string;           // "New Application", "Follow-up", "Interview Prep"
+    when: string;           // "When applying to new position"
+    steps: string[];        // ["Research company", "Customize cover letter", "Apply", "Track"]
+  }>;
+  
+  /**
+   * Key files organized by category
+   */
+  keyFiles: Array<{
+    category: string;       // "Templates", "Tracking", "Portfolio"
+    files: Record<string, string>; // {"resume": "path/to/file"}
+  }>;
+  
+  /**
+   * User preferences as actionable guidelines
+   */
+  preferences: string[];    // ["Use professional tone", "Focus on tech companies"]
+  
+  /**
+   * Agents to associate with this workspace
+   */
+  agents: Array<{
+    name: string;           // "CoverLetterAgent"
+    when: string;           // "When customizing cover letters"
+    purpose: string;        // "Adapts cover letters to specific job requirements"
+  }>;
+  
+  /**
+   * Next actions to take
+   */
+  nextActions: string[];    // ["Follow up on Google", "Apply to Stripe"]
+}
+
+/**
+ * Simple workspace interface - our agreed-upon clean schema
+ */
+export interface Workspace {
   id: string;
-  
-  /**
-   * User-friendly name
-   */
   name: string;
-  
-  /**
-   * Optional description
-   */
-  description?: string;
-  
-  /**
-   * Creation timestamp
-   */
-  created: number;
-  
-  /**
-   * Last access timestamp
-   */
-  lastAccessed: number;
-  
-  /**
-   * Hierarchy information
-   */
-  hierarchyType: HierarchyType;
-  
-  /**
-   * Parent workspace/phase ID if applicable
-   */
-  parentId?: string;
-  
-  /**
-   * IDs of child workspaces/phases/tasks
-   */
-  childWorkspaces: string[];
-  
-  /**
-   * Path from root workspace to this node
-   */
-  path: string[];
-  
-  /**
-   * Context boundaries
-   */
+  context?: WorkspaceContext;  // Optional for backward compatibility
   rootFolder: string;
-  
-  /**
-   * Additional related folders
-   */
-  relatedFolders: string[];
-  
-  /**
-   * Additional individual files to include in workspace context
-   * These files are included regardless of their folder location
-   */
+  created: number;
+  lastAccessed: number;
+}
+
+/**
+ * Legacy ProjectWorkspace interface for backward compatibility
+ * Extends the simple Workspace with optional legacy fields
+ */
+export interface ProjectWorkspace extends Workspace {
+  // Legacy fields for backward compatibility
+  description?: string;
+  hierarchyType?: HierarchyType;
+  parentId?: string;
+  childWorkspaces?: string[];
+  path?: string[];
+  relatedFolders?: string[];
   relatedFiles?: string[];
-  
-  /**
-   * Associated notes that are automatically tracked when accessed during workspace sessions
-   * These are files OUTSIDE the workspace folder that have been read/accessed while this workspace was active
-   * Persisted permanently with the workspace (unlike session-derived associated notes)
-   */
   associatedNotes?: string[];
-  
-  /**
-   * Instructions for key file designation within workspace
-   * Explains how to mark files as key files in frontmatter or by filename
-   */
   keyFileInstructions?: string;
-  
-  /**
-   * Memory tuning parameters
-   */
-  relevanceSettings: {
-    /**
-     * Importance of folder proximity (0-1)
-     */
+  relevanceSettings?: {
     folderProximityWeight: number;
-    
-    /**
-     * Importance of recency (0-1)
-     */
     recencyWeight: number;
-    
-    /**
-     * Importance of access frequency (0-1)
-     */
     frequencyWeight: number;
   };
-  
-  /**
-   * Lightweight activity tracking
-   */
-  activityHistory: Array<{
+  activityHistory?: Array<{
     timestamp: number;
     action: 'view' | 'edit' | 'create' | 'tool';
     toolName?: string;
@@ -129,20 +118,8 @@ export interface ProjectWorkspace {
     hierarchyPath?: string[];
     context?: string;
   }>;
-  
-  /**
-   * User-defined workspace preferences
-   */
   preferences?: Record<string, any>;
-  
-  /**
-   * Project management info
-   */
   projectPlan?: string;
-  
-  /**
-   * Project milestones/checkpoints
-   */
   checkpoints?: Array<{
     id: string;
     date: number;
@@ -150,18 +127,10 @@ export interface ProjectWorkspace {
     completed: boolean;
     hierarchyPath?: string[];
   }>;
-  
-  /**
-   * Task/phase progress tracking
-   */
-  completionStatus: Record<string, {
+  completionStatus?: Record<string, {
     status: ItemStatus;
     completedDate?: number;
     completionNotes?: string;
   }>;
-  
-  /**
-   * Overall workspace status
-   */
-  status: WorkspaceStatus;
+  status?: WorkspaceStatus;
 }

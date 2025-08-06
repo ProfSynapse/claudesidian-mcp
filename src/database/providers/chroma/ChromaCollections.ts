@@ -306,8 +306,8 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
       return [];
     }
     
-    // Use ChromaDB's get method to retrieve all items without query embeddings
-    const results = await this.vectorStore.getItems(this.collectionName, [], ['embeddings', 'metadatas', 'documents']);
+    // Use ChromaDB's getAllItems method to retrieve all items without query embeddings
+    const results = await this.vectorStore.getAllItems(this.collectionName);
     
     if (!results.ids?.length) {
       return [];

@@ -1,6 +1,8 @@
 /**
  * HybridSearchService - Combines semantic, keyword, and fuzzy search with intelligent ranking
- * Implements multi-stage hybrid pipeline with RRF fusion and adaptive scoring
+ * Location: src/database/services/search/HybridSearchService.ts
+ * Purpose: Orchestrates hybrid search using extracted services for caching, metrics, fusion, and coordination
+ * Used by: Search agents and MCP handlers for comprehensive search capabilities
  */
 
 import { TFile } from 'obsidian';
@@ -12,115 +14,37 @@ import { EmbeddingService } from '../EmbeddingService';
 import { SearchServiceValidator, SearchDependencyError, SearchType } from '../../../services/search/SearchServiceValidator';
 import { CollectionLifecycleManager } from '../CollectionLifecycleManager';
 
-// Supporting interfaces for caching and performance
+// Extracted services
+import {
+  SearchMetrics,
+  SearchMetricsInterface,
+  HybridSearchCache,
+  HybridSearchCacheInterface,
+  ResultFusion,
+  ResultFusionInterface,
+  QueryCoordinator,
+  QueryCoordinatorInterface,
+  SearchProvider
+} from '../../../services/search';
+
+// Types
+import {
+  SearchResult,
+  SearchResultSet,
+  HybridSearchResult,
+  SearchOptions,
+  MethodScores
+} from '../../../types/search';
+
+// Legacy interfaces for backward compatibility
 interface CachedResult {
   results: HybridSearchResult[];
   timestamp: number;
   query: string;
 }
 
-interface PerformanceMetrics {
-  hybridSearches: OperationMetric[];
-  semanticSearches: OperationMetric[];
-  cacheHits: number;
-  cacheMisses: number;
-  errors: ErrorMetric[];
-}
-
-interface OperationMetric {
-  timestamp: number;
-  duration: number;
-  resultCount: number;
-  methods?: string[];
-}
-
-interface ErrorMetric {
-  timestamp: number;
-  type: string;
-  message: string;
-}
-
-// Performance metrics class
-class PerformanceMetricsImpl {
-  private metrics = {
-    hybridSearches: [] as OperationMetric[],
-    semanticSearches: [] as OperationMetric[],
-    cacheHits: 0,
-    cacheMisses: 0,
-    errors: [] as ErrorMetric[]
-  };
-
-  recordHybridSearch(duration: number, resultCount: number, methods: string[]): void {
-    this.metrics.hybridSearches.push({
-      timestamp: Date.now(),
-      duration,
-      resultCount,
-      methods
-    });
-    if (this.metrics.hybridSearches.length > 100) {
-      this.metrics.hybridSearches.shift();
-    }
-  }
-
-  recordSemanticSearch(duration: number, resultCount: number): void {
-    this.metrics.semanticSearches.push({
-      timestamp: Date.now(),
-      duration,
-      resultCount
-    });
-    if (this.metrics.semanticSearches.length > 100) {
-      this.metrics.semanticSearches.shift();
-    }
-  }
-
-  recordCacheHit(): void { 
-    this.metrics.cacheHits++; 
-  }
-  
-  recordCacheMiss(): void { 
-    this.metrics.cacheMisses++; 
-  }
-  
-  recordSemanticSearchError(error: Error): void {
-    this.metrics.errors.push({
-      timestamp: Date.now(),
-      type: 'semantic_search',
-      message: error.message
-    });
-  }
-}
-
-export interface HybridSearchResult {
-  id: string;
-  title: string;
-  snippet: string;
-  score: number;
-  searchMethod: 'hybrid';
-  originalMethods: string[];
-  metadata: {
-    filePath: string;
-    fileId: string;
-    timestamp: number;
-    hybridScore: number;
-    methodScores: MethodScores;
-    contentTypeBoost: number;
-    exactMatchBoost: number;
-    finalRank: number;
-    // Enhanced quality metadata
-    qualityTier?: 'high' | 'medium' | 'low' | 'minimal';
-    confidenceLevel?: number;
-    matchType?: string;
-    qualityDescription?: string;
-    scoreMethod?: string;
-  };
-  content?: string;
-}
-
-export interface MethodScores {
-  semantic?: number;
-  keyword?: number;
-  fuzzy?: number;
-}
+// Exported interfaces - now using types from extracted services
+export type { HybridSearchResult, MethodScores } from '../../../types/search';
 
 export interface HybridSearchOptions {
   limit?: number;
@@ -150,16 +74,30 @@ export class HybridSearchService {
   private searchValidator?: SearchServiceValidator;
   private collectionLifecycleManager?: CollectionLifecycleManager;
   
-  // Performance and caching components
-  private resultCache: Map<string, CachedResult>;
-  private performanceMetrics: PerformanceMetricsImpl;
+  // Extracted service dependencies
+  private searchMetrics: SearchMetricsInterface;
+  private searchCache: HybridSearchCacheInterface;
+  private resultFusion: ResultFusionInterface;
+  private queryCoordinator: QueryCoordinatorInterface;
+  
+  // Search providers for coordination
+  private semanticProvider?: SearchProvider;
+  private keywordProvider: SearchProvider;
+  private fuzzyProvider: SearchProvider;
 
   constructor(
     vectorStore?: IVectorStore,
     embeddingService?: EmbeddingService,
-    collectionLifecycleManager?: CollectionLifecycleManager
+    collectionLifecycleManager?: CollectionLifecycleManager,
+    // Optional extracted services - will create defaults if not provided
+    extractedServices?: {
+      searchMetrics?: SearchMetricsInterface;
+      searchCache?: HybridSearchCacheInterface;
+      resultFusion?: ResultFusionInterface;
+      queryCoordinator?: QueryCoordinatorInterface;
+    }
   ) {
-    // Direct dependency injection
+    // Direct dependency injection  
     this.vectorStore = vectorStore;
     this.embeddingService = embeddingService;
     this.collectionLifecycleManager = collectionLifecycleManager;
@@ -176,9 +114,24 @@ export class HybridSearchService {
     this.keywordSearchService = new KeywordSearchService();
     this.fuzzySearchService = new FuzzySearchService();
     
-    // Initialize new components
-    this.resultCache = new Map();
-    this.performanceMetrics = new PerformanceMetricsImpl();
+    // Initialize extracted services (with defaults if not provided)
+    this.searchMetrics = extractedServices?.searchMetrics || new SearchMetrics();
+    this.searchCache = extractedServices?.searchCache || new HybridSearchCache();
+    this.resultFusion = extractedServices?.resultFusion || new ResultFusion();
+    
+    // Create search providers
+    this.semanticProvider = this.createSemanticProvider();
+    this.keywordProvider = this.createKeywordProvider();
+    this.fuzzyProvider = this.createFuzzyProvider();
+    
+    // Initialize query coordinator with providers
+    this.queryCoordinator = extractedServices?.queryCoordinator || new QueryCoordinator(
+      this.semanticProvider,
+      this.keywordProvider,
+      this.fuzzyProvider,
+      this.resultFusion,
+      this.queryAnalyzer
+    );
   }
 
   /**
@@ -344,7 +297,7 @@ export class HybridSearchService {
     });
     
     const fusionStart = Date.now();
-    const fusedResults = this.fuseResults(searchResults, methods, analysis);
+    const fusedResults = await this.fuseResults(searchResults, methods, analysis);
     const fusionTime = Date.now() - fusionStart;
     
     // Validate fusion results
@@ -576,8 +529,8 @@ export class HybridSearchService {
     const results = this.fuzzySearchService.search(
       query,
       analysis.fuzzyTerms,
-      limit, // No over-fetching
-      effectiveThreshold, // Pass 0 for score-based ranking
+      10, // No over-fetching
+      0.6, // Pass 0 for score-based ranking
       filteredFiles
     );
     
@@ -589,96 +542,6 @@ export class HybridSearchService {
     return results;
   }
 
-  /**
-   * Fuse results from different search methods using Reciprocal Rank Fusion
-   */
-  private fuseResults(
-    searchResults: any[][],
-    methods: string[],
-    analysis: QueryAnalysis
-  ): Array<HybridSearchResult & { originalResults: any[] }> {
-    // Combine all results and flatten
-    const allResults: any[] = [];
-    const resultMap = new Map<string, any[]>();
-
-    searchResults.forEach((results, methodIndex) => {
-      const method = methods[methodIndex];
-      
-      results.forEach((result, rank) => {
-        // Store original results for later reference
-        if (!resultMap.has(result.id)) {
-          resultMap.set(result.id, []);
-        }
-        resultMap.get(result.id)!.push({ ...result, method, rank });
-        
-        // Add to flattened list with method info
-        allResults.push({
-          id: result.id,
-          score: result.score,
-          method,
-          rank,
-          originalResult: result
-        });
-      });
-    });
-
-    // Simple RRF implementation since the library function signature is different
-    const k = 60; // RRF constant
-    const scoreMap = new Map<string, number>();
-    const detailMap = new Map<string, any>();
-
-    searchResults.forEach((results, methodIndex) => {
-      const method = methods[methodIndex];
-      const weight = this.getMethodWeight(method, analysis);
-      
-      results.forEach((result, rank) => {
-        const rrfScore = weight / (k + rank + 1);
-        const currentScore = scoreMap.get(result.id) || 0;
-        scoreMap.set(result.id, currentScore + rrfScore);
-        
-        if (!detailMap.has(result.id)) {
-          detailMap.set(result.id, result);
-        }
-      });
-    });
-
-    // Sort by RRF score and convert to hybrid results
-    const sortedResults = Array.from(scoreMap.entries())
-      .sort(([, a], [, b]) => b - a)
-      .map(([id, score]) => {
-        const primaryResult = detailMap.get(id);
-        const originalResults = resultMap.get(id) || [];
-        
-        // Calculate method scores
-        const methodScores: MethodScores = {};
-        originalResults.forEach(result => {
-          methodScores[result.method as keyof MethodScores] = result.score;
-        });
-
-        return {
-          id,
-          title: primaryResult.title,
-          snippet: primaryResult.snippet,
-          score,
-          searchMethod: 'hybrid' as const,
-          originalMethods: originalResults.map(r => r.method),
-          metadata: {
-            filePath: primaryResult.metadata?.filePath || primaryResult.filePath,
-            fileId: id,
-            timestamp: Date.now(),
-            hybridScore: score,
-            methodScores,
-            contentTypeBoost: 1.0,
-            exactMatchBoost: 1.0,
-            finalRank: 0
-          },
-          content: primaryResult.content,
-          originalResults
-        };
-      });
-
-    return sortedResults;
-  }
 
   /**
    * Create analysis from LLM-provided query type
@@ -725,42 +588,6 @@ export class HybridSearchService {
     }
   }
 
-  /**
-   * Apply hybrid ranking with content type and exact match boosts
-   */
-  private applyHybridRanking(
-    results: Array<HybridSearchResult & { originalResults: any[] }>,
-    analysis: QueryAnalysis,
-    originalQuery: string
-  ): HybridSearchResult[] {
-    const contentTypeBoosts = this.queryAnalyzer.getContentTypeBoosts(analysis);
-    
-    return results.map(result => {
-      let finalScore = result.score;
-      
-      // Apply content type boost
-      const contentTypeBoost = this.getContentTypeBoost(result, contentTypeBoosts);
-      finalScore *= contentTypeBoost;
-      
-      // Apply exact match boost
-      const exactMatchBoost = this.getExactMatchBoost(result, analysis, originalQuery);
-      finalScore *= exactMatchBoost;
-      
-      // Apply technical term boost
-      const technicalBoost = this.getTechnicalTermBoost(result, analysis);
-      finalScore *= technicalBoost;
-      
-      return {
-        ...result,
-        score: finalScore,
-        metadata: {
-          ...result.metadata,
-          contentTypeBoost,
-          exactMatchBoost: exactMatchBoost * technicalBoost
-        }
-      };
-    }).sort((a, b) => b.score - a.score);
-  }
 
   /**
    * Calculate content type boost based on where content appears
@@ -947,6 +774,52 @@ export class HybridSearchService {
         }
       };
     });
+  }
+
+  /**
+   * Formats keyword search results for search provider
+   */
+  private formatKeywordResults(results: KeywordSearchResult[], query: string): SearchResult[] {
+    return results.map(result => ({
+      id: result.id,
+      title: result.title,
+      snippet: result.snippet,
+      score: result.score,
+      searchMethod: 'keyword' as const,
+      metadata: {
+        ...result.metadata,
+        filePath: result.metadata?.filePath || '',
+        fileId: result.id,
+        timestamp: Date.now(),
+        type: 'content',
+        searchMethod: 'keyword'
+      },
+      content: result.content,
+      filePath: result.metadata?.filePath || ''
+    }));
+  }
+
+  /**
+   * Formats fuzzy search results for search provider
+   */
+  private formatFuzzyResults(results: FuzzySearchResult[], query: string): SearchResult[] {
+    return results.map(result => ({
+      id: result.id,
+      title: result.title,
+      snippet: result.snippet,
+      score: result.score,
+      searchMethod: 'fuzzy' as const,
+      metadata: {
+        ...result.metadata,
+        filePath: result.metadata?.filePath || '',
+        fileId: result.id,
+        timestamp: Date.now(),
+        type: 'content',
+        searchMethod: 'fuzzy'
+      },
+      content: result.content,
+      filePath: result.metadata?.filePath || ''
+    }));
   }
 
   /**
@@ -1158,4 +1031,146 @@ export class HybridSearchService {
       } : undefined
     };
   }
+
+  /**
+   * Create semantic search provider
+   */
+  private createSemanticProvider(): SearchProvider | undefined {
+    if (!this.isSemanticSearchAvailable()) {
+      return undefined;
+    }
+
+    return {
+      search: async (query: string, options?: any) => {
+        const results = await this.executeSemanticSearch(
+          query,
+          options?.analysis || this.queryAnalyzer.analyzeQuery(query),
+          options?.limit || 50,
+          options?.filteredFiles
+        );
+        return this.formatSemanticResults(results, query, options?.analysis || this.queryAnalyzer.analyzeQuery(query));
+      },
+      isAvailable: () => this.isSemanticSearchAvailable(),
+      getType: () => 'semantic'
+    };
+  }
+
+  /**
+   * Create keyword search provider
+   */
+  private createKeywordProvider(): SearchProvider {
+    return {
+      search: async (query: string, options?: any) => {
+        const results = await this.executeKeywordSearch(
+          query,
+          options?.analysis || this.queryAnalyzer.analyzeQuery(query),
+          options?.limit || 50,
+          options?.threshold || 0.3,
+          options?.filteredFiles
+        );
+        return this.formatKeywordResults(results, query);
+      },
+      isAvailable: () => true, // Always available
+      getType: () => 'keyword'
+    };
+  }
+
+  /**
+   * Create fuzzy search provider
+   */
+  private createFuzzyProvider(): SearchProvider {
+    return {
+      search: async (query: string, options?: any) => {
+        const results = await this.executeFuzzySearch(
+          query,
+          options?.analysis || this.queryAnalyzer.analyzeQuery(query),
+          options?.limit || 50,
+          options?.threshold || 0.6,
+          options?.filteredFiles
+        );
+        return this.formatFuzzyResults(results, query);
+      },
+      isAvailable: () => true, // Always available
+      getType: () => 'fuzzy'
+    };
+  }
+
+  /**
+   * Fuse search results using the result fusion service
+   */
+  private async fuseResults(searchResults: any[][], methods: string[], analysis: any): Promise<any[]> {
+    // Convert search results to result sets for fusion
+    const resultSets = searchResults.map((results, index) => ({
+      results: results || [],
+      weight: this.getMethodWeight(methods[index], analysis),
+      type: methods[index],
+      method: methods[index],
+      executionTime: 0
+    }));
+
+    try {
+      // Use the result fusion service to combine results
+      const fusedResults = await this.resultFusion.applyRRF(resultSets);
+      return fusedResults || [];
+    } catch (error) {
+      console.error('[HybridSearchService] Result fusion failed:', error);
+      // Fallback: flatten and deduplicate
+      const allResults = searchResults.flat();
+      const seen = new Set();
+      return allResults.filter(result => {
+        if (seen.has(result.id)) return false;
+        seen.add(result.id);
+        return true;
+      });
+    }
+  }
+
+  /**
+   * Apply hybrid ranking to fused results
+   */
+  private applyHybridRanking(fusedResults: any[], analysis: any, originalQuery: string): any[] {
+    // Apply content type and exact match boosts
+    const boostedResults = fusedResults.map(result => {
+      const contentTypeBoosts = {
+        mainContent: 1.0,
+        headers: 1.2,
+        codeBlocks: 0.9,
+        tags: 0.6,
+        metadata: 0.4
+      };
+
+      let boostedScore = result.score;
+      
+      // Apply content type boost
+      boostedScore *= this.getContentTypeBoost(result, contentTypeBoosts);
+      
+      // Apply exact match boost
+      boostedScore *= this.getExactMatchBoost(result, analysis, originalQuery);
+      
+      // Apply technical term boost
+      boostedScore *= this.getTechnicalTermBoost(result, analysis);
+
+      return {
+        ...result,
+        score: boostedScore
+      };
+    });
+
+    // Sort by boosted score
+    return boostedResults.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Performance metrics property
+   */
+  private performanceMetrics = {
+    recordSemanticSearch: (duration: number, resultCount: number) => {
+      // Record semantic search performance
+      console.debug(`[HybridSearchService] Semantic search: ${duration}ms, ${resultCount} results`);
+    },
+    recordSemanticSearchError: (error: Error) => {
+      // Record semantic search error
+      console.error('[HybridSearchService] Semantic search error:', error);
+    }
+  };
 }

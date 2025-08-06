@@ -1,5 +1,6 @@
 import { Plugin } from 'obsidian';
 import { WorkspaceStateSnapshot } from '../../workspace-types';
+import { WorkspaceContext } from '../../types/workspace/WorkspaceTypes';
 import { SnapshotCollection } from '../../collections/SnapshotCollection';
 
 export interface ContextSnapshotData {
@@ -225,12 +226,34 @@ export class SnapshotService {
     }
     
     // Create snapshot
+    const now = Date.now();
     const snapshot = await this.createSnapshot({
       workspaceId,
       sessionId,
-      timestamp: Date.now(),
+      timestamp: now,
       name,
       description,
+      created: now,
+      snapshot: {
+        workspaceContext: {
+          purpose: 'Manual state save',
+          currentGoal: 'Save current workspace state',
+          status: 'Saving state',
+          workflows: [],
+          keyFiles: [{
+            category: 'Manual Save',
+            files: {}
+          }],
+          preferences: [],
+          agents: [],
+          nextActions: []
+        } as WorkspaceContext,
+        conversationContext: description || 'Manual state save',
+        activeTask: 'State save operation',
+        activeFiles: context?.contextFiles || [],
+        nextSteps: [],
+        reasoning: description || 'Manual state save'
+      },
       state: {
         workspace,
         recentTraces,
@@ -283,15 +306,15 @@ export class SnapshotService {
       // Return the state data
       return {
         stateId: snapshot.id,
-        name: snapshot.name,
+        name: snapshot.name || '',
         workspaceId: snapshot.workspaceId,
-        sessionId: snapshot.sessionId,
+        sessionId: snapshot.sessionId || '',
         sessionName,
-        timestamp: snapshot.timestamp,
-        recentTraces: snapshot.state.recentTraces,
-        contextFiles: snapshot.state.contextFiles,
-        workspace: snapshot.state.workspace,
-        metadata: snapshot.state.metadata
+        timestamp: snapshot.timestamp || 0,
+        recentTraces: snapshot.state?.recentTraces || [],
+        contextFiles: snapshot.state?.contextFiles || [],
+        workspace: snapshot.state?.workspace || {},
+        metadata: snapshot.state?.metadata || {}
       };
     } catch (error) {
       console.error(`Failed to restore state snapshot ${stateId}:`, error);
