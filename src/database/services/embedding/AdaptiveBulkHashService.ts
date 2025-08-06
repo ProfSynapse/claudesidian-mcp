@@ -156,13 +156,36 @@ export class AdaptiveBulkHashService {
    */
   private async processBatch(filePaths: string[], vectorStore: any): Promise<BulkHashResult[]> {
     const results: BulkHashResult[] = [];
+    const batchStartTime = performance.now();
+    const batchStartMemory = this.getMemoryUsageMB();
     
     try {
       // Step 1: Collect file content and generate hashes in parallel
+      const hashStartTime = performance.now();
       const fileData = await this.collectBatchFileData(filePaths);
+      const hashEndTime = performance.now();
+      const hashEndMemory = this.getMemoryUsageMB();
+      
+      console.log(`[AdaptiveBulkHashService] Batch hash generation:`, {
+        files: filePaths.length,
+        timeMs: Math.round(hashEndTime - hashStartTime),
+        memoryDeltaMB: Math.round((hashEndMemory - batchStartMemory) * 100) / 100,
+        memoryPressure: this.getMemoryPressureLevel()
+      });
       
       // Step 2: Get bulk database metadata for all files in batch
+      const dbStartTime = performance.now();
       const dbMetadata = await this.getBulkDatabaseMetadata(filePaths, vectorStore);
+      const dbEndTime = performance.now();
+      const dbEndMemory = this.getMemoryUsageMB();
+      
+      console.log(`[AdaptiveBulkHashService] Batch database query:`, {
+        files: filePaths.length,
+        found: dbMetadata.size,
+        timeMs: Math.round(dbEndTime - dbStartTime),
+        memoryDeltaMB: Math.round((dbEndMemory - hashEndMemory) * 100) / 100,
+        memoryPressure: this.getMemoryPressureLevel()
+      });
       
       // Step 3: Compare hashes in memory (the "spreadsheet" operation)
       for (const data of fileData) {
@@ -448,5 +471,27 @@ export class AdaptiveBulkHashService {
    */
   updateConfiguration(config: Parameters<FileStatsCollector['updateConfiguration']>[0]): void {
     this.fileStatsCollector.updateConfiguration(config);
+  }
+
+  /**
+   * Get memory pressure level for diagnostics
+   */
+  private getMemoryPressureLevel(): string {
+    if (typeof performance !== 'undefined' && 'memory' in performance) {
+      const memory = (performance as any).memory;
+      if (!memory) return 'unknown';
+      
+      const used = memory.usedJSHeapSize || 0;
+      const limit = memory.jsHeapSizeLimit || 0;
+      
+      if (limit === 0) return 'unknown';
+      
+      const percentage = (used / limit) * 100;
+      if (percentage > 90) return 'critical';
+      if (percentage > 75) return 'high';
+      if (percentage > 50) return 'moderate';
+      return 'low';
+    }
+    return 'unknown';
   }
 }

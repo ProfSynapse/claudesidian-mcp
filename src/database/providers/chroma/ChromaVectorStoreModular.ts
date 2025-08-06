@@ -337,7 +337,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
 
   /**
    * Get all items from a collection
-   * Used for building HNSW indexes from existing data
+   * Used for retrieving all collection data
    */
   async getAllItems(collectionName: string, options?: { limit?: number; offset?: number }): Promise<{
     ids: string[];

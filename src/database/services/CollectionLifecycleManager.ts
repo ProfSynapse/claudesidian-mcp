@@ -26,7 +26,7 @@ export class CollectionLifecycleManager {
 
     private static readonly COLLECTION_METADATA: Record<string, Record<string, any>> = {
         file_embeddings: {
-            'hnsw:space': 'cosine',
+            distance: 'cosine',
             description: 'Document embeddings for semantic search',
             fields: {
                 filePath: 'string',
@@ -39,7 +39,7 @@ export class CollectionLifecycleManager {
             createdBy: 'CollectionLifecycleManager'
         },
         memory_traces: {
-            'hnsw:space': 'cosine',
+            distance: 'cosine',
             description: 'Memory traces for tool calls and user interactions',
             fields: {
                 workspaceId: 'string',
@@ -52,7 +52,7 @@ export class CollectionLifecycleManager {
             createdBy: 'CollectionLifecycleManager'
         },
         sessions: {
-            'hnsw:space': 'cosine',
+            distance: 'cosine',
             description: 'Session state and conversation management',
             fields: {
                 sessionId: 'string',
@@ -64,7 +64,7 @@ export class CollectionLifecycleManager {
             createdBy: 'CollectionLifecycleManager'
         },
         snapshots: {
-            'hnsw:space': 'cosine',
+            distance: 'cosine',
             description: 'Workspace snapshots and state persistence',
             fields: {
                 snapshotId: 'string',
@@ -76,7 +76,7 @@ export class CollectionLifecycleManager {
             createdBy: 'CollectionLifecycleManager'
         },
         workspaces: {
-            'hnsw:space': 'cosine',
+            distance: 'cosine',
             description: 'Workspace metadata and configuration',
             fields: {
                 workspaceId: 'string',
@@ -363,7 +363,7 @@ export class CollectionLifecycleManager {
      */
     getCollectionMetadata(collectionName: string): Record<string, any> {
         return CollectionLifecycleManager.COLLECTION_METADATA[collectionName] || {
-            'hnsw:space': 'cosine',
+            distance: 'cosine',
             description: `Collection: ${collectionName}`,
             createdBy: 'CollectionLifecycleManager',
             createdAt: new Date().toISOString()

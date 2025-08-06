@@ -55,29 +55,63 @@ export class CollectionRepository {
    * Load collection data from persistence
    */
   loadCollectionData(data: CollectionData): void {
+    const startTime = performance.now();
+    const initialMemory = this.getMemoryUsage();
+    
     this.items.clear();
+    
+    let itemsLoaded = 0;
+    let totalEmbeddingSize = 0;
     
     // Load items from Map or array format
     if (data.items instanceof Map) {
       for (const [id, item] of data.items) {
         this.items.set(id, item);
+        itemsLoaded++;
+        if (item.embedding) {
+          totalEmbeddingSize += item.embedding.length * 8; // 8 bytes per float64
+        }
       }
     } else if (Array.isArray(data.items)) {
       // Handle array format for backward compatibility
       for (const item of data.items as DatabaseItem[]) {
         if (item && item.id) {
-          this.items.set(item.id, {
+          const processedItem = {
             id: item.id,
             embedding: item.embedding || [],
             metadata: item.metadata || {},
             document: item.document || ''
-          });
+          };
+          this.items.set(item.id, processedItem);
+          itemsLoaded++;
+          if (processedItem.embedding) {
+            totalEmbeddingSize += processedItem.embedding.length * 8;
+          }
         }
       }
     }
 
     if (data.metadata) {
       this.collectionMetadata = { ...data.metadata };
+    }
+
+    const endTime = performance.now();
+    const finalMemory = this.getMemoryUsage();
+    const loadTime = endTime - startTime;
+    const memoryDelta = finalMemory - initialMemory;
+
+    console.log(`[CollectionRepository:${this.collectionName}] Load complete:`, {
+      itemsLoaded,
+      loadTimeMs: Math.round(loadTime),
+      estimatedEmbeddingSizeMB: Math.round(totalEmbeddingSize / 1024 / 1024 * 100) / 100,
+      memoryDeltaMB: Math.round(memoryDelta / 1024 / 1024 * 100) / 100,
+      totalItems: this.items.size,
+      memoryPressure: this.getMemoryPressureLevel()
+    });
+
+    // Warn if memory usage is concerning
+    if (memoryDelta > 500 * 1024 * 1024) { // > 500MB
+      console.warn(`[CollectionRepository:${this.collectionName}] HIGH MEMORY USAGE: Collection loaded ${Math.round(memoryDelta / 1024 / 1024)}MB`);
     }
   }
 
@@ -273,6 +307,7 @@ export class CollectionRepository {
    * @returns Array of metadata objects for found files
    */
   getBulkFileMetadata(filePaths: string[]): Array<{ filePath: string; contentHash?: string; metadata: Record<string, any> }> {
+    const startTime = performance.now();
     const results: Array<{ filePath: string; contentHash?: string; metadata: Record<string, any> }> = [];
     
     try {
@@ -310,14 +345,95 @@ export class CollectionRepository {
           metadata: data.metadata
         });
       }
+
+      const queryTime = performance.now() - startTime;
+      console.log(`[CollectionRepository:${this.collectionName}] Bulk metadata query:`, {
+        requested: filePaths.length,
+        found: results.length,
+        queryTimeMs: Math.round(queryTime * 100) / 100,
+        totalItems: this.items.size,
+        memoryPressure: this.getMemoryPressureLevel()
+      });
       
-      console.log(`[CollectionRepository] Bulk metadata query: ${filePaths.length} requested, ${results.length} found`);
       return results;
       
     } catch (error) {
-      console.error(`[CollectionRepository] Error in bulk metadata query:`, error);
+      console.error(`[CollectionRepository:${this.collectionName}] Error in bulk metadata query:`, error);
       return [];
     }
+  }
+
+  /**
+   * Get current memory usage in bytes (browser API)
+   */
+  private getMemoryUsage(): number {
+    if (typeof performance !== 'undefined' && 'memory' in performance) {
+      return (performance as any).memory?.usedJSHeapSize || 0;
+    }
+    return 0;
+  }
+
+  /**
+   * Get memory pressure level for diagnostics
+   */
+  private getMemoryPressureLevel(): string {
+    if (typeof performance !== 'undefined' && 'memory' in performance) {
+      const memory = (performance as any).memory;
+      if (!memory) return 'unknown';
+      
+      const used = memory.usedJSHeapSize || 0;
+      const limit = memory.jsHeapSizeLimit || 0;
+      
+      if (limit === 0) return 'unknown';
+      
+      const percentage = (used / limit) * 100;
+      if (percentage > 90) return 'critical';
+      if (percentage > 75) return 'high';
+      if (percentage > 50) return 'moderate';
+      return 'low';
+    }
+    return 'unknown';
+  }
+
+  /**
+   * Get detailed memory and collection statistics for diagnostics
+   */
+  getDiagnosticInfo(): {
+    collectionName: string;
+    itemCount: number;
+    estimatedSizeMB: number;
+    memoryUsageMB: number;
+    memoryPressure: string;
+    largestEmbeddingDim: number;
+    averageEmbeddingDim: number;
+  } {
+    const items = this.getAllItems();
+    let totalEmbeddingSize = 0;
+    let largestEmbeddingDim = 0;
+    let totalEmbeddingDims = 0;
+    let embeddingCount = 0;
+
+    for (const item of items) {
+      if (item.embedding && item.embedding.length > 0) {
+        const embeddingSize = item.embedding.length * 8; // 8 bytes per float64
+        totalEmbeddingSize += embeddingSize;
+        largestEmbeddingDim = Math.max(largestEmbeddingDim, item.embedding.length);
+        totalEmbeddingDims += item.embedding.length;
+        embeddingCount++;
+      }
+    }
+
+    const memoryUsage = this.getMemoryUsage();
+
+    return {
+      collectionName: this.collectionName,
+      itemCount: items.length,
+      estimatedSizeMB: Math.round(totalEmbeddingSize / 1024 / 1024 * 100) / 100,
+      memoryUsageMB: Math.round(memoryUsage / 1024 / 1024 * 100) / 100,
+      memoryPressure: this.getMemoryPressureLevel(),
+      largestEmbeddingDim: largestEmbeddingDim,
+      averageEmbeddingDim: embeddingCount > 0 ? Math.round(totalEmbeddingDims / embeddingCount) : 0
+    };
   }
 
 }

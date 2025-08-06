@@ -58,8 +58,6 @@ export class StartupPerformanceMonitor {
       { component: 'service-manager-start', warningThreshold: 100, errorThreshold: 500 },
       { component: 'collections-loading', warningThreshold: 2000, errorThreshold: 10000 },
       { component: 'vector-store-init', warningThreshold: 1000, errorThreshold: 5000 },
-      { component: 'hnsw-basic-init', warningThreshold: 2000, errorThreshold: 8000 },
-      { component: 'hnsw-full-init', warningThreshold: 5000, errorThreshold: 15000 },
       { component: 'agent-registration', warningThreshold: 500, errorThreshold: 2000 },
       { component: 'connector-start', warningThreshold: 200, errorThreshold: 1000 }
     ];

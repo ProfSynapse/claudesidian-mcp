@@ -210,7 +210,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
         itemCount,
         lastModified: Date.now(),
         hasIndex,
-        indexType: hasIndex ? 'hnsw' : undefined
+        indexType: hasIndex ? 'vector' : undefined
       };
 
       this.collectionMetadata.set(collectionName, metadata);
@@ -224,7 +224,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
    */
   private async checkCollectionHasIndex(collectionName: string): Promise<boolean> {
     try {
-      // This would check for HNSW index existence
+      // This would check for vector index existence
       // Implementation depends on the index storage mechanism
       return false; // Default to false for now
     } catch (error) {

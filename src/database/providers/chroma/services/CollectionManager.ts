@@ -418,11 +418,11 @@ export class CollectionManager implements ICollectionManager {
 
 
   /**
-   * Clean up obsolete HNSW collections only
+   * Clean up obsolete collections
    * NOTE: snapshots, workspaces, sessions, memory_traces are ACTIVE collections used by memoryManager
    */
   async cleanupObsoleteCollections(): Promise<{ cleaned: string[], errors: string[] }> {
-    const obsoleteCollections = ['hnsw-indexes']; // Only HNSW is obsolete
+    const obsoleteCollections: string[] = []; // No obsolete collections currently
     const cleaned: string[] = [];
     const errors: string[] = [];
 

@@ -294,7 +294,7 @@ export class SimpleServiceManager {
                 const hasMemoryTraces = await vectorStore.hasCollection('memory_traces');
                 if (!hasMemoryTraces) {
                     await vectorStore.createCollection('memory_traces', {
-                        'hnsw:space': 'cosine',
+                        distance: 'cosine',
                         description: 'Memory traces for tool calls and user interactions',
                         createdBy: 'SimpleServiceManager',
                         createdAt: new Date().toISOString()

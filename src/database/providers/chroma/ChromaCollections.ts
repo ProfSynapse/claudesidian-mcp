@@ -40,10 +40,7 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
         await this.vectorStore.createCollection(this.collectionName, {
           description: `Collection for ${this.collectionName} data`,
           createdAt: new Date().toISOString(),
-          'hnsw:space': 'cosine',        // Use cosine distance for better text embedding performance
-          'hnsw:M': 32,                  // Higher M for better graph connectivity (default: 16)
-          'hnsw:ef_construction': 400,   // Higher ef_construction for better index quality (default: 200)
-          'hnsw:ef_search': 50          // Higher ef_search for better search quality (default: 10)
+          distance: 'cosine'            // Use cosine distance for better text embedding performance
         });
       }
     } catch (error) {

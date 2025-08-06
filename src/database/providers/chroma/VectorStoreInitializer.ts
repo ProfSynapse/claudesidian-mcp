@@ -61,6 +61,14 @@ export class VectorStoreInitializer {
    * Performs complete vector store initialization sequence
    */
   async initialize(context: InitializationContext): Promise<VectorStoreInitializationResult> {
+    const startTime = performance.now();
+    const initialMemory = this.getMemoryUsage();
+    
+    console.log(`[VectorStoreInitializer] Starting initialization:`, {
+      initialMemoryMB: Math.round(initialMemory / 1024 / 1024 * 100) / 100,
+      memoryPressure: this.getMemoryPressureLevel()
+    });
+
     try {
       // Step 1: Validate configuration
       await this.validateConfiguration(context);
@@ -69,7 +77,16 @@ export class VectorStoreInitializer {
       const client = await this.initializeClient(context);
 
       // Step 3: Load existing collections with coordination
+      const loadStartTime = performance.now();
       await this.loadCollectionsWithCoordination(context);
+      const loadEndTime = performance.now();
+      const loadMemoryAfter = this.getMemoryUsage();
+
+      console.log(`[VectorStoreInitializer] Collections loaded:`, {
+        loadTimeMs: Math.round(loadEndTime - loadStartTime),
+        memoryDeltaMB: Math.round((loadMemoryAfter - initialMemory) / 1024 / 1024 * 100) / 100,
+        memoryPressure: this.getMemoryPressureLevel()
+      });
 
       // Step 4: Ensure standard collections exist
       await this.ensureStandardCollections(context);
@@ -77,8 +94,24 @@ export class VectorStoreInitializer {
       // Step 5: Initialize lifecycle management
       const lifecycleManager = await this.initializeLifecycleManager(context);
 
-      // Step 6: Initialize health monitoring (skip for now - will be initialized later)
-      // const healthMonitor = await this.initializeHealthMonitoring(context, vectorStore, lifecycleManager);
+      // Step 6: Log collection size diagnostics
+      await this.logCollectionDiagnostics(context);
+
+      const endTime = performance.now();
+      const finalMemory = this.getMemoryUsage();
+
+      console.log(`[VectorStoreInitializer] Initialization complete:`, {
+        totalTimeMs: Math.round(endTime - startTime),
+        totalMemoryDeltaMB: Math.round((finalMemory - initialMemory) / 1024 / 1024 * 100) / 100,
+        finalMemoryMB: Math.round(finalMemory / 1024 / 1024 * 100) / 100,
+        finalMemoryPressure: this.getMemoryPressureLevel()
+      });
+
+      // Warn about high memory usage
+      const memoryDelta = finalMemory - initialMemory;
+      if (memoryDelta > 200 * 1024 * 1024) { // > 200MB
+        console.warn(`[VectorStoreInitializer] HIGH MEMORY USAGE: Vector store initialization used ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+      }
 
       return {
         client,
@@ -87,6 +120,15 @@ export class VectorStoreInitializer {
       };
 
     } catch (error) {
+      const errorTime = performance.now();
+      const errorMemory = this.getMemoryUsage();
+      
+      console.error(`[VectorStoreInitializer] Initialization failed:`, {
+        errorTimeMs: Math.round(errorTime - startTime),
+        memoryDeltaMB: Math.round((errorMemory - initialMemory) / 1024 / 1024 * 100) / 100,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
       throw new Error(`ChromaDB initialization failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -173,7 +215,7 @@ export class VectorStoreInitializer {
           } else {
             // Collection doesn't exist - create it
             await context.collectionManager.createCollection(collectionName, {
-              'hnsw:space': 'cosine',
+              distance: 'cosine',
               description: `Standard collection: ${collectionName}`,
               createdBy: 'VectorStoreInitializer',
               createdAt: new Date().toISOString()
@@ -302,5 +344,79 @@ export class VectorStoreInitializer {
       console.error("[VectorStoreInitializer] Error during shutdown:", error);
       throw error;
     }
+  }
+
+  /**
+   * Log detailed collection size diagnostics for memory troubleshooting
+   */
+  private async logCollectionDiagnostics(context: InitializationContext): Promise<void> {
+    try {
+      console.log(`[VectorStoreInitializer] Collection diagnostics:`);
+      
+      for (const collectionName of VectorStoreInitializer.STANDARD_COLLECTIONS) {
+        try {
+          // Check if collection exists before trying to get diagnostics
+          const collectionExists = await context.collectionManager.hasCollection(collectionName);
+          if (!collectionExists) {
+            console.log(`[VectorStoreInitializer:${collectionName}] Collection not found - may be created later`);
+            continue;
+          }
+
+          const collection = await context.collectionManager.getOrCreateCollection(collectionName);
+          if (collection) {
+            // Try to get count - this is a standard ChromaDB method
+            try {
+              const itemCount = await collection.count();
+              console.log(`[VectorStoreInitializer:${collectionName}] Items: ${itemCount}`);
+              
+              // Warn about large collections (estimate >10,000 items as potentially large)
+              if (itemCount > 10000) {
+                console.warn(`[VectorStoreInitializer:${collectionName}] LARGE COLLECTION: ${itemCount} items`);
+              }
+            } catch (countError) {
+              console.log(`[VectorStoreInitializer:${collectionName}] Collection exists but count unavailable:`, countError);
+            }
+          } else {
+            console.log(`[VectorStoreInitializer:${collectionName}] Collection could not be created or accessed`);
+          }
+        } catch (error) {
+          console.warn(`[VectorStoreInitializer:${collectionName}] Failed to get diagnostics:`, error);
+        }
+      }
+    } catch (error) {
+      console.warn(`[VectorStoreInitializer] Collection diagnostics failed:`, error);
+    }
+  }
+
+  /**
+   * Get current memory usage in bytes (browser API)
+   */
+  private getMemoryUsage(): number {
+    if (typeof performance !== 'undefined' && 'memory' in performance) {
+      return (performance as any).memory?.usedJSHeapSize || 0;
+    }
+    return 0;
+  }
+
+  /**
+   * Get memory pressure level for diagnostics
+   */
+  private getMemoryPressureLevel(): string {
+    if (typeof performance !== 'undefined' && 'memory' in performance) {
+      const memory = (performance as any).memory;
+      if (!memory) return 'unknown';
+      
+      const used = memory.usedJSHeapSize || 0;
+      const limit = memory.jsHeapSizeLimit || 0;
+      
+      if (limit === 0) return 'unknown';
+      
+      const percentage = (used / limit) * 100;
+      if (percentage > 90) return 'critical';
+      if (percentage > 75) return 'high';
+      if (percentage > 50) return 'moderate';
+      return 'low';
+    }
+    return 'unknown';
   }
 }

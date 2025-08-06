@@ -514,10 +514,10 @@ export class PluginLifecycleManager {
         
         plugin.addCommand({
             id: 'cleanup-obsolete-collections',
-            name: 'Clean up obsolete HNSW collections',
+            name: 'Clean up obsolete collections',
             callback: async () => {
                 try {
-                    const notice = new Notice('Cleaning up obsolete HNSW collections...', 0);
+                    const notice = new Notice('Cleaning up obsolete collections...', 0);
                     
                     const vectorStore = await this.getService<IVectorStore>('vectorStore', 15000);
                     if (!vectorStore) {

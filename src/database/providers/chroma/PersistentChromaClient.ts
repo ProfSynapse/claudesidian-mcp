@@ -156,7 +156,7 @@ class FilesystemCollection implements Collection {
     const wrappedData = {
       items: items,
       metadata: {
-        'hnsw:space': 'cosine',
+        distance: 'cosine',
         createdAt: new Date().toISOString(),
         collectionName: this.name,
         itemCount: items.length,

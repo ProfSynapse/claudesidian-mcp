@@ -282,7 +282,7 @@ export class InitializationCoordinator implements IInitializationCoordinator {
       if (errors.length > 0) {
       }
       
-      // Validation: Confirm exactly 4 services expected (no phantom HNSW service)
+      // Validation: Confirm exactly 4 services expected
       if (componentsInitialized.length === 4 && errors.length === 0) {
       } else if (componentsInitialized.length + errors.length === 4) {
       } else {

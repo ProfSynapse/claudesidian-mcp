@@ -254,7 +254,7 @@ export class CollectionValidator {
    * Check if a directory should be skipped during collection discovery
    */
   shouldSkipSystemDirectory(name: string): boolean {
-    const systemDirectories = ['hnsw-indexes', '.git', 'node_modules', '.tmp'];
+    const systemDirectories = ['.git', 'node_modules', '.tmp'];
     return systemDirectories.includes(name);
   }
 

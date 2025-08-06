@@ -15,7 +15,7 @@ export class InitializationStateManager implements IInitializationStateManager {
   private readonly states = new Map<string, InitializationState>();
   private readonly mutexes = new Map<string, Promise<any>>();
   private readonly results = new Map<string, InitializationResult<any>>();
-  private readonly defaultTimeout = 120000; // 120 seconds - increased for HNSW initialization
+  private readonly defaultTimeout = 120000; // 120 seconds
 
   /**
    * Ensures a component is initialized exactly once using mutex pattern

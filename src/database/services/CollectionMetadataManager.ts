@@ -303,7 +303,7 @@ export class CollectionMetadataManager {
    * Check if a directory should be skipped during collection discovery
    */
   private shouldSkipSystemDirectory(name: string): boolean {
-    const systemDirectories = ['hnsw-indexes', '.git', 'node_modules', '.tmp'];
+    const systemDirectories = ['.git', 'node_modules', '.tmp'];
     return systemDirectories.includes(name);
   }
 
@@ -328,7 +328,7 @@ export class CollectionMetadataManager {
    */
   createCollectionMetadata(collectionName: string, additionalMetadata?: Record<string, any>): Record<string, any> {
     return {
-      'hnsw:space': 'cosine',
+      distance: 'cosine',
       collectionName,
       version: '1.0.0',
       createdAt: new Date().toISOString(),
@@ -341,7 +341,7 @@ export class CollectionMetadataManager {
    */
   createRecoveryMetadata(collectionName: string, recoveryReason: string): Record<string, any> {
     return {
-      'hnsw:space': 'cosine',
+      distance: 'cosine',
       collectionName,
       version: '1.0.0',
       createdAt: new Date().toISOString(),
