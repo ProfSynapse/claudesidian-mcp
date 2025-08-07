@@ -3,7 +3,7 @@ import { MCPServer } from '../../server';
 import { EventManager } from '../EventManager';
 import { SessionContextManager } from '../SessionContextManager';
 import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types';
 import { logger } from '../../utils/logger';
 
 /**

@@ -1,4 +1,4 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types';
 import { IPromptsListService } from '../interfaces/IRequestHandlerServices';
 import { logger } from '../../utils/logger';
 import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';

@@ -1,4 +1,4 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types';
 import { IToolHelpService } from '../interfaces/IRequestHandlerServices';
 import { IAgent } from '../../agents/interfaces/IAgent';
 import { logger } from '../../utils/logger';

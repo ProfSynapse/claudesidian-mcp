@@ -5,8 +5,8 @@
 
 import { Server as NetServer, createServer } from 'net';
 import { promises as fs } from 'fs';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
+import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index';
 import { ServerConfiguration } from '../services/ServerConfiguration';
 import { StdioTransportManager } from './StdioTransportManager';
 import { logger } from '../../utils/logger';

@@ -1,6 +1,7 @@
 import { App, TAbstractFile, TFile } from 'obsidian';
 import { IFileMonitor } from '../interfaces/IFileEventServices';
 import { ContentCache } from '../../../database/utils/ContentCache';
+import { ContextualEmbeddingManager } from '../../../database/services/contextual/ContextualEmbeddingManager';
 
 export class FileMonitor implements IFileMonitor {
     private isSystemOp = false;
@@ -10,6 +11,7 @@ export class FileMonitor implements IFileMonitor {
     private fileModificationTimes: Map<string, number> = new Map();
     private lastEmbeddingUpdateTimes: Map<string, number> = new Map();
     private contentCache: ContentCache;
+    private contextualEmbeddingManager?: ContextualEmbeddingManager;
 
     constructor(private app: App) {
         this.contentCache = new ContentCache();
@@ -24,6 +26,121 @@ export class FileMonitor implements IFileMonitor {
     stopMonitoring(): void {
         // Cleanup if needed
         this.vaultIsReady = false;
+    }
+
+    /**
+     * Set the contextual embedding manager for file tracking integration
+     * @param manager ContextualEmbeddingManager instance
+     */
+    setContextualEmbeddingManager(manager: ContextualEmbeddingManager): void {
+        this.contextualEmbeddingManager = manager;
+        console.log('[FileMonitor] Contextual embedding manager connected for file event tracking');
+    }
+
+    /**
+     * Handle file open events - track in recent files
+     * @param file File that was opened
+     */
+    onFileOpen(file: TFile): void {
+        if (!this.shouldProcessFile(file)) {
+            return;
+        }
+
+        // Update recent files tracking
+        if (this.contextualEmbeddingManager) {
+            this.contextualEmbeddingManager.updateRecentFiles(file.path, 'normal');
+        }
+
+        console.log(`[FileMonitor] File opened: ${file.path} (tracked in recent files)`);
+    }
+
+    /**
+     * Handle file create events - track with high priority
+     * @param file File that was created
+     */
+    onFileCreate(file: TFile): void {
+        if (!this.shouldProcessFile(file)) {
+            return;
+        }
+
+        // Update recent files tracking with high priority
+        if (this.contextualEmbeddingManager) {
+            this.contextualEmbeddingManager.updateRecentFiles(file.path, 'high');
+        }
+
+        console.log(`[FileMonitor] File created: ${file.path} (tracked with high priority)`);
+    }
+
+    /**
+     * Handle file modify events - track with high priority
+     * @param file File that was modified
+     */
+    onFileModify(file: TFile): void {
+        if (!this.shouldProcessFile(file)) {
+            return;
+        }
+
+        // Update recent files tracking with high priority
+        if (this.contextualEmbeddingManager) {
+            this.contextualEmbeddingManager.updateRecentFiles(file.path, 'high');
+        }
+
+        console.log(`[FileMonitor] File modified: ${file.path} (tracked with high priority)`);
+    }
+
+    /**
+     * Handle file delete events - remove from tracking
+     * @param file File that was deleted
+     */
+    onFileDelete(file: TFile): void {
+        if (!this.shouldProcessFile(file)) {
+            return;
+        }
+
+        // Remove from tracking and caches
+        this.fileModificationTimes.delete(file.path);
+        this.lastEmbeddingUpdateTimes.delete(file.path);
+        this.contentCache.delete(file.path);
+
+        console.log(`[FileMonitor] File deleted: ${file.path} (removed from tracking)`);
+    }
+
+    /**
+     * Handle file rename events - update tracking
+     * @param file File that was renamed
+     * @param oldPath Previous file path
+     */
+    onFileRename(file: TFile, oldPath: string): void {
+        if (!this.shouldProcessFile(file)) {
+            return;
+        }
+
+        // Transfer tracking data from old path to new path
+        const oldModTime = this.fileModificationTimes.get(oldPath);
+        const oldEmbeddingTime = this.lastEmbeddingUpdateTimes.get(oldPath);
+        const oldContent = this.contentCache.get(oldPath);
+
+        if (oldModTime) {
+            this.fileModificationTimes.set(file.path, oldModTime);
+            this.fileModificationTimes.delete(oldPath);
+        }
+
+        if (oldEmbeddingTime) {
+            this.lastEmbeddingUpdateTimes.set(file.path, oldEmbeddingTime);
+            this.lastEmbeddingUpdateTimes.delete(oldPath);
+        }
+
+        if (oldContent !== undefined) {
+            this.contentCache.set(file.path, oldContent);
+            this.contentCache.delete(oldPath);
+        }
+
+        // Update recent files tracking
+        if (this.contextualEmbeddingManager) {
+            this.contextualEmbeddingManager.updateRecentFiles(file.path, 'normal');
+        }
+
+        console.log(`[FileMonitor] File renamed: ${oldPath} → ${file.path} (tracking updated)`);
     }
 
     shouldProcessFile(file: TAbstractFile): boolean {

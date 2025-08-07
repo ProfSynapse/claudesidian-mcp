@@ -70,6 +70,31 @@ export interface MemorySettings {
     'text-embedding-3-small': number;
     'text-embedding-3-large': number;
   };
+
+  // Context-aware embedding loading settings
+  contextualEmbedding?: {
+    // Memory management
+    maxMemoryMB: number; // Maximum memory for loaded embeddings (default: 100MB)
+    memoryPressureThreshold: number; // Memory pressure threshold (default: 0.85)
+    
+    // Recent files cache
+    recentFilesLimit: number; // Maximum recent files to track (default: 75)
+    recentFilesPriority: 'recent' | 'frequent' | 'mixed'; // Priority strategy (default: 'mixed')
+    
+    // Workspace loading
+    maxWorkspaceFiles: number; // Maximum files per workspace (default: 500)
+    preloadConnectedNotes: boolean; // Preload linked notes (default: true)
+    
+    // Search behavior
+    defaultSearchScope: 'recent' | 'workspace' | 'folders'; // Default search scope (default: 'recent')
+    allowContextExpansion: boolean; // Allow expanding search context (default: true)
+    maxExpansionFiles: number; // Maximum files for context expansion (default: 50)
+    
+    // Performance settings
+    loadingStrategy: 'startup' | 'demand' | 'hybrid'; // When to load embeddings (default: 'hybrid')
+    backgroundPreloading: boolean; // Preload likely-needed files (default: true)
+    evictionStrategy: 'lru' | 'priority' | 'mixed'; // How to evict when memory full (default: 'mixed')
+  };
 }
 
 /**
@@ -152,6 +177,31 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   costPerThousandTokens: {
     'text-embedding-3-small': 0.00002,
     'text-embedding-3-large': 0.00013
+  },
+
+  // Context-aware embedding loading settings - NEW MEMORY OPTIMIZATION
+  contextualEmbedding: {
+    // Memory management - reduces memory usage from 1.1GB+ to ~50-100MB
+    maxMemoryMB: 100, // Maximum memory for loaded embeddings
+    memoryPressureThreshold: 0.85, // Start evicting at 85% memory pressure
+    
+    // Recent files cache - tracks recently accessed files for context
+    recentFilesLimit: 75, // Maximum recent files to track (50-100 recommended)
+    recentFilesPriority: 'mixed', // Balance recent access and frequency
+    
+    // Workspace loading - context-aware file discovery
+    maxWorkspaceFiles: 500, // Maximum files per workspace to load
+    preloadConnectedNotes: true, // Automatically load wiki-linked notes
+    
+    // Search behavior - scoped search to prevent accidental full-vault searches
+    defaultSearchScope: 'recent', // Default to recent files for fast searches
+    allowContextExpansion: true, // Allow expanding search when needed
+    maxExpansionFiles: 50, // Limit context expansion to prevent memory bloat
+    
+    // Performance settings - optimize loading strategy
+    loadingStrategy: 'hybrid', // Load recent files at startup, others on demand
+    backgroundPreloading: true, // Preload likely-needed files in background
+    evictionStrategy: 'mixed' // Use both LRU and priority for smart eviction
   }
 };
 

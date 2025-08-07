@@ -52,7 +52,97 @@ export class CollectionRepository {
   }
 
   /**
-   * Load collection data from persistence
+   * Load selected items for contextual embedding loading
+   * Only loads embeddings for specific file paths to reduce memory usage
+   * @param filePaths Array of file paths to load embeddings for
+   * @param fullData Complete collection data to filter from
+   */
+  loadSelectedItems(filePaths: string[], fullData: CollectionData): void {
+    const startTime = performance.now();
+    const initialMemory = this.getMemoryUsage();
+    
+    let itemsLoaded = 0;
+    let totalEmbeddingSize = 0;
+    const filePathSet = new Set(filePaths); // For O(1) lookup
+    
+    const totalAvailable = fullData.items instanceof Map ? fullData.items.size : 
+                          (Array.isArray(fullData.items) ? (fullData.items as DatabaseItem[]).length : 0);
+    
+    console.log(`[CollectionRepository:${this.collectionName}] Loading selected items:`, {
+      requestedFiles: filePaths.length,
+      totalAvailableItems: totalAvailable,
+      memoryPressure: this.getMemoryPressureLevel()
+    });
+    
+    try {
+      // Clear existing items for selective loading
+      this.items.clear();
+      
+      // Load items from Map or array format, filtering by file paths
+      if (fullData.items instanceof Map) {
+        for (const [id, item] of fullData.items) {
+          if (item.metadata?.filePath && filePathSet.has(item.metadata.filePath)) {
+            this.items.set(id, item);
+            itemsLoaded++;
+            if (item.embedding && Array.isArray(item.embedding)) {
+              totalEmbeddingSize += item.embedding.length * 8; // 8 bytes per float64
+            }
+          }
+        }
+      } else if (Array.isArray(fullData.items)) {
+        // Handle array format for backward compatibility
+        for (const item of fullData.items as DatabaseItem[]) {
+          if (item?.id && item.metadata?.filePath && filePathSet.has(item.metadata.filePath)) {
+            const processedItem = {
+              id: item.id,
+              embedding: item.embedding || [],
+              metadata: item.metadata || {},
+              document: item.document || ''
+            };
+            this.items.set(item.id, processedItem);
+            itemsLoaded++;
+            if (processedItem.embedding && Array.isArray(processedItem.embedding)) {
+              totalEmbeddingSize += processedItem.embedding.length * 8;
+            }
+          }
+        }
+      }
+
+      // Update metadata
+      if (fullData.metadata) {
+        this.collectionMetadata = { ...fullData.metadata };
+      }
+
+      const endTime = performance.now();
+      const finalMemory = this.getMemoryUsage();
+      const loadTime = endTime - startTime;
+      const memoryDelta = finalMemory - initialMemory;
+
+      console.log(`[CollectionRepository:${this.collectionName}] Selective load complete:`, {
+        itemsLoaded,
+        requestedFiles: filePaths.length,
+        loadTimeMs: Math.round(loadTime),
+        estimatedEmbeddingSizeMB: Math.round(totalEmbeddingSize / 1024 / 1024 * 100) / 100,
+        memoryDeltaMB: Math.round(memoryDelta / 1024 / 1024 * 100) / 100,
+        totalItems: this.items.size,
+        memoryReductionPercent: fullData.items instanceof Map ? 
+          Math.round((1 - (this.items.size / fullData.items.size)) * 100) : 0,
+        memoryPressure: this.getMemoryPressureLevel()
+      });
+
+      // Warn if selective loading used significant memory
+      if (memoryDelta > 100 * 1024 * 1024) { // > 100MB
+        console.warn(`[CollectionRepository:${this.collectionName}] HIGH SELECTIVE MEMORY USAGE: ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+      }
+
+    } catch (error) {
+      console.error(`[CollectionRepository:${this.collectionName}] Error during selective loading:`, error);
+      // Keep any items that were successfully loaded
+    }
+  }
+
+  /**
+   * Load collection data from persistence (full loading - original method)
    */
   loadCollectionData(data: CollectionData): void {
     const startTime = performance.now();
@@ -393,6 +483,129 @@ export class CollectionRepository {
       return 'low';
     }
     return 'unknown';
+  }
+
+  /**
+   * Get all available file paths in the collection without loading full data
+   * Used for discovering files available for contextual loading
+   * @param fullData Complete collection data to extract file paths from
+   * @returns Array of unique file paths
+   */
+  getAvailableFilePaths(fullData: CollectionData): string[] {
+    const filePaths = new Set<string>();
+    
+    try {
+      // Extract file paths from items without loading full embeddings
+      if (fullData.items instanceof Map) {
+        for (const [, item] of fullData.items) {
+          if (item.metadata?.filePath) {
+            filePaths.add(item.metadata.filePath);
+          }
+        }
+      } else if (Array.isArray(fullData.items)) {
+        for (const item of fullData.items as DatabaseItem[]) {
+          if (item?.metadata?.filePath) {
+            filePaths.add(item.metadata.filePath);
+          }
+        }
+      }
+
+      const pathArray = Array.from(filePaths);
+      console.log(`[CollectionRepository:${this.collectionName}] Found ${pathArray.length} unique file paths`);
+      
+      return pathArray;
+
+    } catch (error) {
+      console.error(`[CollectionRepository:${this.collectionName}] Error extracting file paths:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if embeddings exist for specific file paths without loading them
+   * @param filePaths Array of file paths to check
+   * @param fullData Complete collection data to check against
+   * @returns Object mapping file paths to boolean (exists or not)
+   */
+  checkFilePathsExist(filePaths: string[], fullData: CollectionData): Record<string, boolean> {
+    const result: Record<string, boolean> = {};
+    const availablePaths = new Set(this.getAvailableFilePaths(fullData));
+    
+    for (const filePath of filePaths) {
+      result[filePath] = availablePaths.has(filePath);
+    }
+    
+    return result;
+  }
+
+  /**
+   * Get collection metadata for contextual loading decisions
+   * @param fullData Complete collection data
+   * @returns Lightweight metadata for loading decisions
+   */
+  getContextualLoadingMetadata(fullData: CollectionData): {
+    totalItems: number;
+    uniqueFiles: number;
+    estimatedSizeMB: number;
+    oldestItem?: number;
+    newestItem?: number;
+  } {
+    let totalItems = 0;
+    let totalEmbeddingSize = 0;
+    let oldestTime = Date.now();
+    let newestTime = 0;
+    const filePaths = new Set<string>();
+
+    try {
+      if (fullData.items instanceof Map) {
+        totalItems = fullData.items.size;
+        for (const [, item] of fullData.items) {
+          if (item.metadata?.filePath) {
+            filePaths.add(item.metadata.filePath);
+          }
+          if (item.embedding && Array.isArray(item.embedding)) {
+            totalEmbeddingSize += item.embedding.length * 8;
+          }
+          if (item.metadata?.timestamp) {
+            const timestamp = Number(item.metadata.timestamp);
+            oldestTime = Math.min(oldestTime, timestamp);
+            newestTime = Math.max(newestTime, timestamp);
+          }
+        }
+      } else if (Array.isArray(fullData.items)) {
+        const itemsArray = fullData.items as DatabaseItem[];
+        totalItems = itemsArray.length;
+        for (const item of itemsArray) {
+          if (item?.metadata?.filePath) {
+            filePaths.add(item.metadata.filePath);
+          }
+          if (item?.embedding && Array.isArray(item.embedding)) {
+            totalEmbeddingSize += item.embedding.length * 8;
+          }
+          if (item?.metadata?.timestamp) {
+            const timestamp = Number(item.metadata.timestamp);
+            oldestTime = Math.min(oldestTime, timestamp);
+            newestTime = Math.max(newestTime, timestamp);
+          }
+        }
+      }
+
+      return {
+        totalItems,
+        uniqueFiles: filePaths.size,
+        estimatedSizeMB: Math.round(totalEmbeddingSize / 1024 / 1024 * 100) / 100,
+        oldestItem: newestTime > 0 ? oldestTime : undefined,
+        newestItem: newestTime > 0 ? newestTime : undefined
+      };
+
+    } catch (error) {
+      console.error(`[CollectionRepository:${this.collectionName}] Error getting contextual metadata:`, error);
+      return {
+        totalItems: 0,
+        uniqueFiles: 0,
+        estimatedSizeMB: 0
+      };
+    }
   }
 
   /**

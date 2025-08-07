@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types';
 import { IAgent } from '../agents/interfaces/IAgent';
 import { SessionContextManager } from '../services/SessionContextManager';
 import { IRequestHandlerDependencies } from './interfaces/IRequestHandlerServices';

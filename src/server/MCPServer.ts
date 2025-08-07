@@ -9,7 +9,7 @@ import { IAgent } from '../agents/interfaces/IAgent';
 import { EventManager } from '../services/EventManager';
 import { SessionContextManager } from '../services/SessionContextManager';
 import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
-import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index.js';
+import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index';
 import { RequestRouter } from '../handlers/RequestRouter';
 import { logger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errorUtils';

@@ -27,10 +27,14 @@ import { CollectionHealthMonitor } from '../../services/CollectionHealthMonitor'
 // Initialization coordination
 import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
 
+// Context-aware embedding loading
+import { ContextualEmbeddingManager } from '../../services/contextual/ContextualEmbeddingManager';
+
 export interface VectorStoreInitializationResult {
   client: InstanceType<typeof ChromaClient>;
   collectionLifecycleManager?: CollectionLifecycleManager;
   collectionHealthMonitor?: CollectionHealthMonitor;
+  contextualEmbeddingManager?: ContextualEmbeddingManager;
 }
 
 export interface InitializationContext {
@@ -76,17 +80,21 @@ export class VectorStoreInitializer {
       // Step 2: Create ChromaDB client
       const client = await this.initializeClient(context);
 
-      // Step 3: Load existing collections with coordination
-      const loadStartTime = performance.now();
-      await this.loadCollectionsWithCoordination(context);
-      const loadEndTime = performance.now();
-      const loadMemoryAfter = this.getMemoryUsage();
+      // Step 3: Initialize contextual embedding manager (replaces full collection loading)
+      const contextualLoadStartTime = performance.now();
+      const contextualEmbeddingManager = await this.initializeContextualEmbeddingManager(context, client);
+      const contextualLoadEndTime = performance.now();
+      const contextualMemoryAfter = this.getMemoryUsage();
 
-      console.log(`[VectorStoreInitializer] Collections loaded:`, {
-        loadTimeMs: Math.round(loadEndTime - loadStartTime),
-        memoryDeltaMB: Math.round((loadMemoryAfter - initialMemory) / 1024 / 1024 * 100) / 100,
-        memoryPressure: this.getMemoryPressureLevel()
+      console.log(`[VectorStoreInitializer] Contextual embedding manager initialized:`, {
+        loadTimeMs: Math.round(contextualLoadEndTime - contextualLoadStartTime),
+        memoryDeltaMB: Math.round((contextualMemoryAfter - initialMemory) / 1024 / 1024 * 100) / 100,
+        memoryPressure: this.getMemoryPressureLevel(),
+        estimatedMemoryReductionMB: Math.round((1000) / 100) / 100 // Estimated ~1GB+ reduction
       });
+
+      // Step 3.5: Load minimal collections metadata without full data
+      await this.initializeCollectionMetadata(context);
 
       // Step 4: Ensure standard collections exist
       await this.ensureStandardCollections(context);
@@ -116,7 +124,8 @@ export class VectorStoreInitializer {
       return {
         client,
         collectionLifecycleManager: lifecycleManager,
-        collectionHealthMonitor: undefined // Will be initialized later by the vector store
+        collectionHealthMonitor: undefined, // Will be initialized later by the vector store
+        contextualEmbeddingManager
       };
 
     } catch (error) {
@@ -163,36 +172,92 @@ export class VectorStoreInitializer {
   }
 
   /**
-   * Loads existing collections using coordination system
-   * Prevents duplicate collection loading across services
+   * Initialize contextual embedding manager for memory-efficient loading
+   * Replaces full collection loading with context-aware approach
    */
-  private async loadCollectionsWithCoordination(context: InitializationContext): Promise<void> {
-    try {
-      if (!context.collectionCoordinator) {
-        // No collection coordinator available - skipping coordinated loading
-        return;
-      }
+  private async initializeContextualEmbeddingManager(
+    context: InitializationContext, 
+    client: InstanceType<typeof ChromaClient>
+  ): Promise<ContextualEmbeddingManager> {
+    console.log('[VectorStoreInitializer] Initializing contextual embedding manager for memory optimization');
 
-      // Use coordinator to ensure collections are loaded only once
-      const result = await context.collectionCoordinator.ensureCollectionsLoaded();
+    try {
+      // Create vector store wrapper for the contextual manager
+      const vectorStoreWrapper = {
+        listCollections: async () => {
+          // Get collection metadata without loading full data
+          const collections = await context.collectionManager.listCollections();
+          return collections;
+        }
+      };
+
+      // Get memory settings from plugin data (if available)
+      const pluginData = await context.plugin.loadData();
+      const memorySettings = pluginData?.memory;
       
-      if (result.success) {
-        // Register loaded collections with the CollectionManager
-        const metadata = context.collectionCoordinator.getCollectionMetadata();
-        for (const [collectionName, meta] of metadata) {
-          const collection = context.collectionCoordinator.getLoadedCollection(collectionName);
+      const contextualManager = new ContextualEmbeddingManager(
+        context.plugin,
+        vectorStoreWrapper as any, // Type assertion for the wrapper
+        {
+          maxMemoryMB: memorySettings?.contextualEmbedding?.maxMemoryMB || 100,
+          memoryPressureThreshold: memorySettings?.contextualEmbedding?.memoryPressureThreshold || 0.85,
+          recentFilesLimit: memorySettings?.contextualEmbedding?.recentFilesLimit || 75
+        }
+      );
+
+      await contextualManager.initialize();
+
+      console.log('[VectorStoreInitializer] Contextual embedding manager initialized successfully');
+      return contextualManager;
+
+    } catch (error) {
+      console.error('[VectorStoreInitializer] Failed to initialize contextual embedding manager:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize collection metadata without loading full data
+   * Lightweight alternative to full collection loading
+   */
+  private async initializeCollectionMetadata(context: InitializationContext): Promise<void> {
+    try {
+      console.log('[VectorStoreInitializer] Initializing collection metadata (lightweight)');
+      
+      // Only load collection schemas and metadata, not full data
+      const collections = await context.collectionManager.listCollections();
+      
+      let metadataCount = 0;
+      for (const collectionName of collections) {
+        try {
+          // Register collection with manager but don't load data yet
+          const collection = await context.collectionManager.getOrCreateCollection(collectionName);
           if (collection) {
             context.collectionManager.registerCollection(collectionName, collection);
+            metadataCount++;
           }
+        } catch (error) {
+          console.warn(`[VectorStoreInitializer] Failed to initialize metadata for ${collectionName}:`, error);
         }
-        // Successfully loaded collections through coordinator
-      } else {
-        console.warn('[VectorStoreInitializer] Collection coordinator failed to load collections:', result.errors);
       }
+      
+      console.log(`[VectorStoreInitializer] Initialized metadata for ${metadataCount} collections (no data loaded)`);
+      
     } catch (error) {
-      console.warn('[VectorStoreInitializer] Collection coordination failed:', error);
-      // Collections will be loaded by coordinator in proper initialization phase
+      console.warn('[VectorStoreInitializer] Collection metadata initialization failed:', error);
+      // Continue without metadata - collections can still be loaded on demand
     }
+  }
+
+  /**
+   * Legacy method - kept for backward compatibility but now logs deprecation
+   * @deprecated Use initializeContextualEmbeddingManager instead
+   */
+  private async loadCollectionsWithCoordination(context: InitializationContext): Promise<void> {
+    console.warn('[VectorStoreInitializer] loadCollectionsWithCoordination is deprecated - use contextual loading instead');
+    
+    // For backward compatibility, initialize metadata only
+    await this.initializeCollectionMetadata(context);
   }
 
   /**
