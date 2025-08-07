@@ -1,4 +1,4 @@
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../../utils/logger';
 
 /**

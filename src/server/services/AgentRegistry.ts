@@ -4,7 +4,7 @@
  */
 
 import { IAgent } from '../../agents/interfaces/IAgent';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../../utils/logger';
 
 /**

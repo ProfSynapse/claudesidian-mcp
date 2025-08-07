@@ -1,4 +1,4 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IValidationService } from '../interfaces/IRequestHandlerServices';
 import { validateParams, formatValidationErrors, ValidationError } from '../../utils/validationUtils';
 import { generateHintsForErrors } from '../../utils/parameterHintUtils';

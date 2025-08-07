@@ -201,8 +201,8 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   // Note: This method has been moved to ServiceCoordinator.initializeClientDependentServices()
   // The coordination logic is now handled by the ServiceCoordinator service
 
-  // Note: This method has been moved to VectorStoreInitializer.loadCollectionsWithCoordination()
-  // The coordination logic is now handled by the VectorStoreInitializer service
+  // Note: Collection loading is now handled by ContextualEmbeddingManager on-demand
+  // The context-aware loading approach replaces bulk collection initialization
 
   // Note: This method has been moved to VectorStoreInitializer.ensureStandardCollections()
   // The collection setup logic is now handled by the VectorStoreInitializer service

@@ -249,16 +249,6 @@ export class VectorStoreInitializer {
     }
   }
 
-  /**
-   * Legacy method - kept for backward compatibility but now logs deprecation
-   * @deprecated Use initializeContextualEmbeddingManager instead
-   */
-  private async loadCollectionsWithCoordination(context: InitializationContext): Promise<void> {
-    console.warn('[VectorStoreInitializer] loadCollectionsWithCoordination is deprecated - use contextual loading instead');
-    
-    // For backward compatibility, initialize metadata only
-    await this.initializeCollectionMetadata(context);
-  }
 
   /**
    * Ensures all standard collections exist and are properly initialized

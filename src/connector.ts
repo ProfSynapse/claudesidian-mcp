@@ -3,7 +3,7 @@ import ClaudesidianPlugin from './main';
 import { EventManager } from './services/EventManager';
 import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
 import type { ServiceContainer } from './core/ServiceContainer';
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from './database/services/CustomPromptStorageService';
 import { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';

@@ -3,9 +3,9 @@
  * Follows Single Responsibility Principle by focusing only on STDIO transport
  */
 
-import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types';
+import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../../utils/logger';
 
 /**

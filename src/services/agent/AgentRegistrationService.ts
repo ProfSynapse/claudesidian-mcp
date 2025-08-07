@@ -11,7 +11,7 @@ import {
     MemoryManagerAgent,
     AgentManagerAgent
 } from '../../agents';
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../../utils/logger';
 import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
 import { LLMProviderManager } from '../LLMProviderManager';

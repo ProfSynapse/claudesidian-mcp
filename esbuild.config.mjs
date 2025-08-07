@@ -33,8 +33,6 @@ const context = await esbuild.context({
     "sharp",
     "@xenova/transformers",
     "chromadb-default-embed",
-    // MCP SDK has ESM-only exports that don't bundle well
-    "@modelcontextprotocol/sdk",
   ],
   loader: {
     ".node": "file",

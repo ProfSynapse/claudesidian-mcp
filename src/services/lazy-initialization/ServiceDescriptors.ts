@@ -118,12 +118,8 @@ export class ServiceDescriptors {
         if (vectorStore && 'setCollectionCoordinator' in vectorStore) {
             vectorStore.setCollectionCoordinator(this.initializationServices.collectionCoordinator);
             
-            // Load collections with coordination to register them
-            if ('loadCollectionsWithCoordination' in vectorStore) {
-                await vectorStore.loadCollectionsWithCoordination();
-            } else {
-                console.warn('[StateManager] ❌ Vector store missing loadCollectionsWithCoordination method');
-            }
+            // Note: Collection loading is now handled by ContextualEmbeddingManager on-demand
+            // No need to bulk load collections during initialization
         } else {
             console.warn('[StateManager] ❌ Vector store missing setCollectionCoordinator method');
         }

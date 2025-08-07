@@ -210,8 +210,10 @@ export class CollectionManager implements ICollectionManager {
           // Validate required fields
           if (metadata.collectionName === collectionName && metadata.version) {
             
-            // Load collection into memory and cache using metadata manager
-            await this.metadataManager.loadAndCacheCollection(collectionName, collectionPath, metadata, this.collectionCache, this.collections);
+            // MEMORY FIX: Only mark collection as existing, don't load data
+            // Data will be loaded on-demand by ContextualEmbeddingManager
+            this.collections.add(collectionName);
+            console.log(`[CollectionManager] Collection '${collectionName}' found but not loaded (context-aware loading enabled)`);
             return true;
           } else {
             console.warn(`[CollectionManager] Invalid metadata for ${collectionName}:`, {

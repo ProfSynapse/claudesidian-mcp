@@ -1,4 +1,4 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { IRequestStrategy } from './IRequestStrategy';
 import { IRequestHandlerDependencies } from '../interfaces/IRequestHandlerServices';
 import { logger } from '../../utils/logger';

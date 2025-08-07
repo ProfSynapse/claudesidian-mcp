@@ -47,49 +47,6 @@ export class CollectionMetadataManager {
     this.persistentPath = persistentPath;
   }
 
-  /**
-   * Load and cache a collection from filesystem with metadata validation
-   */
-  async loadAndCacheCollection(
-    collectionName: string, 
-    collectionPath: string, 
-    metadata: any,
-    collectionCache: Map<string, Collection>,
-    collections: Set<string>
-  ): Promise<void> {
-    try {
-      // First, try to get collection from ChromaDB (might already be loaded)
-      let collection: Collection;
-      try {
-        collection = await this.client.getCollection(collectionName);
-      } catch (getError) {
-        // Collection not in client, need to create it in client and potentially load data
-        collection = await this.client.createCollection(collectionName, metadata);
-        
-        // Check if we need to load data
-        const currentCount = await collection.count();
-        const expectedCount = metadata.itemCount || 0;
-        
-        if (currentCount === 0 && expectedCount > 0) {
-          const itemsPath = this.pathManager ? 
-            this.pathManager.joinPath(collectionPath, 'items.json') :
-            `${collectionPath}/items.json`;
-          
-          if (await this.directoryService.fileExists(itemsPath)) {
-            await this.loadCollectionData(collection, itemsPath);
-          }
-        }
-      }
-      
-      // Register collection with manager
-      collections.add(collectionName);
-      collectionCache.set(collectionName, collection);
-      
-    } catch (error) {
-      this.logger.error(`Failed to load and cache collection ${collectionName}`, error as Error, 'CollectionMetadataManager');
-      throw error;
-    }
-  }
 
   /**
    * Load collection data from filesystem items.json file

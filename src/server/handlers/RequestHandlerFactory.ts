@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on handler setup
  */
 
-import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index';
+import { Server as MCPSDKServer } from '@modelcontextprotocol/sdk/server/index.js';
 import {
     ListResourcesRequestSchema,
     ReadResourceRequestSchema,
@@ -11,7 +11,7 @@ import {
     CallToolRequestSchema,
     ListPromptsRequestSchema,
     GetPromptRequestSchema
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/sdk/types.js';
 import { RequestRouter } from '../../handlers/RequestRouter';
 import { parseJsonArrays } from '../../utils/jsonUtils';
 import { logger } from '../../utils/logger';
