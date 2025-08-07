@@ -119,9 +119,9 @@ export class ServiceDescriptors {
             vectorStore.setCollectionCoordinator(this.initializationServices.collectionCoordinator);
             
             // Note: Collection loading is now handled by ContextualEmbeddingManager on-demand
-            // No need to bulk load collections during initialization
+            // No need to load all collections during initialization
         } else {
-            console.warn('[StateManager] ❌ Vector store missing setCollectionCoordinator method');
+            console.warn('Vector store missing setCollectionCoordinator method');
         }
 
     }
@@ -174,24 +174,12 @@ export class ServiceDescriptors {
                 
                 // Validate plugin instance before creating StateManager
                 if (!this.plugin) {
-                    console.error('[StateManager] ❌ CRITICAL: No plugin instance available');
-                    console.error('[StateManager] ❌ DIAGNOSTIC: ServiceDescriptors state:', {
-                        hasPlugin: !!this.plugin,
-                        hasApp: !!this.app,
-                        appType: this.app?.constructor?.name,
-                        serviceDescriptorType: this.constructor.name
-                    });
+                    console.error('CRITICAL: No plugin instance available');
                     throw new Error('StateManager requires Plugin instance but none available');
                 }
                 
                 if (!this.plugin.loadData || !this.plugin.saveData) {
-                    console.error('[StateManager] ❌ CRITICAL: Plugin missing data methods');
-                    console.error('[StateManager] ❌ DIAGNOSTIC: Plugin capabilities:', {
-                        hasLoadData: !!(this.plugin.loadData),
-                        hasSaveData: !!(this.plugin.saveData),
-                        pluginType: this.plugin.constructor.name,
-                        pluginMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(this.plugin))
-                    });
+                    console.error('CRITICAL: Plugin missing data methods');
                     throw new Error('Plugin instance missing required loadData/saveData methods');
                 }
                 
@@ -245,12 +233,7 @@ export class ServiceDescriptors {
                 
                 // Validate StateManager before creating EmbeddingService
                 if (!stateManager) {
-                    console.error('[StateManager] ❌ CRITICAL: StateManager not available for EmbeddingService');
-                    console.error('[StateManager] ❌ DIAGNOSTIC: EmbeddingService creation failed:', {
-                        hasPlugin: !!this.plugin,
-                        hasStateManager: !!stateManager,
-                        stateManagerType: stateManager?.constructor?.name
-                    });
+                    console.error('CRITICAL: StateManager not available for EmbeddingService');
                     throw new Error('EmbeddingService requires StateManager but none available');
                 }
                 

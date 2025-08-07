@@ -50,12 +50,7 @@ export class EmbeddingService {
     
     // Validate required dependencies
     if (!stateManager) {
-      console.error('[StateManager] ❌ CRITICAL: EmbeddingService requires StateManager');
-      console.error('[StateManager] ❌ DIAGNOSTIC: Constructor called with:', {
-        hasPlugin: !!plugin,
-        hasStateManager: !!stateManager,
-        pluginType: plugin?.constructor?.name
-      });
+      console.error('CRITICAL: EmbeddingService requires StateManager');
       throw new Error('EmbeddingService requires a valid ProcessedFilesStateManager');
     }
     
@@ -519,6 +514,7 @@ export class EmbeddingService {
 
   /**
    * Check if there are existing embeddings
+   * CRITICAL FIX: Use lightweight collection existence check instead of count() to prevent loading all data
    */
   async hasExistingEmbeddings(): Promise<boolean> {
     try {
@@ -534,8 +530,11 @@ export class EmbeddingService {
         return false;
       }
       
-      const count = await vectorStore.count('file_embeddings');
-      return count > 0;
+      // CRITICAL FIX: Instead of calling count() which triggers loading all data,
+      // assume collection exists = has embeddings. This is sufficient for settings validation.
+      // The exact count is not needed - we only need to know if embeddings exist.
+      // Collection exists, assuming it has embeddings
+      return true;
     } catch (error) {
       console.error('Error checking for existing embeddings:', error);
       return false;

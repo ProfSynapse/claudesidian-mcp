@@ -85,12 +85,7 @@ export default class ClaudesidianPlugin extends Plugin {
         const startTime = performance.now();
         const initialMemory = this.getMemoryUsage();
         
-        console.log('[ClaudesidianPlugin] Starting plugin initialization:', {
-            initialMemoryMB: Math.round(initialMemory / 1024 / 1024 * 100) / 100,
-            memoryPressure: this.getMemoryPressureLevel(),
-            vaultName: this.app.vault.getName(),
-            fileCount: this.app.vault.getFiles().length
-        });
+        // Starting plugin initialization
         
         try {
             // PHASE 1: Foundation - Create service container and settings
@@ -100,11 +95,7 @@ export default class ClaudesidianPlugin extends Plugin {
             const phase1End = performance.now();
             const phase1Memory = this.getMemoryUsage();
             
-            console.log('[ClaudesidianPlugin] Phase 1 (Foundation) complete:', {
-                timeMs: Math.round(phase1End - phase1Start),
-                memoryDeltaMB: Math.round((phase1Memory - initialMemory) / 1024 / 1024 * 100) / 100,
-                memoryPressure: this.getMemoryPressureLevel()
-            });
+            // Phase 1 (Foundation) complete
             
             // PHASE 2: Create service access mixin for typed service access
             this.serviceAccessMixin = new ServiceAccessMixin(this.serviceContainer);
@@ -129,32 +120,23 @@ export default class ClaudesidianPlugin extends Plugin {
             const phase4End = performance.now();
             const finalMemory = this.getMemoryUsage();
             
-            console.log('[ClaudesidianPlugin] Phase 4 (Lifecycle) complete:', {
-                timeMs: Math.round(phase4End - phase4Start),
-                memoryDeltaMB: Math.round((finalMemory - phase1Memory) / 1024 / 1024 * 100) / 100,
-                memoryPressure: this.getMemoryPressureLevel()
-            });
+            // Phase 4 (Lifecycle) complete
 
             const totalTime = performance.now() - startTime;
             const totalMemoryDelta = finalMemory - initialMemory;
 
-            console.log('[ClaudesidianPlugin] Initialization complete:', {
-                totalTimeMs: Math.round(totalTime),
-                totalMemoryDeltaMB: Math.round(totalMemoryDelta / 1024 / 1024 * 100) / 100,
-                finalMemoryMB: Math.round(finalMemory / 1024 / 1024 * 100) / 100,
-                finalMemoryPressure: this.getMemoryPressureLevel()
-            });
+            // Initialization complete
 
             // Warn about high memory usage during initialization
             if (totalMemoryDelta > 100 * 1024 * 1024) { // > 100MB
-                console.warn(`[ClaudesidianPlugin] HIGH MEMORY USAGE: Plugin initialization used ${Math.round(totalMemoryDelta / 1024 / 1024)}MB`);
+                console.warn(`HIGH MEMORY USAGE: Plugin initialization used ${Math.round(totalMemoryDelta / 1024 / 1024)}MB`);
             }
             
         } catch (error) {
             const errorTime = performance.now();
             const errorMemory = this.getMemoryUsage();
             
-            console.error('[ClaudesidianPlugin] Critical initialization failure:', {
+            console.error('Critical initialization failure:', {
                 error: error instanceof Error ? error.message : String(error),
                 errorTimeMs: Math.round(errorTime - startTime),
                 memoryDeltaMB: Math.round((errorMemory - initialMemory) / 1024 / 1024 * 100) / 100
@@ -244,7 +226,7 @@ export default class ClaudesidianPlugin extends Plugin {
                 await this.lifecycleManager.shutdown();
             }
         } catch (error) {
-            console.error('[ClaudesidianPlugin] Error during cleanup:', error);
+            console.error('Error during cleanup:', error);
         }
     }
 }

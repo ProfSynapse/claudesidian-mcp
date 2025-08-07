@@ -8,7 +8,7 @@ import {
   UniversalSearchResult
 } from '../types';
 import { getErrorMessage } from '../../../utils/errorUtils';
-import { UniversalSearchService } from './services/UniversalSearchService';
+import { UniversalSearchService } from './services/universal/UniversalSearchService';
 import { globalValidationErrorMonitor } from './services/universal/validation/ValidationErrorMonitor';
 import { UniversalSearchValidator } from './services/universal/validation/UniversalSearchValidator';
 

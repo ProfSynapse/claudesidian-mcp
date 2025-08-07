@@ -9,9 +9,10 @@ export interface ICollectionManager {
   /**
    * Get or create a collection, with intelligent caching
    * @param collectionName Name of the collection
+   * @param contextAware Enable context-aware mode
    * @returns Collection instance
    */
-  getOrCreateCollection(collectionName: string): Promise<Collection>;
+  getOrCreateCollection(collectionName: string, contextAware?: boolean): Promise<Collection>;
 
   /**
    * Refresh the list of collections from storage
@@ -35,8 +36,9 @@ export interface ICollectionManager {
    * Create a new collection
    * @param collectionName Name of the collection
    * @param metadata Optional collection metadata
+   * @param contextAware Enable context-aware mode
    */
-  createCollection(collectionName: string, metadata?: Record<string, any>): Promise<void>;
+  createCollection(collectionName: string, metadata?: Record<string, any>, contextAware?: boolean): Promise<void>;
 
   /**
    * Delete a collection

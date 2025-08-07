@@ -354,7 +354,7 @@ export class FileIndexingService {
       });
       
       // NEW: Mark file as successfully processed in state
-      console.log(`[StateManager] FileIndexingService marking file as processed: ${normalizedPath}`);
+      // FileIndexingService marking file as processed
       await this.contentHashService.markFileProcessed(
         normalizedPath,
         contentHash,
@@ -368,7 +368,7 @@ export class FileIndexingService {
       };
     } catch (error) {
       // NEW: Mark file as failed processing in state
-      console.log(`[StateManager] FileIndexingService marking file as failed: ${normalizedPath}`);
+      // FileIndexingService marking file as failed
       await this.contentHashService.markFileFailed(
         normalizedPath,
         contentHash,

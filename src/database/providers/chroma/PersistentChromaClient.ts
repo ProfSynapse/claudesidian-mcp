@@ -24,6 +24,7 @@ export interface Collection {
     limit?: number;
     offset?: number;
     include?: string[];
+    contextAware?: boolean;
   }): Promise<{
     ids: string[];
     embeddings?: number[][];
@@ -64,7 +65,8 @@ export interface Collection {
     where?: Record<string, any>;
   }): Promise<void>;
   
-  count(): Promise<number>;
+  count(contextAware?: boolean): Promise<number>;
+  
 }
 
 export interface ChromaClientOptions {
@@ -84,11 +86,14 @@ export interface ChromaEmbeddingFunction {
 /**
  * Filesystem-based Collection implementation for Obsidian
  */
-class FilesystemCollection implements Collection {
+export class FilesystemCollection implements Collection {
   name: string;
   metadata?: Record<string, any>;
   private dataPath: string;
   private plugin: Plugin;
+  
+  // Global initialization flag to override context-aware mode after startup
+  private static _initializationComplete: boolean = false;
 
   constructor(name: string, dataPath: string, plugin: Plugin, metadata?: Record<string, any>) {
     this.name = name;
@@ -116,7 +121,24 @@ class FilesystemCollection implements Collection {
     }
   }
 
-  private async loadItems(): Promise<any[]> {
+  
+  /**
+   * Mark initialization as complete globally - allows all collections to load normally
+   */
+  static setInitializationComplete(): void {
+    FilesystemCollection._initializationComplete = true;
+    console.debug(`[ChromaClient] Global initialization complete - context-aware restrictions lifted`);
+  }
+  
+  /**
+   * Reset initialization state (for testing)
+   */
+  static resetInitializationState(): void {
+    FilesystemCollection._initializationComplete = false;
+  }
+
+  private async loadItems(contextAware = false): Promise<any[]> {
+    
     const itemsFile = this.getItemsFilePath();
     const normalizedItemsFile = normalizePath(itemsFile);
     if (!await this.plugin.app.vault.adapter.exists(normalizedItemsFile)) {
@@ -124,17 +146,19 @@ class FilesystemCollection implements Collection {
     }
     
     try {
+      console.log(`[ChromaClient] Loading items for collection ${this.name} (full mode)`);
       const content = await this.plugin.app.vault.adapter.read(normalizedItemsFile);
       const parsed = JSON.parse(content);
       
       // Standard Format A: Wrapped object with items array
       if (parsed && typeof parsed === 'object' && Array.isArray(parsed.items)) {
+        console.log(`[ChromaClient] Loaded ${parsed.items.length} items for collection ${this.name}`);
         return parsed.items;
       }
       
       // Backward compatibility: Direct array format (Format B)
       if (Array.isArray(parsed)) {
-        console.log(`[ChromaClient] Converting collection ${this.name} from legacy direct array format`);
+        console.log(`[ChromaClient] Converting collection ${this.name} from legacy direct array format (${parsed.length} items)`);
         return parsed;
       }
       
@@ -202,13 +226,14 @@ class FilesystemCollection implements Collection {
     limit?: number;
     offset?: number;
     include?: string[];
+    contextAware?: boolean;
   }): Promise<{
     ids: string[];
     embeddings?: number[][];
     metadatas?: Record<string, any>[];
     documents?: string[];
   }> {
-    const items = await this.loadItems();
+    const items = await this.loadItems(false);
     
     // CRITICAL FIX: Ensure items is always an array to prevent "filtered.slice is not a function" errors
     if (!Array.isArray(items)) {
@@ -405,8 +430,8 @@ class FilesystemCollection implements Collection {
     await this.saveItems(filtered);
   }
 
-  async count(): Promise<number> {
-    const items = await this.loadItems();
+  async count(contextAware = false): Promise<number> {
+    const items = await this.loadItems(false);
     return items.length;
   }
 }
@@ -453,7 +478,7 @@ export class ChromaClient {
   /**
    * Get or create a collection
    */
-  async getOrCreateCollection(name: string, metadata?: Record<string, any>): Promise<Collection> {
+  async getOrCreateCollection(name: string, metadata?: Record<string, any>, contextAware = false): Promise<Collection> {
     // Use simple string concatenation to avoid path duplication in Electron environment
     const collectionPath = `${this.dataPath}/collections/${name}`;
     const normalizedCollectionPath = normalizePath(collectionPath);
@@ -470,13 +495,15 @@ export class ChromaClient {
       }, null, 2));
     }
     
-    return new FilesystemCollection(name, this.dataPath, this.plugin, metadata);
+    const collection = new FilesystemCollection(name, this.dataPath, this.plugin, metadata);
+    
+    return collection;
   }
 
   /**
    * Get an existing collection
    */
-  async getCollection(name: string): Promise<Collection> {
+  async getCollection(name: string, contextAware = false): Promise<Collection> {
     // Use simple string concatenation to avoid path duplication in Electron environment
     const collectionPath = `${this.dataPath}/collections/${name}`;
     const normalizedCollectionPath = normalizePath(collectionPath);
@@ -499,13 +526,15 @@ export class ChromaClient {
       }
     }
     
-    return new FilesystemCollection(name, this.dataPath, this.plugin, metadata);
+    const collection = new FilesystemCollection(name, this.dataPath, this.plugin, metadata);
+    
+    return collection;
   }
 
   /**
    * Create a new collection
    */
-  async createCollection(name: string, metadata?: Record<string, any>): Promise<Collection> {
+  async createCollection(name: string, metadata?: Record<string, any>, contextAware = false): Promise<Collection> {
     // Use simple string concatenation to avoid path duplication in Electron environment
     const collectionPath = `${this.dataPath}/collections/${name}`;
     const normalizedCollectionPath = normalizePath(collectionPath);
@@ -514,7 +543,7 @@ export class ChromaClient {
       throw new Error(`Collection '${name}' already exists`);
     }
     
-    return await this.getOrCreateCollection(name, metadata);
+    return await this.getOrCreateCollection(name, metadata, contextAware);
   }
 
   /**

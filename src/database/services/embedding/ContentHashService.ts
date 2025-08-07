@@ -92,7 +92,7 @@ export class ContentHashService {
       
       // NEW: If embeddings exist and hashes match, mark as processed in state
       if (hashMatches) {
-        console.log(`[StateManager] ✅ ${filePath} - embeddings exist and hash matches, marking as processed`);
+        // Embeddings exist and hash matches, marking as processed
         this.stateManager.markFileProcessed(filePath, currentHash, 'existing');
         await this.stateManager.saveState();
         return false;
@@ -135,7 +135,7 @@ export class ContentHashService {
    * @param vectorStoreId Vector store ID
    */
   async markFileProcessed(filePath: string, contentHash: string, provider: string, vectorStoreId: string = 'default'): Promise<void> {
-    console.log(`[StateManager] ContentHashService marking file processed: ${filePath}`);
+    // ContentHashService marking file processed
     this.stateManager.markFileProcessed(filePath, contentHash, provider, vectorStoreId);
     await this.stateManager.saveState();
   }
@@ -147,7 +147,7 @@ export class ContentHashService {
    * @param errorMessage Error message
    */
   async markFileFailed(filePath: string, contentHash: string, errorMessage: string): Promise<void> {
-    console.log(`[StateManager] ContentHashService marking file failed: ${filePath}`);
+    // ContentHashService marking file failed
     this.stateManager.markFileFailed(filePath, contentHash, errorMessage);
     await this.stateManager.saveState();
   }

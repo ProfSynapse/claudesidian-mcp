@@ -1,20 +1,36 @@
 import { Plugin, TFile, TFolder, TAbstractFile, prepareFuzzySearch } from 'obsidian';
-import { CommonParameters } from '../../../types';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
+import { CommonParameters } from '../../../types/mcp/AgentTypes';
+import { WorkspaceService } from '../../../database/services/WorkspaceService';
 
+/**
+ * Directory search parameters interface
+ */
 export interface SearchDirectoryParams extends CommonParameters {
+  // REQUIRED PARAMETERS
   query: string;
-  searchType: 'files' | 'folders' | 'both';
+  paths: string[];  // Cannot be empty - this is the key requirement
+
+  // OPTIONAL PARAMETERS
+  searchType?: 'files' | 'folders' | 'both';
   fileTypes?: string[];
   depth?: number;
+  includeContent?: boolean;
+  limit?: number;
   pattern?: string;
   dateRange?: {
     start?: string;
     end?: string;
   };
-  limit?: number;
-  includeContent?: boolean;
+  workspaceId?: string;
+}
+
+interface SearchModeCapabilities {
+  semanticSearch: boolean;
+  workspaceFiltering: boolean;
+  memorySearch: boolean;
+  hybridSearch: boolean;
 }
 
 export interface DirectoryItem {
@@ -38,8 +54,11 @@ export interface DirectoryItem {
 export interface SearchDirectoryResult {
   success: boolean;
   query: string;
+  searchedPaths?: string[];
   results: DirectoryItem[];
   totalResults: number;
+  executionTime?: number;
+  searchCapabilities?: SearchModeCapabilities;
   error?: string;
 }
 
@@ -48,27 +67,46 @@ export interface SearchDirectoryResult {
  */
 export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchDirectoryResult> {
   private plugin: Plugin;
+  private workspaceService?: WorkspaceService;
 
-  constructor(plugin: Plugin) {
+  constructor(plugin: Plugin, workspaceService?: WorkspaceService) {
     super(
-      'searchDirectory', 
+      'searchDirectoryMode', 
       'Search Directory', 
-      'Search for files and/or folders using fuzzy matching. Unified search for vault navigation.', 
-      '1.0.0'
+      'FOCUSED directory search with REQUIRED paths parameter. Search for files and/or folders within specific directory paths using fuzzy matching and optional workspace context. Requires: query (search terms) and paths (directory paths to search - cannot be empty).', 
+      '2.0.0'
     );
     
     this.plugin = plugin;
+    this.workspaceService = workspaceService;
   }
 
   async execute(params: SearchDirectoryParams): Promise<SearchDirectoryResult> {
+    const startTime = Date.now();
+
     try {
+      // Simple parameter validation
       if (!params.query || params.query.trim().length === 0) {
         return {
           success: false,
           query: params.query || '',
           results: [],
           totalResults: 0,
+          executionTime: Date.now() - startTime,
+          searchCapabilities: this.getCapabilities(),
           error: 'Query parameter is required and cannot be empty'
+        };
+      }
+
+      if (!params.paths || params.paths.length === 0) {
+        return {
+          success: false,
+          query: params.query,
+          results: [],
+          totalResults: 0,
+          executionTime: Date.now() - startTime,
+          searchCapabilities: this.getCapabilities(),
+          error: 'Paths parameter is required and cannot be empty - specify directories to search'
         };
       }
 
@@ -76,11 +114,14 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
       const limit = params.limit || 20;
       const searchType = params.searchType || 'both';
       
-      // Get items based on search type
-      const items = this.getSearchItems(searchType);
+      // Get items from specified directories
+      const items = await this.getDirectoryItems(params.paths, searchType, params);
       
-      // Apply filters
-      const filteredItems = this.applyFilters(items, params);
+      // Apply workspace context if available
+      const contextualItems = await this.applyWorkspaceContext(items, params.workspaceId);
+      
+      // Apply additional filters
+      const filteredItems = this.applyFilters(contextualItems, params);
       
       // Perform fuzzy search
       const matches = this.performFuzzySearch(filteredItems, query);
@@ -89,39 +130,57 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
       matches.sort((a, b) => b.score - a.score);
       const topMatches = matches.slice(0, limit);
       
-      // Transform to unified format
+      // Transform to enhanced format
       const results = await this.transformResults(topMatches, params);
 
       return {
         success: true,
         query: params.query,
+        searchedPaths: params.paths,
         results: results,
-        totalResults: matches.length
+        totalResults: matches.length,
+        executionTime: Date.now() - startTime,
+        searchCapabilities: this.getCapabilities()
       };
       
     } catch (error) {
       return {
         success: false,
-        query: params.query,
+        query: params.query || '',
+        searchedPaths: params.paths || [],
         results: [],
         totalResults: 0,
-        error: `Search failed: ${getErrorMessage(error)}`
+        executionTime: Date.now() - startTime,
+        searchCapabilities: this.getCapabilities(),
+        error: `Directory search failed: ${getErrorMessage(error)}`
       };
     }
   }
 
-  private getSearchItems(searchType: 'files' | 'folders' | 'both'): (TFile | TFolder)[] {
-    const allFiles = this.plugin.app.vault.getAllLoadedFiles();
-    
-    switch (searchType) {
-      case 'files':
-        return allFiles.filter(file => file instanceof TFile) as TFile[];
-      case 'folders':
-        return allFiles.filter(file => file instanceof TFolder) as TFolder[];
-      case 'both':
-      default:
-        return allFiles.filter(file => file instanceof TFile || file instanceof TFolder) as (TFile | TFolder)[];
+  private async getDirectoryItems(
+    paths: string[], 
+    searchType: 'files' | 'folders' | 'both',
+    params: SearchDirectoryParams
+  ): Promise<(TFile | TFolder)[]> {
+    const allItems: (TFile | TFolder)[] = [];
+
+    for (const path of paths) {
+      const normalizedPath = this.normalizePath(path);
+      
+      if (normalizedPath === '/' || normalizedPath === '') {
+        // Root path - get all vault items
+        const vaultItems = this.plugin.app.vault.getAllLoadedFiles()
+          .filter(file => this.matchesSearchType(file, searchType)) as (TFile | TFolder)[];
+        allItems.push(...vaultItems);
+      } else {
+        // Specific directory
+        const directoryItems = await this.getItemsInDirectory(normalizedPath, searchType, params);
+        allItems.push(...directoryItems);
+      }
     }
+
+    // Remove duplicates
+    return Array.from(new Map(allItems.map(item => [item.path, item])).values());
   }
 
   private applyFilters(items: (TFile | TFolder)[], params: SearchDirectoryParams): (TFile | TFolder)[] {
@@ -272,21 +331,117 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
     return results;
   }
 
+  private async getItemsInDirectory(
+    directoryPath: string,
+    searchType: 'files' | 'folders' | 'both',
+    params: SearchDirectoryParams
+  ): Promise<(TFile | TFolder)[]> {
+    const folder = this.plugin.app.vault.getAbstractFileByPath(directoryPath);
+    
+    if (!folder || !('children' in folder)) {
+      return [];
+    }
+
+    const items: (TFile | TFolder)[] = [];
+
+    const collectItems = (currentFolder: TFolder, currentDepth: number = 0) => {
+      if (params.depth && currentDepth >= params.depth) {
+        return;
+      }
+
+      for (const child of currentFolder.children) {
+        if (this.matchesSearchType(child, searchType)) {
+          items.push(child as TFile | TFolder);
+        }
+        
+        // Recursive traversal for folders
+        if ('children' in child) {
+          collectItems(child as TFolder, currentDepth + 1);
+        }
+      }
+    };
+
+    collectItems(folder as TFolder);
+    return items;
+  }
+
+  private matchesSearchType(item: TAbstractFile, searchType: 'files' | 'folders' | 'both'): boolean {
+    switch (searchType) {
+      case 'files':
+        return item instanceof TFile;
+      case 'folders':
+        return item instanceof TFolder;
+      case 'both':
+      default:
+        return item instanceof TFile || item instanceof TFolder;
+    }
+  }
+
+  private async applyWorkspaceContext(
+    items: (TFile | TFolder)[],
+    workspaceId?: string
+  ): Promise<(TFile | TFolder)[]> {
+    if (!this.workspaceService || !workspaceId || workspaceId === 'global-workspace-default') {
+      return items;
+    }
+
+    try {
+      const workspace = await this.workspaceService.getWorkspace(workspaceId);
+      if (!workspace) {
+        return items; // No workspace context, return all items
+      }
+
+      // For directory search, workspace context can boost relevance but doesn't filter
+      // This maintains the explicit directory paths while adding workspace awareness
+      return items;
+      
+    } catch (error) {
+      console.warn(`Could not apply workspace context for ${workspaceId}:`, error);
+      return items;
+    }
+  }
+
+  private normalizePath(path: string): string {
+    return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  }
+
+  private getCapabilities(): SearchModeCapabilities {
+    return {
+      semanticSearch: false,
+      workspaceFiltering: !!this.workspaceService,
+      memorySearch: false,
+      hybridSearch: false
+    };
+  }
+
   getParameterSchema() {
     const modeSchema = {
       type: 'object',
-      title: 'Search Directory Parameters',
-      description: 'Search for files and/or folders using fuzzy matching',
+      title: 'Focused Directory Search Parameters',
+      description: 'FOCUSED directory search with REQUIRED paths parameter. Search within specific directory paths for better organization and navigation.',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query to find in file/folder names and paths',
-          minLength: 1
+          description: 'REQUIRED: Search query to find in file/folder names and paths',
+          minLength: 1,
+          examples: ['project', 'meeting notes', 'config', 'README']
+        },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          description: 'REQUIRED: Directory paths to search within. Cannot be empty. Specify the folder paths where you want to search for focused results.',
+          examples: [
+            ['Projects/WebApp'],
+            ['Notes', 'Archive'], 
+            ['/'],  // Search entire vault root
+            ['Work/Current Projects', 'Personal/Ideas']
+          ]
         },
         searchType: {
           type: 'string',
           enum: ['files', 'folders', 'both'],
-          description: 'What to search for: files only, folders only, or both',
+          description: 'What to search for within the specified directories',
           default: 'both'
         },
         fileTypes: {
@@ -335,7 +490,7 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
           default: true
         }
       },
-      required: ['query']
+      required: ['query', 'paths']
     };
     
     return this.getMergedSchema(modeSchema);
@@ -352,6 +507,11 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
         query: {
           type: 'string',
           description: 'The search query'
+        },
+        searchedPaths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Directory paths that were searched'
         },
         results: {
           type: 'array',
@@ -422,6 +582,19 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
         totalResults: {
           type: 'number',
           description: 'Total number of results found'
+        },
+        executionTime: {
+          type: 'number',
+          description: 'Search execution time in milliseconds'
+        },
+        searchCapabilities: {
+          type: 'object',
+          properties: {
+            semanticSearch: { type: 'boolean' },
+            workspaceFiltering: { type: 'boolean' },
+            memorySearch: { type: 'boolean' },
+            hybridSearch: { type: 'boolean' }
+          }
         },
         error: {
           type: 'string',

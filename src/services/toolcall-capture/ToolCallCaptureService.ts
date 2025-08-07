@@ -394,7 +394,7 @@ export class ToolCallCaptureService {
         // Use full MemoryTraceService functionality
         await this.memoryStorage.storeToolCallTrace(capture);
       } else {
-        // CRITICAL FIX: Store tool call in vector database instead of just memory
+        // CRITICAL FIX: Store tool call in vector database
         // Create proper memory trace for vector storage
         const toolCallTrace = {
           id: `trace_${capture.toolCallId}_${Date.now()}`,

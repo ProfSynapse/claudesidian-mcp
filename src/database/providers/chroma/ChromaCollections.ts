@@ -297,32 +297,56 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
     limit?: number;
     where?: Record<string, any>;
   }): Promise<T[]> {
-    const count = await this.count();
+    console.log(`[ChromaCollections.getAll] Starting getAll for collection: ${this.collectionName}`);
+    console.log(`[ChromaCollections.getAll] Options:`, options);
     
-    if (count === 0) {
-      return [];
-    }
+    // Don't rely on count() for early return as it may be inaccurate
+    // Instead, try to fetch the data and let ChromaDB tell us if it's empty
     
     // Use ChromaDB's getAllItems method to retrieve all items without query embeddings
-    const results = await this.vectorStore.getAllItems(this.collectionName);
+    console.log(`[ChromaCollections.getAll] Calling vectorStore.getAllItems for: ${this.collectionName}`);
+    const results = await this.vectorStore.getAllItems(this.collectionName, options);
+    
+    console.log(`[ChromaCollections.getAll] Raw results from getAllItems:`, {
+      idsLength: results.ids?.length || 0,
+      embeddingsLength: results.embeddings?.length || 0,
+      metadatasLength: results.metadatas?.length || 0,
+      documentsLength: results.documents?.length || 0,
+      firstId: results.ids?.[0],
+      firstMetadata: results.metadatas?.[0]
+    });
     
     if (!results.ids?.length) {
+      console.log(`[ChromaCollections.getAll] No IDs found, returning empty array`);
       return [];
     }
     
     // Process results (getItems returns flat arrays, not nested like query)
+    console.log(`[ChromaCollections.getAll] Processing ${results.ids.length} items`);
     const items = results.ids.map((id, index) => {
       const embedding = results.embeddings?.[index];
       const metadata = results.metadatas?.[index];
       const document = results.documents?.[index];
       
-      return this.storageToItem({
+      console.log(`[ChromaCollections.getAll] Processing item ${index}:`, {
+        id,
+        hasEmbedding: !!embedding,
+        metadata,
+        document
+      });
+      
+      const item = this.storageToItem({
         id,
         embedding,
         metadata,
         document
       });
+      
+      console.log(`[ChromaCollections.getAll] Converted item ${index}:`, item);
+      return item;
     });
+    
+    console.log(`[ChromaCollections.getAll] Final processed items count: ${items.length}`);
     
     // Sort if requested
     if (options?.sortBy) {

@@ -56,13 +56,13 @@ export interface CommonParameters {
   /**
    * Session identifier to track related tool calls
    */
-  sessionId: string;
+  sessionId?: string;
   
   /**
    * Contextual information for this tool call
    * Can be either a string (legacy) or rich object (enhanced)
    */
-  context: string | {
+  context?: string | {
     sessionMemory: string;
     toolContext: string;
     primaryGoal: string;
@@ -74,6 +74,12 @@ export interface CommonParameters {
    * Can be either an object with workspaceId or a JSON string representation
    */
   workspaceContext?: WorkspaceContext | string;
+  
+  /**
+   * Simple workspace ID for focused search modes
+   * Defaults to "global-workspace-default" if not specified
+   */
+  workspaceId?: string;
   
   /**
    * Optional handoff to another agent/mode for workflow chaining

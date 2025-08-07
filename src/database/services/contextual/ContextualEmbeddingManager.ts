@@ -97,14 +97,9 @@ export class ContextualEmbeddingManager {
         this.fileEmbeddingRepository = new CollectionRepository({}, 'file_embeddings');
       }
 
-      console.log('[ContextualEmbeddingManager] Initialized with settings:', {
-        maxMemoryMB: this.maxMemoryMB,
-        memoryPressureThreshold: this.memoryPressureThreshold,
-        recentFilesLimit: this.recentFilesTracker.getSize(),
-        hasFileEmbeddings: !!this.fileEmbeddingRepository
-      });
+      // Initialized contextual embedding manager
 
-      // Load recent files from the last session (if any were persisted)
+      // Load recent files from the last session (if any were persisted)  
       await this.loadRecentFilesEmbeddings(this.DEFAULT_RECENT_FILES_LIMIT);
 
     } catch (error) {
@@ -121,12 +116,7 @@ export class ContextualEmbeddingManager {
     const startTime = performance.now();
     const initialMemory = this.getBrowserMemoryUsage();
     
-    console.log('[ContextualEmbeddingManager] Loading recent files embeddings:', {
-      requestedLimit: limit,
-      currentLoadedFiles: this.loadedEmbeddings.size,
-      recentFilesCount: this.recentFilesTracker.getSize(),
-      memoryPressure: this.getMemoryPressureLevel()
-    });
+    // Loading recent files embeddings
 
     try {
       const recentFiles = this.recentFilesTracker.getRecentFiles(limit);
@@ -178,7 +168,7 @@ export class ContextualEmbeddingManager {
       this.loadStats.totalLoads++;
       this.loadStats.lastLoadTime = endTime;
 
-      console.log('[ContextualEmbeddingManager] Recent files loading complete:', result);
+      // Recent files loading complete
       return result;
 
     } catch (error) {
@@ -203,7 +193,7 @@ export class ContextualEmbeddingManager {
   async loadWorkspaceEmbeddings(workspaceId: string): Promise<ContextualLoadingResult> {
     const startTime = performance.now();
     const initialMemory = this.getBrowserMemoryUsage();
-    console.log(`[ContextualEmbeddingManager] Loading workspace embeddings: ${workspaceId}`);
+    // Loading workspace embeddings
 
     try {
       // Get workspace files (this would need integration with WorkspaceService)
@@ -254,7 +244,7 @@ export class ContextualEmbeddingManager {
         errors: errors.length > 0 ? errors : undefined
       };
 
-      console.log(`[ContextualEmbeddingManager] Workspace ${workspaceId} loading complete:`, result);
+      // Workspace loading complete
       return result;
 
     } catch (error) {
@@ -277,7 +267,7 @@ export class ContextualEmbeddingManager {
    * @param workspaceId Workspace identifier
    */
   async unloadWorkspaceEmbeddings(workspaceId: string): Promise<void> {
-    console.log(`[ContextualEmbeddingManager] Unloading workspace embeddings: ${workspaceId}`);
+    // Unloading workspace embeddings
 
     try {
       const workspaceFiles = await this.getWorkspaceFiles(workspaceId);
@@ -293,7 +283,7 @@ export class ContextualEmbeddingManager {
       }
 
       this.activeWorkspaces.delete(workspaceId);
-      console.log(`[ContextualEmbeddingManager] Unloaded ${unloadedCount} files from workspace ${workspaceId}`);
+      // Workspace unloading complete
 
     } catch (error) {
       console.error(`[ContextualEmbeddingManager] Failed to unload workspace ${workspaceId}:`, error);
@@ -322,7 +312,7 @@ export class ContextualEmbeddingManager {
    * @param workspaceId Active workspace identifier
    */
   async setActiveWorkspace(workspaceId: string): Promise<void> {
-    console.log(`[ContextualEmbeddingManager] Setting active workspace: ${workspaceId}`);
+    // Setting active workspace
     
     // Load embeddings for the new workspace
     await this.loadWorkspaceEmbeddings(workspaceId);
@@ -411,7 +401,7 @@ export class ContextualEmbeddingManager {
    * @param filePaths Array of file paths to ensure are loaded
    */
   async ensureFilesLoaded(filePaths: string[]): Promise<EnsureFilesResult> {
-    console.log(`[ContextualEmbeddingManager] Ensuring ${filePaths.length} files are loaded`);
+    // Ensuring files are loaded
 
     let alreadyLoaded = 0;
     let newlyLoaded = 0;
@@ -459,7 +449,7 @@ export class ContextualEmbeddingManager {
       errors: errors.length > 0 ? errors : undefined
     };
 
-    console.log('[ContextualEmbeddingManager] Files ensure complete:', result);
+    // Files ensure complete
     return result;
   }
 

@@ -21,18 +21,18 @@ export class ProcessedFilesStateManager {
 
     async loadState(): Promise<void> {
         if (this.loaded) {
-            console.log('[StateManager] State already loaded, skipping');
+            // State already loaded, skipping
             return;
         }
 
         try {
-            console.log('[StateManager] Loading state from data.json');
+            // Loading state from data.json
             const data = await this.plugin.loadData();
             const processedFilesData = data?.processedFiles;
             
             // Initialize with empty state if no data found
             if (!processedFilesData) {
-                console.log('[StateManager] No processed files data found in data.json, starting fresh');
+                // No processed files data found in data.json, starting fresh
                 this.loaded = true;
                 return;
             }
@@ -42,11 +42,7 @@ export class ProcessedFilesStateManager {
             const finalProcessedFilesData = finalData?.processedFiles;
             
             if (finalProcessedFilesData) {
-                console.log('[StateManager] Parsed processed files data:', { 
-                    version: finalProcessedFilesData.version, 
-                    lastUpdated: finalProcessedFilesData.lastUpdated,
-                    filesCount: finalProcessedFilesData.files ? Object.keys(finalProcessedFilesData.files).length : 0
-                });
+                // Parsed processed files data from storage
                 
                 // Validate and load state data
                 if (finalProcessedFilesData.version && finalProcessedFilesData.files) {
@@ -58,16 +54,11 @@ export class ProcessedFilesStateManager {
                         }
                     }
                     
-                    console.log(`[StateManager] ✅ Loaded ${this.processedFiles.size} files from data.json`);
+                    // Successfully loaded files from data.json
                 }
             }
         } catch (error) {
-            console.error('[StateManager] ❌ CRITICAL: Failed to load from data.json:', error);
-            console.error('[StateManager] ❌ DIAGNOSTIC: Plugin instance:', {
-                hasPlugin: !!this.plugin,
-                hasLoadData: !!(this.plugin?.loadData),
-                pluginType: this.plugin?.constructor?.name
-            });
+            console.error('CRITICAL: Failed to load from data.json:', error);
             throw new Error(`ProcessedFilesStateManager failed to load state: ${error instanceof Error ? error.message : String(error)}`);
         }
         
@@ -76,12 +67,12 @@ export class ProcessedFilesStateManager {
 
     async saveState(): Promise<void> {
         if (!this.loaded) {
-            console.log('[StateManager] State not loaded, skipping save');
+            // State not loaded, skipping save
             return;
         }
 
         try {
-            console.log(`[StateManager] Saving ${this.processedFiles.size} files to data.json`);
+            // Saving files to data.json
             
             // Load existing data to preserve other settings
             const data = await this.plugin.loadData() || {};
@@ -95,15 +86,9 @@ export class ProcessedFilesStateManager {
 
             // Save back to plugin data
             await this.plugin.saveData(data);
-            console.log('[StateManager] ✅ Saved processed files to data.json');
+            // Successfully saved processed files to data.json
         } catch (error) {
-            console.error('[StateManager] ❌ CRITICAL: Failed to save to data.json:', error);
-            console.error('[StateManager] ❌ DIAGNOSTIC: Plugin instance:', {
-                hasPlugin: !!this.plugin,
-                hasSaveData: !!(this.plugin?.saveData),
-                pluginType: this.plugin?.constructor?.name,
-                processedFilesCount: this.processedFiles.size
-            });
+            console.error('CRITICAL: Failed to save to data.json:', error);
             throw new Error(`ProcessedFilesStateManager failed to save state: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
@@ -114,7 +99,7 @@ export class ProcessedFilesStateManager {
         
         
         if (!state) {
-            console.log(`[StateManager] No state found for: ${normalizedPath}`);
+            // No state found for file
             return false;
         }
         
@@ -128,11 +113,7 @@ export class ProcessedFilesStateManager {
     markFileProcessed(filePath: string, contentHash: string, provider: string, vectorStoreId: string = 'default'): void {
         const normalizedPath = normalizePath(filePath);
         
-        console.log(`[StateManager] Marking file as processed: ${normalizedPath}`, {
-            contentHash,
-            provider,
-            vectorStoreId
-        });
+        // Marking file as processed
         
         this.processedFiles.set(normalizedPath, {
             filePath: normalizedPath,
@@ -143,16 +124,13 @@ export class ProcessedFilesStateManager {
             vectorStoreId,
         });
         
-        console.log(`[StateManager] ✅ File marked as processed. Total processed files: ${this.processedFiles.size}`);
+        // File marked as processed
     }
 
     markFileFailed(filePath: string, contentHash: string, errorMessage: string): void {
         const normalizedPath = normalizePath(filePath);
         
-        console.log(`[StateManager] Marking file as failed: ${normalizedPath}`, {
-            contentHash,
-            errorMessage
-        });
+        // Marking file as failed
         
         this.processedFiles.set(normalizedPath, {
             filePath: normalizedPath,
@@ -164,7 +142,7 @@ export class ProcessedFilesStateManager {
             errorMessage,
         });
         
-        console.log(`[StateManager] ❌ File marked as failed. Total processed files: ${this.processedFiles.size}`);
+        // File marked as failed
     }
 
     removeFile(filePath: string): void {
@@ -176,7 +154,7 @@ export class ProcessedFilesStateManager {
         const count = Array.from(this.processedFiles.values())
             .filter(state => state.status === 'completed')
             .length;
-        console.log(`[StateManager] Get processed files count: ${count}`);
+        // Getting processed files count
         return count;
     }
 

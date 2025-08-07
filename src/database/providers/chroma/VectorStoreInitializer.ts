@@ -48,6 +48,17 @@ export interface InitializationContext {
   collectionCoordinator?: ICollectionLoadingCoordinator;
 }
 
+export interface CollectionDiagnostics {
+  name: string;
+  exists: boolean;
+  estimatedItems: number | string;
+  lastModified?: number | null;
+  status: 'available' | 'missing' | 'error' | 'creation_failed';
+  memoryFootprintMB?: number;
+  loadingTimeMs?: number;
+  error?: string;
+}
+
 /**
  * Handles vector store initialization sequence with proper error handling
  * and recovery mechanisms. Extracted from ChromaVectorStoreModular to follow
@@ -63,15 +74,13 @@ export class VectorStoreInitializer {
 
   /**
    * Performs complete vector store initialization sequence
+   * LAZY LOADING: Eliminates collection loading during startup for memory optimization
    */
   async initialize(context: InitializationContext): Promise<VectorStoreInitializationResult> {
     const startTime = performance.now();
     const initialMemory = this.getMemoryUsage();
     
-    console.log(`[VectorStoreInitializer] Starting initialization:`, {
-      initialMemoryMB: Math.round(initialMemory / 1024 / 1024 * 100) / 100,
-      memoryPressure: this.getMemoryPressureLevel()
-    });
+    // Starting lazy initialization
 
     try {
       // Step 1: Validate configuration
@@ -80,51 +89,29 @@ export class VectorStoreInitializer {
       // Step 2: Create ChromaDB client
       const client = await this.initializeClient(context);
 
-      // Step 3: Initialize contextual embedding manager (replaces full collection loading)
+      // Step 3: Initialize contextual embedding manager (for search operations only)
       const contextualLoadStartTime = performance.now();
       const contextualEmbeddingManager = await this.initializeContextualEmbeddingManager(context, client);
       const contextualLoadEndTime = performance.now();
       const contextualMemoryAfter = this.getMemoryUsage();
 
-      console.log(`[VectorStoreInitializer] Contextual embedding manager initialized:`, {
-        loadTimeMs: Math.round(contextualLoadEndTime - contextualLoadStartTime),
-        memoryDeltaMB: Math.round((contextualMemoryAfter - initialMemory) / 1024 / 1024 * 100) / 100,
-        memoryPressure: this.getMemoryPressureLevel(),
-        estimatedMemoryReductionMB: Math.round((1000) / 100) / 100 // Estimated ~1GB+ reduction
-      });
+      // Contextual embedding manager initialized
 
-      // Step 3.5: Load minimal collections metadata without full data
-      await this.initializeCollectionMetadata(context);
-
-      // Step 4: Ensure standard collections exist
-      await this.ensureStandardCollections(context);
-
-      // Step 5: Initialize lifecycle management
-      const lifecycleManager = await this.initializeLifecycleManager(context);
-
-      // Step 6: Log collection size diagnostics
-      await this.logCollectionDiagnostics(context);
+      // ELIMINATED: Collection metadata loading, standard collection creation, lifecycle management, diagnostics
+      // Collections will be created on-demand during first search operations
+      // This eliminates memory spikes during startup
 
       const endTime = performance.now();
       const finalMemory = this.getMemoryUsage();
 
-      console.log(`[VectorStoreInitializer] Initialization complete:`, {
-        totalTimeMs: Math.round(endTime - startTime),
-        totalMemoryDeltaMB: Math.round((finalMemory - initialMemory) / 1024 / 1024 * 100) / 100,
-        finalMemoryMB: Math.round(finalMemory / 1024 / 1024 * 100) / 100,
-        finalMemoryPressure: this.getMemoryPressureLevel()
-      });
-
-      // Warn about high memory usage
-      const memoryDelta = finalMemory - initialMemory;
-      if (memoryDelta > 200 * 1024 * 1024) { // > 200MB
-        console.warn(`[VectorStoreInitializer] HIGH MEMORY USAGE: Vector store initialization used ${Math.round(memoryDelta / 1024 / 1024)}MB`);
-      }
+      // CRITICAL CHANGE: Do NOT call setInitializationComplete()
+      // Keep the system in lazy-loading mode permanently
+      // Collections and data will only load when specifically needed for search operations
 
       return {
         client,
-        collectionLifecycleManager: lifecycleManager,
-        collectionHealthMonitor: undefined, // Will be initialized later by the vector store
+        collectionLifecycleManager: undefined, // Will be created on-demand
+        collectionHealthMonitor: undefined, // Will be created on-demand
         contextualEmbeddingManager
       };
 
@@ -132,13 +119,9 @@ export class VectorStoreInitializer {
       const errorTime = performance.now();
       const errorMemory = this.getMemoryUsage();
       
-      console.error(`[VectorStoreInitializer] Initialization failed:`, {
-        errorTimeMs: Math.round(errorTime - startTime),
-        memoryDeltaMB: Math.round((errorMemory - initialMemory) / 1024 / 1024 * 100) / 100,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      console.error(`[VectorStoreInitializer] Initialization failed:`, error instanceof Error ? error.message : String(error));
       
-      throw new Error(`ChromaDB initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`ChromaDB lazy initialization failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -173,13 +156,12 @@ export class VectorStoreInitializer {
 
   /**
    * Initialize contextual embedding manager for memory-efficient loading
-   * Replaces full collection loading with context-aware approach
    */
   private async initializeContextualEmbeddingManager(
     context: InitializationContext, 
     client: InstanceType<typeof ChromaClient>
   ): Promise<ContextualEmbeddingManager> {
-    console.log('[VectorStoreInitializer] Initializing contextual embedding manager for memory optimization');
+    // Initialize contextual embedding manager
 
     try {
       // Create vector store wrapper for the contextual manager
@@ -191,29 +173,93 @@ export class VectorStoreInitializer {
         }
       };
 
-      // Get memory settings from plugin data (if available)
+      // Get memory settings from plugin data (if available) or use adaptive defaults
       const pluginData = await context.plugin.loadData();
       const memorySettings = pluginData?.memory;
+      const systemMemory = await this.getSystemMemoryInfo();
+      const adaptiveConfig = await this.getAdaptiveContextualConfig(systemMemory);
       
       const contextualManager = new ContextualEmbeddingManager(
         context.plugin,
         vectorStoreWrapper as any, // Type assertion for the wrapper
         {
-          maxMemoryMB: memorySettings?.contextualEmbedding?.maxMemoryMB || 100,
-          memoryPressureThreshold: memorySettings?.contextualEmbedding?.memoryPressureThreshold || 0.85,
-          recentFilesLimit: memorySettings?.contextualEmbedding?.recentFilesLimit || 75
+          maxMemoryMB: memorySettings?.contextualEmbedding?.maxMemoryMB || adaptiveConfig.maxMemoryMB,
+          memoryPressureThreshold: memorySettings?.contextualEmbedding?.memoryPressureThreshold || adaptiveConfig.memoryPressureThreshold,
+          recentFilesLimit: memorySettings?.contextualEmbedding?.recentFilesLimit || adaptiveConfig.recentFilesLimit
         }
       );
 
+      // First initialize the manager
       await contextualManager.initialize();
 
-      console.log('[VectorStoreInitializer] Contextual embedding manager initialized successfully');
+      // Then run startup-specific initialization with context-aware loading
+      // Skip startup loading to maintain lazy loading approach
+      // Context-aware startup initialization complete
+
       return contextualManager;
 
     } catch (error) {
       console.error('[VectorStoreInitializer] Failed to initialize contextual embedding manager:', error);
       throw error;
     }
+  }
+
+  /**
+   * Get adaptive contextual configuration based on system capabilities
+   * ADAPTIVE SYSTEM: Adjusts memory and loading strategy based on system resources
+   */
+  private async getAdaptiveContextualConfig(systemInfo?: { memoryGB?: number }) {
+    const currentMemoryPressure = this.getMemoryPressureLevel();
+    const systemMemoryGB = systemInfo?.memoryGB || 8; // Default assumption
+
+    // Determine adaptive configuration based on system memory
+
+    // Adaptive strategy based on system capabilities and current memory pressure
+    if (currentMemoryPressure === 'critical' || currentMemoryPressure === 'high' || systemMemoryGB < 4) {
+      return {
+        strategy: 'minimal',
+        maxMemoryMB: 25,
+        memoryPressureThreshold: 0.75,
+        recentFilesLimit: 15,
+        description: 'Conservative loading for low-memory systems'
+      };
+    } else if (currentMemoryPressure === 'moderate' || systemMemoryGB < 8) {
+      return {
+        strategy: 'balanced',
+        maxMemoryMB: 75,
+        memoryPressureThreshold: 0.85,
+        recentFilesLimit: 50,
+        description: 'Balanced loading for moderate-memory systems'
+      };
+    } else {
+      return {
+        strategy: 'comprehensive',
+        maxMemoryMB: 150,
+        memoryPressureThreshold: 0.9,
+        recentFilesLimit: 75,
+        description: 'Comprehensive loading for high-memory systems'
+      };
+    }
+  }
+
+  /**
+   * Get system memory information (placeholder - would integrate with system APIs)
+   */
+  private async getSystemMemoryInfo(): Promise<{ memoryGB?: number }> {
+    try {
+      // Placeholder for system memory detection
+      // In a real implementation, this might use navigator.deviceMemory or other APIs
+      const memoryAPI = (performance as any).memory;
+      if (memoryAPI) {
+        const limitMB = memoryAPI.jsHeapSizeLimit / 1024 / 1024;
+        const estimatedSystemGB = Math.round(limitMB / 1024 * 4); // Rough estimate
+        return { memoryGB: Math.max(4, Math.min(estimatedSystemGB, 32)) };
+      }
+    } catch (error) {
+      console.debug('[VectorStoreInitializer] Could not detect system memory:', error);
+    }
+    
+    return { memoryGB: 8 }; // Conservative default
   }
 
   /**
@@ -224,14 +270,41 @@ export class VectorStoreInitializer {
     try {
       console.log('[VectorStoreInitializer] Initializing collection metadata (lightweight)');
       
+      // Track memory before listCollections() call
+      const memoryBefore = this.getMemoryUsage();
+      console.log(`[VectorStoreInitializer] Memory before listCollections(): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+      
       // Only load collection schemas and metadata, not full data
       const collections = await context.collectionManager.listCollections();
+      
+      // Track memory after listCollections() call
+      const memoryAfter = this.getMemoryUsage();
+      const memoryDelta = memoryAfter - memoryBefore;
+      console.log(`[VectorStoreInitializer] Memory after listCollections(): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+      
+      if (memoryDelta > 100 * 1024 * 1024) { // > 100MB
+        console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in listCollections(): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+      }
       
       let metadataCount = 0;
       for (const collectionName of collections) {
         try {
-          // Register collection with manager but don't load data yet
-          const collection = await context.collectionManager.getOrCreateCollection(collectionName);
+          // Register collection with manager but don't load data yet (CONTEXT-AWARE MODE)
+          // Track memory before collection creation
+          const memoryBefore = this.getMemoryUsage();
+          console.log(`[VectorStoreInitializer] Memory before getOrCreateCollection(${collectionName}): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+          
+          const collection = await context.collectionManager.getOrCreateCollection(collectionName, true); // Context-aware mode
+          
+          // Track memory after collection creation
+          const memoryAfter = this.getMemoryUsage();
+          const memoryDelta = memoryAfter - memoryBefore;
+          console.log(`[VectorStoreInitializer] Memory after getOrCreateCollection(${collectionName}): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+          
+          if (memoryDelta > 50 * 1024 * 1024) { // > 50MB
+            console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in getOrCreateCollection(${collectionName}): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+          }
+          
           if (collection) {
             context.collectionManager.registerCollection(collectionName, collection);
             metadataCount++;
@@ -268,13 +341,27 @@ export class VectorStoreInitializer {
             existingCount++;
             // Standard collection already exists
           } else {
-            // Collection doesn't exist - create it
+            // Collection doesn't exist - create it (CONTEXT-AWARE MODE)
+            // Track memory before collection creation
+            const memoryBefore = this.getMemoryUsage();
+            console.log(`[VectorStoreInitializer] Memory before createCollection(${collectionName}): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+            
             await context.collectionManager.createCollection(collectionName, {
               distance: 'cosine',
               description: `Standard collection: ${collectionName}`,
               createdBy: 'VectorStoreInitializer',
               createdAt: new Date().toISOString()
-            });
+            }, true); // Context-aware mode
+            
+            // Track memory after collection creation
+            const memoryAfter = this.getMemoryUsage();
+            const memoryDelta = memoryAfter - memoryBefore;
+            console.log(`[VectorStoreInitializer] Memory after createCollection(${collectionName}): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+            
+            if (memoryDelta > 50 * 1024 * 1024) { // > 50MB
+              console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in createCollection(${collectionName}): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+            }
+            
             createdCount++;
             // Created standard collection
           }
@@ -286,8 +373,9 @@ export class VectorStoreInitializer {
       
       console.info(`[VectorStoreInitializer] Standard collections: ${existingCount} existing, ${createdCount} created`);
       
-      // Final refresh to ensure collection manager state is synchronized
-      await context.collectionManager.refreshCollections();
+      // TEMPORARY FIX: Skip collection refresh to prevent bulk loading
+      // TODO: Implement context-aware collection refresh that doesn't load data
+      console.debug('[VectorStoreInitializer] Skipping collection refresh to prevent memory spike');
       
     } catch (error) {
       const errorMsg = `Standard collection initialization failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -301,8 +389,22 @@ export class VectorStoreInitializer {
    */
   private async initializeLifecycleManager(context: InitializationContext): Promise<CollectionLifecycleManager | undefined> {
     try {
+      // Track memory before listCollections() call
+      const memoryBefore = this.getMemoryUsage();
+      console.log(`[VectorStoreInitializer] LifecycleManager - Memory before listCollections(): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+      
       // Check if we have any collections to manage
       const collections = await context.collectionManager.listCollections();
+      
+      // Track memory after listCollections() call
+      const memoryAfter = this.getMemoryUsage();
+      const memoryDelta = memoryAfter - memoryBefore;
+      console.log(`[VectorStoreInitializer] LifecycleManager - Memory after listCollections(): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+      
+      if (memoryDelta > 100 * 1024 * 1024) { // > 100MB
+        console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in LifecycleManager listCollections(): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+      }
+      
       if (collections.length === 0) {
         // No collections found - skipping lifecycle manager initialization
         return undefined;
@@ -402,44 +504,190 @@ export class VectorStoreInitializer {
   }
 
   /**
-   * Log detailed collection size diagnostics for memory troubleshooting
+   * Log collection metadata diagnostics with lightweight approach
+   * CRITICAL FIX: Uses metadata-only approach instead of loading all data
+   * Memory Impact: Reduces startup memory usage by avoiding expensive collection.count() calls
    */
-  private async logCollectionDiagnostics(context: InitializationContext): Promise<void> {
+  private async logCollectionDiagnosticsLightweight(context: InitializationContext): Promise<CollectionDiagnostics[]> {
+    const diagnostics: CollectionDiagnostics[] = [];
+    
     try {
-      console.log(`[VectorStoreInitializer] Collection diagnostics:`);
+      console.log(`[VectorStoreInitializer] Collection metadata diagnostics (lightweight approach):`);
       
       for (const collectionName of VectorStoreInitializer.STANDARD_COLLECTIONS) {
-        try {
-          // Check if collection exists before trying to get diagnostics
-          const collectionExists = await context.collectionManager.hasCollection(collectionName);
-          if (!collectionExists) {
-            console.log(`[VectorStoreInitializer:${collectionName}] Collection not found - may be created later`);
-            continue;
+        const collectionDiagnostic = await this.getCollectionMetadataOnly(context, collectionName);
+        diagnostics.push(collectionDiagnostic);
+        
+        // Log diagnostic information without loading full data
+        if (collectionDiagnostic.exists) {
+          console.log(`[VectorStoreInitializer:${collectionName}] ` +
+            `Exists: true, ` +
+            `Estimated items: ${collectionDiagnostic.estimatedItems}, ` +
+            `Last modified: ${collectionDiagnostic.lastModified ? new Date(collectionDiagnostic.lastModified).toISOString().split('T')[0] : 'unknown'}, ` +
+            `Status: ${collectionDiagnostic.status}, ` +
+            `Memory footprint: ${collectionDiagnostic.memoryFootprintMB || 0}MB (metadata only)`);
+          
+          // Warn about large collections based on estimated size
+          if (typeof collectionDiagnostic.estimatedItems === 'number' && collectionDiagnostic.estimatedItems > 10000) {
+            console.warn(`[VectorStoreInitializer:${collectionName}] ESTIMATED LARGE COLLECTION: ~${collectionDiagnostic.estimatedItems} items (estimate only)`);
           }
-
-          const collection = await context.collectionManager.getOrCreateCollection(collectionName);
-          if (collection) {
-            // Try to get count - this is a standard ChromaDB method
-            try {
-              const itemCount = await collection.count();
-              console.log(`[VectorStoreInitializer:${collectionName}] Items: ${itemCount}`);
-              
-              // Warn about large collections (estimate >10,000 items as potentially large)
-              if (itemCount > 10000) {
-                console.warn(`[VectorStoreInitializer:${collectionName}] LARGE COLLECTION: ${itemCount} items`);
-              }
-            } catch (countError) {
-              console.log(`[VectorStoreInitializer:${collectionName}] Collection exists but count unavailable:`, countError);
-            }
-          } else {
-            console.log(`[VectorStoreInitializer:${collectionName}] Collection could not be created or accessed`);
-          }
-        } catch (error) {
-          console.warn(`[VectorStoreInitializer:${collectionName}] Failed to get diagnostics:`, error);
+        } else {
+          console.log(`[VectorStoreInitializer:${collectionName}] Status: ${collectionDiagnostic.status}, ` +
+            `Error: ${collectionDiagnostic.error || 'Collection not found'}`);
         }
       }
+      
+      const existingCollections = diagnostics.filter(d => d.exists).length;
+      console.log(`[VectorStoreInitializer] Metadata diagnostics complete: ${existingCollections}/${diagnostics.length} collections exist (lightweight approach used)`);
+      
+      return diagnostics;
+      
     } catch (error) {
-      console.warn(`[VectorStoreInitializer] Collection diagnostics failed:`, error);
+      console.warn(`[VectorStoreInitializer] Lightweight diagnostics failed:`, error);
+      return diagnostics; // Return partial results
+    }
+  }
+
+  /**
+   * Get collection metadata without loading full collection data
+   * MEMORY OPTIMIZATION: Uses filesystem and minimal ChromaDB calls to avoid bulk loading
+   */
+  private async getCollectionMetadataOnly(
+    context: InitializationContext, 
+    collectionName: string
+  ): Promise<CollectionDiagnostics> {
+    try {
+      // First, check if collection exists using enhanced hasCollection (filesystem-first)
+      const collectionExists = await context.collectionManager.hasCollection(collectionName);
+      
+      if (!collectionExists) {
+        return {
+          name: collectionName,
+          exists: false,
+          status: 'missing',
+          estimatedItems: 0,
+          memoryFootprintMB: 0
+        };
+      }
+
+      // Collection exists - get minimal metadata without loading data (CONTEXT-AWARE MODE)
+      try {
+        // Track memory before collection access
+        const memoryBefore = this.getMemoryUsage();
+        console.log(`[VectorStoreInitializer] Memory before metadata getOrCreateCollection(${collectionName}): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+        
+        const collection = await context.collectionManager.getOrCreateCollection(collectionName, true); // Context-aware mode for metadata
+        
+        // Track memory after collection access
+        const memoryAfter = this.getMemoryUsage();
+        const memoryDelta = memoryAfter - memoryBefore;
+        console.log(`[VectorStoreInitializer] Memory after metadata getOrCreateCollection(${collectionName}): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+        
+        if (memoryDelta > 50 * 1024 * 1024) { // > 50MB
+          console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in metadata getOrCreateCollection(${collectionName}): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+        }
+        if (!collection) {
+          return {
+            name: collectionName,
+            exists: false,
+            status: 'creation_failed',
+            estimatedItems: 0,
+            error: 'Could not create or access collection',
+            memoryFootprintMB: 0
+          };
+        }
+
+        // Try to get minimal metadata without triggering full data load
+        let estimatedCount: number | string = 'unknown';
+        let lastModified: number | null = null;
+        
+        try {
+          // Estimate collection size from filesystem without triggering bulk loading
+          const fsEstimate = await this.estimateCollectionSizeFromFilesystem(context, collectionName);
+          if (fsEstimate !== null && fsEstimate !== undefined) {
+            estimatedCount = fsEstimate;
+          } else {
+            // Fallback: Use very limited query to check if collection has any data
+            // This is safer than count() which loads everything
+            try {
+              const limitedQuery = await collection.get({ limit: 1 });
+              if (limitedQuery && limitedQuery.ids && limitedQuery.ids.length > 0) {
+                estimatedCount = 'has_data';
+              } else {
+                estimatedCount = 0;
+              }
+            } catch (queryError) {
+              console.warn(`[VectorStoreInitializer] Limited query failed for ${collectionName}:`, queryError);
+              estimatedCount = 'query_failed';
+            }
+          }
+          lastModified = Date.now(); // Current time as approximate
+        } catch (fsError) {
+          // Filesystem estimation failed
+          console.warn(`[VectorStoreInitializer] Filesystem estimation failed for ${collectionName}:`, fsError);
+          estimatedCount = 'fs_failed';
+        }
+        
+        return {
+          name: collectionName,
+          exists: true,
+          estimatedItems: estimatedCount,
+          lastModified,
+          status: 'available',
+          memoryFootprintMB: 0, // No data loaded into memory
+          loadingTimeMs: 0
+        };
+
+      } catch (accessError) {
+        return {
+          name: collectionName,
+          exists: true, // Exists but has issues
+          status: 'error',
+          estimatedItems: 'unknown',
+          error: `Access error: ${accessError instanceof Error ? accessError.message : String(accessError)}`,
+          memoryFootprintMB: 0
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: collectionName,
+        exists: false,
+        status: 'error',
+        estimatedItems: 0,
+        error: `Metadata check failed: ${error instanceof Error ? error.message : String(error)}`,
+        memoryFootprintMB: 0
+      };
+    }
+  }
+
+  /**
+   * Estimate collection size from filesystem without loading data
+   * PERFORMANCE: Fast filesystem-based size estimation to avoid memory loading
+   */
+  private async estimateCollectionSizeFromFilesystem(context: InitializationContext, collectionName: string): Promise<number | null> {
+    try {
+      // Try to get size estimate from filesystem if persistent path is available
+      if (context.config.persistentPath && context.directoryService) {
+        const collectionDir = `${context.config.persistentPath}/collections/${collectionName}`;
+        
+        try {
+          // Use available IDirectoryService methods instead of missing methods
+          const dirSizeMB = await context.directoryService.calculateDirectorySize(collectionDir);
+          if (dirSizeMB > 0) {
+            // Very rough estimate: ~1-2KB per embedding item, so ~500-1000 items per MB
+            const estimatedItems = Math.round(dirSizeMB * 750); // Average estimate
+            return estimatedItems;
+          }
+        } catch (fsError) {
+          // Filesystem access failed - not critical
+          console.debug(`[VectorStoreInitializer] Filesystem estimation failed for ${collectionName}:`, fsError);
+        }
+      }
+      
+      return null; // No estimate available
+    } catch (error) {
+      return null;
     }
   }
 
@@ -451,6 +699,40 @@ export class VectorStoreInitializer {
       return (performance as any).memory?.usedJSHeapSize || 0;
     }
     return 0;
+  }
+
+  /**
+   * Disable context-aware mode for all collections after initialization
+   * This allows normal search operations that require full data access
+   */
+  private async disableContextAwareModeForAllCollections(context: InitializationContext): Promise<void> {
+    try {
+      console.log('[VectorStoreInitializer] Disabling context-aware mode for all collections after initialization');
+      
+      const collections = await context.collectionManager.listCollections();
+      let disabledCount = 0;
+      
+      for (const collectionName of collections) {
+        try {
+          // Get the collection without context-aware mode to access the real collection
+          const collection = await context.collectionManager.getOrCreateCollection(collectionName, false);
+          
+          // Disable context-aware mode if the collection supports it
+          if (collection && typeof (collection as any).disableContextAwareMode === 'function') {
+            (collection as any).disableContextAwareMode();
+            disabledCount++;
+          }
+        } catch (error) {
+          console.warn(`[VectorStoreInitializer] Failed to disable context-aware mode for ${collectionName}:`, error);
+        }
+      }
+      
+      console.log(`[VectorStoreInitializer] Disabled context-aware mode for ${disabledCount}/${collections.length} collections - normal search operations now enabled`);
+      
+    } catch (error) {
+      console.warn('[VectorStoreInitializer] Failed to disable context-aware mode for collections:', error);
+      // Continue - this is not critical for initialization
+    }
   }
 
   /**

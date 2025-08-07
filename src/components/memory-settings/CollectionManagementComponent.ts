@@ -355,7 +355,9 @@ Are you absolutely sure you want to delete ALL collections?`;
      */
     private async reindexCollectionEmbeddings(collection: string, button: ButtonComponent): Promise<void> {
         button.setButtonText('Loading existing data...');
-        const existingItems = await this.vectorStore.getItems(collection, [], ['documents', 'metadatas']);
+        
+        // Use getAllItems to get all existing items for reindexing
+        const existingItems = await this.vectorStore.getAllItems(collection);
         
         if (!existingItems.ids || existingItems.ids.length === 0) {
             let message = `Collection "${collection}" is empty. `;

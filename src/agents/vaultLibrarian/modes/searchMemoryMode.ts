@@ -6,41 +6,111 @@ import {
   MemorySearchResult,
   SearchMemoryModeResult,
   MemoryFilterOptions,
-  FormatOptions
+  FormatOptions,
+  DateRange
 } from '../../../types/memory/MemorySearchTypes';
 import { MemorySearchProcessor, MemorySearchProcessorInterface } from '../services/MemorySearchProcessor';
 import { MemorySearchFilters, MemorySearchFiltersInterface } from '../services/MemorySearchFilters';
 import { ResultFormatter, ResultFormatterInterface } from '../services/ResultFormatter';
+import { CommonParameters } from '../../../types/mcp/AgentTypes';
+import { MemoryService } from '../../../database/services/MemoryService';
+import { WorkspaceService } from '../../../database/services/WorkspaceService';
+
+/**
+ * Memory types available for search (aligned with MemorySearchParameters)
+ */
+export type MemoryType = 'traces' | 'sessions' | 'states' | 'workspaces' | 'toolCalls';
+
+/**
+ * Session filtering options
+ */
+export interface SessionFilterOptions {
+  currentSessionOnly?: boolean;     // Filter to current session (default: false)
+  specificSessions?: string[];      // Filter to specific session IDs
+  excludeSessions?: string[];       // Exclude specific session IDs
+}
+
+/**
+ * Temporal filtering options for time-based search
+ */
+export interface TemporalFilterOptions {
+  since?: string | Date;           // Results since this timestamp
+  until?: string | Date;           // Results until this timestamp
+  lastNHours?: number;             // Results from last N hours
+  lastNDays?: number;              // Results from last N days
+}
+
+/**
+ * Memory search parameters interface (aligned with MemorySearchParameters)
+ */
+export interface SearchMemoryParams extends CommonParameters {
+  // REQUIRED PARAMETERS
+  query: string;
+  workspaceId: string;  // Defaults to global workspace if not provided
+
+  // OPTIONAL PARAMETERS
+  memoryTypes?: MemoryType[];
+  searchMethod?: 'semantic' | 'exact' | 'mixed';
+  sessionFiltering?: SessionFilterOptions;
+  temporalFiltering?: TemporalFilterOptions;
+  limit?: number;
+  includeMetadata?: boolean;
+  includeContent?: boolean;
+  
+  // Additional properties to match MemorySearchParameters
+  workspace?: string;
+  dateRange?: DateRange;
+  toolCallFilters?: any;
+  filterBySession?: boolean;
+}
+
+interface SearchModeCapabilities {
+  semanticSearch: boolean;
+  workspaceFiltering: boolean;
+  memorySearch: boolean;
+  hybridSearch: boolean;
+}
+
+// Enhanced SearchMemoryResult with capabilities and execution time
+export interface SearchMemoryResult extends SearchMemoryModeResult {
+  searchCapabilities?: SearchModeCapabilities;
+  executionTime?: number;
+}
 
 // Legacy interface names for backward compatibility
-export interface SearchMemoryParams extends MemorySearchParameters {}
 export type { MemorySearchResult };
-export type { SearchMemoryModeResult as SearchMemoryResult };
+export type { SearchMemoryModeResult };
 
 /**
  * Search mode focused on memory traces, sessions, states, and workspaces
  * Optimized with extracted services for better maintainability and testability
  */
-export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryModeResult> {
+export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryResult> {
   private plugin: Plugin;
   private processor: MemorySearchProcessorInterface;
   private filters: MemorySearchFiltersInterface;
   private formatter: ResultFormatterInterface;
+  private memoryService?: MemoryService;
+  private workspaceService?: WorkspaceService;
 
   constructor(
     plugin: Plugin,
+    memoryService?: MemoryService,
+    workspaceService?: WorkspaceService,
     processor?: MemorySearchProcessorInterface,
     filters?: MemorySearchFiltersInterface,
     formatter?: ResultFormatterInterface
   ) {
     super(
-      'searchMemory', 
+      'searchMemoryMode', 
       'Search Memory', 
-      'Search through memory traces, sessions, states, and workspaces. Enables finding past conversations and context.', 
-      '1.0.0'
+      'MEMORY-FOCUSED search with mandatory workspaceId parameter. Search through memory traces, sessions, states, and activities with workspace context and temporal filtering. Requires: query (search terms) and workspaceId (workspace context - defaults to "global-workspace-default").', 
+      '2.0.0'
     );
     
     this.plugin = plugin;
+    this.memoryService = memoryService;
+    this.workspaceService = workspaceService;
     
     // Initialize services with dependency injection support
     this.processor = processor || new MemorySearchProcessor(plugin);
@@ -48,32 +118,38 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
     this.formatter = formatter || new ResultFormatter();
   }
 
-  async execute(params: SearchMemoryParams): Promise<SearchMemoryModeResult> {
+  async execute(params: SearchMemoryParams): Promise<SearchMemoryResult> {
     const startTime = Date.now();
     
     try {
-      // Basic validation
+      // Simple parameter validation
       if (!params.query || params.query.trim().length === 0) {
         return {
           success: false,
           query: params.query || '',
           results: [],
           totalResults: 0,
+          searchCapabilities: this.getCapabilities(),
+          executionTime: Date.now() - startTime,
           error: 'Query parameter is required and cannot be empty'
         };
       }
 
+      // Apply default workspace if not provided
+      const workspaceId = params.workspaceId || 'global-workspace-default';
+      const searchParams = { ...params, workspaceId };
+
       // Core processing through extracted services
-      let results = await this.processor.process(params);
+      let results = await this.processor.process(searchParams);
       
       // Apply filters if specified
-      if (this.shouldApplyFilters(params)) {
-        const filterOptions = this.buildFilterOptions(params);
+      if (this.shouldApplyFilters(searchParams)) {
+        const filterOptions = this.buildFilterOptions(searchParams);
         results = this.filters.filter(results, filterOptions);
       }
       
       // Format results if needed (currently returns results as-is for compatibility)
-      const formatOptions = this.buildFormatOptions(params);
+      const formatOptions = this.buildFormatOptions(searchParams);
       // Note: Formatting is available but not applied by default to maintain compatibility
       
       // Build summary
@@ -91,7 +167,9 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
         success: true,
         query: params.query,
         results: results,
-        totalResults: results.length
+        totalResults: results.length,
+        searchCapabilities: this.getCapabilities(),
+        executionTime: Date.now() - startTime
       };
       
     } catch (error) {
@@ -101,22 +179,31 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
         query: params.query || '',
         results: [],
         totalResults: 0,
-        error: `Search failed: ${getErrorMessage(error)}`
+        searchCapabilities: this.getCapabilities(),
+        executionTime: Date.now() - startTime,
+        error: `Memory search failed: ${getErrorMessage(error)}`
       };
     }
   }
 
   getParameterSchema() {
-    // Create the mode-specific schema
+    // Create the enhanced mode-specific schema
     const modeSchema = {
       type: 'object',
-      title: 'Search Memory Parameters',
-      description: 'Search through memory traces, sessions, states, and workspaces',
+      title: 'Memory Search Parameters',
+      description: 'MEMORY-FOCUSED search with workspace context. Search through memory traces, sessions, states, and activities with temporal filtering.',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query to find in memory content',
-          minLength: 1
+          description: 'REQUIRED: Search query to find in memory content',
+          minLength: 1,
+          examples: ['project discussion', 'error handling', 'user feedback', 'deployment process']
+        },
+        workspaceId: {
+          type: 'string',
+          description: 'REQUIRED: Workspace context for memory search. IMPORTANT: If not provided or empty, defaults to "global-workspace-default" which has minimal memory content. Specify a proper workspace ID to access workspace-specific memory traces, sessions, and activities.',
+          default: 'global-workspace-default',
+          examples: ['project-alpha', 'research-workspace', 'global-workspace-default']
         },
         memoryTypes: {
           type: 'array',
@@ -126,10 +213,6 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
           },
           description: 'Types of memory to search (defaults to all)',
           default: ['traces', 'toolCalls', 'sessions', 'states', 'workspaces']
-        },
-        workspace: {
-          type: 'string',
-          description: 'Filter results by workspace ID'
         },
         dateRange: {
           type: 'object',
@@ -192,7 +275,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
           default: false
         }
       },
-      required: ['query']
+      required: ['query', 'workspaceId']
     };
     
     // Merge with common schema (sessionId and context) - removing duplicate definitions
@@ -261,12 +344,25 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
           type: 'number',
           description: 'Total number of results found'
         },
+        searchCapabilities: {
+          type: 'object',
+          properties: {
+            semanticSearch: { type: 'boolean' },
+            workspaceFiltering: { type: 'boolean' },
+            memorySearch: { type: 'boolean' },
+            hybridSearch: { type: 'boolean' }
+          }
+        },
+        executionTime: {
+          type: 'number',
+          description: 'Search execution time in milliseconds'
+        },
         error: {
           type: 'string',
           description: 'Error message if search failed'
         }
       },
-      required: ['success', 'query', 'results', 'totalResults']
+      required: ['success', 'query', 'results', 'totalResults', 'searchCapabilities']
     };
   }
 
@@ -279,7 +375,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
     return !!(params.dateRange || 
               params.toolCallFilters || 
               params.filterBySession || 
-              params.workspace);
+              params.workspace || params.workspaceId);
   }
   
   /**
@@ -290,7 +386,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
       dateRange: params.dateRange,
       toolCallFilters: params.toolCallFilters,
       sessionId: params.sessionId,
-      workspaceId: params.workspace,
+      workspaceId: params.workspace || params.workspaceId,
       filterBySession: params.filterBySession
     };
   }
@@ -303,6 +399,15 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryM
       maxHighlightLength: 200,
       contextLength: 50,
       enhanceToolCallContext: true
+    };
+  }
+
+  private getCapabilities(): SearchModeCapabilities {
+    return {
+      semanticSearch: false, // Memory search typically uses exact/fuzzy matching
+      workspaceFiltering: !!this.workspaceService,
+      memorySearch: !!this.memoryService,
+      hybridSearch: false
     };
   }
 }

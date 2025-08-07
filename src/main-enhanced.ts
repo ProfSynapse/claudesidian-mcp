@@ -324,7 +324,7 @@ export default class ClaudesidianPluginEnhanced extends Plugin {
    * Handle initialization errors gracefully
    */
   private handleInitializationError(error: any): void {
-    console.error('[ClaudesidianPlugin] Initialization failed:', error);
+    console.error('Initialization failed:', error);
     
     // Show user-friendly error
     new Notice('Claudesidian MCP Plugin failed to initialize. Check console for details.', 8000);
@@ -334,7 +334,7 @@ export default class ClaudesidianPluginEnhanced extends Plugin {
       try {
         this.logger = new StructuredLogger(this);
       } catch (loggerError) {
-        console.error('[ClaudesidianPlugin] Failed to initialize logger:', loggerError);
+        console.error('Failed to initialize logger:', loggerError);
         return;
       }
     }
@@ -357,7 +357,7 @@ export default class ClaudesidianPluginEnhanced extends Plugin {
         callback: () => {
           const message = 'Plugin failed to initialize. Check the console for error details.';
           new Notice(message, 10000);
-          console.log('[ClaudesidianPlugin] Troubleshooting info:', {
+          console.log('Troubleshooting info:', {
             foundationReady: this.foundationReady,
             coreReady: this.coreReady,
             businessReady: this.businessReady,
@@ -368,7 +368,7 @@ export default class ClaudesidianPluginEnhanced extends Plugin {
       
       this.logger?.info('Fallback mode enabled with basic troubleshooting');
     } catch (fallbackError) {
-      console.error('[ClaudesidianPlugin] Fallback mode setup failed:', fallbackError);
+      console.error('Fallback mode setup failed:', fallbackError);
     }
   }
 
@@ -586,7 +586,7 @@ export default class ClaudesidianPluginEnhanced extends Plugin {
       }
       
     } catch (error) {
-      console.error('[ClaudesidianPlugin] Error during cleanup:', error);
+      console.error('Error during cleanup:', error);
     }
   }
 }

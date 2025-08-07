@@ -4,6 +4,7 @@ import { VaultLibrarianConfig } from './config';
 import {
   SearchMode,
   SearchDirectoryMode,
+  SearchWorkspaceMode,
   SearchMemoryMode,
   BatchMode
 } from './modes';
@@ -13,6 +14,7 @@ import { EmbeddingService } from '../../database/services/EmbeddingService';
 import { MemoryService } from '../../database/services/MemoryService';
 import { MemoryTraceService } from '../../database/services/memory/MemoryTraceService';
 import { WorkspaceService } from '../../database/services/WorkspaceService';
+import { HybridSearchService } from '../../database/services/search/HybridSearchService';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
@@ -26,6 +28,7 @@ export class VaultLibrarianAgent extends BaseAgent {
   private memoryService: MemoryService | null = null;
   private memoryTraceService: MemoryTraceService | null = null;
   private workspaceService: WorkspaceService | null = null;
+  private hybridSearchService: HybridSearchService | null = null;
   private settings: MemorySettings;
   
   /**
@@ -74,6 +77,7 @@ export class VaultLibrarianAgent extends BaseAgent {
               this.memoryService = pluginAny.serviceContainer.getIfReady('memoryService');
               this.workspaceService = pluginAny.serviceContainer.getIfReady('workspaceService');
               this.memoryTraceService = pluginAny.serviceContainer.getIfReady('memoryTraceService');
+              this.hybridSearchService = pluginAny.serviceContainer.getIfReady('hybridSearchService');
               
             }
           } catch (error) {
@@ -93,13 +97,23 @@ export class VaultLibrarianAgent extends BaseAgent {
       this.workspaceService || undefined
     ));
     
-    // Register unified directory search mode
+    // Register focused search modes with enhanced validation and service integration
     this.registerMode(new SearchDirectoryMode(
-      plugin || ({ app } as any)
+      plugin || ({ app } as any),
+      this.workspaceService || undefined
+    ));
+    
+    this.registerMode(new SearchWorkspaceMode(
+      plugin || ({ app } as any),
+      this.embeddingService || undefined,
+      this.workspaceService || undefined,
+      this.hybridSearchService || undefined
     ));
     
     this.registerMode(new SearchMemoryMode(
-      plugin || ({ app } as any)
+      plugin || ({ app } as any),
+      this.memoryService || undefined,
+      this.workspaceService || undefined
     ));
     
     // Always register BatchMode (supports both semantic and non-semantic users)

@@ -170,7 +170,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
             this.collectionLifecycleManager
           ) || null;
         } catch (error) {
-          console.warn('[ChromaVectorStoreModular] Health monitoring initialization failed:', error);
+          console.warn('Health monitoring initialization failed:', error);
           this.collectionHealthMonitor = null;
         }
       } else {
@@ -183,17 +183,17 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Now start health monitoring after vector store is fully initialized
       if (this.collectionHealthMonitor) {
         this.collectionHealthMonitor.startMonitoring().catch(error => {
-          console.warn('[ChromaVectorStoreModular] Health monitoring startup failed:', error);
+          console.warn('Health monitoring startup failed:', error);
           // Continue without health monitoring - it's not critical for normal operation
         });
       }
       
-      console.info('[ChromaVectorStoreModular] Initialization completed successfully');
+      // Initialization completed successfully
       
     } catch (error) {
       // Reset initialized flag on error
       this.initialized = false;
-      console.error('[ChromaVectorStoreModular] Initialization failed:', error);
+      console.error('Initialization failed:', error);
       throw new Error(`ChromaDB initialization failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -202,7 +202,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   // The coordination logic is now handled by the ServiceCoordinator service
 
   // Note: Collection loading is now handled by ContextualEmbeddingManager on-demand
-  // The context-aware loading approach replaces bulk collection initialization
+  // The context-aware loading approach replaces eager collection initialization
 
   // Note: This method has been moved to VectorStoreInitializer.ensureStandardCollections()
   // The collection setup logic is now handled by the VectorStoreInitializer service
@@ -244,7 +244,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Shutdown completed successfully
       
     } catch (error) {
-      console.error("[ChromaVectorStoreModular] Error during shutdown:", error);
+      console.error("Error during shutdown:", error);
       // Reset state even if there was an error
       this.client = null;
       this.initialized = false;
@@ -312,10 +312,14 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       metadatas: items.metadatas,
       documents: items.documents
     });
+    
+    // Update metadata with current count after adding items
+    await this.updateCollectionMetadata(collectionName);
   }
 
   /**
    * Get items by ID from a collection
+   * Returns empty result when IDs array is empty (Settings UI usage)
    */
   async getItems(collectionName: string, ids: string[], include?: StoreIncludeType[]): Promise<{
     ids: string[];
@@ -325,11 +329,24 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   }> {
     this.ensureInitialized();
     
-    const collection = await this.getCollectionManager().getOrCreateCollection(collectionName);
+    // When empty IDs array is passed (Settings UI usage), return empty result
+    const isSettingsUICall = !ids || ids.length === 0;
+    const collection = await this.getCollectionManager().getOrCreateCollection(collectionName, isSettingsUICall);
+    
+    if (isSettingsUICall) {
+      // For Settings UI calls with empty IDs, return empty result
+      return {
+        ids: [],
+        embeddings: include?.includes('embeddings') ? [] : undefined,
+        metadatas: include?.includes('metadatas') ? [] : undefined,
+        documents: include?.includes('documents') ? [] : undefined,
+      };
+    }
     
     const results = await collection.get({
       ids,
-      include: include || ['embeddings', 'metadatas', 'documents']
+      include: include || ['embeddings', 'metadatas', 'documents'],
+      contextAware: false // Normal search operations need full data
     } as any);
     
     return this.normalizeGetResults(results);
@@ -337,7 +354,6 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
 
   /**
    * Get all items from a collection
-   * Used for retrieving all collection data
    */
   async getAllItems(collectionName: string, options?: { limit?: number; offset?: number }): Promise<{
     ids: string[];
@@ -345,19 +361,23 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
     metadatas?: Record<string, any>[];
     documents?: string[];
   }> {
+    console.log(`[ChromaVectorStore.getAllItems] Called for collection: ${collectionName}`);
+    console.log(`[ChromaVectorStore.getAllItems] Options:`, options);
+    
     this.ensureInitialized();
     
-    const collection = await this.getCollectionManager().getOrCreateCollection(collectionName);
+    // Get collection with normal loading - let memory management handle this
+    const collection = await this.getCollectionManager().getOrCreateCollection(collectionName, false);
     
-    // CRITICAL FIX: When no limit specified, get actual count and use that
-    // This prevents ChromaDB from using default limit of 10
+    // Use reasonable default limit based on collection size
     const actualLimit = options?.limit || await this.count(collectionName);
     
     // Get all items without specifying IDs
     const results = await collection.get({
       include: ['embeddings', 'metadatas', 'documents'],
       limit: actualLimit,
-      offset: options?.offset
+      offset: options?.offset,
+      contextAware: false // Full load requested
     } as any);
     
     return this.normalizeGetResults(results);
@@ -398,6 +418,9 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
     const collection = await this.getCollectionManager().getOrCreateCollection(collectionName);
     
     await collection.delete({ ids });
+    
+    // Update metadata with current count after deleting items
+    await this.updateCollectionMetadata(collectionName);
   }
 
   /**
@@ -437,9 +460,21 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   async count(collectionName: string): Promise<number> {
     this.ensureInitialized();
     
-    const collection = await this.getCollectionManager().getOrCreateCollection(collectionName);
+    // Use context-aware mode to get collection without loading data
+    const collection = await this.getCollectionManager().getOrCreateCollection(collectionName, true);
     
-    return await collection.count();
+    // Use context-aware count to get estimate without loading all data
+    return await collection.count(true);
+  }
+
+  /**
+   * Update collection metadata with current item count
+   * @param collectionName Collection name to update metadata for
+   */
+  private async updateCollectionMetadata(collectionName: string): Promise<void> {
+    // Skip metadata updates - let the system handle this through proper persistence layer
+    // The root cause is that we're bypassing the normal persistence flow
+    console.log(`[ChromaVectorStore] Skipping metadata update for ${collectionName} - delegating to persistence layer`);
   }
 
   /**

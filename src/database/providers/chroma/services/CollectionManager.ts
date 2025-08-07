@@ -104,7 +104,7 @@ export class CollectionManager implements ICollectionManager {
   /**
    * Get or create a collection with intelligent caching and error recovery
    */
-  async getOrCreateCollection(collectionName: string): Promise<Collection> {
+  async getOrCreateCollection(collectionName: string, contextAware = false): Promise<Collection> {
     this.cacheRequests++;
 
     // Check cache first
@@ -122,7 +122,7 @@ export class CollectionManager implements ICollectionManager {
     }
 
     // Collection not in cache or validation failed
-    return await this.createOrRecoverCollection(collectionName);
+    return await this.createOrRecoverCollection(collectionName, contextAware);
   }
 
   /**
@@ -213,7 +213,7 @@ export class CollectionManager implements ICollectionManager {
             // MEMORY FIX: Only mark collection as existing, don't load data
             // Data will be loaded on-demand by ContextualEmbeddingManager
             this.collections.add(collectionName);
-            console.log(`[CollectionManager] Collection '${collectionName}' found but not loaded (context-aware loading enabled)`);
+            // Collection found but not loaded (lazy loading mode)
             return true;
           } else {
             console.warn(`[CollectionManager] Invalid metadata for ${collectionName}:`, {
@@ -258,14 +258,14 @@ export class CollectionManager implements ICollectionManager {
   /**
    * Create a new collection
    */
-  async createCollection(collectionName: string, metadata?: Record<string, any>): Promise<void> {
+  async createCollection(collectionName: string, metadata?: Record<string, any>, contextAware = false): Promise<void> {
     if (this.collections.has(collectionName)) {
       return; // Collection already exists
     }
     
     try {
       const collectionMetadata = this.metadataManager.createCollectionMetadata(collectionName, metadata);
-      await this.client.createCollection(collectionName, collectionMetadata);
+      await this.client.createCollection(collectionName, collectionMetadata, contextAware);
       
       this.collections.add(collectionName);
     } catch (error) {
@@ -327,22 +327,22 @@ export class CollectionManager implements ICollectionManager {
   /**
    * Create or recover a collection with error handling
    */
-  private async createOrRecoverCollection(collectionName: string): Promise<Collection> {
+  private async createOrRecoverCollection(collectionName: string, contextAware = false): Promise<Collection> {
     try {
       let collection: Collection;
       let isRecreated = false;
       
-      // Try to get the collection from ChromaDB
+      // Try to get the collection from ChromaDB (with context-aware mode)
       try {
-        collection = await this.client.getCollection(collectionName);
+        collection = await this.client.getCollection(collectionName, contextAware);
         
         // Validate the collection
-        await collection.count();
+        await collection.count(contextAware);
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
-          // Create new collection
+          // Create new collection (with context-aware mode)
           const collectionMetadata = this.metadataManager.createCollectionMetadata(collectionName);
-          collection = await this.client.createCollection(collectionName, collectionMetadata);
+          collection = await this.client.createCollection(collectionName, collectionMetadata, contextAware);
         } else {
           // Collection exists but is corrupted, try to recreate
           try {
@@ -352,7 +352,7 @@ export class CollectionManager implements ICollectionManager {
           }
           
           const recoveryMetadata = this.metadataManager.createRecoveryMetadata(collectionName, 'validation_failed');
-          collection = await this.client.createCollection(collectionName, recoveryMetadata);
+          collection = await this.client.createCollection(collectionName, recoveryMetadata, contextAware);
           
           isRecreated = true;
         }

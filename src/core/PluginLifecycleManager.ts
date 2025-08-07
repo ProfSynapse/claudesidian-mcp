@@ -82,14 +82,9 @@ export class PluginLifecycleManager {
             // Log data.json for debugging StateManager
             try {
                 const data = await this.config.plugin.loadData();
-                console.log('[StateManager] Plugin data.json loaded:', {
-                    hasProcessedFiles: !!data?.processedFiles,
-                    processedFilesCount: data?.processedFiles?.files ? Object.keys(data.processedFiles.files).length : 0,
-                    processedFilesVersion: data?.processedFiles?.version,
-                    processedFilesLastUpdated: data?.processedFiles?.lastUpdated
-                });
+                // Plugin data.json loaded successfully
             } catch (error) {
-                console.warn('[StateManager] Failed to debug data.json:', error);
+                console.warn('Failed to debug data.json:', error);
             }
             
             // Initialize data directories

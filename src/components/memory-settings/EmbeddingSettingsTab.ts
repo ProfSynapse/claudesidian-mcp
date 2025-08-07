@@ -98,7 +98,7 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
         if (this.embeddingService) {
             try {
                 this.embeddingsExist = await this.embeddingService.hasExistingEmbeddings();
-                console.log('Embeddings exist:', this.embeddingsExist);
+                // Embeddings existence checked
             } catch (error) {
                 console.error('Error checking for existing embeddings:', error);
                 // Be conservative and assume embeddings exist on error
@@ -268,18 +268,9 @@ export class EmbeddingSettingsTab extends BaseSettingsTab {
                     return false;
                 }
                 
-                // Check if any matching collections have items
-                for (const collectionName of embeddingCollections) {
-                    if (collections.includes(collectionName)) {
-                        try {
-                            const count = await plugin.vectorStore.count(collectionName);
-                            if (count > 0) {
-                                return true;
-                            }
-                        } catch (countError) {
-                            console.warn(`Error getting count for ${collectionName}:`, countError);
-                        }
-                    }
+                // Collections exist, check if they have data
+                if (collectionExists) {
+                    return true;
                 }
             }
         } catch (error) {

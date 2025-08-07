@@ -9,7 +9,7 @@ import {
   UniversalSearchResult
 } from '../types';
 import { getErrorMessage } from '../../../utils/errorUtils';
-import { UniversalSearchService } from './services/UniversalSearchService';
+import { UniversalSearchService } from './services/universal/UniversalSearchService';
 
 /**
  * Batch mode for executing multiple universal searches concurrently

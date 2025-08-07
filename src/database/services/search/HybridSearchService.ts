@@ -105,8 +105,11 @@ export class HybridSearchService {
     // Initialize search validator if we have the required dependencies
     if (vectorStore && collectionLifecycleManager) {
       this.searchValidator = new SearchServiceValidator(vectorStore, collectionLifecycleManager);
+      // Initialized with collection validation support
     } else {
-      console.warn('[HybridSearchService] Initialized without collection validation - search errors may occur');
+      // LAZY LOADING ARCHITECTURE: Collections are validated and created on-demand during search operations
+      // This is the expected behavior for memory-optimized startup
+      // Initialized with lazy loading mode - collections validated on-demand
     }
     
     // Initialize existing services
