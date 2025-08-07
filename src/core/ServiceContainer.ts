@@ -1,31 +1,59 @@
 /**
- * ServiceContainer - Simple dependency injection container
+ * ServiceContainer - Enhanced dependency injection container with lazy loading and factory support
  * Location: src/core/ServiceContainer.ts
  * 
  * This service replaces the complex service registries and initialization coordination
- * with a simple, predictable dependency injection pattern. It provides clean service
- * lifecycle management and proper dependency resolution.
+ * with a unified, predictable dependency injection pattern. It provides clean service
+ * lifecycle management and proper dependency resolution with multiple registration patterns.
  * 
  * Key features:
  * - Simple factory-based service registration
+ * - Lazy loading capabilities with deferred initialization
+ * - IServiceFactory pattern support for advanced factories
  * - Singleton and transient service support
  * - Dependency injection with type safety
  * - Circular dependency detection
+ * - Promise-based duplicate initialization prevention
  * - Clean cleanup and lifecycle management
+ * 
+ * Registration Types:
+ * - register(): Traditional factory with dependency injection
+ * - registerLazy(): Lazy-loaded services with deferred creation
+ * - registerFactory(): IServiceFactory pattern with advanced dependency management
  * 
  * Used by:
  * - Enhanced Plugin main class for service coordination
  * - Service initialization and dependency resolution
+ * - Lazy loading patterns from LazyServiceManager
+ * - Factory patterns from ServiceDescriptors
  * - Clean service lifecycle management
  * - Service cleanup during plugin unload
  */
 
 export type ServiceFactory<T> = (dependencies: Record<string, any>) => T | Promise<T>;
+export type LazyFactory<T> = () => Promise<T>;
 
 export interface ServiceRegistration<T> {
   factory: ServiceFactory<T>;
   singleton: boolean;
   dependencies?: string[];
+}
+
+export interface IServiceFactory<T> {
+  create(dependencies: Map<string, any>): Promise<T>;
+  getRequiredDependencies(): string[];
+}
+
+export interface IServiceContainer {
+  register<T>(name: string, factory: ServiceFactory<T>, options?: { singleton?: boolean; dependencies?: string[] }): void;
+  registerLazy<T>(name: string, factory: LazyFactory<T>): void;
+  registerFactory<T>(name: string, factory: IServiceFactory<T>): void;
+  get<T>(name: string): Promise<T>;
+  getLazy<T>(name: string): Promise<T>;
+  getIfReady<T>(name: string): T | null;
+  has(name: string): boolean;
+  isReady(name: string): boolean;
+  resolveDependencies(name: string): Promise<void>;
 }
 
 export interface ServiceMetadata {
@@ -37,14 +65,17 @@ export interface ServiceMetadata {
 }
 
 /**
- * Simple dependency injection container
- * Replaces complex service registries
+ * Enhanced dependency injection container with lazy loading and factory support
+ * Replaces complex service registries with unified service management
  */
-export class ServiceContainer {
+export class ServiceContainer implements IServiceContainer {
   private services = new Map<string, any>();
   private factories = new Map<string, ServiceRegistration<any>>();
+  private lazyFactories = new Map<string, LazyFactory<any>>();
+  private serviceFactories = new Map<string, IServiceFactory<any>>();
   private initializationStack: string[] = [];
   private dependencyGraph = new Map<string, Set<string>>();
+  private pendingPromises = new Map<string, Promise<any>>();
 
   /**
    * Register service factory with optional dependencies
@@ -68,11 +99,32 @@ export class ServiceContainer {
 
     // Build dependency graph
     this.dependencyGraph.set(name, new Set(dependencies));
+  }
 
+  /**
+   * Register lazy-loaded service factory
+   * Services registered with this method are created on-demand without explicit dependencies
+   */
+  registerLazy<T>(name: string, factory: LazyFactory<T>): void {
+    this.lazyFactories.set(name, factory);
+    // Lazy services have no explicit dependencies - they manage their own resolution
+    this.dependencyGraph.set(name, new Set());
+  }
+
+  /**
+   * Register service using IServiceFactory interface
+   * Supports the factory pattern with explicit dependency management
+   */
+  registerFactory<T>(name: string, factory: IServiceFactory<T>): void {
+    const dependencies = factory.getRequiredDependencies();
+    this.serviceFactories.set(name, factory);
+    // Build dependency graph from factory
+    this.dependencyGraph.set(name, new Set(dependencies));
   }
 
   /**
    * Get service instance with dependency resolution
+   * Supports regular factories, lazy factories, and IServiceFactory pattern
    */
   async get<T>(name: string): Promise<T> {
     // Check if already instantiated (for singletons)
@@ -80,9 +132,23 @@ export class ServiceContainer {
       return this.services.get(name);
     }
 
+    // Check if there's a pending promise to avoid duplicate initialization
+    if (this.pendingPromises.has(name)) {
+      return this.pendingPromises.get(name);
+    }
+
+    // Try different registration types in order of preference
     const registration = this.factories.get(name);
-    if (!registration) {
-      throw new Error(`Service '${name}' not found. Available services: ${Array.from(this.factories.keys()).join(', ')}`);
+    const lazyFactory = this.lazyFactories.get(name);
+    const serviceFactory = this.serviceFactories.get(name);
+
+    if (!registration && !lazyFactory && !serviceFactory) {
+      const availableServices = [
+        ...Array.from(this.factories.keys()),
+        ...Array.from(this.lazyFactories.keys()),
+        ...Array.from(this.serviceFactories.keys())
+      ];
+      throw new Error(`Service '${name}' not found. Available services: ${availableServices.join(', ')}`);
     }
 
     // Check for circular dependencies
@@ -91,24 +157,81 @@ export class ServiceContainer {
       throw new Error(`Circular dependency detected: ${cycle}`);
     }
 
+    // Create and store promise to avoid duplicate initialization
+    const promise = this.createServiceInstance<T>(name, registration, lazyFactory, serviceFactory);
+    this.pendingPromises.set(name, promise);
+
+    try {
+      const instance = await promise;
+      this.pendingPromises.delete(name);
+      return instance;
+    } catch (error) {
+      this.pendingPromises.delete(name);
+      throw error;
+    }
+  }
+
+  /**
+   * Get service using lazy loading pattern
+   * Equivalent to get() but explicitly for lazy-registered services
+   */
+  async getLazy<T>(name: string): Promise<T> {
+    return this.get<T>(name);
+  }
+
+  /**
+   * Internal method to create service instance based on registration type
+   */
+  private async createServiceInstance<T>(
+    name: string,
+    registration: ServiceRegistration<any> | undefined,
+    lazyFactory: LazyFactory<any> | undefined,
+    serviceFactory: IServiceFactory<any> | undefined
+  ): Promise<T> {
     // Add to initialization stack
     this.initializationStack.push(name);
 
     try {
-      // Resolve dependencies first
-      const resolvedDependencies: Record<string, any> = {};
-      const dependencies = registration.dependencies || [];
-      for (const depName of dependencies) {
-        const dependency = await this.get(depName);
-        resolvedDependencies[depName] = dependency;
-      }
+      let instance: T;
 
-      // Create service instance
-      const instance = await registration.factory(resolvedDependencies || {});
-
-      // Store if singleton
-      if (registration.singleton) {
+      if (lazyFactory) {
+        // Handle lazy factory (no dependency injection)
+        instance = await lazyFactory();
+        // Lazy factories are always treated as singletons
         this.services.set(name, instance);
+      } else if (serviceFactory) {
+        // Handle IServiceFactory pattern
+        const dependencies = serviceFactory.getRequiredDependencies();
+        const resolvedDependencies = new Map<string, any>();
+        
+        // Resolve dependencies
+        for (const depName of dependencies) {
+          const dependency = await this.get(depName);
+          resolvedDependencies.set(depName, dependency);
+        }
+
+        instance = await serviceFactory.create(resolvedDependencies);
+        // ServiceFactory instances are always treated as singletons
+        this.services.set(name, instance);
+      } else if (registration) {
+        // Handle regular factory pattern
+        const resolvedDependencies: Record<string, any> = {};
+        const dependencies = registration.dependencies || [];
+        
+        // Resolve dependencies
+        for (const depName of dependencies) {
+          const dependency = await this.get(depName);
+          resolvedDependencies[depName] = dependency;
+        }
+
+        instance = await registration.factory(resolvedDependencies);
+
+        // Store if singleton
+        if (registration.singleton) {
+          this.services.set(name, instance);
+        }
+      } else {
+        throw new Error(`No valid factory found for service '${name}'`);
       }
 
       return instance;
@@ -130,10 +253,25 @@ export class ServiceContainer {
   }
 
   /**
-   * Check if service is registered
+   * Check if service is registered (any type)
    */
   has(name: string): boolean {
-    return this.factories.has(name);
+    return this.factories.has(name) || this.lazyFactories.has(name) || this.serviceFactories.has(name);
+  }
+
+  /**
+   * Resolve all dependencies for a service without instantiating the service itself
+   * Useful for preparation phase of service initialization
+   */
+  async resolveDependencies(name: string): Promise<void> {
+    const dependencies = this.dependencyGraph.get(name);
+    if (!dependencies || dependencies.size === 0) {
+      return; // No dependencies to resolve
+    }
+
+    // Pre-resolve all dependencies in parallel
+    const dependencyPromises = Array.from(dependencies).map(depName => this.get(depName));
+    await Promise.all(dependencyPromises);
   }
 
   /**
@@ -144,10 +282,14 @@ export class ServiceContainer {
   }
 
   /**
-   * Get all registered service names
+   * Get all registered service names (all types)
    */
   getRegisteredServices(): string[] {
-    return Array.from(this.factories.keys());
+    return [
+      ...Array.from(this.factories.keys()),
+      ...Array.from(this.lazyFactories.keys()),
+      ...Array.from(this.serviceFactories.keys())
+    ];
   }
 
   /**
@@ -158,27 +300,41 @@ export class ServiceContainer {
   }
 
   /**
-   * Get service metadata
+   * Get service metadata (supports all service types)
    */
   getServiceMetadata(name: string): ServiceMetadata | null {
     const registration = this.factories.get(name);
-    if (!registration) {
+    const lazyFactory = this.lazyFactories.get(name);
+    const serviceFactory = this.serviceFactories.get(name);
+
+    if (!registration && !lazyFactory && !serviceFactory) {
       return null;
     }
 
     // Find dependents (services that depend on this one)
     const dependents: string[] = [];
-    for (const [serviceName, deps] of this.dependencyGraph.entries()) {
+    for (const [serviceName, deps] of Array.from(this.dependencyGraph.entries())) {
       if (deps.has(name)) {
         dependents.push(serviceName);
       }
     }
 
+    let singleton = true; // Default for lazy and service factory
+    let dependencies: string[] = [];
+
+    if (registration) {
+      singleton = registration.singleton;
+      dependencies = registration.dependencies || [];
+    } else if (serviceFactory) {
+      dependencies = serviceFactory.getRequiredDependencies();
+    }
+    // Lazy services have no explicit dependencies
+
     return {
       name,
-      singleton: registration.singleton,
+      singleton,
       initialized: this.services.has(name),
-      dependencies: registration.dependencies || [],
+      dependencies,
       dependents
     };
   }
@@ -189,7 +345,8 @@ export class ServiceContainer {
   getAllServiceMetadata(): Record<string, ServiceMetadata> {
     const metadata: Record<string, ServiceMetadata> = {};
     
-    for (const serviceName of this.factories.keys()) {
+    // Get metadata for all registered services (all types)
+    for (const serviceName of this.getRegisteredServices()) {
       const meta = this.getServiceMetadata(serviceName);
       if (meta) {
         metadata[serviceName] = meta;
@@ -253,7 +410,7 @@ export class ServiceContainer {
       recursionStack.add(node);
 
       const dependencies = this.dependencyGraph.get(node) || new Set();
-      for (const dep of dependencies) {
+      for (const dep of Array.from(dependencies)) {
         if (detectCycle(dep, [...path, node])) {
           return true;
         }
@@ -263,7 +420,7 @@ export class ServiceContainer {
       return false;
     };
 
-    for (const service of this.factories.keys()) {
+    for (const service of Array.from(this.factories.keys())) {
       if (!visited.has(service)) {
         detectCycle(service, []);
       }
@@ -287,7 +444,7 @@ export class ServiceContainer {
       visited.add(node);
 
       const dependencies = this.dependencyGraph.get(node) || new Set();
-      for (const dep of dependencies) {
+      for (const dep of Array.from(dependencies)) {
         if (services.includes(dep)) {
           visit(dep);
         }
@@ -329,17 +486,19 @@ export class ServiceContainer {
       }
     }
 
+    // Remove from all maps
     this.services.delete(name);
     this.factories.delete(name);
+    this.lazyFactories.delete(name);
+    this.serviceFactories.delete(name);
     this.dependencyGraph.delete(name);
-
+    this.pendingPromises.delete(name);
   }
 
   /**
    * Clear all services with proper cleanup
    */
   clear(): void {
-
     // Get services in reverse dependency order for cleanup
     const allServices = Array.from(this.services.keys());
     const cleanupOrder = this.topologicalSort(allServices).reverse();
@@ -360,9 +519,11 @@ export class ServiceContainer {
     // Clear all maps
     this.services.clear();
     this.factories.clear();
+    this.lazyFactories.clear();
+    this.serviceFactories.clear();
     this.dependencyGraph.clear();
+    this.pendingPromises.clear();
     this.initializationStack = [];
-
   }
 
   /**
@@ -374,12 +535,16 @@ export class ServiceContainer {
     singletons: number;
     transients: number;
     totalDependencies: number;
+    regularServices: number;
+    lazyServices: number;
+    factoryServices: number;
   } {
     let singletons = 0;
     let transients = 0;
     let totalDependencies = 0;
 
-    for (const registration of this.factories.values()) {
+    // Count regular factory services
+    for (const registration of Array.from(this.factories.values())) {
       if (registration.singleton) {
         singletons++;
       } else {
@@ -388,12 +553,23 @@ export class ServiceContainer {
       totalDependencies += (registration.dependencies || []).length;
     }
 
+    // Lazy services and factory services are always singletons
+    singletons += this.lazyFactories.size + this.serviceFactories.size;
+
+    // Count dependencies from service factories
+    for (const factory of Array.from(this.serviceFactories.values())) {
+      totalDependencies += factory.getRequiredDependencies().length;
+    }
+
     return {
-      registered: this.factories.size,
+      registered: this.factories.size + this.lazyFactories.size + this.serviceFactories.size,
       instantiated: this.services.size,
       singletons,
       transients,
-      totalDependencies
+      totalDependencies,
+      regularServices: this.factories.size,
+      lazyServices: this.lazyFactories.size,
+      factoryServices: this.serviceFactories.size
     };
   }
 
@@ -401,11 +577,11 @@ export class ServiceContainer {
    * Export dependency graph for visualization
    */
   exportDependencyGraph(): { nodes: string[]; edges: Array<{ from: string; to: string }> } {
-    const nodes = Array.from(this.factories.keys());
+    const nodes = this.getRegisteredServices();
     const edges: Array<{ from: string; to: string }> = [];
 
-    for (const [service, dependencies] of this.dependencyGraph.entries()) {
-      for (const dep of dependencies) {
+    for (const [service, dependencies] of Array.from(this.dependencyGraph.entries())) {
+      for (const dep of Array.from(dependencies)) {
         edges.push({ from: service, to: dep });
       }
     }

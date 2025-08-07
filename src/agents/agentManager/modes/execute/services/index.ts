@@ -7,7 +7,6 @@ export { DependencyValidator } from './DependencyValidator';
 export { PromptExecutor } from './PromptExecutor';
 export { ActionExecutor } from './ActionExecutor';
 export { BudgetManager } from './BudgetManager';
-export { SchemaBuilder } from './SchemaBuilder';
 
 // Type exports
 export type { DependencyValidationResult, ServiceDependencies } from './DependencyValidator';

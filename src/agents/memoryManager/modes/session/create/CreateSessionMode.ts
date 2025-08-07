@@ -15,7 +15,7 @@ import { SessionCreator } from './services/SessionCreator';
 import { ContextBuilder } from './services/ContextBuilder';
 import { MemoryTracer } from './services/MemoryTracer';
 import { SessionInstructionManager } from './services/SessionInstructionManager';
-import { SessionSchemaBuilder } from './services/SessionSchemaBuilder';
+import { SchemaBuilder, SchemaType } from '../../../../../utils/schemas/SchemaBuilder';
 
 /**
  * Refactored CreateSessionMode following SOLID principles
@@ -28,7 +28,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
     private contextBuilder: ContextBuilder;
     private memoryTracer: MemoryTracer;
     private instructionManager: SessionInstructionManager;
-    private schemaBuilder: SessionSchemaBuilder;
+    private schemaBuilder: SchemaBuilder;
 
     constructor(private agent: MemoryManagerAgent) {
         super(
@@ -44,7 +44,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
         this.contextBuilder = new ContextBuilder(agent);
         this.memoryTracer = new MemoryTracer(agent);
         this.instructionManager = new SessionInstructionManager(agent);
-        this.schemaBuilder = new SessionSchemaBuilder();
+        this.schemaBuilder = new SchemaBuilder();
     }
 
     /**
@@ -244,7 +244,9 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
      * Get parameter schema using schema builder
      */
     getParameterSchema(): any {
-        const baseSchema = this.schemaBuilder.getParameterSchema();
+        const baseSchema = this.schemaBuilder.buildParameterSchema(SchemaType.Session, {
+            mode: 'createSession'
+        });
         return this.getMergedSchema(baseSchema);
     }
 
@@ -252,8 +254,9 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
      * Get result schema using schema builder
      */
     getResultSchema(): any {
-        const baseSchema = super.getResultSchema();
-        return this.schemaBuilder.getMergedResultSchema(baseSchema);
+        return this.schemaBuilder.buildResultSchema(SchemaType.Session, {
+            mode: 'createSession'
+        });
     }
 
     /**

@@ -12,7 +12,7 @@ export { SessionCreator } from './create/services/SessionCreator';
 export { ContextBuilder } from './create/services/ContextBuilder';
 export { MemoryTracer } from './create/services/MemoryTracer';
 export { SessionInstructionManager } from './create/services/SessionInstructionManager';
-export { SessionSchemaBuilder } from './create/services/SessionSchemaBuilder';
+// SessionSchemaBuilder removed - using unified schema builder
 
 // Export types for service interfaces
 export type { WorkspaceResolutionResult } from './create/services/WorkspaceResolver';

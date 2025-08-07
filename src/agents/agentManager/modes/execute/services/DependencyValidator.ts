@@ -175,6 +175,13 @@ export class DependencyValidator {
     }
 
     /**
+     * Get current dependencies
+     */
+    getDependencies(): ServiceDependencies {
+        return { ...this.dependencies };
+    }
+
+    /**
      * Get dependency descriptions
      */
     getDependencyDescriptions(): Record<keyof ServiceDependencies, string> {

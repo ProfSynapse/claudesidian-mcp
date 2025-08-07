@@ -1,4 +1,4 @@
-import { TextChunk } from './TextChunker';
+import { TextChunk } from './chunking';
 
 /**
  * Result of matching chunks between old and new versions

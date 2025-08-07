@@ -14,10 +14,10 @@ import {
     DependencyValidator, 
     PromptExecutor, 
     ActionExecutor, 
-    BudgetManager, 
-    SchemaBuilder,
+    BudgetManager,
     ServiceDependencies
 } from './services';
+import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
 export interface ExecutePromptParams {
     agent?: string;
@@ -255,13 +255,19 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
      * Get parameter schema for the mode
      */
     getParameterSchema(): any {
-        return this.schemaBuilder.getParameterSchema();
+        return this.schemaBuilder.buildParameterSchema(SchemaType.Execute, {
+            mode: 'executePrompt',
+            providerManager: this.dependencyValidator.getDependencies().providerManager
+        });
     }
 
     /**
      * Get result schema for the mode
      */
     getResultSchema(): any {
-        return this.schemaBuilder.getResultSchema();
+        return this.schemaBuilder.buildResultSchema(SchemaType.Execute, {
+            mode: 'executePrompt',
+            providerManager: this.dependencyValidator.getDependencies().providerManager
+        });
     }
 }

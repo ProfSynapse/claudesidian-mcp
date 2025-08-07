@@ -22,7 +22,8 @@ import {
   ResultProcessor,
   ActionExecutor
 } from './services';
-import { PromptParser, SchemaBuilder } from './utils';
+import { PromptParser } from './utils';
+import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
 /**
  * Refactored batch mode for executing multiple LLM prompts concurrently
@@ -260,7 +261,10 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
    * Get parameter schema for MCP tool definition
    */
   getParameterSchema(): any {
-    const batchSchema = this.schemaBuilder.getParameterSchema();
+    const batchSchema = this.schemaBuilder.buildParameterSchema(SchemaType.BatchExecute, {
+      mode: 'batchExecutePrompt',
+      providerManager: this.providerManager
+    });
     // Merge with common schema (sessionId and context)
     return this.getMergedSchema(batchSchema);
   }
@@ -269,6 +273,9 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
    * Get result schema for MCP tool definition
    */
   getResultSchema(): any {
-    return this.schemaBuilder.getResultSchema();
+    return this.schemaBuilder.buildResultSchema(SchemaType.BatchExecute, {
+      mode: 'batchExecutePrompt',
+      providerManager: this.providerManager
+    });
   }
 }
