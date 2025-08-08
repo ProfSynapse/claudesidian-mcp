@@ -1,6 +1,6 @@
 import { Plugin } from 'obsidian';
 import { IEmbeddingScheduler, FileEvent, EmbeddingStrategy, ProcessingResult } from '../interfaces/IFileEventServices';
-import { EmbeddingService } from '../../../database/services/EmbeddingService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
 
 export class EmbeddingScheduler implements IEmbeddingScheduler {
     private strategy: EmbeddingStrategy;

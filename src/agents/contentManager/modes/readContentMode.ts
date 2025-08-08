@@ -3,7 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { ReadContentParams, ReadContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
-import { MemoryService } from '../../../database/services/MemoryService';
+import { MemoryService } from "../memoryManager/services/MemoryService";
 import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 
 /**

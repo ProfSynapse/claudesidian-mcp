@@ -4,7 +4,7 @@
 
 import { BaseMode } from '../../../../baseMode';
 import { LoadStateParams, LoadStateResult } from '../../../../../database/types/workspace/ParameterTypes';
-import { MemoryService } from '../../../../../database/services/MemoryService';
+import { MemoryService } from "../services/MemoryService";
 import { App } from 'obsidian';
 
 // Define a custom interface for the Claudesidian plugin

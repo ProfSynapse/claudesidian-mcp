@@ -1,7 +1,7 @@
 import { MemoryTraceCollection } from '../../database/collections/MemoryTraceCollection';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { MemoryTraceStorageCoordinator, StorageResult } from './MemoryTraceStorageCoordinator';
-import { CollectionLifecycleManager } from '../../database/services/CollectionLifecycleManager';
+import { CollectionService } from "../../database/services/core/CollectionService";
 import { SessionService } from '../session/SessionService';
 
 /**
@@ -81,7 +81,7 @@ export class SimpleMemoryService {
         
         // Create storage coordinator with collection lifecycle management
         if (vectorStore && vectorStore.collectionManager) {
-            const collectionLifecycleManager = new CollectionLifecycleManager(
+            const collectionLifecycleManager = new CollectionService(
                 vectorStore, 
                 vectorStore.collectionManager
             );

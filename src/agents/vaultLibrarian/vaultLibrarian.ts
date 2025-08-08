@@ -10,10 +10,10 @@ import {
 } from './modes';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
-import { EmbeddingService } from '../../database/services/EmbeddingService';
-import { MemoryService } from '../../database/services/MemoryService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
 import { MemoryTraceService } from '../../database/services/memory/MemoryTraceService';
-import { WorkspaceService } from '../../database/services/WorkspaceService';
+import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
 import { HybridSearchService } from '../../database/services/search/HybridSearchService';
 import { getErrorMessage } from '../../utils/errorUtils';
 

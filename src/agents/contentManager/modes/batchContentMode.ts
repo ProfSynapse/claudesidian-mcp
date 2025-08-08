@@ -4,7 +4,7 @@
  */
 
 import { App } from 'obsidian';
-import { MemoryService } from '../../../database/services/MemoryService';
+import { MemoryService } from "../memoryManager/services/MemoryService";
 
 // Export the refactored BatchContentMode as the main BatchContentMode
 export { BatchContentMode } from './batch/BatchContentMode';

@@ -13,7 +13,7 @@
  */
 
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
-import { CollectionLifecycleManager } from '../../database/services/CollectionLifecycleManager';
+import { CollectionService } from "../../database/services/core/CollectionService";
 import { MemoryTraceCollection } from '../../database/collections/MemoryTraceCollection';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
 import { SessionService } from '../session/SessionService';
@@ -256,7 +256,7 @@ class MemoryTracePersistenceQueue {
 class MemoryTraceValidator {
     constructor(
         private vectorStore: IVectorStore,
-        private collectionLifecycleManager: CollectionLifecycleManager
+        private collectionLifecycleManager: CollectionService
     ) {}
 
     async validateTraceData(trace: MemoryTraceData): Promise<ValidationResult> {
@@ -358,7 +358,7 @@ export class MemoryTraceStorageCoordinator {
 
     constructor(
         private vectorStore: IVectorStore,
-        private collectionLifecycleManager: CollectionLifecycleManager,
+        private collectionLifecycleManager: CollectionService,
         private sessionService: SessionService
     ) {
         this.persistenceQueue = new MemoryTracePersistenceQueue(vectorStore);

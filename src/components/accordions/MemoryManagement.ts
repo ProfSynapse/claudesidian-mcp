@@ -2,9 +2,9 @@ import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { MemorySettingsTab } from '../MemorySettingsTab';
-import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
 import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddingAccessService';
-import { MemoryService } from '../../database/services/MemoryService';
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
 import { EmbeddingManager } from '../../database/services/embeddingManager';
 import type { ServiceContainer } from '../../core/ServiceContainer';
 

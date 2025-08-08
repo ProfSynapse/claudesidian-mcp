@@ -4,7 +4,7 @@
 
 import { BaseMode } from '../../../baseMode';
 import { LoadWorkspaceParameters, LoadWorkspaceResult } from '../../../../database/types/workspace/ParameterTypes';
-import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+import { WorkspaceService } from "../services/WorkspaceService";
 import { App } from 'obsidian';
 import { createServiceIntegration } from '../../utils/ServiceIntegration';
 import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';

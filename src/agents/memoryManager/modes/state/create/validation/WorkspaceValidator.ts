@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on workspace concerns
  */
 
-import { WorkspaceService } from '../../../../../../database/services/WorkspaceService';
+import { WorkspaceService } from "../services/WorkspaceService";
 import { parseWorkspaceContext } from '../../../../../../utils/contextUtils';
 import { CreateStateParams } from '../../../../types';
 

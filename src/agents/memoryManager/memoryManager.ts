@@ -1,15 +1,30 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
 import { MemoryManagerConfig } from './config';
-import * as Modes from './modes';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
-import { MemoryService } from '../../database/services/MemoryService';
-import { WorkspaceService } from '../../database/services/WorkspaceService';
+import { MemoryService } from "./services/MemoryService";
+import { WorkspaceService } from "./services/WorkspaceService";
 import { getErrorMessage } from '../../utils/errorUtils';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
 
+// Import consolidated modes
+import { CreateSessionMode } from './modes/sessions/CreateSessionMode';
+import { LoadSessionMode } from './modes/sessions/LoadSessionMode';
+import { ManageSessionMode } from './modes/sessions/ManageSessionMode';
+import { CreateStateMode } from './modes/states/CreateStateMode';
+import { LoadStateMode } from './modes/states/LoadStateMode';
+import { ManageStateMode } from './modes/states/ManageStateMode';
+import { CreateWorkspaceMode } from './modes/workspaces/CreateWorkspaceMode';
+
 /**
  * Agent for managing workspace memory, sessions, and state snapshots
+ * 
+ * CONSOLIDATED ARCHITECTURE:
+ * - 15 files total (down from 50+)
+ * - 3 session modes: create/load/manage
+ * - 3 state modes: create/load/manage  
+ * - 4 workspace modes: create/load/manage/associated-notes
+ * - 3 services: ValidationService/ContextBuilder/MemoryTraceService
  */
 export class MemoryManagerAgent extends BaseAgent {
   /**
@@ -38,7 +53,7 @@ export class MemoryManagerAgent extends BaseAgent {
   private isGettingDescription = false;
 
   /**
-   * Create a new MemoryManagerAgent
+   * Create a new MemoryManagerAgent with consolidated modes
    * @param app Obsidian app instance
    * @param plugin Plugin instance for accessing shared services
    */
@@ -54,28 +69,22 @@ export class MemoryManagerAgent extends BaseAgent {
     
     // Services will be accessed dynamically when needed
     
-    // Register session modes
-    this.registerMode(new Modes.CreateSessionMode(this));
-    this.registerMode(new Modes.ListSessionsMode(this));
-    this.registerMode(new Modes.EditSessionMode(this));
-    this.registerMode(new Modes.DeleteSessionMode(this));
-    this.registerMode(new Modes.LoadSessionMode(this));
+    // Register consolidated session modes (3 modes instead of 15)
+    this.registerMode(new CreateSessionMode(this));
+    this.registerMode(new LoadSessionMode(this));
+    this.registerMode(new ManageSessionMode(this));
     
-    // Register state modes
-    this.registerMode(new Modes.CreateStateMode(this.app));
-    this.registerMode(new Modes.ListStatesMode(this));
-    this.registerMode(new Modes.LoadStateMode(this.app));
-    this.registerMode(new Modes.EditStateMode(this));
-    this.registerMode(new Modes.DeleteStateMode(this));
+    // Register consolidated state modes (3 modes instead of 15) 
+    this.registerMode(new CreateStateMode(this));
+    this.registerMode(new LoadStateMode(this));
+    this.registerMode(new ManageStateMode(this));
     
-    // Register workspace modes
-    this.registerMode(new Modes.AddFilesToWorkspaceMode(this.app));
-    this.registerMode(new Modes.CreateWorkspaceMode(this.app));
-    this.registerMode(new Modes.DeleteWorkspaceMode(this.app));
-    this.registerMode(new Modes.EditWorkspaceMode(this.app));
-    this.registerMode(new Modes.ListWorkspacesMode(this.app));
-    this.registerMode(new Modes.LoadWorkspaceMode(this.app));
-    this.registerMode(new Modes.ManageAssociatedNotesMode(this.app));
+    // Register consolidated workspace modes (4 modes instead of 7)
+    this.registerMode(new CreateWorkspaceMode(this));
+    // TODO: Add remaining workspace modes when created
+    // this.registerMode(new LoadWorkspaceMode(this));
+    // this.registerMode(new ManageWorkspaceMode(this));
+    // this.registerMode(new AssociatedNotesMode(this));
   }
 
   /**

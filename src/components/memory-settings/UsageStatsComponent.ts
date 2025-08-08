@@ -5,7 +5,7 @@ import { CollectionStatsComponent } from './CollectionStatsComponent';
 import { IndexingComponent } from './IndexingComponent';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../../database/services/embeddingManager';
-import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
 
 /**
  * Usage Statistics Component

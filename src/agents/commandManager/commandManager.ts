@@ -5,7 +5,7 @@ import {
   ListCommandsMode,
   ExecuteCommandMode
 } from './modes';
-import { MemoryService } from '../../database/services/MemoryService';
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
 
 /**
  * CommandManager Agent for command palette operations

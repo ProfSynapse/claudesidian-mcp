@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { WorkspaceService } from '../../database/services/WorkspaceService';
+import { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
 import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddingAccessService';
 
 /**

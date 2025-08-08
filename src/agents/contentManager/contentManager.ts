@@ -14,8 +14,8 @@ import {
 } from './modes';
 // import { AgentManager } from '../../services/AgentManager';
 import ClaudesidianPlugin from '../../main';
-import { WorkspaceService } from '../../database/services/WorkspaceService';
-import { MemoryService } from '../../database/services/MemoryService';
+import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { MemoryService } from "../memoryManager/services/MemoryService";
 
 /**
  * Agent for content operations in the vault

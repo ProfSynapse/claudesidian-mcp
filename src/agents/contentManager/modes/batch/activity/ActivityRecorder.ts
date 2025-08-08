@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on activity recording
  */
 
-import { MemoryService } from '../../../../../database/services/MemoryService';
+import { MemoryService } from "../memoryManager/services/MemoryService";
 import { BatchContentParams } from '../../../types';
 import { ProcessedResult } from '../results/ResultCollector';
 import { parseWorkspaceContext } from '../../../../../utils/contextUtils';

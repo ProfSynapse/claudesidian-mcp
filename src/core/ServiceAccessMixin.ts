@@ -11,18 +11,18 @@
 import type { ServiceContainer } from './ServiceContainer';
 
 // Type imports for service interfaces
-import type { EmbeddingService } from '../database/services/EmbeddingService';
-import type { FileEmbeddingAccessService } from '../database/services/FileEmbeddingAccessService';
-import type { DirectCollectionService } from '../database/services/DirectCollectionService';
+import type { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import type { FileEmbeddingAccessService } from '../database/services/indexing/FileEmbeddingAccessService';
+import type { CollectionService } from "../../database/services/core/CollectionService";
 import type { IVectorStore } from '../database/interfaces/IVectorStore';
-import type { WorkspaceService } from '../database/services/WorkspaceService';
-import type { MemoryService } from '../database/services/MemoryService';
+import type { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
+import type { MemoryService } from "../../agents/memoryManager/services/MemoryService";
 import type { EventManager } from '../services/EventManager';
 import type { FileEventManagerModular } from '../services/file-events/FileEventManagerModular';
-import type { UsageStatsService } from '../database/services/UsageStatsService';
-import type { CacheManager } from '../database/services/CacheManager';
-import type { ProcessedFilesStateManager } from '../database/services/state/ProcessedFilesStateManager';
-import type { MemoryTraceService } from '../database/services/memory/MemoryTraceService';
+import type { UsageStatsService } from '../database/services/usage/UsageStatsService';
+import type { CacheManager } from '../database/services/cache/CacheManager';
+import type { ProcessedFilesStateManager } from '../database/services/indexing/state/ProcessedFilesStateManager';
+import type { MemoryTraceService } from '../agents/memoryManager/services/MemoryTraceService';
 import type { ToolCallCaptureService } from '../services/toolcall-capture/ToolCallCaptureService';
 
 /**
@@ -48,8 +48,8 @@ export class ServiceAccessMixin {
         return this.serviceContainer?.getIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null;
     }
 
-    public get directCollectionService(): DirectCollectionService | null {
-        return this.serviceContainer?.getIfReady<DirectCollectionService>('directCollectionService') || null;
+    public get directCollectionService(): CollectionService | null {
+        return this.serviceContainer?.getIfReady<CollectionService>('directCollectionService') || null;
     }
 
     public get workspaceService(): WorkspaceService | null {

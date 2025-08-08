@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on memory trace recording
  */
 
-import { MemoryService } from '../../../../../../database/services/MemoryService';
+import { MemoryService } from "../services/MemoryService";
 import { StateSummary } from '../context/SummaryGenerator';
 import { HierarchyType } from '../../../../../../database/types/workspace/WorkspaceTypes';
 

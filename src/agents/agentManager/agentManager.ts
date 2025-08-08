@@ -11,7 +11,7 @@ import {
   ExecutePromptMode,
   BatchExecutePromptMode
 } from './modes';
-import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from './services/CustomPromptStorageService';
 import { Settings } from '../../settings';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
 import { LLMProviderManager } from '../../services/LLMProviderManager';

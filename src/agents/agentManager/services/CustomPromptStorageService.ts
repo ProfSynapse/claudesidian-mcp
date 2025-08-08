@@ -1,5 +1,5 @@
-import { CustomPrompt, CustomPromptsSettings, DEFAULT_CUSTOM_PROMPTS_SETTINGS } from '../../types';
-import { Settings } from '../../settings';
+import { CustomPrompt, CustomPromptsSettings, DEFAULT_CUSTOM_PROMPTS_SETTINGS } from '../../../types';
+import { Settings } from '../../../settings';
 
 /**
  * Service for managing custom prompt storage and persistence

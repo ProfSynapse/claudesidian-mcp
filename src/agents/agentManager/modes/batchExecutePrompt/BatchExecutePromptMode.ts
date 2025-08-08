@@ -4,7 +4,7 @@ import { getErrorMessage } from '../../../../utils/errorUtils';
 import { LLMProviderManager } from '../../../../services/LLMProviderManager';
 import { LLMService } from '../../../../services/LLMService';
 import { AgentManager } from '../../../../services/AgentManager';
-import { CustomPromptStorageService } from '../../../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from '../../services/CustomPromptStorageService';
 import { UsageTracker } from '../../../../services/UsageTracker';
 
 // Import refactored services and types

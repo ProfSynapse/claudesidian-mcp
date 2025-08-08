@@ -20,20 +20,18 @@ import { ICollectionManager } from './services/interfaces/ICollectionManager';
 import { IDiagnosticsService } from './services/interfaces/IDiagnosticsService';
 import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorService';
 
-// Collection lifecycle management
-import { CollectionLifecycleManager } from '../../services/CollectionLifecycleManager';
-import { CollectionHealthMonitor } from '../../services/CollectionHealthMonitor';
+// Collection lifecycle management (consolidated)
+import { CollectionService } from '../../services/core/CollectionService';
 
 // Initialization coordination
 import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
 
 // Context-aware embedding loading
-import { ContextualEmbeddingManager } from '../../services/contextual/ContextualEmbeddingManager';
+import { ContextualEmbeddingManager } from '../../services/indexing/contextual/ContextualEmbeddingManager';
 
 export interface VectorStoreInitializationResult {
   client: InstanceType<typeof ChromaClient>;
-  collectionLifecycleManager?: CollectionLifecycleManager;
-  collectionHealthMonitor?: CollectionHealthMonitor;
+  collectionService?: CollectionService;
   contextualEmbeddingManager?: ContextualEmbeddingManager;
 }
 

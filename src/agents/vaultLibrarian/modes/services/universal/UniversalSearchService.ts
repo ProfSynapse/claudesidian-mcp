@@ -4,9 +4,9 @@
  */
 
 import { Plugin, TFile } from 'obsidian';
-import { EmbeddingService } from '../../../../../database/services/EmbeddingService';
-import { MemoryService } from '../../../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../../../database/services/WorkspaceService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
 import { GraphOperations } from '../../../../../database/utils/graph/GraphOperations';
 import { MetadataSearchService, MetadataSearchCriteria } from '../../../../../database/services/MetadataSearchService';
 import { 

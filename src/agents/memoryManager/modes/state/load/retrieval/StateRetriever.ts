@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on state retrieval
  */
 
-import { MemoryService } from '../../../../../../database/services/MemoryService';
+import { MemoryService } from "../services/MemoryService";
 import { WorkspaceStateSnapshot } from '../../../../../../database/types/session/SessionTypes';
 
 export interface StateRetrievalResult {

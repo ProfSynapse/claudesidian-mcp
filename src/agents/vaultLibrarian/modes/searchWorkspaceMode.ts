@@ -2,8 +2,8 @@ import { Plugin, TFile, prepareFuzzySearch } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
-import { EmbeddingService } from '../../../database/services/EmbeddingService';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
 
 /**
  * Workspace search scope configuration

@@ -7,7 +7,7 @@ import { BaseMode } from '../../../baseMode';
 import { CommonResult } from '../../../../types';
 import { createResult } from '../../../../utils/schemaUtils';
 import { LLMProviderManager } from '../../../../services/LLMProviderManager';
-import { CustomPromptStorageService } from '../../../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from '../../services/CustomPromptStorageService';
 import { AgentManager } from '../../../../services/AgentManager';
 import { UsageTracker, BudgetStatus } from '../../../../services/UsageTracker';
 import { 

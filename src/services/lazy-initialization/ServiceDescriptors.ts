@@ -2,20 +2,20 @@ import { App } from 'obsidian';
 import ClaudesidianPlugin from '../../main';
 import { IServiceDescriptor, LoadingStage } from './ServiceManagerInterfaces';
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
-import { EmbeddingService } from '../../database/services/EmbeddingService';
-import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddingAccessService';
-import { DirectCollectionService } from '../../database/services/DirectCollectionService';
-import { WorkspaceService } from '../../database/services/WorkspaceService';
-import { MemoryService } from '../../database/services/MemoryService';
-import { MemoryTraceService } from '../../database/services/memory/MemoryTraceService';
-import { SessionService } from '../../database/services/memory/SessionService';
+import { EmbeddingService } from '../../database/services/core/EmbeddingService';
+import { FileEmbeddingAccessService } from '../../database/services/indexing/FileEmbeddingAccessService';
+import { CollectionService } from "../../database/services/core/CollectionService";
+import { WorkspaceService } from '../../agents/memoryManager/services/WorkspaceService';
+import { MemoryService } from '../../agents/memoryManager/services/MemoryService';
+import { MemoryTraceService } from '../../agents/memoryManager/services/MemoryTraceService';
+import { SessionService } from '../../agents/memoryManager/services/SessionService';
 import { ToolCallCaptureService } from '../toolcall-capture/ToolCallCaptureService';
 import { EventManager } from '../EventManager';
 import { FileEventManagerModular } from '../file-events/FileEventManagerModular';
-import { UsageStatsService } from '../../database/services/UsageStatsService';
-import { CacheManager } from '../../database/services/CacheManager';
+import { UsageStatsService } from '../../database/services/usage/UsageStatsService';
+import { CacheManager } from '../../database/services/cache/CacheManager';
 import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
-import { ProcessedFilesStateManager } from '../../database/services/state/ProcessedFilesStateManager';
+import { ProcessedFilesStateManager } from '../../database/services/indexing/state/ProcessedFilesStateManager';
 import { 
   IInitializationStateManager,
   ICollectionLoadingCoordinator,
@@ -150,7 +150,7 @@ export class ServiceDescriptors {
             this.createFileEventManagerDescriptor(),
             this.createUsageStatsServiceDescriptor(),
             this.createFileEmbeddingAccessServiceDescriptor(),
-            this.createDirectCollectionServiceDescriptor(),
+            this.createCollectionServiceDescriptor(),
             this.createCacheManagerDescriptor()
         ];
     }
@@ -408,14 +408,14 @@ export class ServiceDescriptors {
         };
     }
 
-    private createDirectCollectionServiceDescriptor(): IServiceDescriptor<DirectCollectionService> {
+    private createCollectionServiceDescriptor(): IServiceDescriptor<CollectionService> {
         return {
             name: 'directCollectionService',
             dependencies: ['vectorStore'],
             stage: LoadingStage.ON_DEMAND,
             create: async () => {
                 const vectorStore = await this.dependencyResolver('vectorStore');
-                return new DirectCollectionService(this.plugin, vectorStore);
+                return new CollectionService(this.plugin, vectorStore);
             }
         };
     }

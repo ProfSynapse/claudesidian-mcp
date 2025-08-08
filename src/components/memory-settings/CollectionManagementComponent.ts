@@ -1,7 +1,7 @@
 import { Notice, ButtonComponent } from 'obsidian';
 import { UsageStatsService } from '../../database/services/UsageStatsService';
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
-import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
 import { CollectionCard } from './CollectionCard';
 
 /**

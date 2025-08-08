@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
 import { IFileEventProcessor, FileEvent, ProcessingResult } from '../interfaces/IFileEventServices';
-import { MemoryService } from '../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
 
 export class FileEventProcessor implements IFileEventProcessor {
     private processingFiles: Set<string> = new Set();

@@ -13,7 +13,7 @@
  */
 
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
-import { CollectionLifecycleManager } from '../../database/services/CollectionLifecycleManager';
+import { CollectionService } from "../../database/services/core/CollectionService";
 
 export type SearchType = 'hybrid' | 'semantic' | 'fuzzy' | 'memory' | 'session' | 'workspace';
 
@@ -90,7 +90,7 @@ export class SearchServiceValidator {
 
     constructor(
         private vectorStore: IVectorStore,
-        private collectionLifecycleManager: CollectionLifecycleManager
+        private collectionLifecycleManager: CollectionService
     ) {}
 
     /**

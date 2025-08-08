@@ -4,7 +4,7 @@ import { PrependContentParams, PrependContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
-import { MemoryService } from '../../../database/services/MemoryService';
+import { MemoryService } from "../memoryManager/services/MemoryService";
 
 /**
  * Mode for prepending content to a file

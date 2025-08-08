@@ -1,7 +1,7 @@
 import { App, Plugin, TAbstractFile } from 'obsidian';
-import { MemoryService } from '../../database/services/MemoryService';
-import { WorkspaceService } from '../../database/services/WorkspaceService';
-import { EmbeddingService } from '../../database/services/EmbeddingService';
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
 import { EventManager } from '../EventManager';
 
 // Import all the modular services

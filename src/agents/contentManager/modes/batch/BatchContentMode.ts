@@ -6,7 +6,7 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
 import { BatchContentParams, BatchContentResult } from '../../types';
-import { MemoryService } from '../../../../database/services/MemoryService';
+import { MemoryService } from "../memoryManager/services/MemoryService";
 import { parseWorkspaceContext, extractContextFromParams } from '../../../../utils/contextUtils';
 
 // Import specialized services

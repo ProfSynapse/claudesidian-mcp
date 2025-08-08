@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on workspace context building
  */
 
-import { WorkspaceService } from '../../../../../../database/services/WorkspaceService';
+import { WorkspaceService } from "../services/WorkspaceService";
 
 export interface WorkspaceContextResult {
   success: boolean;

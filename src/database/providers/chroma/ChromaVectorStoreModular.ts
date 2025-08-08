@@ -18,9 +18,8 @@ import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorSer
 // Import initialization coordination
 import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
 
-// Import collection lifecycle management
-import { CollectionLifecycleManager } from '../../services/CollectionLifecycleManager';
-import { CollectionHealthMonitor } from '../../services/CollectionHealthMonitor';
+// Import collection service (consolidated)
+import { CollectionService } from '../../services/core/CollectionService';
 
 // Define standard include types for vector store compatibility
 type StoreIncludeType = 'embeddings' | 'metadatas' | 'documents' | 'distances';

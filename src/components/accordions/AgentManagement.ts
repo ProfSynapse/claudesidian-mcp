@@ -1,6 +1,6 @@
 import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
-import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from "../../agents/agentManager/services/CustomPromptStorageService";
 import { CustomPrompt, LLMProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { Setting, Modal, App, ButtonComponent, ToggleComponent } from 'obsidian';
 import { LLMProviderTab } from '../LLMProviderTab';

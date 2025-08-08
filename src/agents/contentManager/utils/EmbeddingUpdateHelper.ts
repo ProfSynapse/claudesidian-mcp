@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { EmbeddingService } from '../../../database/services/EmbeddingService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
 import { ContentOperations } from './ContentOperations';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { getErrorMessage } from '../../../utils/errorUtils';

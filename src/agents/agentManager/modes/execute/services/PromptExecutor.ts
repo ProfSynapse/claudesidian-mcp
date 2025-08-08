@@ -4,7 +4,7 @@
  */
 
 import { LLMProviderManager } from '../../../../../services/LLMProviderManager';
-import { CustomPromptStorageService } from '../../../../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from '../../../services/CustomPromptStorageService';
 import { ExecutePromptParams } from '../ExecutePromptMode';
 
 export interface PromptExecutionResult {

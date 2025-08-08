@@ -13,7 +13,7 @@ import {
 } from '../../agents';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../../utils/logger';
-import { CustomPromptStorageService } from '../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from "../../agents/agentManager/services/CustomPromptStorageService";
 import { LLMProviderManager } from '../LLMProviderManager';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { LLMValidationService } from '../LLMValidationService';

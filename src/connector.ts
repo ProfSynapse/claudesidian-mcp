@@ -5,7 +5,7 @@ import { SessionContextManager, WorkspaceContext } from './services/SessionConte
 import type { ServiceContainer } from './core/ServiceContainer';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
-import { CustomPromptStorageService } from './database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from "../../agents/agentManager/services/CustomPromptStorageService";
 import { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
 
 // Extracted services

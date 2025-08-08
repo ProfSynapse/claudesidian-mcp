@@ -6,9 +6,9 @@
 import { Plugin } from 'obsidian';
 import { MetadataSearchService } from '../../../../../../database/services/MetadataSearchService';
 import { HybridSearchService } from '../../../../../../database/services/search';
-import { EmbeddingService } from '../../../../../../database/services/EmbeddingService';
-import { MemoryService } from '../../../../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../../../../database/services/WorkspaceService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
 
 export interface ServiceInitializationResult {
   success: boolean;

@@ -15,7 +15,7 @@ import { ToolListService } from './services/ToolListService';
 import { ResourceListService } from './services/ResourceListService';
 import { ResourceReadService } from './services/ResourceReadService';
 import { PromptsListService } from './services/PromptsListService';
-import { CustomPromptStorageService } from '../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from "../../agents/agentManager/services/CustomPromptStorageService";
 import { ToolHelpService } from './services/ToolHelpService';
 
 // Import strategies

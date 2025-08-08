@@ -5,7 +5,7 @@ import {
   CreateWorkspaceResult
 } from '../../../../database/types/workspace/ParameterTypes';
 import { ProjectWorkspace, WorkspaceContext } from '../../../../database/types/workspace/WorkspaceTypes';
-import { WorkspaceService } from '../../../../database/services/WorkspaceService';
+import { WorkspaceService } from "../services/WorkspaceService";
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { createServiceIntegration } from '../../utils/ServiceIntegration';
 import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';

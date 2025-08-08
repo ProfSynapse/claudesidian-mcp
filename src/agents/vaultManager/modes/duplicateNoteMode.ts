@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { DuplicateNoteArgs, DuplicateNoteResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
-import { MemoryService } from '../../../database/services/MemoryService';
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
 

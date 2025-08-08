@@ -1,6 +1,6 @@
 import { BaseMode } from '../../baseMode';
 import { CreatePromptParams, CreatePromptResult } from '../types';
-import { CustomPromptStorageService } from '../../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 

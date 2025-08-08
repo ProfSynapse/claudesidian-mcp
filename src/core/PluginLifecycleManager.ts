@@ -226,12 +226,12 @@ export class PluginLifecycleManager {
         }, { dependencies: ['stateManager'] });
         
         serviceContainer.register('memoryService', async (deps) => {
-            const { MemoryService } = await import('../database/services/MemoryService');
+            const { MemoryService } = await import('../agents/memoryManager/services/MemoryService');
             return new MemoryService(plugin, deps.vectorStore, deps.embeddingService, settings.settings.memory || {});
         }, { dependencies: ['vectorStore', 'embeddingService'] });
         
         serviceContainer.register('workspaceService', async (deps) => {
-            const { WorkspaceService } = await import('../database/services/WorkspaceService');
+            const { WorkspaceService } = await import('../agents/memoryManager/services/WorkspaceService');
             return new WorkspaceService(plugin, deps.vectorStore, deps.embeddingService);
         }, { dependencies: ['vectorStore', 'embeddingService'] });
         

@@ -3,7 +3,7 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../types';
 import { Settings } from '../settings';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { EmbeddingManager } from '../database/services/embeddingManager';
-import { EmbeddingService } from '../database/services/EmbeddingService';
+import { EmbeddingService } from "../../database/services/core/EmbeddingService";
 import {
     EmbeddingSettingsTab, 
     UsageStatsComponent,

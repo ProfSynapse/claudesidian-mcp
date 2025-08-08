@@ -10,9 +10,9 @@ import { QueryAnalyzer, QueryAnalysis } from './QueryAnalyzer';
 import { KeywordSearchService, KeywordSearchResult, SearchableDocument } from './KeywordSearchService';
 import { FuzzySearchService, FuzzySearchResult, FuzzyDocument } from './FuzzySearchService';
 import { IVectorStore } from '../../interfaces/IVectorStore';
-import { EmbeddingService } from '../EmbeddingService';
+import { EmbeddingService } from '../core/EmbeddingService';
 import { SearchServiceValidator, SearchDependencyError, SearchType } from '../../../services/search/SearchServiceValidator';
-import { CollectionLifecycleManager } from '../CollectionLifecycleManager';
+import { CollectionService } from '../core/CollectionService';
 
 // Extracted services
 import {

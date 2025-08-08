@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
 import { IActivityTracker, FileEvent, FileOperation } from '../interfaces/IFileEventServices';
-import { MemoryService } from '../../../database/services/MemoryService';
-import { WorkspaceService } from '../../../database/services/WorkspaceService';
+import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
 
 export class ActivityTracker implements IActivityTracker {
     private fileWorkspaceCache: Map<string, { workspaceIds: string[]; timestamp: number }> = new Map();

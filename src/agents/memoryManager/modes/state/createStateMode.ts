@@ -5,8 +5,8 @@
 import { BaseMode } from '../../../baseMode';
 import { CreateStateParameters, StateResult } from '../../../../database/types/workspace/ParameterTypes';
 import { StateSnapshot, State } from '../../../../database/types/session/SessionTypes';
-import { MemoryService } from '../../../../database/services/MemoryService';
-import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../../database/services/WorkspaceService';
+import { MemoryService } from "../services/MemoryService";
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from "../services/WorkspaceService";
 import { App } from 'obsidian';
 import { createServiceIntegration } from '../../utils/ServiceIntegration';
 import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';

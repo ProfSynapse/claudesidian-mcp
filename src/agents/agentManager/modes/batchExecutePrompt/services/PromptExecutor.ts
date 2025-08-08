@@ -1,5 +1,5 @@
 import { LLMService } from '../../../../../services/LLMService';
-import { CustomPromptStorageService } from '../../../../../database/services/CustomPromptStorageService';
+import { CustomPromptStorageService } from '../../../services/CustomPromptStorageService';
 import { BudgetValidator } from './BudgetValidator';
 import { ContextBuilder } from './ContextBuilder';
 import { 
