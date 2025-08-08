@@ -1,6 +1,6 @@
-import { EmbeddingService } from './EmbeddingService';
-import { IVectorStore } from '../interfaces/IVectorStore';
-import { EventManager } from '../../services/EventManager';
+import { EmbeddingService } from '../core/EmbeddingService';
+import { IVectorStore } from '../../interfaces/IVectorStore';
+import { EventManager } from '../../../services/EventManager';
 import { 
     ITokenStatsHandler, 
     ICollectionStatsHandler, 
@@ -11,7 +11,7 @@ import {
     CollectionStatsHandler,
     ProviderCapabilityChecker,
     RefreshManager
-} from './usage';
+} from '.';
 
 /**
  * Type definition for model cost map

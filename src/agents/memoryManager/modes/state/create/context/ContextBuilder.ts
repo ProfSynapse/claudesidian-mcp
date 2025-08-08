@@ -3,8 +3,8 @@
  * Follows Single Responsibility Principle by focusing only on context gathering
  */
 
-import { MemoryService } from "../services/MemoryService";
-import { WorkspaceService } from "../services/WorkspaceService";
+import { MemoryService } from "../../../../services/MemoryService";
+import { WorkspaceService } from "../../../../services/WorkspaceService";
 import { WorkspaceMemoryTrace } from '../../../../../../database/workspace-types';
 
 export interface ContextData {

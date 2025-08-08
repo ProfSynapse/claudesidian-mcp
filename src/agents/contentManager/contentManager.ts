@@ -15,7 +15,7 @@ import {
 // import { AgentManager } from '../../services/AgentManager';
 import ClaudesidianPlugin from '../../main';
 import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
-import { MemoryService } from "../memoryManager/services/MemoryService";
+import { MemoryService } from '../memoryManager/services/MemoryService';
 
 /**
  * Agent for content operations in the vault

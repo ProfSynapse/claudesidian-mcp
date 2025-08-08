@@ -4,7 +4,7 @@
  */
 
 import { Plugin, getAllTags } from 'obsidian';
-import { MetadataSearchService } from '../../../../../../database/services/MetadataSearchService';
+import { MetadataSearchService } from '../../../../../../database/services/search/MetadataSearchService';
 import { UniversalSearchResultItem } from '../../../../types';
 
 export interface MetadataSearchResult {

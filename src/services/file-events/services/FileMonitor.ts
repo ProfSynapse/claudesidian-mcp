@@ -1,7 +1,7 @@
 import { App, TAbstractFile, TFile } from 'obsidian';
 import { IFileMonitor } from '../interfaces/IFileEventServices';
 import { ContentCache } from '../../../database/utils/ContentCache';
-import { ContextualEmbeddingManager } from '../../../database/services/contextual/ContextualEmbeddingManager';
+import { ContextualEmbeddingManager } from '../../../database/services/indexing/contextual/ContextualEmbeddingManager';
 
 export class FileMonitor implements IFileMonitor {
     private isSystemOp = false;

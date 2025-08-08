@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on session management
  */
 
-import { MemoryService } from "../services/MemoryService";
+import { MemoryService } from "../../../../services/MemoryService";
 
 export interface SessionResolutionResult {
   success: boolean;

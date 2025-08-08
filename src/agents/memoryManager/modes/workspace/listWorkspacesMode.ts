@@ -5,7 +5,7 @@ import {
   ListWorkspacesResult, 
   HierarchyType 
 } from '../../../../database/workspace-types';
-import { WorkspaceService } from "../services/WorkspaceService";
+import { WorkspaceService } from "../../services/WorkspaceService";
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { createServiceIntegration } from '../../utils/ServiceIntegration';
 import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';

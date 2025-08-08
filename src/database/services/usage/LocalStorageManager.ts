@@ -1,4 +1,4 @@
-import { ModelCostMap } from '../UsageStatsService';
+import { ModelCostMap } from './UsageStatsService';
 import { ILocalStorageManager } from './interfaces';
 
 export class LocalStorageManager implements ILocalStorageManager {

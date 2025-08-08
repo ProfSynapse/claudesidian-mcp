@@ -1,6 +1,6 @@
 import { Plugin } from 'obsidian';
-import { WorkspaceSession } from '../../workspace-types';
-import { SessionCollection } from '../../collections/SessionCollection';
+import { WorkspaceSession } from '../../../database/workspace-types';
+import { SessionCollection } from '../../../database/collections/SessionCollection';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { generateSessionId } from '../../../utils/sessionUtils';
 

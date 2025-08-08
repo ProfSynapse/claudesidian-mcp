@@ -4,7 +4,7 @@ import { CreateContentParams, CreateContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
-import { MemoryService } from "../memoryManager/services/MemoryService";
+import { MemoryService } from '../../memoryManager/services/MemoryService';
 
 /**
  * Mode for creating a new file with content

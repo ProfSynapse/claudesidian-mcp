@@ -81,9 +81,25 @@ export class SimpleMemoryService {
         
         // Create storage coordinator with collection lifecycle management
         if (vectorStore && vectorStore.collectionManager) {
+            // Get required dependencies from vectorStore
+            const collectionManager = vectorStore.collectionManager;
+            const client = (vectorStore as any).client;
+            const directoryService = (vectorStore as any).getDirectoryService?.() || (vectorStore as any).services?.directoryService;
+            const plugin = (vectorStore as any).plugin;
+            
+            if (!collectionManager || !client || !directoryService || !plugin) {
+                throw new Error('CollectionService requires vectorStore to be fully initialized');
+            }
+            
             const collectionLifecycleManager = new CollectionService(
+                plugin,
                 vectorStore, 
-                vectorStore.collectionManager
+                collectionManager,
+                client,
+                directoryService,
+                null, // pathManager - optional
+                null, // persistentPath - optional
+                undefined // logger - optional
             );
             
             this.storageCoordinator = new MemoryTraceStorageCoordinator(

@@ -415,7 +415,26 @@ export class ServiceDescriptors {
             stage: LoadingStage.ON_DEMAND,
             create: async () => {
                 const vectorStore = await this.dependencyResolver('vectorStore');
-                return new CollectionService(this.plugin, vectorStore);
+                
+                // Get required dependencies from vectorStore
+                const collectionManager = (vectorStore as any).collectionManager;
+                const client = (vectorStore as any).client;
+                const directoryService = (vectorStore as any).getDirectoryService?.() || (vectorStore as any).services?.directoryService;
+                
+                if (!collectionManager || !client || !directoryService) {
+                    throw new Error('CollectionService requires vectorStore to be fully initialized with collectionManager, client, and directoryService');
+                }
+                
+                return new CollectionService(
+                    this.plugin,
+                    vectorStore,
+                    collectionManager,
+                    client,
+                    directoryService,
+                    null, // pathManager - optional
+                    null, // persistentPath - optional
+                    undefined // logger - optional
+                );
             }
         };
     }

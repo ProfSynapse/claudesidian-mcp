@@ -1,6 +1,6 @@
 // Import Obsidian components that we need
 import { Notice } from 'obsidian';
-import { UsageStatsService, UsageStats, ModelCostMap, USAGE_EVENTS } from '../../database/services/UsageStatsService';
+import { UsageStatsService, UsageStats, ModelCostMap, USAGE_EVENTS } from '../../database/services/usage/UsageStatsService';
 
 /**
  * Component for displaying token usage statistics

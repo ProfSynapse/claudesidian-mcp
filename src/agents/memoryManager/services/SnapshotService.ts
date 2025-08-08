@@ -1,7 +1,7 @@
 import { Plugin } from 'obsidian';
-import { WorkspaceStateSnapshot } from '../../workspace-types';
-import { WorkspaceContext } from '../../types/workspace/WorkspaceTypes';
-import { SnapshotCollection } from '../../collections/SnapshotCollection';
+import { WorkspaceStateSnapshot } from '../../../database/workspace-types';
+import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
+import { SnapshotCollection } from '../../../database/collections/SnapshotCollection';
 
 export interface ContextSnapshotData {
   workspace?: any;

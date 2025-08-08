@@ -11,8 +11,8 @@
 
 import { TFile } from 'obsidian';
 import { v4 as uuidv4 } from 'uuid';
-import { FileEmbedding } from '../../workspace-types';
-import { chunkText } from '../../utils/chunking';
+import { FileEmbedding } from '../../../workspace-types';
+import { chunkText } from '../../../utils/chunking';
 import { EmbeddingGenerator } from './EmbeddingGenerator';
 import { ContentHashService } from './ContentHashService';
 import { EmbeddingSettingsManager } from './EmbeddingSettingsManager';

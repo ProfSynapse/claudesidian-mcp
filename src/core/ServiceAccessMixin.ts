@@ -11,12 +11,12 @@
 import type { ServiceContainer } from './ServiceContainer';
 
 // Type imports for service interfaces
-import type { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import type { EmbeddingService } from '../database/services/core/EmbeddingService';
 import type { FileEmbeddingAccessService } from '../database/services/indexing/FileEmbeddingAccessService';
-import type { CollectionService } from "../../database/services/core/CollectionService";
+import type { CollectionService } from "../database/services/core/CollectionService";
 import type { IVectorStore } from '../database/interfaces/IVectorStore';
-import type { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
-import type { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import type { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
+import type { MemoryService } from "../agents/memoryManager/services/MemoryService";
 import type { EventManager } from '../services/EventManager';
 import type { FileEventManagerModular } from '../services/file-events/FileEventManagerModular';
 import type { UsageStatsService } from '../database/services/usage/UsageStatsService';

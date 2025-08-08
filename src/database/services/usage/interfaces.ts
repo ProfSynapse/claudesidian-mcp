@@ -1,4 +1,4 @@
-import { UsageStats, ModelCostMap, CollectionStat } from '../UsageStatsService';
+import { UsageStats, ModelCostMap, CollectionStat } from './UsageStatsService';
 
 export interface ITokenStatsHandler {
     updateTokenStats(stats: UsageStats): Promise<void>;

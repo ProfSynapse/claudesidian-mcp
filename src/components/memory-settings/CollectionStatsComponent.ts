@@ -1,5 +1,5 @@
 import { Notice } from 'obsidian';
-import { UsageStatsService, UsageStats, CollectionStat, USAGE_EVENTS } from '../../database/services/UsageStatsService';
+import { UsageStatsService, UsageStats, CollectionStat, USAGE_EVENTS } from '../../database/services/usage/UsageStatsService';
 
 /**
  * Component for displaying collection statistics

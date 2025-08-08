@@ -4,7 +4,7 @@ import {
   AddFilesToWorkspaceParameters, 
   AddFilesToWorkspaceResult
 } from '../../../../database/workspace-types';
-import { WorkspaceService } from "../services/WorkspaceService";
+import { WorkspaceService } from "../../services/WorkspaceService";
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 import { sanitizePath } from '../../../../utils/pathUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';

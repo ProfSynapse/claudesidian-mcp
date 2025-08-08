@@ -16,7 +16,7 @@
  */
 
 import { Plugin, TFile } from 'obsidian';
-import { FileUtils } from '../../utils/FileUtils';
+import { FileUtils } from '../../../utils/FileUtils';
 
 export interface FileStats {
   filePath: string;

@@ -2,7 +2,7 @@ import { Plugin, TFile, TFolder, TAbstractFile, prepareFuzzySearch } from 'obsid
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
 
 /**
  * Directory search parameters interface

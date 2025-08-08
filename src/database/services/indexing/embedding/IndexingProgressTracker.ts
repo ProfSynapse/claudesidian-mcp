@@ -4,7 +4,7 @@
  */
 
 import { Notice } from 'obsidian';
-import { getErrorMessage } from '../../../utils/errorUtils';
+import { getErrorMessage } from '../../../../utils/errorUtils';
 
 export interface ProgressState {
   current: number;

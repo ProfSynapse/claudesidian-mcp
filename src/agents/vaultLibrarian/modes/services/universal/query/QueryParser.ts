@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on query parsing
  */
 
-import { PropertyFilter } from '../../../../../../database/services/MetadataSearchService';
+import { PropertyFilter } from '../../../../../../database/services/search/MetadataSearchService';
 import { UniversalSearchValidator } from '../validation/UniversalSearchValidator';
 
 export interface ParsedSearchQuery {

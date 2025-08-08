@@ -2,7 +2,7 @@ import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { ProjectWorkspace } from '../workspace-types';
 import { WorkspaceContext, HierarchyType, ItemStatus, WorkspaceStatus } from '../types/workspace/WorkspaceTypes';
-import { EmbeddingService } from '../services/EmbeddingService';
+import { EmbeddingService } from '../services/core/EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**

@@ -1,7 +1,7 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceStateSnapshot } from '../workspace-types';
-import { EmbeddingService } from '../services/EmbeddingService';
+import { EmbeddingService } from '../services/core/EmbeddingService';
 import { WorkspaceContext } from '../types/workspace/WorkspaceTypes';
 import { v4 as uuidv4 } from 'uuid';
 

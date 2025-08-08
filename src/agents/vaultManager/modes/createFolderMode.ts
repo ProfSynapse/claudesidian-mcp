@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { FileOperations } from '../utils/FileOperations';
-import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { MemoryService } from "../../memoryManager/services/MemoryService";
 import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
 

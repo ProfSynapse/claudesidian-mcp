@@ -2,10 +2,10 @@ import { Notice } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
 import { UsageStatsComponent } from './UsageStatsComponent';
 import { CollectionManagementComponent } from './CollectionManagementComponent';
-import { UsageStatsService } from '../../database/services/UsageStatsService';
+import { UsageStatsService } from '../../database/services/usage/UsageStatsService';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
-import { EmbeddingManager } from '../../database/services/embeddingManager';
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { EmbeddingManager } from '../../database/services/indexing/embeddingManager';
+import { EmbeddingService } from '../../database/services/core/EmbeddingService';
 import { UsageTracker } from '../../services/UsageTracker';
 import { UsageChart } from '../shared/UsageChart';
 

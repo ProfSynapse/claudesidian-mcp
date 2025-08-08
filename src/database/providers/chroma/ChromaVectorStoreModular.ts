@@ -53,9 +53,8 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   // Collection loading coordinator (injected)
   private collectionCoordinator: ICollectionLoadingCoordinator | null = null;
   
-  // Collection lifecycle management (managed by initializer)
-  private collectionLifecycleManager: CollectionLifecycleManager | null = null;
-  private collectionHealthMonitor: CollectionHealthMonitor | null = null;
+  // Collection service (consolidated lifecycle + health management)
+  private collectionService: CollectionService | null = null;
 
   /**
    * Create a new modular ChromaDB vector store
@@ -179,13 +178,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Set initialized flag after successful initialization
       this.initialized = true;
       
-      // Now start health monitoring after vector store is fully initialized
-      if (this.collectionHealthMonitor) {
-        this.collectionHealthMonitor.startMonitoring().catch(error => {
-          console.warn('Health monitoring startup failed:', error);
-          // Continue without health monitoring - it's not critical for normal operation
-        });
-      }
+      // Health monitoring already started during CollectionService initialization
       
       // Initialization completed successfully
       
@@ -237,8 +230,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Reset state
       this.client = null;
       this.initialized = false;
-      this.collectionLifecycleManager = null;
-      this.collectionHealthMonitor = null;
+      this.collectionService = null;
       
       // Shutdown completed successfully
       
@@ -247,8 +239,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       // Reset state even if there was an error
       this.client = null;
       this.initialized = false;
-      this.collectionLifecycleManager = null;
-      this.collectionHealthMonitor = null;
+      this.collectionService = null;
     }
   }
 
@@ -561,15 +552,16 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   /**
    * Get collection lifecycle manager for advanced collection operations
    */
-  getCollectionLifecycleManager(): CollectionLifecycleManager | null {
-    return this.collectionLifecycleManager;
+  getCollectionService(): CollectionService | null {
+    return this.collectionService;
   }
 
   /**
    * Get collection health monitor for health monitoring operations
    */
-  getCollectionHealthMonitor(): CollectionHealthMonitor | null {
-    return this.collectionHealthMonitor;
+  // Deprecated: Use getCollectionService() for health monitoring
+  getCollectionHealthMonitor(): CollectionService | null {
+    return this.collectionService;
   }
 
   /**

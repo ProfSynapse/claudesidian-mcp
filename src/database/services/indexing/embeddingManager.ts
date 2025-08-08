@@ -1,9 +1,9 @@
 import { App, Notice } from 'obsidian';
-import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
-import { VectorStoreFactory } from '../factory/VectorStoreFactory';
-import { IEmbeddingProvider } from '../interfaces/IEmbeddingProvider';
-import { getErrorMessage } from '../../utils/errorUtils';
-import { EmbeddingProviderRegistry } from '../providers/registry/EmbeddingProviderRegistry';
+import { EmbeddingProvider, MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../../types';
+import { VectorStoreFactory } from '../../factory/VectorStoreFactory';
+import { IEmbeddingProvider } from '../../interfaces/IEmbeddingProvider';
+import { getErrorMessage } from '../../../utils/errorUtils';
+import { EmbeddingProviderRegistry } from '../../providers/registry/EmbeddingProviderRegistry';
 
 /**
  * Manages embedding providers and settings

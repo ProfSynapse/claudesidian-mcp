@@ -11,9 +11,9 @@
  * - Search optimization and caching
  */
 
-import { WorkspaceMemoryTrace } from '../../workspace-types';
-import { MemoryTraceCollection } from '../../collections/MemoryTraceCollection';
-import { EmbeddingService } from '../EmbeddingService';
+import { WorkspaceMemoryTrace } from '../../../database/workspace-types';
+import { MemoryTraceCollection } from '../../../database/collections/MemoryTraceCollection';
+import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 import { MemoryTraceSearchOptions, MemoryTraceSearchResult } from '../../../types/memory/TraceTypes';
 
 /**

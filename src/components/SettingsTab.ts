@@ -12,13 +12,13 @@ import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 
 // Import services
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
-import { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
-import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
-import { FileEmbeddingAccessService } from '../database/services/FileEmbeddingAccessService';
-import { EmbeddingManager } from '../database/services/embeddingManager';
+import { EmbeddingService } from '../database/services/core/EmbeddingService';
+import { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
+import { MemoryService } from "../agents/memoryManager/services/MemoryService";
+import { FileEmbeddingAccessService } from '../database/services/indexing/FileEmbeddingAccessService';
+import { EmbeddingManager } from '../database/services/indexing/embeddingManager';
 import { IVectorStore } from '../database/interfaces/IVectorStore';
-import { CustomPromptStorageService } from "../../agents/agentManager/services/CustomPromptStorageService";
+import { CustomPromptStorageService } from "../agents/agentManager/services/CustomPromptStorageService";
 import type { ServiceContainer } from '../core/ServiceContainer';
 
 /**

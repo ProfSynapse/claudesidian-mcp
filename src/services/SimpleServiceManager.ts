@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
 import ClaudesidianPlugin from '../main';
 import { EventManager } from './EventManager';
-import { ProcessedFilesStateManager } from '../database/services/state/ProcessedFilesStateManager';
+import { ProcessedFilesStateManager } from '../database/services/indexing/state/ProcessedFilesStateManager';
 import { SimpleMemoryService } from './memory/SimpleMemoryService';
 import { SessionService } from './session/SessionService';
 import { ToolCallCaptureService } from './toolcall-capture/ToolCallCaptureService';
@@ -261,27 +261,27 @@ export class SimpleServiceManager {
         }
         
         try {
-            // Get collection lifecycle manager if available
-            const lifecycleManager = typeof vectorStore.getCollectionLifecycleManager === 'function' 
-                ? vectorStore.getCollectionLifecycleManager() 
+            // Get collection service if available
+            const collectionService = typeof vectorStore.getCollectionService === 'function' 
+                ? vectorStore.getCollectionService() 
                 : null;
             
-            if (lifecycleManager) {
+            if (collectionService) {
                 // Perform comprehensive health check
-                const healthCheck = await lifecycleManager.performHealthCheck();
+                const healthCheck = await collectionService.performHealthCheck();
                 
                 if (!healthCheck.healthy) {
                     console.warn('[SimpleServiceManager] ⚠️  Collection health issues detected:', healthCheck.issues);
                     
                     // Attempt automatic recovery for critical collections
-                    await this.recoverCriticalCollections(lifecycleManager, healthCheck);
+                    await this.recoverCriticalCollections(collectionService, healthCheck);
                 }
                 
                 // Verify memory_traces collection specifically (critical for SimpleMemoryService)
-                const memoryTracesValidation = await lifecycleManager.validateCollection('memory_traces');
+                const memoryTracesValidation = await collectionService.validateCollection('memory_traces');
                 if (!memoryTracesValidation.valid) {
                     console.warn('[SimpleServiceManager] ⚠️  Memory traces collection invalid, attempting recovery...');
-                    const recoveryResult = await lifecycleManager.recoverCollection('memory_traces', 'soft');
+                    const recoveryResult = await collectionService.recoverCollection('memory_traces', 'soft');
                     
                     if (!recoveryResult.success) {
                         throw new Error(`Failed to recover memory_traces collection: ${recoveryResult.errors.join(', ')}`);
@@ -313,7 +313,7 @@ export class SimpleServiceManager {
     /**
      * Attempt recovery for critical collections
      */
-    private async recoverCriticalCollections(lifecycleManager: any, healthCheck: any): Promise<void> {
+    private async recoverCriticalCollections(collectionService: any, healthCheck: any): Promise<void> {
         const criticalCollections = ['memory_traces', 'file_embeddings'];
         
         for (const collectionName of criticalCollections) {
@@ -321,7 +321,7 @@ export class SimpleServiceManager {
             if (collectionHealth && (!collectionHealth.exists || !collectionHealth.accessible)) {
                 
                 try {
-                    const recoveryResult = await lifecycleManager.recoverCollection(collectionName, 'soft');
+                    const recoveryResult = await collectionService.recoverCollection(collectionName, 'soft');
                     if (!recoveryResult.success) {
                         console.warn(`[SimpleServiceManager] ⚠️  Recovery failed for ${collectionName}:`, recoveryResult.errors);
                     }

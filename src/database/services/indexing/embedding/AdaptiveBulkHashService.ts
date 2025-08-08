@@ -24,7 +24,7 @@ import { Plugin, TFile } from 'obsidian';
 import { ContentHashService } from './ContentHashService';
 import { FileStatsCollector, FileStats, BatchConfiguration } from './FileStatsCollector';
 import { ProcessedFilesStateManager } from '../state/ProcessedFilesStateManager';
-import { FileUtils } from '../../utils/FileUtils';
+import { FileUtils } from '../../../utils/FileUtils';
 
 export interface BulkHashResult {
   filePath: string;

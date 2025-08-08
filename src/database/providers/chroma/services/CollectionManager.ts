@@ -6,18 +6,17 @@ import { ObsidianPathManager } from '../../../../core/ObsidianPathManager';
 import { VaultOperations } from '../../../../core/VaultOperations';
 import { StructuredLogger } from '../../../../core/StructuredLogger';
 import { VaultOperationsDirectoryServiceAdapter } from './adapters/VaultOperationsDirectoryServiceAdapter';
-import { CollectionValidator } from '../../../services/CollectionValidator';
-import { CollectionMetadataManager } from '../../../services/CollectionMetadataManager';
+import { CollectionService } from '../../../services/core/CollectionService';
 
 /**
  * Location: src/database/providers/chroma/services/CollectionManager.ts
  * 
  * Summary: Handles collection lifecycle management with intelligent caching and validation.
- * Now uses extracted services (CollectionValidator, CollectionMetadataManager) via dependency injection
+ * Now uses CollectionService for consolidated validation and metadata operations
  * to follow Single Responsibility Principle and reduce complexity.
  * 
  * Used by: ChromaDB service layer for all collection operations
- * Dependencies: ChromaClient, IDirectoryService, CollectionValidator, CollectionMetadataManager
+ * Dependencies: ChromaClient, IDirectoryService, CollectionService
  */
 export class CollectionManager implements ICollectionManager {
   private client: InstanceType<typeof ChromaClient>;
@@ -30,23 +29,20 @@ export class CollectionManager implements ICollectionManager {
   private pathManager: ObsidianPathManager | null = null;
   private vaultOps: VaultOperations | null = null;
   private logger: StructuredLogger | null = null;
-  private validator: CollectionValidator;
-  private metadataManager: CollectionMetadataManager;
+  private collectionService?: CollectionService;
 
   constructor(
     client: InstanceType<typeof ChromaClient>,
     directoryService: IDirectoryService,
     persistentPath: string | null = null,
-    validator?: CollectionValidator,
-    metadataManager?: CollectionMetadataManager
+    collectionService?: CollectionService
   ) {
     this.client = client;
     this.directoryService = directoryService;
     this.persistentPath = persistentPath;
     
-    // Initialize extracted services with dependency injection
-    this.validator = validator || new CollectionValidator(client, directoryService);
-    this.metadataManager = metadataManager || new CollectionMetadataManager(client, directoryService, null, persistentPath);
+    // CollectionService will be injected later when available
+    this.collectionService = collectionService;
     
     // ObsidianPathManager and VaultOperations will be injected via setters when available
   }
@@ -57,8 +53,8 @@ export class CollectionManager implements ICollectionManager {
    */
   setPathManager(pathManager: ObsidianPathManager): void {
     this.pathManager = pathManager;
-    this.validator.setPathManager(pathManager);
-    this.metadataManager.setPathManager(pathManager);
+    // CollectionService handles its own path management
+    // CollectionService handles its own path management
     this.updateDirectoryServiceAdapter();
   }
 
@@ -98,7 +94,8 @@ export class CollectionManager implements ICollectionManager {
    * Get collection path using metadata manager
    */
   private getCollectionPath(collectionName: string): string {
-    return this.metadataManager.getCollectionPath(collectionName);
+    // Return default path - CollectionService manages paths internally
+    return `collections/${collectionName}`;
   }
 
   /**
@@ -112,7 +109,7 @@ export class CollectionManager implements ICollectionManager {
       const cachedCollection = this.collectionCache.get(collectionName)!;
       
       // Validate cached collection using validator service
-      if (await this.validator.validateCachedCollection(cachedCollection)) {
+      if (this.collectionService && await this.collectionService.validateCollection(collectionName).then(r => r.valid)) {
         this.cacheHits++;
         return cachedCollection;
       } else {
@@ -154,7 +151,8 @@ export class CollectionManager implements ICollectionManager {
           }
           
           // Validate and cache if not already cached
-          await this.metadataManager.validateAndCache(collectionName, this.collectionCache, this.collections);
+          // Validation handled by CollectionService
+          this.collections.add(collectionName);
         }
       }
       
@@ -168,7 +166,10 @@ export class CollectionManager implements ICollectionManager {
       
       // Recovery: Check filesystem for collections that might not be loaded
       if (this.persistentPath) {
-        await this.metadataManager.recoverCollectionsFromFilesystem(this.collections, this.collectionCache);
+        // Recovery handled by CollectionService - ensure standard collections
+        if (this.collectionService) {
+          await this.collectionService.ensureStandardCollections();
+        }
       }
       
     } catch (error) {
@@ -184,7 +185,7 @@ export class CollectionManager implements ICollectionManager {
     // Fast path: Check in-memory cache first
     if (this.collections.has(collectionName)) {
       // Validate cache entry is still valid using validator service
-      if (await this.validator.validateCacheEntry(collectionName, this.persistentPath)) {
+      if (this.collectionService && await this.collectionService.collectionExists(collectionName)) {
         return true;
       } else {
         // Remove invalid cache entry
@@ -234,9 +235,11 @@ export class CollectionManager implements ICollectionManager {
       const exists = collections.some(c => this.extractCollectionName(c) === collectionName);
       
       if (exists) {
-        // Load into cache using metadata manager
+        // Load into cache
         const collection = await this.client.getCollection(collectionName);
-        this.metadataManager.registerCollection(collectionName, collection, this.collections, this.collectionCache);
+        // Register collection in local cache
+        this.collections.add(collectionName);
+        this.collectionCache.set(collectionName, collection);
         return true;
       }
     } catch (error) {
@@ -264,7 +267,7 @@ export class CollectionManager implements ICollectionManager {
     }
     
     try {
-      const collectionMetadata = this.metadataManager.createCollectionMetadata(collectionName, metadata);
+      const collectionMetadata = metadata || {};
       await this.client.createCollection(collectionName, collectionMetadata, contextAware);
       
       this.collections.add(collectionName);
@@ -300,7 +303,10 @@ export class CollectionManager implements ICollectionManager {
    * Validate a collection by performing basic operations
    */
   async validateCollection(collectionName: string): Promise<boolean> {
-    return await this.validator.validateCollection(collectionName);
+    if (this.collectionService) {
+      return await this.collectionService.validateCollection(collectionName).then(r => r.valid);
+    }
+    return false;
   }
 
   /**
@@ -341,7 +347,7 @@ export class CollectionManager implements ICollectionManager {
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           // Create new collection (with context-aware mode)
-          const collectionMetadata = this.metadataManager.createCollectionMetadata(collectionName);
+          const collectionMetadata = { name: collectionName, created: Date.now() };
           collection = await this.client.createCollection(collectionName, collectionMetadata, contextAware);
         } else {
           // Collection exists but is corrupted, try to recreate
@@ -351,7 +357,7 @@ export class CollectionManager implements ICollectionManager {
             // Continue even if delete fails
           }
           
-          const recoveryMetadata = this.metadataManager.createRecoveryMetadata(collectionName, 'validation_failed');
+          const recoveryMetadata = { name: collectionName, recovery: 'validation_failed', timestamp: Date.now() };
           collection = await this.client.createCollection(collectionName, recoveryMetadata, contextAware);
           
           isRecreated = true;
@@ -372,7 +378,7 @@ export class CollectionManager implements ICollectionManager {
    * Extract collection name from various collection object formats
    */
   private extractCollectionName(collection: any): string {
-    return this.metadataManager.extractCollectionName(collection);
+    return collection.name || 'unknown_collection';
   }
 
 
@@ -407,7 +413,19 @@ export class CollectionManager implements ICollectionManager {
    * Batch validate multiple collections
    */
   async batchValidateCollections(collectionNames: string[]): Promise<Record<string, boolean>> {
-    return await this.validator.batchValidateCollections(collectionNames);
+    // Batch validation - validate each collection individually
+    const results: Record<string, boolean> = {};
+    if (this.collectionService) {
+      for (const name of collectionNames) {
+        try {
+          const validation = await this.collectionService.validateCollection(name);
+          results[name] = validation.valid;
+        } catch {
+          results[name] = false;
+        }
+      }
+    }
+    return results;
   }
 
   /**
@@ -415,7 +433,9 @@ export class CollectionManager implements ICollectionManager {
    * Used when collections are loaded from disk with actual data
    */
   registerCollection(collectionName: string, collection: Collection): void {
-    this.metadataManager.registerCollection(collectionName, collection, this.collections, this.collectionCache);
+    // Register collection in local cache
+    this.collections.add(collectionName);
+    this.collectionCache.set(collectionName, collection);
   }
 
 

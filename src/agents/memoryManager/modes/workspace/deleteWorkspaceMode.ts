@@ -5,7 +5,7 @@ import {
   DeleteWorkspaceParameters, 
   WorkspaceResult
 } from '../../../../database/workspace-types';
-import { WorkspaceService } from "../services/WorkspaceService";
+import { WorkspaceService } from "../../services/WorkspaceService";
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 
 /**

@@ -4,11 +4,11 @@
  */
 
 import { Plugin } from 'obsidian';
-import { MetadataSearchService } from '../../../../../../database/services/MetadataSearchService';
+import { MetadataSearchService } from '../../../../../../database/services/search/MetadataSearchService';
 import { HybridSearchService } from '../../../../../../database/services/search';
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
-import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { EmbeddingService } from '../../../../../../database/services/core/EmbeddingService';
+import { MemoryService } from "../../../../../memoryManager/services/MemoryService";
+import { WorkspaceService } from "../../../../../memoryManager/services/WorkspaceService";
 
 export interface ServiceInitializationResult {
   success: boolean;
@@ -191,18 +191,18 @@ export class ServiceInitializer {
         } catch (error) {
         }
 
-        // Get collectionLifecycleManager from vectorStore if available
-        let collectionLifecycleManager: any = undefined;
-        if (vectorStore && typeof vectorStore.getCollectionLifecycleManager === 'function') {
+        // Get collectionService from vectorStore if available
+        let collectionService: any = undefined;
+        if (vectorStore && typeof vectorStore.getCollectionService === 'function') {
           try {
-            collectionLifecycleManager = vectorStore.getCollectionLifecycleManager();
+            collectionService = vectorStore.getCollectionService();
           } catch (error) {
-            console.warn('[ServiceInitializer] Could not get collectionLifecycleManager from vectorStore:', error);
+            console.warn('[ServiceInitializer] Could not get collectionService from vectorStore:', error);
           }
         }
 
-        // Initialize with direct ChromaDB access including collectionLifecycleManager
-        this.services.hybridSearchService = new HybridSearchService(vectorStore, embeddingService, collectionLifecycleManager);
+        // Initialize with direct ChromaDB access including collectionService
+        this.services.hybridSearchService = new HybridSearchService(vectorStore, embeddingService, collectionService);
         
         const semanticAvailable = this.services.hybridSearchService.isSemanticSearchAvailable();
       } else {

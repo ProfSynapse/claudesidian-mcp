@@ -14,9 +14,9 @@
  * on core memory trace operations while delegating specialized tasks.
  */
 
-import { WorkspaceMemoryTrace } from '../../workspace-types';
-import { MemoryTraceCollection } from '../../collections/MemoryTraceCollection';
-import { EmbeddingService } from '../EmbeddingService';
+import { WorkspaceMemoryTrace } from '../../../database/workspace-types';
+import { MemoryTraceCollection } from '../../../database/collections/MemoryTraceCollection';
+import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 import type { PendingToolCallCapture } from '../../../services/toolcall-capture/ToolCallCaptureService';
 import { ToolCallTraceProcessor } from './ToolCallTraceProcessor';
 import { TraceSearchService } from './TraceSearchService';

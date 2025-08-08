@@ -1,9 +1,9 @@
 import { Plugin } from 'obsidian';
-import { IVectorStore } from '../interfaces/IVectorStore';
-import { WorkspaceCollection } from '../collections/WorkspaceCollection';
-import { ProjectWorkspace, HierarchyType, WorkspaceStatus, ItemStatus } from '../workspace-types';
-import { VectorStoreFactory } from '../factory/VectorStoreFactory';
-import { EmbeddingService } from './EmbeddingService';
+import { IVectorStore } from '../../../database/interfaces/IVectorStore';
+import { WorkspaceCollection } from '../../../database/collections/WorkspaceCollection';
+import { ProjectWorkspace, HierarchyType, WorkspaceStatus, ItemStatus } from '../../../database/workspace-types';
+import { VectorStoreFactory } from '../../../database/factory/VectorStoreFactory';
+import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**

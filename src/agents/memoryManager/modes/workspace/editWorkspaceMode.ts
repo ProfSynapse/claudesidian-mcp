@@ -7,7 +7,7 @@ import {
   WorkspaceStatus,
   ProjectWorkspace
 } from '../../../../database/workspace-types';
-import { WorkspaceService } from "../services/WorkspaceService";
+import { WorkspaceService } from "../../services/WorkspaceService";
 import { createServiceIntegration } from '../../utils/ServiceIntegration';
 import { memoryManagerErrorHandler, createMemoryManagerError } from '../../utils/ErrorHandling';
 

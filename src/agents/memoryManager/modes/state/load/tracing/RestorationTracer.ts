@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on restoration tracing
  */
 
-import { MemoryService } from "../services/MemoryService";
+import { MemoryService } from "../../../../services/MemoryService";
 
 export interface RestorationTraceOptions {
   sessionId: string;

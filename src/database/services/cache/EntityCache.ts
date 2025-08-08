@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { Vault, TFile } from 'obsidian';
-import { WorkspaceService } from './WorkspaceService';
-import { MemoryService } from './MemoryService';
+import { WorkspaceService } from '../../../agents/memoryManager/services/WorkspaceService';
+import { MemoryService } from '../../../agents/memoryManager/services/MemoryService';
 
 interface CachedWorkspace {
     data: any;

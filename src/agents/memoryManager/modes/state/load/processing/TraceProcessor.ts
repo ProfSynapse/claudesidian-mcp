@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on trace processing
  */
 
-import { MemoryService } from "../services/MemoryService";
+import { MemoryService } from "../../../../services/MemoryService";
 import { WorkspaceMemoryTrace, WorkspaceStateSnapshot } from '../../../../../../database/workspace-types';
 
 export interface TraceProcessingResult {

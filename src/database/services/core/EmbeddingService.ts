@@ -4,9 +4,9 @@
  */
 
 import { Plugin, Notice, TFile } from 'obsidian';
-import { IEmbeddingProvider, ITokenTrackingProvider } from '../interfaces/IEmbeddingProvider';
-import { MemorySettings } from '../../types';
-import { getErrorMessage } from '../../utils/errorUtils';
+import { IEmbeddingProvider, ITokenTrackingProvider } from '../../interfaces/IEmbeddingProvider';
+import { MemorySettings } from '../../../types';
+import { getErrorMessage } from '../../../utils/errorUtils';
 
 import {
   EmbeddingGenerator,
@@ -17,8 +17,8 @@ import {
   FileIndexingService,
   IndexingStateManager,
   CollectionCleanupService
-} from './embedding';
-import { ProcessedFilesStateManager } from './state/ProcessedFilesStateManager';
+} from '../indexing/embedding';
+import { ProcessedFilesStateManager } from '../indexing/state/ProcessedFilesStateManager';
 
 /**
  * Refactored EmbeddingService using composition pattern

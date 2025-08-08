@@ -1,7 +1,7 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { WorkspaceSession } from '../workspace-types';
-import { EmbeddingService } from '../services/EmbeddingService';
+import { EmbeddingService } from '../services/core/EmbeddingService';
 import { generateSessionId } from '../../utils/sessionUtils';
 
 /**

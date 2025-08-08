@@ -18,7 +18,7 @@ import {
     CreateWorkspaceResult
 } from '../../../../database/types/workspace/ParameterTypes';
 import { ProjectWorkspace, WorkspaceContext } from '../../../../database/types/workspace/WorkspaceTypes';
-import { WorkspaceService } from "../services/WorkspaceService";
+import { WorkspaceService } from "../../services/WorkspaceService";
 import { createErrorMessage } from '../../../../utils/errorUtils';
 
 /**

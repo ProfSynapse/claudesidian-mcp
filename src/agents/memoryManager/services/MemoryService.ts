@@ -4,22 +4,20 @@
  */
 
 import { Plugin } from 'obsidian';
-import { IVectorStore } from '../interfaces/IVectorStore';
-import { MemoryTraceCollection } from '../collections/MemoryTraceCollection';
-import { SessionCollection } from '../collections/SessionCollection';
-import { SnapshotCollection } from '../collections/SnapshotCollection';
-import { WorkspaceMemoryTrace, WorkspaceSession, WorkspaceStateSnapshot } from '../workspace-types';
-import { VectorStoreFactory } from '../factory/VectorStoreFactory';
-import { EmbeddingService } from './EmbeddingService';
+import { IVectorStore } from '../../../database/interfaces/IVectorStore';
+import { MemoryTraceCollection } from '../../../database/collections/MemoryTraceCollection';
+import { SessionCollection } from '../../../database/collections/SessionCollection';
+import { SnapshotCollection } from '../../../database/collections/SnapshotCollection';
+import { WorkspaceMemoryTrace, WorkspaceSession, WorkspaceStateSnapshot } from '../../../database/workspace-types';
+import { VectorStoreFactory } from '../../../database/factory/VectorStoreFactory';
+import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 
-import {
-  MemoryTraceService,
-  SessionService,
-  SnapshotService
-} from './memory';
-import { CollectionManager } from '../providers/chroma/services/CollectionManager';
-import { DirectoryService } from '../providers/chroma/services/DirectoryService';
-import { ObsidianPathManager } from '../../core/ObsidianPathManager';
+import { MemoryTraceService } from './MemoryTraceService';
+import { SessionService } from './SessionService';
+import { SnapshotService } from './SnapshotService';
+import { CollectionManager } from '../../../database/providers/chroma/services/CollectionManager';
+import { DirectoryService } from '../../../database/providers/chroma/services/DirectoryService';
+import { ObsidianPathManager } from '../../../core/ObsidianPathManager';
 
 /**
  * Refactored MemoryService using composition pattern.

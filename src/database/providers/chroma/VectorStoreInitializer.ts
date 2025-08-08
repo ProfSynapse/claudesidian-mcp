@@ -385,7 +385,7 @@ export class VectorStoreInitializer {
   /**
    * Initializes collection lifecycle manager
    */
-  private async initializeLifecycleManager(context: InitializationContext): Promise<CollectionLifecycleManager | undefined> {
+  private async initializeLifecycleManager(context: InitializationContext): Promise<CollectionService | undefined> {
     try {
       // Track memory before listCollections() call
       const memoryBefore = this.getMemoryUsage();
@@ -410,9 +410,12 @@ export class VectorStoreInitializer {
 
       // Create lifecycle manager - assuming we need a vector store instance
       // This might need adjustment based on the actual interface requirements
-      const lifecycleManager = new CollectionLifecycleManager(
-        context as any, // This may need to be the actual vector store instance
-        context.collectionManager
+      const lifecycleManager = new CollectionService(
+        context.plugin,
+        context as any, // vectorStore
+        context.collectionManager,
+        context as any, // client 
+        context.directoryService
       );
 
       // Collection lifecycle manager initialized successfully
@@ -430,8 +433,8 @@ export class VectorStoreInitializer {
   async initializeHealthMonitoring(
     context: InitializationContext,
     vectorStore: any, // The actual vector store instance 
-    lifecycleManager?: CollectionLifecycleManager
-  ): Promise<CollectionHealthMonitor | undefined> {
+    lifecycleManager?: CollectionService
+  ): Promise<CollectionService | undefined> {
     try {
       if (!lifecycleManager) {
         // No lifecycle manager available - skipping health monitoring
@@ -439,10 +442,7 @@ export class VectorStoreInitializer {
       }
       
       // Initialize health monitor
-      const healthMonitor = new CollectionHealthMonitor(
-        vectorStore, // Pass the actual ChromaVectorStoreModular instance
-        lifecycleManager
-      );
+      const healthMonitor = lifecycleManager; // CollectionService handles health monitoring
       
       // Don't start monitoring immediately - let the vector store start it after full initialization
       console.info('[VectorStoreInitializer] Initialized collection health monitoring');

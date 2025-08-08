@@ -6,7 +6,7 @@
 import { MemorySettings } from '../llm/EmbeddingTypes';
 import { CustomPromptsSettings } from '../mcp/CustomPromptTypes';
 import { LLMProviderSettings } from '../llm/ProviderTypes';
-import { ProcessedFileState } from '../../database/services/state/ProcessedFilesStateManager';
+import { ProcessedFileState } from '../../database/services/indexing/state/ProcessedFilesStateManager';
 
 /**
  * Processed files data structure for embedding state management

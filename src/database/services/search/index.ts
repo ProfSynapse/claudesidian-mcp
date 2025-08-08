@@ -1,11 +1,11 @@
-export { ScoringService, type SearchWeights, type ScoreResult, DEFAULT_SEARCH_WEIGHTS } from '../ScoringService';
+export { ScoringService, type SearchWeights, type ScoreResult, DEFAULT_SEARCH_WEIGHTS } from './ScoringService';
 export { 
     MetadataSearchService, 
     type MetadataSearchOptions, 
     type PropertySearchResult, 
     type PropertyFilter,
     type MetadataSearchCriteria 
-} from '../MetadataSearchService';
+} from './MetadataSearchService';
 
 // Hybrid search components
 export { QueryAnalyzer, type QueryAnalysis, type SearchWeights as HybridSearchWeights } from './QueryAnalyzer';

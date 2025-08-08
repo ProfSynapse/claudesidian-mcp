@@ -1,11 +1,11 @@
 import { BaseSettingsTab } from './BaseSettingsTab';
-import { UsageStatsService, USAGE_EVENTS } from '../../database/services/UsageStatsService';
+import { UsageStatsService, USAGE_EVENTS } from '../../database/services/usage/UsageStatsService';
 import { TokenUsageComponent } from './TokenUsageComponent';
 import { CollectionStatsComponent } from './CollectionStatsComponent';
 import { IndexingComponent } from './IndexingComponent';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
-import { EmbeddingManager } from '../../database/services/embeddingManager';
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { EmbeddingManager } from '../../database/services/indexing/embeddingManager';
+import { EmbeddingService } from '../../database/services/core/EmbeddingService';
 
 /**
  * Usage Statistics Component

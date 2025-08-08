@@ -1,7 +1,7 @@
 import { Notice, ButtonComponent } from 'obsidian';
-import { UsageStatsService } from '../../database/services/UsageStatsService';
+import { UsageStatsService } from '../../database/services/usage/UsageStatsService';
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { EmbeddingService } from '../../database/services/core/EmbeddingService';
 
 /**
  * Component for reindexing collections in the memory settings

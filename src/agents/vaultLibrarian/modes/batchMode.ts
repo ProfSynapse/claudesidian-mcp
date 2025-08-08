@@ -1,8 +1,8 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
-import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
+import { MemoryService } from "../../memoryManager/services/MemoryService";
+import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
 import { 
   BatchUniversalSearchParams, 
   BatchUniversalSearchResult,

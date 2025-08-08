@@ -4,7 +4,7 @@ import { AppendContentParams, AppendContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
-import { MemoryService } from "../memoryManager/services/MemoryService";
+import { MemoryService } from '../../memoryManager/services/MemoryService';
 
 /**
  * Mode for appending content to a file

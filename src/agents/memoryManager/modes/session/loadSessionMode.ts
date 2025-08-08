@@ -3,7 +3,7 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { WorkspaceMemoryTrace, WorkspaceSession } from '../../../../database/workspace-types';
 import { LoadSessionParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
-import { MetadataSearchService } from '../../../../database/services/MetadataSearchService';
+import { MetadataSearchService } from '../../../../database/services/search/MetadataSearchService';
 
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 /**

@@ -1,5 +1,5 @@
 import { Notice, ButtonComponent } from 'obsidian';
-import { UsageStatsService } from '../../database/services/UsageStatsService';
+import { UsageStatsService } from '../../database/services/usage/UsageStatsService';
 import { IVectorStore } from '../../database/interfaces/IVectorStore';
 
 /**

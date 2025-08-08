@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on state creation
  */
 
-import { MemoryService } from "../services/MemoryService";
+import { MemoryService } from "../../../../services/MemoryService";
 import { ContextData } from '../context/ContextBuilder';
 
 export interface StateCreationResult {

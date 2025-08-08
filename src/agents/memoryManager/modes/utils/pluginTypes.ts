@@ -1,8 +1,8 @@
 import { Plugin } from 'obsidian';
-import { WorkspaceService } from "../services/WorkspaceService";
-import { MemoryService } from "../services/MemoryService";
-import { FileEmbeddingAccessService } from '../../../../database/services/FileEmbeddingAccessService';
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { WorkspaceService } from "../../services/WorkspaceService";
+import { MemoryService } from "../../services/MemoryService";
+import { FileEmbeddingAccessService } from '../../../../database/services/indexing/FileEmbeddingAccessService';
+import { EmbeddingService } from '../../../../database/services/core/EmbeddingService';
 import { IVectorStore } from '../../../../database/interfaces/IVectorStore';
 
 /**

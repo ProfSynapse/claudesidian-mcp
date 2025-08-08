@@ -3,11 +3,11 @@
  * Follows Single Responsibility Principle by focusing only on provider management
  */
 
-import { IEmbeddingProvider, ITokenTrackingProvider } from '../../interfaces/IEmbeddingProvider';
-import { VectorStoreFactory } from '../../factory/VectorStoreFactory';
-import { MemorySettings } from '../../../types';
-import { EmbeddingProviderRegistry } from '../../providers/registry/EmbeddingProviderRegistry';
-import { UsageTracker } from '../../../services/UsageTracker';
+import { IEmbeddingProvider, ITokenTrackingProvider } from '../../../interfaces/IEmbeddingProvider';
+import { VectorStoreFactory } from '../../../factory/VectorStoreFactory';
+import { MemorySettings } from '../../../../types';
+import { EmbeddingProviderRegistry } from '../../../providers/registry/EmbeddingProviderRegistry';
+import { UsageTracker } from '../../../../services/UsageTracker';
 
 export class EmbeddingProviderManager {
   private embeddingProvider: IEmbeddingProvider | null = null;

@@ -13,8 +13,8 @@ import { MemorySearchProcessor, MemorySearchProcessorInterface } from '../servic
 import { MemorySearchFilters, MemorySearchFiltersInterface } from '../services/MemorySearchFilters';
 import { ResultFormatter, ResultFormatterInterface } from '../services/ResultFormatter';
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
-import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { MemoryService } from "../../memoryManager/services/MemoryService";
+import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
 
 /**
  * Memory types available for search (aligned with MemorySearchParameters)

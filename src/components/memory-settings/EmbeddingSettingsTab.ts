@@ -1,7 +1,7 @@
 import { Notice, Setting } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
-import { EmbeddingManager } from '../../database/services/embeddingManager';
-import { EmbeddingService } from "../../database/services/core/EmbeddingService";
+import { EmbeddingManager } from '../../database/services/indexing/embeddingManager';
+import { EmbeddingService } from '../../database/services/core/EmbeddingService';
 import { EmbeddingProviderRegistry } from '../../database/providers/registry/EmbeddingProviderRegistry';
 import { ProviderSection } from './sections/ProviderSection';
 import { ChunkingSection } from './sections/ChunkingSection';

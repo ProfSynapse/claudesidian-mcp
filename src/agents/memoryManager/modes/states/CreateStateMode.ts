@@ -17,8 +17,8 @@ import { MemoryManagerAgent } from '../../memoryManager';
 import { CreateStateParams, StateResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
-import { MemoryService } from "../services/MemoryService";
-import { WorkspaceService, GLOBAL_WORKSPACE_ID } from "../services/WorkspaceService";
+import { MemoryService } from "../../services/MemoryService";
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from "../../services/WorkspaceService";
 import { createServiceIntegration, ValidationError } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 

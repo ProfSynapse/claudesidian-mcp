@@ -19,9 +19,9 @@ import {
   SearchMethod,
   MemoryType
 } from '../../../types/memory/MemorySearchTypes';
-import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
-import { MemoryTraceService } from '../../../database/services/memory/MemoryTraceService';
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { MemoryService } from "../../memoryManager/services/MemoryService";
+import { MemoryTraceService } from '../../memoryManager/services/MemoryTraceService';
+import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
 
 export interface MemorySearchProcessorInterface {
   process(params: MemorySearchParameters): Promise<MemorySearchResult[]>;

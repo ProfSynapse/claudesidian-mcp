@@ -72,7 +72,7 @@ export class HybridSearchService {
   
   // Search validation and dependency management
   private searchValidator?: SearchServiceValidator;
-  private collectionLifecycleManager?: CollectionLifecycleManager;
+  private collectionService?: CollectionService;
   
   // Extracted service dependencies
   private searchMetrics: SearchMetricsInterface;
@@ -88,7 +88,7 @@ export class HybridSearchService {
   constructor(
     vectorStore?: IVectorStore,
     embeddingService?: EmbeddingService,
-    collectionLifecycleManager?: CollectionLifecycleManager,
+    collectionService?: CollectionService,
     // Optional extracted services - will create defaults if not provided
     extractedServices?: {
       searchMetrics?: SearchMetricsInterface;
@@ -100,11 +100,11 @@ export class HybridSearchService {
     // Direct dependency injection  
     this.vectorStore = vectorStore;
     this.embeddingService = embeddingService;
-    this.collectionLifecycleManager = collectionLifecycleManager;
+    this.collectionService = collectionService;
     
     // Initialize search validator if we have the required dependencies
-    if (vectorStore && collectionLifecycleManager) {
-      this.searchValidator = new SearchServiceValidator(vectorStore, collectionLifecycleManager);
+    if (vectorStore && collectionService) {
+      this.searchValidator = new SearchServiceValidator(vectorStore, collectionService);
       // Initialized with collection validation support
     } else {
       // LAZY LOADING ARCHITECTURE: Collections are validated and created on-demand during search operations
@@ -145,14 +145,14 @@ export class HybridSearchService {
   }
 
   /**
-   * Set collection lifecycle manager and initialize search validator
-   * Called when CollectionLifecycleManager becomes available
+   * Set collection service and initialize search validator
+   * Called when CollectionService becomes available
    */
-  setCollectionLifecycleManager(collectionLifecycleManager: CollectionLifecycleManager): void {
-    this.collectionLifecycleManager = collectionLifecycleManager;
+  setCollectionService(collectionService: CollectionService): void {
+    this.collectionService = collectionService;
     
-    if (this.vectorStore && collectionLifecycleManager) {
-      this.searchValidator = new SearchServiceValidator(this.vectorStore, collectionLifecycleManager);
+    if (this.vectorStore && collectionService) {
+      this.searchValidator = new SearchServiceValidator(this.vectorStore, collectionService);
       console.log('[HybridSearchService] Collection validation enabled - search reliability improved');
     }
   }

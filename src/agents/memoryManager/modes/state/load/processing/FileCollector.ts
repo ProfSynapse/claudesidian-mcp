@@ -4,7 +4,7 @@
  */
 
 import { App } from 'obsidian';
-import { MetadataSearchService } from '../../../../../../database/services/MetadataSearchService';
+import { MetadataSearchService } from '../../../../../../database/services/search/MetadataSearchService';
 import { WorkspaceStateSnapshot } from '../../../../../../database/types/session/SessionTypes';
 
 export interface FileCollectionResult {

@@ -7,7 +7,7 @@ import { ChromaEmbeddingProvider } from '../providers/chroma/ChromaEmbedding';
 import { VectorStoreConfig } from '../models/VectorStoreConfig';
 import { EmbeddingProviderRegistry } from '../providers/registry/EmbeddingProviderRegistry';
 import { MemorySettings } from '../../types';
-import { EmbeddingService } from '../services/EmbeddingService';
+import { EmbeddingService } from '../services/core/EmbeddingService';
 import { 
   WorkspaceCollection,
   MemoryTraceCollection,

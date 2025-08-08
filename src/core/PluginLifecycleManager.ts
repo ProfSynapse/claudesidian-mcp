@@ -142,7 +142,7 @@ export class PluginLifecycleManager {
         });
         
         serviceContainer.register('stateManager', async () => {
-            const { ProcessedFilesStateManager } = await import('../database/services/state/ProcessedFilesStateManager');
+            const { ProcessedFilesStateManager } = await import('../database/services/indexing/state/ProcessedFilesStateManager');
             return new ProcessedFilesStateManager(plugin);
         });
         
@@ -221,7 +221,7 @@ export class PluginLifecycleManager {
         
         // Business services with dependencies
         serviceContainer.register('embeddingService', async (deps) => {
-            const { EmbeddingService } = await import('../database/services/EmbeddingService');
+            const { EmbeddingService } = await import('../database/services/core/EmbeddingService');
             return new EmbeddingService(plugin, deps.stateManager);
         }, { dependencies: ['stateManager'] });
         
@@ -237,7 +237,7 @@ export class PluginLifecycleManager {
         
         // Memory trace service - moved from registerAdditionalServices to ensure availability
         serviceContainer.register('memoryTraceService', async (deps) => {
-            const { MemoryTraceService } = await import('../database/services/memory/MemoryTraceService');
+            const { MemoryTraceService } = await import('../agents/memoryManager/services/MemoryTraceService');
             const { VectorStoreFactory } = await import('../database/factory/VectorStoreFactory');
             
             // Create memory trace collection through factory
@@ -444,21 +444,21 @@ export class PluginLifecycleManager {
         // Register services that weren't included in core registration
         if (!serviceContainer.has('fileEmbeddingAccessService')) {
             serviceContainer.register('fileEmbeddingAccessService', async (deps) => {
-                const { FileEmbeddingAccessService } = await import('../database/services/FileEmbeddingAccessService');
+                const { FileEmbeddingAccessService } = await import('../database/services/indexing/FileEmbeddingAccessService');
                 return new FileEmbeddingAccessService(plugin, deps.vectorStore);
             }, { dependencies: ['vectorStore'] });
         }
         
         if (!serviceContainer.has('usageStatsService')) {
             serviceContainer.register('usageStatsService', async (deps) => {
-                const { UsageStatsService } = await import('../database/services/UsageStatsService');
+                const { UsageStatsService } = await import('../database/services/usage/UsageStatsService');
                 return new UsageStatsService(deps.embeddingService, deps.vectorStore, settings.settings.memory || {});
             }, { dependencies: ['embeddingService', 'vectorStore'] });
         }
         
         if (!serviceContainer.has('cacheManager')) {
             serviceContainer.register('cacheManager', async (deps) => {
-                const { CacheManager } = await import('../database/services/CacheManager');
+                const { CacheManager } = await import('../database/services/cache/CacheManager');
                 return new CacheManager(this.config.app, deps.workspaceService, deps.memoryService);
             }, { dependencies: ['workspaceService', 'memoryService'] });
         }

@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
-import { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
-import { FileEmbeddingAccessService } from '../../database/services/FileEmbeddingAccessService';
+import { WorkspaceService } from '../../agents/memoryManager/services/WorkspaceService';
+import { FileEmbeddingAccessService } from '../../database/services/indexing/FileEmbeddingAccessService';
 
 /**
  * Workspace-aware caching service

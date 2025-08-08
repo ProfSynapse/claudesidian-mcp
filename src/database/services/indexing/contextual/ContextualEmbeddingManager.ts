@@ -10,9 +10,9 @@
  */
 
 import { Plugin } from 'obsidian';
-import { IVectorStore } from '../../interfaces/IVectorStore';
+import { IVectorStore } from '../../../interfaces/IVectorStore';
 import { RecentFilesTracker, FilePriority } from './RecentFilesTracker';
-import { CollectionRepository } from '../../providers/chroma/services/CollectionRepository';
+import { CollectionRepository } from '../../../providers/chroma/services/CollectionRepository';
 
 export interface MemoryUsageStats {
   totalEmbeddingsMB: number;

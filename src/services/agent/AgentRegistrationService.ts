@@ -17,7 +17,7 @@ import { CustomPromptStorageService } from "../../agents/agentManager/services/C
 import { LLMProviderManager } from '../LLMProviderManager';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { LLMValidationService } from '../LLMValidationService';
-import { EmbeddingProviderManager } from '../../database/services/embedding/EmbeddingProviderManager';
+import { EmbeddingProviderManager } from '../../database/services/indexing/embedding/EmbeddingProviderManager';
 
 /**
  * Location: src/services/agent/AgentRegistrationService.ts

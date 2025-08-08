@@ -1,6 +1,6 @@
 import { Notice } from 'obsidian';
 import { ProgressBar } from '../ProgressBar';
-import { UsageStatsService } from '../../database/services/UsageStatsService';
+import { UsageStatsService } from '../../database/services/usage/UsageStatsService';
 import { EmbeddingProviderRegistry } from '../../database/providers/registry/EmbeddingProviderRegistry';
 
 /**

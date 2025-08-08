@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on embedding generation
  */
 
-import { IEmbeddingProvider } from '../../interfaces/IEmbeddingProvider';
+import { IEmbeddingProvider } from '../../../interfaces/IEmbeddingProvider';
 
 export class EmbeddingGenerator {
   private embeddingProvider: IEmbeddingProvider | null;

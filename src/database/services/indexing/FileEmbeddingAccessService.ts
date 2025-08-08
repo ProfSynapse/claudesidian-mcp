@@ -1,8 +1,8 @@
 import { Plugin } from 'obsidian';
-import { IVectorStore } from '../interfaces/IVectorStore';
-import { FileEmbeddingCollection } from '../collections/FileEmbeddingCollection';
-import { VectorStoreFactory } from '../factory/VectorStoreFactory';
-import { FileEmbedding } from '../workspace-types';
+import { IVectorStore } from '../../interfaces/IVectorStore';
+import { FileEmbeddingCollection } from '../../collections/FileEmbeddingCollection';
+import { VectorStoreFactory } from '../../factory/VectorStoreFactory';
+import { FileEmbedding } from '../../workspace-types';
 
 /**
  * Service for direct file embedding access operations

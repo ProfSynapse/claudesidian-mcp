@@ -1,7 +1,7 @@
 import { App, Plugin } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
 import { CommonParameters, CommonResult } from '../../../../types';
-import { WorkspaceService } from "../services/WorkspaceService";
+import { WorkspaceService } from "../../services/WorkspaceService";
 import { ClaudesidianPlugin } from '../utils/pluginTypes';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 

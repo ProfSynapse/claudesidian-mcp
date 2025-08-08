@@ -13,7 +13,7 @@
 import * as crypto from 'crypto';
 import { Plugin, TFile } from 'obsidian';
 import { ProcessedFilesStateManager } from '../state/ProcessedFilesStateManager';
-import { FileUtils } from '../../utils/FileUtils';
+import { FileUtils } from '../../../utils/FileUtils';
 
 export class ContentHashService {
   private plugin: Plugin;

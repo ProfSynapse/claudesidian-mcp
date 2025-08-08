@@ -1,5 +1,5 @@
 import { IVectorStore } from '../../interfaces/IVectorStore';
-import { UsageStats, CollectionStat } from '../UsageStatsService';
+import { UsageStats, CollectionStat } from './UsageStatsService';
 import { ICollectionStatsHandler } from './interfaces';
 
 export class CollectionStatsHandler implements ICollectionStatsHandler {

@@ -1,5 +1,5 @@
 import { normalizePath } from "obsidian";
-import { WorkspaceService } from "../agents/memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
 import { ProjectWorkspace } from "../database/workspace-types";
 
 /**

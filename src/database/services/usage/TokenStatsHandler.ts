@@ -1,5 +1,5 @@
-import { EmbeddingService } from '../EmbeddingService';
-import { UsageStats } from '../UsageStatsService';
+import { EmbeddingService } from '../core/EmbeddingService';
+import { UsageStats } from './UsageStatsService';
 import { ITokenStatsHandler, ILocalStorageManager, IProviderCapabilityChecker } from './interfaces';
 import { ITokenTrackingProvider } from '../../interfaces/IEmbeddingProvider';
 
