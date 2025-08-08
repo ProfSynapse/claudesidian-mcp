@@ -5,9 +5,9 @@
 
 import { Modal, App, Setting, ButtonComponent, Notice } from 'obsidian';
 import { LLMProviderConfig, ModelConfig } from '../types';
-import { LLMProviderManager } from '../services/LLMProviderManager';
+import { LLMProviderManager } from '../services/llm/providers/ProviderManager';
 import { StaticModelsService, ModelWithProvider } from '../services/StaticModelsService';
-import { LLMValidationService } from '../services/LLMValidationService';
+import { LLMValidationService } from '../services/llm/validation/ValidationService';
 
 export interface LLMProviderModalConfig {
   providerId: string;

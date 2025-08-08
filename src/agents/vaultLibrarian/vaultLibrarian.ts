@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
-import { VaultLibrarianConfig } from './config';
+import { VaultLibrarianConfig } from '../../config/agents';
 import {
   SearchMode,
   SearchDirectoryMode,

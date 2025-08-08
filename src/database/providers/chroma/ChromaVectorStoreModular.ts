@@ -8,12 +8,17 @@ import { Plugin } from 'obsidian';
 import { VectorStoreInitializer, VectorStoreInitializationResult, InitializationContext } from './VectorStoreInitializer';
 import { ServiceCoordinator, ServiceCoordinatorInterface, ServiceRegistry, ClientDependentServices } from './ServiceCoordinator';
 
-// Import core interfaces
-import { IDirectoryService } from './services/interfaces/IDirectoryService';
-import { IChromaClientFactory } from './services/interfaces/IChromaClientFactory';
-import { ICollectionManager } from './services/interfaces/ICollectionManager';
-import { IDiagnosticsService, RepairResult, ValidationResult } from './services/interfaces/IDiagnosticsService';
-import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorService';
+// Import core interfaces from consolidated types
+import type { 
+  IDirectoryService, 
+  IChromaClientFactory, 
+  ICollectionManager, 
+  IDiagnosticsService, 
+  ISizeCalculatorService,
+  RepairResult, 
+  ValidationResult,
+  StoreIncludeType
+} from './types/ChromaTypes';
 
 // Import initialization coordination
 import { ICollectionLoadingCoordinator } from '../../../services/initialization/interfaces/ICollectionLoadingCoordinator';
@@ -21,8 +26,7 @@ import { ICollectionLoadingCoordinator } from '../../../services/initialization/
 // Import collection service (consolidated)
 import { CollectionService } from '../../services/core/CollectionService';
 
-// Define standard include types for vector store compatibility
-type StoreIncludeType = 'embeddings' | 'metadatas' | 'documents' | 'distances';
+// StoreIncludeType now imported from consolidated ChromaTypes
 
 /**
  * Modular ChromaDB vector store implementation

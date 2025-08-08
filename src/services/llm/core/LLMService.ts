@@ -12,11 +12,11 @@ import {
   OpenRouterAdapter,
   RequestyAdapter,
   PerplexityAdapter
-} from './llm/adapters';
-import { OllamaAdapter } from './llm/adapters/ollama/OllamaAdapter';
-import { BaseAdapter } from './llm/adapters/BaseAdapter';
-import { GenerateOptions, LLMResponse, ModelInfo } from './llm/adapters/types';
-import { LLMProviderSettings, LLMProviderConfig } from '../types';
+} from '../adapters';
+import { OllamaAdapter } from '../adapters/ollama/OllamaAdapter';
+import { BaseAdapter } from '../adapters/BaseAdapter';
+import { GenerateOptions, LLMResponse, ModelInfo } from '../adapters/types';
+import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
 
 export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;

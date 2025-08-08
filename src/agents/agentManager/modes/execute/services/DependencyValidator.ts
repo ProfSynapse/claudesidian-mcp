@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on dependency validation
  */
 
-import { LLMProviderManager } from '../../../../../services/LLMProviderManager';
+import { LLMProviderManager } from '../../../../../services/llm/providers/ProviderManager';
 import { CustomPromptStorageService } from '../../../services/CustomPromptStorageService';
 import { AgentManager } from '../../../../../services/AgentManager';
 import { UsageTracker } from '../../../../../services/UsageTracker';

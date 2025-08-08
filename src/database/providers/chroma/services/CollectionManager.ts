@@ -1,11 +1,10 @@
-import { ICollectionManager } from './interfaces/ICollectionManager';
+import { ICollectionManager, IDirectoryService } from '../types/ChromaTypes';
 import { Collection, ChromaClient } from '../PersistentChromaClient';
-import { IDirectoryService } from './interfaces/IDirectoryService';
 import { getErrorMessage } from '../../../../utils/errorUtils';
 import { ObsidianPathManager } from '../../../../core/ObsidianPathManager';
 import { VaultOperations } from '../../../../core/VaultOperations';
 import { StructuredLogger } from '../../../../core/StructuredLogger';
-import { VaultOperationsDirectoryServiceAdapter } from './adapters/VaultOperationsDirectoryServiceAdapter';
+// VaultOperationsDirectoryServiceAdapter was consolidated - using PersistenceManager functionality
 import { CollectionService } from '../../../services/core/CollectionService';
 
 /**
@@ -80,13 +79,10 @@ export class CollectionManager implements ICollectionManager {
    * Update directory service to use VaultOperations adapter when all dependencies are available
    */
   private updateDirectoryServiceAdapter(): void {
+    // VaultOperationsDirectoryServiceAdapter was consolidated into PersistenceManager
+    // The directoryService passed in constructor already has the required functionality
     if (this.vaultOps && this.pathManager && this.logger) {
-      this.directoryService = new VaultOperationsDirectoryServiceAdapter(
-        this.vaultOps,
-        this.pathManager,
-        this.logger
-      );
-      this.logger.debug('Updated CollectionManager to use VaultOperations adapter', undefined, 'CollectionManager');
+      this.logger.debug('Using existing PersistenceManager with Obsidian plugin support', undefined, 'CollectionManager');
     }
   }
 
@@ -465,4 +461,49 @@ export class CollectionManager implements ICollectionManager {
 
     return { cleaned, errors };
   }
+
+  /**
+   * Ensure a collection exists, creating it if necessary
+   * Alias for getOrCreateCollection to satisfy interface
+   */
+  async ensureCollection(name: string, metadata?: Record<string, any>): Promise<Collection> {
+    return await this.getOrCreateCollection(name);
+  }
+
+  /**
+   * Get metadata for a collection
+   */
+  async getCollectionMetadata(name: string): Promise<Record<string, any>> {
+    try {
+      const collection = await this.getOrCreateCollection(name);
+      return collection.metadata || {};
+    } catch (error) {
+      throw new Error(`Failed to get metadata for collection ${name}: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Check if a collection exists
+   * Alias for hasCollection to satisfy interface
+   */
+  async collectionExists(name: string): Promise<boolean> {
+    return await this.hasCollection(name);
+  }
+
+  /**
+   * Set path manager for the collection manager (already implemented)
+   */
+  setPathManager(pathManager: any): void {
+    this.pathManager = pathManager;
+    this.updateDirectoryServiceAdapter();
+  }
+
+  /**
+   * Clear collection cache
+   */
+  clearCache(): void {
+    this.collectionCache.clear();
+    this.cacheHits = 0;
+  }
+
 }

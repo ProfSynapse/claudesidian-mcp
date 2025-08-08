@@ -7,7 +7,7 @@
  * Used by SchemaBuilder.ts to maintain type safety and consistent schema generation.
  */
 
-import { LLMProviderManager } from '../../services/LLMProviderManager';
+import { LLMProviderManager } from '../../services/llm/providers/ProviderManager';
 
 /**
  * Schema types supported by the unified builder

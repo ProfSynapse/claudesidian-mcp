@@ -14,11 +14,13 @@ import { ChromaClient } from './PersistentChromaClient';
 import { VectorStoreConfig } from '../../models/VectorStoreConfig';
 
 // Service interfaces
-import { IDirectoryService } from './services/interfaces/IDirectoryService';
-import { IChromaClientFactory } from './services/interfaces/IChromaClientFactory';
-import { ICollectionManager } from './services/interfaces/ICollectionManager';
-import { IDiagnosticsService } from './services/interfaces/IDiagnosticsService';
-import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorService';
+import { 
+  IDirectoryService, 
+  IChromaClientFactory, 
+  ICollectionManager, 
+  IDiagnosticsService, 
+  ISizeCalculatorService 
+} from './types/ChromaTypes';
 
 // Collection lifecycle management (consolidated)
 import { CollectionService } from '../../services/core/CollectionService';

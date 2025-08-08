@@ -1,6 +1,6 @@
 import { App, TFile, TFolder } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
-import { VaultManagerConfig } from './config';
+import { VaultManagerConfig } from '../../config/agents';
 import { 
   ListDirectoryMode, 
   CreateFolderMode, 

@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
-import { CommandManagerConfig } from './config';
+import { CommandManagerConfig } from '../../config/agents';
 import {
   ListCommandsMode,
   ExecuteCommandMode

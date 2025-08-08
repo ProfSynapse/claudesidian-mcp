@@ -14,9 +14,9 @@ import {
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../../utils/logger';
 import { CustomPromptStorageService } from "../../agents/agentManager/services/CustomPromptStorageService";
-import { LLMProviderManager } from '../LLMProviderManager';
+import { LLMProviderManager } from '../llm/providers/ProviderManager';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
-import { LLMValidationService } from '../LLMValidationService';
+import { LLMValidationService } from '../llm/validation/ValidationService';
 import { EmbeddingProviderManager } from '../../database/services/indexing/embedding/EmbeddingProviderManager';
 
 /**

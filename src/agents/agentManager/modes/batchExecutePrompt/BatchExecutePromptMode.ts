@@ -1,8 +1,8 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
 import { getErrorMessage } from '../../../../utils/errorUtils';
-import { LLMProviderManager } from '../../../../services/LLMProviderManager';
-import { LLMService } from '../../../../services/LLMService';
+import { LLMProviderManager } from '../../../../services/llm/providers/ProviderManager';
+import { LLMService } from '../../../../services/llm/core/LLMService';
 import { AgentManager } from '../../../../services/AgentManager';
 import { CustomPromptStorageService } from '../../services/CustomPromptStorageService';
 import { UsageTracker } from '../../../../services/UsageTracker';

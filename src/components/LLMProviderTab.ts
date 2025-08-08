@@ -5,7 +5,7 @@
 
 import { Setting, ButtonComponent, Modal, App } from 'obsidian';
 import { LLMProviderSettings, LLMProviderConfig, ModelConfig } from '../types';
-import { LLMProviderManager } from '../services/LLMProviderManager';
+import { LLMProviderManager } from '../services/llm/providers/ProviderManager';
 import { CardManager, CardManagerConfig, CardItem } from './CardManager';
 import { LLMProviderModal, LLMProviderModalConfig } from './LLMProviderModal';
 import { StaticModelsService } from '../services/StaticModelsService';

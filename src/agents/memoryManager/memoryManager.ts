@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
-import { MemoryManagerConfig } from './config';
+import { MemoryManagerConfig } from '../../config/agents';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
 import { MemoryService } from "./services/MemoryService";
 import { WorkspaceService } from "./services/WorkspaceService";

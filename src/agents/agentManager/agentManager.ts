@@ -1,5 +1,5 @@
 import { BaseAgent } from '../baseAgent';
-import { AgentManagerConfig } from './config';
+import { AgentManagerConfig } from '../../config/agents';
 import {
   ListPromptsMode,
   GetPromptMode,
@@ -14,7 +14,7 @@ import {
 import { CustomPromptStorageService } from './services/CustomPromptStorageService';
 import { Settings } from '../../settings';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
-import { LLMProviderManager } from '../../services/LLMProviderManager';
+import { LLMProviderManager } from '../../services/llm/providers/ProviderManager';
 import { AgentManager } from '../../services/AgentManager';
 import { UsageTracker } from '../../services/UsageTracker';
 

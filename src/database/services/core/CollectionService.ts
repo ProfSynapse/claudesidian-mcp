@@ -12,8 +12,7 @@
 
 import { Plugin } from 'obsidian';
 import { IVectorStore } from '../../interfaces/IVectorStore';
-import { ICollectionManager } from '../../providers/chroma/services/interfaces/ICollectionManager';
-import { IDirectoryService } from '../../providers/chroma/services/interfaces/IDirectoryService';
+import { ICollectionManager, IDirectoryService } from '../../providers/chroma/types/ChromaTypes';
 import { Collection, ChromaClient } from '../../providers/chroma/PersistentChromaClient';
 import { ObsidianPathManager } from '../../../core/ObsidianPathManager';
 import { StructuredLogger } from '../../../core/StructuredLogger';

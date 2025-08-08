@@ -3,19 +3,21 @@ import { VectorStoreConfig } from '../../models/VectorStoreConfig';
 import { ObsidianPathManager } from '../../../core/ObsidianPathManager';
 import { FileSystemInterface } from './services/PersistenceManager';
 
-// Service imports
-import { DirectoryService } from './services/DirectoryService';
+// Consolidated service imports
 import { ChromaClientFactory } from './services/ChromaClientFactory';
 import { CollectionManager } from './services/CollectionManager';
-import { DiagnosticsService } from './services/DiagnosticsService';
-import { SizeCalculatorService } from './services/SizeCalculatorService';
+import { PersistenceManager } from './services/PersistenceManager'; // Now includes DirectoryService functionality
+import { CollectionRepository } from './services/CollectionRepository'; // Now includes SizeCalculatorService functionality
+import { ChromaVectorStoreDiagnosticsService } from '../../services/monitoring/ChromaVectorStoreDiagnosticsService'; // Moved to monitoring layer
 
-// Service interfaces
-import { IDirectoryService } from './services/interfaces/IDirectoryService';
-import { IChromaClientFactory } from './services/interfaces/IChromaClientFactory';
-import { ICollectionManager } from './services/interfaces/ICollectionManager';
-import { IDiagnosticsService } from './services/interfaces/IDiagnosticsService';
-import { ISizeCalculatorService } from './services/interfaces/ISizeCalculatorService';
+// Consolidated service interfaces
+import type { 
+  IChromaClientFactory, 
+  ICollectionManager,
+  IDirectoryService,
+  IDiagnosticsService,
+  ISizeCalculatorService
+} from './types/ChromaTypes';
 
 import { ChromaClient } from './PersistentChromaClient';
 
@@ -93,8 +95,8 @@ export class ServiceCoordinator implements ServiceCoordinatorInterface {
    */
   initializeServices(plugin: Plugin): ServiceRegistry {
     try {
-      // Create directory service (requires plugin)
-      const directoryService = new DirectoryService(plugin);
+      // Create directory service (requires plugin) - now using PersistenceManager that includes DirectoryService functionality
+      const directoryService = new PersistenceManager(this.fs, 250, 5, plugin);
       
       // Create client factory (depends on directory service)
       const clientFactory = new ChromaClientFactory(directoryService, plugin);

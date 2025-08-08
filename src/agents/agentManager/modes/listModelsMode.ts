@@ -7,7 +7,7 @@ import { BaseMode } from '../../baseMode';
 import { CommonResult } from '../../../types';
 import { createResult, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
-import { LLMProviderManager } from '../../../services/LLMProviderManager';
+import { LLMProviderManager } from '../../../services/llm/providers/ProviderManager';
 
 export interface ListModelsParams {
   sessionId: string;

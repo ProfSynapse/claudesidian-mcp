@@ -23,7 +23,7 @@ import {
 
 // Re-export SchemaType for consumers
 export { SchemaType } from './SchemaTypes';
-import { LLMProviderManager } from '../../services/LLMProviderManager';
+import { LLMProviderManager } from '../../services/llm/providers/ProviderManager';
 import { StaticModelsService } from '../../services/StaticModelsService';
 import { mergeWithCommonSchema } from '../schemaUtils';
 

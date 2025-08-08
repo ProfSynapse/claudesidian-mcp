@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { BaseAgent } from '../baseAgent';
-import { ContentManagerConfig } from './config';
+import { ContentManagerConfig } from '../../config/agents';
 import {
   ReadContentMode,
   CreateContentMode,

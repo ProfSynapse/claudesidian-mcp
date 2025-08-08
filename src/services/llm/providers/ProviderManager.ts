@@ -3,9 +3,9 @@
  * Handles model filtering, provider management, and model information
  */
 
-import { ModelInfo } from './llm/adapters/types';
-import { LLMProviderSettings, LLMProviderConfig } from '../types';
-import { LLMService } from './LLMService';
+import { ModelInfo } from '../adapters/types';
+import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
+import { LLMService } from '../core/LLMService';
 
 export interface ModelWithProvider extends ModelInfo {
   provider: string;
@@ -67,7 +67,7 @@ export class LLMProviderManager {
    * Uses static models from *Models.ts files, not live API calls
    */
   async getAvailableModels(): Promise<ModelWithProvider[]> {
-    const { StaticModelsService } = await import('./StaticModelsService');
+    const { StaticModelsService } = await import('../../StaticModelsService');
     const staticModelsService = StaticModelsService.getInstance();
     const defaultModel = this.settings.defaultModel;
     const allModels: ModelWithProvider[] = [];

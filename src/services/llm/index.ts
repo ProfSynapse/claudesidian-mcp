@@ -48,3 +48,10 @@ export type {
 } from './adapters/types';
 
 export type { ModelSpec } from './adapters/modelTypes';
+
+// High-level services
+export { LLMProviderManager } from './providers';
+export { LLMService } from './core';
+export { LLMValidationService } from './validation';
+export type { ModelWithProvider, ProviderInfo } from './providers';
+export type { LLMExecutionOptions, LLMExecutionResult } from './core';

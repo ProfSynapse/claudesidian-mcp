@@ -3,3 +3,4 @@
  */
 
 export { HealthMonitor } from './HealthMonitor';
+export { ChromaVectorStoreDiagnosticsService } from './ChromaVectorStoreDiagnosticsService';

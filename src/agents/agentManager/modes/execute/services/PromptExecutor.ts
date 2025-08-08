@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on prompt execution
  */
 
-import { LLMProviderManager } from '../../../../../services/LLMProviderManager';
+import { LLMProviderManager } from '../../../../../services/llm/providers/ProviderManager';
 import { CustomPromptStorageService } from '../../../services/CustomPromptStorageService';
 import { ExecutePromptParams } from '../ExecutePromptMode';
 

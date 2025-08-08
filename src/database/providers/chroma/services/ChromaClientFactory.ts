@@ -1,7 +1,6 @@
-import { IChromaClientFactory } from './interfaces/IChromaClientFactory';
+import { IChromaClientFactory, IDirectoryService } from '../types/ChromaTypes';
 import { ChromaClient } from '../PersistentChromaClient';
 import { IStorageOptions } from '../../../interfaces/IStorageOptions';
-import { IDirectoryService } from './interfaces/IDirectoryService';
 import { Plugin } from 'obsidian';
 
 /**
@@ -260,5 +259,26 @@ export class ChromaClientFactory implements IChromaClientFactory {
     }
 
     throw new Error(`Failed to create client after ${maxRetries} attempts: ${lastError?.message}`);
+  }
+
+  /**
+   * Validate client configuration (sync version for interface compatibility)
+   */
+  validateClientConfiguration(config: any): boolean {
+    try {
+      // Perform basic validation synchronously
+      if (!config) return false;
+      if (config.server?.host && (!config.server.port || config.server.port < 1)) return false;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Get client version
+   */
+  getClientVersion(): string {
+    return '1.0.0'; // Static version for now
   }
 }
