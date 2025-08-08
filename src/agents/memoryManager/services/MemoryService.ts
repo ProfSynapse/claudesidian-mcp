@@ -445,9 +445,15 @@ export class MemoryService {
    * Update an existing session
    * @param id Session ID
    * @param updates Partial session data to update
+   * @returns Updated session
    */
-  async updateSession(id: string, updates: Partial<WorkspaceSession>): Promise<void> {
-    return this.sessionService.updateSession(id, updates);
+  async updateSession(id: string, updates: Partial<WorkspaceSession>): Promise<WorkspaceSession> {
+    await this.sessionService.updateSession(id, updates);
+    const updatedSession = await this.sessionService.getSession(id);
+    if (!updatedSession) {
+      throw new Error(`Session ${id} not found after update`);
+    }
+    return updatedSession;
   }
 
   /**
@@ -593,6 +599,44 @@ export class MemoryService {
    */
   async restoreStateSnapshot(stateId: string) {
     return this.snapshotService.restoreStateSnapshot(stateId);
+  }
+
+  //#region Memory Trace Methods (Additional API)
+  
+  /**
+   * Create a memory trace
+   * @param trace Memory trace data
+   * @returns Promise resolving to trace ID
+   */
+  async createMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id' | 'embedding'>): Promise<string> {
+    return this.memoryTraceService.storeMemoryTrace(trace);
+  }
+
+  /**
+   * Delete memory traces by session
+   * @param sessionId Session ID
+   * @returns Number of traces deleted
+   */
+  async deleteSessionTraces(sessionId: string): Promise<number> {
+    return this.deleteMemoryTracesBySession(sessionId);
+  }
+
+  /**
+   * Get states by session
+   * @param sessionId Session ID
+   * @returns Array of state snapshots
+   */
+  async getStatesBySession(sessionId: string): Promise<WorkspaceStateSnapshot[]> {
+    return this.getSnapshotsBySession(sessionId);
+  }
+
+  /**
+   * Get all states
+   * @param workspaceId Optional workspace ID filter
+   * @returns Array of state snapshots
+   */
+  async getStates(workspaceId?: string): Promise<WorkspaceStateSnapshot[]> {
+    return this.getSnapshots(workspaceId);
   }
 
   //#endregion

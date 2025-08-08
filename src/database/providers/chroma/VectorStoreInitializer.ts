@@ -108,8 +108,6 @@ export class VectorStoreInitializer {
 
       return {
         client,
-        collectionLifecycleManager: undefined, // Will be created on-demand
-        collectionHealthMonitor: undefined, // Will be created on-demand
         contextualEmbeddingManager
       };
 
@@ -475,10 +473,10 @@ export class VectorStoreInitializer {
    */
   async shutdown(result: VectorStoreInitializationResult, config: VectorStoreConfig): Promise<void> {
     try {
-      // Stop health monitoring
-      if (result.collectionHealthMonitor) {
-        await result.collectionHealthMonitor.stopMonitoring();
-        // Health monitoring stopped successfully
+      // Stop health monitoring through collection service
+      if (result.collectionService) {
+        // Collection service handles its own cleanup
+        await result.collectionService.cleanup();
       }
       
       // Save collections if not in memory mode

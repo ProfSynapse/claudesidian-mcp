@@ -4,7 +4,7 @@
  */
 
 import { Plugin } from 'obsidian';
-import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../../types';
+import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../../../types';
 
 // Define an interface that extends Plugin with our custom properties
 interface ClaudesidianPlugin extends Plugin {

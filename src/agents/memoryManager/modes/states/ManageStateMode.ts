@@ -85,7 +85,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         }
 
         const { memoryService } = servicesResult;
-        const existingState = await memoryService.getSnapshot(params.stateId);
+        const existingState = await memoryService!.getSnapshot(params.stateId);
         if (!existingState) {
             return this.prepareResult(false, undefined, `State not found: ${params.stateId}`);
         }
@@ -121,7 +121,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
             return this.prepareResult(false, undefined, 'No updates provided for state');
         }
 
-        const updatedState = await memoryService.updateSnapshot(params.stateId, updates);
+        const updatedState = await memoryService!.updateSnapshot(params.stateId, updates);
         return this.prepareResult(true, {
             stateId: updatedState.id,
             name: updatedState.name,
@@ -139,7 +139,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         }
 
         const { memoryService } = servicesResult;
-        const existingState = await memoryService.getSnapshot(params.stateId);
+        const existingState = await memoryService!.getSnapshot(params.stateId);
         if (!existingState) {
             return this.prepareResult(false, undefined, `State not found: ${params.stateId}`);
         }
@@ -147,7 +147,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         const stateName = existingState.name;
         const workspaceId = existingState.workspaceId;
 
-        await memoryService.deleteSnapshot(params.stateId);
+        await memoryService!.deleteSnapshot(params.stateId);
 
         return this.prepareResult(true, {
             stateId: params.stateId,
@@ -173,7 +173,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         }
 
         // Get states
-        const states = await memoryService.getStates(workspaceId, params.targetSessionId);
+        const states = await memoryService!.getStates(workspaceId, params.targetSessionId);
 
         // Filter by tags if provided
         let filteredStates = states;
@@ -191,7 +191,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         const limitedStates = params.limit ? sortedStates.slice(0, params.limit) : sortedStates;
 
         // Enhance state data
-        const enhancedStates = await this.enhanceStatesWithContext(limitedStates, workspaceService, params.includeContext);
+        const enhancedStates = await this.enhanceStatesWithContext(limitedStates, workspaceService!, params.includeContext);
 
         const contextString = workspaceId 
             ? `Found ${limitedStates.length} state(s) in workspace ${workspaceId}`

@@ -192,7 +192,7 @@ export class CollectionService {
                 } catch (error) {
                     const errorMessage = getErrorMessage(error);
                     result.errors.push(`Failed to process collection '${collectionName}': ${errorMessage}`);
-                    this.logger.error(`Error processing collection '${collectionName}':`, error);
+                    this.logger.error(`Error processing collection '${collectionName}':`, error instanceof Error ? error : new Error(String(error)));
                 }
             }
 
@@ -215,7 +215,7 @@ export class CollectionService {
             result.errors.push(`Collection initialization failed: ${errorMessage}`);
             result.totalTime = Date.now() - startTime;
             
-            this.logger.error('Critical error during collection initialization:', error);
+            this.logger.error('Critical error during collection initialization:', error instanceof Error ? error : new Error(String(error)));
             return result;
         }
     }
@@ -356,7 +356,7 @@ export class CollectionService {
         } catch (error) {
             result.errors.push(`Recovery failed: ${getErrorMessage(error)}`);
             result.recoveryTime = Date.now() - startTime;
-            this.logger.error(`Recovery error for ${collectionName}:`, error);
+            this.logger.error(`Recovery error for ${collectionName}:`, error instanceof Error ? error : new Error(String(error)));
         }
 
         return result;
@@ -433,7 +433,7 @@ export class CollectionService {
 
         } catch (error) {
             this.monitoringActive = false;
-            this.logger.error('Failed to start monitoring:', error);
+            this.logger.error('Failed to start monitoring:', error instanceof Error ? error : new Error(String(error)));
             throw error;
         }
     }
@@ -753,7 +753,7 @@ export class CollectionService {
             this.logger.info(`Loaded ${items.length} items from ${itemsPath}`);
             
         } catch (error) {
-            this.logger.error(`Failed to load collection data from ${itemsPath}:`, error);
+            this.logger.error(`Failed to load collection data from ${itemsPath}:`, error instanceof Error ? error : new Error(String(error)));
             throw error;
         }
     }
@@ -772,7 +772,7 @@ export class CollectionService {
                     await this.handleUnhealthyCollection(collectionName, healthStatus);
                 }
             } catch (error) {
-                this.logger.error(`Initial health check error for ${collectionName}:`, error);
+                this.logger.error(`Initial health check error for ${collectionName}:`, error instanceof Error ? error : new Error(String(error)));
                 
                 const errorStatus: CollectionHealthStatus = {
                     collectionName,
@@ -802,7 +802,7 @@ export class CollectionService {
             try {
                 await this.runPeriodicHealthCheck();
             } catch (error) {
-                this.logger.error('Periodic health check error:', error);
+                this.logger.error('Periodic health check error:', error instanceof Error ? error : new Error(String(error)));
             }
         }, this.checkInterval);
     }
@@ -822,7 +822,7 @@ export class CollectionService {
                     await this.handleUnhealthyCollection(collectionName, healthStatus);
                 }
             } catch (error) {
-                this.logger.error(`Periodic check error for ${collectionName}:`, error);
+                this.logger.error(`Periodic check error for ${collectionName}:`, error instanceof Error ? error : new Error(String(error)));
             }
         }
     }
@@ -837,10 +837,10 @@ export class CollectionService {
                 if (recoveryResult.success) {
                     await this.checkCollectionHealth(collectionName);
                 } else {
-                    this.logger.error(`Automatic recovery failed for ${collectionName}:`, recoveryResult.errors);
+                    this.logger.error(`Automatic recovery failed for ${collectionName}: ${recoveryResult.errors.join(', ')}`);
                 }
             } catch (error) {
-                this.logger.error(`Recovery error for ${collectionName}:`, error);
+                this.logger.error(`Recovery error for ${collectionName}:`, error instanceof Error ? error : new Error(String(error)));
             }
         }
     }
@@ -869,6 +869,31 @@ export class CollectionService {
         
         if (this.monitoringActive) {
             this.schedulePeriodicHealthChecks();
+        }
+    }
+
+    /**
+     * Clean up service resources
+     */
+    async cleanup(): Promise<void> {
+        try {
+            // Stop monitoring if active
+            if (this.monitoringActive) {
+                await this.stopMonitoring();
+            }
+            
+            // Clear health status cache
+            this.healthStatusCache.clear();
+            
+            // Cancel any pending timeouts
+            if (this.checkInterval !== null) {
+                clearTimeout(this.checkInterval);
+                this.checkInterval = null;
+            }
+            
+            this.logger.info('CollectionService cleanup completed');
+        } catch (error) {
+            this.logger.error('Error during CollectionService cleanup:', error instanceof Error ? error : new Error(String(error)));
         }
     }
 }

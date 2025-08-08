@@ -157,22 +157,16 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       
       // Store initialized components
       this.client = initResult.client;
-      this.collectionLifecycleManager = initResult.collectionLifecycleManager || null;
       
-      // Initialize health monitor now that vector store is ready
-      if (this.collectionLifecycleManager) {
-        try {
-          this.collectionHealthMonitor = await this.vectorStoreInitializer.initializeHealthMonitoring(
-            context, 
-            this, 
-            this.collectionLifecycleManager
-          ) || null;
-        } catch (error) {
-          console.warn('Health monitoring initialization failed:', error);
-          this.collectionHealthMonitor = null;
-        }
-      } else {
-        this.collectionHealthMonitor = null;
+      // Initialize health monitor through the collection service if available
+      try {
+        const collectionHealthMonitor = await this.vectorStoreInitializer.initializeHealthMonitoring(
+          context, 
+          this
+        );
+        // Note: Health monitor is initialized internally and accessed via getCollectionHealthMonitor()
+      } catch (error) {
+        console.warn('Health monitoring initialization failed:', error);
       }
       
       // Set initialized flag after successful initialization
@@ -217,8 +211,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       if (this.client) {
         const initResult: VectorStoreInitializationResult = {
           client: this.client,
-          collectionLifecycleManager: this.collectionLifecycleManager || undefined,
-          collectionHealthMonitor: this.collectionHealthMonitor || undefined
+          collectionService: this.collectionService || undefined
         };
         
         await this.vectorStoreInitializer.shutdown(initResult, this.config);
@@ -571,11 +564,11 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   async performCollectionHealthCheck(): Promise<any> {
     this.ensureInitialized();
     
-    if (!this.collectionLifecycleManager) {
-      throw new Error('Collection lifecycle manager not initialized');
+    if (!this.collectionService) {
+      throw new Error('Collection service not initialized');
     }
     
-    return await this.collectionLifecycleManager.performHealthCheck();
+    return await this.collectionService.performHealthCheck();
   }
 
   /**
@@ -585,11 +578,11 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   async validateCollectionHealth(collectionName: string): Promise<any> {
     this.ensureInitialized();
     
-    if (!this.collectionLifecycleManager) {
-      throw new Error('Collection lifecycle manager not initialized');
+    if (!this.collectionService) {
+      throw new Error('Collection service not initialized');
     }
     
-    return await this.collectionLifecycleManager.validateCollection(collectionName);
+    return await this.collectionService.validateCollection(collectionName);
   }
 
   /**
@@ -599,11 +592,11 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   async recoverCollection(collectionName: string, strategy: 'soft' | 'hard' | 'data' = 'soft'): Promise<any> {
     this.ensureInitialized();
     
-    if (!this.collectionLifecycleManager) {
-      throw new Error('Collection lifecycle manager not initialized');
+    if (!this.collectionService) {
+      throw new Error('Collection service not initialized');
     }
     
-    return await this.collectionLifecycleManager.recoverCollection(collectionName, strategy);
+    return await this.collectionService.recoverCollection(collectionName, strategy);
   }
 
   // Utility methods

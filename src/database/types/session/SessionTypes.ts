@@ -45,6 +45,11 @@ export interface WorkspaceSession {
   description?: string;
   
   /**
+   * Session tags for categorization and search
+   */
+  tags?: string[];
+  
+  /**
    * Number of tool calls in this session
    */
   toolCalls: number;

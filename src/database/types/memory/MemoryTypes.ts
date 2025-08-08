@@ -101,6 +101,11 @@ export interface WorkspaceMemoryTrace {
   activityType: 'project_plan' | 'question' | 'checkpoint' | 'completion' | 'research';
   
   /**
+   * Specific type of memory trace (more detailed than activityType)
+   */
+  type?: string;
+  
+  /**
    * The actual interaction content
    */
   content: string;

@@ -62,24 +62,24 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
 
             const { memoryService, workspaceService } = servicesResult;
 
-            // Phase 2: Resolve workspace context (consolidated WorkspaceResolver logic)
-            const workspaceResult = await this.resolveWorkspaceContext(params, workspaceService);
+            // Phase 2: Resolve workspace context (consolidated WorkspaceResolver logic)  
+            const workspaceResult = await this.resolveWorkspaceContext(params, workspaceService!);
             if (!workspaceResult.success) {
                 return this.prepareResult(false, undefined, workspaceResult.error, extractContextFromParams(params));
             }
 
             // Phase 3: Create session (consolidated SessionCreator logic)
-            const sessionResult = await this.createSession(params, workspaceResult.data, memoryService);
+            const sessionResult = await this.createSession(params, workspaceResult.data, memoryService!);
             if (!sessionResult.success) {
                 return this.prepareResult(false, undefined, sessionResult.error);
             }
 
             // Phase 4: Build session context (consolidated ContextBuilder logic)
-            const contextResult = await this.buildSessionContext(params, workspaceResult.data, sessionResult.data, workspaceService);
+            const contextResult = await this.buildSessionContext(params, workspaceResult.data, sessionResult.data, workspaceService!);
 
             // Phase 5: Create memory traces (consolidated MemoryTracer logic)
             if (params.generateContextTrace !== false) {
-                await this.createMemoryTraces(params, workspaceResult.data, sessionResult.data, contextResult, memoryService);
+                await this.createMemoryTraces(params, workspaceResult.data, sessionResult.data, contextResult, memoryService!);
             }
 
             // Phase 6: Process session instructions (consolidated SessionInstructionManager logic)
@@ -275,11 +275,20 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             await memoryService.createMemoryTrace({
                 sessionId: sessionData.id,
                 workspaceId: workspaceData.workspaceId,
+                workspacePath: [workspaceData.workspaceId],
+                contextLevel: 'workspace' as const,
                 content: traceContent,
                 type: 'session_creation',
+                activityType: 'checkpoint',
                 importance: 0.8,
                 timestamp: Date.now(),
-                tags: params.tags || []
+                tags: params.tags || [],
+                metadata: {
+                    tool: 'createSession',
+                    params: { sessionName: params.name },
+                    result: { sessionId: sessionData.id },
+                    relatedFiles: []
+                }
             });
 
         } catch (error) {

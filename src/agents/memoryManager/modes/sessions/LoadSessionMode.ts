@@ -68,13 +68,13 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             }
 
             // Phase 3: Load session data (consolidated from StateRetriever logic)
-            const sessionResult = await this.loadSessionData(targetSessionId, memoryService);
+            const sessionResult = await this.loadSessionData(targetSessionId, memoryService!);
             if (!sessionResult.success) {
                 return this.prepareResult(false, undefined, sessionResult.error, extractContextFromParams(params));
             }
 
             // Phase 4: Build session context (consolidated from WorkspaceContextBuilder logic)
-            const contextResult = await this.buildSessionContext(sessionResult.data, workspaceService, memoryService);
+            const contextResult = await this.buildSessionContext(sessionResult.data, workspaceService!, memoryService!);
 
             // Phase 5: Create continuation session if requested (consolidated from SessionManager logic)
             let continuationSessionId: string | undefined;
@@ -83,7 +83,7 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
                     params,
                     sessionResult.data,
                     contextResult,
-                    memoryService
+                    memoryService!
                 );
                 if (continuationResult.success) {
                     continuationSessionId = continuationResult.sessionId;
@@ -304,11 +304,20 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             await memoryService.createMemoryTrace({
                 sessionId: continuationSessionId,
                 workspaceId: originalSession.workspaceId,
+                workspacePath: [originalSession.workspaceId],
+                contextLevel: 'workspace' as const,
                 content: traceContent,
                 type: 'session_restoration',
+                activityType: 'checkpoint',
                 importance: 0.9,
                 timestamp: Date.now(),
-                tags: ['restoration', 'continuation', ...(originalSession.tags || [])]
+                tags: ['restoration', 'continuation', ...(originalSession.tags || [])],
+                metadata: {
+                    tool: 'loadSession',
+                    params: { originalSessionId: originalSession.id },
+                    result: { continuationSessionId },
+                    relatedFiles: []
+                }
             });
 
         } catch (error) {

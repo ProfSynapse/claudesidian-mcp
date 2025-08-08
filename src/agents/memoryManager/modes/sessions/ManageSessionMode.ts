@@ -118,7 +118,7 @@ export class ManageSessionMode extends BaseMode<ManageSessionParams, SessionResu
         }
 
         // Phase 3: Load existing session
-        const existingSession = await memoryService.getSession(targetSessionId);
+        const existingSession = await memoryService!.getSession(targetSessionId);
         if (!existingSession) {
             return this.prepareResult(false, undefined, `Session not found: ${targetSessionId}`, extractContextFromParams(params));
         }
@@ -169,7 +169,7 @@ export class ManageSessionMode extends BaseMode<ManageSessionParams, SessionResu
         }
 
         // Phase 5: Update session
-        const updatedSession = await memoryService.updateSession(targetSessionId, updates);
+        const updatedSession = await memoryService!.updateSession(targetSessionId, updates);
 
         // Phase 6: Prepare result
         return this.prepareResult(
@@ -208,7 +208,7 @@ export class ManageSessionMode extends BaseMode<ManageSessionParams, SessionResu
         }
 
         // Phase 3: Load existing session for confirmation
-        const existingSession = await memoryService.getSession(targetSessionId);
+        const existingSession = await memoryService!.getSession(targetSessionId);
         if (!existingSession) {
             return this.prepareResult(false, undefined, `Session not found: ${targetSessionId}`, extractContextFromParams(params));
         }
@@ -219,7 +219,7 @@ export class ManageSessionMode extends BaseMode<ManageSessionParams, SessionResu
         // Phase 4: Delete memory traces if requested
         if (params.deleteMemoryTraces) {
             try {
-                await memoryService.deleteSessionTraces(targetSessionId);
+                await memoryService!.deleteSessionTraces(targetSessionId);
             } catch (error) {
                 console.warn('Warning deleting memory traces:', error);
                 // Continue with session deletion even if trace deletion fails
@@ -229,9 +229,9 @@ export class ManageSessionMode extends BaseMode<ManageSessionParams, SessionResu
         // Phase 5: Delete associated states if requested
         if (params.deleteAssociatedStates) {
             try {
-                const states = await memoryService.getStatesBySession(targetSessionId);
+                const states = await memoryService!.getStatesBySession(targetSessionId);
                 for (const state of states) {
-                    await memoryService.deleteSnapshot(state.id);
+                    await memoryService!.deleteSnapshot(state.id);
                 }
             } catch (error) {
                 console.warn('Warning deleting associated states:', error);
@@ -240,7 +240,7 @@ export class ManageSessionMode extends BaseMode<ManageSessionParams, SessionResu
         }
 
         // Phase 6: Delete session
-        await memoryService.deleteSession(targetSessionId);
+        await memoryService!.deleteSession(targetSessionId);
 
         // Phase 7: Prepare result
         return this.prepareResult(
@@ -278,7 +278,7 @@ export class ManageSessionMode extends BaseMode<ManageSessionParams, SessionResu
         }
 
         // Phase 3: Get sessions
-        const sessions = await memoryService.getSessions(workspaceId, params.activeOnly);
+        const sessions = await memoryService!.getSessions(workspaceId, params.activeOnly);
 
         // Phase 4: Filter by tags if provided
         let filteredSessions = sessions;

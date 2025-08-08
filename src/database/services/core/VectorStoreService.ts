@@ -151,7 +151,14 @@ export class VectorStoreService {
         const result: VectorStoreHealthResult = {
             healthy: true,
             collections: {},
-            vectorStoreInfo: {},
+            vectorStoreInfo: {
+                provider: 'chroma',
+                version: '1.0.0',
+                collections: [],
+                totalItems: 0,
+                memoryUsage: 0,
+                diskUsage: 0
+            },
             recommendations: [],
             timestamp: Date.now()
         };
@@ -248,7 +255,7 @@ export class VectorStoreService {
                 }
 
                 // Add items
-                await this.vectorStore.add(operation.collectionName, {
+                await this.vectorStore.addItems(operation.collectionName, {
                     ids: operation.ids,
                     embeddings: operation.embeddings,
                     metadatas: operation.metadatas,
@@ -312,11 +319,12 @@ export class VectorStoreService {
 
             try {
                 if (operation.ids) {
-                    await this.vectorStore.delete(operation.collectionName, { ids: operation.ids });
+                    await this.vectorStore.deleteItems(operation.collectionName, operation.ids);
                     result.itemsProcessed = operation.ids.length;
                 } else if (operation.where) {
                     // Delete by filter - we don't know how many items will be deleted
-                    await this.vectorStore.delete(operation.collectionName, { where: operation.where });
+                    // Delete by filter not directly supported - would need to query first then delete
+                    throw new Error('Delete by filter not supported in current interface');
                     result.itemsProcessed = -1; // Unknown count
                 }
 
@@ -389,7 +397,7 @@ export class VectorStoreService {
      */
     async add(collectionName: string, items: any): Promise<void> {
         try {
-            await this.vectorStore.add(collectionName, items);
+            await this.vectorStore.addItems(collectionName, items);
         } catch (error) {
             console.error(`[VectorStoreService] Add failed for collection ${collectionName}:`, error);
             throw error;
@@ -401,7 +409,11 @@ export class VectorStoreService {
      */
     async delete(collectionName: string, filter: any): Promise<void> {
         try {
-            await this.vectorStore.delete(collectionName, filter);
+            if (filter.ids) {
+                await this.vectorStore.deleteItems(collectionName, filter.ids);
+            } else {
+                throw new Error('Delete by filter not supported in current interface');
+            }
         } catch (error) {
             console.error(`[VectorStoreService] Delete failed for collection ${collectionName}:`, error);
             throw error;
