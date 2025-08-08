@@ -61,6 +61,11 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             }
 
             const { memoryService, workspaceService } = servicesResult;
+            
+            // Ensure services are available
+            if (!memoryService || !workspaceService) {
+                return this.prepareResult(false, undefined, 'Required services not available');
+            }
 
             // Phase 2: Validate parameters (consolidated validation logic)
             const validationErrors = this.validateParameters(params);
@@ -87,6 +92,11 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             const persistResult = await this.createAndPersistState(params, workspaceResult.data, snapshotResult, memoryService);
             if (!persistResult.success) {
                 return this.prepareResult(false, undefined, persistResult.error, extractContextFromParams(params));
+            }
+            
+            // Ensure stateId is available
+            if (!persistResult.stateId) {
+                return this.prepareResult(false, undefined, 'State creation failed - no state ID returned', extractContextFromParams(params));
             }
 
             // Phase 6: Verify persistence (data integrity check)
@@ -364,7 +374,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             resultData,
             undefined,
             contextString,
-            workspaceContext
+            workspaceContext || undefined
         );
     }
 

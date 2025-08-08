@@ -62,12 +62,18 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             const { memoryService, workspaceService } = servicesResult;
 
             // Phase 2: Load state data (consolidated from StateRetriever logic)
+            if (!memoryService) {
+                return this.prepareResult(false, undefined, 'Memory service not available', extractContextFromParams(params));
+            }
             const stateResult = await this.loadStateData(params.stateId, memoryService);
             if (!stateResult.success) {
                 return this.prepareResult(false, undefined, stateResult.error, extractContextFromParams(params));
             }
 
             // Phase 3: Process and restore context (consolidated from FileCollector and TraceProcessor logic)
+            if (!workspaceService) {
+                return this.prepareResult(false, undefined, 'Workspace service not available', extractContextFromParams(params));
+            }
             const contextResult = await this.processAndRestoreContext(stateResult.data, workspaceService, memoryService);
 
             // Phase 4: Create continuation session if requested (consolidated from SessionManager logic)
@@ -93,7 +99,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             );
 
             // Phase 6: Create restoration trace (consolidated from RestorationTracer logic)
-            if (continuationSessionId) {
+            if (continuationSessionId && memoryService) {
                 await this.createRestorationTrace(
                     stateResult.data,
                     contextResult,
@@ -297,7 +303,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             activeTask: snapshot.activeTask,
             activeFiles: snapshot.activeFiles || [],
             nextSteps: snapshot.nextSteps || [],
-            reasoning: snapshot.reasoning
+            reasoning: snapshot.reasoning,
+            continuationHistory: undefined as any[] | undefined
         };
 
         // Add continuation history if applicable
@@ -349,11 +356,20 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             await memoryService.createMemoryTrace({
                 sessionId: continuationSessionId,
                 workspaceId: stateSnapshot.workspaceId,
+                workspacePath: [stateSnapshot.workspaceId],
+                contextLevel: 'workspace' as const,
+                activityType: 'checkpoint',
                 content: traceContent,
                 type: 'state_restoration',
                 importance: 0.9,
                 timestamp: Date.now(),
-                tags: ['restoration', 'state-loaded', ...(contextResult.tags || [])]
+                tags: ['restoration', 'state-loaded', ...(contextResult.tags || [])],
+                metadata: {
+                    tool: 'LoadStateMode',
+                    params: { stateId: stateData.stateSnapshot.stateId },
+                    result: { continuationSessionId },
+                    relatedFiles: contextResult.associatedNotes || []
+                }
             });
 
         } catch (error) {

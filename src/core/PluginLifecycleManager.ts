@@ -605,8 +605,8 @@ export class PluginLifecycleManager {
                     const message = [
                         `Services: ${readyServices}/${totalServices} ready`,
                         `Registered: ${stats.registered}`,
-                        `Instantiated: ${stats.instantiated}`,
-                        `Singletons: ${stats.singletons}`,
+                        `Ready: ${stats.ready}`,
+                        `Failed: ${stats.failed}`,
                         `Plugin initialized: ${this.isInitialized ? 'Yes' : 'No'}`
                     ].join('\n');
                     
@@ -718,8 +718,8 @@ export class PluginLifecycleManager {
                 id: 'troubleshoot-services',
                 name: 'Troubleshoot service initialization',
                 callback: () => {
-                    const stats = this.config.serviceContainer?.getStats() || { registered: 0, instantiated: 0 };
-                    const message = `Service initialization failed. Registered: ${stats.registered}, Ready: ${stats.instantiated}`;
+                    const stats = this.config.serviceContainer?.getStats() || { registered: 0, ready: 0, failed: 0 };
+                    const message = `Service initialization failed. Registered: ${stats.registered}, Ready: ${stats.ready}`;
                     new Notice(message, 10000);
                     console.log('[PluginLifecycleManager] Service troubleshooting:', {
                         isInitialized: this.isInitialized,

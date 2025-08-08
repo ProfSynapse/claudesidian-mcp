@@ -166,7 +166,7 @@ export class ServiceManager implements IServiceManager {
             name: descriptor.name,
             dependencies: descriptor.dependencies || [],
             stage: this.mapStageToLoadingStage(stage),
-            create: descriptor.create
+            create: () => Promise.resolve(descriptor.create())
         });
     }
 
@@ -495,7 +495,11 @@ export class ServiceManager implements IServiceManager {
      * Validate dependency graph
      */
     validateDependencies(): { valid: boolean; cycles: string[] } {
-        return this.container.validateDependencies();
+        const result = this.container.validateDependencies();
+        return {
+            valid: result.isValid,
+            cycles: result.errors
+        };
     }
 
     /**

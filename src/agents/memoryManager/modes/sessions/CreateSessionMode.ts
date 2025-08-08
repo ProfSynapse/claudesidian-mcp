@@ -339,7 +339,20 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
      * Helper methods (consolidated from various services)
      */
     private extractContextString(params: CreateSessionParams): string {
-        if (params.context) return params.context;
+        if (params.context) {
+            // Handle both string and object context types
+            if (typeof params.context === 'string') {
+                return params.context;
+            } else {
+                // Convert context object to string
+                const parts: string[] = [];
+                if (params.context.primaryGoal) parts.push(`Goal: ${params.context.primaryGoal}`);
+                if (params.context.sessionMemory) parts.push(`Memory: ${params.context.sessionMemory}`);
+                if (params.context.toolContext) parts.push(`Context: ${params.context.toolContext}`);
+                if (params.context.subgoal) parts.push(`Subgoal: ${params.context.subgoal}`);
+                return parts.join('. ');
+            }
+        }
         
         const parts: string[] = [];
         if (params.sessionGoal) parts.push(`Goal: ${params.sessionGoal}`);

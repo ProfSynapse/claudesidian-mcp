@@ -16,7 +16,8 @@ export const SchemaType = {
   BatchExecute: 'batchExecute',
   Execute: 'execute', 
   ContentBatch: 'contentBatch',
-  Session: 'session'
+  Session: 'session',
+  State: 'state'
 } as const;
 
 export type SchemaType = typeof SchemaType[keyof typeof SchemaType];

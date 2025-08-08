@@ -336,6 +336,31 @@ export interface CreateStateParams extends MemoryParameters {
    * Reason for creating this state
    */
   reason?: string;
+  
+  /**
+   * Conversation context for this state
+   */
+  conversationContext?: string;
+  
+  /**
+   * Currently active task
+   */
+  activeTask?: string;
+  
+  /**
+   * List of active files
+   */
+  activeFiles?: string[];
+  
+  /**
+   * Next steps for the workflow
+   */
+  nextSteps?: string[];
+  
+  /**
+   * Reasoning behind the state creation
+   */
+  reasoning?: string;
 }
 
 // Parameters for listing states

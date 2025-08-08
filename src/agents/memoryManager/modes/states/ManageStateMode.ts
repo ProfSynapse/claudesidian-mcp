@@ -85,7 +85,10 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         }
 
         const { memoryService } = servicesResult;
-        const existingState = await memoryService!.getSnapshot(params.stateId);
+        if (!memoryService) {
+            return this.prepareResult(false, undefined, 'Memory service not available');
+        }
+        const existingState = await memoryService.getSnapshot(params.stateId);
         if (!existingState) {
             return this.prepareResult(false, undefined, `State not found: ${params.stateId}`);
         }
@@ -110,7 +113,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
             hasUpdates = true;
         }
         if (params.removeTags && params.removeTags.length > 0) {
-            updatedTags = updatedTags.filter(tag => !params.removeTags!.includes(tag));
+            updatedTags = updatedTags.filter((tag: string) => !params.removeTags!.includes(tag));
             hasUpdates = true;
         }
         if (hasUpdates && (params.addTags || params.removeTags)) {
@@ -121,13 +124,21 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
             return this.prepareResult(false, undefined, 'No updates provided for state');
         }
 
-        const updatedState = await memoryService!.updateSnapshot(params.stateId, updates);
+        // Update the snapshot
+        await memoryService.updateSnapshot(params.stateId, updates);
+        
+        // Fetch the updated state to return its properties
+        const updatedState = await memoryService.getSnapshot(params.stateId);
+        if (!updatedState) {
+            return this.prepareResult(false, undefined, 'Failed to retrieve updated state');
+        }
+        
         return this.prepareResult(true, {
             stateId: updatedState.id,
             name: updatedState.name,
             description: updatedState.description,
             workspaceId: updatedState.workspaceId,
-            timestamp: updatedState.timestamp,
+            timestamp: updatedState.timestamp || updatedState.created,
             tags: updatedTags
         }, undefined, `State "${updatedState.name}" updated successfully`);
     }
@@ -139,7 +150,10 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         }
 
         const { memoryService } = servicesResult;
-        const existingState = await memoryService!.getSnapshot(params.stateId);
+        if (!memoryService) {
+            return this.prepareResult(false, undefined, 'Memory service not available');
+        }
+        const existingState = await memoryService.getSnapshot(params.stateId);
         if (!existingState) {
             return this.prepareResult(false, undefined, `State not found: ${params.stateId}`);
         }
@@ -147,7 +161,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         const stateName = existingState.name;
         const workspaceId = existingState.workspaceId;
 
-        await memoryService!.deleteSnapshot(params.stateId);
+        await memoryService.deleteSnapshot(params.stateId);
 
         return this.prepareResult(true, {
             stateId: params.stateId,
@@ -173,7 +187,10 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         }
 
         // Get states
-        const states = await memoryService!.getStates(workspaceId, params.targetSessionId);
+        if (!memoryService) {
+            return this.prepareResult(false, undefined, 'Memory service not available');
+        }
+        const states = await memoryService.getStates(workspaceId);
 
         // Filter by tags if provided
         let filteredStates = states;
@@ -202,7 +219,7 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
             total: states.length,
             filtered: limitedStates.length,
             workspaceId: workspaceId
-        }, undefined, contextString, inheritedContext);
+        }, undefined, contextString, inheritedContext || undefined);
     }
 
     private async getServices(): Promise<{success: boolean; error?: string; memoryService?: MemoryService; workspaceService?: WorkspaceService}> {

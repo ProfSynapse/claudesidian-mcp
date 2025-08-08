@@ -54,6 +54,17 @@ export interface IServiceContainer {
   has(name: string): boolean;
   isReady(name: string): boolean;
   resolveDependencies(name: string): Promise<void>;
+  
+  // Additional methods required by ServiceManager
+  getServiceMetadata(name: string): ServiceMetadata | null;
+  getRegisteredServices(): string[];
+  clear(): void;
+  getReadyServices(): string[];
+  getStats(): { registered: number; ready: number; failed: number };
+  validateDependencies(): { isValid: boolean; errors: string[] };
+  preInitializeMany(names: string[]): Promise<void>;
+  initializeInOrder(names: string[]): Promise<void>;
+  exportDependencyGraph(): { nodes: string[], edges: Array<{from: string, to: string}> };
 }
 
 export interface ServiceMetadata {
@@ -389,7 +400,7 @@ export class ServiceContainer implements IServiceContainer {
   /**
    * Validate dependency graph for cycles
    */
-  validateDependencies(): { valid: boolean; cycles: string[] } {
+  validateDependencies(): { isValid: boolean; errors: string[] } {
     const cycles: string[] = [];
     const visited = new Set<string>();
     const recursionStack = new Set<string>();
@@ -427,8 +438,8 @@ export class ServiceContainer implements IServiceContainer {
     }
 
     return {
-      valid: cycles.length === 0,
-      cycles
+      isValid: cycles.length === 0,
+      errors: cycles
     };
   }
 
@@ -529,16 +540,7 @@ export class ServiceContainer implements IServiceContainer {
   /**
    * Get container statistics
    */
-  getStats(): {
-    registered: number;
-    instantiated: number;
-    singletons: number;
-    transients: number;
-    totalDependencies: number;
-    regularServices: number;
-    lazyServices: number;
-    factoryServices: number;
-  } {
+  getStats(): { registered: number; ready: number; failed: number } {
     let singletons = 0;
     let transients = 0;
     let totalDependencies = 0;
@@ -563,13 +565,8 @@ export class ServiceContainer implements IServiceContainer {
 
     return {
       registered: this.factories.size + this.lazyFactories.size + this.serviceFactories.size,
-      instantiated: this.services.size,
-      singletons,
-      transients,
-      totalDependencies,
-      regularServices: this.factories.size,
-      lazyServices: this.lazyFactories.size,
-      factoryServices: this.serviceFactories.size
+      ready: this.services.size,
+      failed: 0 // TODO: Track failed services if needed
     };
   }
 

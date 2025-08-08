@@ -883,12 +883,12 @@ export class CollectionService {
             }
             
             // Clear health status cache
-            this.healthStatusCache.clear();
+            this.healthChecks.clear();
             
             // Cancel any pending timeouts
-            if (this.checkInterval !== null) {
-                clearTimeout(this.checkInterval);
-                this.checkInterval = null;
+            if (this.intervalHandle !== null) {
+                clearTimeout(this.intervalHandle);
+                this.intervalHandle = null;
             }
             
             this.logger.info('CollectionService cleanup completed');

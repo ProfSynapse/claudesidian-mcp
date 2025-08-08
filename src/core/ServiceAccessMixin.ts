@@ -134,7 +134,8 @@ export class ServiceAccessMixin {
      * Get service container stats for debugging
      */
     public getServiceContainerStats(): { registered: number; instantiated: number } {
-        return this.serviceContainer?.getStats() || { registered: 0, instantiated: 0 };
+        const stats = this.serviceContainer?.getStats() || { registered: 0, ready: 0, failed: 0 };
+        return { registered: stats.registered, instantiated: stats.ready };
     }
 
     /**

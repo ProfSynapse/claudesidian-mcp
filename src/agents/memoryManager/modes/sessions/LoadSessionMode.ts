@@ -60,6 +60,11 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             }
 
             const { memoryService, workspaceService } = servicesResult;
+            
+            // Type assertions - services are guaranteed to be defined when success is true
+            if (!memoryService || !workspaceService) {
+                return this.prepareResult(false, undefined, 'Services not available after successful retrieval');
+            }
 
             // Phase 2: Get target session ID (consolidated from parameter handling)
             const targetSessionId = params.targetSessionId || params.sessionId;
@@ -68,13 +73,13 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             }
 
             // Phase 3: Load session data (consolidated from StateRetriever logic)
-            const sessionResult = await this.loadSessionData(targetSessionId, memoryService!);
+            const sessionResult = await this.loadSessionData(targetSessionId, memoryService);
             if (!sessionResult.success) {
                 return this.prepareResult(false, undefined, sessionResult.error, extractContextFromParams(params));
             }
 
             // Phase 4: Build session context (consolidated from WorkspaceContextBuilder logic)
-            const contextResult = await this.buildSessionContext(sessionResult.data, workspaceService!, memoryService!);
+            const contextResult = await this.buildSessionContext(sessionResult.data, workspaceService, memoryService);
 
             // Phase 5: Create continuation session if requested (consolidated from SessionManager logic)
             let continuationSessionId: string | undefined;
@@ -83,7 +88,7 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
                     params,
                     sessionResult.data,
                     contextResult,
-                    memoryService!
+                    memoryService
                 );
                 if (continuationResult.success) {
                     continuationSessionId = continuationResult.sessionId;
@@ -268,7 +273,8 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             traceCount: traces.length,
             continuationSessionId,
             restorationTime: new Date().toLocaleString(),
-            contextSummary: contextResult.summary
+            contextSummary: contextResult.summary,
+            continuationHistory: undefined as any[] | undefined
         };
 
         // Add continuation history if applicable
@@ -408,7 +414,7 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
                 // Extract file references from trace content
                 const fileMatches = trace.content.match(/\b[\w-]+\.md\b/g);
                 if (fileMatches) {
-                    fileMatches.forEach(match => noteSet.add(match));
+                    fileMatches.forEach((match: string) => noteSet.add(match));
                 }
             }
         });
