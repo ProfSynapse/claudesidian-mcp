@@ -8,7 +8,7 @@
  * Used by main.ts to access services in a type-safe way.
  */
 
-import type { ServiceContainer } from './ServiceContainer';
+import type { ServiceManager } from './ServiceManager';
 
 // Type imports for service interfaces
 import type { EmbeddingService } from '../database/services/core/EmbeddingService';
@@ -29,81 +29,81 @@ import type { ToolCallCaptureService } from '../services/toolcall-capture/ToolCa
  * Service Access Mixin - provides typed service getters
  */
 export class ServiceAccessMixin {
-    private serviceContainer: ServiceContainer;
+    private serviceManager: ServiceManager;
 
-    constructor(serviceContainer: ServiceContainer) {
-        this.serviceContainer = serviceContainer;
+    constructor(serviceManager: ServiceManager) {
+        this.serviceManager = serviceManager;
     }
 
     // Core service getters - proxied through ServiceContainer for singleton management
     public get vectorStore(): IVectorStore | null {
-        return this.serviceContainer?.getIfReady<IVectorStore>('vectorStore') || null;
+        return this.serviceManager?.getServiceIfReady<IVectorStore>('vectorStore') || null;
     }
 
     public get embeddingService(): EmbeddingService | null {
-        return this.serviceContainer?.getIfReady<EmbeddingService>('embeddingService') || null;
+        return this.serviceManager?.getServiceIfReady<EmbeddingService>('embeddingService') || null;
     }
 
     public get fileEmbeddingAccessService(): FileEmbeddingAccessService | null {
-        return this.serviceContainer?.getIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null;
+        return this.serviceManager?.getServiceIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null;
     }
 
     public get directCollectionService(): CollectionService | null {
-        return this.serviceContainer?.getIfReady<CollectionService>('directCollectionService') || null;
+        return this.serviceManager?.getServiceIfReady<CollectionService>('directCollectionService') || null;
     }
 
     public get workspaceService(): WorkspaceService | null {
-        return this.serviceContainer?.getIfReady<WorkspaceService>('workspaceService') || null;
+        return this.serviceManager?.getServiceIfReady<WorkspaceService>('workspaceService') || null;
     }
 
     public get memoryService(): MemoryService | null {
-        return this.serviceContainer?.getIfReady<MemoryService>('memoryService') || null;
+        return this.serviceManager?.getServiceIfReady<MemoryService>('memoryService') || null;
     }
 
     public get fileEventManager(): FileEventManagerModular | null {
-        return this.serviceContainer?.getIfReady<FileEventManagerModular>('fileEventManager') || null;
+        return this.serviceManager?.getServiceIfReady<FileEventManagerModular>('fileEventManager') || null;
     }
 
     public get eventManager(): EventManager | null {
-        return this.serviceContainer?.getIfReady<EventManager>('eventManager') || null;
+        return this.serviceManager?.getServiceIfReady<EventManager>('eventManager') || null;
     }
 
     public get usageStatsService(): UsageStatsService | null {
-        return this.serviceContainer?.getIfReady<UsageStatsService>('usageStatsService') || null;
+        return this.serviceManager?.getServiceIfReady<UsageStatsService>('usageStatsService') || null;
     }
 
     public get cacheManager(): CacheManager | null {
-        return this.serviceContainer?.getIfReady<CacheManager>('cacheManager') || null;
+        return this.serviceManager?.getServiceIfReady<CacheManager>('cacheManager') || null;
     }
 
     public get stateManager(): ProcessedFilesStateManager | null {
-        return this.serviceContainer?.getIfReady<ProcessedFilesStateManager>('stateManager') || null;
+        return this.serviceManager?.getServiceIfReady<ProcessedFilesStateManager>('stateManager') || null;
     }
 
     public get memoryTraceService(): MemoryTraceService | null {
-        return this.serviceContainer?.getIfReady<MemoryTraceService>('memoryTraceService') || null;
+        return this.serviceManager?.getServiceIfReady<MemoryTraceService>('memoryTraceService') || null;
     }
 
     public get toolCallCaptureService(): ToolCallCaptureService | null {
-        return this.serviceContainer?.getIfReady<ToolCallCaptureService>('toolCallCaptureService') || null;
+        return this.serviceManager?.getServiceIfReady<ToolCallCaptureService>('toolCallCaptureService') || null;
     }
 
     /**
      * Get a service asynchronously, waiting for it to be ready if needed
      */
     public async getService<T>(name: string, timeoutMs: number = 10000): Promise<T | null> {
-        if (!this.serviceContainer) {
+        if (!this.serviceManager) {
             return null;
         }
 
         // If already ready, return immediately
-        if (this.serviceContainer.isReady(name)) {
-            return this.serviceContainer.getIfReady<T>(name);
+        if (this.serviceManager.isServiceReady(name)) {
+            return this.serviceManager.getServiceIfReady<T>(name);
         }
 
         // Otherwise try to get it (will initialize if needed)
         try {
-            return await this.serviceContainer.get<T>(name);
+            return await this.serviceManager.getService<T>(name);
         } catch (error) {
             console.warn(`[ServiceAccessMixin] Failed to get service '${name}':`, error);
             return null;
@@ -114,11 +114,11 @@ export class ServiceAccessMixin {
      * Service registry - returns initialized services from container
      */
     public get services(): Record<string, any> {
-        if (!this.serviceContainer) return {};
+        if (!this.serviceManager) return {};
 
         const services: Record<string, any> = {};
-        for (const serviceName of this.serviceContainer.getReadyServices()) {
-            services[serviceName] = this.serviceContainer.getIfReady(serviceName);
+        for (const serviceName of this.serviceManager.getReadyServices()) {
+            services[serviceName] = this.serviceManager.getServiceIfReady(serviceName);
         }
         return services;
     }
@@ -127,14 +127,14 @@ export class ServiceAccessMixin {
      * Check if service container is available
      */
     public hasServiceContainer(): boolean {
-        return !!this.serviceContainer;
+        return !!this.serviceManager;
     }
 
     /**
      * Get service container stats for debugging
      */
     public getServiceContainerStats(): { registered: number; instantiated: number } {
-        const stats = this.serviceContainer?.getStats() || { registered: 0, ready: 0, failed: 0 };
+        const stats = this.serviceManager?.getStats() || { registered: 0, ready: 0, failed: 0 };
         return { registered: stats.registered, instantiated: stats.ready };
     }
 
@@ -142,20 +142,20 @@ export class ServiceAccessMixin {
      * Get list of registered services
      */
     public getRegisteredServices(): string[] {
-        return this.serviceContainer?.getRegisteredServices() || [];
+        return this.serviceManager?.getRegisteredServices() || [];
     }
 
     /**
      * Get list of ready services
      */
     public getReadyServices(): string[] {
-        return this.serviceContainer?.getReadyServices() || [];
+        return this.serviceManager?.getReadyServices() || [];
     }
 
     /**
      * Check if a specific service is ready
      */
     public isServiceReady(name: string): boolean {
-        return this.serviceContainer?.isReady(name) || false;
+        return this.serviceManager?.isServiceReady(name) || false;
     }
 }

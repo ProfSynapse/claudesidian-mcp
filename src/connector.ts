@@ -2,7 +2,7 @@ import { App, Plugin } from 'obsidian';
 import ClaudesidianPlugin from './main';
 import { EventManager } from './services/EventManager';
 import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
-import type { ServiceContainer } from './core/ServiceContainer';
+import type { ServiceManager } from './core/ServiceManager';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from "./agents/agentManager/services/CustomPromptStorageService";
@@ -33,7 +33,7 @@ export class MCPConnector {
     private eventManager: EventManager;
     private sessionContextManager: SessionContextManager;
     private customPromptStorage?: CustomPromptStorageService;
-    private serviceContainer?: ServiceContainer;
+    private serviceManager?: ServiceManager;
     private toolCallCaptureService?: ToolCallCaptureService;
     private pendingToolCalls = new Map<string, any>();
     
@@ -45,9 +45,9 @@ export class MCPConnector {
         this.eventManager = new EventManager();
         this.sessionContextManager = new SessionContextManager();
         
-        // Get service container reference
+        // Get service manager reference
         if (this.plugin && (this.plugin as any).getServiceContainer) {
-            this.serviceContainer = (this.plugin as any).getServiceContainer();
+            this.serviceManager = (this.plugin as any).getServiceContainer();
         }
         
         // Initialize custom prompt storage if possible
@@ -73,7 +73,7 @@ export class MCPConnector {
             this.app,
             this.plugin,
             this.eventManager,
-            this.serviceContainer,
+            this.serviceManager,
             this.customPromptStorage
         );
     }

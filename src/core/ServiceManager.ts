@@ -25,12 +25,9 @@
  * - Agents and modes for service dependencies
  */
 
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { ServiceContainer, IServiceContainer, ServiceFactory, LazyFactory, IServiceFactory } from './ServiceContainer';
-import { IServiceRegistry, IServiceLifecycle } from '../services/lazy-initialization/ServiceManagerInterfaces';
-import { ServiceLifecycleManager } from '../services/lazy-initialization/ServiceLifecycleManager';
-import { ServiceRegistryManager } from '../services/lazy-initialization/ServiceRegistryManager';
-import ClaudesidianPlugin from '../main';
+// All service management now handled through ServiceContainer - no external dependencies needed
 
 // Core interfaces for unified service management
 export interface IServiceDescriptor<T = any> {
@@ -108,8 +105,6 @@ export interface ServiceStatus {
  */
 export class ServiceManager implements IServiceManager {
     private container: IServiceContainer;
-    private registry: IServiceRegistry;
-    private lifecycle: IServiceLifecycle;
     private serviceStages = new Map<string, ServiceStage>();
     private isStarted = false;
     private isInitializing = false;
@@ -117,12 +112,10 @@ export class ServiceManager implements IServiceManager {
     
     constructor(
         private app: App,
-        private plugin: ClaudesidianPlugin
+        private plugin: Plugin
     ) {
         // Initialize core components
         this.container = new ServiceContainer();
-        this.registry = new ServiceRegistryManager();
-        this.lifecycle = new ServiceLifecycleManager();
     }
 
     /**
@@ -161,13 +154,7 @@ export class ServiceManager implements IServiceManager {
             }
         );
         
-        // Also register with legacy registry for compatibility
-        this.registry.register({
-            name: descriptor.name,
-            dependencies: descriptor.dependencies || [],
-            stage: this.mapStageToLoadingStage(stage),
-            create: () => Promise.resolve(descriptor.create())
-        });
+        // Service registered with ServiceContainer - no legacy compatibility needed
     }
 
     /**
@@ -416,27 +403,16 @@ export class ServiceManager implements IServiceManager {
     private getServicesByStage(stage: ServiceStage): string[] {
         const services: string[] = [];
         
-        for (const [serviceName, serviceStage] of this.serviceStages.entries()) {
+        this.serviceStages.forEach((serviceStage, serviceName) => {
             if (serviceStage === stage) {
                 services.push(serviceName);
             }
-        }
+        });
         
         return services;
     }
 
-    /**
-     * Map ServiceStage to legacy LoadingStage for compatibility
-     */
-    private mapStageToLoadingStage(stage: ServiceStage): number {
-        switch (stage) {
-            case ServiceStage.IMMEDIATE: return 1;
-            case ServiceStage.FAST: return 2;
-            case ServiceStage.BACKGROUND: return 3;
-            case ServiceStage.ON_DEMAND: return 4;
-            default: return 3;
-        }
-    }
+    // Legacy stage mapping removed - all stage management now through ServiceStage enum
 
     // Compatibility methods for existing consumers
 

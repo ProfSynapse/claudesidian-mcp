@@ -1,7 +1,7 @@
 import { Plugin, Notice } from 'obsidian';
 import { MCPConnector } from './connector';
 import { Settings } from './settings';
-import { ServiceContainer } from './core/ServiceContainer';
+import { ServiceManager } from './core/ServiceManager';
 import { ServiceAccessMixin } from './core/ServiceAccessMixin';
 import { PluginLifecycleManager, type PluginLifecycleConfig } from './core/PluginLifecycleManager';
 import { logger } from './utils/logger';
@@ -24,7 +24,7 @@ import type { ToolCallCaptureService } from './services/toolcall-capture/ToolCal
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
     private connector!: MCPConnector;
-    private serviceContainer!: ServiceContainer;
+    private serviceManager!: ServiceManager;
     private serviceAccessMixin!: ServiceAccessMixin;
     private lifecycleManager!: PluginLifecycleManager;
     
@@ -88,17 +88,17 @@ export default class ClaudesidianPlugin extends Plugin {
         // Starting plugin initialization
         
         try {
-            // PHASE 1: Foundation - Create service container and settings
+            // PHASE 1: Foundation - Create service manager and settings
             const phase1Start = performance.now();
             this.settings = new Settings(this);
-            this.serviceContainer = new ServiceContainer();
+            this.serviceManager = new ServiceManager(this.app, this);
             const phase1End = performance.now();
             const phase1Memory = this.getMemoryUsage();
             
             // Phase 1 (Foundation) complete
             
             // PHASE 2: Create service access mixin for typed service access
-            this.serviceAccessMixin = new ServiceAccessMixin(this.serviceContainer);
+            this.serviceAccessMixin = new ServiceAccessMixin(this.serviceManager);
             
             // PHASE 3: Initialize connector skeleton (no agents yet)
             this.connector = new MCPConnector(this.app, this);
@@ -108,7 +108,7 @@ export default class ClaudesidianPlugin extends Plugin {
             const lifecycleConfig: PluginLifecycleConfig = {
                 plugin: this,
                 app: this.app,
-                serviceContainer: this.serviceContainer,
+                serviceManager: this.serviceManager,
                 settings: this.settings,
                 connector: this.connector,
                 manifest: this.manifest
@@ -174,17 +174,17 @@ export default class ClaudesidianPlugin extends Plugin {
     }
     
     /**
-     * Get service container instance (compatibility method)
+     * Get service manager instance
      */
-    getServiceManager(): ServiceContainer {
-        return this.serviceContainer;
+    getServiceManager(): ServiceManager {
+        return this.serviceManager;
     }
     
     /**
-     * Get service container for direct access
+     * Get service container for backward compatibility
      */
-    getServiceContainer(): ServiceContainer {
-        return this.serviceContainer;
+    getServiceContainer(): ServiceManager {
+        return this.serviceManager;
     }
 
     /**

@@ -25,12 +25,14 @@ export function createInitializationServices(plugin: any, vectorStore: any, serv
     throw new Error('DIAGNOSTIC FAILURE: createInitializationServices received null/undefined service manager');
   }
   
-  if (typeof serviceManager.get !== 'function') {
-    throw new Error(`DIAGNOSTIC FAILURE: createInitializationServices received invalid service manager. Type: ${serviceManager.constructor.name}, Expected: LazyServiceManager with get() method. Available methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(serviceManager))}`);
+  if (typeof serviceManager.get !== 'function' && typeof serviceManager.getService !== 'function') {
+    throw new Error(`DIAGNOSTIC FAILURE: createInitializationServices received invalid service manager. Type: ${serviceManager.constructor.name}, Expected: ServiceManager with getService() method or legacy get() method. Available methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(serviceManager))}`);
   }
   
-  if (serviceManager.constructor.name === 'ServiceDescriptors') {
-    throw new Error('DIAGNOSTIC FAILURE: createInitializationServices received ServiceDescriptors instead of LazyServiceManager - this is the exact bug we are trying to prevent!');
+  // Accept both new ServiceManager and legacy service managers
+  const validManagerNames = ['ServiceManager', 'LazyServiceManager'];
+  if (!validManagerNames.includes(serviceManager.constructor.name)) {
+    console.warn(`[createInitializationServices] Unexpected service manager type: ${serviceManager.constructor.name}, but has required methods - proceeding`);
   }
   
   console.log('[createInitializationServices] ✅ Valid service manager received:', serviceManager.constructor.name);

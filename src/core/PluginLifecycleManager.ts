@@ -9,7 +9,7 @@
  */
 
 import { Plugin, Notice } from 'obsidian';
-import { ServiceContainer } from './ServiceContainer';
+import { ServiceManager } from './ServiceManager';
 import { Settings } from '../settings';
 import { SettingsTab } from '../components/SettingsTab';
 import { MCPConnector } from '../connector';
@@ -19,7 +19,7 @@ import type { IVectorStore } from '../database/interfaces/IVectorStore';
 export interface PluginLifecycleConfig {
     plugin: Plugin;
     app: any;
-    serviceContainer: ServiceContainer;
+    serviceManager: ServiceManager;
     settings: Settings;
     connector: MCPConnector;
     manifest: any;
@@ -48,7 +48,7 @@ export class PluginLifecycleManager {
             // PHASE 1: Foundation - Service container and settings already created by main.ts
             
             // PHASE 2: Register core services (no initialization yet)
-            this.registerCoreServices();
+            await this.registerCoreServices();
             
             // PHASE 3: Initialize essential services only
             await this.initializeEssentialServices();
@@ -130,59 +130,78 @@ export class PluginLifecycleManager {
     }
 
     /**
-     * Register core services with ServiceContainer
+     * Register core services with ServiceManager
      */
-    private registerCoreServices(): void {
-        const { serviceContainer, plugin, settings } = this.config;
+    private async registerCoreServices(): Promise<void> {
+        const { serviceManager, plugin, settings } = this.config;
         
         // Foundation services (no dependencies)
-        serviceContainer.register('eventManager', async () => {
-            const { EventManager } = await import('../services/EventManager');
-            return new EventManager();
+        await serviceManager.registerService({
+            name: 'eventManager',
+            create: async () => {
+                const { EventManager } = await import('../services/EventManager');
+                return new EventManager();
+            }
         });
         
-        serviceContainer.register('stateManager', async () => {
-            const { ProcessedFilesStateManager } = await import('../database/services/indexing/state/ProcessedFilesStateManager');
-            return new ProcessedFilesStateManager(plugin);
+        await serviceManager.registerService({
+            name: 'stateManager',
+            create: async () => {
+                const { ProcessedFilesStateManager } = await import('../database/services/indexing/state/ProcessedFilesStateManager');
+                return new ProcessedFilesStateManager(plugin);
+            }
         });
         
         // Memory services
-        serviceContainer.register('simpleMemoryService', async () => {
-            const { SimpleMemoryService } = await import('../services/memory/SimpleMemoryService');
-            return new SimpleMemoryService();
+        await serviceManager.registerService({
+            name: 'simpleMemoryService',
+            create: async () => {
+                const { SimpleMemoryService } = await import('../services/memory/SimpleMemoryService');
+                return new SimpleMemoryService();
+            }
         });
         
-        serviceContainer.register('sessionService', async () => {
-            const { SessionService } = await import('../services/session/SessionService');
-            const memoryService = await serviceContainer.get<any>('simpleMemoryService');
-            return new SessionService(memoryService);
-        }, { dependencies: ['simpleMemoryService'] });
-        
-        serviceContainer.register('toolCallCaptureService', async (deps) => {
-            const { ToolCallCaptureService } = await import('../services/toolcall-capture/ToolCallCaptureService');
-            const memoryService = deps.simpleMemoryService;
-            const sessionService = deps.sessionService;
-            
-            // Create service with simple storage initially
-            const service = new ToolCallCaptureService(memoryService, sessionService);
-            
-            // Enable full functionality with embeddings if services are available
-            try {
-                const memoryTraceService = deps.memoryTraceService;
-                const embeddingService = deps.embeddingService;
-                
-                if (memoryTraceService && embeddingService) {
-                    await service.upgrade(memoryTraceService, embeddingService);
-                }
-            } catch (error) {
-                console.warn('[ToolCallCapture] Failed to enable full functionality:', error);
+        await serviceManager.registerService({
+            name: 'sessionService',
+            dependencies: ['simpleMemoryService'],
+            create: async () => {
+                const { SessionService } = await import('../services/session/SessionService');
+                const memoryService = await serviceManager.getService<any>('simpleMemoryService');
+                return new SessionService(memoryService);
             }
-            
-            return service;
-        }, { dependencies: ['simpleMemoryService', 'sessionService', 'memoryTraceService', 'embeddingService'] });
+        });
+        
+        await serviceManager.registerService({
+            name: 'toolCallCaptureService',
+            dependencies: ['simpleMemoryService', 'sessionService', 'memoryTraceService', 'embeddingService'],
+            create: async () => {
+                const { ToolCallCaptureService } = await import('../services/toolcall-capture/ToolCallCaptureService');
+                const memoryService = await serviceManager.getService<any>('simpleMemoryService');
+                const sessionService = await serviceManager.getService<any>('sessionService');
+                
+                // Create service with simple storage initially
+                const service = new ToolCallCaptureService(memoryService, sessionService);
+                
+                // Enable full functionality with embeddings if services are available
+                try {
+                    const memoryTraceService = await serviceManager.getService<any>('memoryTraceService');
+                    const embeddingService = await serviceManager.getService<any>('embeddingService');
+                    
+                    if (memoryTraceService && embeddingService) {
+                        await service.upgrade(memoryTraceService, embeddingService);
+                    }
+                } catch (error) {
+                    console.warn('[ToolCallCapture] Failed to enable full functionality:', error);
+                }
+                
+                return service;
+            }
+        });
         
         // Vector store - CRITICAL: Single instance with proper initialization
-        serviceContainer.register('vectorStore', async () => {
+        await serviceManager.registerService({
+            name: 'vectorStore',
+            create: async () => {
             const { ChromaVectorStoreModular } = await import('../database/providers/chroma/ChromaVectorStoreModular');
             
             // Get embedding configuration from settings based on actual provider
@@ -215,36 +234,60 @@ export class PluginLifecycleManager {
                 }
             });
             
-            await vectorStore.initialize();
-            return vectorStore;
+                await vectorStore.initialize();
+                return vectorStore;
+            }
         });
         
         // Business services with dependencies
-        serviceContainer.register('embeddingService', async (deps) => {
-            const { EmbeddingService } = await import('../database/services/core/EmbeddingService');
-            return new EmbeddingService(plugin, deps.stateManager);
-        }, { dependencies: ['stateManager'] });
+        await serviceManager.registerService({
+            name: 'embeddingService',
+            dependencies: ['stateManager'],
+            create: async () => {
+                const { EmbeddingService } = await import('../database/services/core/EmbeddingService');
+                const stateManager = await serviceManager.getService<any>('stateManager');
+                return new EmbeddingService(plugin, stateManager);
+            }
+        });
         
-        serviceContainer.register('memoryService', async (deps) => {
-            const { MemoryService } = await import('../agents/memoryManager/services/MemoryService');
-            return new MemoryService(plugin, deps.vectorStore, deps.embeddingService, settings.settings.memory || {});
-        }, { dependencies: ['vectorStore', 'embeddingService'] });
+        await serviceManager.registerService({
+            name: 'memoryService',
+            dependencies: ['vectorStore', 'embeddingService'],
+            create: async () => {
+                const { MemoryService } = await import('../agents/memoryManager/services/MemoryService');
+                const vectorStore = await serviceManager.getService<any>('vectorStore');
+                const embeddingService = await serviceManager.getService<any>('embeddingService');
+                return new MemoryService(plugin, vectorStore, embeddingService, settings.settings.memory || {});
+            }
+        });
         
-        serviceContainer.register('workspaceService', async (deps) => {
-            const { WorkspaceService } = await import('../agents/memoryManager/services/WorkspaceService');
-            return new WorkspaceService(plugin, deps.vectorStore, deps.embeddingService);
-        }, { dependencies: ['vectorStore', 'embeddingService'] });
+        await serviceManager.registerService({
+            name: 'workspaceService',
+            dependencies: ['vectorStore', 'embeddingService'],
+            create: async () => {
+                const { WorkspaceService } = await import('../agents/memoryManager/services/WorkspaceService');
+                const vectorStore = await serviceManager.getService<any>('vectorStore');
+                const embeddingService = await serviceManager.getService<any>('embeddingService');
+                return new WorkspaceService(plugin, vectorStore, embeddingService);
+            }
+        });
         
         // Memory trace service - moved from registerAdditionalServices to ensure availability
-        serviceContainer.register('memoryTraceService', async (deps) => {
-            const { MemoryTraceService } = await import('../agents/memoryManager/services/MemoryTraceService');
-            const { VectorStoreFactory } = await import('../database/factory/VectorStoreFactory');
-            
-            // Create memory trace collection through factory
-            const memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(deps.vectorStore);
-            
-            return new MemoryTraceService(memoryTraceCollection, deps.embeddingService);
-        }, { dependencies: ['vectorStore', 'embeddingService'] });
+        await serviceManager.registerService({
+            name: 'memoryTraceService',
+            dependencies: ['vectorStore', 'embeddingService'],
+            create: async () => {
+                const { MemoryTraceService } = await import('../agents/memoryManager/services/MemoryTraceService');
+                const { VectorStoreFactory } = await import('../database/factory/VectorStoreFactory');
+                
+                // Create memory trace collection through factory
+                const vectorStore = await serviceManager.getService<any>('vectorStore');
+                const embeddingService = await serviceManager.getService<any>('embeddingService');
+                const memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
+                
+                return new MemoryTraceService(memoryTraceCollection, embeddingService);
+            }
+        });
     }
 
     /**
@@ -253,9 +296,9 @@ export class PluginLifecycleManager {
     private async initializeEssentialServices(): Promise<void> {
         try {
             // Initialize only the most critical services synchronously
-            await this.config.serviceContainer.get('eventManager');
-            await this.config.serviceContainer.get('stateManager');
-            await this.config.serviceContainer.get('simpleMemoryService');
+            await this.config.serviceManager.getService('eventManager');
+            await this.config.serviceManager.getService('stateManager');
+            await this.config.serviceManager.getService('simpleMemoryService');
         } catch (error) {
             console.error('[PluginLifecycleManager] Essential service initialization failed:', error);
             throw error;
@@ -268,13 +311,13 @@ export class PluginLifecycleManager {
     private async initializeBusinessServices(): Promise<void> {
         try {
             // Initialize in dependency order to prevent multiple VectorStore instances
-            const vectorStore = await this.config.serviceContainer.get('vectorStore');
+            const vectorStore = await this.config.serviceManager.getService('vectorStore');
             
             // Initialize dependent services sequentially to avoid circular dependency issues
-            await this.config.serviceContainer.get('embeddingService');
-            await this.config.serviceContainer.get('memoryService');
-            await this.config.serviceContainer.get('workspaceService');
-            await this.config.serviceContainer.get('memoryTraceService');
+            await this.config.serviceManager.getService('embeddingService');
+            await this.config.serviceManager.getService('memoryService');
+            await this.config.serviceManager.getService('workspaceService');
+            await this.config.serviceManager.getService('memoryTraceService');
         } catch (error) {
             console.error('[PluginLifecycleManager] Business service initialization failed:', error);
             throw error;
@@ -360,8 +403,8 @@ export class PluginLifecycleManager {
             
             // Get services from container
             const services: Record<string, any> = {};
-            for (const serviceName of this.config.serviceContainer.getReadyServices()) {
-                services[serviceName] = this.config.serviceContainer.getIfReady(serviceName);
+            for (const serviceName of this.config.serviceManager.getReadyServices()) {
+                services[serviceName] = this.config.serviceManager.getServiceIfReady(serviceName);
             }
             
             // Create settings tab with current state
@@ -372,7 +415,7 @@ export class PluginLifecycleManager {
                 services, // Pass current services (may be empty initially)
                 vaultLibrarian || undefined,
                 memoryManager || undefined,
-                this.config.serviceContainer as any // Pass service container for compatibility
+                this.config.serviceManager as any // Pass service manager for compatibility
             );
             this.config.plugin.addSettingTab(this.settingsTab);
             
@@ -386,7 +429,7 @@ export class PluginLifecycleManager {
      * Pre-initialize UI-critical services to avoid Memory Management loading delays
      */
     private async preInitializeUICriticalServices(): Promise<void> {
-        if (!this.config.serviceContainer) return;
+        if (!this.config.serviceManager) return;
         
         const startTime = Date.now();
         
@@ -406,7 +449,7 @@ export class PluginLifecycleManager {
                 uiCriticalServices.map(async (serviceName) => {
                     try {
                         const serviceStart = Date.now();
-                        await this.config.serviceContainer.get(serviceName);
+                        await this.config.serviceManager.getService(serviceName);
                         const serviceTime = Date.now() - serviceStart;
                     } catch (error) {
                         console.warn(`[PluginLifecycleManager] Failed to pre-initialize ${serviceName}:`, error);
@@ -418,8 +461,8 @@ export class PluginLifecycleManager {
             
             // Inject vector store into SimpleMemoryService for persistence
             try {
-                const vectorStore = this.config.serviceContainer.getIfReady('vectorStore');
-                const simpleMemoryService = this.config.serviceContainer.getIfReady<any>('simpleMemoryService');
+                const vectorStore = await this.config.serviceManager.getService('vectorStore');
+                const simpleMemoryService = await this.config.serviceManager.getService<any>('simpleMemoryService');
                 
                 if (vectorStore && simpleMemoryService && typeof simpleMemoryService.setVectorStore === 'function') {
                     simpleMemoryService.setVectorStore(vectorStore);
@@ -439,36 +482,42 @@ export class PluginLifecycleManager {
      * Register additional services needed by UI components
      */
     private registerAdditionalServices(): void {
-        const { serviceContainer, plugin, settings } = this.config;
+        const { serviceManager, plugin, settings } = this.config;
         
         // Register services that weren't included in core registration
-        if (!serviceContainer.has('fileEmbeddingAccessService')) {
-            serviceContainer.register('fileEmbeddingAccessService', async (deps) => {
+        serviceManager.registerFactory(
+            'fileEmbeddingAccessService',
+            async (deps) => {
                 const { FileEmbeddingAccessService } = await import('../database/services/indexing/FileEmbeddingAccessService');
                 return new FileEmbeddingAccessService(plugin, deps.vectorStore);
-            }, { dependencies: ['vectorStore'] });
-        }
+            },
+            { dependencies: ['vectorStore'] }
+        );
         
-        if (!serviceContainer.has('usageStatsService')) {
-            serviceContainer.register('usageStatsService', async (deps) => {
+        serviceManager.registerFactory(
+            'usageStatsService',
+            async (deps) => {
                 const { UsageStatsService } = await import('../database/services/usage/UsageStatsService');
                 return new UsageStatsService(deps.embeddingService, deps.vectorStore, settings.settings.memory || {});
-            }, { dependencies: ['embeddingService', 'vectorStore'] });
-        }
+            },
+            { dependencies: ['embeddingService', 'vectorStore'] }
+        );
         
-        if (!serviceContainer.has('cacheManager')) {
-            serviceContainer.register('cacheManager', async (deps) => {
+        serviceManager.registerFactory(
+            'cacheManager',
+            async (deps) => {
                 const { CacheManager } = await import('../database/services/cache/CacheManager');
                 return new CacheManager(this.config.app, deps.workspaceService, deps.memoryService);
-            }, { dependencies: ['workspaceService', 'memoryService'] });
-        }
+            },
+            { dependencies: ['workspaceService', 'memoryService'] }
+        );
     }
 
     /**
      * Register maintenance commands
      */
     private registerMaintenanceCommands(): void {
-        const { plugin, serviceContainer } = this.config;
+        const { plugin, serviceManager } = this.config;
         
         plugin.addCommand({
             id: 'repair-collections',
@@ -590,16 +639,16 @@ export class PluginLifecycleManager {
                 try {
                     const notice = new Notice('Checking service readiness...', 0);
                     
-                    if (!serviceContainer) {
-                        notice.setMessage('Service container not available');
+                    if (!serviceManager) {
+                        notice.setMessage('Service manager not available');
                         setTimeout(() => notice.hide(), 5000);
                         return;
                     }
                     
-                    const stats = serviceContainer.getStats();
-                    const metadata = serviceContainer.getAllServiceMetadata();
+                    const stats = serviceManager.getStats();
+                    const metadata = serviceManager.getAllServiceStatus();
                     
-                    const readyServices = Object.values(metadata).filter(m => m.initialized).length;
+                    const readyServices = Object.values(metadata).filter(m => m.ready).length;
                     const totalServices = Object.keys(metadata).length;
                     
                     const message = [
@@ -682,9 +731,9 @@ export class PluginLifecycleManager {
             }
             
             // Test 2: Validate core services are available
-            const serviceContainer = this.config.serviceContainer;
-            if (serviceContainer) {
-                const metadata = serviceContainer.getAllServiceMetadata();
+            const serviceManager = this.config.serviceManager;
+            if (serviceManager) {
+                const metadata = serviceManager.getAllServiceStatus();
                 const serviceNames = Object.keys(metadata);
                 
                 const coreServices = ['vectorStore', 'embeddingService', 'workspaceService', 'memoryService'];
@@ -702,8 +751,8 @@ export class PluginLifecycleManager {
     private updateSettingsTabServices(): void {
         if (this.settingsTab) {
             const services: Record<string, any> = {};
-            for (const serviceName of this.config.serviceContainer.getReadyServices()) {
-                services[serviceName] = this.config.serviceContainer.getIfReady(serviceName);
+            for (const serviceName of this.config.serviceManager.getReadyServices()) {
+                services[serviceName] = this.config.serviceManager.getServiceIfReady(serviceName);
             }
             this.settingsTab.updateServices(services);
         }
@@ -718,13 +767,13 @@ export class PluginLifecycleManager {
                 id: 'troubleshoot-services',
                 name: 'Troubleshoot service initialization',
                 callback: () => {
-                    const stats = this.config.serviceContainer?.getStats() || { registered: 0, ready: 0, failed: 0 };
+                    const stats = this.config.serviceManager?.getStats() || { registered: 0, ready: 0, failed: 0 };
                     const message = `Service initialization failed. Registered: ${stats.registered}, Ready: ${stats.ready}`;
                     new Notice(message, 10000);
                     console.log('[PluginLifecycleManager] Service troubleshooting:', {
                         isInitialized: this.isInitialized,
-                        containerStats: stats,
-                        registeredServices: this.config.serviceContainer?.getRegisteredServices() || []
+                        managerStats: stats,
+                        registeredServices: this.config.serviceManager?.getRegisteredServices() || []
                     });
                 }
             });
@@ -738,18 +787,13 @@ export class PluginLifecycleManager {
      * Get service helper method
      */
     private async getService<T>(name: string, timeoutMs: number = 10000): Promise<T | null> {
-        if (!this.config.serviceContainer) {
+        if (!this.config.serviceManager) {
             return null;
         }
         
-        // If already ready, return immediately
-        if (this.config.serviceContainer.isReady(name)) {
-            return this.config.serviceContainer.getIfReady<T>(name);
-        }
-        
-        // Otherwise try to get it (will initialize if needed)
+        // Try to get service (will initialize if needed)
         try {
-            return await this.config.serviceContainer.get<T>(name);
+            return await this.config.serviceManager.getService<T>(name);
         } catch (error) {
             console.warn(`[PluginLifecycleManager] Failed to get service '${name}':`, error);
             return null;
@@ -760,15 +804,13 @@ export class PluginLifecycleManager {
      * Reload configuration for all services after settings change
      */
     reloadConfiguration(): void {
-        if (this.config.serviceContainer?.isReady('fileEventManager')) {
-            const fileEventManager = this.config.serviceContainer.getIfReady('fileEventManager');
+        try {
+            const fileEventManager = this.config.serviceManager?.getServiceIfReady('fileEventManager');
             if (fileEventManager && typeof (fileEventManager as any).reloadConfiguration === 'function') {
-                try {
-                    (fileEventManager as any).reloadConfiguration();
-                } catch (error) {
-                    console.warn('Error reloading file event manager configuration:', error);
-                }
+                (fileEventManager as any).reloadConfiguration();
             }
+        } catch (error) {
+            console.warn('Error reloading file event manager configuration:', error);
         }
     }
 
@@ -788,7 +830,7 @@ export class PluginLifecycleManager {
     async shutdown(): Promise<void> {
         try {
             // Save processed files state before cleanup
-            const stateManager = this.config.serviceContainer?.getIfReady('stateManager');
+            const stateManager = this.config.serviceManager?.getServiceIfReady('stateManager');
             if (stateManager && typeof (stateManager as any).saveState === 'function') {
                 await (stateManager as any).saveState();
             }
@@ -798,9 +840,9 @@ export class PluginLifecycleManager {
                 (this.settingsTab as any).cleanup();
             }
             
-            // Cleanup service container (handles all service cleanup)
-            if (this.config.serviceContainer) {
-                this.config.serviceContainer.clear();
+            // Cleanup service manager (handles all service cleanup)
+            if (this.config.serviceManager) {
+                await this.config.serviceManager.stop();
             }
             
             // Stop the MCP connector

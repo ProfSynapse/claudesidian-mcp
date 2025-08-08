@@ -2,7 +2,7 @@ import { App, Plugin } from 'obsidian';
 import ClaudesidianPlugin from '../../main';
 import { AgentManager } from '../AgentManager';
 import { EventManager } from '../EventManager';
-import type { ServiceContainer } from '../../core/ServiceContainer';
+import type { ServiceManager } from '../../core/ServiceManager';
 import {
     ContentManagerAgent,
     CommandManagerAgent,
@@ -95,7 +95,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
         private app: App,
         private plugin: Plugin | ClaudesidianPlugin,
         private eventManager: EventManager,
-        private serviceContainer?: ServiceContainer,
+        private serviceManager?: ServiceManager,
         private customPromptStorage?: CustomPromptStorageService
     ) {
         this.agentManager = new AgentManager(app, plugin, eventManager);
@@ -255,8 +255,8 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
     private async initializeCommandManager(): Promise<void> {
         try {
             // CommandManager with lazy memory service - NON-BLOCKING
-            const memoryService = this.serviceContainer ? 
-                this.serviceContainer.getIfReady('memoryService') : null;
+            const memoryService = this.serviceManager ? 
+                this.serviceManager.getServiceIfReady('memoryService') : null;
             
             const commandManagerAgent = new CommandManagerAgent(
                 this.app, 
@@ -351,12 +351,12 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
             );
             
             // If vector modes are enabled, set up lazy initialization of search service
-            if (enableVectorModes && this.serviceContainer) {
+            if (enableVectorModes && this.serviceManager) {
                 // Wait for service manager to complete initialization, then initialize search service
                 setTimeout(async () => {
                     try {
                         // Check if vector store is ready (don't trigger initialization here)
-                        const vectorStore = this.serviceContainer?.getIfReady('vectorStore');
+                        const vectorStore = this.serviceManager?.getServiceIfReady('vectorStore');
                         if (vectorStore && vaultLibrarianAgent) {
                             // Initialize search service in background to avoid blocking
                             vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
