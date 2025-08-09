@@ -51,9 +51,18 @@ export class MCPConnector {
         }
         
         // Initialize custom prompt storage if possible
+        // Note: Settings might not be fully loaded yet, so we'll check again during initialization
         const pluginSettings = this.plugin && (this.plugin as any).settings;
         if (pluginSettings) {
-            this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
+            try {
+                this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
+                logger.systemLog('CustomPromptStorageService initialized successfully');
+            } catch (error) {
+                logger.systemError(error as Error, 'CustomPromptStorageService Initialization');
+                this.customPromptStorage = undefined;
+            }
+        } else {
+            logger.systemWarn('Plugin settings not available during MCPConnector construction - will retry during initialization');
         }
         
         // Initialize extracted services
@@ -202,6 +211,29 @@ export class MCPConnector {
      */
     public async initializeAgents(): Promise<void> {
         try {
+            // Ensure customPromptStorage is available if settings are now loaded
+            if (!this.customPromptStorage) {
+                const pluginSettings = this.plugin && (this.plugin as any).settings;
+                if (pluginSettings) {
+                    try {
+                        this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
+                        
+                        // Update the agent registry with the new storage service
+                        this.agentRegistry = new AgentRegistrationService(
+                            this.app,
+                            this.plugin,
+                            this.eventManager,
+                            this.serviceManager,
+                            this.customPromptStorage
+                        );
+                        
+                        logger.systemLog('CustomPromptStorageService initialized during agent initialization');
+                    } catch (error) {
+                        logger.systemError(error as Error, 'Late CustomPromptStorageService Initialization');
+                    }
+                }
+            }
+            
             // Initialize connection manager first
             await this.connectionManager.initialize();
             

@@ -29,15 +29,44 @@ export class DependencyValidator {
     constructor(private dependencies: ServiceDependencies) {}
 
     /**
+     * Wait for a specific dependency to be initialized
+     * @param dependencyName Name of the dependency to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @private
+     */
+    private async waitForDependency(dependencyName: keyof ServiceDependencies, timeoutMs: number): Promise<void> {
+        const startTime = Date.now();
+        const checkInterval = 100; // Check every 100ms
+        
+        while (Date.now() - startTime < timeoutMs) {
+            if (this.dependencies[dependencyName]) {
+                return;
+            }
+            
+            // Wait for the next check
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+    }
+
+    /**
      * Validate all required dependencies
      */
-    validateDependencies(): DependencyValidationResult {
+    async validateDependencies(): Promise<DependencyValidationResult> {
         const errors: string[] = [];
         const warnings: string[] = [];
 
+        // Try to wait for critical dependencies if they're not available
+        if (!this.dependencies.providerManager) {
+            await this.waitForDependency('providerManager', 3000);
+        }
+
+        if (!this.dependencies.promptStorage) {
+            await this.waitForDependency('promptStorage', 3000);
+        }
+
         // Validate critical dependencies
         if (!this.dependencies.providerManager) {
-            errors.push('LLM Provider Manager not initialized');
+            errors.push('LLM Provider Manager not initialized. Please ensure you have configured at least one LLM provider with valid API keys.');
         }
 
         if (!this.dependencies.promptStorage) {

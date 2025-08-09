@@ -79,6 +79,25 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   }
 
   /**
+   * Wait for dependencies to be initialized
+   * @param timeoutMs Maximum time to wait in milliseconds
+   * @private
+   */
+  private async waitForDependencies(timeoutMs: number): Promise<void> {
+    const startTime = Date.now();
+    const checkInterval = 100; // Check every 100ms
+    
+    while (Date.now() - startTime < timeoutMs) {
+      if (this.llmService && this.providerManager && this.promptStorage) {
+        return;
+      }
+      
+      // Wait for the next check
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+  }
+
+  /**
    * Initialize all specialized services following dependency injection patterns
    */
   private initializeServices(): void {
@@ -120,9 +139,22 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
    */
   async execute(params: BatchExecutePromptParams): Promise<BatchExecutePromptResult> {
     try {
+      // Try to wait for dependencies if not available
+      if (!this.llmService || !this.providerManager || !this.promptStorage) {
+        await this.waitForDependencies(3000);
+      }
+      
       // Validate dependencies
       if (!this.llmService) {
         return this.resultProcessor.createErrorResult('LLM Service not initialized');
+      }
+      
+      if (!this.providerManager) {
+        return this.resultProcessor.createErrorResult('LLM Provider Manager not initialized. Please ensure you have configured at least one LLM provider with valid API keys.');
+      }
+      
+      if (!this.promptStorage) {
+        return this.resultProcessor.createErrorResult('Prompt storage service not initialized');
       }
 
       // Ensure specialized services are ready

@@ -143,7 +143,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
     async execute(params: ExecutePromptParams): Promise<ExecutePromptResult> {
         try {
             // Phase 1: Validate dependencies
-            const dependencyValidation = this.dependencyValidator.validateDependencies();
+            const dependencyValidation = await this.dependencyValidator.validateDependencies();
             if (!dependencyValidation.isValid) {
                 return createResult<ExecutePromptResult>(
                     false,

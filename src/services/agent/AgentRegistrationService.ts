@@ -133,6 +133,13 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
             const enableLLMModes = hasValidLLMKeys;
             
             logger.systemLog(`Agent initialization started - Vector modes: ${enableVectorModes}, LLM modes: ${enableLLMModes}`);
+            
+            // Log additional debugging info for AgentManager
+            if (!hasValidLLMKeys) {
+                const pluginSettings = (this.plugin as any)?.settings?.settings;
+                const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
+                logger.systemLog(`LLM validation failed - Default provider: ${llmProviderSettings.defaultModel?.provider || 'none'}, Provider config exists: ${!!llmProviderSettings.providers}`);
+            }
 
             // Initialize agents in order
             await this.initializeContentManager();
@@ -294,11 +301,25 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
     private async initializeAgentManager(enableLLMModes: boolean): Promise<void> {
         try {
             if (!this.customPromptStorage) {
-                logger.systemLog('AgentManager agent skipped - no custom prompt storage available');
-                return;
+                logger.systemWarn('AgentManager agent - no custom prompt storage available from constructor');
+                // Try to create custom prompt storage directly if settings are available
+                const pluginSettings = this.plugin && (this.plugin as any).settings;
+                if (pluginSettings) {
+                    try {
+                        this.customPromptStorage = new CustomPromptStorageService(pluginSettings);
+                        logger.systemLog('AgentManager - created custom prompt storage during initialization');
+                    } catch (error) {
+                        logger.systemError(error as Error, 'AgentManager - Failed to create custom prompt storage');
+                        return;
+                    }
+                } else {
+                    logger.systemError(new Error('Plugin settings not available'), 'AgentManager agent initialization');
+                    return;
+                }
             }
 
             const agentManagerAgent = new AgentManagerAgent((this.plugin as any).settings);
+            logger.systemLog(`AgentManager agent created - LLM modes enabled: ${enableLLMModes}`);
 
             // Initialize LLM Provider Manager if LLM modes are enabled
             if (enableLLMModes) {
@@ -328,8 +349,14 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
                     
                 } catch (error) {
                     logger.systemError(error as Error, 'LLM Provider Manager Initialization');
+                    // Continue without LLM modes - basic prompt management will still work
                 }
+            } else {
+                logger.systemLog('LLM modes disabled - AgentManager will function with prompt management only');
             }
+            
+            // Always set the parent agent manager for basic functionality
+            agentManagerAgent.setParentAgentManager(this.agentManager);
             
             this.agentManager.registerAgent(agentManagerAgent);
             logger.systemLog('AgentManager agent initialized successfully');
