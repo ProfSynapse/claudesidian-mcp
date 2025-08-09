@@ -15,6 +15,7 @@ import { CreateStateMode } from './modes/states/CreateStateMode';
 import { LoadStateMode } from './modes/states/LoadStateMode';
 import { ManageStateMode } from './modes/states/ManageStateMode';
 import { CreateWorkspaceMode } from './modes/workspaces/CreateWorkspaceMode';
+import { ListWorkspacesMode } from './modes/workspaces/ListWorkspacesMode';
 
 /**
  * Agent for managing workspace memory, sessions, and state snapshots
@@ -81,6 +82,7 @@ export class MemoryManagerAgent extends BaseAgent {
     
     // Register consolidated workspace modes (4 modes instead of 7)
     this.registerMode(new CreateWorkspaceMode(this));
+    this.registerMode(new ListWorkspacesMode(this));
     // TODO: Add remaining workspace modes when created
     // this.registerMode(new LoadWorkspaceMode(this));
     // this.registerMode(new ManageWorkspaceMode(this));

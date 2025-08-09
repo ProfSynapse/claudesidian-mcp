@@ -1,7 +1,7 @@
 import { Plugin } from 'obsidian';
 import { VectorStoreConfig } from '../../models/VectorStoreConfig';
 import { ObsidianPathManager } from '../../../core/ObsidianPathManager';
-import { FileSystemInterface } from './services/PersistenceManager';
+// FileSystemInterface removed - now using Obsidian API directly
 
 // Consolidated service imports
 import { ChromaClientFactory } from './services/ChromaClientFactory';
@@ -71,22 +71,8 @@ export interface ClientDependentServices {
  * and ensures proper service initialization order.
  */
 export class ServiceCoordinator implements ServiceCoordinatorInterface {
-  private readonly fs: FileSystemInterface;
-
   constructor() {
-    // Initialize filesystem interface
-    const fs = require('fs');
-    this.fs = {
-      existsSync: (path: string) => fs.existsSync(path),
-      mkdirSync: (path: string, options?: { recursive?: boolean }) => fs.mkdirSync(path, options),
-      writeFileSync: (path: string, data: string) => fs.writeFileSync(path, data),
-      readFileSync: (path: string, encoding: string) => fs.readFileSync(path, encoding),
-      renameSync: (oldPath: string, newPath: string) => fs.renameSync(oldPath, newPath),
-      unlinkSync: (path: string) => fs.unlinkSync(path),
-      readdirSync: (path: string) => fs.readdirSync(path),
-      statSync: (path: string) => fs.statSync(path),
-      rmdirSync: (path: string) => fs.rmdirSync(path)
-    };
+    console.log('[ServiceCoordinator] Initialized without Node.js filesystem dependencies');
   }
 
   /**
@@ -95,13 +81,15 @@ export class ServiceCoordinator implements ServiceCoordinatorInterface {
    */
   initializeServices(plugin: Plugin): ServiceRegistry {
     try {
-      // Create directory service (requires plugin) - now using PersistenceManager that includes DirectoryService functionality
-      const directoryService = new PersistenceManager(this.fs, 250, 5, plugin);
+      console.log('[ServiceCoordinator] Initializing services with Obsidian App instance');
+      
+      // Create directory service (requires app and plugin) - now using PersistenceManager with Obsidian API
+      const directoryService = new PersistenceManager(plugin.app, 250, 5, plugin);
       
       // Create client factory (depends on directory service)
       const clientFactory = new ChromaClientFactory(directoryService, plugin);
       
-      // Core services initialized successfully
+      console.log('[ServiceCoordinator] Core services initialized successfully');
       
       return {
         directoryService,

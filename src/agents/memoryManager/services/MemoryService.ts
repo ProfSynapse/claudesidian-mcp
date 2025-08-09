@@ -16,7 +16,7 @@ import { MemoryTraceService } from './MemoryTraceService';
 import { SessionService } from './SessionService';
 import { SnapshotService } from './SnapshotService';
 import { CollectionManager } from '../../../database/providers/chroma/services/CollectionManager';
-import { PersistenceManager, FileSystemInterface } from '../../../database/providers/chroma/services/PersistenceManager';
+import { PersistenceManager } from '../../../database/providers/chroma/services/PersistenceManager';
 import { ObsidianPathManager } from '../../../core/ObsidianPathManager';
 
 /**
@@ -76,20 +76,9 @@ export class MemoryService {
     this.embeddingService = embeddingService;
     this.settings = settings;
 
-    // Initialize collection manager with proper dependencies
-    const fs = require('fs');
-    const fsInterface: FileSystemInterface = {
-      existsSync: (path: string) => fs.existsSync(path),
-      mkdirSync: (path: string, options?: { recursive?: boolean }) => fs.mkdirSync(path, options),
-      writeFileSync: (path: string, data: string) => fs.writeFileSync(path, data),
-      readFileSync: (path: string, encoding: string) => fs.readFileSync(path, encoding),
-      renameSync: (oldPath: string, newPath: string) => fs.renameSync(oldPath, newPath),
-      unlinkSync: (path: string) => fs.unlinkSync(path),
-      readdirSync: (path: string) => fs.readdirSync(path),
-      statSync: (path: string) => fs.statSync(path),
-      rmdirSync: (path: string) => fs.rmdirSync(path)
-    };
-    const persistenceManager = new PersistenceManager(fsInterface, 250, 5, this.plugin);
+    // Initialize collection manager with proper dependencies using Obsidian API
+    console.log('[MemoryService] Initializing with Obsidian App instance');
+    const persistenceManager = new PersistenceManager(this.plugin.app, 250, 5, this.plugin);
     // Extract ChromaClient from vectorStore - assuming ChromaVectorStore has client property
     const chromaClient = (vectorStore as any).client;
     if (!chromaClient) {

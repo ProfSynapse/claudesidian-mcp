@@ -13,7 +13,7 @@ import {
 } from './interfaces/ICollectionLoadingCoordinator';
 import { IInitializationStateManager } from './interfaces/IInitializationStateManager';
 // CollectionLoader removed - functionality moved to CollectionManager
-import { PersistenceManager, FileSystemInterface } from '../../database/providers/chroma/services/PersistenceManager';
+import { PersistenceManager } from '../../database/providers/chroma/services/PersistenceManager';
 
 export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinator {
   private static readonly COLLECTIONS_KEY = 'collections_loading';
@@ -39,7 +39,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
   /* TODO: Replace CollectionLoader with CollectionManager functionality
   private initializeCollectionLoader(): void {
     try {
-      const fs = require('fs');
+      // Note: fs import removed - now using Obsidian API only
       const path = require('path');
       
       // Get the storage path from the plugin
@@ -54,24 +54,12 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
       const pluginDir = `${basePath}/.obsidian/plugins/${this.plugin.manifest.id}`;
       const dataDir = `${pluginDir}/data/chroma-db`;
       
-      // Create file system interface
-      const fsInterface: FileSystemInterface = {
-        existsSync: (path: string) => fs.existsSync(path),
-        mkdirSync: (path: string, options?: { recursive?: boolean }) => fs.mkdirSync(path, options),
-        writeFileSync: (path: string, data: string) => fs.writeFileSync(path, data),
-        readFileSync: (path: string, encoding: string) => fs.readFileSync(path, encoding),
-        renameSync: (oldPath: string, newPath: string) => fs.renameSync(oldPath, newPath),
-        unlinkSync: (path: string) => fs.unlinkSync(path),
-        readdirSync: (path: string) => fs.readdirSync(path),
-        statSync: (path: string) => fs.statSync(path),
-        rmdirSync: (path: string) => fs.rmdirSync(path)
-      };
-      
-      // Initialize collection loader
+      // Initialize collection loader using Obsidian API
+      console.log('[CollectionLoadingCoordinator] Would initialize with Obsidian App instance');
+      // Note: Collection loading is now handled by other services using Obsidian API
       // this.collectionLoader = new CollectionLoader(
       //   dataDir,
-      //   fsInterface,
-      //   new PersistenceManager(fsInterface)
+      //   new PersistenceManager(this.plugin.app, 250, 5, this.plugin)
       // );
     } catch (error) {
       console.error('[CollectionLoadingCoordinator] Failed to initialize collection loader:', error);
