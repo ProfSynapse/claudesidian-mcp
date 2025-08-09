@@ -66,40 +66,13 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
       };
 
 
-      // Execute the consolidated search (new format)
-      const consolidatedResults = await this.universalSearchService.executeConsolidatedSearch(searchParams);
+      // Execute the universal search (returns proper UniversalSearchResult format)
+      const result = await this.universalSearchService.executeUniversalSearch(searchParams);
       
       // Validation system monitoring for error prevention
       const errorSummary = globalValidationErrorMonitor.getErrorSummary();
       
-      const executionTime = performance.now() - startTime;
-      
-      // Validate file paths in results for display operations
-      if (consolidatedResults.length > 0) {
-        consolidatedResults.slice(0, Math.min(3, consolidatedResults.length)).forEach((result, i) => {
-          // Create validation context for display operations
-          const displayContext = this.validator.createValidationContext('SearchMode', 'execute', 'display_preview');
-          
-          // Validate filePath before split() operation to prevent undefined.split() errors
-          const validatedFilePath = this.validator.validateFilePath(result.filePath, displayContext);
-          
-          // Safe to perform split() operation on validated filePath
-          try {
-            const title = validatedFilePath.split('/').pop()?.replace(/\.md$/, '') || 'Untitled';
-          } catch (splitError) {
-            throw splitError;
-          }
-        });
-      }
-      
-      
-      return {
-        success: true,
-        query: params.query,
-        results: consolidatedResults,
-        totalResults: consolidatedResults.length,
-        executionTime
-      };
+      return result;
       
     } catch (error) {
       const executionTime = performance.now() - startTime;

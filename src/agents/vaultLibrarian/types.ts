@@ -242,6 +242,12 @@ export interface UniversalSearchResult extends CommonResult {
       filesFilteredByMetadata?: number;
     };
   };
+  
+  /**
+   * Suggested prompt for using ContentManager's batchContent mode to read the most relevant files
+   * This encourages deeper exploration of search results by reading full file contents
+   */
+  contextPrompt?: string;
 }
 
 /**

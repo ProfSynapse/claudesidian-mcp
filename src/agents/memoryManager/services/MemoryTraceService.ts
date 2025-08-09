@@ -301,6 +301,70 @@ export class MemoryTraceService {
   }
 
   /**
+   * Import tool call data from ToolCallCaptureService migration
+   * @param toolCalls - Tool call data to import
+   * @returns Promise resolving to the number of imported traces
+   */
+  async importToolCallData(toolCalls: Record<string, any>): Promise<number> {
+    let importedCount = 0;
+    
+    try {
+      for (const [toolCallId, toolCall] of Object.entries(toolCalls)) {
+        try {
+          // Convert tool call capture to memory trace format
+          const trace = {
+            workspaceId: toolCall.sessionContext?.workspaceId || 'default',
+            workspacePath: toolCall.sessionContext?.workspacePath || [],
+            contextLevel: 'workspace' as const,
+            activityType: 'research' as const,
+            content: `Tool: ${toolCall.request?.agent}.${toolCall.request?.mode}
+Status: ${toolCall.response?.success ? 'SUCCESS' : 'FAILED'}
+Time: ${new Date(toolCall.request?.timestamp || Date.now()).toISOString()}
+Workspace: ${toolCall.sessionContext?.workspaceId || 'unknown'}
+
+=== COMPLETE REQUEST ===
+${JSON.stringify(toolCall.request?.params, null, 2)}
+
+=== COMPLETE RESPONSE ===
+${JSON.stringify(toolCall.response?.result, null, 2)}${!toolCall.response?.success && toolCall.response?.error ? `
+
+=== ERROR DETAILS ===
+${JSON.stringify(toolCall.response.error, null, 2)}` : ''}`,
+            sessionId: toolCall.sessionContext?.sessionId || '',
+            timestamp: toolCall.request?.timestamp || Date.now(),
+            importance: toolCall.response?.success ? 0.7 : 0.9,
+            tags: [
+              'tool_call',
+              toolCall.request?.agent || 'unknown',
+              toolCall.request?.mode || 'unknown',
+              toolCall.response?.success ? 'success' : 'error'
+            ],
+            metadata: {
+              tool: `${toolCall.request?.agent}.${toolCall.request?.mode}`,
+              params: toolCall.request?.params || {},
+              result: toolCall.response?.result || null,
+              relatedFiles: toolCall.response?.affectedResources || []
+            }
+          };
+          
+          await this.storeMemoryTrace(trace);
+          importedCount++;
+          
+        } catch (error) {
+          console.warn(`[MemoryTraceService] Failed to import tool call ${toolCallId}:`, error);
+        }
+      }
+      
+      console.log(`[MemoryTraceService] Successfully imported ${importedCount} tool call traces`);
+      
+    } catch (error) {
+      console.error('[MemoryTraceService] Tool call data import failed:', error);
+    }
+    
+    return importedCount;
+  }
+
+  /**
    * Get the underlying memory traces collection
    * @returns Memory traces collection instance
    * @deprecated Use the service methods instead of accessing collection directly

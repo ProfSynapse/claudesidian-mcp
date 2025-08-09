@@ -94,7 +94,8 @@ export class ResultFormatter {
           categoriesSearched: ['files', 'content', 'tags', 'properties'],
           categoriesExcluded: [],
           fallbacksUsed: []
-        }
+        },
+        contextPrompt: "To read the full content of multiple relevant files from these search results, consider using the ContentManager's batchContent mode with read operations. This allows you to efficiently gather complete context from the most promising files in a single request."
       };
 
       return {
@@ -183,7 +184,8 @@ export class ResultFormatter {
           categoriesSearched: ['content'],
           categoriesExcluded: [],
           fallbacksUsed: []
-        }
+        },
+        contextPrompt: "To read the full content of multiple relevant files from these search results, consider using the ContentManager's batchContent mode with read operations. This allows you to efficiently gather complete context from the most promising files in a single request."
       };
 
       return {
@@ -402,7 +404,8 @@ export class ResultFormatter {
         categoriesSearched: [],
         categoriesExcluded: [],
         fallbacksUsed: []
-      }
+      },
+      contextPrompt: "To read the full content of multiple relevant files from these search results, consider using the ContentManager's batchContent mode with read operations. This allows you to efficiently gather complete context from the most promising files in a single request."
     };
   }
 
@@ -451,7 +454,8 @@ export class ResultFormatter {
         categoriesSearched: [],
         categoriesExcluded: [],
         fallbacksUsed: []
-      }
+      },
+      contextPrompt: "To read the full content of multiple relevant files from these search results, consider using the ContentManager's batchContent mode with read operations. This allows you to efficiently gather complete context from the most promising files in a single request."
     };
   }
 }

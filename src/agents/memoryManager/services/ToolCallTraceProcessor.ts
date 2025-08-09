@@ -156,21 +156,31 @@ export class ToolCallTraceProcessor {
   }
   
   /**
-   * Generate embedding content from tool call data
+   * Generate embedding content from tool call data with complete JSON preservation
    * @private
    */
   private generateToolCallEmbeddingContent(request: any, response: any): string {
     const parts = [
       `Tool: ${request.agent}.${request.mode}`,
-      `Action: ${this.generateActionDescription(request, response)}`,
-      `Workspace: ${request.workspaceContext?.workspaceId || 'unknown'}`,
       `Status: ${response.success ? 'SUCCESS' : 'FAILED'}`,
-      `Parameters: ${this.summarizeParameters(request.params)}`,
-      `Result: ${this.summarizeResult(response.result)}`,
-      `Time: ${new Date(request.timestamp).toISOString()}`
+      `Time: ${new Date(request.timestamp).toISOString()}`,
+      `Workspace: ${request.workspaceContext?.workspaceId || 'unknown'}`,
+      '',
+      '=== COMPLETE REQUEST ===',
+      JSON.stringify(request.params, null, 2),
+      '',
+      '=== COMPLETE RESPONSE ===',
+      JSON.stringify(response.result, null, 2)
     ];
     
-    return parts.filter(part => part.trim().length > 0).join('\n');
+    // Add error details if failed
+    if (!response.success && response.error) {
+      parts.push('');
+      parts.push('=== ERROR DETAILS ===');
+      parts.push(JSON.stringify(response.error, null, 2));
+    }
+    
+    return parts.filter(part => part !== null && part !== undefined).join('\n');
   }
   
   /**

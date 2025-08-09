@@ -353,27 +353,60 @@ export class ToolCallCaptureService {
    * Upgrade to full functionality with MemoryTraceService
    */
   async upgrade(memoryTraceService: MemoryTraceService, embeddingService?: EmbeddingService): Promise<void> {
+    console.log('[ToolCallCapture] Starting upgrade to full functionality...');
+    
+    if (!memoryTraceService) {
+      throw new Error('[ToolCallCapture] Cannot upgrade: MemoryTraceService is null/undefined');
+    }
+    
+    // Verify the MemoryTraceService has required methods
+    if (typeof memoryTraceService.storeToolCallTrace !== 'function') {
+      console.warn('[ToolCallCapture] Warning: MemoryTraceService missing storeToolCallTrace method');
+    }
     
     // Migrate existing data from simple storage to full service
     if (this.memoryStorage instanceof SimpleMemoryService) {
       try {
+        console.log('[ToolCallCapture] Checking for existing data to migrate...');
         const existingData = await this.memoryStorage.exportData();
+        
         if (existingData.toolCalls && Object.keys(existingData.toolCalls).length > 0) {
-          console.log(`[ToolCallCapture] Migrating ${Object.keys(existingData.toolCalls).length} tool call captures`);
+          const toolCallCount = Object.keys(existingData.toolCalls).length;
+          console.log(`[ToolCallCapture] Migrating ${toolCallCount} tool call captures...`);
+          
           // Import data into new service if it supports bulk import
           if (typeof memoryTraceService.importToolCallData === 'function') {
-            await memoryTraceService.importToolCallData(existingData.toolCalls);
+            const importedCount = await memoryTraceService.importToolCallData(existingData.toolCalls);
+            console.log(`[ToolCallCapture] Successfully migrated ${importedCount}/${toolCallCount} tool call captures`);
+          } else {
+            console.warn('[ToolCallCapture] MemoryTraceService does not support bulk import - skipping migration');
           }
+        } else {
+          console.log('[ToolCallCapture] No existing tool call data to migrate');
         }
+        
+        // Also check for traces
+        if (existingData.traces && Object.keys(existingData.traces).length > 0) {
+          console.log(`[ToolCallCapture] Found ${Object.keys(existingData.traces).length} existing traces in SimpleMemoryService`);
+        }
+        
       } catch (error) {
-        console.warn('[ToolCallCapture] Failed to migrate data during upgrade:', error);
+        console.error('[ToolCallCapture] Failed to migrate data during upgrade:', error);
+        // Don't fail the upgrade if migration fails - continue with upgrade
       }
     }
     
+    // Perform the upgrade
     this.memoryStorage = memoryTraceService;
     this.embeddingService = embeddingService;
     this.isUpgraded = true;
     
+    console.log('[ToolCallCapture] Upgrade completed successfully', {
+      hasMemoryTraceService: !!memoryTraceService,
+      hasEmbeddingService: !!embeddingService,
+      hasStoreMethod: typeof memoryTraceService.storeToolCallTrace === 'function',
+      isUpgraded: this.isUpgraded
+    });
   }
 
   /**
@@ -390,10 +423,22 @@ export class ToolCallCaptureService {
         return;
       }
 
-      if (this.isUpgraded && typeof this.memoryStorage.storeToolCallTrace === 'function') {
+      // Log which path we're taking for debugging
+      const isUpgraded = this.isUpgraded;
+      const hasStoreMethod = typeof this.memoryStorage.storeToolCallTrace === 'function';
+      
+      if (isUpgraded && hasStoreMethod) {
         // Use full MemoryTraceService functionality
+        console.log(`[ToolCallCapture] Processing via MemoryTraceService: ${capture.toolCallId}`);
         await this.memoryStorage.storeToolCallTrace(capture);
+        console.log(`[ToolCallCapture] Successfully stored via MemoryTraceService: ${capture.toolCallId}`);
       } else {
+        // Log why we're using fallback path
+        if (!isUpgraded) {
+          console.log(`[ToolCallCapture] Using fallback - service not upgraded: ${capture.toolCallId}`);
+        } else if (!hasStoreMethod) {
+          console.warn(`[ToolCallCapture] Using fallback - MemoryTraceService missing storeToolCallTrace method: ${capture.toolCallId}`);
+        }
         // CRITICAL FIX: Store tool call in vector database
         // Create proper memory trace for vector storage
         const toolCallTrace = {
@@ -402,7 +447,19 @@ export class ToolCallCaptureService {
           workspacePath: capture.sessionContext.workspacePath || [],
           contextLevel: 'workspace' as const,
           activityType: 'tool_call' as const,
-          content: `Tool call: ${capture.request.agent}.${capture.request.mode}\nParams: ${JSON.stringify(capture.request.params, null, 2)}\nResult: ${JSON.stringify(capture.response?.result, null, 2)}`,
+          content: `Tool: ${capture.request.agent}.${capture.request.mode}
+Status: ${capture.response?.success ? 'SUCCESS' : 'FAILED'}
+Time: ${new Date(capture.request.timestamp).toISOString()}
+Workspace: ${capture.sessionContext.workspaceId || 'unknown'}
+
+=== COMPLETE REQUEST ===
+${JSON.stringify(capture.request.params, null, 2)}
+
+=== COMPLETE RESPONSE ===
+${JSON.stringify(capture.response?.result, null, 2)}${!capture.response?.success && capture.response?.error ? `
+
+=== ERROR DETAILS ===
+${JSON.stringify(capture.response.error, null, 2)}` : ''}`,
           sessionId: capture.sessionContext.sessionId,
           timestamp: capture.request.timestamp,
           importance: capture.response?.success ? 0.7 : 0.9,
@@ -466,7 +523,9 @@ export class ToolCallCaptureService {
         };
 
         // Store as proper memory trace instead of just in-memory
+        console.log(`[ToolCallCapture] Storing via SimpleMemoryService.storeTrace: ${capture.toolCallId}`);
         await (this.memoryStorage as SimpleMemoryService).storeTrace(toolCallTrace.id, toolCallTrace);
+        console.log(`[ToolCallCapture] Successfully stored via SimpleMemoryService: ${capture.toolCallId}`);
         
       }
       
