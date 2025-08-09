@@ -291,7 +291,7 @@ export class ChromaVectorStoreDiagnosticsService implements IDiagnosticsService 
       return {
         connected,
         clientType: 'ChromaDB',
-        configPath: this.config.path || 'Not configured'
+        configPath: this.config.persistentPath || 'Not configured'
       };
     } catch (error) {
       return {

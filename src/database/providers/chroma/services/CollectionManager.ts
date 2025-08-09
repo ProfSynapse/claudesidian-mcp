@@ -490,20 +490,5 @@ export class CollectionManager implements ICollectionManager {
     return await this.hasCollection(name);
   }
 
-  /**
-   * Set path manager for the collection manager (already implemented)
-   */
-  setPathManager(pathManager: any): void {
-    this.pathManager = pathManager;
-    this.updateDirectoryServiceAdapter();
-  }
-
-  /**
-   * Clear collection cache
-   */
-  clearCache(): void {
-    this.collectionCache.clear();
-    this.cacheHits = 0;
-  }
 
 }

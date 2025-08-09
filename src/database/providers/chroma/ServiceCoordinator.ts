@@ -143,19 +143,14 @@ export class ServiceCoordinator implements ServiceCoordinatorInterface {
       // Note: This requires the plugin instance - we may need to pass it through
       // For now, we'll handle this in the vector store itself
       
-      // Create size calculator service (depends on directory and collection services)
-      const sizeCalculatorService = new SizeCalculatorService(
-        services.directoryService,
-        collectionManager,
-        config.persistentPath
-      );
+      // Create collection repository (provides size calculation functionality)
+      const collectionRepository = new CollectionRepository(client);
       
-      // Create diagnostics service (depends on all other services)
-      const diagnosticsService = new DiagnosticsService(
+      // Create diagnostics service (depends on all other services) 
+      const diagnosticsService = new ChromaVectorStoreDiagnosticsService(
         client,
         services.directoryService,
-        collectionManager,
-        sizeCalculatorService,
+        collectionRepository,
         config
       );
 
@@ -164,7 +159,7 @@ export class ServiceCoordinator implements ServiceCoordinatorInterface {
       return {
         collectionManager,
         diagnosticsService,
-        sizeCalculatorService
+        sizeCalculatorService: collectionRepository // CollectionRepository provides size calculation functionality
       };
       
     } catch (error) {

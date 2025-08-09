@@ -36,7 +36,7 @@ export class ChromaClientFactory implements IChromaClientFactory {
   /**
    * Validate client configuration
    */
-  async validateConfiguration(options: IStorageOptions): Promise<boolean> {
+  validateConfiguration(options: IStorageOptions): boolean {
     try {
       // Basic validation
       if (options.inMemory) {
@@ -48,7 +48,8 @@ export class ChromaClientFactory implements IChromaClientFactory {
       }
 
       if (options.persistentPath) {
-        return await this.validatePersistentConfiguration(options);
+        // Synchronous validation for persistent path
+        return !!options.persistentPath && typeof options.persistentPath === 'string';
       }
 
       // If no specific config, we'll use default persistent path
@@ -62,9 +63,9 @@ export class ChromaClientFactory implements IChromaClientFactory {
   /**
    * Get the storage path for the client
    */
-  getStoragePath(options: IStorageOptions): string | null {
+  getStoragePath(options: IStorageOptions): string {
     if (options.inMemory || options.server?.host) {
-      return null;
+      return ''; // Return empty string instead of null for in-memory/remote storage
     }
 
     if (options.persistentPath) {
