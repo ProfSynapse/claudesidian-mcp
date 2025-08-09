@@ -25,6 +25,7 @@ export class CollectionManager implements ICollectionManager {
   private cacheHits = 0;
   private cacheRequests = 0;
   private persistentPath: string | null;
+  private instanceId: string = Math.random().toString(36).substr(2, 9); // Debug ID
   private pathManager: ObsidianPathManager | null = null;
   private vaultOps: VaultOperations | null = null;
   private logger: StructuredLogger | null = null;
@@ -124,6 +125,7 @@ export class CollectionManager implements ICollectionManager {
   async refreshCollections(): Promise<void> {
     try {
       const collections = await this.client.listCollections();
+      console.log(`[CollectionManager:${this.instanceId}] Collections from client.listCollections():`, collections);
       
       // Track collection changes
       const existingNames = new Set(this.collections);
@@ -131,16 +133,20 @@ export class CollectionManager implements ICollectionManager {
       const newNames = new Set<string>();
       const missingNames = new Set<string>();
       
+      console.log('[CollectionManager] Existing collections before clear:', Array.from(this.collections));
+      
       // Clear and repopulate collections set
       this.collections.clear();
       
       // Process collections from ChromaDB
       for (const collection of collections) {
         const collectionName = this.extractCollectionName(collection);
+        console.log('[CollectionManager] Processing collection:', collection, '-> name:', collectionName);
         
         if (collectionName) {
           this.collections.add(collectionName);
           foundNames.add(collectionName);
+          console.log('[CollectionManager] Added collection:', collectionName);
           
           if (!existingNames.has(collectionName)) {
             newNames.add(collectionName);
@@ -149,8 +155,12 @@ export class CollectionManager implements ICollectionManager {
           // Validate and cache if not already cached
           // Validation handled by CollectionService
           this.collections.add(collectionName);
+        } else {
+          console.log('[CollectionManager] Skipped collection (no name):', collection);
         }
       }
+      
+      console.log('[CollectionManager] Final collections after processing:', Array.from(this.collections));
       
       // Find removed collections
       for (const existingName of existingNames) {
@@ -164,7 +174,9 @@ export class CollectionManager implements ICollectionManager {
       if (this.persistentPath) {
         // Recovery handled by CollectionService - ensure standard collections
         if (this.collectionService) {
+          console.log('[CollectionManager] Calling ensureStandardCollections(), collections before:', Array.from(this.collections));
           await this.collectionService.ensureStandardCollections();
+          console.log('[CollectionManager] After ensureStandardCollections(), collections are:', Array.from(this.collections));
         }
       }
       
@@ -251,7 +263,12 @@ export class CollectionManager implements ICollectionManager {
    * List all available collections
    */
   async listCollections(): Promise<string[]> {
-    return Array.from(this.collections);
+    // Force refresh to ensure we have the latest collections from filesystem
+    await this.refreshCollections();
+    
+    const result = Array.from(this.collections);
+    console.log(`[CollectionManager:${this.instanceId}] listCollections() returning:`, result);
+    return result;
   }
 
   /**
@@ -374,6 +391,10 @@ export class CollectionManager implements ICollectionManager {
    * Extract collection name from various collection object formats
    */
   private extractCollectionName(collection: any): string {
+    // Handle both string collections (from PersistentChromaClient) and object collections
+    if (typeof collection === 'string') {
+      return collection;
+    }
     return collection.name || 'unknown_collection';
   }
 

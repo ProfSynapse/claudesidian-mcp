@@ -568,17 +568,30 @@ export class ChromaClient {
     const collectionsPath = `${this.dataPath}/collections`;
     const normalizedCollectionsPath = normalizePath(collectionsPath);
     
+    console.log('[ChromaClient] listCollections() called with dataPath:', this.dataPath);
+    console.log('[ChromaClient] collectionsPath:', collectionsPath);
+    console.log('[ChromaClient] normalizedCollectionsPath:', normalizedCollectionsPath);
+    
     if (!await this.plugin.app.vault.adapter.exists(normalizedCollectionsPath)) {
+      console.log('[ChromaClient] Collections path does not exist:', normalizedCollectionsPath);
       return [];
     }
     
     try {
       const entries = await this.plugin.app.vault.adapter.list(normalizedCollectionsPath);
+      console.log('[ChromaClient] Raw entries from filesystem:', entries);
+      console.log('[ChromaClient] Found folders:', entries.folders);
+      
       // Extract folder names without using path.basename to avoid path issues
-      return entries.folders.map(folder => {
+      const collectionNames = entries.folders.map(folder => {
         const parts = folder.split('/');
-        return parts[parts.length - 1];
+        const name = parts[parts.length - 1];
+        console.log('[ChromaClient] Processing folder:', folder, '-> name:', name);
+        return name;
       });
+      
+      console.log('[ChromaClient] Final collection names:', collectionNames);
+      return collectionNames;
     } catch (error) {
       console.error('[ChromaClient] Error listing collections:', error);
       return [];
