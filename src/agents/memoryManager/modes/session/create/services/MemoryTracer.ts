@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on memory operations
  */
 
-import { MemoryManagerAgent } from '../../../../memoryManager';
+import { MemoryManagerAgent } from '../../../../MemoryManager';
 import { CreateSessionParams } from '../../../../types';
 import { ContextData } from './ContextBuilder';
 import { getErrorMessage } from '../../../../../../utils/errorUtils';

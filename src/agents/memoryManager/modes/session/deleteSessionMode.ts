@@ -1,5 +1,5 @@
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../memoryManager';
+import { MemoryManagerAgent } from '../../MemoryManager';
 import { DeleteSessionParams, SessionResult } from '../../types';
 
 /**

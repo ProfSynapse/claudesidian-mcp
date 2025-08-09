@@ -9,7 +9,7 @@ import {
 } from './accordions';
 import { UpdateManager } from '../utils/UpdateManager';
 import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
-import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
+import { MemoryManagerAgent } from '../agents/memoryManager/MemoryManager';
 
 // Import services
 import { EmbeddingService } from '../database/services/core/EmbeddingService';

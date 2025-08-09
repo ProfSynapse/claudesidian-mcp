@@ -1,5 +1,5 @@
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../memoryManager';
+import { MemoryManagerAgent } from '../../MemoryManager';
 import { WorkspaceSession } from '../../../../database/workspace-types';
 import { ListSessionsParams, SessionResult } from '../../types';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';

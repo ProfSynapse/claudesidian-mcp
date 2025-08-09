@@ -1,6 +1,6 @@
 import { Setting, Notice } from 'obsidian';
 import { BaseSettingsTab } from './BaseSettingsTab';
-import { MemoryManagerAgent } from '../../agents/memoryManager/memoryManager';
+import { MemoryManagerAgent } from '../../agents/memoryManager/MemoryManager';
 
 /**
  * Sessions Settings tab component

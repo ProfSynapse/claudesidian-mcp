@@ -13,4 +13,4 @@ export * from './state/editStateMode';
 export * from './state/deleteStateMode';
 
 // Workspace modes
-export * from './workspace';
+export * from './workspaces';

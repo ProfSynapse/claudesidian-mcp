@@ -9,7 +9,7 @@
 
 import { App } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../memoryManager';
+import { MemoryManagerAgent } from '../../MemoryManager';
 import { createServiceIntegration } from '../../services/ValidationService';
 
 // Import types from existing workspace mode
