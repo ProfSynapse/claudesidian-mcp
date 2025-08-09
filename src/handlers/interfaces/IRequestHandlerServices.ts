@@ -1,6 +1,7 @@
 import { IAgent } from '../../agents/interfaces/IAgent';
 import { SessionContextManager } from '../../services/SessionContextManager';
 import { ModeCall, ModeCallResult } from '../../types';
+import { ISchemaProvider } from './ISchemaProvider';
 
 export interface IValidationService {
     validateToolParams(params: any, schema?: any, toolName?: string): Promise<any>;
@@ -66,6 +67,7 @@ export interface IToolListService {
     ): Promise<{ tools: any[] }>;
     buildAgentSchema(agent: IAgent): any;
     mergeModeSchemasIntoAgent(agent: IAgent, agentSchema: any): any;
+    setSchemaEnhancementService(service: ISchemaEnhancementService): void;
 }
 
 export interface IResourceListService {
@@ -112,6 +114,16 @@ export interface IRequestContext {
     sessionContextManager?: SessionContextManager;
 }
 
+export interface ISchemaEnhancementService {
+    enhanceToolSchema(toolName: string, baseSchema: any): Promise<any>;
+    getAvailableEnhancements(): Promise<string[]>;
+    registerProvider(provider: ISchemaProvider): void;
+    unregisterProvider(providerName: string): boolean;
+    hasProvider(providerName: string): boolean;
+    clearProviders(): void;
+    getProviderInfo(): Array<{ name: string; description: string; priority: number }>;
+}
+
 export interface IRequestHandlerDependencies {
     validationService: IValidationService;
     sessionService: ISessionService;
@@ -123,4 +135,5 @@ export interface IRequestHandlerDependencies {
     resourceReadService: IResourceReadService;
     promptsListService: IPromptsListService;
     toolHelpService: IToolHelpService;
+    schemaEnhancementService: ISchemaEnhancementService;
 }

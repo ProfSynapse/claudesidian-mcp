@@ -17,6 +17,10 @@ import { ResourceReadService } from './services/ResourceReadService';
 import { PromptsListService } from './services/PromptsListService';
 import { CustomPromptStorageService } from "../agents/agentManager/services/CustomPromptStorageService";
 import { ToolHelpService } from './services/ToolHelpService';
+import { SchemaEnhancementService } from './services/SchemaEnhancementService';
+import { VaultSchemaProvider } from './services/providers/VaultSchemaProvider';
+import { WorkspaceSchemaProvider } from './services/providers/WorkspaceSchemaProvider';
+import { AgentSchemaProvider } from './services/providers/AgentSchemaProvider';
 
 // Import strategies
 import { ToolExecutionStrategy } from './strategies/ToolExecutionStrategy';
@@ -47,17 +51,38 @@ export class RequestRouter {
     }
 
     private initializeDependencies(): void {
+        const schemaEnhancementService = new SchemaEnhancementService();
+        const toolListService = new ToolListService();
+        
+        // Register schema enhancement providers
+        if (this.app) {
+            const vaultSchemaProvider = new VaultSchemaProvider(this.app);
+            schemaEnhancementService.registerProvider(vaultSchemaProvider);
+        }
+        
+        // Register AgentSchemaProvider with access to agents and custom prompt storage
+        const agentSchemaProvider = new AgentSchemaProvider();
+        agentSchemaProvider.setAgentsMap(this.agents);
+        if (this.customPromptStorage) {
+            agentSchemaProvider.setCustomPromptStorage(this.customPromptStorage);
+        }
+        schemaEnhancementService.registerProvider(agentSchemaProvider);
+        
+        // Inject schema enhancement service into tool list service
+        toolListService.setSchemaEnhancementService(schemaEnhancementService);
+        
         this.dependencies = {
             validationService: new ValidationService(),
             sessionService: new SessionService(),
             toolExecutionService: new ToolExecutionService(),
             handoffProcessor: new HandoffProcessor(),
             responseFormatter: new ResponseFormatter(),
-            toolListService: new ToolListService(),
+            toolListService: toolListService,
             resourceListService: new ResourceListService(this.app),
             resourceReadService: new ResourceReadService(this.app),
             promptsListService: new PromptsListService(this.customPromptStorage),
-            toolHelpService: new ToolHelpService()
+            toolHelpService: new ToolHelpService(),
+            schemaEnhancementService: schemaEnhancementService
         };
     }
 
@@ -134,5 +159,35 @@ export class RequestRouter {
     // Allow adding custom strategies
     addStrategy(strategy: IRequestStrategy): void {
         this.strategies.push(strategy);
+    }
+
+    /**
+     * Register WorkspaceSchemaProvider with the schema enhancement service
+     * This is called after agents are initialized to ensure WorkspaceService is available
+     */
+    async registerWorkspaceSchemaProvider(): Promise<void> {
+        try {
+            // Get MemoryManager agent to access WorkspaceService
+            const memoryManagerAgent = this.agents.get('memoryManager');
+            if (!memoryManagerAgent) {
+                console.warn('[RequestRouter] MemoryManager agent not found - WorkspaceSchemaProvider not registered');
+                return;
+            }
+
+            // Get WorkspaceService from MemoryManager agent
+            const workspaceService = await (memoryManagerAgent as any).getWorkspaceServiceAsync();
+            if (!workspaceService) {
+                console.warn('[RequestRouter] WorkspaceService not available - WorkspaceSchemaProvider not registered');
+                return;
+            }
+
+            // Create and register WorkspaceSchemaProvider
+            const workspaceSchemaProvider = WorkspaceSchemaProvider.forMemoryManager(workspaceService);
+            this.dependencies.schemaEnhancementService.registerProvider(workspaceSchemaProvider);
+            
+            console.log('[RequestRouter] WorkspaceSchemaProvider registered successfully');
+        } catch (error) {
+            console.error('[RequestRouter] Failed to register WorkspaceSchemaProvider:', error);
+        }
     }
 }

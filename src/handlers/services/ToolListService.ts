@@ -1,5 +1,5 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { IToolListService } from '../interfaces/IRequestHandlerServices';
+import { IToolListService, ISchemaEnhancementService } from '../interfaces/IRequestHandlerServices';
 import { IAgent } from '../../agents/interfaces/IAgent';
 import { logger } from '../../utils/logger';
 
@@ -18,6 +18,7 @@ interface AgentSchema {
 }
 
 export class ToolListService implements IToolListService {
+    private schemaEnhancementService?: ISchemaEnhancementService;
     async generateToolList(
         agents: Map<string, IAgent>,
         isVaultEnabled: boolean,
@@ -36,12 +37,37 @@ export class ToolListService implements IToolListService {
                 
                 const toolName = vaultName ? `${agent.name}_${vaultName}` : agent.name;
                 
-                // Removed verbose debug logging for VaultLibrarian schema
+                // Enhance the schema and description if enhancement service is available
+                let finalSchema = agentSchema;
+                let finalDescription = agent.description;
+                
+                if (this.schemaEnhancementService) {
+                    try {
+                        // Cast to our enhanced interface if available
+                        const enhancedService = this.schemaEnhancementService as any;
+                        
+                        // Enhance schema with agent context
+                        finalSchema = await this.schemaEnhancementService.enhanceToolSchema(
+                            toolName, 
+                            agentSchema
+                        );
+                        
+                        // Enhance description if the service supports it
+                        if (enhancedService.enhanceAgentDescription) {
+                            finalDescription = await enhancedService.enhanceAgentDescription(agent, vaultName);
+                        }
+                    } catch (error) {
+                        logger.systemError(error as Error, `Error enhancing schema for ${toolName}`);
+                        // Use original schema and description on enhancement failure
+                        finalSchema = agentSchema;
+                        finalDescription = agent.description;
+                    }
+                }
                 
                 tools.push({
                     name: toolName,
-                    description: agent.description,
-                    inputSchema: agentSchema
+                    description: finalDescription,
+                    inputSchema: finalSchema
                 });
             }
             
@@ -135,5 +161,9 @@ export class ToolListService implements IToolListService {
         }
         
         return agentSchema;
+    }
+
+    setSchemaEnhancementService(service: ISchemaEnhancementService): void {
+        this.schemaEnhancementService = service;
     }
 }

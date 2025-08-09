@@ -307,6 +307,11 @@ export class MCPServer implements IMCPServer {
                 this.onToolResponse // Callback should be available as class property
             );
             
+            // Register WorkspaceSchemaProvider after RequestRouter is created with agents
+            this.requestRouter.registerWorkspaceSchemaProvider().catch(error => {
+                logger.systemError(error as Error, 'WorkspaceSchemaProvider Registration');
+            });
+            
             // Reinitialize request handlers with new router
             this.requestHandlerFactory = new RequestHandlerFactory(
                 this.server,
