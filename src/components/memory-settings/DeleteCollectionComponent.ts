@@ -106,7 +106,7 @@ Are you absolutely sure you want to delete this collection?`;
             deleteButton.setDisabled(true);
             deleteButton.setButtonText('Deleting...');
             
-            console.log(`🗑️ DELETING entire collection: ${collection}`);
+            // Deleting collection
             
             // TODO: Create backup before deletion (future enhancement)
             // const backup = await this.createCollectionBackup(collection);
@@ -114,7 +114,7 @@ Are you absolutely sure you want to delete this collection?`;
             // Delete the entire collection (all data)
             await this.vectorStore.deleteCollection(collection);
             
-            console.log(`🗑️ Successfully deleted collection: ${collection}`);
+            // Collection deleted successfully
             
             // Show success message
             new Notice(`Successfully deleted collection: ${collection}`);
@@ -191,7 +191,7 @@ Are you absolutely sure you want to delete ALL collections?`;
                 try {
                     await this.vectorStore.deleteCollection(collection);
                     successCount++;
-                    console.log(`🗑️ Successfully deleted collection: ${collection}`);
+                    // Collection deleted successfully
                 } catch (error) {
                     console.error(`Error deleting collection ${collection}:`, error);
                     failureCount++;

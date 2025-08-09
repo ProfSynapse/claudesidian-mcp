@@ -55,7 +55,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
       const dataDir = `${pluginDir}/data/chroma-db`;
       
       // Initialize collection loader using Obsidian API
-      console.log('[CollectionLoadingCoordinator] Would initialize with Obsidian App instance');
+      // Obsidian App instance available for initialization
       // Note: Collection loading is now handled by other services using Obsidian API
       // this.collectionLoader = new CollectionLoader(
       //   dataDir,
@@ -73,7 +73,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
   async ensureCollectionsLoaded(): Promise<CollectionLoadingResult> {
     // Check if we already have a successful cached result
     if (this.lastResult && this.lastResult.success) {
-      console.log('[CollectionLoadingCoordinator] Returning cached collection loading result');
+      // Returning cached result
       return this.lastResult;
     }
 
@@ -110,7 +110,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
     let collectionsLoaded = 0;
 
     try {
-      console.log('[CollectionLoadingCoordinator] Starting coordinated collection loading...');
+      // Starting collection loading
       
       if (!this.collectionLoader) {
         throw new Error('Collection loader not initialized');
@@ -125,7 +125,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
           this.loadedCollections.set(collectionName, collection);
           await this.updateCollectionMetadata(collectionName, collection);
           collectionsLoaded++;
-          console.log(`[CollectionLoadingCoordinator] Loaded collection: ${collectionName}`);
+          // Collection loaded
         }
         
         // Add any errors from the loader
@@ -136,11 +136,11 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
           });
         }
       } else {
-        console.log('[CollectionLoadingCoordinator] No collections loaded from disk');
+        // No collections found on disk
       }
 
       const loadTime = Date.now() - startTime;
-      console.log(`[CollectionLoadingCoordinator] Completed loading ${collectionsLoaded} collections in ${loadTime}ms`);
+      // Collection loading completed
 
       return {
         success: true,
@@ -283,7 +283,7 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
 
   // Temporary stub implementation until CollectionManager integration is complete
   private async performCollectionLoading(): Promise<CollectionLoadingResult> {
-    console.log('[CollectionLoadingCoordinator] Using stub implementation - CollectionManager integration pending');
+    // Using stub implementation
     return {
       success: true,
       collectionsLoaded: 0,

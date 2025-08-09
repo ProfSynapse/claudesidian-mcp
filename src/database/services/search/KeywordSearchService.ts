@@ -4,6 +4,7 @@
  */
 
 import { TFile } from 'obsidian';
+import { SnippetGenerator, SnippetOptions } from './utils/SnippetGenerator';
 
 export interface KeywordSearchResult {
   id: string;
@@ -75,6 +76,9 @@ export class KeywordSearchService {
     content: 1.0,   // Base content weight
     tags: 0.5       // Tags less important to prevent spam
   };
+
+  // Configurable snippet context length
+  private snippetContextLength = 75;
 
   /**
    * Index a document for keyword search
@@ -179,7 +183,7 @@ export class KeywordSearchService {
       return {
         id: docId,
         title: doc.title,
-        snippet: this.generateSnippet(doc, queryTerms, phraseTerms),
+        snippet: SnippetGenerator.generateDocumentSnippet(doc, queryTerms, phraseTerms, { contextLength: this.snippetContextLength }),
         score,
         searchMethod: 'keyword' as const,
         metadata: {
@@ -349,53 +353,10 @@ export class KeywordSearchService {
   }
 
   /**
-   * Generate a snippet highlighting query terms
+   * Set the context length for snippet generation
    */
-  private generateSnippet(
-    doc: SearchableDocument, 
-    queryTerms: string[], 
-    phraseTerms: string[],
-    maxLength = 300
-  ): string {
-    const allTerms = [...queryTerms, ...phraseTerms];
-    const content = doc.content;
-    
-    if (!content || content.length === 0) {
-      return doc.title;
-    }
-    
-    // Find the best section containing the most query terms
-    const words = content.split(/\s+/);
-    let bestStart = 0;
-    let maxMatches = 0;
-    
-    // Sliding window to find best snippet location
-    const windowSize = Math.min(50, words.length);
-    for (let i = 0; i <= words.length - windowSize; i++) {
-      const window = words.slice(i, i + windowSize).join(' ').toLowerCase();
-      const matches = allTerms.reduce((count, term) => 
-        count + (window.includes(term) ? 1 : 0), 0);
-      
-      if (matches > maxMatches) {
-        maxMatches = matches;
-        bestStart = i;
-      }
-    }
-    
-    // Extract snippet around best match
-    const startIdx = Math.max(0, bestStart - 10);
-    const endIdx = Math.min(words.length, bestStart + windowSize + 10);
-    let snippet = words.slice(startIdx, endIdx).join(' ');
-    
-    if (snippet.length > maxLength) {
-      snippet = snippet.substring(0, maxLength);
-      const lastSpace = snippet.lastIndexOf(' ');
-      if (lastSpace > maxLength * 0.8) {
-        snippet = snippet.substring(0, lastSpace) + '...';
-      }
-    }
-    
-    return snippet.trim();
+  setSnippetContextLength(contextLength: number): void {
+    this.snippetContextLength = contextLength;
   }
 
   /**

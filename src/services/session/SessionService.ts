@@ -40,7 +40,7 @@ export class SessionService {
       this.activeSessionId = id;
     }
     
-    console.log(`[SessionService] Created session ${id} for workspace ${session.workspaceId}`);
+    // Session created
     return session;
   }
   

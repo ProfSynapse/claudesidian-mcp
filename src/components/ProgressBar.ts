@@ -91,7 +91,7 @@ export class ProgressBar {
     private setupEventHandlers(): void {
         // Create progress update handler
         this.onProgressHandler = (data: ProgressUpdateData) => {
-            console.log('Progress update received:', data);
+            // Progress update received
             
             // Update progress
             this.total = data.total;
@@ -111,7 +111,7 @@ export class ProgressBar {
         
         // Create completion handler
         this.onCompleteHandler = (data: ProgressCompleteData) => {
-            console.log('Progress completion received:', data);
+            // Progress completion received
             
             // Update the progress bar one last time to show completion
             if (data.processed > 0 && this.total > 0) {
@@ -127,7 +127,7 @@ export class ProgressBar {
         
         // Create cancellation handler
         const onCancelHandler = (data: ProgressCancelData) => {
-            console.log('Progress cancellation received:', data);
+            // Progress cancellation received
             
             // Only process if this is for our current operation
             if (data.operationId === this.operationId) {

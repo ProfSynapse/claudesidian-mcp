@@ -166,7 +166,7 @@ export class ArchitectureMigrationHelper {
     if (!this.plugin.logger) {
       const { StructuredLogger } = await import('./StructuredLogger');
       this.plugin.logger = new StructuredLogger(this.plugin);
-      console.log('[Migration] StructuredLogger initialized');
+      // StructuredLogger initialized
     }
   }
   
@@ -180,7 +180,7 @@ export class ArchitectureMigrationHelper {
         this.plugin.app.vault, 
         this.plugin.manifest
       );
-      console.log('[Migration] ObsidianPathManager initialized');
+      // ObsidianPathManager initialized
     }
   }
   
@@ -195,7 +195,7 @@ export class ArchitectureMigrationHelper {
         this.plugin.pathManager,
         this.plugin.logger
       );
-      console.log('[Migration] VaultOperations initialized');
+      // VaultOperations initialized
     }
   }
   
@@ -207,7 +207,7 @@ export class ArchitectureMigrationHelper {
       const { PluginDataManager } = await import('./PluginDataManager');
       this.plugin.dataManager = new PluginDataManager(this.plugin, defaults);
       await this.plugin.dataManager.load();
-      console.log('[Migration] PluginDataManager initialized');
+      // PluginDataManager initialized
     }
   }
   
@@ -215,19 +215,19 @@ export class ArchitectureMigrationHelper {
    * Complete migration in phases
    */
   async performFullMigration(defaults: any): Promise<void> {
-    console.log('[Migration] Starting architecture migration...');
+    // Starting architecture migration
     
     await this.migrateLogging();
     await this.migratePaths();
     await this.migrateFileOperations();
     await this.migrateDataManagement(defaults);
     
-    console.log('[Migration] Architecture migration completed');
+    // Architecture migration completed
     
     // Validate the migration
     const validation = validateArchitecture(this.plugin);
     if (validation.valid) {
-      console.log('[Migration] ✅ Architecture validation passed');
+      // Architecture validation passed
     } else {
       console.warn('[Migration] ⚠️ Architecture validation issues:', validation.issues);
     }

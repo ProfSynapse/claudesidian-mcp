@@ -94,7 +94,8 @@ export class ContentSearchStrategy {
         forceSemanticSearch: false,
         keywordThreshold: 0.3,
         fuzzyThreshold: 0.6,
-        queryType: params?.queryType
+        queryType: params?.queryType,
+        snippetLength: params?.snippetLength
       };
 
       const searchStart = performance.now();

@@ -10,6 +10,7 @@
  */
 
 import { TFile } from 'obsidian';
+import { SnippetGenerator, SnippetOptions } from './utils/SnippetGenerator';
 import {
   FuzzySearchResult,
   FuzzyMatch,
@@ -29,6 +30,9 @@ export class FuzzySearchService {
   private documents: Map<string, FuzzyDocument> = new Map();
   private stemCache: StemCache = new Map();
   private synonymMap: Record<string, string[]> = {};
+  
+  // Configurable snippet context length
+  private snippetContextLength = 75;
 
   constructor() {
     this.initializeSynonymMap();
@@ -109,7 +113,7 @@ export class FuzzySearchService {
     return results.slice(0, limit).map(result => ({
       id: result.doc.id,
       title: result.doc.title,
-      snippet: this.generateSnippet(result.doc, searchTerms),
+      snippet: SnippetGenerator.generateDocumentSnippet(result.doc, searchTerms, [], { contextLength: this.snippetContextLength }),
       score: result.score,
       searchMethod: 'fuzzy' as const,
       metadata: {
@@ -420,65 +424,10 @@ export class FuzzySearchService {
   }
 
   /**
-   * Generate a snippet highlighting fuzzy matches
+   * Set the context length for snippet generation
    */
-  private generateSnippet(doc: FuzzyDocument, searchTerms: string[], maxLength = FUZZY_SEARCH_DEFAULTS.SNIPPET_MAX_LENGTH): string {
-    const content = doc.content;
-    
-    if (!content || content.length === 0) {
-      return doc.title;
-    }
-    
-    if (content.length <= maxLength) {
-      return content.trim();
-    }
-    
-    // Try to find a good section containing search terms or similar words
-    const words = content.split(/\s+/);
-    let bestStart = 0;
-    let maxRelevance = 0;
-    
-    const windowSize = Math.min(FUZZY_SEARCH_DEFAULTS.WINDOW_SIZE, words.length);
-    for (let i = 0; i <= words.length - windowSize; i++) {
-      const window = words.slice(i, i + windowSize).join(' ').toLowerCase();
-      
-      let relevance = 0;
-      for (const term of searchTerms) {
-        // Direct matches
-        if (window.includes(term.toLowerCase())) {
-          relevance += 3;
-        }
-        
-        // Fuzzy matches
-        const windowWords = window.split(/\s+/);
-        for (const word of windowWords) {
-          const distance = this.levenshteinDistance(term.toLowerCase(), word);
-          if (distance <= 2 && distance > 0) {
-            relevance += 1;
-          }
-        }
-      }
-      
-      if (relevance > maxRelevance) {
-        maxRelevance = relevance;
-        bestStart = i;
-      }
-    }
-    
-    // Extract snippet around best match
-    const startIdx = Math.max(0, bestStart - 10);
-    const endIdx = Math.min(words.length, bestStart + windowSize + 10);
-    let snippet = words.slice(startIdx, endIdx).join(' ');
-    
-    if (snippet.length > maxLength) {
-      snippet = snippet.substring(0, maxLength);
-      const lastSpace = snippet.lastIndexOf(' ');
-      if (lastSpace > maxLength * 0.8) {
-        snippet = snippet.substring(0, lastSpace) + '...';
-      }
-    }
-    
-    return snippet.trim();
+  setSnippetContextLength(contextLength: number): void {
+    this.snippetContextLength = contextLength;
   }
 
   /**

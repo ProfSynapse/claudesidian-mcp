@@ -6,6 +6,7 @@
  */
 
 import { TFile } from 'obsidian';
+import { SnippetGenerator, SnippetOptions } from './utils/SnippetGenerator';
 import { QueryAnalyzer, QueryAnalysis } from './QueryAnalyzer';
 import { KeywordSearchService, KeywordSearchResult, SearchableDocument } from './KeywordSearchService';
 import { FuzzySearchService, FuzzySearchResult, FuzzyDocument } from './FuzzySearchService';
@@ -53,6 +54,7 @@ export interface HybridSearchOptions {
   keywordThreshold?: number;
   fuzzyThreshold?: number;
   queryType?: 'exact' | 'conceptual' | 'exploratory' | 'mixed';
+  snippetLength?: number;
 }
 
 export interface RerankItem {
@@ -198,7 +200,8 @@ export class HybridSearchService {
       limit = 10,
       includeContent = false,
       keywordThreshold = 0.3,
-      fuzzyThreshold = 0.6
+      fuzzyThreshold = 0.6,
+      snippetLength
     } = options;
 
     // NEW: Validate search dependencies before operation
@@ -258,10 +261,16 @@ export class HybridSearchService {
     const keywordStats = this.keywordSearchService.getStats();
     const fuzzyStats = this.fuzzySearchService.getStats();
 
+    // Configure snippet length for all search services
+    if (snippetLength) {
+      this.keywordSearchService.setSnippetContextLength(snippetLength);
+      this.fuzzySearchService.setSnippetContextLength(snippetLength);
+    }
+
     // Semantic search (Using ChromaDB) - Now with collection validation
     if (analysis.weights.semantic > 0.1 && searchCapabilities.semantic) {
       try {
-        searchPromises.push(this.executeSemanticSearch(query, analysis, limit, filteredFiles));
+        searchPromises.push(this.executeSemanticSearch(query, analysis, limit, filteredFiles, snippetLength));
         methods.push('semantic');
       } catch (error) {
         console.error('[HybridSearchService] Semantic search setup failed:', error);
@@ -348,7 +357,8 @@ export class HybridSearchService {
     query: string,
     analysis: QueryAnalysis,
     limit: number,
-    filteredFiles?: TFile[]
+    filteredFiles?: TFile[],
+    snippetLength?: number
   ): Promise<any[]> {
     // Return empty if semantic search unavailable
     if (!this.isSemanticSearchAvailable()) {
@@ -434,7 +444,7 @@ export class HybridSearchService {
 
 
       // Format results for hybrid search compatibility
-      const formattedResults = this.formatSemanticResults(results, query, analysis);
+      const formattedResults = this.formatSemanticResults(results, query, analysis, snippetLength);
 
       // Record performance metrics
       const duration = Date.now() - startTime;
@@ -738,7 +748,8 @@ export class HybridSearchService {
   private formatSemanticResults(
     chromaResults: any[],
     query: string,
-    analysis: QueryAnalysis
+    analysis: QueryAnalysis,
+    snippetLength?: number
   ): any[] {
     return chromaResults.map((result, index) => {
       // Extract relevant data from ChromaDB result
@@ -746,9 +757,10 @@ export class HybridSearchService {
       const content = result.content || result.document || '';
       const score = result.score || result.distance || 0;
       
-      // Generate snippet from content (for backward compatibility)
-      // NOTE: This creates a truncated 150-char snippet, but full content is preserved in 'content' field
-      const snippet = this.generateSnippet(content, query, 150);
+      // Generate snippet from content with configurable context length
+      // Uses snippetLength parameter to create context window around matches
+      const contextLength = snippetLength || 75;
+      const snippet = SnippetGenerator.generateContextSnippet(content, query, { contextLength });
       
       // Extract title from file path or metadata
       const title = result.metadata?.title || 
@@ -825,44 +837,6 @@ export class HybridSearchService {
     }));
   }
 
-  /**
-   * Generate a contextual snippet from content around query terms
-   */
-  private generateSnippet(content: string, query: string, maxLength: number = 150): string {
-    if (!content || content.length === 0) {
-      return '';
-    }
-
-    // Clean up content - remove excessive whitespace and normalize
-    const cleanContent = content.replace(/\s+/g, ' ').trim();
-    
-    if (cleanContent.length <= maxLength) {
-      return cleanContent;
-    }
-
-    // Try to find query terms in content for contextual snippet
-    const queryTerms = query.toLowerCase().split(/\s+/).filter(term => term.length > 2);
-    
-    for (const term of queryTerms) {
-      const termIndex = cleanContent.toLowerCase().indexOf(term);
-      if (termIndex !== -1) {
-        // Center the snippet around the found term
-        const start = Math.max(0, termIndex - Math.floor(maxLength / 2));
-        const end = Math.min(cleanContent.length, start + maxLength);
-        
-        let snippet = cleanContent.substring(start, end);
-        
-        // Add ellipses if truncated
-        if (start > 0) snippet = '...' + snippet;
-        if (end < cleanContent.length) snippet = snippet + '...';
-        
-        return snippet;
-      }
-    }
-
-    // Fallback to beginning of content if no query terms found
-    return cleanContent.substring(0, maxLength) + (cleanContent.length > maxLength ? '...' : '');
-  }
 
   /**
    * Classify semantic search result quality
@@ -1049,9 +1023,10 @@ export class HybridSearchService {
           query,
           options?.analysis || this.queryAnalyzer.analyzeQuery(query),
           options?.limit || 50,
-          options?.filteredFiles
+          options?.filteredFiles,
+          options?.snippetLength
         );
-        return this.formatSemanticResults(results, query, options?.analysis || this.queryAnalyzer.analyzeQuery(query));
+        return this.formatSemanticResults(results, query, options?.analysis || this.queryAnalyzer.analyzeQuery(query), options?.snippetLength);
       },
       isAvailable: () => this.isSemanticSearchAvailable(),
       getType: () => 'semantic'

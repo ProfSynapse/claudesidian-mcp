@@ -91,7 +91,7 @@ export class InitializationCoordinator implements IInitializationCoordinator {
     this.currentPhase = phase;
     const startTime = Date.now();
     
-    console.log(`[InitializationCoordinator] Starting phase: ${phase}`);
+    // Starting initialization phase
 
     try {
       const result = await this.executePhase(phase);
@@ -107,7 +107,7 @@ export class InitializationCoordinator implements IInitializationCoordinator {
 
       this.phaseResults.set(phase, phaseResult);
       
-      console.log(`[InitializationCoordinator] Phase ${phase} completed in ${duration}ms`);
+      // Phase completed
       return phaseResult;
 
     } catch (error) {
@@ -173,13 +173,13 @@ export class InitializationCoordinator implements IInitializationCoordinator {
       // Initialize basic framework components
       await this.initializeComponent('settings', async () => {
         // Settings initialization would go here
-        console.log('[InitializationCoordinator] Framework settings initialized');
+        // Framework settings initialized
       });
       componentsInitialized.push('settings');
 
       await this.initializeComponent('directories', async () => {
         // Directory initialization would go here
-        console.log('[InitializationCoordinator] Framework directories initialized');
+        // Framework directories initialized
       });
       componentsInitialized.push('directories');
 
@@ -206,7 +206,7 @@ export class InitializationCoordinator implements IInitializationCoordinator {
       
       if (result.success) {
         componentsInitialized.push('collections');
-        console.log(`[InitializationCoordinator] Collections initialized: ${result.collectionsLoaded} loaded`);
+        // Collections initialized
       } else {
         errors.push(...result.errors.map(e => ({ component: e.collectionName, error: e.error })));
       }
@@ -316,14 +316,14 @@ export class InitializationCoordinator implements IInitializationCoordinator {
           try {
             if (this.serviceManager && typeof this.serviceManager.get === 'function') {
               await this.serviceManager.get(serviceName);
-              console.log(`[InitializationCoordinator] Agent service ${serviceName} initialized`);
+              // Agent service initialized
             }
           } catch (error) {
             console.warn(`[InitializationCoordinator] Failed to initialize agent service ${serviceName}:`, error);
           }
         }
         
-        console.log('[InitializationCoordinator] Agents initialized');
+        // Agents initialized
       });
       componentsInitialized.push('agents');
 
@@ -348,7 +348,7 @@ export class InitializationCoordinator implements IInitializationCoordinator {
     try {
       await this.initializeComponent('completion', async () => {
         // Final initialization steps
-        console.log('[InitializationCoordinator] Initialization completed');
+        // Initialization completed
       });
       componentsInitialized.push('completion');
 

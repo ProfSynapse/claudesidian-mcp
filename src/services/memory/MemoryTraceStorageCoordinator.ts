@@ -118,7 +118,7 @@ class MemoryTracePersistenceQueue {
 
     async enqueue(item: MemoryTracePersistenceItem): Promise<void> {
         this.queue.push(item);
-        console.log(`[MemoryTracePersistenceQueue] Queued trace ${item.traceId}, queue size: ${this.queue.length}`);
+        // Trace queued for persistence
     }
 
     async startBackgroundProcessing(): Promise<void> {
@@ -127,7 +127,7 @@ class MemoryTracePersistenceQueue {
         }
 
         this.processing = true;
-        console.log('[MemoryTracePersistenceQueue] Starting background processing');
+        // Background processing started
 
         while (this.processing && this.queue.length > 0) {
             try {
@@ -140,7 +140,7 @@ class MemoryTracePersistenceQueue {
         }
 
         this.processing = false;
-        console.log('[MemoryTracePersistenceQueue] Background processing stopped');
+        // Background processing stopped
     }
 
     private async processBatch(): Promise<void> {
@@ -149,7 +149,7 @@ class MemoryTracePersistenceQueue {
         }
 
         const batch = this.queue.splice(0, this.batchSize);
-        console.log(`[MemoryTracePersistenceQueue] Processing batch of ${batch.length} items`);
+        // Processing batch items
 
         for (const item of batch) {
             try {
@@ -169,7 +169,7 @@ class MemoryTracePersistenceQueue {
                     metadata: this.mapMetadata(item.trace.metadata)
                 });
 
-                console.log(`[MemoryTracePersistenceQueue] Successfully persisted queued trace ${item.traceId}`);
+                // Trace persisted successfully
 
             } catch (error) {
                 console.error(`[MemoryTracePersistenceQueue] Failed to persist trace ${item.traceId}:`, error);
@@ -179,7 +179,7 @@ class MemoryTracePersistenceQueue {
                     item.retryCount++;
                     item.lastError = error instanceof Error ? error.message : String(error);
                     this.queue.push(item); // Re-queue for retry
-                    console.log(`[MemoryTracePersistenceQueue] Re-queued ${item.traceId} for retry ${item.retryCount}/${item.maxRetries}`);
+                    // Trace re-queued for retry
                 } else {
                     console.error(`[MemoryTracePersistenceQueue] Permanently failed to persist ${item.traceId} after ${item.maxRetries} retries`);
                 }
@@ -304,7 +304,7 @@ class MemoryTraceValidator {
             const hasCollection = await this.vectorStore.hasCollection('memory_traces');
             
             if (!hasCollection) {
-                console.log('[MemoryTraceValidator] Creating missing memory_traces collection');
+                // Creating missing collection
                 await this.collectionLifecycleManager.ensureStandardCollections();
             } else {
                 // Validate existing collection health
@@ -370,7 +370,7 @@ export class MemoryTraceStorageCoordinator {
      */
     async storeMemoryTrace(traceId: string, trace: MemoryTraceData): Promise<StorageResult> {
         try {
-            console.log(`[MemoryTraceStorageCoordinator] Storing memory trace: ${traceId}`);
+            // Storing memory trace
 
             // 1. Validate trace data
             const validationResult = await this.validator.validateTraceData(trace);
@@ -427,7 +427,7 @@ export class MemoryTraceStorageCoordinator {
                 metadata: this.mapMetadata(trace.metadata) || { tool: 'unknown', params: {}, result: {}, relatedFiles: [] }
             });
 
-            console.log(`[MemoryTraceStorageCoordinator] Immediate persistence successful for ${traceId}`);
+            // Immediate persistence successful
             return { success: true, result, method: 'immediate' };
 
         } catch (error) {
@@ -476,7 +476,7 @@ export class MemoryTraceStorageCoordinator {
      * Flush the queue and stop background processing
      */
     async shutdown(): Promise<void> {
-        console.log('[MemoryTraceStorageCoordinator] Shutting down...');
+        // Service shutting down
         this.persistenceQueue.stopProcessing();
         
         // Wait for any ongoing processing to complete

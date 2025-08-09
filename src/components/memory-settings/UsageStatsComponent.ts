@@ -162,17 +162,17 @@ export class UsageStatsComponent extends BaseSettingsTab {
         const pluginInstance = (window as any).app.plugins.plugins['claudesidian-mcp'];
         if (pluginInstance?.eventManager) {
             pluginInstance.eventManager.on('embedding-created', async () => {
-                console.log('Embedding created event received, refreshing stats');
+                // Embedding created event received
                 await this.refresh();
             });
             
             pluginInstance.eventManager.on('batch-embedding-completed', async () => {
-                console.log('Batch embedding completed event received, refreshing stats');
+                // Batch embedding completed event received
                 await this.refresh();
             });
             
             pluginInstance.eventManager.on('collection-stats-updated', async () => {
-                console.log('Collection stats updated event received, refreshing stats');
+                // Collection stats updated event received
                 await this.refresh();
             });
         }
@@ -180,7 +180,7 @@ export class UsageStatsComponent extends BaseSettingsTab {
         // Also listen for the special collections purged event from UsageStatsService
         if (this.usageStatsService) {
             this.usageStatsService.on(USAGE_EVENTS.COLLECTIONS_PURGED, async () => {
-                console.log('Collections purged event received, forcing complete refresh');
+                // Collections purged event received
                 // Explicitly request a new set of stats by setting all components to null
                 this.tokenUsageComponent = null;
                 this.collectionStatsComponent = null;

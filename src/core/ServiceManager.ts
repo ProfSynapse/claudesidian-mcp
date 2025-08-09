@@ -262,7 +262,7 @@ export class ServiceManager implements IServiceManager {
             }, 0);
             
             const duration = Date.now() - startTime;
-            console.log(`[ServiceManager] Critical services initialized in ${duration}ms`);
+            // Critical services initialized
             
         } catch (error) {
             console.error('[ServiceManager] Service initialization failed:', error);
@@ -280,13 +280,13 @@ export class ServiceManager implements IServiceManager {
         }
 
         const stageStartTime = Date.now();
-        console.log(`[ServiceManager] Initializing ${stage} stage with ${serviceNames.length} services`);
+        // Initializing services for stage
         
         // Initialize services in parallel within stage, but respect dependencies
         const initPromises = serviceNames.map(async (serviceName) => {
             try {
                 await this.getService(serviceName);
-                console.log(`[ServiceManager] ✓ Initialized ${serviceName} (${stage})`);
+                // Service initialized successfully
             } catch (error) {
                 console.error(`[ServiceManager] ✗ Failed to initialize ${serviceName}:`, error);
                 throw error;
@@ -296,7 +296,7 @@ export class ServiceManager implements IServiceManager {
         await Promise.all(initPromises);
         
         const stageDuration = Date.now() - stageStartTime;
-        console.log(`[ServiceManager] ${stage} stage completed in ${stageDuration}ms`);
+        // Stage initialization completed
     }
 
     /**
@@ -354,7 +354,7 @@ export class ServiceManager implements IServiceManager {
         }
         
         this.isStarted = true;
-        console.log('[ServiceManager] Starting service manager');
+        // Service manager starting
         
         // Initialize services
         await this.initializeServices();
@@ -368,7 +368,7 @@ export class ServiceManager implements IServiceManager {
             return;
         }
         
-        console.log('[ServiceManager] Stopping service manager');
+        // Service manager stopping
         
         // Stop services in reverse dependency order
         await this.cleanup();
@@ -387,7 +387,7 @@ export class ServiceManager implements IServiceManager {
             // Clear stage mappings
             this.serviceStages.clear();
             
-            console.log('[ServiceManager] Cleanup completed');
+            // Service cleanup completed
             
         } catch (error) {
             console.error('[ServiceManager] Cleanup error:', error);

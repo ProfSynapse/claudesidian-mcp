@@ -34,7 +34,7 @@ export class PersistenceManager {
     this.plugin = plugin;
     this.saveDebounceMs = saveDebounceMs;
     this.maxRetries = maxRetries;
-    console.log('[PersistenceManager] Initialized with Obsidian App instance');
+    // PersistenceManager initialized with Obsidian App instance
   }
 
   /**
@@ -46,10 +46,10 @@ export class PersistenceManager {
     const normalizedPath = normalizePath(dirPath);
     const exists = await this.app.vault.adapter.exists(normalizedPath);
     if (!exists) {
-      console.log(`[PersistenceManager] Creating directory: ${normalizedPath}`);
+      // Creating directory
       await this.app.vault.adapter.mkdir(normalizedPath);
     } else {
-      console.log(`[PersistenceManager] Directory already exists: ${normalizedPath}`);
+      // Directory already exists
     }
   }
 
@@ -94,7 +94,7 @@ export class PersistenceManager {
   private async executeSaveWithRetry(collectionName: string, saveFunction: () => Promise<void>): Promise<void> {
     // Check if a save is already active for this collection
     if (this.activeSaves.has(collectionName)) {
-      console.log(`[PersistenceManager] Save already active for collection ${collectionName}, skipping duplicate`);
+      // Save already active, skipping duplicate
       return;
     }
 
@@ -109,7 +109,7 @@ export class PersistenceManager {
       this.saveTimeouts.delete(collectionName);
       this.retryAttempts.delete(collectionName);
       this.activeSaves.delete(collectionName);
-      console.log(`[PersistenceManager] Successfully saved collection ${collectionName}${currentAttempt > 0 ? ` after ${currentAttempt} retries` : ''}`);
+      // Collection saved successfully
     } catch (error) {
       const nextAttempt = currentAttempt + 1;
       
@@ -224,7 +224,7 @@ export class PersistenceManager {
    */
   async saveToFile(dataFilePath: string, metaFilePath: string, data: PersistenceData): Promise<void> {
     try {
-      console.log(`[PersistenceManager] Saving data to ${dataFilePath}...`);
+      // Saving data to disk
 
       // Ensure the directory exists
       const dirPath = dataFilePath.substring(0, dataFilePath.lastIndexOf('/'));
@@ -241,12 +241,12 @@ export class PersistenceManager {
       };
 
       // Save metadata to disk
-      console.log(`[PersistenceManager] Writing metadata to ${metaFilePath}...`);
+      // Writing metadata
       const normalizedMetaPath = normalizePath(metaFilePath);
       await this.app.vault.adapter.write(normalizedMetaPath, JSON.stringify(metadata, null, 2));
 
       // Write data to final file (Obsidian API handles atomicity)
-      console.log(`[PersistenceManager] Writing ${data.items.length} items to ${dataFilePath}...`);
+      // Writing items to file
       const jsonData = JSON.stringify({
         items: data.items,
         metadata
@@ -269,7 +269,7 @@ export class PersistenceManager {
       // Verify the file was written
       if (await this.app.vault.adapter.exists(normalizedDataPath)) {
         const stats = await this.app.vault.adapter.stat(normalizedDataPath);
-        console.log(`[PersistenceManager] Successfully saved data with ${data.items.length} items to disk (size: ${stats?.size || 0} bytes)`);
+        // Data saved to disk
       } else {
         console.error(`[PersistenceManager] File write verification failed - file ${dataFilePath} doesn't exist after write`);
       }
@@ -313,21 +313,21 @@ export class PersistenceManager {
       
       // Check if the data file exists
       if (!await this.app.vault.adapter.exists(normalizedPath)) {
-        console.log(`[PersistenceManager] No data file found at ${dataFilePath}, starting with empty data`);
+        // No data file found, using empty data
         return null;
       }
 
       // Read the data file
       const fileContents = await this.app.vault.adapter.read(normalizedPath);
       if (!fileContents || fileContents.trim().length === 0) {
-        console.log(`[PersistenceManager] Data file at ${dataFilePath} is empty`);
+        // Data file is empty
         return null;
       }
 
       // Parse the JSON data
       const data = JSON.parse(fileContents);
 
-      console.log(`[PersistenceManager] Successfully loaded ${data.items?.length || 0} items from ${dataFilePath}`);
+      // Data loaded from file
       return {
         items: data.items || [],
         metadata: data.metadata || {}
@@ -347,7 +347,7 @@ export class PersistenceManager {
     const normalizedPath = normalizePath(dirPath);
     
     if (!await this.app.vault.adapter.exists(normalizedPath)) {
-      console.log(`[PersistenceManager] Directory does not exist: ${dirPath}`);
+      // Directory does not exist
       return [];
     }
 
@@ -358,7 +358,7 @@ export class PersistenceManager {
         return parts[parts.length - 1];
       }).filter(name => !name.startsWith('.'));
       
-      console.log(`[PersistenceManager] Found ${subdirs.length} subdirectories in ${dirPath}`);
+      // Found subdirectories
       return subdirs;
     } catch (error) {
       console.error(`[PersistenceManager] Failed to list subdirectories in ${dirPath}:`, error);
@@ -374,7 +374,7 @@ export class PersistenceManager {
     const normalizedPath = normalizePath(dirPath);
     
     if (!await this.app.vault.adapter.exists(normalizedPath)) {
-      console.log(`[PersistenceManager] Directory does not exist, nothing to remove: ${dirPath}`);
+      // Directory does not exist, nothing to remove
       return;
     }
 
@@ -385,7 +385,7 @@ export class PersistenceManager {
           
           // Remove all files first
           for (const filePath of listing.files) {
-            console.log(`[PersistenceManager] Removing file: ${filePath}`);
+            // Removing file
             await this.app.vault.adapter.remove(filePath);
           }
           
@@ -395,13 +395,13 @@ export class PersistenceManager {
           }
           
           // Remove the empty directory
-          console.log(`[PersistenceManager] Removing directory: ${path}`);
+          // Removing directory
           await this.app.vault.adapter.rmdir(path, true);
         }
       };
 
       await removeRecursive(normalizedPath);
-      console.log(`[PersistenceManager] Successfully removed directory ${dirPath} from disk`);
+      // Directory removed from disk
     } catch (error) {
       console.error(`[PersistenceManager] Failed to remove directory ${dirPath}:`, error);
       throw new Error(`Failed to delete directory: ${error instanceof Error ? error.message : String(error)}`);
@@ -412,7 +412,7 @@ export class PersistenceManager {
    * Clean up any pending save operations
    */
   cleanup(): void {
-    console.log(`[PersistenceManager] Cleaning up ${this.saveTimeouts.size} pending save operations`);
+    // Cleaning up pending save operations
     for (const [collectionName, timeout] of Array.from(this.saveTimeouts.entries())) {
       clearTimeout(timeout);
     }
@@ -441,10 +441,10 @@ export class PersistenceManager {
     try {
       const normalizedPath = normalizePath(path);
       if (!await this.app.vault.adapter.exists(normalizedPath)) {
-        console.log(`[PersistenceManager] Creating directory: ${normalizedPath}`);
+        // Creating directory
         await this.app.vault.adapter.mkdir(normalizedPath);
       } else {
-        console.log(`[PersistenceManager] Directory already exists: ${normalizedPath}`);
+        // Directory already exists
       }
     } catch (error) {
       console.error(`[PersistenceManager] Failed to ensure directory exists ${path}:`, error);
@@ -513,7 +513,7 @@ export class PersistenceManager {
       await this.app.vault.adapter.write(testFilePath, 'test');
       await this.app.vault.adapter.remove(testFilePath);
       
-      console.log(`[PersistenceManager] Directory permissions validated for ${path}`);
+      // Directory permissions validated
       return true;
     } catch (error) {
       console.error(`[PersistenceManager] Permission check failed for ${path}:`, error);
@@ -562,7 +562,7 @@ export class PersistenceManager {
     try {
       const normalizedPath = normalizePath(path);
       const stats = await this.app.vault.adapter.stat(normalizedPath);
-      console.log(`[PersistenceManager] Got stats for ${path}: ${stats?.type}, ${stats?.size} bytes`);
+      // File stats retrieved
       return stats;
     } catch (error) {
       console.error(`[PersistenceManager] Failed to get stats for ${path}: ${getErrorMessage(error)}`);
@@ -593,7 +593,7 @@ export class PersistenceManager {
         }
       }
 
-      console.log(`[PersistenceManager] Memory collections total size: ${totalSize.toFixed(2)} MB`);
+      // Memory collections size calculated
       return totalSize;
     } catch (error) {
       console.error('[PersistenceManager] Error calculating memory collections size:', error);
@@ -614,7 +614,7 @@ export class PersistenceManager {
       }
 
       const size = await this.calculateDirectorySize(collectionPath);
-      console.log(`[PersistenceManager] Collection ${collectionName} size: ${size.toFixed(2)} MB`);
+      // Collection size calculated
       return size;
     } catch (error) {
       console.error(`[PersistenceManager] Error calculating size for collection ${collectionName}:`, error);
@@ -645,7 +645,7 @@ export class PersistenceManager {
         }
       }
       
-      console.log(`[PersistenceManager] Collection size breakdown:`, breakdown);
+      // Collection size breakdown calculated
     } catch (error) {
       console.error('[PersistenceManager] Error getting collection size breakdown:', error);
     }
@@ -673,7 +673,7 @@ export class PersistenceManager {
     try {
       const normalizedPath = normalizePath(filePath);
       const content = await this.app.vault.adapter.read(normalizedPath);
-      console.log(`[PersistenceManager] Successfully read file ${filePath} (${content.length} characters)`);
+      // File read successfully
       return content;
     } catch (error) {
       console.error(`[PersistenceManager] File read failed for ${filePath}: ${getErrorMessage(error)}`);

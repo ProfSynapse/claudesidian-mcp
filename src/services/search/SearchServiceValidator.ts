@@ -164,14 +164,14 @@ export class SearchServiceValidator {
             return;
         }
 
-        console.log(`[SearchServiceValidator] Attempting to resolve collection issues for ${searchType} search`);
+        // Attempting to resolve collection issues
 
         // Attempt to create missing collections
         for (const collectionName of validation.missingCollections) {
             try {
-                console.log(`[SearchServiceValidator] Creating missing collection: ${collectionName}`);
+                // Creating missing collection
                 await this.collectionLifecycleManager.ensureStandardCollections();
-                console.log(`[SearchServiceValidator] Successfully created collection: ${collectionName}`);
+                // Collection created successfully
             } catch (error) {
                 console.error(`[SearchServiceValidator] Failed to create collection ${collectionName}:`, error);
             }
@@ -180,9 +180,9 @@ export class SearchServiceValidator {
         // Attempt to recover corrupted collections
         for (const collectionName of validation.corruptedCollections) {
             try {
-                console.log(`[SearchServiceValidator] Attempting to recover collection: ${collectionName}`);
+                // Attempting collection recovery
                 await this.collectionLifecycleManager.recoverCollection(collectionName, 'soft');
-                console.log(`[SearchServiceValidator] Successfully recovered collection: ${collectionName}`);
+                // Collection recovered successfully
             } catch (error) {
                 console.error(`[SearchServiceValidator] Failed to recover collection ${collectionName}:`, error);
             }
@@ -200,7 +200,7 @@ export class SearchServiceValidator {
             );
         }
 
-        console.log(`[SearchServiceValidator] Successfully resolved all collection issues for ${searchType} search`);
+        // Successfully resolved collection issues
     }
 
     /**

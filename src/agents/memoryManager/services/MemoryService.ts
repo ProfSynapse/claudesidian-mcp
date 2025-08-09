@@ -77,7 +77,7 @@ export class MemoryService {
     this.settings = settings;
 
     // Initialize collection manager with proper dependencies using Obsidian API
-    console.log('[MemoryService] Initializing with Obsidian App instance');
+    // MemoryService initializing with Obsidian App instance
     const persistenceManager = new PersistenceManager(this.plugin.app, 250, 5, this.plugin);
     // Extract ChromaClient from vectorStore - assuming ChromaVectorStore has client property
     const chromaClient = (vectorStore as any).client;

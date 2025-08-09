@@ -89,6 +89,13 @@ export interface UniversalSearchParams extends CommonParameters, GraphBoostOptio
   includeContent?: boolean;
   
   /**
+   * Length of context window around search matches (in characters)
+   * Creates snippets with this many characters before and after the match
+   * Required parameter for all searches
+   */
+  snippetLength: number;
+  
+  /**
    * Force semantic search even if traditional might be better (default: auto-detect)
    */
   forceSemanticSearch?: boolean;

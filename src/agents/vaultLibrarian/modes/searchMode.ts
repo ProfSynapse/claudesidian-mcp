@@ -160,6 +160,12 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
           description: 'Whether to include contextual content around matches in results (default: true)',
           default: true
         },
+        snippetLength: {
+          type: 'number',
+          description: 'REQUIRED: Length of context window around search matches (in characters). Creates snippets with this many characters before and after each match. Example: if snippetLength=10 and match is "test" in "This is a test file", snippet would show 10 chars before + match + 10 chars after.',
+          minimum: 5,
+          examples: [50, 100, 200, 1000]
+        },
         forceSemanticSearch: {
           type: 'boolean',
           description: 'Force semantic search even for categories that typically use exact matching (default: auto-detect)',
@@ -192,7 +198,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
           }
         }
       },
-      required: ['query', 'queryType'],
+      required: ['query', 'queryType', 'snippetLength'],
       additionalProperties: false
     };
     

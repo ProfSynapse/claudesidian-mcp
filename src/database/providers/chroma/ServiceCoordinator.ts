@@ -72,7 +72,7 @@ export interface ClientDependentServices {
  */
 export class ServiceCoordinator implements ServiceCoordinatorInterface {
   constructor() {
-    console.log('[ServiceCoordinator] Initialized without Node.js filesystem dependencies');
+    // Service coordinator initialized
   }
 
   /**
@@ -80,16 +80,12 @@ export class ServiceCoordinator implements ServiceCoordinatorInterface {
    * Follows Dependency Inversion Principle - depends on abstractions
    */
   initializeServices(plugin: Plugin): ServiceRegistry {
-    try {
-      console.log('[ServiceCoordinator] Initializing services with Obsidian App instance');
-      
+    try {      
       // Create directory service (requires app and plugin) - now using PersistenceManager with Obsidian API
       const directoryService = new PersistenceManager(plugin.app, 250, 5, plugin);
       
       // Create client factory (depends on directory service)
       const clientFactory = new ChromaClientFactory(directoryService, plugin);
-      
-      console.log('[ServiceCoordinator] Core services initialized successfully');
       
       return {
         directoryService,

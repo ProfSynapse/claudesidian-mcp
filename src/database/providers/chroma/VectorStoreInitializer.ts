@@ -266,11 +266,11 @@ export class VectorStoreInitializer {
    */
   private async initializeCollectionMetadata(context: InitializationContext): Promise<void> {
     try {
-      console.log('[VectorStoreInitializer] Initializing collection metadata (lightweight)');
+      // Initializing collection metadata
       
       // Track memory before listCollections() call
       const memoryBefore = this.getMemoryUsage();
-      console.log(`[VectorStoreInitializer] Memory before listCollections(): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+      // Memory tracking before collections list
       
       // Only load collection schemas and metadata, not full data
       const collections = await context.collectionManager.listCollections();
@@ -278,7 +278,7 @@ export class VectorStoreInitializer {
       // Track memory after listCollections() call
       const memoryAfter = this.getMemoryUsage();
       const memoryDelta = memoryAfter - memoryBefore;
-      console.log(`[VectorStoreInitializer] Memory after listCollections(): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+      // Memory tracking after collections list
       
       if (memoryDelta > 100 * 1024 * 1024) { // > 100MB
         console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in listCollections(): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
@@ -290,14 +290,14 @@ export class VectorStoreInitializer {
           // Register collection with manager but don't load data yet (CONTEXT-AWARE MODE)
           // Track memory before collection creation
           const memoryBefore = this.getMemoryUsage();
-          console.log(`[VectorStoreInitializer] Memory before getOrCreateCollection(${collectionName}): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+          // Memory tracking before collection creation
           
           const collection = await context.collectionManager.getOrCreateCollection(collectionName, true); // Context-aware mode
           
           // Track memory after collection creation
           const memoryAfter = this.getMemoryUsage();
           const memoryDelta = memoryAfter - memoryBefore;
-          console.log(`[VectorStoreInitializer] Memory after getOrCreateCollection(${collectionName}): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+          // Memory tracking after collection creation
           
           if (memoryDelta > 50 * 1024 * 1024) { // > 50MB
             console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in getOrCreateCollection(${collectionName}): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
@@ -312,7 +312,7 @@ export class VectorStoreInitializer {
         }
       }
       
-      console.log(`[VectorStoreInitializer] Initialized metadata for ${metadataCount} collections (no data loaded)`);
+      // Collection metadata initialization completed
       
     } catch (error) {
       console.warn('[VectorStoreInitializer] Collection metadata initialization failed:', error);
@@ -342,7 +342,7 @@ export class VectorStoreInitializer {
             // Collection doesn't exist - create it (CONTEXT-AWARE MODE)
             // Track memory before collection creation
             const memoryBefore = this.getMemoryUsage();
-            console.log(`[VectorStoreInitializer] Memory before createCollection(${collectionName}): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+            // Memory tracking before collection creation
             
             await context.collectionManager.createCollection(collectionName, {
               distance: 'cosine',
@@ -354,7 +354,7 @@ export class VectorStoreInitializer {
             // Track memory after collection creation
             const memoryAfter = this.getMemoryUsage();
             const memoryDelta = memoryAfter - memoryBefore;
-            console.log(`[VectorStoreInitializer] Memory after createCollection(${collectionName}): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+            // Memory tracking after collection creation
             
             if (memoryDelta > 50 * 1024 * 1024) { // > 50MB
               console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in createCollection(${collectionName}): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
@@ -389,7 +389,7 @@ export class VectorStoreInitializer {
     try {
       // Track memory before listCollections() call
       const memoryBefore = this.getMemoryUsage();
-      console.log(`[VectorStoreInitializer] LifecycleManager - Memory before listCollections(): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+      // Lifecycle manager memory tracking before
       
       // Check if we have any collections to manage
       const collections = await context.collectionManager.listCollections();
@@ -397,7 +397,7 @@ export class VectorStoreInitializer {
       // Track memory after listCollections() call
       const memoryAfter = this.getMemoryUsage();
       const memoryDelta = memoryAfter - memoryBefore;
-      console.log(`[VectorStoreInitializer] LifecycleManager - Memory after listCollections(): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+      // Lifecycle manager memory tracking after
       
       if (memoryDelta > 100 * 1024 * 1024) { // > 100MB
         console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in LifecycleManager listCollections(): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
@@ -510,7 +510,7 @@ export class VectorStoreInitializer {
     const diagnostics: CollectionDiagnostics[] = [];
     
     try {
-      console.log(`[VectorStoreInitializer] Collection metadata diagnostics (lightweight approach):`);
+      // Collection metadata diagnostics
       
       for (const collectionName of VectorStoreInitializer.STANDARD_COLLECTIONS) {
         const collectionDiagnostic = await this.getCollectionMetadataOnly(context, collectionName);
@@ -536,7 +536,7 @@ export class VectorStoreInitializer {
       }
       
       const existingCollections = diagnostics.filter(d => d.exists).length;
-      console.log(`[VectorStoreInitializer] Metadata diagnostics complete: ${existingCollections}/${diagnostics.length} collections exist (lightweight approach used)`);
+      // Metadata diagnostics completed
       
       return diagnostics;
       
@@ -572,14 +572,14 @@ export class VectorStoreInitializer {
       try {
         // Track memory before collection access
         const memoryBefore = this.getMemoryUsage();
-        console.log(`[VectorStoreInitializer] Memory before metadata getOrCreateCollection(${collectionName}): ${Math.round(memoryBefore / 1024 / 1024)}MB`);
+        // Memory tracking before metadata collection
         
         const collection = await context.collectionManager.getOrCreateCollection(collectionName, true); // Context-aware mode for metadata
         
         // Track memory after collection access
         const memoryAfter = this.getMemoryUsage();
         const memoryDelta = memoryAfter - memoryBefore;
-        console.log(`[VectorStoreInitializer] Memory after metadata getOrCreateCollection(${collectionName}): ${Math.round(memoryAfter / 1024 / 1024)}MB (delta: ${Math.round(memoryDelta / 1024 / 1024)}MB)`);
+        // Memory tracking after metadata collection
         
         if (memoryDelta > 50 * 1024 * 1024) { // > 50MB
           console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in metadata getOrCreateCollection(${collectionName}): ${Math.round(memoryDelta / 1024 / 1024)}MB`);
@@ -705,7 +705,7 @@ export class VectorStoreInitializer {
    */
   private async disableContextAwareModeForAllCollections(context: InitializationContext): Promise<void> {
     try {
-      console.log('[VectorStoreInitializer] Disabling context-aware mode for all collections after initialization');
+      // Disabling context-aware mode
       
       const collections = await context.collectionManager.listCollections();
       let disabledCount = 0;
@@ -725,7 +725,7 @@ export class VectorStoreInitializer {
         }
       }
       
-      console.log(`[VectorStoreInitializer] Disabled context-aware mode for ${disabledCount}/${collections.length} collections - normal search operations now enabled`);
+      // Context-aware mode disabled for collections
       
     } catch (error) {
       console.warn('[VectorStoreInitializer] Failed to disable context-aware mode for collections:', error);

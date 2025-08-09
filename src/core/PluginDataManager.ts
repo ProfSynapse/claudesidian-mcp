@@ -80,7 +80,7 @@ export class SettingsMigrationManager {
     // Apply migrations in order
     for (const migration of applicableMigrations) {
       try {
-        console.log(`[PluginDataManager] Applying migration from ${migration.fromVersion} to ${migration.toVersion}`);
+        // Applying migration
         migratedData = migration.migrate(migratedData);
         migratedData._version = migration.toVersion;
       } catch (error) {
@@ -153,7 +153,7 @@ export class PluginDataManager<T extends Record<string, any>> {
       // Validate and merge with defaults
       this.settings = this.validateAndMerge(migratedData);
       
-      console.log(`[PluginDataManager] Settings loaded and migrated to version ${this.plugin.manifest.version}`);
+      // Settings loaded and migrated
       
     } catch (error) {
       console.error('[PluginDataManager] Failed to load plugin data:', error);
@@ -188,7 +188,7 @@ export class PluginDataManager<T extends Record<string, any>> {
       await this.plugin.saveData(dataToSave);
       this.isDirty = false;
       
-      console.log('[PluginDataManager] Settings saved successfully');
+      // Settings saved
       
     } catch (error) {
       console.error('[PluginDataManager] Failed to save plugin data:', error);
@@ -327,7 +327,7 @@ export class PluginDataManager<T extends Record<string, any>> {
     
     await this.plugin.saveData(currentData);
     
-    console.log(`[PluginDataManager] Backup created: ${backupKey}`);
+    // Backup created
     return backupKey;
   }
 
@@ -351,7 +351,7 @@ export class PluginDataManager<T extends Record<string, any>> {
     this.settings = this.validateAndMerge(migratedData);
     await this.save();
     
-    console.log(`[PluginDataManager] Restored from backup: ${backupKey}`);
+    // Restored from backup
   }
 
   /**
