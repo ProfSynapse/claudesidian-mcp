@@ -6,6 +6,9 @@
  * Enhanced with Obsidian Plugin API support for advanced directory operations
  */
 
+import { normalizePath, Plugin } from 'obsidian';
+import { getErrorMessage } from '../../../../utils/errorUtils';
+
 export interface FileSystemInterface {
   existsSync(path: string): boolean;
   mkdirSync(path: string, options?: { recursive?: boolean }): void;
@@ -25,7 +28,7 @@ export interface PersistenceData {
 
 export class PersistenceManager {
   private fs: FileSystemInterface;
-  private plugin?: import('obsidian').Plugin; // Optional Obsidian plugin for enhanced operations
+  private plugin?: Plugin; // Optional Obsidian plugin for enhanced operations
   private saveDebounceMs = 250;
   private saveTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private retryAttempts: Map<string, number> = new Map();
@@ -37,7 +40,7 @@ export class PersistenceManager {
     fs: FileSystemInterface, 
     saveDebounceMs = 250, 
     maxRetries = 5, 
-    plugin?: import('obsidian').Plugin
+    plugin?: Plugin
   ) {
     this.fs = fs;
     this.plugin = plugin;
@@ -579,15 +582,11 @@ export class PersistenceManager {
     }
 
     try {
-      const { normalizePath } = await import('obsidian');
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
-      
       const normalizedPath = normalizePath(path);
       if (!await this.plugin.app.vault.adapter.exists(normalizedPath)) {
         await this.plugin.app.vault.adapter.mkdir(normalizedPath);
       }
     } catch (error) {
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
       throw new Error(`Failed to ensure directory exists ${path}: ${getErrorMessage(error)}`);
     }
   }
@@ -616,7 +615,6 @@ export class PersistenceManager {
             }
           } catch (error) {
             // Skip files we can't stat
-            const { getErrorMessage } = await import('../../../../utils/errorUtils');
             console.warn(`Unable to stat file ${file}: ${getErrorMessage(error)}`);
           }
         }
@@ -627,7 +625,6 @@ export class PersistenceManager {
         }
       } catch (error) {
         // If we can't read a directory, skip it and continue
-        const { getErrorMessage } = await import('../../../../utils/errorUtils');
         console.warn(`Unable to read directory ${dirPath}: ${getErrorMessage(error)}`);
       }
       
@@ -635,7 +632,6 @@ export class PersistenceManager {
     };
     
     try {
-      const { normalizePath } = await import('obsidian');
       const normalizedPath = normalizePath(directoryPath);
       const sizeInBytes = await calculateSize(normalizedPath);
       return sizeInBytes / (1024 * 1024); // Convert to MB
@@ -655,7 +651,6 @@ export class PersistenceManager {
     }
 
     try {
-      const { normalizePath } = await import('obsidian');
       const normalizedPath = normalizePath(path);
       
       if (!await this.directoryExists(normalizedPath)) {
@@ -684,7 +679,6 @@ export class PersistenceManager {
     }
 
     try {
-      const { normalizePath } = await import('obsidian');
       const normalizedPath = normalizePath(path);
       const stat = await this.plugin.app.vault.adapter.stat(normalizedPath);
       return stat?.type === 'folder';
@@ -706,9 +700,6 @@ export class PersistenceManager {
     }
 
     try {
-      const { normalizePath } = await import('obsidian');
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
-      
       const normalizedPath = normalizePath(path);
       if (!await this.plugin.app.vault.adapter.exists(normalizedPath)) {
         return [];
@@ -720,7 +711,6 @@ export class PersistenceManager {
         return parts[parts.length - 1];
       });
     } catch (error) {
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
       throw new Error(`Failed to read directory ${path}: ${getErrorMessage(error)}`);
     }
   }
@@ -735,13 +725,9 @@ export class PersistenceManager {
     }
 
     try {
-      const { normalizePath } = await import('obsidian');
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
-      
       const normalizedPath = normalizePath(path);
       return await this.plugin.app.vault.adapter.stat(normalizedPath);
     } catch (error) {
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
       throw new Error(`Failed to get stats for ${path}: ${getErrorMessage(error)}`);
     }
   }
@@ -754,7 +740,6 @@ export class PersistenceManager {
     let totalSize = 0;
 
     try {
-      const { normalizePath } = await import('obsidian');
       const normalizedCollectionsPath = normalizePath(collectionsPath);
       
       if (!await this.directoryExists(normalizedCollectionsPath)) {
@@ -782,7 +767,6 @@ export class PersistenceManager {
    */
   async calculateCollectionSize(collectionsPath: string, collectionName: string): Promise<number> {
     try {
-      const { normalizePath } = await import('obsidian');
       const normalizedCollectionsPath = normalizePath(collectionsPath);
       const collectionPath = normalizePath(`${normalizedCollectionsPath}/${collectionName}`);
       
@@ -804,7 +788,6 @@ export class PersistenceManager {
     const breakdown: Record<string, number> = {};
 
     try {
-      const { normalizePath } = await import('obsidian');
       const normalizedCollectionsPath = normalizePath(collectionsPath);
       
       if (!await this.directoryExists(normalizedCollectionsPath)) {
@@ -837,7 +820,6 @@ export class PersistenceManager {
     }
 
     try {
-      const { normalizePath } = await import('obsidian');
       const normalizedPath = normalizePath(filePath);
       const stat = await this.plugin.app.vault.adapter.stat(normalizedPath);
       return stat?.type === 'file';
@@ -856,13 +838,9 @@ export class PersistenceManager {
     }
 
     try {
-      const { normalizePath } = await import('obsidian');
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
-      
       const normalizedPath = normalizePath(filePath);
       return await this.plugin.app.vault.adapter.read(normalizedPath);
     } catch (error) {
-      const { getErrorMessage } = await import('../../../../utils/errorUtils');
       throw new Error(`File read failed for ${filePath}: ${getErrorMessage(error)}`);
     }
   }
