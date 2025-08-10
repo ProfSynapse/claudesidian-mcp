@@ -33,6 +33,7 @@ export class PluginLifecycleManager {
     private settingsTab?: SettingsTab;
     private isInitialized: boolean = false;
     private startTime: number = Date.now();
+    private hasRunBackgroundStartup: boolean = false;
 
     constructor(config: PluginLifecycleConfig) {
         this.config = config;
@@ -121,6 +122,9 @@ export class PluginLifecycleManager {
             
             // Mark as fully initialized
             this.isInitialized = true;
+            
+            // Start background startup processing after everything is ready
+            this.startBackgroundStartupProcessing();
             
             const bgLoadTime = Date.now() - bgStartTime;
             
@@ -288,6 +292,43 @@ export class PluginLifecycleManager {
                 return new MemoryTraceService(memoryTraceCollection, embeddingService);
             }
         });
+
+        // File event manager service - for embedding queue management
+        await serviceManager.registerService({
+            name: 'fileEventManager',
+            dependencies: ['memoryService', 'workspaceService', 'embeddingService', 'eventManager'],
+            create: async () => {
+                const { FileEventManagerModular } = await import('../services/file-events/FileEventManagerModular');
+                
+                const memoryService = await serviceManager.getService<any>('memoryService');
+                const workspaceService = await serviceManager.getService<any>('workspaceService');
+                const embeddingService = await serviceManager.getService<any>('embeddingService');
+                const eventManager = await serviceManager.getService<any>('eventManager');
+                
+                // Get embedding strategy from settings
+                const embeddingStrategy = {
+                    type: settings.settings.memory?.embeddingStrategy || 'idle',
+                    idleTimeThreshold: settings.settings.memory?.idleTimeThreshold || 60000,
+                    batchSize: 10,
+                    processingDelay: 1000
+                };
+                
+                const fileEventManager = new FileEventManagerModular(
+                    plugin.app,
+                    plugin,
+                    memoryService,
+                    workspaceService,
+                    embeddingService,
+                    eventManager,
+                    embeddingStrategy
+                );
+                
+                // Initialize the file event manager
+                await fileEventManager.initialize();
+                
+                return fileEventManager;
+            }
+        });
     }
 
     /**
@@ -318,6 +359,7 @@ export class PluginLifecycleManager {
             await this.config.serviceManager.getService('memoryService');
             await this.config.serviceManager.getService('workspaceService');
             await this.config.serviceManager.getService('memoryTraceService');
+            await this.config.serviceManager.getService('fileEventManager');
         } catch (error) {
             console.error('[PluginLifecycleManager] Business service initialization failed:', error);
             throw error;
@@ -357,6 +399,79 @@ export class PluginLifecycleManager {
             console.error('[PluginLifecycleManager] Failed to initialize data directories:', error);
             // Don't throw - plugin should function without directories for now
         }
+    }
+
+    /**
+     * Start background startup processing - runs independently after plugin initialization
+     */
+    private startBackgroundStartupProcessing(): void {
+        // Prevent multiple background startup processes
+        if (this.hasRunBackgroundStartup) {
+            console.log('[PluginLifecycleManager] Background startup processing already completed - skipping');
+            return;
+        }
+        
+        // Run startup processing in background without blocking plugin initialization
+        setTimeout(async () => {
+            try {
+                // Double-check to prevent race conditions
+                if (this.hasRunBackgroundStartup) {
+                    console.log('[PluginLifecycleManager] Background startup processing already completed - skipping delayed execution');
+                    return;
+                }
+                
+                this.hasRunBackgroundStartup = true;
+                
+                const memorySettings = this.config.settings.settings.memory;
+                const embeddingStrategy = memorySettings?.embeddingStrategy || 'idle';
+                
+                if (embeddingStrategy === 'startup') {
+                    console.log('[PluginLifecycleManager] 🚀 Starting one-time background startup processing');
+                    
+                    // Wait for FileEventManager to be ready (with retry logic)
+                    const fileEventManager = await this.waitForService('fileEventManager', 30000);
+                    if (fileEventManager && typeof (fileEventManager as any).processStartupQueue === 'function') {
+                        await (fileEventManager as any).processStartupQueue();
+                        console.log('[PluginLifecycleManager] ✅ One-time background startup processing completed');
+                    } else {
+                        console.warn('[PluginLifecycleManager] FileEventManager not available for background startup processing');
+                        // Reset flag so it can be retried if needed
+                        this.hasRunBackgroundStartup = false;
+                    }
+                } else {
+                    console.log(`[PluginLifecycleManager] Embedding strategy is '${embeddingStrategy}' - skipping background startup processing`);
+                }
+            } catch (error) {
+                console.error('[PluginLifecycleManager] Error in background startup processing:', error);
+                // Reset flag on error so it can be retried
+                this.hasRunBackgroundStartup = false;
+            }
+        }, 2000); // 2 second delay to ensure Obsidian is fully loaded
+    }
+
+    /**
+     * Wait for a service to be ready with retry logic
+     */
+    private async waitForService<T>(serviceName: string, timeoutMs: number = 30000): Promise<T | null> {
+        const startTime = Date.now();
+        const retryInterval = 1000; // Check every 1 second
+        
+        while (Date.now() - startTime < timeoutMs) {
+            try {
+                const service = await this.getService<T>(serviceName, 2000);
+                if (service) {
+                    return service;
+                }
+            } catch (error) {
+                // Service not ready yet, continue waiting
+            }
+            
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, retryInterval));
+        }
+        
+        console.warn(`[PluginLifecycleManager] Service '${serviceName}' not ready after ${timeoutMs}ms`);
+        return null;
     }
 
     /**

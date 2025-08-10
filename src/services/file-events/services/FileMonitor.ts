@@ -281,14 +281,14 @@ export class FileMonitor implements IFileMonitor {
             const serviceContainer = plugin.getServiceContainer();
             
             // Check if vector services are ready before trying to use them
-            if (!serviceContainer.isReady('vectorStore') || !serviceContainer.isReady('embeddingService')) {
+            if (!serviceContainer.isServiceReady || !serviceContainer.isServiceReady('vectorStore') || !serviceContainer.isServiceReady('embeddingService')) {
                 // Services not ready yet - assume file needs embedding to be safe
                 return false;
             }
             
             // Get vector store and embedding service (they should be ready now)
-            const vectorStore = serviceContainer.getIfReady('vectorStore');
-            const embeddingService = serviceContainer.getIfReady('embeddingService');
+            const vectorStore = serviceContainer.getServiceIfReady('vectorStore');
+            const embeddingService = serviceContainer.getServiceIfReady('embeddingService');
             
             if (!vectorStore || !embeddingService) {
                 return false;

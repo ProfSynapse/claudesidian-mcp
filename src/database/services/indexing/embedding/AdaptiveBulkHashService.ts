@@ -93,7 +93,7 @@ export class AdaptiveBulkHashService {
         console.log(`[AdaptiveBulkHashService] Processing batch ${i + 1}/${batches.length} (${batch.length} files)`);
         
         // Check memory pressure before processing batch
-        if (this.fileStatsCollector.isMemoryPressureHigh(0.85)) {
+        if (this.fileStatsCollector.isMemoryPressureHigh(0.92)) {
           console.warn(`[AdaptiveBulkHashService] High memory pressure detected, falling back to individual processing`);
           const fallbackResults = await this.fallbackToIndividualProcessing(batch, vectorStore);
           allResults.push(...fallbackResults);

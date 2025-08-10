@@ -51,6 +51,8 @@ export interface IEmbeddingScheduler {
     scheduleEmbedding(events: FileEvent[]): Promise<void>;
     batchProcessEmbeddings(events: FileEvent[]): Promise<ProcessingResult[]>;
     forceProcessEmbeddings(events: FileEvent[]): Promise<void>;
+    setQueueProcessingCallback(callback: () => void): void;
+    notifyFileEvents(events: FileEvent[]): void;
 }
 
 export interface IActivityTracker {

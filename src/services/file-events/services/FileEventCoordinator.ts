@@ -11,7 +11,8 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     private processQueueDebounced!: () => void;
     private isStartupPhase = true;
     private startupTimeout: NodeJS.Timeout | null = null;
-    private embeddingStrategy: EmbeddingStrategy = { type: 'idle', idleTimeThreshold: 60000, batchSize: 10, processingDelay: 1000 };
+    private embeddingStrategy: EmbeddingStrategy = { type: 'idle', idleTimeThreshold: 10000, batchSize: 10, processingDelay: 1000 };
+    private notifiedFiles = new Set<string>(); // Track files we've already notified about
 
     // Event handlers
     private fileCreatedHandler!: (file: TAbstractFile) => void;
@@ -181,6 +182,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
 
     async processQueue(): Promise<void> {
         if (this.isProcessingQueue) {
+            console.log('[FileEventCoordinator] Queue processing already in progress - skipping');
             return;
         }
 
@@ -188,7 +190,10 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         
         try {
             const events = this.dependencies.fileEventQueue.getEvents();
+            console.log(`[FileEventCoordinator] Processing queue - found ${events.length} events`);
+            
             if (events.length === 0) {
+                console.log('[FileEventCoordinator] No events in queue to process');
                 return;
             }
 
@@ -232,25 +237,48 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             if (createModifyEvents.length > 0 && this.dependencies.embeddingScheduler) {
                 // Check if we should process embeddings now or just queue them
                 const strategy = this.dependencies.embeddingScheduler.getStrategy();
+                console.log(`[FileEventCoordinator] Processing ${createModifyEvents.length} create/modify events with strategy: ${strategy.type}`);
                 
                 if (strategy.type === 'startup') {
-                    // For startup strategy, just queue events - don't process them immediately
-                } else {
-                    // For other strategies, process immediately
-                    await this.dependencies.embeddingScheduler.scheduleEmbedding(createModifyEvents);
-                }
-                
-                // Process remaining events for activity tracking (but keep them in queue for startup strategy)
-                for (const event of createModifyEvents) {
-                    if (this.dependencies.fileEventProcessor && !this.dependencies.fileEventProcessor.isProcessing(event.path)) {
+                    // For startup strategy: Record activity but keep in queue for startup processing
+                    console.log('[FileEventCoordinator] Startup strategy - recording activity, keeping in queue for startup processing');
+                    for (const event of createModifyEvents) {
                         if (this.dependencies.activityTracker) {
                             await this.dependencies.activityTracker.recordFileActivity(event);
                         }
-                        
-                        // Only remove from queue if not using startup strategy
-                        if (strategy.type !== 'startup') {
-                            this.dependencies.fileEventQueue.removeEvent(event.path);
+                        // DON'T remove from queue - these will be processed on plugin startup
+                    }
+                } else if (strategy.type === 'idle') {
+                    // For idle strategy, notify scheduler about new events but don't process yet
+                    // Filter out files we've already notified about to prevent infinite loop
+                    const newFiles = createModifyEvents.filter(event => !this.notifiedFiles.has(event.path));
+                    if (newFiles.length > 0) {
+                        console.log(`[FileEventCoordinator] Idle strategy - notifying about ${newFiles.length} new files, skipping ${createModifyEvents.length - newFiles.length} already notified`);
+                        this.dependencies.embeddingScheduler.notifyFileEvents(newFiles);
+                        // Track that we've notified about these files
+                        newFiles.forEach(event => this.notifiedFiles.add(event.path));
+                    } else {
+                        console.log('[FileEventCoordinator] Idle strategy - all files already notified, skipping');
+                    }
+                    
+                    // Record activity but keep in queue for idle processing
+                    for (const event of createModifyEvents) {
+                        if (this.dependencies.activityTracker) {
+                            await this.dependencies.activityTracker.recordFileActivity(event);
                         }
+                        // DON'T remove from queue - these will be processed when idle
+                    }
+                } else {
+                    // For other strategies, process immediately and remove from queue
+                    console.log('[FileEventCoordinator] Other strategy - processing embeddings now');
+                    await this.dependencies.embeddingScheduler.scheduleEmbedding(createModifyEvents);
+                    
+                    // Process and remove from queue
+                    for (const event of createModifyEvents) {
+                        if (this.dependencies.activityTracker) {
+                            await this.dependencies.activityTracker.recordFileActivity(event);
+                        }
+                        this.dependencies.fileEventQueue.removeEvent(event.path);
                     }
                 }
             }
@@ -263,9 +291,16 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         } finally {
             this.isProcessingQueue = false;
             
-            // If new events were added during processing, schedule another run
-            if (this.dependencies.fileEventQueue.size() > 0) {
+            // Only trigger recursion if we're not in startup mode with persistent queue
+            const strategy = this.dependencies.embeddingScheduler?.getStrategy();
+            const hasNewEvents = this.dependencies.fileEventQueue.size() > 0;
+            const shouldRecurse = hasNewEvents && strategy?.type !== 'startup';
+            
+            if (shouldRecurse) {
+                console.log(`[FileEventCoordinator] Scheduling another queue run - ${this.dependencies.fileEventQueue.size()} events remaining`);
                 this.processQueueDebounced();
+            } else if (hasNewEvents && strategy?.type === 'startup') {
+                console.log(`[FileEventCoordinator] Startup strategy - ${this.dependencies.fileEventQueue.size()} events queued, waiting for startup processing`);
             }
         }
     }
@@ -274,13 +309,77 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     setEmbeddingStrategy(strategy: EmbeddingStrategy): void {
         if (this.dependencies.embeddingScheduler) {
             this.dependencies.embeddingScheduler.setStrategy(strategy);
+            // Set up callback for idle-triggered queue processing
+            this.dependencies.embeddingScheduler.setQueueProcessingCallback(async () => {
+                console.log('[FileEventCoordinator] Queue processing triggered by idle mode');
+                await this.processIdleQueue();
+            });
         }
         // Store strategy for when embeddingScheduler becomes available
         this.embeddingStrategy = strategy;
+        console.log('[FileEventCoordinator] Embedding strategy updated:', strategy);
     }
 
     setSystemOperation(isSystem: boolean): void {
         this.dependencies.fileMonitor.setSystemOperation(isSystem);
+    }
+
+    /**
+     * Process queue specifically for idle mode - forces processing and clears queue
+     */
+    async processIdleQueue(): Promise<void> {
+        if (this.isProcessingQueue) {
+            console.log('[FileEventCoordinator] Idle queue processing already in progress - skipping');
+            return;
+        }
+
+        this.isProcessingQueue = true;
+        
+        try {
+            const events = this.dependencies.fileEventQueue.getEvents();
+            console.log(`[FileEventCoordinator] Processing idle queue - found ${events.length} events`);
+            
+            if (events.length === 0) {
+                console.log('[FileEventCoordinator] No events in idle queue to process');
+                return;
+            }
+
+            // Filter for create/modify events that need embedding
+            const createModifyEvents = events.filter(e => e.operation === 'create' || e.operation === 'modify');
+            
+            if (createModifyEvents.length > 0 && this.dependencies.embeddingScheduler) {
+                console.log(`[FileEventCoordinator] Force processing ${createModifyEvents.length} events in idle mode`);
+                // Force process embeddings (bypass idle check since we know we're idle)
+                await this.dependencies.embeddingScheduler.forceProcessEmbeddings(createModifyEvents);
+                
+                // Clear processed events from queue
+                for (const event of createModifyEvents) {
+                    this.dependencies.fileEventQueue.removeEvent(event.path);
+                    console.log(`[FileEventCoordinator] Cleared ${event.path} from queue after idle processing`);
+                }
+            }
+
+            // Handle any delete events
+            const deleteEvents = events.filter(e => e.operation === 'delete');
+            for (const event of deleteEvents) {
+                if (this.dependencies.fileEventProcessor) {
+                    await this.dependencies.fileEventProcessor.processEvent(event);
+                }
+                this.dependencies.fileEventQueue.removeEvent(event.path);
+            }
+
+            // Persist updated queue
+            await this.dependencies.fileEventQueue.persist();
+            
+            // Clear notification tracking for processed files
+            createModifyEvents.forEach(event => this.notifiedFiles.delete(event.path));
+            console.log(`[FileEventCoordinator] Idle queue processing complete - queue cleared and notifications reset`);
+
+        } catch (error) {
+            console.error('[FileEventCoordinator] Error processing idle queue:', error);
+        } finally {
+            this.isProcessingQueue = false;
+        }
     }
 
     /**

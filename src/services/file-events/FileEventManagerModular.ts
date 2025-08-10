@@ -101,6 +101,7 @@ export class FileEventManagerModular {
             await this.coordinator.initialize();
             
             // Set the embedding strategy
+            console.log('[FileEventManagerModular] Setting embedding strategy:', this.embeddingStrategy);
             this.coordinator.setEmbeddingStrategy(this.embeddingStrategy);
             
             // Register session event handlers
@@ -206,6 +207,7 @@ export class FileEventManagerModular {
      */
     async processStartupQueue(): Promise<void> {
         if (this.isProcessingStartupQueue) {
+            console.log('[FileEventManager] Startup queue processing already in progress');
             return;
         }
 
@@ -214,7 +216,7 @@ export class FileEventManagerModular {
         try {
             // First, discover and queue existing files if queue is empty
             const initialQueueSize = this.dependencies.fileEventQueue.size();
-            console.log('[FileEventManager] Starting startup queue processing:', {
+            console.log('[FileEventManager] 🚀 Starting background startup queue processing:', {
                 initialQueueSize,
                 hasEmbeddingScheduler: !!this.dependencies.embeddingScheduler
             });
@@ -230,18 +232,48 @@ export class FileEventManagerModular {
                 return;
             }
 
+            console.log(`[FileEventManager] Found ${queueSize} files in startup queue`);
             
-            // Ensure vector dependencies are ready before processing
-            await this.ensureVectorDependencies();
+            // Wait for vector dependencies to be ready with retry logic
+            await this.waitForVectorDependencies();
             await this.coordinator.processStartupQueue();
             
             const remainingEvents = this.dependencies.fileEventQueue.size();
+            console.log('[FileEventManager] ✅ Background startup queue processing completed:', {
+                processedFiles: queueSize - remainingEvents,
+                remainingEvents
+            });
             
         } catch (error) {
-            console.error('[FileEventManagerModular] Error during startup queue processing:', error);
-            throw error;
+            console.error('[FileEventManager] Error during background startup queue processing:', error);
+            // Don't throw - background processing shouldn't break plugin functionality
         } finally {
             this.isProcessingStartupQueue = false;
+        }
+    }
+
+    /**
+     * Wait for vector dependencies with retry logic for background processing
+     */
+    private async waitForVectorDependencies(): Promise<void> {
+        const maxRetries = 10;
+        const retryDelay = 2000; // 2 seconds
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                await this.ensureVectorDependencies();
+                console.log(`[FileEventManager] Vector dependencies ready on attempt ${attempt}`);
+                return;
+            } catch (error) {
+                console.log(`[FileEventManager] Vector dependencies not ready (attempt ${attempt}/${maxRetries}):`, error instanceof Error ? error.message : String(error));
+                
+                if (attempt < maxRetries) {
+                    console.log(`[FileEventManager] Retrying in ${retryDelay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                } else {
+                    throw new Error(`Vector dependencies not ready after ${maxRetries} attempts`);
+                }
+            }
         }
     }
 
@@ -409,6 +441,12 @@ export class FileEventManagerModular {
                 this.embeddingStrategy
             );
             
+            // Set up callback for idle-triggered queue processing
+            this.dependencies.embeddingScheduler.setQueueProcessingCallback(async () => {
+                console.log('[FileEventManagerModular] Queue processing triggered by idle mode');
+                await this.coordinator.processIdleQueue();
+            });
+            
             this.dependencies.activityTracker = new ActivityTracker(
                 this.app,
                 memoryService,
@@ -464,13 +502,30 @@ export class FileEventManagerModular {
     }
 
     /**
-     * Reload configuration (for compatibility)
+     * Reload configuration - updates embedding strategy from current settings
      */
     reloadConfiguration(): void {
-        // In the modular version, you would update the embedding strategy
-        // This is a placeholder for compatibility
-        if (this.embeddingStrategy) {
-            this.setEmbeddingStrategy(this.embeddingStrategy);
+        try {
+            // Get current settings from the plugin
+            const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+            if (plugin && plugin.settings && plugin.settings.settings.memory) {
+                const memorySettings = plugin.settings.settings.memory;
+                
+                // Create new embedding strategy from current settings
+                const newStrategy = {
+                    type: memorySettings.embeddingStrategy || 'idle',
+                    idleTimeThreshold: memorySettings.idleTimeThreshold || 60000,
+                    batchSize: 10,
+                    processingDelay: 1000
+                };
+                
+                console.log('[FileEventManagerModular] Reloading configuration with new strategy:', newStrategy);
+                this.setEmbeddingStrategy(newStrategy);
+            } else {
+                console.warn('[FileEventManagerModular] Could not reload configuration - settings not available');
+            }
+        } catch (error) {
+            console.error('[FileEventManagerModular] Error reloading configuration:', error);
         }
     }
 }

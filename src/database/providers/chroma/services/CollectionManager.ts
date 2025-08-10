@@ -125,7 +125,6 @@ export class CollectionManager implements ICollectionManager {
   async refreshCollections(): Promise<void> {
     try {
       const collections = await this.client.listCollections();
-      console.log(`[CollectionManager:${this.instanceId}] Collections from client.listCollections():`, collections);
       
       // Track collection changes
       const existingNames = new Set(this.collections);
@@ -133,7 +132,6 @@ export class CollectionManager implements ICollectionManager {
       const newNames = new Set<string>();
       const missingNames = new Set<string>();
       
-      console.log('[CollectionManager] Existing collections before clear:', Array.from(this.collections));
       
       // Clear and repopulate collections set
       this.collections.clear();
@@ -141,12 +139,10 @@ export class CollectionManager implements ICollectionManager {
       // Process collections from ChromaDB
       for (const collection of collections) {
         const collectionName = this.extractCollectionName(collection);
-        console.log('[CollectionManager] Processing collection:', collection, '-> name:', collectionName);
         
         if (collectionName) {
           this.collections.add(collectionName);
           foundNames.add(collectionName);
-          console.log('[CollectionManager] Added collection:', collectionName);
           
           if (!existingNames.has(collectionName)) {
             newNames.add(collectionName);
@@ -156,11 +152,9 @@ export class CollectionManager implements ICollectionManager {
           // Validation handled by CollectionService
           this.collections.add(collectionName);
         } else {
-          console.log('[CollectionManager] Skipped collection (no name):', collection);
         }
       }
       
-      console.log('[CollectionManager] Final collections after processing:', Array.from(this.collections));
       
       // Find removed collections
       for (const existingName of existingNames) {
@@ -174,9 +168,7 @@ export class CollectionManager implements ICollectionManager {
       if (this.persistentPath) {
         // Recovery handled by CollectionService - ensure standard collections
         if (this.collectionService) {
-          console.log('[CollectionManager] Calling ensureStandardCollections(), collections before:', Array.from(this.collections));
           await this.collectionService.ensureStandardCollections();
-          console.log('[CollectionManager] After ensureStandardCollections(), collections are:', Array.from(this.collections));
         }
       }
       
@@ -267,7 +259,6 @@ export class CollectionManager implements ICollectionManager {
     await this.refreshCollections();
     
     const result = Array.from(this.collections);
-    console.log(`[CollectionManager:${this.instanceId}] listCollections() returning:`, result);
     return result;
   }
 

@@ -34,9 +34,9 @@ export interface BatchConfiguration {
 
 export class FileStatsCollector {
   private plugin: Plugin;
-  private maxMemoryPerBatch: number = 100 * 1024 * 1024; // 100MB default
+  private maxMemoryPerBatch: number = 200 * 1024 * 1024; // 200MB default
   private minBatchSize: number = 10;
-  private maxBatchSize: number = 500;
+  // No max batch size limit - memory constraints will naturally limit batch sizes
   private defaultProcessingDelay: number = 1000; // 1 second between batches
 
   constructor(plugin: Plugin) {
@@ -114,9 +114,8 @@ export class FileStatsCollector {
     // Calculate safe batch size based on memory constraints
     let safeBatchSize = Math.floor(this.maxMemoryPerBatch / estimatedMemoryPerFile);
     
-    // Apply min/max constraints
+    // Apply minimum constraint
     safeBatchSize = Math.max(this.minBatchSize, safeBatchSize);
-    safeBatchSize = Math.min(this.maxBatchSize, safeBatchSize);
     
     // For very large files (>10MB), use smaller batches
     const hasLargeFiles = validFiles.some(stat => stat.size > 10 * 1024 * 1024);
@@ -205,7 +204,6 @@ export class FileStatsCollector {
   updateConfiguration(config: Partial<{
     maxMemoryPerBatch: number;
     minBatchSize: number;
-    maxBatchSize: number;
     defaultProcessingDelay: number;
   }>): void {
     if (config.maxMemoryPerBatch !== undefined) {
@@ -214,9 +212,7 @@ export class FileStatsCollector {
     if (config.minBatchSize !== undefined) {
       this.minBatchSize = config.minBatchSize;
     }
-    if (config.maxBatchSize !== undefined) {
-      this.maxBatchSize = config.maxBatchSize;
-    }
+    // maxBatchSize removed - memory constraints naturally limit batch sizes
     if (config.defaultProcessingDelay !== undefined) {
       this.defaultProcessingDelay = config.defaultProcessingDelay;
     }

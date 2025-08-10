@@ -13,6 +13,8 @@ import { Notice, Setting } from 'obsidian';
  * Dependencies: Obsidian Notice/Setting
  */
 export class IndexingSection {
+    private currentErrorEl: HTMLElement | null = null;
+
     constructor(
         private settings: any,
         private saveSettings: () => Promise<void>,
@@ -83,11 +85,22 @@ export class IndexingSection {
             .setDesc('Controls when new or modified notes are automatically indexed and embedded for search')
             .addDropdown(dropdown => dropdown
                 .addOption('idle', 'Idle Mode - Index when Obsidian is inactive')
-                .addOption('startup', 'Startup Mode - Index missing files on restart')
+                .addOption('startup', 'Startup Mode - Queue changes, process in background after restart')
                 .setValue(this.settings.embeddingStrategy || 'idle')
                 .onChange(async (value) => {
                     this.settings.embeddingStrategy = value as 'idle' | 'startup';
                     await this.saveSettings();
+                    
+                    // Update FileEventManager with new strategy immediately
+                    try {
+                        const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+                        if (plugin && typeof plugin.reloadConfiguration === 'function') {
+                            console.log(`[IndexingSection] Embedding strategy changed to: ${value} - reloading configuration`);
+                            plugin.reloadConfiguration();
+                        }
+                    } catch (error) {
+                        console.error('[IndexingSection] Error updating embedding strategy:', error);
+                    }
                     
                     // Trigger re-render to show/hide idle threshold settings
                     if (this.onSettingsChanged) {
@@ -106,7 +119,6 @@ export class IndexingSection {
             .setDesc('How long to wait (in seconds) after the last change before embedding (minimum: 5 seconds)');
         
         let idleTimeInput: HTMLInputElement;
-        let errorEl: HTMLElement | null = null;
         
         idleTimeSetting
             .addText(text => {
@@ -115,7 +127,7 @@ export class IndexingSection {
                     .setPlaceholder('60')
                     .setValue(String(this.settings.idleTimeThreshold ? this.settings.idleTimeThreshold / 1000 : 60)) // Convert from ms to seconds
                     .onChange(async (value) => {
-                        await this.handleIdleTimeChange(value, idleTimeInput, idleTimeSetting, errorEl);
+                        await this.handleIdleTimeChange(value, idleTimeInput, idleTimeSetting);
                     });
             })
             .addExtraButton(button => {
@@ -195,21 +207,21 @@ export class IndexingSection {
     private async handleIdleTimeChange(
         value: string, 
         idleTimeInput: HTMLInputElement, 
-        idleTimeSetting: Setting, 
-        errorEl: HTMLElement | null
+        idleTimeSetting: Setting
     ): Promise<void> {
         const numValue = Number(value);
         
-        // Clear previous error styling
+        // Clear previous error styling and message
         idleTimeInput.style.borderColor = '';
-        if (errorEl) {
-            errorEl.remove();
+        if (this.currentErrorEl) {
+            this.currentErrorEl.remove();
+            this.currentErrorEl = null;
         }
         
         if (value.trim() === '') {
             // Empty value, show error
             idleTimeInput.style.borderColor = 'var(--text-error)';
-            errorEl = idleTimeSetting.settingEl.createDiv({
+            this.currentErrorEl = idleTimeSetting.settingEl.createDiv({
                 text: 'Idle time is required',
                 cls: 'setting-error'
             });
@@ -219,7 +231,7 @@ export class IndexingSection {
         if (isNaN(numValue)) {
             // Invalid number, show error
             idleTimeInput.style.borderColor = 'var(--text-error)';
-            errorEl = idleTimeSetting.settingEl.createDiv({
+            this.currentErrorEl = idleTimeSetting.settingEl.createDiv({
                 text: 'Please enter a valid number',
                 cls: 'setting-error'
             });
@@ -229,7 +241,7 @@ export class IndexingSection {
         if (numValue < 5) {
             // Below minimum, show error
             idleTimeInput.style.borderColor = 'var(--text-error)';
-            errorEl = idleTimeSetting.settingEl.createDiv({
+            this.currentErrorEl = idleTimeSetting.settingEl.createDiv({
                 text: 'Minimum idle time is 5 seconds',
                 cls: 'setting-error'
             });
@@ -239,7 +251,7 @@ export class IndexingSection {
         if (numValue > 3600) {
             // Above reasonable maximum (1 hour), show warning
             idleTimeInput.style.borderColor = 'var(--text-warning)';
-            errorEl = idleTimeSetting.settingEl.createDiv({
+            this.currentErrorEl = idleTimeSetting.settingEl.createDiv({
                 text: 'Warning: Very long idle times may delay embedding',
                 cls: 'setting-warning'
             });
