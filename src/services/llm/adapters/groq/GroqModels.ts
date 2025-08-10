@@ -133,6 +133,40 @@ export const GROQ_MODELS: ModelSpec[] = [
     }
   },
 
+  // OpenAI models on Groq
+  {
+    provider: 'groq',
+    name: 'GPT OSS 20B',
+    apiName: 'openai/gpt-oss-20b',
+    contextWindow: 131072,
+    maxTokens: 32768,
+    inputCostPerMillion: 0.10,
+    outputCostPerMillion: 0.50,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: false,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'groq',
+    name: 'GPT OSS 120B',
+    apiName: 'openai/gpt-oss-120b',
+    contextWindow: 131072,
+    maxTokens: 32766,
+    inputCostPerMillion: 0.149,
+    outputCostPerMillion: 0.769,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: false,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+
   // Preview models
   {
     provider: 'groq',
