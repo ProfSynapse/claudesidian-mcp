@@ -458,11 +458,9 @@ export class VectorStoreService {
 
             // Wait for active operations to complete
             while (this.systemOperationCount > 0) {
-                console.log(`[VectorStoreService] Waiting for ${this.systemOperationCount} operations to complete...`);
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
 
-            console.log('[VectorStoreService] Cleanup completed');
 
         } catch (error) {
             console.error('[VectorStoreService] Cleanup error:', error);

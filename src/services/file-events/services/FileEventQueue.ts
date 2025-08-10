@@ -84,7 +84,6 @@ export class FileEventQueue implements IFileEventQueue {
             const data = await this.plugin.loadData();
             
             if (!data?.fileEventQueue?.events) {
-                console.log('[FileEventQueue] No queue data found in data.json, starting with empty queue');
                 return;
             }
             
@@ -111,7 +110,6 @@ export class FileEventQueue implements IFileEventQueue {
             }
             
             if (restoredCount > 0) {
-                console.log(`[FileEventQueue] Restored ${restoredCount} events from data.json`);
             }
             
         } catch (error) {

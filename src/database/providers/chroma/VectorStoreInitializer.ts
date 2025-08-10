@@ -518,20 +518,14 @@ export class VectorStoreInitializer {
         
         // Log diagnostic information without loading full data
         if (collectionDiagnostic.exists) {
-          console.log(`[VectorStoreInitializer:${collectionName}] ` +
-            `Exists: true, ` +
-            `Estimated items: ${collectionDiagnostic.estimatedItems}, ` +
-            `Last modified: ${collectionDiagnostic.lastModified ? new Date(collectionDiagnostic.lastModified).toISOString().split('T')[0] : 'unknown'}, ` +
-            `Status: ${collectionDiagnostic.status}, ` +
-            `Memory footprint: ${collectionDiagnostic.memoryFootprintMB || 0}MB (metadata only)`);
+          // Collection exists with diagnostic information
           
           // Warn about large collections based on estimated size
           if (typeof collectionDiagnostic.estimatedItems === 'number' && collectionDiagnostic.estimatedItems > 10000) {
             console.warn(`[VectorStoreInitializer:${collectionName}] ESTIMATED LARGE COLLECTION: ~${collectionDiagnostic.estimatedItems} items (estimate only)`);
           }
         } else {
-          console.log(`[VectorStoreInitializer:${collectionName}] Status: ${collectionDiagnostic.status}, ` +
-            `Error: ${collectionDiagnostic.error || 'Collection not found'}`);
+          // Collection diagnostic error or not found
         }
       }
       

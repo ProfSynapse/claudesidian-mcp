@@ -297,43 +297,30 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
     limit?: number;
     where?: Record<string, any>;
   }): Promise<T[]> {
-    console.log(`[ChromaCollections.getAll] Starting getAll for collection: ${this.collectionName}`);
-    console.log(`[ChromaCollections.getAll] Options:`, options);
+    // Starting getAll operation
     
     // Don't rely on count() for early return as it may be inaccurate
     // Instead, try to fetch the data and let ChromaDB tell us if it's empty
     
     // Use ChromaDB's getAllItems method to retrieve all items without query embeddings
-    console.log(`[ChromaCollections.getAll] Calling vectorStore.getAllItems for: ${this.collectionName}`);
+    // Calling vectorStore.getAllItems
     const results = await this.vectorStore.getAllItems(this.collectionName, options);
     
-    console.log(`[ChromaCollections.getAll] Raw results from getAllItems:`, {
-      idsLength: results.ids?.length || 0,
-      embeddingsLength: results.embeddings?.length || 0,
-      metadatasLength: results.metadatas?.length || 0,
-      documentsLength: results.documents?.length || 0,
-      firstId: results.ids?.[0],
-      firstMetadata: results.metadatas?.[0]
-    });
+    // Raw results retrieved from getAllItems
     
     if (!results.ids?.length) {
-      console.log(`[ChromaCollections.getAll] No IDs found, returning empty array`);
+      // No IDs found, returning empty array
       return [];
     }
     
     // Process results (getItems returns flat arrays, not nested like query)
-    console.log(`[ChromaCollections.getAll] Processing ${results.ids.length} items`);
+    // Processing retrieved items
     const items = results.ids.map((id, index) => {
       const embedding = results.embeddings?.[index];
       const metadata = results.metadatas?.[index];
       const document = results.documents?.[index];
       
-      console.log(`[ChromaCollections.getAll] Processing item ${index}:`, {
-        id,
-        hasEmbedding: !!embedding,
-        metadata,
-        document
-      });
+      // Processing item data
       
       const item = this.storageToItem({
         id,
@@ -342,11 +329,11 @@ export abstract class BaseChromaCollection<T> implements ICollectionManager<T> {
         document
       });
       
-      console.log(`[ChromaCollections.getAll] Converted item ${index}:`, item);
+      // Item converted successfully
       return item;
     });
     
-    console.log(`[ChromaCollections.getAll] Final processed items count: ${items.length}`);
+    // Final processing completed
     
     // Sort if requested
     if (options?.sortBy) {

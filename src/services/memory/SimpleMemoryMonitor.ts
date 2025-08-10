@@ -42,7 +42,6 @@ export class SimpleMemoryMonitor {
     if (this.isMonitoring) return;
     
     this.isMonitoring = true;
-    console.log('[SimpleMemoryMonitor] Started memory monitoring with balanced thresholds');
     
     // Check memory every 30 seconds
     this.checkInterval = setInterval(() => {
@@ -58,7 +57,6 @@ export class SimpleMemoryMonitor {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
     }
-    console.log('[SimpleMemoryMonitor] Stopped memory monitoring');
   }
 
   getCurrentMemoryInfo(): MemoryInfo {
@@ -109,11 +107,9 @@ export class SimpleMemoryMonitor {
       const usedMB = Math.round(memInfo.used / (1024 * 1024));
       const totalMB = Math.round(memInfo.total / (1024 * 1024));
       
-      console.log(`[SimpleMemoryMonitor] Memory pressure: ${pressure.level.toUpperCase()} - ${usedMB}MB / ${totalMB}MB (${Math.round(memInfo.usagePercent)}%)`);
       
       // Basic cleanup recommendations
       if (pressure.level === 'critical') {
-        console.log('[SimpleMemoryMonitor] CRITICAL: Consider restarting Obsidian if performance degrades');
       }
     }
   }

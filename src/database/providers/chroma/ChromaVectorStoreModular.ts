@@ -348,8 +348,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
     metadatas?: Record<string, any>[];
     documents?: string[];
   }> {
-    console.log(`[ChromaVectorStore.getAllItems] Called for collection: ${collectionName}`);
-    console.log(`[ChromaVectorStore.getAllItems] Options:`, options);
+    // Get all items request initiated
     
     this.ensureInitialized();
     
@@ -461,7 +460,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   private async updateCollectionMetadata(collectionName: string): Promise<void> {
     // Skip metadata updates - let the system handle this through proper persistence layer
     // The root cause is that we're bypassing the normal persistence flow
-    console.log(`[ChromaVectorStore] Skipping metadata update for ${collectionName} - delegating to persistence layer`);
+    // Delegating metadata update to persistence layer
   }
 
   /**

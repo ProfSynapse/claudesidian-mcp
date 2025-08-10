@@ -228,7 +228,6 @@ export class InitializationDiagnostics {
     
     // Only report significant issues to reduce noise
     if (report.duplicateInitializations.length > 0 || report.errors.length > 0 || report.performanceMetrics.totalWastedTime > 1000) {
-      console.log(`[InitializationDiagnostics] Issues detected: ${report.duplicateInitializations.length} duplicates, ${report.errors.length} errors, ${report.performanceMetrics.totalWastedTime}ms wasted`);
     }
   }
 

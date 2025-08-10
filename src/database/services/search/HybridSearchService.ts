@@ -155,7 +155,6 @@ export class HybridSearchService {
     
     if (this.vectorStore && collectionService) {
       this.searchValidator = new SearchServiceValidator(this.vectorStore, collectionService);
-      console.log('[HybridSearchService] Collection validation enabled - search reliability improved');
     }
   }
 
@@ -469,7 +468,6 @@ export class HybridSearchService {
         try {
           const recoveryResult = await this.searchValidator.handleSearchFailure('semantic', error);
           if (recoveryResult.recoveryAttempted) {
-            console.log('[HybridSearchService] Search failure recovery attempted:', recoveryResult);
           }
           if (recoveryResult.fallbackOptions.length > 0) {
             console.warn(`[HybridSearchService] Consider using fallback search methods: ${recoveryResult.fallbackOptions.join(', ')}`);

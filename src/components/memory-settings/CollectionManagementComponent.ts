@@ -33,7 +33,7 @@ export class CollectionManagementComponent {
         try {
             // Get available collections
             this.collections = await this.vectorStore.listCollections();
-            console.log('📋 Available collections for management:', this.collections);
+            // Collections loaded for management
             
             // Clear container
             this.containerEl.empty();

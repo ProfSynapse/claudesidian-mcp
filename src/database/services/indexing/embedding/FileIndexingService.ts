@@ -144,7 +144,6 @@ export class FileIndexingService {
       let filesToProcess = batch;
       if (!batchMode) {
         try {
-          console.log(`[FileIndexingService] Using bulk hash comparison for batch of ${batch.length} files`);
           const bulkResults = await this.contentHashService.checkBulkFilesNeedEmbedding(batch, vectorStore);
           
           // Filter to only files that need embedding
@@ -154,7 +153,6 @@ export class FileIndexingService {
           
           const skippedCount = batch.length - filesToProcess.length;
           if (skippedCount > 0) {
-            console.log(`[FileIndexingService] Bulk comparison: ${filesToProcess.length} need embedding, ${skippedCount} skipped`);
           }
         } catch (bulkError) {
           console.error(`[FileIndexingService] Bulk comparison failed, falling back to individual checks:`, bulkError);

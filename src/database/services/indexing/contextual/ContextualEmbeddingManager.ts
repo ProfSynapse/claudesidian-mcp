@@ -351,7 +351,6 @@ export class ContextualEmbeddingManager {
       return;
     }
 
-    console.log('[ContextualEmbeddingManager] Enforcing memory limits:', memoryUsage);
 
     // Sort loaded embeddings by timestamp (oldest first)
     const sortedEmbeddings = Array.from(this.loadedEmbeddings.entries())
@@ -380,7 +379,6 @@ export class ContextualEmbeddingManager {
     }
 
     if (evictedCount > 0) {
-      console.log(`[ContextualEmbeddingManager] Memory limit enforcement: evicted ${evictedCount} files, freed ${Math.round(freedMemoryMB * 100) / 100}MB`);
     }
   }
 

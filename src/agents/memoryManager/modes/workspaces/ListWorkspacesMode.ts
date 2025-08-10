@@ -44,7 +44,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
    */
   async execute(params: ListWorkspacesParameters): Promise<ListWorkspacesResult> {
     const startTime = Date.now();
-    console.log('[ListWorkspacesMode] Starting workspace listing with params:', params);
     
     try {
       // Get workspace service from agent
@@ -69,12 +68,10 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
         sortOrder: params.order as 'asc' | 'desc'
       };
       
-      console.log('[ListWorkspacesMode] Query parameters:', queryParams);
       
       let workspaces;
       try {
         workspaces = await workspaceService.getWorkspaces(queryParams);
-        console.log(`[ListWorkspacesMode] Retrieved ${workspaces.length} workspaces from service`);
       } catch (queryError) {
         console.error('[ListWorkspacesMode] Failed to query workspaces:', queryError);
         return {
@@ -89,7 +86,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       
       // Log detailed workspace information for debugging
       if (workspaces.length > 0) {
-        console.log('[ListWorkspacesMode] Workspace details:');
         workspaces.forEach((ws: any, index: number) => {
           console.log(`  ${index + 1}. ID: ${ws.id}, Name: ${ws.name}, Status: ${ws.status}, Type: ${ws.hierarchyType}`);
         });
@@ -98,16 +94,13 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
         
         // Enhanced diagnostic: Use workspace collection diagnostic service if available
         try {
-          console.log('[ListWorkspacesMode] Running diagnostics...');
           const diagnostics = await workspaceService.getDiagnostics();
-          console.log('[ListWorkspacesMode] Diagnostic results:', diagnostics);
           
           if (diagnostics.totalItems > 0) {
             console.warn('[ListWorkspacesMode] Collection contains data but getWorkspaces() returned empty');
             console.warn('[ListWorkspacesMode] Format analysis:', diagnostics.formatAnalysis);
             
             if (diagnostics.sampleItems.length > 0) {
-              console.log('[ListWorkspacesMode] Sample items for debugging:');
               diagnostics.sampleItems.forEach((item: any, index: number) => {
                 console.log(`  ${index + 1}. ID: ${item.id}, Legacy: ${item.isLegacy}, Metadata keys: ${Object.keys(item.metadata)}`);
               });
@@ -132,7 +125,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
           childCount: ws.childWorkspaces?.length || 0
         };
         
-        console.log(`[ListWorkspacesMode] Formatted workspace ${index + 1}:`, formatted);
         return formatted;
       });
       
@@ -144,7 +136,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
           }
         : undefined;
       
-      console.log(`[ListWorkspacesMode] Workspace context:`, workspaceContext);
       
       const result = {
         success: true,
@@ -160,7 +151,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
         workspaceContext: workspaceContext
       };
       
-      console.log(`[ListWorkspacesMode] Final result: success=${result.success}, workspace count=${formattedWorkspaces.length}, duration=${Date.now() - startTime}ms`);
       return result;
       
     } catch (error: any) {

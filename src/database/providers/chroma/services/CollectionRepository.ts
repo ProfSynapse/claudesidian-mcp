@@ -80,11 +80,7 @@ export class CollectionRepository {
     const totalAvailable = fullData.items instanceof Map ? fullData.items.size : 
                           (Array.isArray(fullData.items) ? (fullData.items as DatabaseItem[]).length : 0);
     
-    console.log(`[CollectionRepository:${this.collectionName}] Loading selected items:`, {
-      requestedFiles: filePaths.length,
-      totalAvailableItems: totalAvailable,
-      memoryPressure: this.getMemoryPressureLevel()
-    });
+    // Selective loading initiated
     
     try {
       // Clear existing items for selective loading
@@ -130,17 +126,7 @@ export class CollectionRepository {
       const loadTime = endTime - startTime;
       const memoryDelta = finalMemory - initialMemory;
 
-      console.log(`[CollectionRepository:${this.collectionName}] Selective load complete:`, {
-        itemsLoaded,
-        requestedFiles: filePaths.length,
-        loadTimeMs: Math.round(loadTime),
-        estimatedEmbeddingSizeMB: Math.round(totalEmbeddingSize / 1024 / 1024 * 100) / 100,
-        memoryDeltaMB: Math.round(memoryDelta / 1024 / 1024 * 100) / 100,
-        totalItems: this.items.size,
-        memoryReductionPercent: fullData.items instanceof Map ? 
-          Math.round((1 - (this.items.size / fullData.items.size)) * 100) : 0,
-        memoryPressure: this.getMemoryPressureLevel()
-      });
+      // Selective load completed successfully
 
       // Warn if selective loading used significant memory
       if (memoryDelta > 100 * 1024 * 1024) { // > 100MB
@@ -202,14 +188,7 @@ export class CollectionRepository {
     const loadTime = endTime - startTime;
     const memoryDelta = finalMemory - initialMemory;
 
-    console.log(`[CollectionRepository:${this.collectionName}] Load complete:`, {
-      itemsLoaded,
-      loadTimeMs: Math.round(loadTime),
-      estimatedEmbeddingSizeMB: Math.round(totalEmbeddingSize / 1024 / 1024 * 100) / 100,
-      memoryDeltaMB: Math.round(memoryDelta / 1024 / 1024 * 100) / 100,
-      totalItems: this.items.size,
-      memoryPressure: this.getMemoryPressureLevel()
-    });
+    // Collection load completed
 
     // Warn if memory usage is concerning
     if (memoryDelta > 500 * 1024 * 1024) { // > 500MB
@@ -415,18 +394,12 @@ export class CollectionRepository {
     try {
       // MEMORY OPTIMIZATION: Instead of loading entire collection, return empty results
       // This forces the caller to use the fallback ChromaDB query with proper filtering
-      console.log(`[CollectionRepository:${this.collectionName}] getBulkFileMetadata called but returning empty to prevent memory spike`);
-      console.log(`[CollectionRepository:${this.collectionName}] Requested paths:`, filePaths);
+      // Bulk metadata query optimized to prevent memory usage
       
       // Return empty results to force AdaptiveBulkHashService to use the fallback query approach
       const queryTime = performance.now() - startTime;
       
-      console.log(`[CollectionRepository:${this.collectionName}] Returning empty to avoid loading ${this.items.size} items:`, {
-        requested: filePaths.length, 
-        found: 0,
-        queryTimeMs: Math.round(queryTime * 100) / 100,
-        memoryOptimization: 'Forced fallback to ChromaDB query'
-      });
+      // Memory optimization: forcing ChromaDB query fallback
       
       return results;
       
@@ -494,7 +467,7 @@ export class CollectionRepository {
       }
 
       const pathArray = Array.from(filePaths);
-      console.log(`[CollectionRepository:${this.collectionName}] Found ${pathArray.length} unique file paths`);
+      // File paths extracted successfully
       
       return pathArray;
 

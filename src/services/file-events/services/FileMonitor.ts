@@ -34,7 +34,6 @@ export class FileMonitor implements IFileMonitor {
      */
     setContextualEmbeddingManager(manager: ContextualEmbeddingManager): void {
         this.contextualEmbeddingManager = manager;
-        console.log('[FileMonitor] Contextual embedding manager connected for file event tracking');
     }
 
     /**
@@ -51,7 +50,6 @@ export class FileMonitor implements IFileMonitor {
             this.contextualEmbeddingManager.updateRecentFiles(file.path, 'normal');
         }
 
-        console.log(`[FileMonitor] File opened: ${file.path} (tracked in recent files)`);
     }
 
     /**
@@ -68,7 +66,6 @@ export class FileMonitor implements IFileMonitor {
             this.contextualEmbeddingManager.updateRecentFiles(file.path, 'high');
         }
 
-        console.log(`[FileMonitor] File created: ${file.path} (tracked with high priority)`);
     }
 
     /**
@@ -85,7 +82,6 @@ export class FileMonitor implements IFileMonitor {
             this.contextualEmbeddingManager.updateRecentFiles(file.path, 'high');
         }
 
-        console.log(`[FileMonitor] File modified: ${file.path} (tracked with high priority)`);
     }
 
     /**
@@ -102,7 +98,6 @@ export class FileMonitor implements IFileMonitor {
         this.lastEmbeddingUpdateTimes.delete(file.path);
         this.contentCache.delete(file.path);
 
-        console.log(`[FileMonitor] File deleted: ${file.path} (removed from tracking)`);
     }
 
     /**
@@ -140,7 +135,6 @@ export class FileMonitor implements IFileMonitor {
             this.contextualEmbeddingManager.updateRecentFiles(file.path, 'normal');
         }
 
-        console.log(`[FileMonitor] File renamed: ${oldPath} → ${file.path} (tracking updated)`);
     }
 
     shouldProcessFile(file: TAbstractFile): boolean {

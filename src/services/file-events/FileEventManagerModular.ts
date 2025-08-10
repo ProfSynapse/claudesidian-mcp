@@ -101,7 +101,6 @@ export class FileEventManagerModular {
             await this.coordinator.initialize();
             
             // Set the embedding strategy
-            console.log('[FileEventManagerModular] Setting embedding strategy:', this.embeddingStrategy);
             this.coordinator.setEmbeddingStrategy(this.embeddingStrategy);
             
             // Register session event handlers
@@ -150,7 +149,6 @@ export class FileEventManagerModular {
      */
     async processStartupQueue(): Promise<void> {
         if (this.isProcessingStartupQueue) {
-            console.log('[FileEventManager] Startup queue processing already in progress');
             return;
         }
 
@@ -159,27 +157,17 @@ export class FileEventManagerModular {
         try {
             // Check queue size - startup mode only processes manually queued files
             const initialQueueSize = this.dependencies.fileEventQueue.size();
-            console.log('[FileEventManager] 🚀 Starting background startup queue processing:', {
-                initialQueueSize,
-                hasEmbeddingScheduler: !!this.dependencies.embeddingScheduler
-            });
             
             if (initialQueueSize === 0) {
-                console.log('[FileEventManager] ✅ No files in startup queue - all embeddings are up to date');
                 return;
             }
 
-            console.log(`[FileEventManager] Found ${initialQueueSize} manually queued files to process`);
             
             // Wait for vector dependencies to be ready with retry logic
             await this.waitForVectorDependencies();
             await this.coordinator.processStartupQueue();
             
             const remainingEvents = this.dependencies.fileEventQueue.size();
-            console.log('[FileEventManager] ✅ Background startup queue processing completed:', {
-                processedFiles: initialQueueSize - remainingEvents,
-                remainingEvents
-            });
             
         } catch (error) {
             console.error('[FileEventManager] Error during background startup queue processing:', error);
@@ -199,13 +187,10 @@ export class FileEventManagerModular {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 await this.ensureVectorDependencies();
-                console.log(`[FileEventManager] Vector dependencies ready on attempt ${attempt}`);
                 return;
             } catch (error) {
-                console.log(`[FileEventManager] Vector dependencies not ready (attempt ${attempt}/${maxRetries}):`, error instanceof Error ? error.message : String(error));
                 
                 if (attempt < maxRetries) {
-                    console.log(`[FileEventManager] Retrying in ${retryDelay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                 } else {
                     throw new Error(`Vector dependencies not ready after ${maxRetries} attempts`);
@@ -380,7 +365,6 @@ export class FileEventManagerModular {
             
             // Set up callback for idle-triggered queue processing
             this.dependencies.embeddingScheduler.setQueueProcessingCallback(async () => {
-                console.log('[FileEventManagerModular] Queue processing triggered by idle mode');
                 await this.coordinator.processIdleQueue();
             });
             
@@ -390,7 +374,6 @@ export class FileEventManagerModular {
                 workspaceService
             );
             
-            console.log('[FileEventManagerModular] Vector dependencies initialized successfully');
             
         } catch (error) {
             console.warn('[FileEventManagerModular] Failed to initialize vector dependencies:', error);
@@ -456,7 +439,6 @@ export class FileEventManagerModular {
                     processingDelay: 1000
                 };
                 
-                console.log('[FileEventManagerModular] Reloading configuration with new strategy:', newStrategy);
                 this.setEmbeddingStrategy(newStrategy);
             } else {
                 console.warn('[FileEventManagerModular] Could not reload configuration - settings not available');

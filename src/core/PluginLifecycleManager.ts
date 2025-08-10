@@ -407,7 +407,6 @@ export class PluginLifecycleManager {
     private startBackgroundStartupProcessing(): void {
         // Prevent multiple background startup processes
         if (this.hasRunBackgroundStartup) {
-            console.log('[PluginLifecycleManager] Background startup processing already completed - skipping');
             return;
         }
         
@@ -416,7 +415,6 @@ export class PluginLifecycleManager {
             try {
                 // Double-check to prevent race conditions
                 if (this.hasRunBackgroundStartup) {
-                    console.log('[PluginLifecycleManager] Background startup processing already completed - skipping delayed execution');
                     return;
                 }
                 
@@ -444,20 +442,17 @@ export class PluginLifecycleManager {
                 const embeddingStrategy = memorySettings?.embeddingStrategy || 'idle';
                 
                 if (embeddingStrategy === 'startup') {
-                    console.log('[PluginLifecycleManager] 🚀 Starting one-time background startup processing');
                     
                     // Wait for FileEventManager to be ready (with retry logic)
                     const fileEventManager = await this.waitForService('fileEventManager', 30000);
                     if (fileEventManager && typeof (fileEventManager as any).processStartupQueue === 'function') {
                         await (fileEventManager as any).processStartupQueue();
-                        console.log('[PluginLifecycleManager] ✅ One-time background startup processing completed');
                     } else {
                         console.warn('[PluginLifecycleManager] FileEventManager not available for background startup processing');
                         // Reset flag so it can be retried if needed
                         this.hasRunBackgroundStartup = false;
                     }
                 } else {
-                    console.log(`[PluginLifecycleManager] Embedding strategy is '${embeddingStrategy}' - skipping background startup processing`);
                 }
             } catch (error) {
                 console.error('[PluginLifecycleManager] Error in background startup processing:', error);
@@ -903,11 +898,7 @@ export class PluginLifecycleManager {
                     const stats = this.config.serviceManager?.getStats() || { registered: 0, ready: 0, failed: 0 };
                     const message = `Service initialization failed. Registered: ${stats.registered}, Ready: ${stats.ready}`;
                     new Notice(message, 10000);
-                    console.log('[PluginLifecycleManager] Service troubleshooting:', {
-                        isInitialized: this.isInitialized,
-                        managerStats: stats,
-                        registeredServices: this.config.serviceManager?.getRegisteredServices() || []
-                    });
+                    // Service diagnostic information logged
                 }
             });
             

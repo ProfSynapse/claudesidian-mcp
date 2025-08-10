@@ -106,18 +106,11 @@ export class ContentSearchStrategy {
         hybridResults = await this.hybridSearchService.search(query, hybridOptions, filteredFiles);
       } catch (error) {
         const searchTime = performance.now() - searchStart;
-        console.error('[ContentSearchStrategy] Hybrid search failed:', {
-          error: error instanceof Error ? error.message : String(error),
-          query,
-          hasFilteredFiles: !!filteredFiles,
-          searchTime
-        });
-
+        // Hybrid search error - attempting fallback
         // Check if this is a collection-related error that should trigger fallback
         const errorMessage = error instanceof Error ? error.message : String(error);
         if (errorMessage.includes('Collection') || errorMessage.includes('collection')) {
-          console.warn('[ContentSearchStrategy] Collection error detected - hybrid search will be automatically recovered');
-          // Let the search continue - HybridSearchService already handles collection recovery
+          // Collection error detected - hybrid search will be automatically recovered
         }
 
         // Re-throw to trigger fallback in calling method

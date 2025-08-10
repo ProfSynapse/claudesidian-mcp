@@ -184,12 +184,7 @@ export class FileStatsCollector {
       batches.push(batch);
     }
 
-    console.log(`[FileStatsCollector] Created ${batches.length} adaptive batches:`, {
-      totalFiles: filePaths.length,
-      batchSize: batchConfig.batchSize,
-      estimatedMemoryUsage: Math.round(batchConfig.estimatedMemoryUsage / 1024 / 1024) + 'MB',
-      processingDelay: batchConfig.processingDelay + 'ms'
-    });
+    // Adaptive batches created successfully
 
     return batches;
   }

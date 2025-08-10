@@ -95,7 +95,6 @@ export class IndexingSection {
                     try {
                         const plugin = this.app.plugins.plugins['claudesidian-mcp'];
                         if (plugin && typeof plugin.reloadConfiguration === 'function') {
-                            console.log(`[IndexingSection] Embedding strategy changed to: ${value} - reloading configuration`);
                             plugin.reloadConfiguration();
                         }
                     } catch (error) {

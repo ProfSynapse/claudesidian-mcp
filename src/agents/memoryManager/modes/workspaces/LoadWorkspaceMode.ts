@@ -45,7 +45,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    */
   async execute(params: LoadWorkspaceParameters): Promise<LoadWorkspaceResult> {
     const startTime = Date.now();
-    console.log('[LoadWorkspaceMode] Loading workspace with ID:', params.id);
     
     try {
       // Get workspace service from agent
@@ -108,7 +107,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         };
       }
       
-      console.log('[LoadWorkspaceMode] Workspace loaded successfully:', workspace.name);
       
       // Update last accessed timestamp
       try {
@@ -162,7 +160,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         workspaceContext: workspaceContext
       };
       
-      console.log(`[LoadWorkspaceMode] Workspace loaded successfully: ${workspace.name}, duration=${Date.now() - startTime}ms`);
       return result;
       
     } catch (error: any) {

@@ -81,9 +81,7 @@ export class AdaptiveBulkHashService {
     let peakMemory = startMemory;
     
     // Log initial plugin memory footprint
-    console.log(`[AdaptiveBulkHashService] Plugin memory footprint at start: ${startMemory}MB`);
     
-    console.log(`[AdaptiveBulkHashService] Starting bulk comparison for ${filePaths.length} files`);
     
     try {
       // Create adaptive batches based on file statistics
@@ -93,7 +91,6 @@ export class AdaptiveBulkHashService {
       // Process each batch
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        console.log(`[AdaptiveBulkHashService] Processing batch ${i + 1}/${batches.length} (${batch.length} files)`);
         
         // Smart memory pressure detection based on actual requirements
         const memoryPressureResult = await this.checkSmartMemoryPressure(batch);
@@ -152,14 +149,12 @@ export class AdaptiveBulkHashService {
         }
       };
       
-      console.log(`[AdaptiveBulkHashService] Bulk comparison completed:`, stats);
       return allResults;
       
     } catch (error) {
       console.error(`[AdaptiveBulkHashService] Error in bulk comparison:`, error);
       
       // Fallback to individual processing on any error
-      console.log(`[AdaptiveBulkHashService] Falling back to individual processing for all files`);
       return await this.fallbackToIndividualProcessing(filePaths, vectorStore);
     }
   }
@@ -182,25 +177,7 @@ export class AdaptiveBulkHashService {
       const hashEndTime = performance.now();
       const hashEndMemory = this.getMemoryUsageMB();
       
-      console.log(`[AdaptiveBulkHashService] Batch hash generation:`, {
-        files: filePaths.length,
-        timeMs: Math.round(hashEndTime - hashStartTime),
-        memoryDeltaMB: Math.round((hashEndMemory - batchStartMemory) * 100) / 100,
-        memoryPressure: this.getMemoryPressureLevel()
-      });
-      
       // Step 2: STATE-BASED COMPARISON (No ChromaDB queries - 0MB memory overhead)
-      const stateStartTime = performance.now();
-      console.log(`[AdaptiveBulkHashService] Using state-based tracking instead of ChromaDB queries (memory-optimized)`);
-      const stateEndTime = performance.now();
-      const stateEndMemory = this.getMemoryUsageMB();
-      
-      console.log(`[AdaptiveBulkHashService] State-based comparison:`, {
-        files: filePaths.length,
-        timeMs: Math.round(stateEndTime - stateStartTime),
-        memoryDeltaMB: Math.round((stateEndMemory - hashEndMemory) * 100) / 100,
-        memoryPressure: this.getMemoryPressureLevel()
-      });
       
       // Step 3: STATE-BASED COMPARISON (No ChromaDB queries needed)
       for (const data of fileData) {
@@ -300,7 +277,6 @@ export class AdaptiveBulkHashService {
    * @returns Promise resolving to individual results
    */
   private async fallbackToIndividualProcessing(filePaths: string[], vectorStore: any): Promise<BulkHashResult[]> {
-    console.log(`[AdaptiveBulkHashService] Using individual processing fallback for ${filePaths.length} files`);
     
     const results: BulkHashResult[] = [];
     
@@ -429,7 +405,6 @@ export class AdaptiveBulkHashService {
 
     // Debug logging for diagnostics
     const currentOperationMemory = this.getMemoryUsageMB();
-    console.log(`[AdaptiveBulkHashService] Memory diagnostics (targeted queries): Used=${(memoryUsage.used/1024/1024).toFixed(1)}MB, Available=${availableMemoryMB.toFixed(1)}MB, Usage=${memoryUsagePercent.toFixed(1)}%, EstimatedBatch=${estimatedBatchMemoryMB.toFixed(1)}MB`);
     
     // CRITICAL: Current heap usage is very high
     if (memoryUsagePercent > 95) { // Increased threshold (was 92%)

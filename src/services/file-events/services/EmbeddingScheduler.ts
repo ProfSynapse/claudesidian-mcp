@@ -17,7 +17,6 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
     ) {
         this.strategy = initialStrategy;
         this.initializeIdleTracking();
-        console.log(`[EmbeddingScheduler] Initialized with strategy:`, this.strategy);
     }
 
     /**
@@ -30,11 +29,9 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
     setStrategy(strategy: EmbeddingStrategy): void {
         const oldStrategy = this.strategy.type;
         this.strategy = { ...strategy };
-        console.log(`[EmbeddingScheduler] Strategy updated from '${oldStrategy}' to '${this.strategy.type}':`, this.strategy);
         
         // Clean up old strategy
         if (oldStrategy === 'idle' && strategy.type !== 'idle') {
-            console.log('[EmbeddingScheduler] Switching away from idle mode - cleaning up idle timer');
             if (this.idleCheckInterval) {
                 clearInterval(this.idleCheckInterval);
                 this.idleCheckInterval = undefined;
@@ -45,7 +42,6 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
         
         // Initialize new strategy
         if (strategy.type === 'idle') {
-            console.log('[EmbeddingScheduler] Switching to idle mode - initializing idle tracking');
             this.initializeIdleTracking();
         }
     }
@@ -53,22 +49,18 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
     shouldProcessEmbedding(event: FileEvent): boolean {
         // Never process embeddings for system operations to prevent loops
         if (event.isSystemOperation) {
-            console.log(`[EmbeddingScheduler] Skipping system operation for ${event.path}`);
             return false;
         }
 
         switch (this.strategy.type) {
             case 'idle':
                 const shouldProcess = this.isIdleMode;
-                console.log(`[EmbeddingScheduler] Should process ${event.path}? isIdle=${this.isIdleMode}, shouldProcess=${shouldProcess}`);
                 return shouldProcess; // Queue and process when idle
                 
             case 'startup':
-                console.log(`[EmbeddingScheduler] Startup strategy - not processing ${event.path} live`);
                 return false; // Queue but NEVER process live (only on startup)
                 
             default:
-                console.log(`[EmbeddingScheduler] Unknown strategy type: ${this.strategy.type}`);
                 return false;
         }
     }
@@ -78,12 +70,10 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
         
         if (eventsToProcess.length === 0) {
             if (events.length > 0) {
-                console.log(`[EmbeddingScheduler] Skipped ${events.length} events (strategy: ${this.strategy.type})`);
             }
             return;
         }
 
-        console.log(`[EmbeddingScheduler] Processing ${eventsToProcess.length}/${events.length} events (strategy: ${this.strategy.type})`);
 
         if (this.strategy.type === 'idle') {
             // Add processing delay for idle strategy
@@ -103,7 +93,6 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
      */
     notifyFileEvents(events: FileEvent[]): void {
         if (this.strategy.type === 'idle' && events.length > 0) {
-            console.log(`[EmbeddingScheduler] Notified of ${events.length} new file events - starting idle countdown`);
             this.onFileEventsAdded();
         }
     }
@@ -113,18 +102,15 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
      * NOTE: This should ONLY be called for actual file changes, not internal processing
      */
     private onFileEventsAdded(): void {
-        console.log('[EmbeddingScheduler] New file events detected - starting idle countdown timer');
         this.lastActivityTime = Date.now();
         this.isIdleMode = false;
         this.waitingForChanges = false;
-        console.log(`[EmbeddingScheduler] Timer reset - will check idle status in ${this.strategy.idleTimeThreshold}ms`);
     }
 
     /**
      * Called after embedding processing completes - stops idle timer
      */
     private onEmbeddingProcessingComplete(): void {
-        console.log('[EmbeddingScheduler] Embedding processing complete - waiting for next file change');
         this.isIdleMode = false;
         this.waitingForChanges = true; // Stop idle checking until next file change
     }
@@ -134,16 +120,13 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
      */
     async forceProcessEmbeddings(events: FileEvent[]): Promise<void> {
         const strategy = this.strategy.type;
-        console.log(`[EmbeddingScheduler] Force processing ${events.length} events (${strategy} strategy)`);
         
         if (strategy === 'startup') {
-            console.log(`[EmbeddingScheduler] 🚀 STARTUP PROCESSING: Processing ${events.length} queued files`);
         }
         
         await this.batchProcessEmbeddings(events);
         
         if (strategy === 'startup') {
-            console.log(`[EmbeddingScheduler] ✅ STARTUP PROCESSING COMPLETE: ${events.length} files processed`);
         }
     }
 
@@ -285,7 +268,6 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
      */
     private triggerQueueProcessing(): void {
         if (this.queueProcessingCallback) {
-            console.log(`[EmbeddingScheduler] Triggering queue processing due to idle activation`);
             // Force processing mode - we know we're idle
             this.isIdleMode = true;
             this.queueProcessingCallback();
@@ -305,7 +287,6 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
             if (!this.waitingForChanges) {
                 this.lastActivityTime = Date.now();
                 this.isIdleMode = false;
-                console.log(`[EmbeddingScheduler] User activity detected - idle timer reset`);
             }
         };
 
@@ -326,20 +307,16 @@ export class EmbeddingScheduler implements IEmbeddingScheduler {
             this.isIdleMode = timeSinceActivity >= this.strategy.idleTimeThreshold;
 
             // Debug logging every check
-            console.log(`[EmbeddingScheduler] Idle check: timeSinceActivity=${timeSinceActivity}ms, threshold=${this.strategy.idleTimeThreshold}ms, isIdle=${this.isIdleMode}, waitingForChanges=${this.waitingForChanges}`);
 
             if (!wasIdle && this.isIdleMode) {
-                console.log(`[EmbeddingScheduler] 🟡 Entering idle mode - processing queued embeddings (idle threshold: ${this.strategy.idleTimeThreshold}ms)`);
                 // Immediately trigger queue processing when we enter idle mode
                 this.triggerQueueProcessing();
             } else if (wasIdle && !this.isIdleMode) {
-                console.log(`[EmbeddingScheduler] 🟢 Exiting idle mode - user activity detected`);
             }
         };
 
         // Check frequently for responsive idle detection (every 5 seconds)
         this.idleCheckInterval = setInterval(checkIdleState, 5000);
-        console.log(`[EmbeddingScheduler] Idle tracking initialized - threshold: ${this.strategy.idleTimeThreshold}ms, check interval: 5000ms`);
     }
 
     private delay(ms: number): Promise<void> {
