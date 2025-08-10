@@ -358,6 +358,15 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
             // Always set the parent agent manager for basic functionality
             agentManagerAgent.setParentAgentManager(this.agentManager);
             
+            // Set the vault for image generation functionality
+            agentManagerAgent.setVault(this.app.vault);
+            
+            // Set LLM settings for image generation
+            const pluginSettings = (this.plugin as any)?.settings?.settings;
+            if (pluginSettings) {
+                agentManagerAgent.setLLMSettings(pluginSettings);
+            }
+            
             this.agentManager.registerAgent(agentManagerAgent);
             logger.systemLog('AgentManager agent initialized successfully');
         } catch (error) {

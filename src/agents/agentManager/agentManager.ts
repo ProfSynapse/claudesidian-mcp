@@ -9,7 +9,8 @@ import {
   TogglePromptMode,
   ListModelsMode,
   ExecutePromptMode,
-  BatchExecutePromptMode
+  BatchExecutePromptMode,
+  GenerateImageMode
 } from './modes';
 import { CustomPromptStorageService } from './services/CustomPromptStorageService';
 import { Settings } from '../../settings';
@@ -17,6 +18,7 @@ import { sanitizeVaultName } from '../../utils/vaultUtils';
 import { LLMProviderManager } from '../../services/llm/providers/ProviderManager';
 import { AgentManager } from '../../services/AgentManager';
 import { UsageTracker } from '../../services/UsageTracker';
+import { Vault } from 'obsidian';
 
 /**
  * AgentManager Agent for custom prompt operations
@@ -85,6 +87,9 @@ export class AgentManagerAgent extends BaseAgent {
     this.registerMode(new ListModelsMode());
     this.registerMode(new ExecutePromptMode());
     this.registerMode(new BatchExecutePromptMode());
+    
+    // Register image generation mode
+    this.registerMode(new GenerateImageMode());
   }
 
   /**
@@ -186,6 +191,27 @@ export class AgentManagerAgent extends BaseAgent {
     const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
     if (batchExecutePromptMode) {
       batchExecutePromptMode.setAgentManager(agentManager);
+    }
+  }
+
+  /**
+   * Set the Vault instance for image generation
+   */
+  setVault(vault: Vault): void {
+    // Update image generation mode if it exists
+    const generateImageMode = this.getMode('generateImage') as GenerateImageMode;
+    if (generateImageMode) {
+      generateImageMode.setVault(vault);
+    }
+  }
+
+  /**
+   * Set LLM provider settings for image generation
+   */
+  setLLMSettings(settings: any): void {
+    const generateImageMode = this.getMode('generateImage') as GenerateImageMode;
+    if (generateImageMode) {
+      generateImageMode.setLLMSettings(settings?.llmProviders);
     }
   }
 

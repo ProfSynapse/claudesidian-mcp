@@ -8,3 +8,4 @@ export { TogglePromptMode } from './togglePromptMode';
 export { ListModelsMode } from './listModelsMode';
 export { ExecutePromptMode } from './executePromptMode';
 export { BatchExecutePromptMode } from './batchExecutePrompt';
+export { GenerateImageMode } from './generateImageMode';

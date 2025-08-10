@@ -77,9 +77,11 @@ export interface ModelInfo {
   supportsFunctions: boolean;
   supportsStreaming: boolean;
   supportsThinking?: boolean;
+  supportsImageGeneration?: boolean;
   pricing: {
     inputPerMillion: number;
     outputPerMillion: number;
+    imageGeneration?: number;
     currency: string;
     lastUpdated: string; // ISO date string
   };
@@ -117,6 +119,7 @@ export interface ProviderCapabilities {
   supportsImages: boolean;
   supportsFunctions: boolean;
   supportsThinking: boolean;
+  supportsImageGeneration?: boolean;
   maxContextWindow: number;
   supportedFeatures: string[];
 }
