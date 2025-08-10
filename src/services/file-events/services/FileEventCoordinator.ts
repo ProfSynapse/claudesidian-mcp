@@ -5,6 +5,7 @@ import {
     FileEvent,
     EmbeddingStrategy 
 } from '../interfaces/IFileEventServices';
+import { IncompleteFilesStateManager } from '../../../database/services/indexing/state/IncompleteFilesStateManager';
 
 export class FileEventCoordinator implements IFileEventCoordinator {
     private isProcessingQueue = false;
@@ -13,6 +14,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     private startupTimeout: NodeJS.Timeout | null = null;
     private embeddingStrategy: EmbeddingStrategy = { type: 'idle', idleTimeThreshold: 10000, batchSize: 10, processingDelay: 1000 };
     private notifiedFiles = new Set<string>(); // Track files we've already notified about
+    private incompleteFilesManager: IncompleteFilesStateManager;
 
     // Event handlers
     private fileCreatedHandler!: (file: TAbstractFile) => void;
@@ -25,12 +27,16 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         private plugin: Plugin,
         private dependencies: IFileEventManagerDependencies
     ) {
+        this.incompleteFilesManager = new IncompleteFilesStateManager(plugin);
         this.initializeDebounce();
         this.bindEventHandlers();
     }
 
     async initialize(): Promise<void> {
         try {
+            
+            // Initialize incomplete files tracking (includes migration)
+            await this.incompleteFilesManager.initialize();
             
             // Initialize all dependencies
             this.dependencies.fileMonitor.startMonitoring();
@@ -93,6 +99,24 @@ export class FileEventCoordinator implements IFileEventCoordinator {
             return;
         }
 
+        // Mark new file for embedding
+        if (file instanceof TFile) {
+            try {
+                const content = await this.app.vault.read(file);
+                const newHash = await this.calculateContentHash(content);
+                
+                await this.incompleteFilesManager.markForReembedding(
+                    file.path,
+                    '', // No old hash for new files
+                    newHash,
+                    'create',
+                    'new_file'
+                );
+            } catch (error) {
+                console.error(`[FileEventCoordinator] Failed to calculate hash for new file ${file.path}:`, error);
+            }
+        }
+
         // Check if this is a system operation
         const isSystemOp = this.dependencies.fileMonitor.isSystemOperation();
         
@@ -130,6 +154,25 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         // Check if we should skip rapid updates
         if (this.dependencies.fileMonitor.shouldSkipEmbeddingUpdate(file.path)) {
             return;
+        }
+
+        // Calculate content hash and mark for re-embedding
+        if (file instanceof TFile) {
+            try {
+                const content = await this.app.vault.read(file);
+                const newHash = await this.calculateContentHash(content);
+                const oldHash = this.getStoredHash(file.path) || '';
+                
+                await this.incompleteFilesManager.markForReembedding(
+                    file.path,
+                    oldHash,
+                    newHash,
+                    'modify',
+                    'content_changed'
+                );
+            } catch (error) {
+                console.error(`[FileEventCoordinator] Failed to calculate hash for ${file.path}:`, error);
+            }
         }
 
         const isSystemOp = this.dependencies.fileMonitor.isSystemOperation();
@@ -383,6 +426,66 @@ export class FileEventCoordinator implements IFileEventCoordinator {
     }
 
     /**
+     * Process files incrementally, removing them from queue as they succeed
+     */
+    private async processFilesIncrementally(events: FileEvent[]): Promise<void> {
+        const batchSize = 50; // Process in smaller batches to allow progress tracking
+        
+        for (let i = 0; i < events.length; i += batchSize) {
+            const batch = events.slice(i, i + batchSize);
+            
+            console.log(`[FileEventCoordinator] Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(events.length/batchSize)} (${batch.length} files)`);
+            
+            try {
+                // Process this batch
+                await this.dependencies.embeddingScheduler!.forceProcessEmbeddings(batch);
+                
+                // Remove successfully processed files from queue and incomplete tracking
+                for (const event of batch) {
+                    this.dependencies.fileEventQueue.removeEvent(event.path);
+                    await this.incompleteFilesManager.markAsCompleted(event.path);
+                    console.log(`[FileEventCoordinator] Removed ${event.path} from queue and incomplete tracking after successful processing`);
+                }
+                
+                // Persist progress after each batch
+                await this.dependencies.fileEventQueue.persist();
+                
+                console.log(`[FileEventCoordinator] ✅ Batch ${Math.floor(i/batchSize) + 1} completed and queue updated`);
+                
+            } catch (error) {
+                console.error(`[FileEventCoordinator] Error processing batch ${Math.floor(i/batchSize) + 1}:`, error);
+                
+                // Try to process files individually in this batch to isolate the problem
+                await this.processIndividuallyWithErrorHandling(batch);
+            }
+        }
+    }
+
+    /**
+     * Process files individually when batch processing fails
+     */
+    private async processIndividuallyWithErrorHandling(events: FileEvent[]): Promise<void> {
+        console.log(`[FileEventCoordinator] Processing ${events.length} files individually due to batch error`);
+        
+        for (const event of events) {
+            try {
+                await this.dependencies.embeddingScheduler!.forceProcessEmbeddings([event]);
+                
+                // Remove successful file from queue
+                this.dependencies.fileEventQueue.removeEvent(event.path);
+                console.log(`[FileEventCoordinator] ✅ Successfully processed and removed ${event.path}`);
+                
+            } catch (error) {
+                console.error(`[FileEventCoordinator] Failed to process ${event.path}:`, error);
+                // Leave failed file in queue for retry on next startup
+            }
+        }
+        
+        // Persist progress after individual processing
+        await this.dependencies.fileEventQueue.persist();
+    }
+
+    /**
      * Process all queued files for startup embedding strategy
      */
     async processStartupQueue(): Promise<void> {
@@ -403,7 +506,7 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         const startTime = Date.now();
         
         try {
-            // Filter out files that no longer exist or aren't processable
+            // Filter out files that no longer exist, aren't processable, or don't need re-embedding
             const validEvents = queuedEvents.filter(event => {
                 // Delete events don't need to exist
                 if (event.operation === 'delete') {
@@ -411,7 +514,17 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 }
                 
                 const file = this.app.vault.getAbstractFileByPath(event.path);
-                return file && !('children' in file) && this.dependencies.fileMonitor.shouldProcessFile(file);
+                if (!file || ('children' in file) || !this.dependencies.fileMonitor.shouldProcessFile(file)) {
+                    return false;
+                }
+                
+                // Only process files that are marked as needing re-embedding
+                if (!this.incompleteFilesManager.needsReembedding(event.path)) {
+                    console.log(`[FileEventCoordinator] Skipping file not marked for re-embedding: ${event.path}`);
+                    return false;
+                }
+                
+                return true;
             });
             
             const invalidCount = queuedEvents.length - validEvents.length;
@@ -437,7 +550,8 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                     throw new Error('Embedding scheduler not available for startup queue processing');
                 }
                 
-                await this.dependencies.embeddingScheduler.forceProcessEmbeddings(validEvents);
+                // Process files and remove them from queue incrementally
+                await this.processFilesIncrementally(validEvents);
                 
                 const duration = Date.now() - startTime;
                 console.log(`[FileEventCoordinator] ✓ Completed in ${duration}ms`);
@@ -445,10 +559,9 @@ export class FileEventCoordinator implements IFileEventCoordinator {
                 console.log('[FileEventCoordinator] No valid events to process after filtering');
             }
             
-            // Clear queue after successful processing
-            this.dependencies.fileEventQueue.clear();
+            // Persist queue state after incremental processing
             await this.dependencies.fileEventQueue.persist();
-            console.log('[FileEventCoordinator] ✓ Startup queue cleared and persisted');
+            console.log('[FileEventCoordinator] ✓ Startup queue state persisted');
             
         } catch (error) {
             console.error('[FileEventCoordinator] Error during startup queue processing:', error);
@@ -494,5 +607,51 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         this.app.vault.off('rename', this.fileRenamedHandler as any);
         
         console.log('[FileEventCoordinator] Vault event handlers unregistered');
+    }
+
+    /**
+     * Calculate MD5 hash of content
+     */
+    private async calculateContentHash(content: string): Promise<string> {
+        // Use the existing ContentHashService if available
+        try {
+            const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+            const contentHashService = plugin?.services?.contentHashService;
+            if (contentHashService && typeof contentHashService.generateHash === 'function') {
+                return await contentHashService.generateHash(content);
+            }
+        } catch (error) {
+            console.warn('[FileEventCoordinator] ContentHashService not available, using fallback hash');
+        }
+        
+        // Fallback: simple hash implementation
+        return this.simpleHash(content);
+    }
+
+    /**
+     * Simple hash fallback (not cryptographically secure, but sufficient for change detection)
+     */
+    private simpleHash(content: string): string {
+        let hash = 0;
+        for (let i = 0; i < content.length; i++) {
+            const char = content.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash).toString(16);
+    }
+
+    /**
+     * Get stored hash for file (from old ProcessedFilesStateManager or other sources)
+     */
+    private getStoredHash(filePath: string): string | null {
+        // Try to get from existing processedFiles if still available
+        try {
+            const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+            const storedHash = plugin?.settings?.settings?.processedFiles?.files?.[filePath]?.contentHash;
+            return storedHash || null;
+        } catch (error) {
+            return null;
+        }
     }
 }

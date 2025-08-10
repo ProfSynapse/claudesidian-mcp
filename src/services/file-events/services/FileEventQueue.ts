@@ -1,23 +1,11 @@
 import { Plugin } from 'obsidian';
-import { promises as fs } from 'fs';
-import { join } from 'path';
 import { IFileEventQueue, FileEvent } from '../interfaces/IFileEventServices';
 
 export class FileEventQueue implements IFileEventQueue {
     private queue: Map<string, FileEvent> = new Map();
-    private persistencePath: string;
 
     constructor(private plugin: Plugin) {
-        // Create persistence path for queue storage
-        // Note: this.plugin.app.vault.adapter.path might not exist in all adapters
-        // Using a safer approach
-        this.persistencePath = join(
-            (this.plugin.app.vault.adapter as any).basePath || 
-            (this.plugin.app.vault.adapter as any).path || 
-            '.', 
-            '.obsidian', 
-            'claudesidian-file-event-queue.json'
-        );
+        // Queue now persists to data.json instead of separate file
     }
 
     addEvent(event: FileEvent): void {
@@ -72,52 +60,46 @@ export class FileEventQueue implements IFileEventQueue {
                 event
             }));
             
-            await fs.writeFile(
-                this.persistencePath, 
-                JSON.stringify(queueData, null, 2), 
-                'utf8'
-            );
+            // Load existing plugin data
+            const data = await this.plugin.loadData() || {};
+            
+            // Store queue in data.json under fileEventQueue key
+            data.fileEventQueue = {
+                version: '2.0.0',
+                lastUpdated: Date.now(),
+                events: queueData
+            };
+            
+            // Save back to data.json
+            await this.plugin.saveData(data);
+            
         } catch (error) {
-            console.warn('[FileEventQueue] Failed to persist queue:', error);
+            console.warn('[FileEventQueue] Failed to persist queue to data.json:', error);
         }
     }
 
     async restore(): Promise<void> {
         try {
-            const data = await fs.readFile(this.persistencePath, 'utf8');
-            let queueData;
+            // Load plugin data from data.json
+            const data = await this.plugin.loadData();
             
-            try {
-                queueData = JSON.parse(data);
-            } catch (parseError) {
-                console.warn('[FileEventQueue] Corrupted queue file detected, attempting recovery...');
-                
-                // Try to recover by cleaning the JSON
-                try {
-                    const cleanedData = this.attemptJSONRecovery(data);
-                    queueData = JSON.parse(cleanedData);
-                    console.log('[FileEventQueue] Successfully recovered corrupted queue file');
-                    // Save recovered data to disk to prevent future corruption warnings
-                    await this.persist();
-                } catch (recoveryError) {
-                    console.warn('[FileEventQueue] Failed to recover queue file, clearing and starting fresh:', recoveryError);
-                    await this.clearPersistedQueue();
-                    return;
-                }
+            if (!data?.fileEventQueue?.events) {
+                console.log('[FileEventQueue] No queue data found in data.json, starting with empty queue');
+                return;
             }
             
+            const queueData = data.fileEventQueue.events;
             this.queue.clear();
             
             // Validate that queueData is an array
             if (!Array.isArray(queueData)) {
-                console.warn('[FileEventQueue] Invalid queue data format, expected array. Clearing and starting fresh.');
-                await this.clearPersistedQueue();
+                console.warn('[FileEventQueue] Invalid queue data format in data.json, starting with empty queue');
                 return;
             }
             
-            // Restore all events - let the embedding strategy decide what to process
             let restoredCount = 0;
             
+            // Restore events from data.json
             for (const item of queueData) {
                 // Validate item structure
                 if (item && typeof item === 'object' && item.path && item.event) {
@@ -129,50 +111,13 @@ export class FileEventQueue implements IFileEventQueue {
             }
             
             if (restoredCount > 0) {
-                console.log(`[FileEventQueue] Restored ${restoredCount} events for processing`);
+                console.log(`[FileEventQueue] Restored ${restoredCount} events from data.json`);
             }
             
         } catch (error) {
-            // File might not exist yet, which is fine
-            if ((error as any).code !== 'ENOENT') {
-                console.warn('[FileEventQueue] Failed to restore queue:', error);
-                // If we can't read the file, try to clear it
-                await this.clearPersistedQueue();
-            }
+            console.warn('[FileEventQueue] Failed to restore queue from data.json:', error);
+            // Start with empty queue if restore fails
         }
-    }
-
-    private attemptJSONRecovery(corruptedData: string): string {
-        // Handle the specific case where JSON starts with "[]" followed by object data
-        const trimmedData = corruptedData.trim();
-        
-        // Check if it starts with "[]" followed by content
-        if (trimmedData.startsWith('[]') && trimmedData.length > 2) {
-            // Remove the "[]" prefix and any whitespace, then wrap remaining content in array
-            const contentAfterPrefix = trimmedData.substring(2).trim();
-            
-            // If content starts with "{", it's likely object data that should be an array
-            if (contentAfterPrefix.startsWith('{')) {
-                // Split by },\s*{ pattern to separate objects
-                const objectMatches = contentAfterPrefix.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g);
-                if (objectMatches && objectMatches.length > 0) {
-                    return '[' + objectMatches.join(',') + ']';
-                }
-            }
-        }
-        
-        // Try to fix common JSON issues
-        let cleanedData = trimmedData;
-        
-        // Remove trailing commas before closing brackets/braces
-        cleanedData = cleanedData.replace(/,(\s*[}\]])/g, '$1');
-        
-        // Ensure proper array structure if it looks like it should be an array
-        if (!cleanedData.startsWith('[') && !cleanedData.startsWith('{')) {
-            cleanedData = '[' + cleanedData + ']';
-        }
-        
-        return cleanedData;
     }
 
     private getHigherPriority(
@@ -181,14 +126,6 @@ export class FileEventQueue implements IFileEventQueue {
     ): 'high' | 'normal' | 'low' {
         const priorityOrder = { high: 3, normal: 2, low: 1 };
         return priorityOrder[priority1] >= priorityOrder[priority2] ? priority1 : priority2;
-    }
-
-    private async clearPersistedQueue(): Promise<void> {
-        try {
-            await fs.unlink(this.persistencePath);
-        } catch (error) {
-            console.warn('[FileEventQueue] Failed to clear persisted queue:', error);
-        }
     }
 
     // Debug methods

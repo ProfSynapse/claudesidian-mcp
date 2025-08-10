@@ -144,63 +144,6 @@ export class FileEventManagerModular {
         this.coordinator.setSystemOperation(true);
     }
 
-    /**
-     * Discover and queue all existing vault files for initial processing
-     */
-    async discoverAndQueueExistingFiles(): Promise<void> {
-        try {
-            const files = this.app.vault.getMarkdownFiles();
-            
-            let queuedCount = 0;
-            let skippedUnchanged = 0;
-            let skippedFiltered = 0;
-            
-            for (const file of files) {
-                // Check if file should be processed (respect filters)
-                if (!this.dependencies.fileMonitor.shouldProcessFile(file)) {
-                    skippedFiltered++;
-                    continue;
-                }
-                
-                // CRITICAL OPTIMIZATION: Check if file actually needs re-embedding
-                try {
-                    // Use file monitor's built-in content change detection
-                    if (this.dependencies.fileMonitor.hasContentChanged) {
-                        const hasChanged = await this.dependencies.fileMonitor.hasContentChanged(file);
-                        if (!hasChanged) {
-                            skippedUnchanged++;
-                            continue; // Skip files that haven't changed
-                        }
-                    }
-                } catch (error) {
-                    // If hash checking fails, queue the file to be safe
-                    console.warn('[STARTUP] Content change check failed for', file.path, '- queuing for safety');
-                }
-                
-                // Only queue files that actually need processing
-                this.dependencies.fileEventQueue.addEvent({
-                    path: file.path,
-                    operation: 'create',
-                    timestamp: Date.now(),
-                    isSystemOperation: false,
-                    source: 'initial_scan',
-                    priority: 'normal'
-                });
-                queuedCount++;
-            }
-            
-            console.log(`[STARTUP] Vault scan: {queuedFiles: ${queuedCount}, skippedUnchanged: ${skippedUnchanged}, skippedFiltered: ${skippedFiltered}}`);
-            
-            // Only persist if we actually queued files
-            if (queuedCount > 0) {
-                await this.dependencies.fileEventQueue.persist();
-            }
-            
-        } catch (error) {
-            console.error('[STARTUP] Vault scan failed:', error);
-            throw error;
-        }
-    }
 
     /**
      * Process all queued files for startup embedding strategy
@@ -214,7 +157,7 @@ export class FileEventManagerModular {
         this.isProcessingStartupQueue = true;
         
         try {
-            // First, discover and queue existing files if queue is empty
+            // Check queue size - startup mode only processes manually queued files
             const initialQueueSize = this.dependencies.fileEventQueue.size();
             console.log('[FileEventManager] 🚀 Starting background startup queue processing:', {
                 initialQueueSize,
@@ -222,17 +165,11 @@ export class FileEventManagerModular {
             });
             
             if (initialQueueSize === 0) {
-                console.log('[FileEventManager] Queue is empty, running initial vault scan');
-                await this.discoverAndQueueExistingFiles();
-            }
-            
-            const queueSize = this.dependencies.fileEventQueue.size();
-            if (queueSize === 0) {
-                console.log('[FileEventManager] No files to process after initial scan');
+                console.log('[FileEventManager] ✅ No files in startup queue - all embeddings are up to date');
                 return;
             }
 
-            console.log(`[FileEventManager] Found ${queueSize} files in startup queue`);
+            console.log(`[FileEventManager] Found ${initialQueueSize} manually queued files to process`);
             
             // Wait for vector dependencies to be ready with retry logic
             await this.waitForVectorDependencies();
@@ -240,7 +177,7 @@ export class FileEventManagerModular {
             
             const remainingEvents = this.dependencies.fileEventQueue.size();
             console.log('[FileEventManager] ✅ Background startup queue processing completed:', {
-                processedFiles: queueSize - remainingEvents,
+                processedFiles: initialQueueSize - remainingEvents,
                 remainingEvents
             });
             
