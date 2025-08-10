@@ -14,7 +14,7 @@
 
 import { App } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../MemoryManager';
+import { MemoryManagerAgent } from '../../memoryManager'
 import { LoadSessionParams, SessionResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';

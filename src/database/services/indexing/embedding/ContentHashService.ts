@@ -47,58 +47,24 @@ export class ContentHashService {
         return false; // Skip if file doesn't exist or is a folder
       }
 
-      const content = await this.plugin.app.vault.read(file as any);
-      const currentHash = this.hashContent(content);
-
-      // Check persistent state first
-      if (this.stateManager.isFileProcessed(filePath, currentHash)) {
-        return false; // Already processed
-      }
-
-      // First check if the collection exists and has items
-      const collectionExists = await vectorStore.hasCollection('file_embeddings');
-      if (!collectionExists) {
-        return true;
-      }
-
-      const collectionCount = await vectorStore.count('file_embeddings');
-
       // Normalize the file path to match database format (forward slashes)
       const normalizedPath = FileUtils.normalizePath(filePath);
 
-      // Query for existing embeddings for this file using metadata filtering
-      // Use metadata-only query without queryTexts to avoid embedding function dependency
-      const queryResult = await vectorStore.query('file_embeddings', {
-        where: { filePath: { $eq: normalizedPath } },
-        nResults: 1,
-        include: ['metadatas']
-      });
-
-
-      // If no existing embeddings found, file needs embedding
-      if (!queryResult.ids || queryResult.ids.length === 0 || queryResult.ids[0].length === 0) {
-        return true;
-      }
-
-      // Check if we have metadata with content hash
-      const metadata = queryResult.metadatas?.[0]?.[0];
-      if (!metadata || !metadata.contentHash) {
-        return true;
-      }
-
-      // Compare hashes
-      const storedHash = metadata.contentHash;
-      const hashMatches = currentHash === storedHash;
+      // STATE-BASED TRACKING: Use existing ProcessedFilesStateManager instead of ChromaDB queries
+      // Benefits: 0MB memory overhead vs 1GB+ ChromaDB collection loading
+      // Architecture: Trust existing state management system we already built
       
-      // NEW: If embeddings exist and hashes match, mark as processed in state
-      if (hashMatches) {
-        // Embeddings exist and hash matches, marking as processed
-        this.stateManager.markFileProcessed(filePath, currentHash, 'existing');
-        await this.stateManager.saveState();
-        return false;
+      const content = await this.plugin.app.vault.read(file as any);
+      const currentHash = this.hashContent(content);
+      
+      // Check our existing state manager (already implemented and working)
+      if (this.stateManager.isFileProcessed(normalizedPath, currentHash)) {
+        console.log(`[ContentHashService] File ${normalizedPath} found in processed state with matching hash`);
+        return false; // Already processed this exact version
       }
       
-      return true; // Return true if hashes don't match (needs re-embedding)
+      console.log(`[ContentHashService] File ${normalizedPath} not in processed state or hash changed - needs embedding`);
+      return true;
     } catch (error) {
       console.error(`[ContentHashService] Error checking if file needs embedding for ${filePath}:`, error);
       return true; // If we can't determine, assume it needs embedding

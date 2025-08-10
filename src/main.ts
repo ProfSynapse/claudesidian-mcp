@@ -5,6 +5,7 @@ import { ServiceManager } from './core/ServiceManager';
 import { ServiceAccessMixin } from './core/ServiceAccessMixin';
 import { PluginLifecycleManager, type PluginLifecycleConfig } from './core/PluginLifecycleManager';
 import { logger } from './utils/logger';
+import { memoryMonitor } from './services/memory';
 
 // Type imports for service interfaces
 import type { EmbeddingService } from './database/services/core/EmbeddingService';
@@ -86,6 +87,9 @@ export default class ClaudesidianPlugin extends Plugin {
         const initialMemory = this.getMemoryUsage();
         
         // Starting plugin initialization
+        
+        // Start memory monitoring with balanced settings
+        memoryMonitor.startMonitoring();
         
         try {
             // PHASE 1: Foundation - Create service manager and settings
@@ -260,6 +264,9 @@ export default class ClaudesidianPlugin extends Plugin {
     
     async onunload() {
         try {
+            // Stop memory monitoring
+            memoryMonitor.stopMonitoring();
+            
             // Delegate cleanup to lifecycle manager
             if (this.lifecycleManager) {
                 await this.lifecycleManager.shutdown();

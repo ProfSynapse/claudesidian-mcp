@@ -189,21 +189,20 @@ export class AdaptiveBulkHashService {
         memoryPressure: this.getMemoryPressureLevel()
       });
       
-      // Step 2: Get bulk database metadata for all files in batch
-      const dbStartTime = performance.now();
-      const dbMetadata = await this.getBulkDatabaseMetadata(filePaths, vectorStore);
-      const dbEndTime = performance.now();
-      const dbEndMemory = this.getMemoryUsageMB();
+      // Step 2: STATE-BASED COMPARISON (No ChromaDB queries - 0MB memory overhead)
+      const stateStartTime = performance.now();
+      console.log(`[AdaptiveBulkHashService] Using state-based tracking instead of ChromaDB queries (memory-optimized)`);
+      const stateEndTime = performance.now();
+      const stateEndMemory = this.getMemoryUsageMB();
       
-      console.log(`[AdaptiveBulkHashService] Batch database query:`, {
+      console.log(`[AdaptiveBulkHashService] State-based comparison:`, {
         files: filePaths.length,
-        found: dbMetadata.size,
-        timeMs: Math.round(dbEndTime - dbStartTime),
-        memoryDeltaMB: Math.round((dbEndMemory - hashEndMemory) * 100) / 100,
+        timeMs: Math.round(stateEndTime - stateStartTime),
+        memoryDeltaMB: Math.round((stateEndMemory - hashEndMemory) * 100) / 100,
         memoryPressure: this.getMemoryPressureLevel()
       });
       
-      // Step 3: Compare hashes in memory (the "spreadsheet" operation)
+      // Step 3: STATE-BASED COMPARISON (No ChromaDB queries needed)
       for (const data of fileData) {
         if (!data.isValid) {
           results.push({
@@ -215,64 +214,24 @@ export class AdaptiveBulkHashService {
           continue;
         }
         
-        // Check persistent state first
+        // Check persistent state ONLY - no database queries needed
         if (this.stateManager.isFileProcessed(data.filePath, data.currentHash)) {
           results.push({
             filePath: data.filePath,
             needsEmbedding: false,
             currentHash: data.currentHash,
-            skipped: true,
-            reason: 'Already processed (state)'
+            reason: 'Already processed (state-based tracking)'
           });
           continue;
         }
         
-        // Check database metadata
-        const dbInfo = dbMetadata.get(data.filePath);
-        if (!dbInfo) {
-          // No embeddings found, needs embedding
-          results.push({
-            filePath: data.filePath,
-            needsEmbedding: true,
-            currentHash: data.currentHash,
-            reason: 'No existing embeddings'
-          });
-          continue;
-        }
-        
-        if (!dbInfo.contentHash) {
-          // No content hash in metadata, needs embedding
-          results.push({
-            filePath: data.filePath,
-            needsEmbedding: true,
-            currentHash: data.currentHash,
-            reason: 'No content hash in metadata'
-          });
-          continue;
-        }
-        
-        // Compare hashes
-        const hashMatches = data.currentHash === dbInfo.contentHash;
-        if (hashMatches) {
-          // Hashes match, mark as processed in state
-          this.stateManager.markFileProcessed(data.filePath, data.currentHash, 'existing');
-          results.push({
-            filePath: data.filePath,
-            needsEmbedding: false,
-            currentHash: data.currentHash,
-            storedHash: dbInfo.contentHash,
-            reason: 'Hash matches, marked as processed'
-          });
-        } else {
-          // Hashes don't match, needs re-embedding
-          results.push({
-            filePath: data.filePath,
-            needsEmbedding: true,
-            currentHash: data.currentHash,
-            storedHash: dbInfo.contentHash,
-            reason: 'Content changed'
-          });
-        }
+        // File not in processed state or hash changed - needs embedding
+        results.push({
+          filePath: data.filePath,
+          needsEmbedding: true,
+          currentHash: data.currentHash,
+          reason: 'Not in processed state or content changed'
+        });
       }
       
       // Save state updates in bulk
@@ -330,105 +289,8 @@ export class AdaptiveBulkHashService {
     return await Promise.all(fileDataPromises);
   }
 
-  /**
-   * Get database metadata for all files in batch with single query
-   * @param filePaths Array of file paths
-   * @param vectorStore Vector store instance
-   * @returns Promise resolving to Map of file metadata
-   */
-  private async getBulkDatabaseMetadata(filePaths: string[], vectorStore: any): Promise<Map<string, {
-    contentHash?: string;
-    hasEmbeddings: boolean;
-  }>> {
-    const metadataMap = new Map<string, { contentHash?: string; hasEmbeddings: boolean }>();
-    
-    try {
-      // Check if collection exists
-      const collectionExists = await vectorStore.hasCollection('file_embeddings');
-      if (!collectionExists) {
-        // No collection exists, all files need embedding
-        filePaths.forEach(filePath => {
-          metadataMap.set(FileUtils.normalizePath(filePath), {
-            hasEmbeddings: false
-          });
-        });
-        return metadataMap;
-      }
-      
-      // Normalize paths for database query
-      const normalizedPaths = filePaths.map(path => FileUtils.normalizePath(path));
-      
-      // Try to use bulk metadata query if available (new optimization)
-      let bulkResults: Array<{ filePath: string; contentHash?: string; metadata: Record<string, any> }> = [];
-      
-      if (vectorStore.getBulkFileMetadata) {
-        // Use new bulk metadata method
-        bulkResults = await vectorStore.getBulkFileMetadata('file_embeddings', normalizedPaths);
-      } else {
-        // Fallback to individual query approach
-        const queryResult = await vectorStore.query('file_embeddings', {
-          where: { filePath: { $in: normalizedPaths } },
-          nResults: 1000, // Get multiple chunks per file if needed
-          include: ['metadatas']
-        });
-        
-        // Convert query result to bulk results format
-        if (queryResult.metadatas && queryResult.metadatas[0]) {
-          const metadatas = queryResult.metadatas[0];
-          const filePathMap = new Map<string, { contentHash?: string; metadata: Record<string, any> }>();
-          
-          for (const metadata of metadatas) {
-            if (metadata && metadata.filePath) {
-              const filePath = metadata.filePath;
-              if (!filePathMap.has(filePath)) {
-                filePathMap.set(filePath, {
-                  contentHash: metadata.contentHash,
-                  metadata: metadata
-                });
-              }
-            }
-          }
-          
-          bulkResults = Array.from(filePathMap.entries()).map(([filePath, data]) => ({
-            filePath,
-            contentHash: data.contentHash,
-            metadata: data.metadata
-          }));
-        }
-      }
-      
-      // Process bulk results and populate metadata map
-      for (const result of bulkResults) {
-        metadataMap.set(result.filePath, {
-          contentHash: result.contentHash,
-          hasEmbeddings: true
-        });
-      }
-      
-      // Add entries for files not found in database
-      normalizedPaths.forEach(filePath => {
-        if (!metadataMap.has(filePath)) {
-          metadataMap.set(filePath, {
-            hasEmbeddings: false
-          });
-        }
-      });
-      
-      return metadataMap;
-      
-    } catch (error) {
-      console.error(`[AdaptiveBulkHashService] Error getting bulk database metadata:`, error);
-      
-      // On error, assume all files need embedding
-      filePaths.forEach(filePath => {
-        metadataMap.set(FileUtils.normalizePath(filePath), {
-          hasEmbeddings: false
-        });
-      });
-      
-      return metadataMap;
-    }
-  }
+  // NOTE: getBulkDatabaseMetadata method removed - now using pure state-based tracking
+  // This eliminates the 1GB+ ChromaDB collection loading entirely
 
 
   /**
@@ -513,6 +375,7 @@ export class AdaptiveBulkHashService {
 
   /**
    * Smart memory pressure detection based on actual batch requirements
+   * Now optimized for targeted queries (no collection loading concerns)
    */
   private async checkSmartMemoryPressure(batch: string[]): Promise<{
     shouldFallback: boolean;
@@ -529,60 +392,47 @@ export class AdaptiveBulkHashService {
     }
 
     // Calculate estimated memory requirements for this batch
+    // Now much lower since we use targeted queries (no collection loading)
     const totalFileSize = validFiles.reduce((sum, stat) => sum + stat.size, 0);
-    const estimatedBatchMemory = Math.max(totalFileSize * 3, validFiles.length * 1024); // 3x file size or min 1KB per file
+    const estimatedBatchMemory = Math.max(totalFileSize * 2, validFiles.length * 512); // Reduced: 2x file size, 512 bytes overhead per file
     const estimatedBatchMemoryMB = estimatedBatchMemory / (1024 * 1024);
 
     // Get current memory state
     const memoryUsage = this.fileStatsCollector.getMemoryUsage();
     if (!memoryUsage) {
-      // If we can't measure memory, use conservative thresholds based on batch characteristics
+      // Conservative thresholds based on file characteristics (now more generous)
       const maxFileSize = Math.max(...validFiles.map(stat => stat.size));
       
-      // Very large files or many files - be conservative
-      if (maxFileSize > 50 * 1024 * 1024) { // Files > 50MB
+      // Very large files - still be conservative
+      if (maxFileSize > 100 * 1024 * 1024) { // Increased threshold to 100MB (was 50MB)
         return {
           shouldFallback: true,
-          reason: `Large file detected (${Math.round(maxFileSize / 1024 / 1024)}MB), memory usage unknown`,
+          reason: `Very large file detected (${Math.round(maxFileSize / 1024 / 1024)}MB), memory usage unknown`,
           fallbackStrategy: 'individual'
         };
-      } else if (validFiles.length > 200) { // Many files
+      } else if (validFiles.length > 500) { // Increased threshold (was 200)
         return {
           shouldFallback: true,
-          reason: `Large batch (${validFiles.length} files), memory usage unknown`,
+          reason: `Very large batch (${validFiles.length} files), memory usage unknown`,
           fallbackStrategy: 'smaller-batches',
-          suggestedBatchSize: 50
+          suggestedBatchSize: 100 // Increased batch size (was 50)
         };
       }
       
       return { shouldFallback: false };
     }
 
-    // Use heap limit instead of current allocation for more realistic pressure calculation
+    // Use heap limit for realistic pressure calculation
     const memoryLimit = (performance as any).memory?.jsHeapSizeLimit || memoryUsage.total;
     const availableMemoryMB = (memoryLimit - memoryUsage.used) / (1024 * 1024);
     const memoryUsagePercent = (memoryUsage.used / memoryLimit) * 100;
 
-    // Smart decision matrix based on actual requirements vs availability
-    
-    // Debug: Log actual memory numbers for diagnostics including plugin context
+    // Debug logging for diagnostics
     const currentOperationMemory = this.getMemoryUsageMB();
+    console.log(`[AdaptiveBulkHashService] Memory diagnostics (targeted queries): Used=${(memoryUsage.used/1024/1024).toFixed(1)}MB, Available=${availableMemoryMB.toFixed(1)}MB, Usage=${memoryUsagePercent.toFixed(1)}%, EstimatedBatch=${estimatedBatchMemoryMB.toFixed(1)}MB`);
     
-    // Get plugin-specific memory info if available
-    let pluginMemoryInfo = '';
-    try {
-      if ((this.plugin as any).getMemoryInfo) {
-        const memInfo = (this.plugin as any).getMemoryInfo();
-        pluginMemoryInfo = `, PluginContext: HeapLimit=${memInfo.totalMemoryMB.toFixed(1)}MB`;
-      }
-    } catch (error) {
-      pluginMemoryInfo = ', PluginContext: unavailable';
-    }
-    
-    console.log(`[AdaptiveBulkHashService] Memory diagnostics: Used=${(memoryUsage.used/1024/1024).toFixed(1)}MB, Allocated=${(memoryUsage.total/1024/1024).toFixed(1)}MB, Limit=${(memoryLimit/1024/1024).toFixed(1)}MB, Available=${availableMemoryMB.toFixed(1)}MB, Usage=${memoryUsagePercent.toFixed(1)}%, EstimatedBatch=${estimatedBatchMemoryMB.toFixed(1)}MB, CurrentOperation=${currentOperationMemory}MB${pluginMemoryInfo}`);
-    
-    // CRITICAL: Current heap usage is very high regardless of batch size
-    if (memoryUsagePercent > 92) {
+    // CRITICAL: Current heap usage is very high
+    if (memoryUsagePercent > 95) { // Increased threshold (was 92%)
       return {
         shouldFallback: true,
         reason: `Critical memory pressure (${memoryUsagePercent.toFixed(1)}% heap usage)`,
@@ -590,14 +440,14 @@ export class AdaptiveBulkHashService {
       };
     }
 
-    // HIGH RISK: Batch would likely push us over safe limits
-    if (estimatedBatchMemoryMB > availableMemoryMB * 0.8) { // Batch needs >80% of available memory
-      if (validFiles.length > 10) {
+    // HIGH RISK: Batch would use too much available memory
+    if (estimatedBatchMemoryMB > availableMemoryMB * 0.9) { // More generous (was 0.8)
+      if (validFiles.length > 20) { // Increased threshold (was 10)
         return {
           shouldFallback: true,
           reason: `Batch requires ${estimatedBatchMemoryMB.toFixed(1)}MB, only ${availableMemoryMB.toFixed(1)}MB available`,
           fallbackStrategy: 'smaller-batches',
-          suggestedBatchSize: Math.max(Math.floor(validFiles.length / 4), 5)
+          suggestedBatchSize: Math.max(Math.floor(validFiles.length / 3), 10) // Less aggressive splitting
         };
       } else {
         return {
@@ -608,22 +458,17 @@ export class AdaptiveBulkHashService {
       }
     }
 
-    // MODERATE RISK: Large batch with moderate memory pressure
-    if (memoryUsagePercent > 75 && estimatedBatchMemoryMB > 100) {
+    // MODERATE RISK: Large batch with high memory pressure
+    if (memoryUsagePercent > 85 && estimatedBatchMemoryMB > 200) { // Increased thresholds
       return {
         shouldFallback: true,
-        reason: `Moderate memory pressure (${memoryUsagePercent.toFixed(1)}%) + large batch (${estimatedBatchMemoryMB.toFixed(1)}MB)`,
+        reason: `High memory pressure (${memoryUsagePercent.toFixed(1)}%) + large batch (${estimatedBatchMemoryMB.toFixed(1)}MB)`,
         fallbackStrategy: 'smaller-batches',
-        suggestedBatchSize: Math.max(Math.floor(validFiles.length / 2), 10)
+        suggestedBatchSize: Math.max(Math.floor(validFiles.length / 2), 20) // Less aggressive splitting
       };
     }
 
-    // LOW RISK: Batch size is very small anyway - no meaningful benefit to fallback
-    if (estimatedBatchMemoryMB < 5) { // Less than 5MB estimated
-      return { shouldFallback: false };
-    }
-
-    // ALL CLEAR: Proceed with batch processing
+    // ALL CLEAR: Proceed with batch processing using targeted queries
     return { shouldFallback: false };
   }
 

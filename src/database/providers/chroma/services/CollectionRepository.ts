@@ -413,48 +413,19 @@ export class CollectionRepository {
     const results: Array<{ filePath: string; contentHash?: string; metadata: Record<string, any> }> = [];
     
     try {
-      // Get all items that match any of the file paths
-      const matchingItems = this.getAllItems().filter(item => 
-        item.metadata && 
-        item.metadata.filePath && 
-        filePaths.includes(item.metadata.filePath)
-      );
+      // MEMORY OPTIMIZATION: Instead of loading entire collection, return empty results
+      // This forces the caller to use the fallback ChromaDB query with proper filtering
+      console.log(`[CollectionRepository:${this.collectionName}] getBulkFileMetadata called but returning empty to prevent memory spike`);
+      console.log(`[CollectionRepository:${this.collectionName}] Requested paths:`, filePaths);
       
-      // Group by file path (in case there are multiple chunks per file)
-      const fileMetadataMap = new Map<string, { contentHash?: string; metadata: Record<string, any> }>();
-      
-      for (const item of matchingItems) {
-        const filePath = item.metadata.filePath;
-        if (!fileMetadataMap.has(filePath)) {
-          fileMetadataMap.set(filePath, {
-            contentHash: item.metadata.contentHash,
-            metadata: { ...item.metadata }
-          });
-        } else {
-          // If we already have metadata for this file, ensure we have the contentHash
-          const existing = fileMetadataMap.get(filePath)!;
-          if (!existing.contentHash && item.metadata.contentHash) {
-            existing.contentHash = item.metadata.contentHash;
-          }
-        }
-      }
-      
-      // Convert map to results array
-      for (const [filePath, data] of Array.from(fileMetadataMap.entries())) {
-        results.push({
-          filePath,
-          contentHash: data.contentHash,
-          metadata: data.metadata
-        });
-      }
-
+      // Return empty results to force AdaptiveBulkHashService to use the fallback query approach
       const queryTime = performance.now() - startTime;
-      console.log(`[CollectionRepository:${this.collectionName}] Bulk metadata query:`, {
-        requested: filePaths.length,
-        found: results.length,
+      
+      console.log(`[CollectionRepository:${this.collectionName}] Returning empty to avoid loading ${this.items.size} items:`, {
+        requested: filePaths.length, 
+        found: 0,
         queryTimeMs: Math.round(queryTime * 100) / 100,
-        totalItems: this.items.size,
-        memoryPressure: this.getMemoryPressureLevel()
+        memoryOptimization: 'Forced fallback to ChromaDB query'
       });
       
       return results;

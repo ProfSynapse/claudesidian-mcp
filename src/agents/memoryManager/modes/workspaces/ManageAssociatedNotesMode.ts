@@ -11,7 +11,7 @@
 
 import { App } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../MemoryManager';
+import { MemoryManagerAgent } from '../../memoryManager'
 import { createServiceIntegration } from '../../services/ValidationService';
 import { CommonParameters, CommonResult } from '../../../../types/mcp';
 import { createErrorMessage } from '../../../../utils/errorUtils';

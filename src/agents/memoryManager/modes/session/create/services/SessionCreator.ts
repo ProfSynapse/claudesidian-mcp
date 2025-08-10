@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on session operations
  */
 
-import { MemoryManagerAgent } from '../../../../MemoryManager';
+import { MemoryManagerAgent } from '../../../../memoryManager'
 import { CreateSessionParams } from '../../../../types';
 import { WorkspaceSession } from '../../../../../../database/workspace-types';
 import { generateSessionId } from '../../../../../../utils/sessionUtils';

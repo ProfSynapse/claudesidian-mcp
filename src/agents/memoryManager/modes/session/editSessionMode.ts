@@ -1,5 +1,5 @@
 import { BaseMode } from '../../../baseMode';
-import { MemoryManagerAgent } from '../../MemoryManager';
+import { MemoryManagerAgent } from '../../memoryManager'
 import { EditSessionParams, SessionResult } from '../../types';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 

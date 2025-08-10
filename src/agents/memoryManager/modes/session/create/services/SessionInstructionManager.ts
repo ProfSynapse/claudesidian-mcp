@@ -3,7 +3,7 @@
  * Follows Single Responsibility Principle by focusing only on session instruction operations
  */
 
-import { MemoryManagerAgent } from '../../../../MemoryManager';
+import { MemoryManagerAgent } from '../../../../memoryManager'
 import { formatSessionInstructions, enhanceContextWithSessionInstructions } from '../../../../../../utils/sessionUtils';
 
 export interface SessionInstructionResult {
