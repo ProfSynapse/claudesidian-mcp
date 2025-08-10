@@ -171,32 +171,6 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
           description: 'Force semantic search even for categories that typically use exact matching (default: auto-detect)',
           default: false
         },
-        // Graph boost options
-        useGraphBoost: {
-          type: 'boolean',
-          description: 'Use graph connections to boost relevance of connected notes'
-        },
-        graphBoostFactor: {
-          type: 'number',
-          description: 'Strength of graph boost effect (default: 0.3)',
-          minimum: 0,
-          maximum: 2,
-          default: 0.3
-        },
-        graphMaxDistance: {
-          type: 'number',
-          description: 'Maximum graph distance for boost effect (default: 1)',
-          minimum: 1,
-          maximum: 5,
-          default: 1
-        },
-        seedNotes: {
-          type: 'array',
-          description: 'Seed notes to prioritize in graph boost',
-          items: {
-            type: 'string'
-          }
-        }
       },
       required: ['query', 'queryType', 'snippetLength'],
       additionalProperties: false

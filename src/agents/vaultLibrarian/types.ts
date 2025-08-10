@@ -6,27 +6,11 @@ import { CommonParameters, CommonResult } from '../../types';
 
 /**
  * Graph boost options for enhancing search results using graph connections
+ * Note: Graph boost is now hardcoded into the RRF calculation with sensible defaults
+ * These options are maintained for internal use but no longer exposed to users
  */
 export interface GraphBoostOptions {
-  /**
-   * Whether to use graph-based relevance boosting
-   */
-  useGraphBoost?: boolean;
-
-  /**
-   * Graph boost factor (0-1)
-   */
-  graphBoostFactor?: number;
-
-  /**
-   * Maximum distance for graph connections
-   */
-  graphMaxDistance?: number;
-
-  /**
-   * List of seed note paths to prioritize in results
-   */
-  seedNotes?: string[];
+  // Internal parameters - no longer user-facing since graph boost is hardcoded
 }
 
 

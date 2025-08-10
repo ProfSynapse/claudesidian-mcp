@@ -14,6 +14,7 @@ import {
   RankingStrategy 
 } from '../../types/search/SearchResults';
 import { FusionConfiguration, FusionMetrics } from '../../types/search/SearchMetadata';
+import { GraphOperations } from '../../database/utils/graph/GraphOperations';
 
 export interface ResultFusionInterface {
   fuse(resultSets: SearchResultSet[], options?: FusionOptions): Promise<HybridSearchResult[]>;
@@ -27,6 +28,7 @@ export interface ResultFusionInterface {
 
 export class ResultFusion implements ResultFusionInterface {
   private config: FusionConfiguration;
+  private graphOperations: GraphOperations;
   private metrics = {
     totalOperations: 0,
     totalFusionTime: 0,
@@ -48,6 +50,7 @@ export class ResultFusion implements ResultFusionInterface {
       algorithmParameters: {},
       ...config
     };
+    this.graphOperations = new GraphOperations();
   }
 
   /**
@@ -153,7 +156,10 @@ export class ResultFusion implements ResultFusionInterface {
         );
       });
 
-    return hybridResults;
+    // Apply hardcoded graph boost to RRF results
+    const graphBoostedResults = this.applyGraphBoostToResults(hybridResults);
+
+    return graphBoostedResults;
   }
 
   /**
@@ -288,6 +294,53 @@ export class ResultFusion implements ResultFusionInterface {
   }
 
   // Private helper methods
+
+  /**
+   * Apply hardcoded graph boost to RRF results
+   */
+  private applyGraphBoostToResults(results: HybridSearchResult[]): HybridSearchResult[] {
+    try {
+      // Convert results to format expected by GraphOperations
+      const records = results.map(result => ({
+        record: {
+          id: result.id,
+          filePath: result.metadata?.filePath || result.filePath || '',
+          content: result.content || '',
+          metadata: {
+            ...result.metadata,
+            links: result.metadata?.links || {}
+          }
+        },
+        similarity: result.score
+      }));
+
+      // Apply graph boost with hardcoded parameters
+      const graphBoostedRecords = this.graphOperations.applyGraphBoost(records, {
+        useGraphBoost: true,
+        boostFactor: 0.3, // Hardcoded 30% boost factor
+        maxDistance: 1,   // Only boost direct connections
+        includeNeighbors: true
+      });
+
+      // Convert back to HybridSearchResult format and re-sort by boosted scores
+      return graphBoostedRecords
+        .map((item, index) => ({
+          ...results.find(r => r.id === item.record.id)!,
+          score: item.similarity, // Use the graph-boosted score
+          metadata: {
+            ...results.find(r => r.id === item.record.id)!.metadata,
+            finalRank: index + 1,
+            graphBoosted: true,
+            graphBoostFactor: 0.3
+          }
+        }))
+        .sort((a, b) => b.score - a.score); // Re-sort by boosted scores
+
+    } catch (error) {
+      console.error('[ResultFusion] Graph boost failed, returning original results:', error);
+      return results;
+    }
+  }
 
   private async applySimpleFusion(resultSets: SearchResultSet[]): Promise<HybridSearchResult[]> {
     // Simple concatenation with deduplication
