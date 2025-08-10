@@ -226,10 +226,7 @@ export abstract class BaseImageAdapter extends BaseAdapter {
       errors.push(`Size ${params.size} not supported. Supported sizes: ${this.supportedSizes.join(', ')}`);
     }
 
-    // Validate format if specified
-    if (params.format && !this.supportedFormats.includes(params.format)) {
-      errors.push(`Format ${params.format} not supported. Supported formats: ${this.supportedFormats.join(', ')}`);
-    }
+    // Format validation removed - Google Imagen only outputs PNG
 
     return {
       isValid: errors.length === 0,

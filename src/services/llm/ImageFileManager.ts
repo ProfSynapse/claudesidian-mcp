@@ -40,11 +40,6 @@ export class ImageFileManager {
       uint8Array.set(imageResponse.imageData);
       const file = await this.vault.createBinary(finalPath, arrayBuffer);
 
-      // Create companion metadata file if requested
-      if (params.context) {
-        await this.createMetadataFile(finalPath, imageResponse, params);
-      }
-
       return {
         success: true,
         filePath: finalPath,
@@ -189,61 +184,6 @@ export class ImageFileManager {
     return finalPath;
   }
 
-  /**
-   * Create metadata companion file
-   */
-  private async createMetadataFile(
-    imagePath: string,
-    imageResponse: ImageGenerationResponse,
-    params: ImageGenerationParams
-  ): Promise<void> {
-    const metadataPath = this.removeExtension(imagePath) + '.md';
-    
-    const metadata = {
-      prompt: params.prompt,
-      revisedPrompt: imageResponse.revisedPrompt,
-      model: params.model,
-      provider: params.provider,
-      dimensions: imageResponse.dimensions,
-      format: imageResponse.format,
-      generatedAt: new Date().toISOString(),
-      imagePath: path.basename(imagePath),
-      usage: imageResponse.usage,
-      metadata: imageResponse.metadata
-    };
-
-    const metadataContent = `# Image Generation Metadata
-
-## Image Details
-- **File**: ${path.basename(imagePath)}
-- **Dimensions**: ${imageResponse.dimensions.width} x ${imageResponse.dimensions.height}
-- **Format**: ${imageResponse.format.toUpperCase()}
-- **Size**: ${Math.round(imageResponse.imageData.length / 1024)} KB
-
-## Generation Details
-- **Provider**: ${params.provider}
-- **Model**: ${params.model || 'default'}
-- **Generated**: ${new Date().toLocaleString()}
-
-## Prompts
-**Original Prompt**: ${params.prompt}
-
-${imageResponse.revisedPrompt ? `**Revised Prompt**: ${imageResponse.revisedPrompt}` : ''}
-
-## Technical Details
-\`\`\`json
-${JSON.stringify(metadata, null, 2)}
-\`\`\`
-
-## Context
-${params.context || 'No additional context provided.'}
-
----
-*Generated with Claudesidian MCP Image Generation*
-`;
-
-    await this.vault.create(metadataPath, metadataContent);
-  }
 
   /**
    * Get file extension for format

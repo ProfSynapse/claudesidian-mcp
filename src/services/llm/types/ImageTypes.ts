@@ -18,14 +18,11 @@ import { CostDetails, TokenUsage, LLMProviderError } from '../adapters/types';
 // Core image generation parameter interfaces
 export interface ImageGenerationParams {
   prompt: string;
-  provider: 'openai' | 'google';
-  model?: string; // gpt-image-1, imagen-4, imagen-4-ultra
-  size?: string; // '256x256', '512x512', '1024x1024', etc.
-  quality?: 'standard' | 'hd';
-  style?: string; // art style descriptor
+  provider: 'google'; // Only Google Imagen supported
+  model?: string; // imagen-4, imagen-4-ultra
+  size?: string; // Legacy support for pixel dimensions (converted to aspectRatio)
+  aspectRatio?: AspectRatio; // Google Imagen aspect ratios
   savePath: string; // vault relative path
-  format?: 'png' | 'jpeg' | 'webp';
-  safety?: 'strict' | 'standard' | 'permissive';
   sessionId?: string;
   context?: string;
 }
@@ -139,12 +136,14 @@ export interface ImageBuffer {
 // OpenAI specific types
 export namespace OpenAI {
   export interface ImageGenerationRequest {
-    model: 'gpt-image-1';
-    prompt: string;
-    size?: '256x256' | '512x512' | '1024x1024' | '1024x1792' | '1792x1024';
-    quality?: 'standard' | 'hd';
-    response_format?: 'url' | 'b64_json';
-    user?: string;
+    model: 'gpt-4.1'; // Model that supports image_generation tool
+    input: string;
+    tools: Array<{
+      type: 'image_generation';
+      size?: '1024x1024' | '1536x1024' | '1024x1536' | 'auto';
+      quality?: 'low' | 'medium' | 'high' | 'auto';
+      background?: 'transparent' | 'opaque' | 'auto';
+    }>;
   }
 
   export interface ImageGenerationResponse {
@@ -223,13 +222,21 @@ export type ImageModel =
   | 'imagen-4'           // Google
   | 'imagen-4-ultra';    // Google
 
+// Aspect ratio constants
+export enum AspectRatio {
+  SQUARE = '1:1',
+  PORTRAIT_3_4 = '3:4',
+  LANDSCAPE_4_3 = '4:3',
+  PORTRAIT_9_16 = '9:16',
+  LANDSCAPE_16_9 = '16:9'
+}
+
 // Image size presets
 export const IMAGE_SIZES = {
-  SQUARE_256: '256x256',
-  SQUARE_512: '512x512', 
   SQUARE_1024: '1024x1024',
-  PORTRAIT: '1024x1792',
-  LANDSCAPE: '1792x1024'
+  PORTRAIT: '1024x1536',  // gpt-image-1 supported
+  LANDSCAPE: '1536x1024', // gpt-image-1 supported
+  AUTO: 'auto'            // gpt-image-1 automatic sizing
 } as const;
 
 export type ImageSize = typeof IMAGE_SIZES[keyof typeof IMAGE_SIZES];

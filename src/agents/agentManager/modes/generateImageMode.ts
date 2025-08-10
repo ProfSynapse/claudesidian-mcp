@@ -10,11 +10,7 @@ import { ImageGenerationService } from '../../../services/llm/ImageGenerationSer
 import { 
   ImageGenerationParams,
   ImageGenerationResult,
-  ImageProvider,
-  ImageModel,
-  ImageSize,
-  ImageQuality,
-  SafetyLevel
+  AspectRatio
 } from '../../../services/llm/types/ImageTypes';
 import { SchemaBuilder, SchemaType } from '../../../utils/schemas/SchemaBuilder';
 import { Vault } from 'obsidian';
@@ -22,13 +18,10 @@ import { LLMProviderSettings } from '../../../types/llm/ProviderTypes';
 
 export interface GenerateImageParams {
   prompt: string;
-  provider: ImageProvider;
-  model?: ImageModel;
-  size?: ImageSize | string;
-  quality?: ImageQuality;
-  safety?: SafetyLevel;
+  provider: 'google'; // Only Google Imagen supported
+  model?: 'imagen-4' | 'imagen-4-ultra';
+  aspectRatio?: AspectRatio;
   savePath: string;
-  format?: 'png' | 'jpeg' | 'webp';
   sessionId: string;
   context?: string;
 }
@@ -132,11 +125,8 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         prompt: params.prompt,
         provider: params.provider,
         model: params.model,
-        size: params.size,
-        quality: params.quality,
-        safety: params.safety,
+        aspectRatio: params.aspectRatio,
         savePath: params.savePath,
-        format: params.format,
         sessionId: params.sessionId,
         context: params.context
       });
@@ -154,11 +144,8 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         prompt: params.prompt,
         provider: params.provider,
         model: params.model,
-        size: params.size,
-        quality: params.quality,
-        safety: params.safety,
+        aspectRatio: params.aspectRatio,
         savePath: params.savePath,
-        format: params.format,
         sessionId: params.sessionId,
         context: params.context
       });
@@ -380,9 +367,9 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
   }
 
   /**
-   * Get supported models for a provider
+   * Get supported models for Google provider
    */
-  async getSupportedModels(provider: ImageProvider): Promise<string[]> {
+  async getSupportedModels(provider: 'google' = 'google'): Promise<string[]> {
     if (!this.imageService) {
       return [];
     }
@@ -390,9 +377,9 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
   }
 
   /**
-   * Get supported sizes for a provider
+   * Get supported sizes for Google provider
    */
-  getSupportedSizes(provider: ImageProvider): string[] {
+  getSupportedSizes(provider: 'google' = 'google'): string[] {
     if (!this.imageService) {
       return [];
     }

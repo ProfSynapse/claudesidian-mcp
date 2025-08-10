@@ -25,10 +25,15 @@ export class ContextBuilder {
       
       for (const stepId of contextFromSteps) {
         const result = allResults.find(r => r.id === stepId);
-        if (result && result.success && result.response) {
+        if (result && result.success) {
           const groupLabel = result.parallelGroup ? ` (${result.parallelGroup})` : '';
           const sequenceLabel = result.sequence !== undefined ? ` [seq:${result.sequence}]` : '';
-          contextParts.push(`${stepId}${groupLabel}${sequenceLabel}: ${result.response}`);
+          
+          if (result.type === 'text' && result.response) {
+            contextParts.push(`${stepId}${groupLabel}${sequenceLabel}: ${result.response}`);
+          } else if (result.type === 'image' && result.imagePath) {
+            contextParts.push(`${stepId}${groupLabel}${sequenceLabel}: [Image generated: ${result.imagePath}]`);
+          }
         } else if (!result) {
           contextParts.push(`${stepId}: [Step not found or not yet executed]`);
         } else if (!result.success) {
@@ -47,10 +52,15 @@ export class ContextBuilder {
       if (sequenceResults && sequenceResults.length > 0) {
         contextParts.push(`--- Sequence ${seq} Results ---`);
         sequenceResults.forEach((result, index) => {
-          if (result.success && result.response) {
+          if (result.success) {
             const label = result.id ? `${result.id}` : `Step ${index + 1}`;
             const groupLabel = result.parallelGroup ? ` (${result.parallelGroup})` : '';
-            contextParts.push(`${label}${groupLabel}: ${result.response}`);
+            
+            if (result.type === 'text' && result.response) {
+              contextParts.push(`${label}${groupLabel}: ${result.response}`);
+            } else if (result.type === 'image' && result.imagePath) {
+              contextParts.push(`${label}${groupLabel}: [Image generated: ${result.imagePath}]`);
+            }
           }
         });
         contextParts.push('');
@@ -71,9 +81,14 @@ export class ContextBuilder {
         if (groupResults && groupResults.length > 0) {
           contextParts.push(`--- Sequence ${currentSequence}, Group ${groupKey} Results ---`);
           groupResults.forEach((result, index) => {
-            if (result.success && result.response) {
+            if (result.success) {
               const label = result.id ? `${result.id}` : `Step ${index + 1}`;
-              contextParts.push(`${label}: ${result.response}`);
+              
+              if (result.type === 'text' && result.response) {
+                contextParts.push(`${label}: ${result.response}`);
+              } else if (result.type === 'image' && result.imagePath) {
+                contextParts.push(`${label}: [Image generated: ${result.imagePath}]`);
+              }
             }
           });
           contextParts.push('');

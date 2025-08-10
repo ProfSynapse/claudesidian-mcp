@@ -18,6 +18,7 @@ import {
   BudgetValidator,
   ContextBuilder,
   PromptExecutor,
+  RequestExecutor,
   SequenceManager,
   ResultProcessor,
   ActionExecutor
@@ -46,6 +47,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   private budgetValidator!: BudgetValidator;
   private contextBuilder!: ContextBuilder;
   private promptExecutor!: PromptExecutor;
+  private requestExecutor!: RequestExecutor;
   private sequenceManager!: SequenceManager;
   private resultProcessor!: ResultProcessor;
   private actionExecutor!: ActionExecutor;
@@ -64,7 +66,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
     super(
       'batchExecutePrompt',
       'Batch Execute LLM Prompts',
-      'Execute multiple LLM prompts concurrently across different providers. Supports context gathering, workspace integration, and result merging.',
+      'Execute multiple LLM and image prompts concurrently across different providers. Supports context gathering, workspace integration, and result merging.',
       '1.0.0'
     );
     
@@ -116,9 +118,9 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   }
 
   /**
-   * Ensure prompt executor is initialized with LLM service
+   * Ensure request executor is initialized with all dependencies
    */
-  private ensurePromptExecutor(): void {
+  private ensureRequestExecutor(): void {
     if (!this.promptExecutor && this.llmService) {
       this.promptExecutor = new PromptExecutor(
         this.llmService,
@@ -126,9 +128,16 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         this.contextBuilder,
         this.promptStorage || undefined
       );
-      
-      this.sequenceManager = new SequenceManager(
+    }
+
+    if (!this.requestExecutor && this.promptExecutor && this.actionExecutor) {
+      this.requestExecutor = new RequestExecutor(
         this.promptExecutor,
+        this.actionExecutor
+      );
+
+      this.sequenceManager = new SequenceManager(
+        this.requestExecutor,
         this.contextBuilder
       );
     }
@@ -158,8 +167,8 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       }
 
       // Ensure specialized services are ready
-      this.ensurePromptExecutor();
-      if (!this.promptExecutor || !this.sequenceManager) {
+      this.ensureRequestExecutor();
+      if (!this.requestExecutor || !this.sequenceManager) {
         return this.resultProcessor.createErrorResult('Failed to initialize execution services');
       }
 
@@ -219,7 +228,9 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       const result = results[i];
       const promptConfig = promptConfigs.find(p => p.id === result.id) || promptConfigs[i];
       
-      if (promptConfig?.action && result.success && result.response) {
+      // Only process actions for text results
+      if (promptConfig?.type === 'text' && 'action' in promptConfig && promptConfig.action && 
+          result.success && result.type === 'text' && result.response) {
         try {
           const actionResult = await this.actionExecutor.executeContentAction(
             promptConfig.action,
@@ -293,21 +304,288 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
    * Get parameter schema for MCP tool definition
    */
   getParameterSchema(): any {
-    const batchSchema = this.schemaBuilder.buildParameterSchema(SchemaType.BatchExecute, {
-      mode: 'batchExecutePrompt',
-      providerManager: this.providerManager
-    });
-    // Merge with common schema (sessionId and context)
-    return this.getMergedSchema(batchSchema);
+    return {
+      type: 'object',
+      properties: {
+        prompts: {
+          type: 'array',
+          description: 'Array of text and/or image generation requests to execute in batch',
+          minItems: 1,
+          maxItems: 100,
+          items: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['text', 'image'],
+                description: 'Type of request: "text" for LLM prompts, "image" for AI image generation'
+              },
+              id: {
+                type: 'string',
+                description: 'Optional unique identifier for this request'
+              },
+              prompt: {
+                type: 'string',
+                description: 'Text prompt (for LLM) or image description (for image generation)',
+                minLength: 1,
+                maxLength: 32000
+              },
+              sequence: {
+                type: 'integer',
+                minimum: 0,
+                description: 'Execution sequence (0, 1, 2, etc.). Requests in same sequence run in parallel'
+              },
+              parallelGroup: {
+                type: 'string',
+                description: 'Parallel group identifier within sequence. Different groups run sequentially'
+              },
+              includePreviousResults: {
+                type: 'boolean',
+                description: 'Include results from previous sequences as context'
+              },
+              contextFromSteps: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Specific request IDs to include as context'
+              },
+              // Text-specific properties
+              provider: {
+                type: 'string',
+                description: 'LLM provider (for text) or image provider (for image). For images, use "google"'
+              },
+              model: {
+                type: 'string',
+                description: 'Model name (e.g., "gpt-4o", "claude-3-5-sonnet", "imagen-4", "imagen-4-ultra")'
+              },
+              contextFiles: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'File paths to include as context (text requests only)'
+              },
+              workspace: {
+                type: 'string',
+                description: 'Workspace name for context gathering (text requests only)'
+              },
+              action: {
+                type: 'object',
+                description: 'Content action to perform with LLM response (text requests only)',
+                properties: {
+                  type: {
+                    type: 'string',
+                    enum: ['create', 'append', 'prepend', 'replace', 'findReplace']
+                  },
+                  targetPath: { type: 'string' },
+                  findText: { type: 'string' },
+                  replaceAll: { type: 'boolean' },
+                  caseSensitive: { type: 'boolean' },
+                  wholeWord: { type: 'boolean' }
+                },
+                required: ['type', 'targetPath']
+              },
+              agent: {
+                type: 'string',
+                description: 'Custom agent/prompt name to use (text requests only)'
+              },
+              // Image-specific properties  
+              savePath: {
+                type: 'string',
+                description: 'Vault-relative path to save generated image (image requests only)',
+                pattern: '^[^/].*\\.(png|jpg|jpeg|webp)$'
+              },
+              aspectRatio: {
+                type: 'string',
+                description: 'Image aspect ratio (image requests only)',
+                enum: ['1:1', '3:4', '4:3', '9:16', '16:9'],
+                default: '1:1'
+              }
+            },
+            required: ['type', 'prompt'],
+            allOf: [
+              {
+                if: { properties: { type: { const: 'image' } } },
+                then: { 
+                  required: ['savePath'],
+                  properties: {
+                    provider: { enum: ['google'] }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        mergeResponses: {
+          type: 'boolean',
+          description: 'Whether to merge all responses into a single result',
+          default: false
+        },
+        sessionId: {
+          type: 'string',
+          description: 'Session identifier for tracking and context'
+        },
+        context: {
+          type: 'string',
+          description: 'Additional context or notes for the batch execution'
+        }
+      },
+      required: ['prompts', 'sessionId']
+    };
   }
 
   /**
    * Get result schema for MCP tool definition
    */
   getResultSchema(): any {
-    return this.schemaBuilder.buildResultSchema(SchemaType.BatchExecute, {
-      mode: 'batchExecutePrompt',
-      providerManager: this.providerManager
-    });
+    return {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          description: 'Whether the batch execution succeeded overall'
+        },
+        message: {
+          type: 'string',
+          description: 'Status message about the batch execution'
+        },
+        data: {
+          type: 'object',
+          properties: {
+            results: {
+              type: 'array',
+              description: 'Individual results from each request',
+              items: {
+                oneOf: [
+                  {
+                    type: 'object',
+                    description: 'Text prompt result',
+                    properties: {
+                      type: { const: 'text' },
+                      id: { type: 'string' },
+                      prompt: { type: 'string' },
+                      success: { type: 'boolean' },
+                      response: { type: 'string' },
+                      provider: { type: 'string' },
+                      model: { type: 'string' },
+                      agent: { type: 'string' },
+                      error: { type: 'string' },
+                      executionTime: { type: 'number' },
+                      sequence: { type: 'number' },
+                      parallelGroup: { type: 'string' },
+                      usage: {
+                        type: 'object',
+                        properties: {
+                          promptTokens: { type: 'number' },
+                          completionTokens: { type: 'number' },
+                          totalTokens: { type: 'number' }
+                        }
+                      },
+                      cost: {
+                        type: 'object',
+                        properties: {
+                          inputCost: { type: 'number' },
+                          outputCost: { type: 'number' },
+                          totalCost: { type: 'number' },
+                          currency: { type: 'string' }
+                        }
+                      },
+                      filesIncluded: {
+                        type: 'array',
+                        items: { type: 'string' }
+                      },
+                      actionPerformed: {
+                        type: 'object',
+                        properties: {
+                          type: { type: 'string' },
+                          targetPath: { type: 'string' },
+                          success: { type: 'boolean' },
+                          error: { type: 'string' }
+                        }
+                      }
+                    },
+                    required: ['type', 'success']
+                  },
+                  {
+                    type: 'object',
+                    description: 'Image generation result',
+                    properties: {
+                      type: { const: 'image' },
+                      id: { type: 'string' },
+                      prompt: { type: 'string' },
+                      success: { type: 'boolean' },
+                      imagePath: { type: 'string' },
+                      revisedPrompt: { type: 'string' },
+                      provider: { type: 'string' },
+                      model: { type: 'string' },
+                      error: { type: 'string' },
+                      executionTime: { type: 'number' },
+                      sequence: { type: 'number' },
+                      parallelGroup: { type: 'string' },
+                      dimensions: {
+                        type: 'object',
+                        properties: {
+                          width: { type: 'number' },
+                          height: { type: 'number' }
+                        }
+                      },
+                      fileSize: { type: 'number' },
+                      format: { type: 'string' },
+                      usage: {
+                        type: 'object',
+                        properties: {
+                          imagesGenerated: { type: 'number' },
+                          resolution: { type: 'string' },
+                          model: { type: 'string' },
+                          provider: { type: 'string' }
+                        }
+                      },
+                      cost: {
+                        type: 'object',
+                        properties: {
+                          inputCost: { type: 'number' },
+                          outputCost: { type: 'number' },
+                          totalCost: { type: 'number' },
+                          currency: { type: 'string' },
+                          ratePerImage: { type: 'number' }
+                        }
+                      },
+                      metadata: {
+                        type: 'object',
+                        description: 'Additional image metadata'
+                      }
+                    },
+                    required: ['type', 'success']
+                  }
+                ]
+              }
+            },
+            mergedResponse: {
+              type: 'object',
+              description: 'Merged response when mergeResponses is true',
+              properties: {
+                totalPrompts: { type: 'number' },
+                successfulPrompts: { type: 'number' },
+                mergedContent: { type: 'string' },
+                providersUsed: {
+                  type: 'array',
+                  items: { type: 'string' }
+                }
+              }
+            },
+            executionStats: {
+              type: 'object',
+              properties: {
+                totalExecutionTimeMS: { type: 'number' },
+                promptsExecuted: { type: 'number' },
+                promptsFailed: { type: 'number' },
+                avgExecutionTimeMS: { type: 'number' },
+                totalTokens: { type: 'number' },
+                totalCost: { type: 'number' }
+              }
+            }
+          },
+          required: ['results']
+        }
+      },
+      required: ['success']
+    };
   }
 }

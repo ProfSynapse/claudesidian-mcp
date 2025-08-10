@@ -1,4 +1,4 @@
-import { PromptExecutor } from './PromptExecutor';
+import { RequestExecutor } from './RequestExecutor';
 import { ContextBuilder } from './ContextBuilder';
 import { 
   PromptConfig, 
@@ -7,12 +7,13 @@ import {
 } from '../types';
 
 /**
- * Service responsible for managing prompt execution sequences and parallel groups
+ * Service responsible for managing request execution sequences and parallel groups
+ * Handles both text and image requests through RequestExecutor
  * Follows SRP by focusing only on execution orchestration logic
  */
 export class SequenceManager {
   constructor(
-    private promptExecutor: PromptExecutor,
+    private requestExecutor: RequestExecutor,
     private contextBuilder: ContextBuilder
   ) {}
 
@@ -75,11 +76,11 @@ export class SequenceManager {
     for (const groupKey of sortedGroups) {
       const groupPrompts = parallelGroups.get(groupKey)!;
       
-      // Execute all prompts in this group concurrently
-      const groupExecutionResults = await this.promptExecutor.executeConcurrentPrompts(
+      // Execute all requests in this group concurrently (text and image)
+      const groupExecutionResults = await this.requestExecutor.executeRequestsInParallel(
         groupPrompts,
         executionContext,
-        currentSequence
+        executionContext.sessionId
       );
       
       results.push(...groupExecutionResults);

@@ -44,6 +44,9 @@ export class ImageGenerationService {
       }
 
       // Initialize OpenAI adapter if API key is available and enabled
+      // TEMPORARILY DISABLED: OpenAI image generation is too slow
+      // TODO: Re-enable when OpenAI improves generation speeds
+      /*
       const openaiConfig = this.llmSettings.providers?.openai;
       if (openaiConfig?.apiKey && openaiConfig?.enabled) {
         const openaiAdapter = new OpenAIImageAdapter({
@@ -52,6 +55,7 @@ export class ImageGenerationService {
         this.adapters.set('openai', openaiAdapter);
         console.log('OpenAI image adapter initialized with plugin settings');
       }
+      */
 
       // Initialize Google adapter if API key is available and enabled
       const googleConfig = this.llmSettings.providers?.google;

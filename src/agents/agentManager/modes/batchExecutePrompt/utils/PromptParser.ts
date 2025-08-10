@@ -1,4 +1,4 @@
-import { PromptConfig, BatchExecutePromptParams } from '../types';
+import { PromptConfig, BatchExecutePromptParams, BatchRequest, TextPromptRequest, ImageGenerationRequest } from '../types';
 
 /**
  * Utility for parsing and validating prompt configurations
@@ -35,34 +35,58 @@ export class PromptParser {
   }
 
   /**
-   * Validate individual prompt configuration
+   * Validate individual request configuration (text or image)
    */
-  validatePromptConfig(promptConfig: any, index: number): string[] {
+  validatePromptConfig(requestConfig: any, index: number): string[] {
     const errors: string[] = [];
-    const prefix = `Prompt ${index + 1}`;
+    const prefix = `Request ${index + 1}`;
+    const requestType = requestConfig.type || 'text'; // Default to text for backward compatibility
 
-    if (!promptConfig.prompt || typeof promptConfig.prompt !== 'string') {
+    if (!requestConfig.prompt || typeof requestConfig.prompt !== 'string') {
       errors.push(`${prefix}: prompt text is required and must be a string`);
     }
 
-    if (promptConfig.prompt && promptConfig.prompt.length > 10000) {
-      errors.push(`${prefix}: prompt text cannot exceed 10,000 characters`);
+    if (requestConfig.prompt && requestConfig.prompt.length > 32000) {
+      errors.push(`${prefix}: prompt text cannot exceed 32,000 characters`);
     }
 
-    if (promptConfig.sequence !== undefined && (typeof promptConfig.sequence !== 'number' || promptConfig.sequence < 0)) {
+    // Type-specific validation
+    if (requestType === 'image') {
+      const imageConfig = requestConfig as ImageGenerationRequest;
+      
+      if (!imageConfig.savePath || typeof imageConfig.savePath !== 'string') {
+        errors.push(`${prefix}: savePath is required for image generation`);
+      }
+
+      if (imageConfig.savePath && (imageConfig.savePath.includes('..') || imageConfig.savePath.startsWith('/'))) {
+        errors.push(`${prefix}: savePath must be relative to vault root`);
+      }
+
+      if (!imageConfig.provider || imageConfig.provider !== 'google') {
+        errors.push(`${prefix}: only 'google' provider is currently supported for image generation`);
+      }
+
+      if (imageConfig.model && !['imagen-4', 'imagen-4-ultra'].includes(imageConfig.model)) {
+        errors.push(`${prefix}: invalid model for image generation. Supported: imagen-4, imagen-4-ultra`);
+      }
+
+    }
+
+    if (requestConfig.sequence !== undefined && (typeof requestConfig.sequence !== 'number' || requestConfig.sequence < 0)) {
       errors.push(`${prefix}: sequence must be a non-negative number`);
     }
 
-    if (promptConfig.contextFiles && !Array.isArray(promptConfig.contextFiles)) {
+    if (requestConfig.contextFiles && !Array.isArray(requestConfig.contextFiles)) {
       errors.push(`${prefix}: contextFiles must be an array`);
     }
 
-    if (promptConfig.contextFromSteps && !Array.isArray(promptConfig.contextFromSteps)) {
+    if (requestConfig.contextFromSteps && !Array.isArray(requestConfig.contextFromSteps)) {
       errors.push(`${prefix}: contextFromSteps must be an array`);
     }
 
-    if (promptConfig.action) {
-      const actionErrors = this.validateActionConfig(promptConfig.action, prefix);
+    // Only validate actions for text requests (images don't have actions)
+    if (requestType === 'text' && requestConfig.action) {
+      const actionErrors = this.validateActionConfig(requestConfig.action, prefix);
       errors.push(...actionErrors);
     }
 
@@ -100,23 +124,47 @@ export class PromptParser {
   }
 
   /**
-   * Normalize prompt configurations
+   * Normalize request configurations (text and image)
    */
-  normalizePromptConfigs(prompts: any[]): PromptConfig[] {
-    return prompts.map((prompt, index) => ({
-      prompt: prompt.prompt,
-      provider: prompt.provider,
-      model: prompt.model,
-      contextFiles: prompt.contextFiles || [],
-      workspace: prompt.workspace,
-      id: prompt.id || `prompt_${index + 1}`,
-      sequence: prompt.sequence || 0,
-      parallelGroup: prompt.parallelGroup || 'default',
-      includePreviousResults: prompt.includePreviousResults || false,
-      contextFromSteps: prompt.contextFromSteps || [],
-      action: prompt.action,
-      agent: prompt.agent
-    }));
+  normalizePromptConfigs(requests: any[]): PromptConfig[] {
+    return requests.map((request, index) => {
+      const requestType = request.type || 'text'; // Default to text for backward compatibility
+      const baseConfig = {
+        id: request.id || `request_${index + 1}`,
+        sequence: request.sequence || 0,
+        parallelGroup: request.parallelGroup || 'default',
+        includePreviousResults: request.includePreviousResults || false,
+        contextFromSteps: request.contextFromSteps || [],
+        prompt: request.prompt
+      };
+
+      if (requestType === 'image') {
+        return {
+          type: 'image',
+          ...baseConfig,
+          provider: request.provider || 'google',
+          model: request.model || 'imagen-4',
+          aspectRatio: request.aspectRatio,
+          size: request.size,
+          quality: request.quality,
+          safety: request.safety,
+          savePath: request.savePath,
+          format: request.format,
+          background: request.background
+        } as PromptConfig;
+      } else {
+        return {
+          type: 'text',
+          ...baseConfig,
+          provider: request.provider,
+          model: request.model,
+          contextFiles: request.contextFiles || [],
+          workspace: request.workspace,
+          action: request.action,
+          agent: request.agent
+        } as PromptConfig;
+      }
+    });
   }
 
   /**

@@ -4,6 +4,7 @@ import { BudgetValidator } from './BudgetValidator';
 import { ContextBuilder } from './ContextBuilder';
 import { 
   PromptConfig, 
+  TextPromptConfig,
   PromptExecutionResult, 
   PromptExecutionParams,
   ExecutionContext 
@@ -39,13 +40,30 @@ export class PromptExecutor {
       
       const startTime = performance.now();
       
+      // Only handle text prompts - images are handled by RequestExecutor
+      if (promptConfig.type !== 'text') {
+        const executionTime = performance.now() - startTime;
+        return {
+          type: 'text',
+          id: promptConfig.id,
+          prompt: promptConfig.prompt,
+          success: false,
+          error: 'PromptExecutor only handles text prompts',
+          executionTime,
+          sequence: currentSequence,
+          parallelGroup: promptConfig.parallelGroup
+        };
+      }
+
+      const textConfig = promptConfig as TextPromptConfig;
+
       // Resolve custom agent/prompt if specified
-      const { systemPrompt, agentUsed } = await this.resolveCustomPrompt(promptConfig.agent);
+      const { systemPrompt, agentUsed } = await this.resolveCustomPrompt(textConfig.agent);
       
       // Build user prompt with context from previous results
       const userPrompt = this.contextBuilder.buildUserPromptWithContext(
-        promptConfig.prompt,
-        promptConfig,
+        textConfig.prompt,
+        textConfig,
         executionContext
       );
       
@@ -53,10 +71,10 @@ export class PromptExecutor {
       const executeParams: PromptExecutionParams = {
         systemPrompt,
         userPrompt,
-        filepaths: promptConfig.contextFiles,
-        provider: promptConfig.provider,
-        model: promptConfig.model,
-        workspace: promptConfig.workspace,
+        filepaths: textConfig.contextFiles,
+        provider: textConfig.provider,
+        model: textConfig.model,
+        workspace: textConfig.workspace,
         sessionId: executionContext.sessionId
       };
       
@@ -77,8 +95,9 @@ export class PromptExecutor {
       const executionTime = performance.now() - startTime;
       
       return {
-        id: promptConfig.id,
-        prompt: promptConfig.prompt,
+        type: 'text',
+        id: textConfig.id,
+        prompt: textConfig.prompt,
         success: true,
         response: response.response,
         provider: response.provider,
@@ -89,20 +108,21 @@ export class PromptExecutor {
         executionTime,
         filesIncluded: response.filesIncluded,
         sequence: currentSequence,
-        parallelGroup: promptConfig.parallelGroup
+        parallelGroup: textConfig.parallelGroup
       };
       
     } catch (error) {
       console.warn(`LLM prompt execution failed for prompt "${promptConfig.prompt.substring(0, 50)}...":`, error);
       
       return {
+        type: 'text',
         id: promptConfig.id,
         prompt: promptConfig.prompt,
         success: false,
         error: getErrorMessage(error),
         provider: promptConfig.provider,
         model: promptConfig.model,
-        agent: promptConfig.agent || 'default',
+        agent: promptConfig.type === 'text' ? (promptConfig as TextPromptConfig).agent || 'default' : 'default',
         executionTime: 0,
         sequence: currentSequence,
         parallelGroup: promptConfig.parallelGroup

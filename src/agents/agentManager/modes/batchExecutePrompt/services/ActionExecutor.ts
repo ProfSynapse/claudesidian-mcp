@@ -1,5 +1,5 @@
 import { AgentManager } from '../../../../../services/AgentManager';
-import { ContentAction } from '../types';
+import { ContentAction, ImagePromptConfig } from '../types';
 
 /**
  * Service responsible for executing content actions with LLM responses
@@ -152,9 +152,62 @@ export class ActionExecutor {
   }
 
   /**
+   * Execute image generation action
+   */
+  async executeImageGenerationAction(
+    imageConfig: ImagePromptConfig,
+    sessionId?: string,
+    context?: string
+  ): Promise<{ success: boolean; error?: string; imagePath?: string }> {
+    if (!this.agentManager) {
+      return { success: false, error: 'Agent manager not available' };
+    }
+
+    try {
+      console.log(`[ActionExecutor] Image config aspectRatio:`, imageConfig.aspectRatio);
+      const imageParams = {
+        prompt: imageConfig.prompt,
+        provider: imageConfig.provider,
+        model: imageConfig.model,
+        aspectRatio: imageConfig.aspectRatio,
+        savePath: imageConfig.savePath,
+        sessionId: sessionId || '',
+        context: context || ''
+      };
+      console.log(`[ActionExecutor] Image params aspectRatio:`, imageParams.aspectRatio);
+
+      const imageResult = await this.agentManager.executeAgentMode('agentManager', 'generateImage', imageParams);
+      
+      if (imageResult.success && imageResult.data?.imagePath) {
+        return { 
+          success: true, 
+          imagePath: imageResult.data.imagePath 
+        };
+      } else {
+        return { 
+          success: false, 
+          error: imageResult.error || 'Image generation failed without specific error' 
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error executing image generation'
+      };
+    }
+  }
+
+  /**
    * Get supported action types
    */
   getSupportedActionTypes(): string[] {
     return ['create', 'append', 'prepend', 'replace', 'findReplace'];
+  }
+
+  /**
+   * Get supported request types
+   */
+  getSupportedRequestTypes(): string[] {
+    return ['text', 'image'];
   }
 }

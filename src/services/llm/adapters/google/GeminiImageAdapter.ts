@@ -11,7 +11,8 @@ import {
   ImageGenerationResponse, 
   ImageValidationResult,
   ImageModel,
-  ImageUsage
+  ImageUsage,
+  AspectRatio
 } from '../../types/ImageTypes';
 import { 
   ProviderConfig,
@@ -29,6 +30,7 @@ export class GeminiImageAdapter extends BaseImageAdapter {
   
   private client: GoogleGenAI;
   private readonly modelMap = {
+    'imagen-3': 'imagen-3.0-generate-002',
     'imagen-4': 'imagen-4.0-generate-preview-06-06',
     'imagen-4-ultra': 'imagen-4-ultra'
   };
@@ -62,22 +64,27 @@ export class GeminiImageAdapter extends BaseImageAdapter {
       const modelId = this.modelMap[params.model as keyof typeof this.modelMap] || 
                      this.modelMap[this.defaultModel as keyof typeof this.modelMap];
 
-      console.log(`[Google] Generating image with model: ${modelId}, size: ${params.size || '1024x1024'}`);
+      console.log(`[Google] Generating image with model: ${modelId}, aspectRatio: ${params.aspectRatio || '1:1'}`);
+      console.log(`[Google] Full params:`, JSON.stringify(params, null, 2));
 
       const response = await this.withRetry(async () => {
         const config: any = {
           numberOfImages: 1, // Always generate 1 image for now
         };
 
-        // Add aspect ratio if size is specified
-        if (params.size) {
+        // Add aspect ratio directly from params (preferred) or convert from size (legacy)
+        if (params.aspectRatio) {
+          console.log(`[Google] Using aspectRatio from params:`, params.aspectRatio);
+          config.aspectRatio = params.aspectRatio;
+        } else if (params.size) {
+          console.log(`[Google] Converting size to aspectRatio:`, params.size);
           config.aspectRatio = this.getAspectRatio(params.size);
+        } else {
+          console.log(`[Google] Using default aspectRatio: 1:1`);
+          config.aspectRatio = '1:1'; // Default aspect ratio
         }
-
-        // Add person generation setting if specified
-        if (params.safety) {
-          config.personGeneration = params.safety === 'strict' ? 'block' : 'allow';
-        }
+        
+        console.log(`[Google] Final config:`, JSON.stringify(config, null, 2));
 
         console.log(`[Google] Sending request to Google GenAI API...`);
         const startTime = Date.now();
@@ -131,10 +138,6 @@ export class GeminiImageAdapter extends BaseImageAdapter {
       }
     }
 
-    // Safety level validation
-    if (params.safety && !['strict', 'standard', 'permissive'].includes(params.safety)) {
-      errors.push('Invalid safety setting. Supported values: strict, standard, permissive');
-    }
 
     // Set default model if not specified
     if (!params.model) {
@@ -165,7 +168,6 @@ export class GeminiImageAdapter extends BaseImageAdapter {
         'text_to_image',
         'multi_image_generation',
         'aspect_ratio_control',
-        'safety_controls',
         'high_quality_output',
         'enhanced_text_rendering'
       ]
@@ -182,8 +184,8 @@ export class GeminiImageAdapter extends BaseImageAdapter {
   /**
    * Get supported aspect ratios
    */
-  getSupportedAspectRatios(): string[] {
-    return ['1:1', '3:2', '2:3', '16:9', '9:16'];
+  getSupportedAspectRatios(): AspectRatio[] {
+    return [AspectRatio.SQUARE, AspectRatio.PORTRAIT_3_4, AspectRatio.LANDSCAPE_4_3, AspectRatio.PORTRAIT_9_16, AspectRatio.LANDSCAPE_16_9];
   }
 
   /**
@@ -272,9 +274,31 @@ export class GeminiImageAdapter extends BaseImageAdapter {
     // Convert base64 to buffer
     const buffer = Buffer.from(generatedImage.image.imageBytes, 'base64');
 
-    // Extract dimensions from size parameter or use default
-    const size = params.size || '1024x1024';
-    const [width, height] = size.split('x').map(Number);
+    // Extract dimensions from aspectRatio or size parameter
+    let width = 1024, height = 1024; // Default square
+    let aspectRatio: AspectRatio = params.aspectRatio || AspectRatio.SQUARE;
+    let size = '1024x1024';
+    
+    if (params.aspectRatio) {
+      // Use aspect ratio to calculate dimensions
+      const aspectRatioToDimensions: Record<AspectRatio, [number, number]> = {
+        [AspectRatio.SQUARE]: [1024, 1024],
+        [AspectRatio.PORTRAIT_3_4]: [1152, 896], // Google's typical dimensions for 3:4
+        [AspectRatio.LANDSCAPE_4_3]: [896, 1152], // Google's typical dimensions for 4:3  
+        [AspectRatio.PORTRAIT_9_16]: [576, 1024], // Google's typical dimensions for 9:16
+        [AspectRatio.LANDSCAPE_16_9]: [1024, 576]  // Google's typical dimensions for 16:9
+      };
+      [width, height] = aspectRatioToDimensions[params.aspectRatio] || [1024, 1024];
+      size = `${width}x${height}`;
+    } else if (params.size) {
+      // Legacy: extract from size parameter
+      const [w, h] = params.size.split('x').map(Number);
+      width = w;
+      height = h;
+      size = params.size;
+      const mappedRatio = this.aspectRatioMap[size as keyof typeof this.aspectRatioMap];
+      aspectRatio = (mappedRatio as AspectRatio) || AspectRatio.SQUARE;
+    }
 
     const usage: ImageUsage = this.buildImageUsage(1, size, params.model || this.defaultModel);
 
@@ -283,13 +307,11 @@ export class GeminiImageAdapter extends BaseImageAdapter {
       format: 'png', // Google Imagen typically returns PNG
       dimensions: { width, height },
       metadata: {
-        aspectRatio: this.aspectRatioMap[size as keyof typeof this.aspectRatioMap] || '1:1',
-        safety: params.safety || 'standard',
+        aspectRatio,
         model: params.model || this.defaultModel,
         provider: this.name,
         generatedAt: new Date().toISOString(),
         originalPrompt: params.prompt,
-        personGeneration: params.safety === 'strict' ? 'block' : 'allow',
         synthidWatermarking: true // Google adds SynthID watermarking
       },
       usage
@@ -303,35 +325,4 @@ export class GeminiImageAdapter extends BaseImageAdapter {
     return this.aspectRatioMap[size as keyof typeof this.aspectRatioMap] || '1:1';
   }
 
-  /**
-   * Build safety settings for Google API
-   */
-  private buildSafetySettings(level: string = 'standard') {
-    const thresholds = {
-      'strict': 'BLOCK_LOW_AND_ABOVE',
-      'standard': 'BLOCK_MEDIUM_AND_ABOVE', 
-      'permissive': 'BLOCK_HIGH_AND_ABOVE'
-    };
-
-    const threshold = thresholds[level as keyof typeof thresholds] || 'BLOCK_MEDIUM_AND_ABOVE';
-
-    return [
-      {
-        category: 'HARM_CATEGORY_HATE_SPEECH',
-        threshold
-      },
-      {
-        category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-        threshold
-      },
-      {
-        category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-        threshold
-      },
-      {
-        category: 'HARM_CATEGORY_HARASSMENT',
-        threshold
-      }
-    ];
-  }
 }

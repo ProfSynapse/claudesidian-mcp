@@ -1,6 +1,6 @@
 /**
  * OpenAI Image Generation Adapter
- * Supports OpenAI's gpt-image-1 model for image generation
+ * Supports OpenAI's gpt-image-1 model via Responses API for image generation
  * Based on 2025 API documentation
  */
 
@@ -28,11 +28,11 @@ export class OpenAIImageAdapter extends BaseImageAdapter {
   readonly supportedFormats: string[] = ['png'];
   
   private client: OpenAI;
-  private readonly imageModel = 'dall-e-3'; // Use DALL-E 3 instead of gpt-image-1
+  private readonly imageModel = 'gpt-image-1'; // Use gpt-image-1 via Responses API
 
   constructor(config?: ProviderConfig) {
     const apiKey = config?.apiKey || '';
-    super(apiKey, 'dall-e-3', config?.baseUrl);
+    super(apiKey, 'gpt-image-1', config?.baseUrl);
     
     this.client = new OpenAI({
       apiKey: apiKey,
@@ -46,31 +46,33 @@ export class OpenAIImageAdapter extends BaseImageAdapter {
   }
 
   /**
-   * Generate images using OpenAI's gpt-image-1 model
+   * Generate images using OpenAI's gpt-image-1 model via Responses API
    */
   async generateImage(params: ImageGenerationParams): Promise<ImageGenerationResponse> {
     try {
       this.validateConfiguration();
       
-      console.log(`[OpenAI] Generating image with model: ${this.imageModel}, size: ${params.size || '1024x1024'}, quality: ${params.quality || 'standard'}`);
+      console.log(`[OpenAI] Generating image with model: ${this.imageModel}, size: ${params.size || '1024x1024'}`);
       
       const response = await this.withRetry(async () => {
-        const requestParams: OpenAI.Images.ImageGenerateParams = {
-          prompt: params.prompt,
-          model: this.imageModel,
-          n: 1,
-          size: params.size as '1024x1024' | '1536x1024' | '1024x1536' || '1024x1024',
-          quality: params.quality === 'hd' ? 'hd' : 'standard',
-          response_format: 'b64_json'
+        // Use a supported model for Responses API (gpt-4.1 supports image_generation tool)
+        const requestParams = {
+          model: 'gpt-4.1', // Model that supports image_generation tool
+          input: params.prompt,
+          tools: [{
+            type: 'image_generation' as const,
+            size: params.size as 'auto' | '1024x1024' | '1536x1024' | '1024x1536' || '1024x1024'
+            // quality and background removed - not in new interface
+          }]
         };
 
-        console.log(`[OpenAI] Sending request to OpenAI Images API...`);
+        console.log(`[OpenAI] Sending request to OpenAI Responses API with gpt-image-1...`);
         const startTime = Date.now();
         
-        const result = await this.client.images.generate(requestParams);
+        const result = await this.client.responses.create(requestParams);
         
         const requestTime = Date.now() - startTime;
-        console.log(`[OpenAI] Images API request completed in ${requestTime}ms`);
+        console.log(`[OpenAI] Responses API request completed in ${requestTime}ms`);
         
         return result;
       }, 2); // Reduced retry count for faster failure detection
@@ -113,16 +115,7 @@ export class OpenAIImageAdapter extends BaseImageAdapter {
       }
     }
 
-    // Quality validation for gpt-image-1
-    if (params.quality && !['standard', 'hd'].includes(params.quality)) {
-      errors.push('Invalid quality for gpt-image-1. Supported qualities: standard, hd');
-    }
-
-    // Format validation - OpenAI only supports PNG for gpt-image-1
-    if (params.format && params.format !== 'png') {
-      warnings.push('OpenAI only supports PNG format, adjusting format');
-      adjustedParams.format = 'png';
-    }
+    // Quality and format validation removed - properties no longer in interface
 
     return {
       isValid: errors.length === 0,
@@ -165,8 +158,8 @@ export class OpenAIImageAdapter extends BaseImageAdapter {
    * Get pricing for gpt-image-1 image generation
    */
   async getImageModelPricing(model: string = 'gpt-image-1'): Promise<CostDetails> {
-    // gpt-image-1 has fixed pricing regardless of size
-    const basePrice = 0.015;
+    // gpt-image-1 pricing is token-based, approximate base price
+    const basePrice = 0.015; // Approximate cost per image
 
     return {
       inputCost: 0,
@@ -206,20 +199,25 @@ export class OpenAIImageAdapter extends BaseImageAdapter {
   // Private helper methods
 
   private async buildImageResponse(
-    response: OpenAI.Images.ImagesResponse, 
+    response: any, // Responses API response format
     params: ImageGenerationParams
   ): Promise<ImageGenerationResponse> {
-    if (!response.data || response.data.length === 0) {
-      throw new Error('No image data received from OpenAI');
+    // Extract image data from Responses API format
+    const imageData = response.output
+      .filter((output: any) => output.type === "image_generation_call")
+      .map((output: any) => output.result);
+
+    if (!imageData || imageData.length === 0) {
+      throw new Error('No image data received from OpenAI Responses API');
     }
 
-    const imageData = response.data[0];
-    if (!imageData.b64_json) {
+    const imageBase64 = imageData[0];
+    if (!imageBase64) {
       throw new Error('No base64 image data received from OpenAI');
     }
 
     // Convert base64 to buffer
-    const buffer = Buffer.from(imageData.b64_json, 'base64');
+    const buffer = Buffer.from(imageBase64, 'base64');
     console.log(`[OpenAI] Received base64 image data (${buffer.length} bytes)`);
 
     // Extract dimensions from size parameter or use default
@@ -228,22 +226,29 @@ export class OpenAIImageAdapter extends BaseImageAdapter {
 
     const usage: ImageUsage = this.buildImageUsage(1, size, this.imageModel);
 
+    // Extract revised prompt from image generation call
+    const imageGenerationCall = response.output.find((output: any) => output.type === "image_generation_call");
+    const revisedPrompt = imageGenerationCall?.revised_prompt;
+
     return {
       imageData: buffer,
-      format: 'png',
+      format: 'png', // Default format for Responses API
       dimensions: { width, height },
       metadata: {
         size: params.size || '1024x1024',
-        quality: params.quality || 'standard',
-        responseFormat: 'b64_json',
+        responseFormat: 'responses_api',
         model: this.imageModel,
         provider: this.name,
         generatedAt: new Date().toISOString(),
         originalPrompt: params.prompt,
-        created: response.created
+        responseId: response.id,
+        apiResponse: {
+          outputCount: response.output.length,
+          imageOutputCount: imageData.length
+        }
       },
       usage,
-      revisedPrompt: imageData.revised_prompt
+      revisedPrompt: revisedPrompt
     };
   }
 }

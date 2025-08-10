@@ -71,13 +71,23 @@ export class ResultProcessor {
     const providersUsed = new Set<string>();
     
     results.forEach((result, index) => {
-      if (result.success && result.response) {
-        responses.push(
-          `## Response ${index + 1}${result.id ? ` (${result.id})` : ''}${result.provider ? ` - ${result.provider}` : ''}\n\n${result.response}`
-        );
+      if (result.success) {
+        let responseContent = '';
         
-        if (result.provider) {
-          providersUsed.add(result.provider);
+        if (result.type === 'text' && result.response) {
+          responseContent = result.response;
+        } else if (result.type === 'image' && result.imagePath) {
+          responseContent = `[Image generated: ${result.imagePath}]`;
+        }
+        
+        if (responseContent) {
+          responses.push(
+            `## Response ${index + 1}${result.id ? ` (${result.id})` : ''}${result.provider ? ` - ${result.provider}` : ''}\n\n${responseContent}`
+          );
+          
+          if (result.provider) {
+            providersUsed.add(result.provider);
+          }
         }
       }
     });
@@ -100,9 +110,13 @@ export class ResultProcessor {
     let hasTokenData = false;
 
     for (const result of results) {
-      if (result.usage?.totalTokens) {
-        totalTokens += result.usage.totalTokens;
-        hasTokenData = true;
+      if (result.usage) {
+        if (result.type === 'text' && 'totalTokens' in result.usage && result.usage.totalTokens) {
+          totalTokens += result.usage.totalTokens;
+          hasTokenData = true;
+        }
+        // Note: Image usage has different metrics (imagesGenerated, resolution, etc.)
+        // and doesn't have totalTokens, so we skip those for token calculation
       }
     }
 
