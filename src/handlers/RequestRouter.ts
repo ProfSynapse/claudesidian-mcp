@@ -170,14 +170,12 @@ export class RequestRouter {
             // Get MemoryManager agent to access WorkspaceService
             const memoryManagerAgent = this.agents.get('memoryManager');
             if (!memoryManagerAgent) {
-                console.warn('[RequestRouter] MemoryManager agent not found - WorkspaceSchemaProvider not registered');
                 return;
             }
 
             // Get WorkspaceService from MemoryManager agent
             const workspaceService = await (memoryManagerAgent as any).getWorkspaceServiceAsync();
             if (!workspaceService) {
-                console.warn('[RequestRouter] WorkspaceService not available - WorkspaceSchemaProvider not registered');
                 return;
             }
 
@@ -185,9 +183,7 @@ export class RequestRouter {
             const workspaceSchemaProvider = WorkspaceSchemaProvider.forMemoryManager(workspaceService);
             this.dependencies.schemaEnhancementService.registerProvider(workspaceSchemaProvider);
             
-            console.log('[RequestRouter] WorkspaceSchemaProvider registered successfully');
         } catch (error) {
-            console.error('[RequestRouter] Failed to register WorkspaceSchemaProvider:', error);
         }
     }
 }

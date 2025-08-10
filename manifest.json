@@ -1,7 +1,7 @@
 {
     "id": "claudesidian-mcp",
     "name": "Claudesidian MCP",
-    "version": "2.7.0",
+    "version": "2.7.1",
     "minAppVersion": "0.15.0",
     "description": "MCP server integration for Obsidian",
     "author": "Synaptic Labs",
