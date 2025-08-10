@@ -35,8 +35,9 @@ export interface BatchConfiguration {
 export class FileStatsCollector {
   private plugin: Plugin;
   private maxMemoryPerBatch: number = 200 * 1024 * 1024; // 200MB default
-  private minBatchSize: number = 10;
-  // No max batch size limit - memory constraints will naturally limit batch sizes
+  private minBatchSize: number = 1; // At least 1 file per batch
+  private maxBatchSize: number = 500; // Hard cap for sanity
+  private minMemoryPerFile: number = 1024; // At least 1KB per file for overhead
   private defaultProcessingDelay: number = 1000; // 1 second between batches
 
   constructor(plugin: Plugin) {
@@ -96,38 +97,65 @@ export class FileStatsCollector {
     
     if (validFiles.length === 0) {
       return {
-        batchSize: this.minBatchSize,
+        batchSize: 0,
         maxMemoryPerBatch: this.maxMemoryPerBatch,
         estimatedMemoryUsage: 0,
         processingDelay: this.defaultProcessingDelay
       };
     }
 
-    // Calculate average file size
-    const totalSize = validFiles.reduce((sum, stat) => sum + stat.size, 0);
-    const averageFileSize = totalSize / validFiles.length;
+    // Calculate file size statistics for better estimation
+    const fileSizes = validFiles.map(stat => Math.max(stat.size, 0)); // Ensure non-negative
+    const totalSize = fileSizes.reduce((sum, size) => sum + size, 0);
+    const averageFileSize = validFiles.length > 0 ? totalSize / validFiles.length : 0;
+    const maxFileSize = fileSizes.length > 0 ? Math.max(...fileSizes) : 0;
     
-    // Estimate memory usage: file content + hash + metadata overhead
-    // Conservative estimate: 3x file size (content + processing overhead)
-    const estimatedMemoryPerFile = averageFileSize * 3;
+    // Robust memory estimation with minimum overhead and scaling factor
+    // For small files: ensure minimum overhead (1KB)
+    // For larger files: 3x file size for content + hash + processing overhead
+    const baseMemoryPerFile = Math.max(averageFileSize * 3, this.minMemoryPerFile);
+    
+    // Handle edge case: if average is misleading due to one huge file,
+    // use the max file size for more conservative estimation
+    const conservativeMemoryPerFile = maxFileSize > averageFileSize * 10 
+      ? Math.max(maxFileSize * 3, this.minMemoryPerFile)
+      : baseMemoryPerFile;
     
     // Calculate safe batch size based on memory constraints
-    let safeBatchSize = Math.floor(this.maxMemoryPerBatch / estimatedMemoryPerFile);
+    // Guard against division by zero or very small numbers
+    let safeBatchSize = conservativeMemoryPerFile > 0 
+      ? Math.floor(this.maxMemoryPerBatch / conservativeMemoryPerFile)
+      : this.maxBatchSize;
     
-    // Apply minimum constraint
-    safeBatchSize = Math.max(this.minBatchSize, safeBatchSize);
+    // Apply all constraints in proper order
+    safeBatchSize = Math.max(this.minBatchSize, safeBatchSize); // At least minimum
+    safeBatchSize = Math.min(safeBatchSize, this.maxBatchSize); // Hard cap for sanity
+    safeBatchSize = Math.min(safeBatchSize, validFiles.length); // Can't exceed available files
     
-    // For very large files (>10MB), use smaller batches
-    const hasLargeFiles = validFiles.some(stat => stat.size > 10 * 1024 * 1024);
-    if (hasLargeFiles) {
+    // Additional constraints based on file characteristics
+    if (maxFileSize > 10 * 1024 * 1024) { // Files > 10MB
       safeBatchSize = Math.min(safeBatchSize, 20);
+    } else if (maxFileSize > 1 * 1024 * 1024) { // Files > 1MB
+      safeBatchSize = Math.min(safeBatchSize, 100);
+    }
+    
+    // For very small batches, don't apply artificial minimum
+    if (validFiles.length < this.minBatchSize) {
+      safeBatchSize = validFiles.length;
     }
 
-    // Calculate estimated memory usage for this batch size
-    const estimatedMemoryUsage = safeBatchSize * estimatedMemoryPerFile;
+    // Calculate final estimated memory usage based on actual batch size
+    const estimatedMemoryUsage = safeBatchSize * conservativeMemoryPerFile;
     
-    // Adjust processing delay based on batch size (larger batches = longer delays)
-    const processingDelay = safeBatchSize > 100 ? 2000 : this.defaultProcessingDelay;
+    // Dynamic processing delay based on batch characteristics
+    let processingDelay = this.defaultProcessingDelay;
+    if (safeBatchSize > 200) {
+      processingDelay = 3000; // 3 seconds for very large batches
+    } else if (safeBatchSize > 100) {
+      processingDelay = 2000; // 2 seconds for large batches
+    } else if (estimatedMemoryUsage > 100 * 1024 * 1024) {
+      processingDelay = 1500; // 1.5 seconds for memory-intensive batches
+    }
 
     return {
       batchSize: safeBatchSize,

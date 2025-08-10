@@ -1,11 +1,61 @@
 /**
  * OpenAI Model Specifications
- * Updated June 17, 2025 with latest model releases
+ * Updated August 10, 2025 with GPT-5 model family
  */
 
 import { ModelSpec } from '../modelTypes';
 
 export const OPENAI_MODELS: ModelSpec[] = [
+  // GPT-5 model family (latest flagship models)
+  {
+    provider: 'openai',
+    name: 'GPT-5',
+    apiName: 'gpt-5',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 1.25,
+    outputCostPerMillion: 10.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openai',
+    name: 'GPT-5 Mini',
+    apiName: 'gpt-5-mini',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 0.25,
+    outputCostPerMillion: 2.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openai',
+    name: 'GPT-5 Nano',
+    apiName: 'gpt-5-nano',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 0.05,
+    outputCostPerMillion: 0.40,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+
   {
     provider: 'openai',
     name: 'GPT-4o',
@@ -160,4 +210,4 @@ export const OPENAI_MODELS: ModelSpec[] = [
   // }
 ];
 
-export const OPENAI_DEFAULT_MODEL = 'gpt-4.1-2025-04-14';
+export const OPENAI_DEFAULT_MODEL = 'gpt-5';

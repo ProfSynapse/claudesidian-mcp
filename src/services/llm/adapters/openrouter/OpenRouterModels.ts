@@ -1,7 +1,7 @@
 /**
  * OpenRouter Model Specifications
  * OpenRouter provides access to multiple providers through a unified API
- * Updated June 17, 2025
+ * Updated August 10, 2025 with GPT-5 models
  */
 
 import { ModelSpec } from '../modelTypes';
@@ -9,7 +9,57 @@ import { ModelSpec } from '../modelTypes';
 // OpenRouter provides access to models from other providers
 // Each model has its own specific API name in OpenRouter
 export const OPENROUTER_MODELS: ModelSpec[] = [
-  // OpenAI models via OpenRouter
+  // OpenAI GPT-5 models via OpenRouter
+  {
+    provider: 'openrouter',
+    name: 'GPT-5',
+    apiName: 'openai/gpt-5',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 1.25,
+    outputCostPerMillion: 10.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openrouter',
+    name: 'GPT-5 Mini',
+    apiName: 'openai/gpt-5-mini',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 0.25,
+    outputCostPerMillion: 2.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openrouter',
+    name: 'GPT-5 Nano',
+    apiName: 'openai/gpt-5-nano',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 0.05,
+    outputCostPerMillion: 0.40,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+
+  // OpenAI GPT-4 models via OpenRouter
   {
     provider: 'openrouter',
     name: 'GPT-4o',
@@ -242,4 +292,4 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
   }
 ];
 
-export const OPENROUTER_DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
+export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-5';

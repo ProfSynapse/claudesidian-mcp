@@ -198,6 +198,45 @@ export default class ClaudesidianPlugin extends Plugin {
     }
 
     /**
+     * Get detailed memory information for diagnostics
+     */
+    getMemoryInfo(): {
+        pluginMemoryMB: number;
+        totalMemoryMB: number;
+        availableMemoryMB: number;
+        memoryUsagePercent: number;
+        pluginContributionPercent: number;
+    } {
+        const currentMemory = this.getMemoryUsage();
+        const initialMemory = 0; // We don't store initial memory, so we can't calculate plugin contribution precisely
+        
+        if (typeof performance !== 'undefined' && 'memory' in performance) {
+            const memory = (performance as any).memory;
+            const totalMemoryMB = (memory.totalJSHeapSize || 0) / (1024 * 1024);
+            const usedMemoryMB = (memory.usedJSHeapSize || 0) / (1024 * 1024);
+            const limitMemoryMB = (memory.jsHeapSizeLimit || 0) / (1024 * 1024);
+            const availableMemoryMB = limitMemoryMB - usedMemoryMB;
+            const memoryUsagePercent = limitMemoryMB > 0 ? (usedMemoryMB / limitMemoryMB) * 100 : 0;
+            
+            return {
+                pluginMemoryMB: usedMemoryMB, // Approximation - total heap at time of check
+                totalMemoryMB: limitMemoryMB,
+                availableMemoryMB,
+                memoryUsagePercent,
+                pluginContributionPercent: 0 // Can't calculate without baseline
+            };
+        }
+        
+        return {
+            pluginMemoryMB: 0,
+            totalMemoryMB: 0,
+            availableMemoryMB: 0,
+            memoryUsagePercent: 0,
+            pluginContributionPercent: 0
+        };
+    }
+
+    /**
      * Get memory pressure level for diagnostics
      */
     private getMemoryPressureLevel(): string {

@@ -23,7 +23,7 @@ export class OpenAIAdapter extends BaseAdapter {
   private client: OpenAI;
 
   constructor(apiKey: string) {
-    super(apiKey, 'gpt-4o');
+    super(apiKey, 'gpt-5');
     
     this.client = new OpenAI({
       apiKey: this.apiKey,
@@ -559,8 +559,8 @@ export class OpenAIAdapter extends BaseAdapter {
       supportsJSON: true,
       supportsImages: true,
       supportsFunctions: true,
-      supportsThinking: true, // For reasoning models
-      maxContextWindow: 200000, // Conservative estimate for GPT-4
+      supportsThinking: true, // For reasoning models including GPT-5
+      maxContextWindow: 400000, // GPT-5 family context window
       supportedFeatures: [
         'chat',
         'streaming',
@@ -568,7 +568,11 @@ export class OpenAIAdapter extends BaseAdapter {
         'function_calling',
         'vision',
         'reasoning',
-        'responses_api'
+        'responses_api',
+        'structured_outputs',
+        'web_search',
+        'file_search',
+        'code_interpreter'
       ]
     };
   }
