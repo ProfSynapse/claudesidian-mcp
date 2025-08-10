@@ -422,6 +422,25 @@ export class PluginLifecycleManager {
                 
                 this.hasRunBackgroundStartup = true;
                 
+                // STEP 1: Perform deferred migration first (after file system is ready)
+                console.log('[PluginLifecycleManager] 🔄 Starting deferred migration check after background startup...');
+                try {
+                    const fileEventManager = await this.waitForService('fileEventManager', 5000);
+                    if (fileEventManager && typeof (fileEventManager as any).getCoordinator === 'function') {
+                        const coordinator = (fileEventManager as any).getCoordinator();
+                        if (coordinator && typeof coordinator.getIncompleteFilesManager === 'function') {
+                            const incompleteFilesManager = coordinator.getIncompleteFilesManager();
+                            await incompleteFilesManager.performDeferredMigration();
+                        } else {
+                            console.warn('[PluginLifecycleManager] ⚠️ FileEventCoordinator or IncompleteFilesStateManager not available');
+                        }
+                    } else {
+                        console.warn('[PluginLifecycleManager] ⚠️ Could not access FileEventManager for deferred migration');
+                    }
+                } catch (error) {
+                    console.error('[PluginLifecycleManager] ❌ Deferred migration failed:', error);
+                }
+                
                 const memorySettings = this.config.settings.settings.memory;
                 const embeddingStrategy = memorySettings?.embeddingStrategy || 'idle';
                 

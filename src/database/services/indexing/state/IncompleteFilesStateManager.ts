@@ -35,17 +35,11 @@ export class IncompleteFilesStateManager {
     }
 
     /**
-     * Initialize and load existing incomplete files state
+     * Initialize and load existing incomplete files state (without migration)
      */
     async initialize(): Promise<void> {
         try {
             const data = await this.plugin.loadData();
-            
-            // Check for migration from old format
-            if (this.needsMigration(data)) {
-                console.log('[IncompleteFilesStateManager] Migrating from old processedFiles format...');
-                await this.performMigration(data);
-            }
             
             // Load incomplete files
             if (data?.incompleteFiles?.files) {
@@ -63,6 +57,28 @@ export class IncompleteFilesStateManager {
         } catch (error) {
             console.error('[IncompleteFilesStateManager] Failed to initialize:', error);
             // Continue with empty state if loading fails
+        }
+    }
+
+    /**
+     * Perform deferred migration after Obsidian is fully loaded
+     */
+    async performDeferredMigration(): Promise<void> {
+        try {
+            console.log('[IncompleteFilesStateManager] 🕐 Starting deferred migration check...');
+            
+            const data = await this.plugin.loadData();
+            
+            // Check for migration from old format
+            if (this.needsMigration(data)) {
+                console.log('[IncompleteFilesStateManager] 🚀 Performing deferred migration after layout ready...');
+                await this.performMigration(data);
+            } else {
+                console.log('[IncompleteFilesStateManager] ✅ No migration needed or already completed');
+            }
+            
+        } catch (error) {
+            console.error('[IncompleteFilesStateManager] ❌ Deferred migration failed:', error);
         }
     }
 
@@ -148,10 +164,12 @@ export class IncompleteFilesStateManager {
     }
 
     /**
-     * Save current state to data.json
+     * Save current state to data.json with verification
      */
     private async saveState(): Promise<void> {
         try {
+            console.log('[IncompleteFilesStateManager] 🔄 Starting saveState...');
+            
             const data = await this.plugin.loadData() || {};
             
             // Update incomplete files data
@@ -161,7 +179,18 @@ export class IncompleteFilesStateManager {
                 files: Object.fromEntries(this.incompleteFiles)
             };
             
+            console.log('[IncompleteFilesStateManager] 📝 About to call plugin.saveData...');
             await this.plugin.saveData(data);
+            console.log('[IncompleteFilesStateManager] ✅ plugin.saveData completed');
+            
+            // Verify the save actually worked
+            const verifyData = await this.plugin.loadData();
+            if (verifyData?.incompleteFiles?.version === '2.0.0') {
+                console.log('[IncompleteFilesStateManager] ✅ Save verification successful');
+            } else {
+                console.error('[IncompleteFilesStateManager] ❌ Save verification failed - data not persisted!');
+            }
+            
         } catch (error) {
             console.error('[IncompleteFilesStateManager] Failed to save state:', error);
         }
@@ -258,7 +287,26 @@ export class IncompleteFilesStateManager {
             };
             
             // Save the cleaned and migrated data
+            console.log('[IncompleteFilesStateManager] 📝 About to save migration data...');
             await this.plugin.saveData(data);
+            console.log('[IncompleteFilesStateManager] ✅ Migration saveData call completed');
+            
+            // Wait a moment to let the save complete
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Verify migration actually persisted
+            const verifyData = await this.plugin.loadData();
+            if (verifyData?.migrationVersion === '2.0.0') {
+                console.log('[IncompleteFilesStateManager] ✅ Migration verification successful');
+            } else {
+                console.error('[IncompleteFilesStateManager] ❌ Migration verification FAILED - migrationVersion not found!');
+                throw new Error('Migration data not persisted');
+            }
+            
+            // Double check by forcing a second save attempt
+            console.log('[IncompleteFilesStateManager] 🔄 Attempting second save to ensure persistence...');
+            await this.plugin.saveData(data);
+            await new Promise(resolve => setTimeout(resolve, 100));
             
             console.log(`[IncompleteFilesStateManager] ✅ Migration complete: ${migratedCount} files migrated, ${clearedFilesCount} processedFiles cleared, ${clearedQueueCount} queue events cleared`);
             

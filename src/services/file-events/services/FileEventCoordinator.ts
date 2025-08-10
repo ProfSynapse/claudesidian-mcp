@@ -32,6 +32,13 @@ export class FileEventCoordinator implements IFileEventCoordinator {
         this.bindEventHandlers();
     }
 
+    /**
+     * Get the incomplete files state manager for deferred migration
+     */
+    getIncompleteFilesManager(): IncompleteFilesStateManager {
+        return this.incompleteFilesManager;
+    }
+
     async initialize(): Promise<void> {
         try {
             
