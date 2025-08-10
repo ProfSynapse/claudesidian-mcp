@@ -50,8 +50,6 @@ export class IncompleteFilesStateManager {
                         this.incompleteFiles.set(filePath, state as IncompleteFileState);
                     }
                 }
-                
-                console.log(`[IncompleteFilesStateManager] Loaded ${this.incompleteFiles.size} incomplete files`);
             }
             
         } catch (error) {
@@ -65,16 +63,11 @@ export class IncompleteFilesStateManager {
      */
     async performDeferredMigration(): Promise<void> {
         try {
-            console.log('[IncompleteFilesStateManager] 🕐 Starting deferred migration check...');
-            
             const data = await this.plugin.loadData();
             
             // Check for migration from old format
             if (this.needsMigration(data)) {
-                console.log('[IncompleteFilesStateManager] 🚀 Performing deferred migration after layout ready...');
                 await this.performMigration(data);
-            } else {
-                console.log('[IncompleteFilesStateManager] ✅ No migration needed or already completed');
             }
             
         } catch (error) {
@@ -122,8 +115,6 @@ export class IncompleteFilesStateManager {
         
         this.incompleteFiles.set(normalizedPath, state);
         await this.saveState();
-        
-        console.log(`[IncompleteFilesStateManager] Marked ${normalizedPath} for re-embedding (${reason})`);
     }
 
     /**
@@ -135,7 +126,6 @@ export class IncompleteFilesStateManager {
         if (this.incompleteFiles.has(normalizedPath)) {
             this.incompleteFiles.delete(normalizedPath);
             await this.saveState();
-            console.log(`[IncompleteFilesStateManager] Removed ${normalizedPath} from incomplete tracking (completed)`);
         }
     }
 
@@ -157,10 +147,8 @@ export class IncompleteFilesStateManager {
      * Clear all incomplete files (for cleanup/reset)
      */
     async clearAllIncomplete(): Promise<void> {
-        const count = this.incompleteFiles.size;
         this.incompleteFiles.clear();
         await this.saveState();
-        console.log(`[IncompleteFilesStateManager] Cleared ${count} incomplete files`);
     }
 
     /**
@@ -168,8 +156,6 @@ export class IncompleteFilesStateManager {
      */
     private async saveState(): Promise<void> {
         try {
-            console.log('[IncompleteFilesStateManager] 🔄 Starting saveState...');
-            
             const data = await this.plugin.loadData() || {};
             
             // Update incomplete files data
@@ -179,15 +165,11 @@ export class IncompleteFilesStateManager {
                 files: Object.fromEntries(this.incompleteFiles)
             };
             
-            console.log('[IncompleteFilesStateManager] 📝 About to call plugin.saveData...');
             await this.plugin.saveData(data);
-            console.log('[IncompleteFilesStateManager] ✅ plugin.saveData completed');
             
             // Verify the save actually worked
             const verifyData = await this.plugin.loadData();
-            if (verifyData?.incompleteFiles?.version === '2.0.0') {
-                console.log('[IncompleteFilesStateManager] ✅ Save verification successful');
-            } else {
+            if (!verifyData?.incompleteFiles?.version) {
                 console.error('[IncompleteFilesStateManager] ❌ Save verification failed - data not persisted!');
             }
             
@@ -202,7 +184,6 @@ export class IncompleteFilesStateManager {
     private needsMigration(data: any): boolean {
         // Already migrated? Skip migration
         if (data?.migrationVersion === '2.0.0') {
-            console.log('[IncompleteFilesStateManager] Migration v2.0.0 already completed, skipping migration');
             return false;
         }
         
@@ -213,12 +194,10 @@ export class IncompleteFilesStateManager {
             
             // If there are more than 10 completed files, trigger migration
             if (completedCount > 10) {
-                console.log(`[IncompleteFilesStateManager] Found ${completedCount} completed files, migration needed`);
                 return true;
             }
         }
         
-        console.log('[IncompleteFilesStateManager] No old data or migration not needed');
         return false;
     }
 
@@ -227,8 +206,6 @@ export class IncompleteFilesStateManager {
      */
     private async performMigration(data: any): Promise<void> {
         try {
-            console.log('[IncompleteFilesStateManager] 🚀 Starting one-time data format upgrade...');
-            
             let migratedCount = 0;
             let clearedFilesCount = 0;
             let clearedQueueCount = 0;
@@ -287,28 +264,21 @@ export class IncompleteFilesStateManager {
             };
             
             // Save the cleaned and migrated data
-            console.log('[IncompleteFilesStateManager] 📝 About to save migration data...');
             await this.plugin.saveData(data);
-            console.log('[IncompleteFilesStateManager] ✅ Migration saveData call completed');
             
             // Wait a moment to let the save complete
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Verify migration actually persisted
             const verifyData = await this.plugin.loadData();
-            if (verifyData?.migrationVersion === '2.0.0') {
-                console.log('[IncompleteFilesStateManager] ✅ Migration verification successful');
-            } else {
+            if (!verifyData?.migrationVersion) {
                 console.error('[IncompleteFilesStateManager] ❌ Migration verification FAILED - migrationVersion not found!');
                 throw new Error('Migration data not persisted');
             }
             
             // Double check by forcing a second save attempt
-            console.log('[IncompleteFilesStateManager] 🔄 Attempting second save to ensure persistence...');
             await this.plugin.saveData(data);
             await new Promise(resolve => setTimeout(resolve, 100));
-            
-            console.log(`[IncompleteFilesStateManager] ✅ Migration complete: ${migratedCount} files migrated, ${clearedFilesCount} processedFiles cleared, ${clearedQueueCount} queue events cleared`);
             
         } catch (error) {
             console.error('[IncompleteFilesStateManager] ❌ Migration failed:', error);

@@ -423,7 +423,6 @@ export class PluginLifecycleManager {
                 this.hasRunBackgroundStartup = true;
                 
                 // STEP 1: Perform deferred migration first (after file system is ready)
-                console.log('[PluginLifecycleManager] 🔄 Starting deferred migration check after background startup...');
                 try {
                     const fileEventManager = await this.waitForService('fileEventManager', 5000);
                     if (fileEventManager && typeof (fileEventManager as any).getCoordinator === 'function') {
