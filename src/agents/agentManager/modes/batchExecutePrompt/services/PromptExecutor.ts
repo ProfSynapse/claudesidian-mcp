@@ -57,6 +57,25 @@ export class PromptExecutor {
 
       const textConfig = promptConfig as TextPromptConfig;
 
+      // Validate and determine provider and model
+      const { provider, model, validationError } = await this.validateAndSelectProviderModel(textConfig);
+      if (validationError) {
+        const executionTime = performance.now() - startTime;
+        return {
+          type: 'text',
+          id: textConfig.id,
+          prompt: textConfig.prompt,
+          success: false,
+          error: validationError,
+          provider: textConfig.provider,
+          model: textConfig.model,
+          agent: textConfig.agent || 'default',
+          executionTime,
+          sequence: currentSequence,
+          parallelGroup: textConfig.parallelGroup
+        };
+      }
+
       // Resolve custom agent/prompt if specified
       const { systemPrompt, agentUsed } = await this.resolveCustomPrompt(textConfig.agent);
       
@@ -67,13 +86,13 @@ export class PromptExecutor {
         executionContext
       );
       
-      // Build execution parameters
+      // Build execution parameters with validated provider and model
       const executeParams: PromptExecutionParams = {
         systemPrompt,
         userPrompt,
         filepaths: textConfig.contextFiles,
-        provider: textConfig.provider,
-        model: textConfig.model,
+        provider,
+        model,
         workspace: textConfig.workspace,
         sessionId: executionContext.sessionId
       };
@@ -143,6 +162,92 @@ export class PromptExecutor {
     );
     
     return await Promise.all(batchPromises);
+  }
+
+  /**
+   * Validate and select provider and model for execution
+   */
+  private async validateAndSelectProviderModel(textConfig: TextPromptConfig): Promise<{
+    provider?: string;
+    model?: string;
+    validationError?: string;
+  }> {
+    try {
+      // Get available providers
+      const availableProviders = this.llmService.getAvailableProviders();
+      
+      if (availableProviders.length === 0) {
+        return {
+          validationError: 'No LLM providers available. Please configure at least one provider with valid API keys in settings.'
+        };
+      }
+
+      // Determine provider
+      let selectedProvider = textConfig.provider;
+      
+      // If no provider specified, use the first available one
+      if (!selectedProvider) {
+        const defaultModel = this.llmService.getDefaultModel();
+        selectedProvider = defaultModel.provider;
+        
+        // If default provider isn't available, use first available provider
+        if (!availableProviders.includes(selectedProvider)) {
+          selectedProvider = availableProviders[0];
+        }
+      }
+      
+      // Validate that selected provider is available
+      if (!availableProviders.includes(selectedProvider)) {
+        return {
+          validationError: `Provider '${selectedProvider}' is not available. Available providers: ${availableProviders.join(', ')}. Please check your API key configuration.`
+        };
+      }
+
+      // Get available models for the provider
+      const availableModels = await this.llmService.getAvailableModels();
+      const providerModels = availableModels.filter(m => m.provider === selectedProvider);
+      
+      if (providerModels.length === 0) {
+        return {
+          validationError: `No models available for provider '${selectedProvider}'.`
+        };
+      }
+
+      // Determine model
+      let selectedModel = textConfig.model;
+      
+      // If no model specified, use default or first available for provider
+      if (!selectedModel) {
+        const defaultModel = this.llmService.getDefaultModel();
+        
+        // If default provider matches, use default model
+        if (defaultModel.provider === selectedProvider) {
+          selectedModel = defaultModel.model;
+        } else {
+          // Use first available model for the provider
+          selectedModel = providerModels[0].id;
+        }
+      }
+      
+      // Validate that selected model exists for the provider
+      const modelExists = providerModels.some(m => m.id === selectedModel);
+      if (!modelExists) {
+        const availableModelNames = providerModels.map(m => m.id);
+        return {
+          validationError: `Model '${selectedModel}' is not available for provider '${selectedProvider}'. Available models: ${availableModelNames.join(', ')}`
+        };
+      }
+
+      return {
+        provider: selectedProvider,
+        model: selectedModel
+      };
+      
+    } catch (error) {
+      return {
+        validationError: `Failed to validate provider/model: ${getErrorMessage(error)}`
+      };
+    }
   }
 
   /**

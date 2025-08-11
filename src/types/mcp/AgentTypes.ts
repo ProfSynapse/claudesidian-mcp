@@ -59,10 +59,9 @@ export interface CommonParameters {
   sessionId?: string;
   
   /**
-   * Contextual information for this tool call
-   * Can be either a string (legacy) or rich object (enhanced)
+   * Rich contextual information for this tool call
    */
-  context?: string | {
+  context?: {
     sessionMemory: string;
     toolContext: string;
     primaryGoal: string;
@@ -114,14 +113,14 @@ export interface CommonResult {
   
   /**
    * Contextual information for this tool call
-   * Can be either a string (legacy) or rich object (enhanced)
+   * Results can contain string context for backward compatibility
    */
-  context?: string | {
+  context?: {
     sessionMemory: string;
     toolContext: string;
     primaryGoal: string;
     subgoal: string;
-  };
+  } | string;
   
   /**
    * Workspace context that was used (for continuity)

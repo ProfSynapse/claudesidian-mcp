@@ -4,8 +4,8 @@
  */
 
 import { BaseMode } from '../../../baseMode';
-import { CommonResult } from '../../../../types';
-import { createResult } from '../../../../utils/schemaUtils';
+import { CommonResult, CommonParameters } from '../../../../types';
+import { createResult, mergeWithCommonSchema, getCommonResultSchema } from '../../../../utils/schemaUtils';
 import { LLMProviderManager } from '../../../../services/llm/providers/ProviderManager';
 import { CustomPromptStorageService } from '../../services/CustomPromptStorageService';
 import { AgentManager } from '../../../../services/AgentManager';
@@ -17,9 +17,8 @@ import {
     BudgetManager,
     ServiceDependencies
 } from './services';
-import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
-export interface ExecutePromptParams {
+export interface ExecutePromptParams extends CommonParameters {
     agent?: string;
     filepaths?: string[];
     prompt: string;
@@ -36,10 +35,7 @@ export interface ExecutePromptParams {
         caseSensitive?: boolean;
         wholeWord?: boolean;
     };
-    sessionId: string;
-    context: string;
-    workspaceContext?: any;
-    handoff?: any;
+    // sessionId, context, workspaceContext, handoff now inherited from CommonParameters
 }
 
 export interface ExecutePromptResult extends CommonResult {
@@ -79,7 +75,6 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
     private promptExecutor: PromptExecutor;
     private actionExecutor: ActionExecutor;
     private budgetManager: BudgetManager;
-    private schemaBuilder: SchemaBuilder;
 
     constructor() {
         super(
@@ -101,7 +96,6 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
         this.promptExecutor = new PromptExecutor(null!, null!);
         this.actionExecutor = new ActionExecutor(null);
         this.budgetManager = new BudgetManager(null);
-        this.schemaBuilder = new SchemaBuilder(null);
     }
 
     /**
@@ -110,7 +104,6 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
     setProviderManager(providerManager: LLMProviderManager): void {
         this.dependencyValidator.updateDependencies({ providerManager });
         this.promptExecutor = new PromptExecutor(providerManager, this.promptExecutor['promptStorage']);
-        this.schemaBuilder.updateProviderManager(providerManager);
     }
 
     /**
@@ -255,19 +248,120 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
      * Get parameter schema for the mode
      */
     getParameterSchema(): any {
-        return this.schemaBuilder.buildParameterSchema(SchemaType.Execute, {
-            mode: 'executePrompt',
-            providerManager: this.dependencyValidator.getDependencies().providerManager
-        });
+        // Get default from data.json settings
+        const providerManager = this.dependencyValidator.getDependencies().providerManager;
+        const defaultModel = providerManager?.getSettings()?.defaultModel;
+        
+        const customSchema = {
+            properties: {
+                agent: {
+                    type: 'string',
+                    description: 'Custom prompt agent name/id to use as system prompt (optional - if not provided, uses raw prompt only)'
+                },
+                filepaths: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional array of file paths to include content as context'
+                },
+                prompt: {
+                    type: 'string',
+                    description: 'User prompt/question to send to the LLM'
+                },
+                provider: {
+                    type: 'string',
+                    description: `LLM provider (defaults to: ${defaultModel?.provider || 'not configured'}). Use listModels to see available providers.`,
+                    default: defaultModel?.provider
+                },
+                model: {
+                    type: 'string',
+                    description: `Model name (defaults to: ${defaultModel?.model || 'not configured'}). Use listModels to see available models.`,
+                    default: defaultModel?.model
+                },
+                temperature: {
+                    type: 'number',
+                    minimum: 0,
+                    maximum: 1,
+                    description: 'Temperature setting for response randomness (0.0-1.0)'
+                },
+                maxTokens: {
+                    type: 'number',
+                    description: 'Maximum tokens to generate'
+                },
+                action: {
+                    type: 'object',
+                    description: 'Content action to perform with LLM response',
+                    properties: {
+                        type: {
+                            type: 'string',
+                            enum: ['create', 'append', 'prepend', 'replace', 'findReplace']
+                        },
+                        targetPath: { type: 'string' },
+                        position: { type: 'number' },
+                        findText: { type: 'string' },
+                        replaceAll: { type: 'boolean' },
+                        caseSensitive: { type: 'boolean' },
+                        wholeWord: { type: 'boolean' }
+                    },
+                    required: ['type', 'targetPath']
+                }
+            },
+            required: ['prompt', 'provider', 'model']
+        };
+        
+        return mergeWithCommonSchema(customSchema);
     }
 
     /**
      * Get result schema for the mode
      */
     getResultSchema(): any {
-        return this.schemaBuilder.buildResultSchema(SchemaType.Execute, {
-            mode: 'executePrompt',
-            providerManager: this.dependencyValidator.getDependencies().providerManager
-        });
+        const commonSchema = getCommonResultSchema();
+        
+        return {
+            ...commonSchema,
+            properties: {
+                ...commonSchema.properties,
+                data: {
+                    type: 'object',
+                    properties: {
+                        response: { type: 'string', description: 'The LLM response' },
+                        model: { type: 'string', description: 'Model that was used' },
+                        provider: { type: 'string', description: 'Provider that was used' },
+                        agentUsed: { type: 'string', description: 'Agent that was used' },
+                        usage: {
+                            type: 'object',
+                            properties: {
+                                promptTokens: { type: 'number' },
+                                completionTokens: { type: 'number' },
+                                totalTokens: { type: 'number' }
+                            }
+                        },
+                        cost: {
+                            type: 'object',
+                            properties: {
+                                inputCost: { type: 'number' },
+                                outputCost: { type: 'number' },
+                                totalCost: { type: 'number' },
+                                currency: { type: 'string' }
+                            }
+                        },
+                        filesIncluded: {
+                            type: 'array',
+                            items: { type: 'string' }
+                        },
+                        actionPerformed: {
+                            type: 'object',
+                            properties: {
+                                type: { type: 'string' },
+                                targetPath: { type: 'string' },
+                                success: { type: 'boolean' },
+                                error: { type: 'string' }
+                            }
+                        }
+                    },
+                    required: ['response', 'model', 'provider', 'agentUsed']
+                }
+            }
+        };
     }
 }

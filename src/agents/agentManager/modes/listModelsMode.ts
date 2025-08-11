@@ -4,16 +4,13 @@
  */
 
 import { BaseMode } from '../../baseMode';
-import { CommonResult } from '../../../types';
+import { CommonResult, CommonParameters } from '../../../types';
 import { createResult, getCommonResultSchema } from '../../../utils/schemaUtils';
 import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
 import { LLMProviderManager } from '../../../services/llm/providers/ProviderManager';
 
-export interface ListModelsParams {
-  sessionId: string;
-  context: string;
-  workspaceContext?: any;
-  handoff?: any;
+export interface ListModelsParams extends CommonParameters {
+  // No additional parameters beyond common ones
 }
 
 export interface ListModelsResult extends CommonResult {
@@ -120,7 +117,7 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
             undefined,
             undefined,
             params.sessionId,
-            params.context
+            typeof params.context === 'object' ? JSON.stringify(params.context) : params.context
           );
         }
       }

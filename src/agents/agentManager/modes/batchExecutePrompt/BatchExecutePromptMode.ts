@@ -1,6 +1,7 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
 import { getErrorMessage } from '../../../../utils/errorUtils';
+import { createResult, mergeWithCommonSchema } from '../../../../utils/schemaUtils';
 import { LLMProviderManager } from '../../../../services/llm/providers/ProviderManager';
 import { LLMService } from '../../../../services/llm/core/LLMService';
 import { AgentManager } from '../../../../services/AgentManager';
@@ -24,7 +25,6 @@ import {
   ActionExecutor
 } from './services';
 import { PromptParser } from './utils';
-import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
 /**
  * Refactored batch mode for executing multiple LLM prompts concurrently
@@ -54,7 +54,6 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   
   // Utilities
   private promptParser!: PromptParser;
-  private schemaBuilder!: SchemaBuilder;
 
   constructor(
     plugin?: Plugin,
@@ -105,7 +104,6 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
   private initializeServices(): void {
     // Initialize utilities
     this.promptParser = new PromptParser();
-    this.schemaBuilder = new SchemaBuilder(this.providerManager || undefined);
 
     // Initialize core services
     this.budgetValidator = new BudgetValidator(this.usageTracker || undefined);
@@ -155,27 +153,42 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       
       // Validate dependencies
       if (!this.llmService) {
-        return this.resultProcessor.createErrorResult('LLM Service not initialized');
+        return createResult<BatchExecutePromptResult>(
+          false, undefined, 'LLM Service not initialized',
+          undefined, undefined, params.sessionId, params.context
+        );
       }
       
       if (!this.providerManager) {
-        return this.resultProcessor.createErrorResult('LLM Provider Manager not initialized. Please ensure you have configured at least one LLM provider with valid API keys.');
+        return createResult<BatchExecutePromptResult>(
+          false, undefined, 'LLM Provider Manager not initialized. Please ensure you have configured at least one LLM provider with valid API keys.',
+          undefined, undefined, params.sessionId, params.context
+        );
       }
       
       if (!this.promptStorage) {
-        return this.resultProcessor.createErrorResult('Prompt storage service not initialized');
+        return createResult<BatchExecutePromptResult>(
+          false, undefined, 'Prompt storage service not initialized',
+          undefined, undefined, params.sessionId, params.context
+        );
       }
 
       // Ensure specialized services are ready
       this.ensureRequestExecutor();
       if (!this.requestExecutor || !this.sequenceManager) {
-        return this.resultProcessor.createErrorResult('Failed to initialize execution services');
+        return createResult<BatchExecutePromptResult>(
+          false, undefined, 'Failed to initialize execution services',
+          undefined, undefined, params.sessionId, params.context
+        );
       }
 
       // Validate parameters using utility
       const validation = this.promptParser.validateParameters(params);
       if (!validation.valid) {
-        return this.resultProcessor.createErrorResult(`Parameter validation failed: ${validation.errors.join(', ')}`);
+        return createResult<BatchExecutePromptResult>(
+          false, undefined, `Parameter validation failed: ${validation.errors.join(', ')}`,
+          undefined, undefined, params.sessionId, params.context
+        );
       }
 
       const startTime = performance.now();
@@ -201,17 +214,33 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       const totalExecutionTime = performance.now() - startTime;
       
       // Process and format final results
-      return this.resultProcessor.processResults(
+      const processedResults = this.resultProcessor.processResults(
         results,
         params.mergeResponses || false,
         totalExecutionTime,
         params.prompts.length
       );
       
+      return createResult<BatchExecutePromptResult>(
+        processedResults.success,
+        processedResults,
+        processedResults.error,
+        undefined, // workspaceContext
+        undefined, // handoffResult
+        params.sessionId,
+        params.context
+      );
+      
     } catch (error) {
       console.error('Batch LLM prompt execution failed:', error);
-      return this.resultProcessor.createErrorResult(
-        `Batch execution failed: ${getErrorMessage(error)}`
+      return createResult<BatchExecutePromptResult>(
+        false,
+        undefined,
+        `Batch execution failed: ${getErrorMessage(error)}`,
+        undefined, // workspaceContext
+        undefined, // handoffResult
+        params.sessionId,
+        params.context
       );
     }
   }
@@ -277,7 +306,6 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
    */
   setProviderManager(providerManager: LLMProviderManager): void {
     this.providerManager = providerManager;
-    this.schemaBuilder = new SchemaBuilder(providerManager);
     
     // Get LLM service from provider manager if we don't have one
     if (!this.llmService && providerManager) {
@@ -304,8 +332,10 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
    * Get parameter schema for MCP tool definition
    */
   getParameterSchema(): any {
-    return {
-      type: 'object',
+    // Get default from data.json settings
+    const defaultModel = this.providerManager?.getSettings()?.defaultModel;
+    
+    const customSchema = {
       properties: {
         prompts: {
           type: 'array',
@@ -351,11 +381,13 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
               // Text-specific properties
               provider: {
                 type: 'string',
-                description: 'LLM provider (for text) or image provider (for image). For images, use "google"'
+                description: `LLM provider (defaults to: ${defaultModel?.provider || 'not configured'}). For images, use "google". Use listModels to see available providers.`,
+                default: defaultModel?.provider
               },
               model: {
                 type: 'string',
-                description: 'Model name (e.g., "gpt-4o", "claude-3-5-sonnet", "imagen-4", "imagen-4-ultra")'
+                description: `Model name (defaults to: ${defaultModel?.model || 'not configured'}). Use listModels to see available models.`,
+                default: defaultModel?.model
               },
               contextFiles: {
                 type: 'array',
@@ -386,7 +418,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
                 type: 'string',
                 description: 'Custom agent/prompt name to use (text requests only)'
               },
-              // Image-specific properties  
+              // Image-specific properties
               savePath: {
                 type: 'string',
                 description: 'Vault-relative path to save generated image (image requests only)',
@@ -399,14 +431,14 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
                 default: '1:1'
               }
             },
-            required: ['type', 'prompt'],
+            required: ['type', 'prompt', 'provider', 'model'],
             allOf: [
               {
                 if: { properties: { type: { const: 'image' } } },
-                then: { 
+                then: {
                   required: ['savePath'],
                   properties: {
-                    provider: { enum: ['google'] }
+                    provider: { const: 'google' }
                   }
                 }
               }
@@ -417,18 +449,12 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
           type: 'boolean',
           description: 'Whether to merge all responses into a single result',
           default: false
-        },
-        sessionId: {
-          type: 'string',
-          description: 'Session identifier for tracking and context'
-        },
-        context: {
-          type: 'string',
-          description: 'Additional context or notes for the batch execution'
         }
       },
-      required: ['prompts', 'sessionId']
+      required: ['prompts']
     };
+    
+    return mergeWithCommonSchema(customSchema);
   }
 
   /**

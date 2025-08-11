@@ -128,12 +128,14 @@ export interface CommonSchemaProperties {
     description: string;
     enum?: string[];
     examples?: string[];
+    default?: string;
   };
   model?: {
     type: string;
     description: string;
     enum?: string[];
     examples?: string[];
+    default?: string;
   };
   
   // Action properties

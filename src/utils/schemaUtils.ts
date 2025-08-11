@@ -131,41 +131,31 @@ export function getSessionSchema(): any {
 export function getContextSchema(): any {
   return enhanceSchemaDocumentation({
     context: {
-      oneOf: [
-        {
+      type: 'object',
+      properties: {
+        sessionMemory: {
           type: 'string',
-          description: 'Legacy string context for backward compatibility',
-          minLength: 1
+          description: 'Summary of what has happened in the conversation so far, including key decisions, actions taken, and important context',
+          minLength: 10
         },
-        {
-          type: 'object',
-          properties: {
-            sessionMemory: {
-              type: 'string',
-              description: 'Summary of what has happened in the conversation so far, including key decisions, actions taken, and important context',
-              minLength: 10
-            },
-            toolContext: {
-              type: 'string', 
-              description: 'Specific context for why this tool/mode is being used at this moment',
-              minLength: 5
-            },
-            primaryGoal: {
-              type: 'string',
-              description: 'The overarching goal of the current conversation/task',
-              minLength: 5
-            },
-            subgoal: {
-              type: 'string',
-              description: 'What this specific tool call is trying to accomplish',
-              minLength: 5
-            }
-          },
-          required: ['sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],
-          description: 'Rich contextual information for this tool call'
+        toolContext: {
+          type: 'string', 
+          description: 'Specific context for why this tool/mode is being used at this moment',
+          minLength: 5
+        },
+        primaryGoal: {
+          type: 'string',
+          description: 'The overarching goal of the current conversation/task',
+          minLength: 5
+        },
+        subgoal: {
+          type: 'string',
+          description: 'What this specific tool call is trying to accomplish',
+          minLength: 5
         }
-      ],
-      description: 'Contextual information - can be string (legacy) or rich object (enhanced)'
+      },
+      required: ['sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],
+      description: 'Rich contextual information for this tool call'
     }
   });
 }
@@ -353,7 +343,7 @@ export function mergeWithCommonSchema(customSchema: any): any {
  * @param workspaceContext Workspace context used
  * @param handoffResult Result from handoff operation
  * @param sessionId Session identifier
- * @param context Contextual information
+ * @param context Contextual information (rich object or string for backward compatibility)
  * @param additionalProps Additional properties to include in the result
  * @returns Standardized result object
  */
@@ -364,7 +354,7 @@ export function createResult<T extends CommonResult>(
   workspaceContext?: CommonResult['workspaceContext'],
   handoffResult?: any,
   sessionId?: string,
-  context?: CommonResult['context'],
+  context?: CommonResult['context'] | string,
   additionalProps?: Record<string, any>
 ): T {
   const result: any = {

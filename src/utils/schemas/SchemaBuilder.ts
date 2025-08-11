@@ -126,26 +126,18 @@ export class SchemaBuilder {
     if (options.includeProviders) {
       const providerInfo = this.getProviderInfo();
       
+      const defaultModel = this.getDefaultModel();
+      
       properties.provider = {
         type: 'string',
-        description: providerInfo.enabledProviders.length > 0 
-          ? `LLM provider name (optional - uses default if not specified). Available providers: ${providerInfo.enabledProviders.join(', ')}`
-          : 'LLM provider name (optional - uses default if not specified). No providers are currently enabled. Please configure API keys in settings.',
-        ...(providerInfo.enabledProviders.length > 0 && { 
-          enum: providerInfo.enabledProviders,
-          examples: providerInfo.enabledProviders 
-        })
+        description: `LLM provider name (optional, defaults to: ${defaultModel?.provider || 'not configured'}). Use listModels to see available providers.`,
+        default: defaultModel?.provider
       };
 
       properties.model = {
         type: 'string',
-        description: providerInfo.availableModels.length > 0
-          ? `Model name (optional - uses default if not specified). Available models: ${providerInfo.availableModels.slice(0, 3).join(', ')}${providerInfo.availableModels.length > 3 ? '...' : ''}`
-          : 'Model name (optional - uses default if not specified). No models available. Please configure provider API keys in settings.',
-        ...(providerInfo.availableModels.length > 0 && { 
-          enum: providerInfo.availableModels,
-          examples: providerInfo.availableModels.slice(0, 5) 
-        })
+        description: `Model name (optional, defaults to: ${defaultModel?.model || 'not configured'}). Use listModels to see available models.`,
+        default: defaultModel?.model
       };
     }
 
@@ -241,6 +233,21 @@ export class SchemaBuilder {
     } catch (error) {
       console.warn('SchemaBuilder: Error getting available models:', error);
       return [];
+    }
+  }
+
+  /**
+   * Get default model from provider manager settings
+   */
+  private getDefaultModel(): { provider: string; model: string } | null {
+    if (!this.providerManager) return null;
+    
+    try {
+      const settings = this.providerManager.getSettings();
+      return settings.defaultModel || null;
+    } catch (error) {
+      console.warn('SchemaBuilder: Error getting default model:', error);
+      return null;
     }
   }
 
@@ -381,7 +388,7 @@ class BatchExecuteSchemaBuilder implements ISchemaBuilder {
       additionalProperties: false
     };
     
-    return batchSchema;
+    return mergeWithCommonSchema(batchSchema);
   }
 
   buildResultSchema(context: SchemaContext): any {

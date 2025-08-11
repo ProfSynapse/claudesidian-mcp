@@ -4,7 +4,7 @@
  */
 
 import { BaseMode } from '../../baseMode';
-import { CommonResult } from '../../../types';
+import { CommonResult, CommonParameters } from '../../../types';
 import { createResult } from '../../../utils/schemaUtils';
 import { ImageGenerationService } from '../../../services/llm/ImageGenerationService';
 import { 
@@ -16,14 +16,12 @@ import { SchemaBuilder, SchemaType } from '../../../utils/schemas/SchemaBuilder'
 import { Vault } from 'obsidian';
 import { LLMProviderSettings } from '../../../types/llm/ProviderTypes';
 
-export interface GenerateImageParams {
+export interface GenerateImageParams extends CommonParameters {
   prompt: string;
   provider: 'google'; // Only Google Imagen supported
   model?: 'imagen-4' | 'imagen-4-ultra';
   aspectRatio?: AspectRatio;
   savePath: string;
-  sessionId: string;
-  context?: string;
 }
 
 export interface GenerateImageModeResult extends CommonResult {
@@ -128,7 +126,7 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         aspectRatio: params.aspectRatio,
         savePath: params.savePath,
         sessionId: params.sessionId,
-        context: params.context
+        context: typeof params.context === 'object' ? JSON.stringify(params.context) : params.context
       });
 
       if (!validation.isValid) {
@@ -147,7 +145,7 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         aspectRatio: params.aspectRatio,
         savePath: params.savePath,
         sessionId: params.sessionId,
-        context: params.context
+        context: typeof params.context === 'object' ? JSON.stringify(params.context) : params.context
       });
 
       if (!result.success) {
