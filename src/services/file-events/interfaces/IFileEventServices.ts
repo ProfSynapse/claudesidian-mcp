@@ -1,7 +1,7 @@
 import { TAbstractFile } from 'obsidian';
 
 // Core event types
-export type FileOperation = 'create' | 'modify' | 'delete';
+export type FileOperation = 'create' | 'modify' | 'delete' | 'view';
 
 export interface FileEvent {
     path: string;

@@ -63,13 +63,11 @@ export class ImageGenerationService {
           apiKey: googleConfig.apiKey
         });
         this.adapters.set('google', googleAdapter);
-        console.log('Google image adapter initialized with plugin settings');
       }
 
       if (this.adapters.size === 0) {
         console.warn('No image generation providers configured. Please configure OpenAI or Google API keys in plugin settings and enable the providers.');
       } else {
-        console.log(`Image generation initialized with ${this.adapters.size} provider(s)`);
       }
     } catch (error) {
       console.error('Failed to initialize image generation adapters:', error);

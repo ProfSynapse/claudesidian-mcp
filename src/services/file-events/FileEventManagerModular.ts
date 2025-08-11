@@ -8,7 +8,8 @@ import { EventManager } from '../EventManager';
 import { 
     IFileEventManagerDependencies,
     EmbeddingStrategy,
-    FileEvent 
+    FileEvent,
+    FileOperation 
 } from './interfaces/IFileEventServices';
 import { FileEventQueue } from './services/FileEventQueue';
 import { FileEventProcessor } from './services/FileEventProcessor';
@@ -412,6 +413,43 @@ export class FileEventManagerModular {
 
     getCoordinator(): FileEventCoordinator {
         return this.coordinator;
+    }
+
+    /**
+     * Update file activity - bridge method for compatibility
+     * This method provides the expected interface for recording file activities
+     * from other parts of the codebase while delegating to the proper ActivityTracker
+     */
+    async updateFileActivity(filePath: string, operation: string): Promise<void> {
+        try {
+            // Ensure vector dependencies are initialized (ActivityTracker may not be ready)
+            if (!this.dependencies.activityTracker) {
+                await this.ensureVectorDependencies();
+                
+                // If still not available, this means services aren't ready yet
+                if (!this.dependencies.activityTracker) {
+                    console.warn('[FileEventManagerModular] ActivityTracker not available yet, skipping file activity recording');
+                    return;
+                }
+            }
+            
+            // Create a FileEvent object from the simple parameters
+            const fileEvent: FileEvent = {
+                path: filePath,
+                operation: operation as FileOperation,
+                timestamp: Date.now(),
+                isSystemOperation: false, // User-initiated operations are not system operations
+                source: 'manual', // This is a manual recording, not from file system events
+                priority: 'normal'
+            };
+            
+            // Delegate to the ActivityTracker
+            await this.dependencies.activityTracker.recordFileActivity(fileEvent);
+            
+        } catch (error) {
+            console.error('[FileEventManagerModular] Error recording file activity:', error);
+            // Don't throw - file activity recording shouldn't break the calling operation
+        }
     }
 
     /**
