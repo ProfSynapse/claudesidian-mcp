@@ -6,7 +6,7 @@
  * 
  * Used by:
  * - BaseImageAdapter: Abstract base class for image adapters
- * - OpenAIImageAdapter: OpenAI gpt-image-1 implementation 
+ * - OpenAIImageAdapter: OpenAI gpt-image-1 implementation (available but disabled)
  * - GeminiImageAdapter: Google Imagen 4 implementation
  * - ImageGenerationService: Core orchestration service
  * - ImageFileManager: Vault file operations
@@ -105,7 +105,7 @@ export interface ImageGenerationResult {
 
 // Provider-specific configuration
 export interface ImageProviderConfig {
-  provider: 'openai' | 'google';
+  provider: 'openai' | 'google'; // OpenAI available but not active
   apiKey: string;
   baseUrl?: string;
   defaultModel?: string;
@@ -133,7 +133,7 @@ export interface ImageBuffer {
   };
 }
 
-// OpenAI specific types
+// OpenAI specific types (available but not active)
 export namespace OpenAI {
   export interface ImageGenerationRequest {
     model: 'gpt-4.1'; // Model that supports image_generation tool
@@ -215,10 +215,10 @@ export class ImageGenerationError extends LLMProviderError {
 }
 
 // Supported providers and models
-export type ImageProvider = 'openai' | 'google';
+export type ImageProvider = 'openai' | 'google'; // OpenAI available but not active
 
 export type ImageModel = 
-  | 'gpt-image-1'        // OpenAI
+  | 'gpt-image-1'        // OpenAI (available but not active)
   | 'imagen-4'           // Google
   | 'imagen-4-ultra';    // Google
 
@@ -234,9 +234,9 @@ export enum AspectRatio {
 // Image size presets
 export const IMAGE_SIZES = {
   SQUARE_1024: '1024x1024',
-  PORTRAIT: '1024x1536',  // gpt-image-1 supported
-  LANDSCAPE: '1536x1024', // gpt-image-1 supported
-  AUTO: 'auto'            // gpt-image-1 automatic sizing
+  PORTRAIT: '1024x1536',  // Supported by both providers
+  LANDSCAPE: '1536x1024', // Supported by both providers
+  AUTO: 'auto'            // OpenAI automatic sizing (available but not active)
 } as const;
 
 export type ImageSize = typeof IMAGE_SIZES[keyof typeof IMAGE_SIZES];

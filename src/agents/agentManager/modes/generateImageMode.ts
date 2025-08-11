@@ -51,7 +51,7 @@ export interface GenerateImageModeResult extends CommonResult {
 
 /**
  * Image Generation Mode for AgentManager
- * Handles AI image generation requests through OpenAI and Google providers
+ * Handles AI image generation requests through Google provider
  */
 export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateImageModeResult> {
   private imageService: ImageGenerationService | null = null;
@@ -63,7 +63,7 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
     super(
       'generateImage',
       'Generate Image',
-      'Generate images using AI providers (OpenAI GPT-Image-1, Google Imagen 4) and save to vault',
+      'Generate images using Google Imagen 4 and save to vault',
       '1.0.0'
     );
 
@@ -199,17 +199,17 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         },
         provider: {
           type: 'string',
-          enum: ['openai', 'google'],
-          description: 'AI provider for image generation (openai for GPT-Image-1, google for Imagen 4)'
+          enum: ['google'],
+          description: 'AI provider for image generation (google for Imagen 4)'
         },
         model: {
           type: 'string',
-          enum: ['gpt-image-1', 'imagen-4', 'imagen-4-ultra'],
+          enum: ['imagen-4', 'imagen-4-ultra'],
           description: 'Specific model to use (optional, will use provider default)'
         },
         size: {
           type: 'string',
-          description: 'Image size (e.g., "1024x1024", "1536x1024", "1024x1536"). Use "auto" for OpenAI automatic sizing.',
+          description: 'Image size (e.g., "1024x1024", "1536x1024", "1024x1536").',
           examples: ['1024x1024', '1536x1024', '1024x1536', '1792x1024', 'auto']
         },
         quality: {
@@ -275,7 +275,7 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
             },
             provider: {
               type: 'string',
-              description: 'AI provider used (openai or google)'
+              description: 'AI provider used (google)'
             },
             dimensions: {
               type: 'object',
