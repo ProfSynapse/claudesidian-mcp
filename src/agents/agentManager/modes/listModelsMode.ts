@@ -6,7 +6,7 @@
 import { BaseMode } from '../../baseMode';
 import { CommonResult, CommonParameters } from '../../../types';
 import { createResult, getCommonResultSchema } from '../../../utils/schemaUtils';
-import { mergeWithCommonSchema } from '../../../utils/schemaUtils';
+// Import removed - using this.getMergedSchema() instead of mergeWithCommonSchema
 import { LLMProviderManager } from '../../../services/llm/providers/ProviderManager';
 
 export interface ListModelsParams extends CommonParameters {
@@ -234,12 +234,15 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
    * Get parameter schema for the mode
    */
   getParameterSchema(): any {
-    return mergeWithCommonSchema({
+    const modeSchema = {
+      type: 'object',
       properties: {
         // No additional parameters beyond common ones
       },
       required: []
-    });
+    };
+    
+    return this.getMergedSchema(modeSchema);
   }
 
   /**

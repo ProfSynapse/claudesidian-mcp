@@ -101,9 +101,7 @@ export class EditFolderMode extends BaseMode<EditFolderArgs, EditFolderResult> {
    * Get the parameter schema
    */
   getParameterSchema(): any {
-    const commonSchema = this.getCommonParameterSchema();
-    
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         path: {
@@ -113,11 +111,12 @@ export class EditFolderMode extends BaseMode<EditFolderArgs, EditFolderResult> {
         newPath: {
           type: 'string',
           description: 'New path for the folder'
-        },
-        ...commonSchema
+        }
       },
       required: ['path', 'newPath']
     };
+    
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

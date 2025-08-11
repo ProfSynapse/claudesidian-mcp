@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { ListPromptsParams, ListPromptsResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
+import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -67,7 +67,7 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    const customSchema = {
+    const modeSchema = {
       type: 'object',
       properties: {
         enabledOnly: {
@@ -79,7 +79,7 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
       required: []
     };
 
-    return mergeWithCommonSchema(customSchema);
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

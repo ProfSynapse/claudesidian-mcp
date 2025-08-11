@@ -1,7 +1,7 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
 import { getErrorMessage } from '../../../../utils/errorUtils';
-import { createResult, mergeWithCommonSchema } from '../../../../utils/schemaUtils';
+import { createResult } from '../../../../utils/schemaUtils';
 import { LLMProviderManager } from '../../../../services/llm/providers/ProviderManager';
 import { LLMService } from '../../../../services/llm/core/LLMService';
 import { AgentManager } from '../../../../services/AgentManager';
@@ -454,7 +454,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       required: ['prompts']
     };
     
-    return mergeWithCommonSchema(customSchema);
+    return this.getMergedSchema(customSchema);
   }
 
   /**

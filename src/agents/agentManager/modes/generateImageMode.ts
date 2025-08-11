@@ -188,7 +188,7 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
    * Get parameter schema for MCP
    */
   getParameterSchema(): any {
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         prompt: {
@@ -231,18 +231,12 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
           type: 'string',
           enum: ['png', 'jpeg', 'webp'],
           description: 'Image format (optional, inferred from savePath extension or provider default)'
-        },
-        sessionId: {
-          type: 'string',
-          description: 'Session identifier for tracking and context'
-        },
-        context: {
-          type: 'string',
-          description: 'Additional context or notes to include in metadata file'
         }
       },
-      required: ['prompt', 'provider', 'savePath', 'sessionId']
+      required: ['prompt', 'provider', 'savePath']
     };
+    
+    return this.getMergedSchema(modeSchema);
   }
 
   /**

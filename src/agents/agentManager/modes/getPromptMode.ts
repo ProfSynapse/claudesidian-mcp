@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { GetPromptParams, GetPromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
+import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -73,7 +73,7 @@ IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Onl
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    const customSchema = {
+    const modeSchema = {
       type: 'object',
       properties: {
         id: {
@@ -92,7 +92,7 @@ IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Onl
       ]
     };
 
-    return mergeWithCommonSchema(customSchema);
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

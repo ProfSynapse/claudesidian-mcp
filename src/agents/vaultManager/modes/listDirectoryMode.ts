@@ -264,9 +264,7 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParameters
    * Get the parameter schema
    */
   getParameterSchema(): any {
-    const commonSchema = this.getCommonParameterSchema();
-    
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         path: this.getDirectoryPathSchema(),
@@ -299,11 +297,12 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParameters
           type: 'boolean',
           description: 'Shortcut to only return folders (overrides includeFiles/includeFolders)',
           default: false
-        },
-        ...commonSchema
+        }
       },
       required: ['path']
     };
+    
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

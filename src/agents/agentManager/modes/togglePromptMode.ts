@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { TogglePromptParams, TogglePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
+import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -53,7 +53,7 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    const customSchema = {
+    const modeSchema = {
       type: 'object',
       properties: {
         id: {
@@ -65,7 +65,7 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
       required: ['id']
     };
 
-    return mergeWithCommonSchema(customSchema);
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

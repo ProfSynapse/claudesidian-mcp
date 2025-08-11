@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { DeletePromptParams, DeletePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
+import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -62,7 +62,7 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    const customSchema = {
+    const modeSchema = {
       type: 'object',
       properties: {
         id: {
@@ -74,7 +74,7 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
       required: ['id']
     };
 
-    return mergeWithCommonSchema(customSchema);
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

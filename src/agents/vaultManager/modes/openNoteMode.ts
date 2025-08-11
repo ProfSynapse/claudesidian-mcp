@@ -123,9 +123,7 @@ export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
    * Get the parameter schema
    */
   getParameterSchema(): any {
-    const commonSchema = this.getCommonParameterSchema();
-    
-    return {
+    const modeSchema = {
       type: 'object',
       properties: {
         path: {
@@ -142,11 +140,12 @@ export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
           type: 'boolean',
           description: 'Whether to focus the opened note',
           default: true
-        },
-        ...commonSchema
+        }
       },
       required: ['path']
     };
+    
+    return this.getMergedSchema(modeSchema);
   }
   
   /**

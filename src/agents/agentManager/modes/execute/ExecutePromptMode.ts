@@ -5,7 +5,7 @@
 
 import { BaseMode } from '../../../baseMode';
 import { CommonResult, CommonParameters } from '../../../../types';
-import { createResult, mergeWithCommonSchema, getCommonResultSchema } from '../../../../utils/schemaUtils';
+import { createResult, getCommonResultSchema } from '../../../../utils/schemaUtils';
 import { LLMProviderManager } from '../../../../services/llm/providers/ProviderManager';
 import { CustomPromptStorageService } from '../../services/CustomPromptStorageService';
 import { AgentManager } from '../../../../services/AgentManager';
@@ -308,7 +308,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             required: ['prompt', 'provider', 'model']
         };
         
-        return mergeWithCommonSchema(customSchema);
+        return this.getMergedSchema(customSchema);
     }
 
     /**

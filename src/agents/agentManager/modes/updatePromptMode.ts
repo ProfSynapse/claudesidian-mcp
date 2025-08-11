@@ -1,7 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { UpdatePromptParams, UpdatePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { mergeWithCommonSchema, getCommonResultSchema } from '../../../utils/schemaUtils';
+import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
 
 /**
@@ -86,7 +86,7 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    const customSchema = {
+    const modeSchema = {
       type: 'object',
       properties: {
         id: {
@@ -119,7 +119,7 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       required: ['id']
     };
 
-    return mergeWithCommonSchema(customSchema);
+    return this.getMergedSchema(modeSchema);
   }
   
   /**
