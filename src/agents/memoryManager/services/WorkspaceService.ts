@@ -1,7 +1,7 @@
 import { Plugin } from 'obsidian';
 import { IVectorStore } from '../../../database/interfaces/IVectorStore';
 import { WorkspaceCollection } from '../../../database/collections/WorkspaceCollection';
-import { ProjectWorkspace, HierarchyType, WorkspaceStatus, ItemStatus } from '../../../database/workspace-types';
+import { ProjectWorkspace, ItemStatus } from '../../../database/workspace-types';
 import { VectorStoreFactory } from '../../../database/factory/VectorStoreFactory';
 import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
@@ -72,20 +72,10 @@ export class WorkspaceService {
           description: GLOBAL_WORKSPACE_DESCRIPTION,
           created: Date.now(),
           lastAccessed: Date.now(),
-          hierarchyType: 'workspace',
-          parentId: undefined,
-          childWorkspaces: [],
-          path: [],
           rootFolder: '/', // Root of the vault
           relatedFolders: [],
-          relevanceSettings: {
-            folderProximityWeight: 0.3,
-            recencyWeight: 0.4,
-            frequencyWeight: 0.3
-          },
           activityHistory: [],
           completionStatus: {},
-          status: 'active',
           // Modern workspace context
           context: {
             purpose: 'Default workspace for general work and global states',
@@ -138,8 +128,6 @@ export class WorkspaceService {
    * @param params Optional filter parameters
    */
   async getWorkspaces(params?: {
-    parentId?: string;
-    hierarchyType?: HierarchyType;
     sortBy?: 'name' | 'created' | 'lastAccessed';
     sortOrder?: 'asc' | 'desc';
   }): Promise<ProjectWorkspace[]> {
@@ -154,14 +142,8 @@ export class WorkspaceService {
         return [];
       }
       
-      // Retrieve workspaces based on parameters
-      if (params?.parentId) {
-        workspaces = await this.collection.getWorkspacesByParent(params.parentId);
-      } else if (params?.hierarchyType) {
-        workspaces = await this.collection.getWorkspacesByType(params.hierarchyType);
-      } else {
-        workspaces = await this.collection.getAll();
-      }
+      // Retrieve all workspaces
+      workspaces = await this.collection.getAll();
       
       
       // Log workspace details for debugging
@@ -213,33 +195,9 @@ export class WorkspaceService {
    */
   async createWorkspace(workspace: Omit<ProjectWorkspace, 'id'>): Promise<ProjectWorkspace> {
     const newWorkspace = await this.collection.createWorkspace(workspace);
-    
-    // If this workspace has a parent, update the parent's children
-    if (newWorkspace.parentId) {
-      await this.addChildToParent(newWorkspace.parentId, newWorkspace.id);
-    }
-    
     return newWorkspace;
   }
   
-  /**
-   * Add a child workspace to a parent
-   * @param parentId Parent workspace ID
-   * @param childId Child workspace ID
-   */
-  private async addChildToParent(parentId: string, childId: string): Promise<void> {
-    const parent = await this.collection.get(parentId);
-    
-    if (parent) {
-      // Update parent's children if the child isn't already in the list
-      if (!(parent.childWorkspaces || []).includes(childId)) {
-        await this.collection.update(parentId, {
-          childWorkspaces: [...(parent.childWorkspaces || []), childId],
-          lastAccessed: Date.now()
-        });
-      }
-    }
-  }
   
   /**
    * Update an existing workspace
@@ -251,25 +209,6 @@ export class WorkspaceService {
     
     if (!workspace) {
       throw new Error(`Workspace with ID ${id} not found`);
-    }
-    
-    // Handle parent ID changes
-    if (updates.parentId !== undefined && updates.parentId !== workspace.parentId) {
-      // Remove from old parent
-      if (workspace.parentId) {
-        const oldParent = await this.collection.get(workspace.parentId);
-        if (oldParent) {
-          await this.collection.update(workspace.parentId, {
-            childWorkspaces: (oldParent.childWorkspaces || []).filter(cid => cid !== id),
-            lastAccessed: Date.now()
-          });
-        }
-      }
-      
-      // Add to new parent
-      if (updates.parentId) {
-        await this.addChildToParent(updates.parentId, id);
-      }
     }
     
     // Update the workspace
@@ -285,39 +224,12 @@ export class WorkspaceService {
    * @param options Delete options
    */
   async deleteWorkspace(id: string, options?: {
-    deleteChildren?: boolean;
     preserveSettings?: boolean;
   }): Promise<void> {
     const workspace = await this.collection.get(id);
     
     if (!workspace) {
       throw new Error(`Workspace with ID ${id} not found`);
-    }
-    
-    // If deleteChildren is true, recursively delete child workspaces
-    if (options?.deleteChildren && (workspace.childWorkspaces?.length || 0) > 0) {
-      for (const childId of (workspace.childWorkspaces || [])) {
-        await this.deleteWorkspace(childId, options);
-      }
-    } else if ((workspace.childWorkspaces?.length || 0) > 0) {
-      // If not deleting children, update their parentId to the parent of this workspace
-      for (const childId of (workspace.childWorkspaces || [])) {
-        const child = await this.collection.get(childId);
-        if (child) {
-          await this.collection.update(childId, { parentId: workspace.parentId });
-        }
-      }
-    }
-    
-    // Remove from parent's childWorkspaces
-    if (workspace.parentId) {
-      const parent = await this.collection.get(workspace.parentId);
-      if (parent) {
-        await this.collection.update(workspace.parentId, {
-          childWorkspaces: (parent.childWorkspaces || []).filter(cid => cid !== id),
-          lastAccessed: Date.now()
-        });
-      }
     }
     
     // Delete the workspace
@@ -486,7 +398,7 @@ export class WorkspaceService {
   async updateCompletionStatus(
     workspaceId: string, 
     itemId: string, 
-    status: WorkspaceStatus, 
+    status: ItemStatus, 
     notes?: string
   ): Promise<void> {
     const workspace = await this.collection.get(workspaceId);
@@ -494,17 +406,11 @@ export class WorkspaceService {
     if (!workspace) {
       throw new Error(`Workspace with ID ${workspaceId} not found`);
     }
-    
-    // Map string status to ItemStatus type
-    const itemStatus: ItemStatus = 
-      status === 'completed' ? 'completed' : 
-      status === 'paused' ? 'in_progress' : 
-      'not_started';
       
     const completionStatus = { 
       ...workspace.completionStatus,
       [itemId]: {
-        status: itemStatus,
+        status: status,
         completedDate: status === 'completed' ? Date.now() : undefined,
         completionNotes: notes
       }
@@ -516,13 +422,6 @@ export class WorkspaceService {
     });
   }
   
-  /**
-   * Get a workspace by path
-   * @param path Path to search for
-   */
-  async getWorkspaceByPath(path: string[]): Promise<ProjectWorkspace | undefined> {
-    return this.collection.getWorkspaceByPath(path);
-  }
   
   /**
    * Update last accessed timestamp for a workspace

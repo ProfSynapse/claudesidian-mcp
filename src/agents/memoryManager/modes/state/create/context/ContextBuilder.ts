@@ -261,7 +261,7 @@ export class ContextBuilder {
 
     // Add workspace context
     if (workspace) {
-      enhanced += `\n\nWorkspace: ${workspace.name} (${workspace.hierarchyType})`;
+      enhanced += `\n\nWorkspace: ${workspace.name} (workspace)`;
       if (workspace.description) {
         enhanced += `\nWorkspace Description: ${workspace.description}`;
       }
@@ -333,7 +333,7 @@ export class ContextBuilder {
 
     // Add workspace-related tags
     if (workspace) {
-      tags.push(`workspace:${workspace.hierarchyType}`);
+      tags.push(`workspace:workspace`);
       
       // Add folder tag if available
       if (workspace.rootFolder && workspace.rootFolder !== '/') {

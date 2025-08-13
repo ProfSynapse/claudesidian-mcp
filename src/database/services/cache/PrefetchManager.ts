@@ -48,16 +48,6 @@ export class PrefetchManager extends EventEmitter {
                 this.queuePrefetch('session', session.id);
             }
 
-            // Get child workspaces if any
-            const childWorkspaces = await this.workspaceService.getWorkspaces({
-                parentId: workspaceId
-            });
-
-            // Queue prefetch for child workspaces
-            for (const child of childWorkspaces.slice(0, 3)) {
-                this.queuePrefetch('workspace', child.id);
-            }
-
             // Start processing the queue
             this.processPrefetchQueue();
         } catch (error) {

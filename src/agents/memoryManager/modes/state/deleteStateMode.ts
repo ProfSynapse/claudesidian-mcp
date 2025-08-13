@@ -100,8 +100,8 @@ ${state.description ? `Description: ${state.description}` : ''}`;
               },
               relatedFiles: []
             },
-            workspacePath: workspace.path || [],
-            contextLevel: workspace.hierarchyType || 'workspace',
+            workspacePath: [workspace.name],
+            contextLevel: 'workspace',
             importance: 0.5,
             tags: []
           });

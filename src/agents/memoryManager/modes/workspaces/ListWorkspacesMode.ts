@@ -11,8 +11,7 @@
 import { BaseMode } from '../../../baseMode';
 import { 
   ListWorkspacesParameters, 
-  ListWorkspacesResult, 
-  HierarchyType 
+  ListWorkspacesResult
 } from '../../../../database/workspace-types';
 import { WorkspaceService } from "../../services/WorkspaceService";
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
@@ -62,8 +61,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       
       // Get workspaces with optional filtering and sorting
       const queryParams = {
-        parentId: params.parentId,
-        hierarchyType: params.hierarchyType as HierarchyType,
         sortBy: params.sortBy as 'name' | 'created' | 'lastAccessed',
         sortOrder: params.order as 'asc' | 'desc'
       };
@@ -87,7 +84,7 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       // Log detailed workspace information for debugging
       if (workspaces.length > 0) {
         workspaces.forEach((ws: any, index: number) => {
-          console.log(`  ${index + 1}. ID: ${ws.id}, Name: ${ws.name}, Status: ${ws.status}, Type: ${ws.hierarchyType}`);
+          console.log(`  ${index + 1}. ID: ${ws.id}, Name: ${ws.name}, Status: ${ws.status}`);
         });
       } else {
         console.warn('[ListWorkspacesMode] No workspaces found');
@@ -119,10 +116,7 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
           description: ws.description || undefined,
           rootFolder: ws.rootFolder || '/',
           lastAccessed: ws.lastAccessed || Date.now(),
-          status: ws.status || 'active',
-          hierarchyType: ws.hierarchyType || 'workspace',
-          parentId: ws.parentId || undefined,
-          childCount: ws.childWorkspaces?.length || 0
+          status: ws.status || 'active'
         };
         
         return formatted;
@@ -188,15 +182,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
           enum: ['asc', 'desc'],
           description: 'Sort order (ascending or descending)'
         },
-        parentId: {
-          type: 'string',
-          description: 'Filter by parent workspace ID'
-        },
-        hierarchyType: {
-          type: 'string',
-          enum: ['workspace', 'phase', 'task'],
-          description: 'Filter by hierarchy type'
-        }
       }
     };
     
@@ -251,19 +236,6 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
                     type: 'string',
                     enum: ['active', 'paused', 'completed'],
                     description: 'Workspace status'
-                  },
-                  hierarchyType: {
-                    type: 'string',
-                    enum: ['workspace', 'phase', 'task'],
-                    description: 'Hierarchy type'
-                  },
-                  parentId: {
-                    type: 'string',
-                    description: 'Parent workspace ID if applicable'
-                  },
-                  childCount: {
-                    type: 'number',
-                    description: 'Number of child workspaces/phases/tasks'
                   }
                 }
               }

@@ -4,7 +4,7 @@
  */
 
 import { CommonParameters, CommonResult } from '../../../types/mcp';
-import { ProjectWorkspace, WorkspaceContext, HierarchyType, WorkspaceStatus } from './WorkspaceTypes';
+import { ProjectWorkspace, WorkspaceContext } from './WorkspaceTypes';
 import { StateSnapshot } from '../session/SessionTypes';
 
 /**
@@ -89,8 +89,6 @@ export interface CreateWorkspaceParameters extends CommonParameters {
   description?: string;
   relatedFolders?: string[];
   relatedFiles?: string[];
-  hierarchyType?: HierarchyType;
-  parentId?: string;
   keyFileInstructions?: string;
 }
 
@@ -216,8 +214,6 @@ export interface LoadStateParams extends CommonParameters {
 export interface ListWorkspacesParameters extends CommonParameters {
   sortBy?: 'name' | 'created' | 'lastAccessed';
   order?: 'asc' | 'desc';
-  parentId?: string;
-  hierarchyType?: HierarchyType;
 }
 
 export interface EditWorkspaceParameters extends CommonParameters {
@@ -228,8 +224,6 @@ export interface EditWorkspaceParameters extends CommonParameters {
   relatedFolders?: string[];
   relatedFiles?: string[];
   preferences?: Record<string, any>;
-  status?: WorkspaceStatus;
-  parentId?: string;
   keyFileInstructions?: string;
 }
 
@@ -267,9 +261,6 @@ export interface ListWorkspacesResult extends CommonResult {
       description?: string;
       rootFolder: string;
       lastAccessed: number;
-      status: WorkspaceStatus;
-      hierarchyType: HierarchyType;
-      parentId?: string;
       childCount: number;
     }>;
   };

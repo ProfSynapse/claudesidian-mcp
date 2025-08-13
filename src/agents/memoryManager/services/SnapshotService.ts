@@ -210,8 +210,7 @@ export class SnapshotService {
       description: 'Auto-created workspace for snapshot',
       created: Date.now(),
       lastAccessed: Date.now(),
-      hierarchyType: 'workspace',
-      status: 'active'
+      rootFolder: '/'
     };
     
     if (!workspace) {

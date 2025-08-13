@@ -97,19 +97,10 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                 created: now,
                 lastAccessed: now,
                 description: params.description,
-                hierarchyType: params.hierarchyType || 'workspace',
-                parentId: params.parentId,
-                childWorkspaces: [],
-                path: [],
                 relatedFolders: params.relatedFolders || [],
                 relatedFiles: params.relatedFiles || [],
                 associatedNotes: [],
                 keyFileInstructions: params.keyFileInstructions,
-                relevanceSettings: {
-                    folderProximityWeight: 0.5,
-                    recencyWeight: 0.7,
-                    frequencyWeight: 0.3
-                },
                 activityHistory: [{
                     timestamp: now,
                     action: 'create',
@@ -119,8 +110,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                 preferences: params.preferences ? { userPreferences: params.preferences } : undefined,
                 projectPlan: undefined,
                 checkpoints: [],
-                completionStatus: {},
-                status: 'active'
+                completionStatus: {}
             };
             
             // Save workspace
@@ -246,8 +236,6 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                 description: { type: 'string' },
                 relatedFolders: { type: 'array', items: { type: 'string' } },
                 relatedFiles: { type: 'array', items: { type: 'string' } },
-                hierarchyType: { type: 'string', enum: ['workspace', 'phase', 'task'] },
-                parentId: { type: 'string' },
                 keyFileInstructions: { type: 'string' }
             },
             required: ['name', 'rootFolder', 'purpose', 'currentGoal', 'workflows', 'nextActions']

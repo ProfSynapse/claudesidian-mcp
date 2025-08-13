@@ -130,19 +130,10 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
             name: '',
             created: 0,
             lastAccessed: 0,
-            hierarchyType: 'workspace',
-            childWorkspaces: [],
-            path: [],
             rootFolder: '/',
             relatedFolders: [],
-            relevanceSettings: {
-              folderProximityWeight: 0.3,
-              recencyWeight: 0.4,
-              frequencyWeight: 0.3
-            },
             activityHistory: [],
-            completionStatus: {},
-            status: 'active'
+            completionStatus: {}
           },
           recentTraces: [],
           contextFiles: [],
@@ -214,9 +205,10 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
       });
     }
     
-    // Add workspace metadata
-    document += `Status: ${snapshot.state?.workspace?.status || 'unknown'}\n`;
-    document += `Hierarchy: ${snapshot.state?.workspace?.hierarchyType || 'unknown'}\n`;
+    // Add workspace metadata if available
+    if (snapshot.state?.workspace?.name) {
+      document += `Workspace Name: ${snapshot.state.workspace.name}\n`;
+    }
     
     return document;
   }

@@ -93,8 +93,8 @@ export class RestorationTracer {
           },
           relatedFiles: associatedNotes
         },
-        workspacePath: workspace.path || [],
-        contextLevel: workspace.hierarchyType || 'workspace',
+        workspacePath: workspace.name ? [workspace.name] : [],
+        contextLevel: 'workspace',
         importance: 0.7,
         tags
       });

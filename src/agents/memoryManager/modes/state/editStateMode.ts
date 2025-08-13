@@ -193,8 +193,8 @@ ${removeTags.length > 0 ? `Removed tags: ${removeTags.join(', ')}\n` : ''}`;
             },
             relatedFiles: []
           },
-          workspacePath: workspace.path || [],
-          contextLevel: workspace.hierarchyType || 'workspace',
+          workspacePath: [workspace.name],
+          contextLevel: 'workspace',
           importance: 0.5,
           tags: []
         });
@@ -205,7 +205,7 @@ ${removeTags.length > 0 ? `Removed tags: ${removeTags.join(', ')}\n` : ''}`;
         if (activityEmbedder && typeof activityEmbedder.recordActivity === 'function') {
           await activityEmbedder.recordActivity(
             workspaceId,
-            workspace.path || [],
+            workspace.name ? [workspace.name] : [],
             'edit',
             stateTraceContent,
             {

@@ -140,18 +140,9 @@ export class WorkspaceValidator {
       },
       // Legacy fields for backward compatibility - minimal values
       description: 'Automatically created default workspace',
-      hierarchyType: 'workspace',
-      childWorkspaces: [],
-      path: [],
       relatedFolders: [],
-      relevanceSettings: {
-        folderProximityWeight: 0.5,
-        recencyWeight: 0.7,
-        frequencyWeight: 0.3
-      },
       activityHistory: [],
-      completionStatus: {},
-      status: 'active'
+      completionStatus: {}
     });
   }
 

@@ -57,16 +57,12 @@ export class WorkspaceContextBuilder {
   extractWorkspaceMetadata(workspace: any): {
     name: string;
     description?: string;
-    hierarchyType: string;
     rootFolder: string;
-    path: string[];
   } {
     return {
       name: workspace.name || 'Unknown Workspace',
       description: workspace.description,
-      hierarchyType: workspace.hierarchyType || 'workspace',
-      rootFolder: workspace.rootFolder || '/',
-      path: workspace.path || []
+      rootFolder: workspace.rootFolder || '/'
     };
   }
 }

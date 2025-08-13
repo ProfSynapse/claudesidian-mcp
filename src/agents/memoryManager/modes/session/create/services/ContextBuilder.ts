@@ -174,8 +174,8 @@ export class ContextBuilder {
             contextSummary += `Goal: ${options.sessionGoal}\n`;
         }
         
-        // Add workspace hierarchy info
-        contextSummary += await this.buildWorkspaceHierarchyInfo(options.workspace);
+        // Add workspace basic info
+        contextSummary += await this.buildWorkspaceBasicInfo(options.workspace);
         
         // Add activity history if not minimal
         if (options.contextDepth !== 'minimal') {
@@ -186,32 +186,17 @@ export class ContextBuilder {
     }
 
     /**
-     * Build workspace hierarchy information
+     * Build workspace basic information
      */
-    private async buildWorkspaceHierarchyInfo(workspace: any): Promise<string> {
-        let hierarchyInfo = `Type: ${workspace.hierarchyType} level`;
+    private async buildWorkspaceBasicInfo(workspace: any): Promise<string> {
+        let basicInfo = `Type: workspace level`;
         
-        // Add parent information
-        if (workspace.parentId) {
-            try {
-                const workspaceService = this.agent.getWorkspaceService();
-                if (workspaceService) {
-                    const parent = await workspaceService.getWorkspace(workspace.parentId);
-                    if (parent) {
-                        hierarchyInfo += ` within "${parent.name}"`;
-                    }
-                }
-            } catch (error) {
-                console.warn(`Failed to retrieve parent workspace: ${getErrorMessage(error)}`);
-            }
+        // Add root folder information
+        if (workspace.rootFolder) {
+            basicInfo += `\nRoot folder: ${workspace.rootFolder}`;
         }
         
-        // Add child information
-        if (workspace.childWorkspaces && workspace.childWorkspaces.length > 0) {
-            hierarchyInfo += `\nContains ${workspace.childWorkspaces.length} sub-items`;
-        }
-        
-        return hierarchyInfo;
+        return basicInfo;
     }
 
     /**

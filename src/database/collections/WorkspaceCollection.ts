@@ -1,7 +1,7 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
 import { ProjectWorkspace } from '../workspace-types';
-import { WorkspaceContext, HierarchyType, ItemStatus, WorkspaceStatus } from '../types/workspace/WorkspaceTypes';
+import { WorkspaceContext, ItemStatus } from '../types/workspace/WorkspaceTypes';
 import { EmbeddingService } from '../services/core/EmbeddingService';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -13,9 +13,6 @@ interface LegacyWorkspace {
   id: string;
   name: string;
   description?: string;
-  hierarchyType?: HierarchyType;
-  parentId?: string;
-  childWorkspaces?: string[];
   rootFolder: string;
   created: number;
   lastAccessed: number;
@@ -53,7 +50,6 @@ interface LegacyWorkspace {
     completionNotes?: string;
   }>;
   
-  status?: WorkspaceStatus;
   
   // Missing in legacy: context field (the key difference)
 }
@@ -122,25 +118,15 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
     const metadata = {
       name: workspace.name,
       description: workspace.description || '',
-      hierarchyType: workspace.hierarchyType,
-      parentId: workspace.parentId || '',
       rootFolder: workspace.rootFolder,
       created: workspace.created,
       lastAccessed: workspace.lastAccessed,
-      status: workspace.status,
-      
-      // Path array converted to string for filtering
-      path: (workspace.path || []).join('/'),
-      
-      // Store child IDs as a string for filtering
-      childWorkspaces: (workspace.childWorkspaces || []).join(','),
       
       // Store associated notes
       associatedNotes: workspace.associatedNotes ? workspace.associatedNotes.join(',') : '',
       
       // Store other complex fields as JSON
       relatedFiles: workspace.relatedFiles ? JSON.stringify(workspace.relatedFiles) : '',
-      relevanceSettings: JSON.stringify(workspace.relevanceSettings),
       activityHistory: JSON.stringify(workspace.activityHistory),
       preferences: workspace.preferences ? JSON.stringify(workspace.preferences) : '',
       checkpoints: workspace.checkpoints ? JSON.stringify(workspace.checkpoints) : '',
@@ -192,19 +178,10 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
         name: 'Unknown Workspace',
         created: Date.now(),
         lastAccessed: Date.now(),
-        hierarchyType: 'workspace',
-        childWorkspaces: [],
-        path: [],
         rootFolder: '/',
         relatedFolders: [],
-        relevanceSettings: {
-          folderProximityWeight: 0.3,
-          recencyWeight: 0.4,
-          frequencyWeight: 0.3
-        },
         activityHistory: [],
-        completionStatus: {},
-        status: 'active'
+        completionStatus: {}
       };
     }
     
@@ -265,26 +242,16 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       description: storage.metadata.description || undefined,
       created: storage.metadata.created || Date.now(),
       lastAccessed: storage.metadata.lastAccessed || Date.now(),
-      hierarchyType: storage.metadata.hierarchyType || 'workspace',
-      parentId: storage.metadata.parentId || undefined,
-      childWorkspaces: this.parseStringArray(storage.metadata.childWorkspaces),
-      path: this.parseStringArray(storage.metadata.path, '/'),
       rootFolder: storage.metadata.rootFolder || '/',
       relatedFolders: this.parseJsonField(storage.metadata.relatedFolders, []),
       relatedFiles: this.parseJsonField(storage.metadata.relatedFiles, undefined),
       associatedNotes: this.parseStringArray(storage.metadata.associatedNotes),
-      relevanceSettings: this.parseJsonField(storage.metadata.relevanceSettings, {
-        folderProximityWeight: 0.3,
-        recencyWeight: 0.4,
-        frequencyWeight: 0.3
-      }),
       activityHistory: this.parseJsonField(storage.metadata.activityHistory, []),
       preferences: this.parseJsonField(storage.metadata.preferences, undefined),
       projectPlan: storage.metadata.projectPlan || undefined,
       checkpoints: this.parseJsonField(storage.metadata.checkpoints, undefined),
       completionStatus: this.parseJsonField(storage.metadata.completionStatus, {}),
-      context: this.parseJsonField(storage.metadata.context, undefined),
-      status: storage.metadata.status || 'active'
+      context: this.parseJsonField(storage.metadata.context, undefined)
     };
     
     // Validate context structure for modern workspaces
@@ -327,20 +294,11 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       name: storage.metadata.name || 'Recovered Workspace',
       created: storage.metadata.created || Date.now(),
       lastAccessed: storage.metadata.lastAccessed || Date.now(),
-      hierarchyType: 'workspace',
-      childWorkspaces: [],
-      path: [],
       rootFolder: storage.metadata.rootFolder || '/',
       relatedFolders: [],
-      relevanceSettings: {
-        folderProximityWeight: 0.3,
-        recencyWeight: 0.4,
-        frequencyWeight: 0.3
-      },
       activityHistory: [],
       completionStatus: {},
-      context: fallbackContext,
-      status: 'active'
+      context: fallbackContext
     };
   }
   
@@ -451,22 +409,10 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       description: storage.metadata.description || undefined,
       created: storage.metadata.created || Date.now(),
       lastAccessed: storage.metadata.lastAccessed || Date.now(),
-      hierarchyType: storage.metadata.hierarchyType || 'workspace',
-      parentId: storage.metadata.parentId || undefined,
-      
-      // Legacy format: Convert empty strings to empty arrays
-      childWorkspaces: this.parseStringArray(storage.metadata.childWorkspaces) || [],
-      path: this.parseStringArray(storage.metadata.path, '/') || [],
-      
       rootFolder: storage.metadata.rootFolder || '/',
       relatedFolders: this.parseJsonField(storage.metadata.relatedFolders, []),
       relatedFiles: this.parseJsonField(storage.metadata.relatedFiles, undefined),
       associatedNotes: this.parseStringArray(storage.metadata.associatedNotes),
-      relevanceSettings: this.parseJsonField(storage.metadata.relevanceSettings, {
-        folderProximityWeight: 0.3,
-        recencyWeight: 0.4,
-        frequencyWeight: 0.3
-      }),
       activityHistory: this.parseJsonField(storage.metadata.activityHistory, []),
       preferences: this.parseJsonField(storage.metadata.preferences, undefined),
       projectPlan: storage.metadata.projectPlan || undefined,
@@ -474,9 +420,7 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       completionStatus: this.parseJsonField(storage.metadata.completionStatus, {}),
       
       // STEP 4: Add the rich context created from legacy data
-      context,
-      
-      status: storage.metadata.status || 'active'
+      context
     };
     
     // STEP 5: Mark as migrated for tracking
@@ -861,10 +805,7 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       document += `Description: ${workspace.description}\n`;
     }
     
-    document += `Type: ${workspace.hierarchyType}\n`;
-    document += `Path: ${(workspace.path || []).join('/')}\n`;
     document += `Root Folder: ${workspace.rootFolder}\n`;
-    document += `Status: ${workspace.status}\n`;
     
     if (workspace.projectPlan) {
       document += `Project Plan: ${workspace.projectPlan}\n`;
@@ -928,42 +869,7 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
     return newWorkspace;
   }
   
-  /**
-   * Get workspaces by parent ID
-   * @param parentId Parent workspace ID
-   * @returns Child workspaces
-   */
-  async getWorkspacesByParent(parentId: string): Promise<ProjectWorkspace[]> {
-    return this.getAll({
-      where: { parentId }
-    });
-  }
   
-  /**
-   * Get workspaces by hierarchy type
-   * @param hierarchyType Hierarchy type
-   * @returns Workspaces of the specified type
-   */
-  async getWorkspacesByType(hierarchyType: string): Promise<ProjectWorkspace[]> {
-    return this.getAll({
-      where: { hierarchyType }
-    });
-  }
-  
-  /**
-   * Get workspace by path
-   * @param path Workspace path array
-   * @returns Workspace if found
-   */
-  async getWorkspaceByPath(path: string[]): Promise<ProjectWorkspace | undefined> {
-    const pathString = path.join('/');
-    
-    const workspaces = await this.getAll({
-      where: { path: pathString }
-    });
-    
-    return workspaces.length > 0 ? workspaces[0] : undefined;
-  }
   
   /**
    * Update last accessed timestamp
@@ -1109,7 +1015,6 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
             // Only include essential metadata to avoid bloating the response
             name: metadata.name,
             created: metadata.created,
-            hierarchyType: metadata.hierarchyType,
             hasContext: hasContext,
             __migrated: metadata.__migrated,
             __migrationTimestamp: metadata.__migrationTimestamp

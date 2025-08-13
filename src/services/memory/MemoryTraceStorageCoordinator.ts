@@ -207,14 +207,9 @@ class MemoryTracePersistenceQueue {
     /**
      * Map context level to valid HierarchyType
      */
-    private mapContextLevel(contextLevel: any): 'workspace' | 'phase' | 'task' {
-        switch (contextLevel) {
-            case 'global':
-            case 'workspace': return 'workspace';
-            case 'session': return 'phase';  
-            case 'interaction': return 'task';
-            default: return 'workspace';
-        }
+    private mapContextLevel(contextLevel: any): 'workspace' {
+        // All context levels are now mapped to 'workspace' since hierarchy is removed
+        return 'workspace';
     }
 
     /**
@@ -486,14 +481,9 @@ export class MemoryTraceStorageCoordinator {
     /**
      * Map context level to valid HierarchyType
      */
-    private mapContextLevel(contextLevel: any): 'workspace' | 'phase' | 'task' {
-        switch (contextLevel) {
-            case 'global':
-            case 'workspace': return 'workspace';
-            case 'session': return 'phase';  
-            case 'interaction': return 'task';
-            default: return 'workspace';
-        }
+    private mapContextLevel(contextLevel: any): 'workspace' {
+        // All context levels are now mapped to 'workspace' since hierarchy is removed
+        return 'workspace';
     }
 
     /**

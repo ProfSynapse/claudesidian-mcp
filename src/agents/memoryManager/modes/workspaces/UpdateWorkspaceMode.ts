@@ -38,16 +38,8 @@ export interface UpdateWorkspaceParameters {
     nextActions?: string[];
     relatedFolders?: string[];
     relatedFiles?: string[];
-    hierarchyType?: 'workspace' | 'phase' | 'task';
-    parentId?: string;
     keyFileInstructions?: string;
     associatedNotes?: string[];
-    workspaceStatus?: 'active' | 'inactive' | 'archived' | 'completed';
-    relevanceSettings?: {
-        folderProximityWeight?: number;
-        recencyWeight?: number;
-        frequencyWeight?: number;
-    };
 }
 
 export interface UpdateWorkspaceResult extends CommonResult {
@@ -148,15 +140,7 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
                 updatedFields.push('relatedFiles');
             }
 
-            if (params.hierarchyType && params.hierarchyType !== existingWorkspace.hierarchyType) {
-                updates.hierarchyType = params.hierarchyType;
-                updatedFields.push('hierarchyType');
-            }
-
-            if (params.parentId && params.parentId !== existingWorkspace.parentId) {
-                updates.parentId = params.parentId;
-                updatedFields.push('parentId');
-            }
+            // Hierarchy-related updates removed
 
             // Update context properties
             const contextUpdates: any = {};
@@ -336,15 +320,6 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
                     type: 'array', 
                     items: { type: 'string' }, 
                     description: 'Updated related files' 
-                },
-                hierarchyType: { 
-                    type: 'string', 
-                    enum: ['workspace', 'phase', 'task'],
-                    description: 'Updated workspace hierarchy type' 
-                },
-                parentId: { 
-                    type: 'string', 
-                    description: 'Updated parent workspace ID for hierarchy' 
                 },
                 keyFileInstructions: { 
                     type: 'string', 

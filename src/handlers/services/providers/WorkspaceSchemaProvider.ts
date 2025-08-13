@@ -11,7 +11,6 @@
 
 import { ISchemaProvider } from '../../interfaces/ISchemaProvider';
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../agents/memoryManager/services/WorkspaceService';
-import { HierarchyType } from '../../../database/workspace-types';
 import { logger } from '../../../utils/logger';
 
 /**
@@ -25,15 +24,10 @@ interface WorkspaceEnhancementData {
     id: string;
     name: string;
     description?: string;
-    hierarchyType: HierarchyType;
-    status: string;
   }>;
   /** Statistics for schema descriptions */
   stats: {
     totalCount: number;
-    activeCount: number;
-    completedCount: number;
-    pausedCount: number;
   };
 }
 
@@ -160,17 +154,12 @@ export class WorkspaceSchemaProvider implements ISchemaProvider {
       const workspaceDetails = workspaces.map(ws => ({
         id: ws.id,
         name: ws.name || 'Unnamed Workspace',
-        description: ws.description,
-        hierarchyType: ws.hierarchyType || 'workspace',
-        status: ws.status || 'active'
+        description: ws.description
       }));
 
       // Calculate statistics
       const stats = {
-        totalCount: workspaces.length,
-        activeCount: workspaces.filter(ws => ws.status === 'active').length,
-        completedCount: workspaces.filter(ws => ws.status === 'completed').length,
-        pausedCount: workspaces.filter(ws => ws.status === 'paused').length
+        totalCount: workspaces.length
       };
 
       const enhancementData = {
@@ -195,15 +184,10 @@ export class WorkspaceSchemaProvider implements ISchemaProvider {
         workspaces: [{
           id: GLOBAL_WORKSPACE_ID,
           name: 'Global Workspace',
-          description: 'Default workspace for general work',
-          hierarchyType: 'workspace' as HierarchyType,
-          status: 'active'
+          description: 'Default workspace for general work'
         }],
         stats: {
-          totalCount: 1,
-          activeCount: 1,
-          completedCount: 0,
-          pausedCount: 0
+          totalCount: 1
         }
       };
 
@@ -266,14 +250,14 @@ export class WorkspaceSchemaProvider implements ISchemaProvider {
       .join(', ');
 
     schema.properties.id.description = 
-      `Workspace ID to load (REQUIRED). Available workspaces (${data.stats.totalCount} total, ${data.stats.activeCount} active): ${workspaceList}`;
+      `Workspace ID to load (REQUIRED). Available workspaces (${data.stats.totalCount} total): ${workspaceList}`;
 
     // Add workspace count information to schema description
     if (!schema.description) {
       schema.description = 'Load a workspace by ID and restore context and state';
     }
     
-    schema.description += ` | ${data.stats.totalCount} workspaces available (${data.stats.activeCount} active, ${data.stats.completedCount} completed, ${data.stats.pausedCount} paused)`;
+    schema.description += ` | ${data.stats.totalCount} workspaces available`;
 
     logger.systemLog(`Enhanced loadWorkspace schema with ${data.workspaceIds.length} workspace options`, 'WorkspaceSchemaProvider');
   }
@@ -289,18 +273,7 @@ export class WorkspaceSchemaProvider implements ISchemaProvider {
       schema.description = 'List available workspaces with filters and sorting';
     }
 
-    schema.description += ` | Current workspace inventory: ${data.stats.totalCount} total (${data.stats.activeCount} active, ${data.stats.completedCount} completed, ${data.stats.pausedCount} paused)`;
-
-    // Add workspace categories to hierarchyType description
-    if (schema.properties?.hierarchyType) {
-      const hierarchyTypes = [...new Set(data.workspaces.map(ws => ws.hierarchyType))];
-      const typeCounts = hierarchyTypes.map(type => {
-        const count = data.workspaces.filter(ws => ws.hierarchyType === type).length;
-        return `${type}: ${count}`;
-      }).join(', ');
-
-      schema.properties.hierarchyType.description += ` | Current distribution: ${typeCounts}`;
-    }
+    schema.description += ` | Current workspace inventory: ${data.stats.totalCount} total`;
 
     logger.systemLog(`Enhanced listWorkspaces schema with workspace statistics`, 'WorkspaceSchemaProvider');
   }

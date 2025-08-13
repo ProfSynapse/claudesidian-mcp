@@ -212,8 +212,8 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
               },
               relatedFiles: Array.from(associatedNotes)
             },
-            workspacePath: workspace.path || [],
-            contextLevel: workspace.hierarchyType || 'workspace',
+            workspacePath: [workspace.name],
+            contextLevel: 'workspace',
             importance: 0.7,
             tags: tags || []
           });
@@ -277,7 +277,6 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
     if (workspace.description) {
       summary += `- Description: ${workspace.description}\n`;
     }
-    summary += `- Type: ${workspace.hierarchyType} level\n`;
     summary += `- Root folder: ${workspace.rootFolder}\n`;
     
     // Include activity information if not minimal context

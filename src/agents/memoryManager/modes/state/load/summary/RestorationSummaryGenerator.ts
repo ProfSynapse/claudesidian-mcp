@@ -264,7 +264,7 @@ export class RestorationSummaryGenerator {
       section += `- Description: ${workspace.description}\n`;
     }
     
-    section += `- Type: ${workspace.hierarchyType} level\n`;
+    section += `- Type: workspace level\n`;
     section += `- Root folder: ${workspace.rootFolder}\n`;
     
     return section;

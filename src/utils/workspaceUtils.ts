@@ -72,7 +72,7 @@ export async function getWorkspacesForFile(
 }
 
 /**
- * Find the "best" workspace for a file based on hierarchy type and folder depth
+ * Find the "best" workspace for a file based on folder path specificity
  * @param filePath Path of the file to check
  * @param workspaceService WorkspaceService instance
  * @returns Promise resolving to the best matching workspace ID or undefined if none found
@@ -92,7 +92,7 @@ export async function getBestWorkspaceForFile(
     return workspaceIds[0];
   }
   
-  // Multiple workspaces match, find the best one
+  // Multiple workspaces match, find the best one based on path specificity
   const workspaces: ProjectWorkspace[] = [];
   for (const id of workspaceIds) {
     const workspace = await workspaceService.getWorkspace(id);
@@ -101,51 +101,27 @@ export async function getBestWorkspaceForFile(
     }
   }
   
-  // Sort workspaces by hierarchy type - prioritize "task" level, then "phase", then "workspace"
-  // This ensures we assign the file to the most specific context possible
-  workspaces.sort((a, b) => {
-    const hierarchyOrder: Record<string, number> = {
-      task: 0,
-      phase: 1,
-      workspace: 2
-    };
-    
-    const aOrder = hierarchyOrder[a.hierarchyType || 'workspace'] || 2;
-    const bOrder = hierarchyOrder[b.hierarchyType || 'workspace'] || 2;
-    
-    return aOrder - bOrder;
-  });
-  
-  // If hierarchy types are the same, prioritize by folder path length (longer paths are more specific)
+  // Prioritize by folder path length (longer paths are more specific)
   const normalizedFilePath = normalizePath(filePath);
   
-  for (const hierarchyType of ['task', 'phase', 'workspace']) {
-    const matchingByType = workspaces.filter(w => w.hierarchyType === hierarchyType);
+  // Sort by the closest folder match
+  workspaces.sort((a, b) => {
+    const aPath = normalizePath(a.rootFolder);
+    const bPath = normalizePath(b.rootFolder);
     
-    if (matchingByType.length > 0) {
-      // Sort by the closest folder match
-      matchingByType.sort((a, b) => {
-        const aPath = normalizePath(a.rootFolder);
-        const bPath = normalizePath(b.rootFolder);
-        
-        // If the file is directly in one of the folders, prioritize that one
-        const directlyInA = normalizedFilePath.indexOf(aPath) === 0 && 
-                          normalizedFilePath.substring(aPath.length).split('/').filter(Boolean).length === 0;
-        const directlyInB = normalizedFilePath.indexOf(bPath) === 0 && 
-                          normalizedFilePath.substring(bPath.length).split('/').filter(Boolean).length === 0;
-        
-        if (directlyInA && !directlyInB) return -1;
-        if (directlyInB && !directlyInA) return 1;
-        
-        // Otherwise take the longest matching path (most specific)
-        return bPath.length - aPath.length;
-      });
+    // If the file is directly in one of the folders, prioritize that one
+    const directlyInA = normalizedFilePath.indexOf(aPath) === 0 && 
+                      normalizedFilePath.substring(aPath.length).split('/').filter(Boolean).length === 0;
+    const directlyInB = normalizedFilePath.indexOf(bPath) === 0 && 
+                      normalizedFilePath.substring(bPath.length).split('/').filter(Boolean).length === 0;
+    
+    if (directlyInA && !directlyInB) return -1;
+    if (directlyInB && !directlyInA) return 1;
+    
+    // Otherwise take the longest matching path (most specific)
+    return bPath.length - aPath.length;
+  });
       
-      return matchingByType[0].id;
-    }
-  }
-  
-  // If all else fails, just take the first one
   return workspaces[0].id;
 }
 
@@ -176,7 +152,7 @@ export async function updateWorkspaceActivityForFile(
         timestamp: Date.now(),
         action: activityAction,
         duration: 0, // Instant action
-        hierarchyPath: [filePath]
+        context: filePath
       });
     } catch (error) {
       console.error(`Error updating activity for workspace ${workspaceId}:`, error);

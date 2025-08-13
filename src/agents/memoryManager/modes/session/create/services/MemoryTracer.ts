@@ -66,8 +66,8 @@ export class MemoryTracer {
                     },
                     relatedFiles: traceData.contextData.relevantFiles || []
                 },
-                workspacePath: traceData.workspace.path || [],
-                contextLevel: traceData.workspace.hierarchyType || 'workspace',
+                workspacePath: traceData.workspace.name ? [traceData.workspace.name] : [],
+                contextLevel: 'workspace',
                 importance: 0.7,
                 tags: traceData.contextData.tags || []
             });
@@ -101,7 +101,7 @@ export class MemoryTracer {
 
             await activityEmbedder.recordActivity(
                 traceData.workspaceId,
-                traceData.workspace.path,
+                [traceData.workspace.name],
                 'project_plan',
                 traceData.contextTraceContent,
                 {

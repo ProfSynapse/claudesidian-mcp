@@ -6,8 +6,6 @@
 
 // Workspace types
 export type {
-  HierarchyType,
-  WorkspaceStatus,
   ItemStatus,
   ProjectWorkspace
 } from './workspace/WorkspaceTypes';

@@ -5,7 +5,6 @@
 
 import { MemoryService } from "../../../../services/MemoryService";
 import { StateSummary } from '../context/SummaryGenerator';
-import { HierarchyType } from '../../../../../../database/types/workspace/WorkspaceTypes';
 
 export interface TraceCreationResult {
   success: boolean;
@@ -70,7 +69,7 @@ export class MemoryTracer {
     return {
       workspaceId: '', // Will be set by caller
       workspacePath: [], // Will be set by caller
-      contextLevel: 'workspace' as HierarchyType,
+      contextLevel: 'workspace',
       activityType: 'project_plan' as const, // Use valid activityType
       content: `Created state: ${stateName}. ${summary.purpose}`,
       timestamp: Date.now(),
@@ -100,7 +99,7 @@ export class MemoryTracer {
       const traceData = {
         workspaceId,
         workspacePath: [workspaceId],
-        contextLevel: 'workspace' as HierarchyType,
+        contextLevel: 'workspace' as const,
         activityType: 'project_plan' as const,
         content: `Failed to create state: ${stateName}. Error: ${error}`,
         timestamp: Date.now(),
@@ -146,7 +145,7 @@ export class MemoryTracer {
       const traceData = {
         workspaceId,
         workspacePath: [workspaceId],
-        contextLevel: 'workspace' as HierarchyType,
+        contextLevel: 'workspace' as const,
         activityType: 'question' as const,
         content: `Validation issues for state: ${stateName}. ${validationErrors.length} errors, ${warnings?.length || 0} warnings`,
         timestamp: Date.now(),

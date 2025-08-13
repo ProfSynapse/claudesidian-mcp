@@ -108,7 +108,7 @@ export class SummaryGenerator {
     if (workspace.description) {
       summary += `- Description: ${workspace.description}\n`;
     }
-    summary += `- Type: ${workspace.hierarchyType} level\n`;
+    summary += `- Type: workspace level\n`;
     summary += `- Root folder: ${workspace.rootFolder}\n`;
     summary += `- Created: ${new Date(workspace.created).toLocaleString()}\n`;
     summary += `- Last accessed: ${new Date(workspace.lastAccessed).toLocaleString()}\n`;

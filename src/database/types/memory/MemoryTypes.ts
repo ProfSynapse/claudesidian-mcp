@@ -3,7 +3,6 @@
  * Extracted from workspace-types.ts for better organization
  */
 
-import { HierarchyType } from '../workspace/WorkspaceTypes';
 
 /**
  * File embedding interface
@@ -86,9 +85,9 @@ export interface WorkspaceMemoryTrace {
   workspacePath: string[];
   
   /**
-   * Which level this applies to
+   * Which level this applies to - simplified to workspace level only
    */
-  contextLevel: HierarchyType;
+  contextLevel: 'workspace';
   
   /**
    * When this interaction occurred

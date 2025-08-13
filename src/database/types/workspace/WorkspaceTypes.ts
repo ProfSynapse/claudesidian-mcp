@@ -3,16 +3,6 @@
  * Simple, clean workspace types focused on LLM usability
  */
 
-/**
- * Hierarchical project workspace types
- * Supports workspace→phase→task structure
- */
-export type HierarchyType = 'workspace' | 'phase' | 'task';
-
-/**
- * Status types for workspaces
- */
-export type WorkspaceStatus = 'active' | 'paused' | 'completed';
 
 /**
  * Status types for individual items within a workspace
@@ -97,25 +87,15 @@ export interface Workspace {
 export interface ProjectWorkspace extends Workspace {
   // Legacy fields for backward compatibility
   description?: string;
-  hierarchyType?: HierarchyType;
-  parentId?: string;
-  childWorkspaces?: string[];
-  path?: string[];
   relatedFolders?: string[];
   relatedFiles?: string[];
   associatedNotes?: string[];
   keyFileInstructions?: string;
-  relevanceSettings?: {
-    folderProximityWeight: number;
-    recencyWeight: number;
-    frequencyWeight: number;
-  };
   activityHistory?: Array<{
     timestamp: number;
     action: 'view' | 'edit' | 'create' | 'tool';
     toolName?: string;
     duration?: number;
-    hierarchyPath?: string[];
     context?: string;
   }>;
   preferences?: Record<string, any>;
@@ -125,12 +105,10 @@ export interface ProjectWorkspace extends Workspace {
     date: number;
     description: string;
     completed: boolean;
-    hierarchyPath?: string[];
   }>;
   completionStatus?: Record<string, {
     status: ItemStatus;
     completedDate?: number;
     completionNotes?: string;
   }>;
-  status?: WorkspaceStatus;
 }

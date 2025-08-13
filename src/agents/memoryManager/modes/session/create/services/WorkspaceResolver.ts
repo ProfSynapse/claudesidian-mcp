@@ -120,17 +120,7 @@ export class WorkspaceResolver {
             },
             // Legacy fields for backward compatibility - minimal values
             description: 'Automatically created default workspace',
-            hierarchyType: 'workspace',
-            childWorkspaces: [],
-            path: [],
-            relatedFolders: [],
-            relevanceSettings: {
-                folderProximityWeight: 0.5,
-                recencyWeight: 0.7,
-                frequencyWeight: 0.3
-            },
             activityHistory: [],
-            completionStatus: {},
             status: 'active'
         });
     }
@@ -175,38 +165,18 @@ export class WorkspaceResolver {
     }
 
     /**
-     * Get workspace hierarchy information
+     * Get workspace basic information
      */
-    async getWorkspaceHierarchy(workspace: any): Promise<{
-        parentInfo?: string;
-        childInfo?: string;
-        hierarchyType: string;
+    async getWorkspaceInfo(workspace: any): Promise<{
+        name: string;
+        description?: string;
+        rootFolder: string;
     }> {
-        const workspaceService = this.agent.getWorkspaceService();
-        const result = {
-            hierarchyType: workspace.hierarchyType || 'workspace',
-            parentInfo: undefined as string | undefined,
-            childInfo: undefined as string | undefined
+        return {
+            name: workspace.name,
+            description: workspace.description,
+            rootFolder: workspace.rootFolder
         };
-
-        // Get parent information
-        if (workspace.parentId && workspaceService) {
-            try {
-                const parent = await workspaceService.getWorkspace(workspace.parentId);
-                if (parent) {
-                    result.parentInfo = `within "${parent.name}"`;
-                }
-            } catch (error) {
-                console.warn(`Failed to retrieve parent workspace: ${error}`);
-            }
-        }
-
-        // Get child information
-        if (workspace.childWorkspaces && workspace.childWorkspaces.length > 0) {
-            result.childInfo = `Contains ${workspace.childWorkspaces.length} sub-items`;
-        }
-
-        return result;
     }
 
     /**
@@ -266,9 +236,7 @@ export class WorkspaceResolver {
         }
 
         // Add workspace type tag
-        if (workspace.hierarchyType) {
-            tags.push(`type:${workspace.hierarchyType}`);
-        }
+        tags.push('type:workspace');
 
         // Add status tag
         if (workspace.status) {
