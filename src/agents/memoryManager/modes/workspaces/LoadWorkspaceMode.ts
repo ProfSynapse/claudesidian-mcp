@@ -143,9 +143,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       const nextActions = this.getNextActions(workspace);
       
       // Update workspace context
+      const workspacePathResult = await this.buildWorkspacePath(workspace.rootFolder);
       const workspaceContext = {
         workspaceId: workspace.id,
-        workspacePath: workspace.path || []
+        workspacePath: workspacePathResult.path
       };
       
       const result = {
@@ -159,6 +160,11 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         },
         workspaceContext: workspaceContext
       };
+
+      // Add navigation fallback message if workspace path building failed
+      if (workspacePathResult.failed) {
+        result.data.context += "\n\n**Note**: Workspace directory navigation unavailable. Use `vaultManager listDirectoryMode` to explore the workspace folder structure.";
+      }
       
       return result;
       
@@ -308,6 +314,61 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     }
   }
   
+  /**
+   * Build workspace path with folder path and flat files list
+   */
+  private async buildWorkspacePath(rootFolder: string): Promise<{path: any, failed: boolean}> {
+    try {
+      const app = this.agent.getApp();
+      const folder = app.vault.getAbstractFileByPath(rootFolder);
+      
+      if (!folder || !('children' in folder)) {
+        console.warn('[LoadWorkspaceMode] Workspace root folder not found or empty:', rootFolder);
+        return { path: { folder: rootFolder, files: [] }, failed: true };
+      }
+      
+      // Collect all files recursively with relative paths
+      const files = this.collectAllFiles(folder as any, rootFolder);
+      
+      return { 
+        path: {
+          folder: rootFolder,
+          files: files
+        }, 
+        failed: false 
+      };
+      
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Failed to build workspace path:', error);
+      return { path: { folder: rootFolder, files: [] }, failed: true };
+    }
+  }
+
+  /**
+   * Collect all files recursively as flat list with relative paths
+   */
+  private collectAllFiles(folder: any, basePath: string): string[] {
+    const files: string[] = [];
+    
+    if (!folder.children) {
+      return files;
+    }
+    
+    for (const child of folder.children) {
+      if ('children' in child) {
+        // It's a folder - recurse into it
+        const subFiles = this.collectAllFiles(child, basePath);
+        files.push(...subFiles);
+      } else {
+        // It's a file - add with relative path from base
+        const relativePath = child.path.replace(basePath + '/', '');
+        files.push(relativePath);
+      }
+    }
+    
+    return files.sort();
+  }
+
   /**
    * Build a directory tree string representation
    */

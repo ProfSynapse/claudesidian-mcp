@@ -42,7 +42,12 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       // Get prompt by id or name
       let prompt = null;
       if (id) {
+        // First try as unique identifier
         prompt = this.storageService.getPrompt(id);
+        // If not found, try as agent name
+        if (!prompt) {
+          prompt = this.storageService.getPromptByName(id);
+        }
       } else if (name) {
         prompt = this.storageService.getPromptByName(name);
       }
@@ -78,7 +83,7 @@ IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Onl
       properties: {
         id: {
           type: 'string',
-          description: 'Unique ID of the prompt to retrieve'
+          description: 'Unique ID or name of the prompt to retrieve (will try ID first, then name)'
         },
         name: {
           type: 'string',
