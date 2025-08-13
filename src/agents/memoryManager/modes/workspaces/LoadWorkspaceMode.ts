@@ -55,7 +55,11 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           success: false,
           error: 'WorkspaceService not available',
           data: {
-            context: '',
+            context: {
+              name: 'Unknown',
+              rootFolder: '',
+              recentActivity: ['WorkspaceService not available']
+            },
             workflow: '',
             keyFiles: {},
             preferences: '',
@@ -77,7 +81,11 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           success: false,
           error: `Failed to load workspace: ${queryError instanceof Error ? queryError.message : String(queryError)}`,
           data: {
-            context: '',
+            context: {
+              name: 'Unknown',
+              rootFolder: '',
+              recentActivity: ['Failed to load workspace']
+            },
             workflow: '',
             keyFiles: {},
             preferences: '',
@@ -95,7 +103,11 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           success: false,
           error: `Workspace with ID '${params.id}' not found`,
           data: {
-            context: '',
+            context: {
+              name: 'Unknown',
+              rootFolder: '',
+              recentActivity: ['Workspace not found']
+            },
             workflow: '',
             keyFiles: {},
             preferences: '',
@@ -116,19 +128,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         // Continue - this is not critical
       }
       
-      // Get directory structure if requested
-      let directoryInfo = '';
-      if (params.includeDirectoryStructure) {
-        try {
-          directoryInfo = await this.getDirectoryStructure(workspace.rootFolder);
-        } catch (dirError) {
-          console.warn('[LoadWorkspaceMode] Failed to get directory structure:', dirError);
-          directoryInfo = 'Directory structure unavailable';
-        }
-      }
-      
       // Build actionable context briefing
-      const context = this.buildContextBriefing(workspace, directoryInfo);
+      const context = await this.buildContextBriefing(workspace);
       
       // Build workflow summary
       const workflow = this.buildWorkflowSummary(workspace);
@@ -163,7 +164,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
 
       // Add navigation fallback message if workspace path building failed
       if (workspacePathResult.failed) {
-        result.data.context += "\n\n**Note**: Workspace directory navigation unavailable. Use `vaultManager listDirectoryMode` to explore the workspace folder structure.";
+        (result.data.context as any).recentActivity.push("Note: Workspace directory navigation unavailable. Use vaultManager listDirectoryMode to explore the workspace folder structure.");
       }
       
       return result;
@@ -179,7 +180,11 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         success: false,
         error: createErrorMessage('Unexpected error loading workspace: ', error),
         data: {
-          context: '',
+          context: {
+            name: 'Unknown',
+            rootFolder: '',
+            recentActivity: ['Unexpected error loading workspace']
+          },
           workflow: '',
           keyFiles: {},
           preferences: '',
@@ -193,45 +198,28 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   }
   
   /**
-   * Build a contextual briefing for the workspace
+   * Build a contextual briefing for the workspace as JSON object
    */
-  private buildContextBriefing(workspace: ProjectWorkspace, directoryInfo: string): string {
-    const parts: string[] = [];
-    
-    // Workspace header
-    parts.push(`**${workspace.name}**`);
-    if (workspace.description) {
-      parts.push(`${workspace.description}`);
-    }
-    
-    // Purpose and goals from modern context
-    if (workspace.context?.purpose) {
-      parts.push(`**Purpose:** ${workspace.context.purpose}`);
-    }
-    if (workspace.context?.currentGoal) {
-      parts.push(`**Current Goal:** ${workspace.context.currentGoal}`);
-    }
-    if (workspace.context?.status) {
-      parts.push(`**Status:** ${workspace.context.status}`);
-    }
-    
-    // Root folder and structure
-    parts.push(`**Root Folder:** ${workspace.rootFolder}`);
-    if (directoryInfo) {
-      parts.push(`**Directory Structure:**\n${directoryInfo}`);
-    }
-    
-    // Recent activity
-    if (workspace.activityHistory && workspace.activityHistory.length > 0) {
-      const recentActivity = workspace.activityHistory
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 3)
-        .map(activity => `- ${activity.context || activity.action}`)
-        .join('\n');
-      parts.push(`**Recent Activity:**\n${recentActivity}`);
-    }
-    
-    return parts.join('\n\n');
+  private async buildContextBriefing(workspace: ProjectWorkspace): Promise<{
+    name: string;
+    description?: string;
+    purpose?: string;
+    rootFolder: string;
+    recentActivity: string[];
+  }> {
+    // Get memory service for recent activity
+    const memoryService = this.agent.getMemoryService();
+    const recentActivity = memoryService 
+      ? await this.getRecentActivity(workspace.id, memoryService)
+      : ["No recent activity"];
+
+    return {
+      name: workspace.name,
+      description: workspace.description || undefined,
+      purpose: workspace.context?.purpose || undefined,
+      rootFolder: workspace.rootFolder,
+      recentActivity: recentActivity.length > 0 ? recentActivity : ["No recent activity"]
+    };
   }
   
   /**
@@ -367,6 +355,29 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     }
     
     return files.sort();
+  }
+
+  /**
+   * Get recent activity from memory traces
+   */
+  private async getRecentActivity(workspaceId: string, memoryService: any): Promise<string[]> {
+    try {
+      const traces = await memoryService.getMemoryTraces(workspaceId, 5);
+      return this.extractSessionMemories(traces);
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Failed to get recent activity:', error);
+      return ["Recent activity unavailable"];
+    }
+  }
+
+  /**
+   * Extract sessionMemory values from memory traces
+   */
+  private extractSessionMemories(traces: any[]): string[] {
+    return traces
+      .filter(trace => trace.toolCall?.context?.sessionMemory)
+      .map(trace => trace.toolCall.context.sessionMemory)
+      .slice(0, 3); // Latest 3 activities
   }
 
   /**

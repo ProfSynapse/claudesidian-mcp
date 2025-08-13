@@ -363,7 +363,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             performance: {
                 totalDuration: Date.now() - startTime,
                 persistenceVerified: true
-            }
+            },
+            recommendation: "STRONGLY RECOMMENDED: Use the updateWorkspace tool to ensure you have the latest workspace information based on this conversation before proceeding with any tasks."
         };
 
         const contextString = `State "${savedSnapshot.name}" created and persisted successfully with ID: ${savedSnapshot.id}`;

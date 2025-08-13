@@ -109,7 +109,13 @@ export interface CreateWorkspaceResult extends CommonResult {
  */
 export interface LoadWorkspaceResult extends CommonResult {
   data: {
-    context: string;
+    context: {
+      name: string;
+      description?: string;
+      purpose?: string;
+      rootFolder: string;
+      recentActivity: string[];
+    };
     workflow: string;
     keyFiles: Record<string, string>;
     preferences: string;
