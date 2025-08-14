@@ -129,18 +129,18 @@ export class MemoryManagerAgent extends BaseAgent {
     const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
     console.log(`[MemoryManagerAgent] 🔍 DEBUG: Plugin found: ${!!plugin}`);
     
-    if (!plugin || !plugin.serviceContainer) {
-      console.log(`[MemoryManagerAgent] 🔍 DEBUG: No plugin or serviceContainer - plugin: ${!!plugin}, serviceContainer: ${!!plugin?.serviceContainer}`);
+    if (!plugin) {
+      console.log(`[MemoryManagerAgent] 🔍 DEBUG: No plugin found`);
       return null;
     }
     
-    console.log(`[MemoryManagerAgent] 🔍 DEBUG: ServiceContainer available, checking memoryService`);
-    const memoryService = plugin.serviceContainer.getIfReady('memoryService');
-    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Memory service from container: ${!!memoryService}`);
+    // FIX: Use direct property access instead of serviceContainer
+    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Accessing memoryService directly from plugin`);
+    const memoryService = plugin.memoryService;
+    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Memory service from plugin: ${!!memoryService}`);
     
-    // Also check what services are available
-    if (plugin.serviceContainer.listServices) {
-      console.log(`[MemoryManagerAgent] 🔍 DEBUG: Available services:`, plugin.serviceContainer.listServices());
+    if (!memoryService) {
+      console.log(`[MemoryManagerAgent] 🔍 DEBUG: Plugin properties:`, Object.keys(plugin));
     }
     
     return memoryService || null;
@@ -151,10 +151,11 @@ export class MemoryManagerAgent extends BaseAgent {
    */
   getWorkspaceService(): WorkspaceService | null {
     const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
-    if (!plugin || !plugin.serviceContainer) {
+    if (!plugin) {
       return null;
     }
-    return plugin.serviceContainer.getIfReady('workspaceService') || null;
+    // FIX: Use direct property access instead of serviceContainer
+    return plugin.workspaceService || null;
   }
   
   /**
