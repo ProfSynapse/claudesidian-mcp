@@ -111,6 +111,20 @@ export interface LoadWorkspaceResult extends CommonResult {
     workflow: string;
     keyFiles: Record<string, string>;
     preferences: string;
+    sessions: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      created: number;
+    }>;
+    states: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      sessionId: string;
+      created: number;
+      tags?: string[];
+    }>;
   };
 }
 

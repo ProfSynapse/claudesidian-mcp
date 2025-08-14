@@ -66,7 +66,6 @@ export class VectorStoreFactory {
     // Check if provider already exists in cache
     if (this.embeddingProviderCache.has(cacheKey)) {
       const cachedProvider = this.embeddingProviderCache.get(cacheKey)!;
-      console.log(`Reusing existing ${providerId} embedding provider from cache`);
       return cachedProvider;
     }
     

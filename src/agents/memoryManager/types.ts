@@ -414,14 +414,9 @@ export interface LoadStateParams extends MemoryParameters {
   restorationGoal?: string;
   
   /**
-   * Whether to automatically start a new session (default: true)
+   * Whether to continue with the original session ID (default: true). Set to false to create a new continuation session.
    */
-  createContinuationSession?: boolean;
-  
-  /**
-   * Tags to associate with the continuation session
-   */
-  tags?: string[];
+  continueExistingSession?: boolean;
 }
 
 // Parameters for editing a state
@@ -491,7 +486,7 @@ export interface StateResult extends MemoryResult {
     /**
      * Creation timestamp
      */
-    timestamp?: number;
+    created?: number;
     
     /**
      * New session ID when loading a state
@@ -533,7 +528,6 @@ export interface StateResult extends MemoryResult {
         timestamp: number;
         description: string;
       }>;
-      tags: string[];
     };
   };
 }

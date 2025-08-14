@@ -63,6 +63,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             workflow: '',
             keyFiles: {},
             preferences: '',
+            sessions: [],
+            states: [],
           },
           workspaceContext: typeof params.workspaceContext === 'string' 
             ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -88,6 +90,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             workflow: '',
             keyFiles: {},
             preferences: '',
+            sessions: [],
+            states: [],
           },
           workspaceContext: typeof params.workspaceContext === 'string' 
             ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -109,6 +113,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             workflow: '',
             keyFiles: {},
             preferences: '',
+            sessions: [],
+            states: [],
           },
           workspaceContext: typeof params.workspaceContext === 'string' 
             ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -137,6 +143,14 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Build preferences summary
       const preferences = this.buildPreferences(workspace);
       
+      // Get memory service for sessions and states data
+      const memoryService = this.agent.getMemoryService();
+      
+      // Fetch sessions for this workspace
+      const sessions = await this.fetchWorkspaceSessions(workspace.id, memoryService);
+      
+      // Fetch states for this workspace
+      const states = await this.fetchWorkspaceStates(workspace.id, memoryService);
       
       // Update workspace context
       const workspacePathResult = await this.buildWorkspacePath(workspace.rootFolder);
@@ -152,6 +166,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           workflow: workflow,
           keyFiles: keyFiles,
           preferences: preferences,
+          sessions: sessions,
+          states: states,
         },
         workspaceContext: workspaceContext
       };
@@ -182,6 +198,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           workflow: '',
           keyFiles: {},
           preferences: '',
+          sessions: [],
+          states: [],
         },
         workspaceContext: typeof params.workspaceContext === 'string' 
           ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -406,6 +424,68 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   }
   
   /**
+   * Fetch sessions for a workspace
+   */
+  private async fetchWorkspaceSessions(workspaceId: string, memoryService: any): Promise<Array<{
+    id: string;
+    name: string;
+    description?: string;
+    created: number;
+  }>> {
+    try {
+      if (!memoryService) {
+        return [];
+      }
+      
+      const sessions = await memoryService.getSessions(workspaceId, false); // Get all sessions, not just active
+      
+      return sessions.map((session: any) => ({
+        id: session.id,
+        name: session.name,
+        description: session.description,
+        created: session.startTime
+      }));
+      
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Failed to fetch sessions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch states for a workspace
+   */
+  private async fetchWorkspaceStates(workspaceId: string, memoryService: any): Promise<Array<{
+    id: string;
+    name: string;
+    description?: string;
+    sessionId: string;
+    created: number;
+    tags?: string[];
+  }>> {
+    try {
+      if (!memoryService) {
+        return [];
+      }
+      
+      const states = await memoryService.getStates(workspaceId);
+      
+      return states.map((state: any) => ({
+        id: state.id,
+        name: state.name,
+        description: state.description,
+        sessionId: state.sessionId,
+        created: state.created || state.timestamp,
+        tags: state.state?.metadata?.tags || []
+      }));
+      
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Failed to fetch states:', error);
+      return [];
+    }
+  }
+  
+  /**
    * Get the parameter schema
    */
   getParameterSchema(): any {
@@ -477,6 +557,67 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               type: 'string',
               description: 'Formatted user preferences'
             },
+            sessions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    description: 'Session ID'
+                  },
+                  name: {
+                    type: 'string',
+                    description: 'Session name'
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'Session description'
+                  },
+                  created: {
+                    type: 'number',
+                    description: 'Session creation timestamp'
+                  }
+                },
+                required: ['id', 'name', 'created']
+              },
+              description: 'Sessions in this workspace'
+            },
+            states: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    description: 'State ID'
+                  },
+                  name: {
+                    type: 'string',
+                    description: 'State name'
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'State description'
+                  },
+                  sessionId: {
+                    type: 'string',
+                    description: 'Session ID this state belongs to'
+                  },
+                  created: {
+                    type: 'number',
+                    description: 'State creation timestamp'
+                  },
+                  tags: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'State tags'
+                  }
+                },
+                required: ['id', 'name', 'sessionId', 'created']
+              },
+              description: 'States in this workspace'
+            }
           }
         },
         workspaceContext: {

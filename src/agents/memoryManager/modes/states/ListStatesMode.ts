@@ -73,7 +73,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         : limitedStates.map(state => ({
             ...state,
             workspaceName: 'Unknown Workspace',
-            age: this.calculateStateAge(state.created || state.timestamp)
+            created: state.created || state.timestamp
           }));
 
       // Prepare result
@@ -141,7 +141,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       const enhanced: any = {
         ...state,
         workspaceName,
-        age: this.calculateStateAge(state.created || state.timestamp)
+        created: state.created || state.timestamp
       };
 
       if (includeContext && state.snapshot) {
@@ -157,24 +157,6 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
     }));
   }
 
-  /**
-   * Calculate human-readable state age
-   */
-  private calculateStateAge(timestamp: number): string {
-    const now = Date.now();
-    const age = now - timestamp;
-    
-    const days = Math.floor(age / (1000 * 60 * 60 * 24));
-    if (days > 0) return `${days} day${days === 1 ? '' : 's'} ago`;
-    
-    const hours = Math.floor(age / (1000 * 60 * 60));
-    if (hours > 0) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-    
-    const minutes = Math.floor(age / (1000 * 60));
-    if (minutes > 0) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-    
-    return 'Just now';
-  }
 
   /**
    * Get workspace context from inherited parameters

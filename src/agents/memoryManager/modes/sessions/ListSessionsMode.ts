@@ -70,8 +70,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
         : limitedSessions.map(session => ({
             ...session,
             workspaceName: 'Unknown Workspace',
-            age: this.calculateSessionAge(session.startTime),
-            status: session.isActive ? 'active' : 'completed'
+            created: session.startTime
           }));
 
       // Prepare result
@@ -138,38 +137,13 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       return {
         ...session,
         workspaceName,
-        age: this.calculateSessionAge(session.startTime),
-        status: session.isActive ? 'active' : 'completed'
+        created: session.startTime
       };
     }));
 
     return enhanced;
   }
 
-  /**
-   * Calculate human-readable session age
-   */
-  private calculateSessionAge(startTime: number): string {
-    const now = Date.now();
-    const age = now - startTime;
-    
-    const days = Math.floor(age / (1000 * 60 * 60 * 24));
-    if (days > 0) {
-      return `${days} day${days === 1 ? '' : 's'} ago`;
-    }
-    
-    const hours = Math.floor(age / (1000 * 60 * 60));
-    if (hours > 0) {
-      return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-    }
-    
-    const minutes = Math.floor(age / (1000 * 60));
-    if (minutes > 0) {
-      return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-    }
-    
-    return 'Just now';
-  }
 
   /**
    * Get workspace context from inherited parameters
