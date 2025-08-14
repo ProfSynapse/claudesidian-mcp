@@ -125,11 +125,25 @@ export class MemoryManagerAgent extends BaseAgent {
    * Get the memory service instance synchronously - uses ServiceContainer
    */
   getMemoryService(): MemoryService | null {
+    console.log(`[MemoryManagerAgent] 🔍 DEBUG: getMemoryService called`);
     const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Plugin found: ${!!plugin}`);
+    
     if (!plugin || !plugin.serviceContainer) {
+      console.log(`[MemoryManagerAgent] 🔍 DEBUG: No plugin or serviceContainer - plugin: ${!!plugin}, serviceContainer: ${!!plugin?.serviceContainer}`);
       return null;
     }
-    return plugin.serviceContainer.getIfReady('memoryService') || null;
+    
+    console.log(`[MemoryManagerAgent] 🔍 DEBUG: ServiceContainer available, checking memoryService`);
+    const memoryService = plugin.serviceContainer.getIfReady('memoryService');
+    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Memory service from container: ${!!memoryService}`);
+    
+    // Also check what services are available
+    if (plugin.serviceContainer.listServices) {
+      console.log(`[MemoryManagerAgent] 🔍 DEBUG: Available services:`, plugin.serviceContainer.listServices());
+    }
+    
+    return memoryService || null;
   }
   
   /**
