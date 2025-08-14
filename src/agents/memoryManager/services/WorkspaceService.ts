@@ -103,7 +103,6 @@ export class WorkspaceService {
             ],
             preferences: [],
             agents: [],
-            nextActions: []
           }
         };
         

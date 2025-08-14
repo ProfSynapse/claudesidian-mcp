@@ -14,7 +14,7 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager'
-import { EditStateParams, DeleteStateParams, ListStatesParams, StateResult } from '../../types';
+import { EditStateParams, StateResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
@@ -22,21 +22,21 @@ import { WorkspaceService } from "../../services/WorkspaceService";
 import { createServiceIntegration } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
-type ManageStateParams = EditStateParams | DeleteStateParams | ListStatesParams;
+type UpdateStateParams = EditStateParams;
 
 /**
- * Consolidated ManageStateMode - combines all state management functionality
+ * Consolidated UpdateStateMode - combines all state update functionality
  */
-export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
+export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
     private app: App;
     private serviceIntegration: ReturnType<typeof createServiceIntegration>;
     private schemaBuilder: SchemaBuilder;
 
     constructor(private agent: MemoryManagerAgent) {
         super(
-            'manageStates',
-            'Manage States',
-            'Edit, delete, or list states with comprehensive management capabilities',
+            'updateState',
+            'Update State',
+            'Edit, delete, or list states with comprehensive update capabilities',
             '2.0.0'
         );
 
@@ -49,33 +49,20 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         this.schemaBuilder = new SchemaBuilder();
     }
 
-    async execute(params: ManageStateParams): Promise<StateResult> {
+    async execute(params: UpdateStateParams): Promise<StateResult> {
         try {
             const operation = this.determineOperation(params);
             
-            switch (operation) {
-                case 'edit':
-                    return this.executeEdit(params as EditStateParams);
-                case 'delete':
-                    return this.executeDelete(params as DeleteStateParams);
-                case 'list':
-                    return this.executeList(params as ListStatesParams);
-                default:
-                    return this.prepareResult(false, undefined, 'Unknown state management operation');
-            }
+            // Only edit operation supported
+            return this.executeEdit(params);
         } catch (error) {
             return this.prepareResult(false, undefined, createErrorMessage('Error managing state: ', error));
         }
     }
 
-    private determineOperation(params: ManageStateParams): 'edit' | 'delete' | 'list' {
-        if ('name' in params || 'description' in params || 'addTags' in params || 'removeTags' in params) {
-            return 'edit';
-        }
-        if ('stateId' in params && !('includeContext' in params) && !('limit' in params)) {
-            return 'delete';
-        }
-        return 'list';
+    private determineOperation(params: UpdateStateParams): 'edit' {
+        // Only edit operation supported
+        return 'edit';
     }
 
     private async executeEdit(params: EditStateParams): Promise<StateResult> {
@@ -143,84 +130,6 @@ export class ManageStateMode extends BaseMode<ManageStateParams, StateResult> {
         }, undefined, `State "${updatedState.name}" updated successfully`);
     }
 
-    private async executeDelete(params: DeleteStateParams): Promise<StateResult> {
-        const servicesResult = await this.getServices();
-        if (!servicesResult.success) {
-            return this.prepareResult(false, undefined, servicesResult.error);
-        }
-
-        const { memoryService } = servicesResult;
-        if (!memoryService) {
-            return this.prepareResult(false, undefined, 'Memory service not available');
-        }
-        const existingState = await memoryService.getSnapshot(params.stateId);
-        if (!existingState) {
-            return this.prepareResult(false, undefined, `State not found: ${params.stateId}`);
-        }
-
-        const stateName = existingState.name;
-        const workspaceId = existingState.workspaceId;
-
-        await memoryService.deleteSnapshot(params.stateId);
-
-        return this.prepareResult(true, {
-            stateId: params.stateId,
-            name: stateName,
-            workspaceId: workspaceId,
-            deleted: true
-        }, undefined, `State "${stateName}" deleted successfully`);
-    }
-
-    private async executeList(params: ListStatesParams): Promise<StateResult> {
-        const servicesResult = await this.getServices();
-        if (!servicesResult.success) {
-            return this.prepareResult(false, undefined, servicesResult.error);
-        }
-
-        const { memoryService, workspaceService } = servicesResult;
-
-        // Get workspace ID from context
-        let workspaceId: string | undefined;
-        const inheritedContext = this.getInheritedWorkspaceContext(params);
-        if (inheritedContext?.workspaceId) {
-            workspaceId = inheritedContext.workspaceId;
-        }
-
-        // Get states
-        if (!memoryService) {
-            return this.prepareResult(false, undefined, 'Memory service not available');
-        }
-        const states = await memoryService.getStates(workspaceId);
-
-        // Filter by tags if provided
-        let filteredStates = states;
-        if (params.tags && params.tags.length > 0) {
-            filteredStates = states.filter(state => {
-                const stateTags = state.state?.metadata?.tags || [];
-                return params.tags!.some(tag => stateTags.includes(tag));
-            });
-        }
-
-        // Sort states
-        const sortedStates = this.sortStates(filteredStates, params.order || 'desc');
-
-        // Apply limit
-        const limitedStates = params.limit ? sortedStates.slice(0, params.limit) : sortedStates;
-
-        // Enhance state data
-        const enhancedStates = await this.enhanceStatesWithContext(limitedStates, workspaceService!, params.includeContext);
-
-        const contextString = workspaceId 
-            ? `Found ${limitedStates.length} state(s) in workspace ${workspaceId}`
-            : `Found ${limitedStates.length} state(s) across all workspaces`;
-
-        return this.prepareResult(true, {
-            states: enhancedStates,
-            total: states.length,
-            filtered: limitedStates.length,
-            workspaceId: workspaceId
-        }, undefined, contextString, inheritedContext || undefined);
-    }
 
     private async getServices(): Promise<{success: boolean; error?: string; memoryService?: MemoryService; workspaceService?: WorkspaceService}> {
         const [memoryResult, workspaceResult] = await Promise.all([

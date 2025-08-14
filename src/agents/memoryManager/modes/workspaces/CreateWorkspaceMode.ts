@@ -85,7 +85,6 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                 keyFiles: autoDetectedKeyFiles,
                 preferences: params.preferences || [],
                 agents: params.agents || [],
-                nextActions: params.nextActions
             };
             
             // Create workspace data
@@ -232,13 +231,12 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                         required: ['name', 'when', 'purpose']
                     }
                 },
-                nextActions: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Next actions to take (REQUIRED)' },
                 description: { type: 'string' },
                 relatedFolders: { type: 'array', items: { type: 'string' } },
                 relatedFiles: { type: 'array', items: { type: 'string' } },
                 keyFileInstructions: { type: 'string' }
             },
-            required: ['name', 'rootFolder', 'purpose', 'currentGoal', 'workflows', 'nextActions']
+            required: ['name', 'rootFolder', 'purpose', 'currentGoal', 'workflows']
         };
     }
     

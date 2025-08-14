@@ -268,13 +268,6 @@ export class ValidationService {
       });
     }
 
-    if (!params.nextActions || !Array.isArray(params.nextActions) || params.nextActions.length === 0) {
-      errors.push({
-        field: 'nextActions',
-        value: params.nextActions,
-        requirement: 'Next actions are required. Provide specific next steps to take'
-      });
-    }
 
     return errors;
   }

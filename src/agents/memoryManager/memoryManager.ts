@@ -9,11 +9,13 @@ import { sanitizeVaultName } from '../../utils/vaultUtils';
 
 // Import consolidated modes
 import { CreateSessionMode } from './modes/sessions/CreateSessionMode';
+import { ListSessionsMode } from './modes/sessions/ListSessionsMode';
 import { LoadSessionMode } from './modes/sessions/LoadSessionMode';
-import { ManageSessionMode } from './modes/sessions/ManageSessionMode';
+import { UpdateSessionMode } from './modes/sessions/UpdateSessionMode';
 import { CreateStateMode } from './modes/states/CreateStateMode';
+import { ListStatesMode } from './modes/states/ListStatesMode';
 import { LoadStateMode } from './modes/states/LoadStateMode';
-import { ManageStateMode } from './modes/states/ManageStateMode';
+import { UpdateStateMode } from './modes/states/UpdateStateMode';
 import { CreateWorkspaceMode } from './modes/workspaces/CreateWorkspaceMode';
 import { ListWorkspacesMode } from './modes/workspaces/ListWorkspacesMode';
 import { LoadWorkspaceMode } from './modes/workspaces/LoadWorkspaceMode';
@@ -72,15 +74,17 @@ export class MemoryManagerAgent extends BaseAgent {
     
     // Services will be accessed dynamically when needed
     
-    // Register consolidated session modes (3 modes instead of 15)
+    // Register session modes (4 modes: create, list, load, update - following workspace pattern)
     this.registerMode(new CreateSessionMode(this));
+    this.registerMode(new ListSessionsMode(this));
     this.registerMode(new LoadSessionMode(this));
-    this.registerMode(new ManageSessionMode(this));
+    this.registerMode(new UpdateSessionMode(this));
     
-    // Register consolidated state modes (3 modes instead of 15) 
+    // Register state modes (4 modes: create, list, load, update - following workspace pattern) 
     this.registerMode(new CreateStateMode(this));
+    this.registerMode(new ListStatesMode(this));
     this.registerMode(new LoadStateMode(this));
-    this.registerMode(new ManageStateMode(this));
+    this.registerMode(new UpdateStateMode(this));
     
     // Register consolidated workspace modes (5 modes instead of 7)
     this.registerMode(new CreateWorkspaceMode(this));

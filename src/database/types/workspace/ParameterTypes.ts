@@ -78,12 +78,6 @@ export interface CreateWorkspaceParameters extends CommonParameters {
     purpose: string;
   }>;
   
-  /**
-   * Next actions to take (required)
-   * Provide specific actionable next steps
-   * Example: ["Follow up on Google application", "Apply to Stripe position", "Update LinkedIn profile"]
-   */
-  nextActions: string[];
   
   // Optional legacy fields for backward compatibility
   description?: string;
@@ -117,7 +111,6 @@ export interface LoadWorkspaceResult extends CommonResult {
     workflow: string;
     keyFiles: Record<string, string>;
     preferences: string;
-    nextActions: string[];
   };
 }
 

@@ -286,7 +286,6 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       keyFiles: [],
       preferences: ['Recovered from corrupted format'],
       agents: [],
-      nextActions: ['Review workspace structure', 'Update goals and preferences']
     };
     
     return {
@@ -448,7 +447,6 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
       keyFiles: this.convertKeyFiles(metadata),
       preferences: this.convertPreferences(metadata),
       agents: [], // Empty for legacy workspaces
-      nextActions: this.generateNextActions(metadata)
     };
   }
   
@@ -652,45 +650,6 @@ export class WorkspaceCollection extends BaseChromaCollection<ProjectWorkspace> 
     return preferences;
   }
   
-  /**
-   * Generate next actions from checkpoints and project plan
-   */
-  private generateNextActions(metadata: Record<string, any>): string[] {
-    const actions: string[] = [];
-    
-    // From incomplete checkpoints
-    const checkpoints = this.parseJsonField<any[]>(metadata.checkpoints, []);
-    if (Array.isArray(checkpoints) && checkpoints.length > 0) {
-      checkpoints
-        .filter((c: any) => !c.completed)
-        .slice(0, 3) // Limit to 3 most relevant
-        .forEach((checkpoint: any) => {
-          if (checkpoint.description) {
-            actions.push(checkpoint.description);
-          }
-        });
-    }
-    
-    // From project plan
-    if (metadata.projectPlan && typeof metadata.projectPlan === 'string' && actions.length < 3) {
-      const planLines = metadata.projectPlan.split('\n')
-        .filter(line => line.trim())
-        .slice(1, 4); // Skip first line (already used as purpose)
-      
-      actions.push(...planLines);
-    }
-    
-    // Default actions if none found
-    if (actions.length === 0) {
-      actions.push(
-        'Review workspace structure',
-        'Update goals and priorities',
-        'Organize files and resources'
-      );
-    }
-    
-    return actions.slice(0, 5); // Limit to 5 actions
-  }
   
   /**
    * Handle hybrid workspace format completion

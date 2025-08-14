@@ -62,10 +62,6 @@ export interface WorkspaceContext {
     purpose: string;        // "Adapts cover letters to specific job requirements"
   }>;
   
-  /**
-   * Next actions to take
-   */
-  nextActions: string[];    // ["Follow up on Google", "Apply to Stripe"]
 }
 
 /**

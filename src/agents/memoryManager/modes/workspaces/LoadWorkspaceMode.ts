@@ -63,7 +63,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             workflow: '',
             keyFiles: {},
             preferences: '',
-            nextActions: []
           },
           workspaceContext: typeof params.workspaceContext === 'string' 
             ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -89,7 +88,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             workflow: '',
             keyFiles: {},
             preferences: '',
-            nextActions: []
           },
           workspaceContext: typeof params.workspaceContext === 'string' 
             ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -111,7 +109,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             workflow: '',
             keyFiles: {},
             preferences: '',
-            nextActions: []
           },
           workspaceContext: typeof params.workspaceContext === 'string' 
             ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -140,8 +137,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Build preferences summary
       const preferences = this.buildPreferences(workspace);
       
-      // Get next actions
-      const nextActions = this.getNextActions(workspace);
       
       // Update workspace context
       const workspacePathResult = await this.buildWorkspacePath(workspace.rootFolder);
@@ -157,7 +152,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           workflow: workflow,
           keyFiles: keyFiles,
           preferences: preferences,
-          nextActions: nextActions
         },
         workspaceContext: workspaceContext
       };
@@ -188,7 +182,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           workflow: '',
           keyFiles: {},
           preferences: '',
-          nextActions: []
         },
         workspaceContext: typeof params.workspaceContext === 'string' 
           ? parseWorkspaceContext(params.workspaceContext) || undefined
@@ -272,16 +265,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     return prefs.length > 0 ? prefs.join('\n- ') : 'No preferences set';
   }
   
-  /**
-   * Get next actions
-   */
-  private getNextActions(workspace: ProjectWorkspace): string[] {
-    if (workspace.context?.nextActions && workspace.context.nextActions.length > 0) {
-      return workspace.context.nextActions;
-    }
-    
-    return ['No next actions defined'];
-  }
   
   /**
    * Get directory structure for the workspace folder
@@ -375,8 +358,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    */
   private extractSessionMemories(traces: any[]): string[] {
     return traces
-      .filter(trace => trace.toolCall?.context?.sessionMemory)
-      .map(trace => trace.toolCall.context.sessionMemory)
+      .filter(trace => trace.metadata?.request?.originalParams?.context?.sessionMemory)
+      .map(trace => trace.metadata.request.originalParams.context.sessionMemory)
       .slice(0, 3); // Latest 3 activities
   }
 
@@ -494,13 +477,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               type: 'string',
               description: 'Formatted user preferences'
             },
-            nextActions: {
-              type: 'array',
-              items: {
-                type: 'string'
-              },
-              description: 'Next actions to take in this workspace'
-            }
           }
         },
         workspaceContext: {

@@ -220,7 +220,6 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
                 keyFiles: [],
                 preferences: [],
                 agents: [],
-                nextActions: []
             };
         }
 

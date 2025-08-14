@@ -35,7 +35,6 @@ export interface UpdateWorkspaceParameters {
         when: string;
         purpose: string;
     }>;
-    nextActions?: string[];
     relatedFolders?: string[];
     relatedFiles?: string[];
     keyFileInstructions?: string;
@@ -182,11 +181,6 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
                 updatedFields.push('context.agents');
             }
 
-            if (params.nextActions) {
-                contextUpdates.nextActions = params.nextActions;
-                hasContextUpdates = true;
-                updatedFields.push('context.nextActions');
-            }
 
             // If there are context updates, merge them with existing context
             if (hasContextUpdates) {
@@ -305,11 +299,6 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
                         },
                         required: ['name', 'when', 'purpose']
                     }
-                },
-                nextActions: { 
-                    type: 'array', 
-                    items: { type: 'string' }, 
-                    description: 'Updated next actions to take' 
                 },
                 relatedFolders: { 
                     type: 'array', 

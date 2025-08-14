@@ -116,7 +116,6 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
             }],
             preferences: [],
             agents: [],
-            nextActions: []
           } as WorkspaceContext,
           conversationContext: 'Unknown snapshot',
           activeTask: 'Unknown',
@@ -162,7 +161,6 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
           }],
           preferences: [],
           agents: [],
-          nextActions: []
         } as WorkspaceContext,
         conversationContext: storage.metadata.description || 'Restored snapshot',
         activeTask: 'Restored operation',

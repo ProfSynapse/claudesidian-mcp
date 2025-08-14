@@ -245,7 +245,6 @@ export class SnapshotService {
           }],
           preferences: [],
           agents: [],
-          nextActions: []
         } as WorkspaceContext,
         conversationContext: description || 'Manual state save',
         activeTask: 'State save operation',
