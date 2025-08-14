@@ -227,18 +227,37 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     rootFolder: string;
     recentActivity: string[];
   }> {
+    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Building context briefing for workspace ${workspace.id}`);
+    
     // Get memory service for recent activity
     const memoryService = this.agent.getMemoryService();
-    const recentActivity = memoryService 
-      ? await this.getRecentActivity(workspace.id, memoryService)
-      : ["No recent activity"];
+    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Memory service available: ${!!memoryService}`);
+    
+    let recentActivity: string[] = [];
+    
+    if (memoryService) {
+      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Calling getRecentActivity for workspace ${workspace.id}`);
+      try {
+        recentActivity = await this.getRecentActivity(workspace.id, memoryService);
+        console.log(`[LoadWorkspaceMode] 🔍 DEBUG: getRecentActivity returned ${recentActivity.length} items:`, recentActivity);
+      } catch (error) {
+        console.error(`[LoadWorkspaceMode] 🔍 DEBUG: getRecentActivity failed:`, error);
+        recentActivity = [`Recent activity error: ${error instanceof Error ? error.message : String(error)}`];
+      }
+    } else {
+      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: No memory service - using fallback`);
+      recentActivity = ["No recent activity"];
+    }
+    
+    const finalActivity = recentActivity.length > 0 ? recentActivity : ["No recent activity"];
+    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Final recent activity:`, finalActivity);
 
     return {
       name: workspace.name,
       description: workspace.description || undefined,
       purpose: workspace.context?.purpose || undefined,
       rootFolder: workspace.rootFolder,
-      recentActivity: recentActivity.length > 0 ? recentActivity : ["No recent activity"]
+      recentActivity: finalActivity
     };
   }
   
@@ -353,17 +372,33 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    * Get recent activity from memory traces
    */
   private async getRecentActivity(workspaceId: string, memoryService: any): Promise<string[]> {
+    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: getRecentActivity called with workspaceId: ${workspaceId}`);
     let traces: any[] = [];
     try {
+      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Calling memoryService.getMemoryTraces`);
       traces = await memoryService.getMemoryTraces(workspaceId, 5);
+      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: getMemoryTraces returned ${traces.length} traces`);
+      
+      if (traces.length > 0) {
+        console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Sample trace structure:`, {
+          id: traces[0].id,
+          hasDocument: !!traces[0].document,
+          hasMetadata: !!traces[0].metadata,
+          workspaceIdInMetadata: traces[0].metadata?.workspaceId,
+          workspaceInMetadata: traces[0].metadata?.workspace
+        });
+      }
+      
+      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Calling extractSessionMemories`);
       const sessionMemories = this.extractSessionMemories(traces);
+      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: extractSessionMemories returned ${sessionMemories.length} activities:`, sessionMemories);
       
       // CRITICAL MEMORY CLEANUP: Clear large trace data immediately after processing
       this.cleanupTraceMemory(traces);
       
       return sessionMemories;
     } catch (error) {
-      console.warn('[LoadWorkspaceMode] Failed to get recent activity:', error);
+      console.warn('[LoadWorkspaceMode] 🔍 DEBUG: Failed to get recent activity:', error);
       // Cleanup traces even on error
       if (traces.length > 0) {
         this.cleanupTraceMemory(traces);
@@ -444,58 +479,79 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    * Extract sessionMemory values from memory traces
    */
   private extractSessionMemories(traces: any[]): string[] {
+    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: extractSessionMemories called with ${traces.length} traces`);
     const sessionMemories: string[] = [];
     
-    for (const trace of traces) {
+    for (let i = 0; i < traces.length; i++) {
+      const trace = traces[i];
+      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Processing trace ${i + 1}/${traces.length}:`, {
+        id: trace.id,
+        hasContent: !!trace.content,
+        hasDocument: !!trace.document,
+        hasMetadata: !!trace.metadata,
+        contentPreview: trace.content?.substring(0, 100),
+        documentPreview: trace.document?.substring(0, 100)
+      });
+      
       try {
         // Check the old format first (for backward compatibility)
         if (trace.metadata?.request?.originalParams?.context?.sessionMemory) {
+          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory in old format`);
           sessionMemories.push(trace.metadata.request.originalParams.context.sessionMemory);
           continue;
         }
         
-        // Parse the new format from document content
-        if (trace.content) {
+        // Parse the new format from document content (note: using 'document' not 'content')
+        if (trace.document) {
           // Look for the COMPLETE REQUEST section - handle multiline JSON properly
-          const requestStart = trace.content.indexOf('=== COMPLETE REQUEST ===');
-          const responseStart = trace.content.indexOf('=== COMPLETE RESPONSE ===');
+          const requestStart = trace.document.indexOf('=== COMPLETE REQUEST ===');
+          const responseStart = trace.document.indexOf('=== COMPLETE RESPONSE ===');
+          
+          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Request markers found: start=${requestStart}, end=${responseStart}`);
           
           if (requestStart !== -1 && responseStart !== -1) {
             // Extract the JSON between the markers
-            const jsonSection = trace.content.substring(requestStart + '=== COMPLETE REQUEST ==='.length, responseStart).trim();
+            const jsonSection = trace.document.substring(requestStart + '=== COMPLETE REQUEST ==='.length, responseStart).trim();
+            console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Extracted JSON section length: ${jsonSection.length}`);
             
             try {
               const requestData = JSON.parse(jsonSection);
+              console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Parsed request data, has context: ${!!requestData.context}`);
               
               // Parse the nested context JSON string
               if (requestData.context && typeof requestData.context === 'string') {
                 const contextData = JSON.parse(requestData.context);
+                console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Parsed context data, has sessionMemory: ${!!contextData.sessionMemory}`);
                 if (contextData.sessionMemory) {
+                  console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory: ${contextData.sessionMemory}`);
                   sessionMemories.push(contextData.sessionMemory);
                 }
               }
             } catch (jsonError) {
+              console.log(`[LoadWorkspaceMode] 🔍 DEBUG: JSON parsing failed, trying regex approach:`, jsonError instanceof Error ? jsonError.message : String(jsonError));
               // Try alternative parsing - sometimes the JSON might have escape issues
               try {
                 // Look for sessionMemory directly in the text
-                const sessionMemoryMatch = trace.content.match(/"sessionMemory":\s*"([^"\\]*(\\.[^"\\]*)*)"/);
+                const sessionMemoryMatch = trace.document.match(/"sessionMemory":\s*"([^"\\]*(\\.[^"\\]*)*)"/);
                 if (sessionMemoryMatch) {
+                  console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory via regex`);
                   // Unescape the string
                   const sessionMemory = sessionMemoryMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\\\/g, '\\');
                   sessionMemories.push(sessionMemory);
                 }
               } catch (regexError) {
-                // Skip if we can't parse this trace
+                console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Regex parsing also failed:`, regexError instanceof Error ? regexError.message : String(regexError));
               }
             }
           }
         }
       } catch (error) {
-        // Skip traces that can't be parsed - don't log to avoid spam
+        console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Error processing trace ${i + 1}:`, error instanceof Error ? error.message : String(error));
         continue;
       }
     }
     
+    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: extractSessionMemories found ${sessionMemories.length} session memories`);
     return sessionMemories.slice(0, 5); // Latest 5 activities instead of 3
   }
 
