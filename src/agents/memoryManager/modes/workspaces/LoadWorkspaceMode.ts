@@ -489,6 +489,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         hasContent: !!trace.content,
         hasDocument: !!trace.document,
         hasMetadata: !!trace.metadata,
+        allKeys: Object.keys(trace),
         contentPreview: trace.content?.substring(0, 100),
         documentPreview: trace.document?.substring(0, 100)
       });
