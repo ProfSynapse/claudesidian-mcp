@@ -66,11 +66,6 @@ export interface CreateSessionParams extends MemoryParameters {
   previousSessionId?: string;
   
   /**
-   * Tags to associate with this session
-   */
-  tags?: string[];
-  
-  /**
    * Override for the session ID from MemoryParameters.
    * This allows creating a session with a specific session ID rather than using the tracking ID.
    * Note: This is distinct from the required sessionId in MemoryParameters which tracks the tool call itself.
@@ -88,11 +83,6 @@ export interface CreateSessionParams extends MemoryParameters {
 // Parameters for listing sessions
 export interface ListSessionsParams extends MemoryParameters {
   /**
-   * Whether to only include active sessions
-   */
-  activeOnly?: boolean;
-  
-  /**
    * Maximum number of sessions to return
    */
   limit?: number;
@@ -101,11 +91,6 @@ export interface ListSessionsParams extends MemoryParameters {
    * Sort order for sessions (default: desc - newest first)
    */
   order?: 'asc' | 'desc';
-  
-  /**
-   * Filter sessions by tags
-   */
-  tags?: string[];
 }
 
 // Parameters for editing a session  
@@ -134,21 +119,6 @@ export interface EditSessionParams extends Omit<MemoryParameters, 'sessionId'> {
    * New session goal (optional)
    */
   sessionGoal?: string;
-  
-  /**
-   * Whether the session is active or completed
-   */
-  isActive?: boolean;
-  
-  /**
-   * Add additional tags to session
-   */
-  addTags?: string[];
-  
-  /**
-   * Remove specific tags from session
-   */
-  removeTags?: string[];
 }
 
 // Parameters for deleting a session
@@ -198,21 +168,6 @@ export interface SessionResult extends MemoryResult {
     workspaceId?: string;
     
     /**
-     * Session start time
-     */
-    startTime?: number;
-    
-    /**
-     * Session end time (if completed)
-     */
-    endTime?: number;
-    
-    /**
-     * Whether the session is active
-     */
-    isActive?: boolean;
-    
-    /**
      * ID of the new continuation session (when loading a session)
      */
     newSessionId?: string;
@@ -222,14 +177,9 @@ export interface SessionResult extends MemoryResult {
      */
     sessions?: Array<{
       id: string;
-      name: string;
+      name?: string;
       workspaceId: string;
-      startTime: number;
-      endTime?: number;
-      isActive: boolean;
       description?: string;
-      toolCalls: number;
-      tags?: string[];
     }>;
     
     /**
@@ -245,7 +195,6 @@ export interface SessionResult extends MemoryResult {
         type: string;
         importance: number;
       }>;
-      tags: string[];
     };
   };
 }
@@ -278,11 +227,6 @@ export interface LoadSessionParams extends Omit<MemoryParameters, 'sessionId'> {
    * Whether to automatically start a new session if the original is inactive (default: true)
    */
   createContinuationSession?: boolean;
-  
-  /**
-   * Tags to associate with the loaded session context
-   */
-  tags?: string[];
 }
 
 /**

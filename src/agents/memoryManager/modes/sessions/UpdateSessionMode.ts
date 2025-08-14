@@ -122,28 +122,6 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
             hasUpdates = true;
         }
 
-        if (params.isActive !== undefined) {
-            updates.isActive = params.isActive;
-            if (!params.isActive && !updates.endTime) {
-                updates.endTime = Date.now();
-            }
-            hasUpdates = true;
-        }
-
-        // Handle tags
-        let updatedTags = existingSession.tags || [];
-        if (params.addTags && params.addTags.length > 0) {
-            updatedTags = [...new Set([...updatedTags, ...params.addTags])];
-            hasUpdates = true;
-        }
-        if (params.removeTags && params.removeTags.length > 0) {
-            updatedTags = updatedTags.filter(tag => !params.removeTags!.includes(tag));
-            hasUpdates = true;
-        }
-        if (hasUpdates && (params.addTags || params.removeTags)) {
-            updates.tags = updatedTags;
-        }
-
         if (!hasUpdates) {
             return this.prepareResult(false, undefined, 'No updates provided for session');
         }
@@ -158,11 +136,7 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
                 sessionId: updatedSession.id,
                 name: updatedSession.name,
                 description: updatedSession.description,
-                workspaceId: updatedSession.workspaceId,
-                isActive: updatedSession.isActive,
-                startTime: updatedSession.startTime,
-                endTime: updatedSession.endTime,
-                tags: updatedSession.tags
+                workspaceId: updatedSession.workspaceId
             },
             undefined,
             `Session "${updatedSession.name}" updated successfully`

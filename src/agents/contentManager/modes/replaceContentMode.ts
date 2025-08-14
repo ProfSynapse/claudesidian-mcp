@@ -218,7 +218,7 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
           result: resultData,
           relatedFiles: [params.filePath]
         },
-        sessionId: params.sessionId
+        sessionId: params.context.sessionId
       });
     } catch (error) {
       console.error('Failed to record replace content activity:', getErrorMessage(error));

@@ -3,7 +3,8 @@
  * Purpose: Consolidated workspace loading mode for MemoryManager
  * 
  * This file handles loading a workspace by ID and restoring workspace context
- * and state for the user session.
+ * and state for the user session. It automatically collects all files in the
+ * workspace directory recursively and provides comprehensive workspace information.
  * 
  * Used by: MemoryManager agent for workspace loading operations
  * Integrates with: WorkspaceService for accessing workspace data
@@ -20,6 +21,7 @@ import { createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
  * Mode to load and restore a workspace by ID
+ * Automatically collects all files in the workspace directory and provides complete workspace information
  */
 export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWorkspaceResult> {
   private agent: any;
@@ -177,6 +179,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         (result.data.context as any).recentActivity.push("Note: Workspace directory navigation unavailable. Use vaultManager listDirectoryMode to explore the workspace folder structure.");
       }
       
+      // CRITICAL: Force memory cleanup after workspace loading
+      // This is essential because memory traces can consume 10MB+ with embeddings
+      this.forceMemoryCleanup(`LoadWorkspaceMode completed for workspace ${params.id}`);
+      
       return result;
       
     } catch (error: any) {
@@ -185,6 +191,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         stack: error.stack,
         params: params
       });
+      
+      // CRITICAL: Force cleanup even on error to prevent memory leaks
+      this.forceMemoryCleanup(`LoadWorkspaceMode error cleanup for workspace ${params.id}`);
       
       return {
         success: false,
@@ -284,24 +293,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   }
   
   
-  /**
-   * Get directory structure for the workspace folder
-   */
-  private async getDirectoryStructure(rootFolder: string): Promise<string> {
-    try {
-      const app = this.agent.getApp();
-      const folder = app.vault.getAbstractFileByPath(rootFolder);
-      
-      if (!folder || !('children' in folder)) {
-        return `Folder '${rootFolder}' not found or empty`;
-      }
-      
-      const structure = this.buildDirectoryTree(folder as any, 0, 2); // Max depth 2
-      return structure || 'Empty folder';
-    } catch (error) {
-      return `Error reading directory: ${error instanceof Error ? error.message : String(error)}`;
-    }
-  }
   
   /**
    * Build workspace path with folder path and flat files list
@@ -362,12 +353,90 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    * Get recent activity from memory traces
    */
   private async getRecentActivity(workspaceId: string, memoryService: any): Promise<string[]> {
+    let traces: any[] = [];
     try {
-      const traces = await memoryService.getMemoryTraces(workspaceId, 5);
-      return this.extractSessionMemories(traces);
+      traces = await memoryService.getMemoryTraces(workspaceId, 5);
+      const sessionMemories = this.extractSessionMemories(traces);
+      
+      // CRITICAL MEMORY CLEANUP: Clear large trace data immediately after processing
+      this.cleanupTraceMemory(traces);
+      
+      return sessionMemories;
     } catch (error) {
       console.warn('[LoadWorkspaceMode] Failed to get recent activity:', error);
+      // Cleanup traces even on error
+      if (traces.length > 0) {
+        this.cleanupTraceMemory(traces);
+      }
       return ["Recent activity unavailable"];
+    }
+  }
+
+  /**
+   * Clean up memory trace data to prevent memory leaks
+   * This is critical because each trace contains large embedding arrays (~6KB each)
+   */
+  private cleanupTraceMemory(traces: any[]): void {
+    if (!traces || traces.length === 0) return;
+    
+    // Clear embedding arrays (these are the largest memory consumers)
+    traces.forEach(trace => {
+      if (trace.embedding) {
+        trace.embedding.length = 0;
+        trace.embedding = null;
+      }
+      
+      // Clear large document content after we've extracted what we need
+      if (trace.content && trace.content.length > 1000) {
+        trace.content = null;
+      }
+      
+      // Clear large metadata objects
+      if (trace.metadata) {
+        // Keep essential fields, clear large ones
+        if (trace.metadata.params) trace.metadata.params = null;
+        if (trace.metadata.result) trace.metadata.result = null;
+      }
+    });
+    
+    // Clear the array itself
+    traces.length = 0;
+  }
+
+  /**
+   * Force garbage collection and memory cleanup
+   * This is critical after loading memory traces to prevent memory bloat
+   */
+  private forceMemoryCleanup(operation: string): void {
+    try {
+      // Log memory usage before cleanup (if available)
+      if (typeof (global as any).gc === 'function') {
+        console.debug(`[LoadWorkspaceMode] ${operation} - Forcing garbage collection`);
+        (global as any).gc();
+      } else if (typeof window !== 'undefined' && (window as any).gc) {
+        console.debug(`[LoadWorkspaceMode] ${operation} - Forcing browser garbage collection`);
+        (window as any).gc();
+      }
+      
+      // Additional cleanup hints
+      if (typeof global !== 'undefined' && global.gc) {
+        global.gc();
+      }
+      
+      // Schedule delayed cleanup to catch any remaining references
+      setTimeout(() => {
+        try {
+          if (typeof (global as any).gc === 'function') {
+            (global as any).gc();
+          }
+        } catch (e) {
+          // Ignore GC errors
+        }
+      }, 100);
+      
+    } catch (error) {
+      // Garbage collection is not always available, that's fine
+      console.debug(`[LoadWorkspaceMode] ${operation} - GC not available, relying on natural cleanup`);
     }
   }
 
@@ -375,53 +444,61 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    * Extract sessionMemory values from memory traces
    */
   private extractSessionMemories(traces: any[]): string[] {
-    return traces
-      .filter(trace => trace.metadata?.request?.originalParams?.context?.sessionMemory)
-      .map(trace => trace.metadata.request.originalParams.context.sessionMemory)
-      .slice(0, 3); // Latest 3 activities
-  }
-
-  /**
-   * Build a directory tree string representation
-   */
-  private buildDirectoryTree(folder: any, depth: number, maxDepth: number): string {
-    if (depth > maxDepth || !folder.children) {
-      return '';
-    }
+    const sessionMemories: string[] = [];
     
-    const indent = '  '.repeat(depth);
-    const items: string[] = [];
-    
-    // Sort children: folders first, then files
-    const children = [...folder.children].sort((a, b) => {
-      const aIsFolder = 'children' in a;
-      const bIsFolder = 'children' in b;
-      
-      if (aIsFolder && !bIsFolder) return -1;
-      if (!aIsFolder && bIsFolder) return 1;
-      return a.name.localeCompare(b.name);
-    });
-    
-    for (const child of children.slice(0, 10)) { // Limit to 10 items per level
-      if ('children' in child) {
-        // Folder
-        items.push(`${indent}📁 ${child.name}/`);
-        const subtree = this.buildDirectoryTree(child, depth + 1, maxDepth);
-        if (subtree) {
-          items.push(subtree);
+    for (const trace of traces) {
+      try {
+        // Check the old format first (for backward compatibility)
+        if (trace.metadata?.request?.originalParams?.context?.sessionMemory) {
+          sessionMemories.push(trace.metadata.request.originalParams.context.sessionMemory);
+          continue;
         }
-      } else {
-        // File
-        items.push(`${indent}📄 ${child.name}`);
+        
+        // Parse the new format from document content
+        if (trace.content) {
+          // Look for the COMPLETE REQUEST section - handle multiline JSON properly
+          const requestStart = trace.content.indexOf('=== COMPLETE REQUEST ===');
+          const responseStart = trace.content.indexOf('=== COMPLETE RESPONSE ===');
+          
+          if (requestStart !== -1 && responseStart !== -1) {
+            // Extract the JSON between the markers
+            const jsonSection = trace.content.substring(requestStart + '=== COMPLETE REQUEST ==='.length, responseStart).trim();
+            
+            try {
+              const requestData = JSON.parse(jsonSection);
+              
+              // Parse the nested context JSON string
+              if (requestData.context && typeof requestData.context === 'string') {
+                const contextData = JSON.parse(requestData.context);
+                if (contextData.sessionMemory) {
+                  sessionMemories.push(contextData.sessionMemory);
+                }
+              }
+            } catch (jsonError) {
+              // Try alternative parsing - sometimes the JSON might have escape issues
+              try {
+                // Look for sessionMemory directly in the text
+                const sessionMemoryMatch = trace.content.match(/"sessionMemory":\s*"([^"\\]*(\\.[^"\\]*)*)"/);
+                if (sessionMemoryMatch) {
+                  // Unescape the string
+                  const sessionMemory = sessionMemoryMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\\\/g, '\\');
+                  sessionMemories.push(sessionMemory);
+                }
+              } catch (regexError) {
+                // Skip if we can't parse this trace
+              }
+            }
+          }
+        }
+      } catch (error) {
+        // Skip traces that can't be parsed - don't log to avoid spam
+        continue;
       }
     }
     
-    if (children.length > 10) {
-      items.push(`${indent}... and ${children.length - 10} more items`);
-    }
-    
-    return items.join('\n');
+    return sessionMemories.slice(0, 5); // Latest 5 activities instead of 3
   }
+
   
   /**
    * Fetch sessions for a workspace
@@ -495,22 +572,6 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         id: {
           type: 'string',
           description: 'Workspace ID to load (REQUIRED)'
-        },
-        includeChildren: {
-          type: 'boolean',
-          description: 'Include child workspace information'
-        },
-        includeFileDetails: {
-          type: 'boolean',
-          description: 'Include detailed file information'
-        },
-        includeDirectoryStructure: {
-          type: 'boolean',
-          description: 'Include current directory structure'
-        },
-        includeSessionContext: {
-          type: 'boolean',
-          description: 'Include session context information'
         }
       },
       required: ['id']

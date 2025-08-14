@@ -49,8 +49,8 @@ export class ActionExecutor {
             const actionResult = await this.executeContentAction(
                 params.action,
                 llmResponse,
-                params.sessionId || '',
-                typeof params.context === 'string' ? params.context : (params.context ? JSON.stringify(params.context) : '')
+                params.context.sessionId || '',
+                typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
             );
 
             return {

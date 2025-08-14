@@ -47,7 +47,7 @@ export class ActivityRecorder {
         activityType: 'research', // Using valid activity type
         content: activityContent,
         metadata: this.createActivityMetadata(successfulOps, relatedFiles),
-        sessionId: params.sessionId || '',
+        sessionId: params.context.sessionId || '',
         timestamp: Date.now(),
         importance: 0.7,
         contextLevel: 'workspace', // Using valid context level

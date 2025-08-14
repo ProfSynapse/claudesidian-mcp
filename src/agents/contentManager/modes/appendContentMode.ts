@@ -209,7 +209,7 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
           result: resultData,
           relatedFiles: [params.filePath]
         },
-        sessionId: params.sessionId
+        sessionId: params.context.sessionId
       });
     } catch (error) {
       console.error('Failed to record append content activity:', getErrorMessage(error));

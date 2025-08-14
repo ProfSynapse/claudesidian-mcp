@@ -342,7 +342,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   /**
    * Get all items from a collection
    */
-  async getAllItems(collectionName: string, options?: { limit?: number; offset?: number }): Promise<{
+  async getAllItems(collectionName: string, options?: { limit?: number; offset?: number; where?: Record<string, any> }): Promise<{
     ids: string[];
     embeddings?: number[][];
     metadatas?: Record<string, any>[];
@@ -363,6 +363,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       include: ['embeddings', 'metadatas', 'documents'],
       limit: actualLimit,
       offset: options?.offset,
+      where: options?.where, // Enable database-level filtering
       contextAware: false // Full load requested
     } as any);
     

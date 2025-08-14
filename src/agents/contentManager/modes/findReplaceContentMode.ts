@@ -251,7 +251,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
           result: resultData,
           relatedFiles: [params.filePath]
         },
-        sessionId: params.sessionId
+        sessionId: params.context.sessionId
       });
     } catch (error) {
       console.error('Failed to record find replace content activity:', getErrorMessage(error));

@@ -94,14 +94,29 @@ export class TraceSearchService {
    * @returns Promise resolving to array of memory traces
    */
   async getMemoryTraces(workspaceId: string, limit?: number): Promise<WorkspaceMemoryTrace[]> {
+    let traces: WorkspaceMemoryTrace[] = [];
     try {
       if (!workspaceId.trim()) {
         throw new Error('Workspace ID cannot be empty');
       }
       
-      return await this.memoryTraces.getTracesByWorkspace(workspaceId, limit);
+      traces = await this.memoryTraces.getTracesByWorkspace(workspaceId, limit);
+      
+      // PERFORMANCE NOTE: This method potentially loads large amounts of data
+      // The caller should cleanup large fields (embeddings, content) after processing
+      if (traces.length > 10) {
+        console.debug(`[TraceSearchService] Loaded ${traces.length} traces for workspace ${workspaceId} - consider memory cleanup`);
+      }
+      
+      return traces;
     } catch (error) {
       console.error(`[TraceSearchService] Error getting traces for workspace ${workspaceId}:`, error);
+      
+      // Cleanup any traces that were loaded before the error
+      if (traces.length > 0) {
+        this.cleanupTracesMemory(traces, `TraceSearchService error cleanup for workspace ${workspaceId}`);
+      }
+      
       throw new Error(`Failed to get workspace traces: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -281,6 +296,38 @@ export class TraceSearchService {
     }
   }
   
+  /**
+   * Clean up memory trace data to prevent memory leaks
+   * Critical for large embedding arrays and document content
+   * @private
+   */
+  private cleanupTracesMemory(traces: any[], operation: string): void {
+    if (!traces || traces.length === 0) return;
+    
+    console.debug(`[TraceSearchService] ${operation} - Cleaning up ${traces.length} traces`);
+    
+    traces.forEach(trace => {
+      // Clear large embedding arrays (biggest memory consumers)
+      if (trace.embedding) {
+        trace.embedding.length = 0;
+        trace.embedding = null;
+      }
+      
+      // Clear large document content
+      if (trace.content && trace.content.length > 500) {
+        trace.content = null;
+      }
+      
+      // Clear large metadata
+      if (trace.metadata) {
+        if (trace.metadata.params) trace.metadata.params = null;
+        if (trace.metadata.result) trace.metadata.result = null;
+      }
+    });
+    
+    traces.length = 0;
+  }
+
   /**
    * Process and optimize search results
    * @private

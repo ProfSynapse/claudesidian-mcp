@@ -217,7 +217,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
           result: resultData,
           relatedFiles: [params.filePath]
         },
-        sessionId: params.sessionId
+        sessionId: params.context.sessionId
       });
     } catch (error) {
       console.error('Failed to record delete content activity:', getErrorMessage(error));

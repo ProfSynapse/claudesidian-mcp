@@ -150,7 +150,7 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
             },
             relatedFiles: [result.sourcePath, result.targetPath]
           },
-          sessionId: params.sessionId
+          sessionId: params.context.sessionId
         }
       );
     } catch (error) {

@@ -125,8 +125,8 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         model: params.model,
         aspectRatio: params.aspectRatio,
         savePath: params.savePath,
-        sessionId: params.sessionId,
-        context: typeof params.context === 'object' ? JSON.stringify(params.context) : params.context
+        sessionId: params.context.sessionId,
+        context: typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
       });
 
       if (!validation.isValid) {
@@ -144,8 +144,8 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         model: params.model,
         aspectRatio: params.aspectRatio,
         savePath: params.savePath,
-        sessionId: params.sessionId,
-        context: typeof params.context === 'object' ? JSON.stringify(params.context) : params.context
+        sessionId: params.context.sessionId,
+        context: typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
       });
 
       if (!result.success) {

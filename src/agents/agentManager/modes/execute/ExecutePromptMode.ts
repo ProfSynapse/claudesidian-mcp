@@ -144,7 +144,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                     dependencyValidation.error!,
                     undefined,
                     undefined,
-                    params.sessionId,
+                    params.context.sessionId,
                     params.context
                 );
             }
@@ -159,7 +159,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                         agentValidation.error!,
                         undefined,
                         undefined,
-                        params.sessionId,
+                        params.context.sessionId,
                         params.context
                     );
                 }
@@ -174,7 +174,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                     budgetValidation.error!,
                     undefined,
                     undefined,
-                    params.sessionId,
+                    params.context.sessionId,
                     params.context
                 );
             }
@@ -188,7 +188,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                     promptResult.error!,
                     undefined,
                     undefined,
-                    params.sessionId,
+                    params.context.sessionId,
                     params.context
                 );
             }
@@ -227,7 +227,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                 undefined,
                 undefined,
                 undefined,
-                params.sessionId,
+                params.context.sessionId,
                 params.context
             );
 
@@ -238,7 +238,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                 `Failed to execute prompt: ${error instanceof Error ? error.message : 'Unknown error'}`,
                 undefined,
                 undefined,
-                params.sessionId,
+                params.context.sessionId,
                 params.context
             );
         }

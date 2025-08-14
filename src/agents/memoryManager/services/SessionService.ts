@@ -1,5 +1,5 @@
 import { Plugin } from 'obsidian';
-import { WorkspaceSession } from '../../../database/workspace-types';
+import { WorkspaceSession } from '../../../database/types/session/SessionTypes';
 import { SessionCollection } from '../../../database/collections/SessionCollection';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { generateSessionId } from '../../../utils/sessionUtils';
@@ -132,10 +132,7 @@ export class SessionService {
       const sessionData = {
         workspaceId: workspaceId,
         name: `Session ${new Date().toLocaleString()}`,
-        description: 'Auto-created session',
-        startTime: Date.now(),
-        isActive: true,
-        toolCalls: 0
+        description: 'Auto-created session'
       };
       
       // The createSession method will handle the id correctly
@@ -154,41 +151,17 @@ export class SessionService {
   /**
    * Get sessions for a specific workspace
    * @param workspaceId - Workspace identifier
-   * @param activeOnly - Whether to only return active sessions
    * @returns Promise resolving to array of sessions
    */
-  async getSessions(workspaceId: string, activeOnly?: boolean): Promise<WorkspaceSession[]> {
-    return this.sessions.getSessionsByWorkspace(workspaceId, activeOnly);
+  async getSessions(workspaceId: string): Promise<WorkspaceSession[]> {
+    return this.sessions.getSessionsByWorkspace(workspaceId);
   }
 
   /**
-   * Get all currently active sessions across all workspaces
-   * @returns Promise resolving to array of active sessions
-   */
-  async getActiveSessions(): Promise<WorkspaceSession[]> {
-    return this.sessions.getActiveSessions();
-  }
-
-  /**
-   * End an active session by setting it to inactive and adding optional summary
-   * @param id - Session ID
-   * @param summary - Optional session summary
-   * @returns Promise that resolves when session is ended
-   */
-  async endSession(id: string, summary?: string): Promise<void> {
-    await this.sessions.endSession(id, summary);
-  }
-
-  /**
-   * Get all sessions with optional filtering by active status
-   * @param activeOnly - Whether to only return active sessions
+   * Get all sessions
    * @returns Promise resolving to array of sessions
    */
-  async getAllSessions(activeOnly = false): Promise<WorkspaceSession[]> {
-    if (activeOnly) {
-      return this.sessions.getActiveSessions();
-    }
-    
+  async getAllSessions(): Promise<WorkspaceSession[]> {
     // Get all sessions without filtering
     return this.sessions.getAll({});
   }
@@ -255,15 +228,6 @@ export class SessionService {
       console.error(`Failed to delete session ${sessionId}:`, error);
       throw new Error(`Failed to delete session: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  /**
-   * Increment the tool call count for a session
-   * @param sessionId - Session ID
-   * @returns Promise that resolves when count is incremented
-   */
-  async incrementToolCalls(sessionId: string): Promise<void> {
-    await this.sessions.incrementToolCalls(sessionId);
   }
 
   /**

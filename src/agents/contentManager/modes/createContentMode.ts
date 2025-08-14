@@ -216,7 +216,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
           },
           relatedFiles: [params.filePath]
         },
-        sessionId: params.sessionId
+        sessionId: params.context.sessionId
       });
     } catch (error) {
       console.error('Failed to record create content activity:', getErrorMessage(error));

@@ -112,16 +112,11 @@ export function getHandoffSchema(): any {
 }
 
 /**
- * Get schema for session parameters
- * @returns JSON schema for session parameters
+ * Get schema for session parameters (now part of context - kept for backward compatibility)
+ * @returns Empty schema since session fields are now in context
  */
 export function getSessionSchema(): any {
-  return enhanceSchemaDocumentation({
-    sessionId: {
-      type: 'string',
-      description: 'Session identifier to track related tool calls'
-    }
-  });
+  return {};
 }
 
 /**
@@ -133,6 +128,19 @@ export function getContextSchema(): any {
     context: {
       type: 'object',
       properties: {
+        sessionId: {
+          type: 'string',
+          description: '2-4 word name for this session, or the session ID when provided by system'
+        },
+        workspaceId: {
+          type: 'string',
+          description: 'REQUIRED: Workspace identifier for associating this tool call with the correct workspace. Use the workspace ID from the most recent loadWorkspace call, or the workspace ID that was provided/discussed in the conversation. If no workspace has been loaded, use "default".'
+        },
+        sessionDescription: {
+          type: 'string',
+          description: 'Brief description of what this session is about - updates as conversation evolves',
+          minLength: 10
+        },
         sessionMemory: {
           type: 'string',
           description: 'Summary of what has happened in the conversation so far, including key decisions, actions taken, and important context',
@@ -154,8 +162,8 @@ export function getContextSchema(): any {
           minLength: 5
         }
       },
-      required: ['sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],
-      description: 'Rich contextual information for this tool call'
+      required: ['sessionId', 'workspaceId', 'sessionDescription', 'sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],
+      description: 'Rich contextual information for this tool call including session management'
     }
   });
 }

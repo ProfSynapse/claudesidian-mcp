@@ -3,11 +3,8 @@ import { SimpleMemoryService } from '../memory/SimpleMemoryService';
 export interface SessionData {
   id: string;
   workspaceId: string;
-  name: string;
-  isActive: boolean;
-  toolCalls: number;
-  startTime: number;
-  endTime?: number;
+  name?: string;
+  description?: string;
   metadata?: Record<string, any>;
 }
 
@@ -17,7 +14,6 @@ export interface SessionData {
  */
 export class SessionService {
   private sessions = new Map<string, SessionData>();
-  private activeSessionId: string | null = null;
   
   constructor(private simpleMemoryService: SimpleMemoryService) {
   }
@@ -29,16 +25,11 @@ export class SessionService {
     const id = this.generateSessionId();
     const session: SessionData = {
       ...sessionData,
-      id,
-      startTime: sessionData.startTime || Date.now()
+      id
     };
     
     this.sessions.set(id, session);
     await this.simpleMemoryService.storeSession(id, session);
-    
-    if (session.isActive) {
-      this.activeSessionId = id;
-    }
     
     // Session created
     return session;
@@ -74,28 +65,6 @@ export class SessionService {
   }
   
   /**
-   * Get active session
-   */
-  async getActiveSession(): Promise<SessionData | null> {
-    if (this.activeSessionId) {
-      return await this.getSession(this.activeSessionId);
-    }
-    return null;
-  }
-  
-  /**
-   * Set session as active
-   */
-  async setActiveSession(sessionId: string): Promise<void> {
-    const session = await this.getSession(sessionId);
-    if (session) {
-      this.activeSessionId = sessionId;
-      session.isActive = true;
-      await this.updateSession(session);
-    }
-  }
-  
-  /**
    * Update session data
    */
   async updateSession(session: SessionData): Promise<void> {
@@ -104,41 +73,11 @@ export class SessionService {
   }
   
   /**
-   * Increment tool call count for session
-   */
-  async incrementToolCalls(sessionId: string): Promise<void> {
-    const session = await this.getSession(sessionId);
-    if (session) {
-      session.toolCalls += 1;
-      await this.updateSession(session);
-    }
-  }
-  
-  /**
-   * End a session
-   */
-  async endSession(sessionId: string): Promise<void> {
-    const session = await this.getSession(sessionId);
-    if (session) {
-      session.isActive = false;
-      session.endTime = Date.now();
-      await this.updateSession(session);
-      
-      if (this.activeSessionId === sessionId) {
-        this.activeSessionId = null;
-      }
-    }
-  }
-  
-  /**
    * Delete a session
    */
   async deleteSession(sessionId: string): Promise<void> {
     this.sessions.delete(sessionId);
     // Note: SimpleMemoryService doesn't have delete methods, but we can clear from memory
-    if (this.activeSessionId === sessionId) {
-      this.activeSessionId = null;
-    }
   }
   
   /**
@@ -151,11 +90,10 @@ export class SessionService {
   /**
    * Get session statistics
    */
-  getStats(): { totalSessions: number; activeSessions: number } {
+  getStats(): { totalSessions: number } {
     const allSessions = Array.from(this.sessions.values());
     return {
-      totalSessions: allSessions.length,
-      activeSessions: allSessions.filter(s => s.isActive).length
+      totalSessions: allSessions.length
     };
   }
 }

@@ -155,21 +155,21 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       if (!this.llmService) {
         return createResult<BatchExecutePromptResult>(
           false, undefined, 'LLM Service not initialized',
-          undefined, undefined, params.sessionId, params.context
+          undefined, undefined, params.context.sessionId, params.context
         );
       }
       
       if (!this.providerManager) {
         return createResult<BatchExecutePromptResult>(
           false, undefined, 'LLM Provider Manager not initialized. Please ensure you have configured at least one LLM provider with valid API keys.',
-          undefined, undefined, params.sessionId, params.context
+          undefined, undefined, params.context.sessionId, params.context
         );
       }
       
       if (!this.promptStorage) {
         return createResult<BatchExecutePromptResult>(
           false, undefined, 'Prompt storage service not initialized',
-          undefined, undefined, params.sessionId, params.context
+          undefined, undefined, params.context.sessionId, params.context
         );
       }
 
@@ -178,7 +178,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       if (!this.requestExecutor || !this.sequenceManager) {
         return createResult<BatchExecutePromptResult>(
           false, undefined, 'Failed to initialize execution services',
-          undefined, undefined, params.sessionId, params.context
+          undefined, undefined, params.context.sessionId, params.context
         );
       }
 
@@ -187,7 +187,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       if (!validation.valid) {
         return createResult<BatchExecutePromptResult>(
           false, undefined, `Parameter validation failed: ${validation.errors.join(', ')}`,
-          undefined, undefined, params.sessionId, params.context
+          undefined, undefined, params.context.sessionId, params.context
         );
       }
 
@@ -198,7 +198,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
       
       // Initialize execution context
       const executionContext = this.contextBuilder.initializeExecutionContext(
-        params.sessionId,
+        params.context.sessionId,
         params.context
       );
       
@@ -227,7 +227,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         processedResults.error,
         undefined, // workspaceContext
         undefined, // handoffResult
-        params.sessionId,
+        params.context.sessionId,
         params.context
       );
       
@@ -239,7 +239,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         `Batch execution failed: ${getErrorMessage(error)}`,
         undefined, // workspaceContext
         undefined, // handoffResult
-        params.sessionId,
+        params.context.sessionId,
         params.context
       );
     }
@@ -264,7 +264,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
           const actionResult = await this.actionExecutor.executeContentAction(
             promptConfig.action,
             result.response,
-            params.sessionId,
+            params.context.sessionId,
             typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
           );
 

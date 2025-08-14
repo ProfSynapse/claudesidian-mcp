@@ -470,35 +470,17 @@ export class MemoryService {
   /**
    * Get sessions for a workspace
    * @param workspaceId Workspace ID
-   * @param activeOnly Whether to only return active sessions
    */
-  async getSessions(workspaceId: string, activeOnly?: boolean): Promise<WorkspaceSession[]> {
-    return this.sessionService.getSessions(workspaceId, activeOnly);
+  async getSessions(workspaceId: string): Promise<WorkspaceSession[]> {
+    return this.sessionService.getSessions(workspaceId);
   }
 
   /**
-   * Get all active sessions
-   */
-  async getActiveSessions(): Promise<WorkspaceSession[]> {
-    return this.sessionService.getActiveSessions();
-  }
-
-  /**
-   * End an active session
-   * @param id Session ID
-   * @param summary Optional session summary
-   */
-  async endSession(id: string, summary?: string): Promise<void> {
-    return this.sessionService.endSession(id, summary);
-  }
-
-  /**
-   * Get all sessions (optionally filtered by active status)
-   * @param activeOnly Whether to only return active sessions
+   * Get all sessions
    * @returns Array of sessions
    */
-  async getAllSessions(activeOnly = false): Promise<WorkspaceSession[]> {
-    return this.sessionService.getAllSessions(activeOnly);
+  async getAllSessions(): Promise<WorkspaceSession[]> {
+    return this.sessionService.getAllSessions();
   }
 
   /**

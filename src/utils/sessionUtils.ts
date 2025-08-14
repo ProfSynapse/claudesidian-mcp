@@ -19,7 +19,7 @@ export function generateSessionId(): string {
  * @returns Formatted instruction string
  */
 export function formatSessionInstructions(sessionId: string): string {
-    return `[SESSION_ID: ${sessionId}]\nMANDATORY: You are required to use the above session ID for the remainder of this conversation. DO NOT change it for any reason.`;
+    return `🔄 SESSION ID: ${sessionId} - MANDATORY:Use this ID in all future requests`;
 }
 
 /**

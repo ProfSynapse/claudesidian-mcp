@@ -226,7 +226,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   private buildSearchOptions(params: MemorySearchParameters): MemorySearchExecutionOptions {
     return {
       workspaceId: params.workspace,
-      sessionId: params.sessionId,
+      sessionId: params.context.sessionId,
       limit: params.limit || this.configuration.defaultLimit,
       toolCallFilters: params.toolCallFilters
     };

@@ -21,16 +21,6 @@ export class ResponseFormatter implements IResponseFormatter {
 
     formatSessionInstructions(sessionId: string, result: any): any {
         result.sessionId = sessionId;
-        
-        const sessionInstructions = formatSessionInstructions(sessionId);
-        result.sessionInstructions = sessionInstructions;
-        
-        if (result.context) {
-            result.context = enhanceContextWithSessionInstructions(sessionId, result.context);
-        } else {
-            result.context = sessionInstructions;
-        }
-        
         return result;
     }
 
@@ -71,25 +61,12 @@ export class ResponseFormatter implements IResponseFormatter {
     private formatWithSessionInstructions(result: any, sessionInfo: any): any {
         this.formatSessionInstructions(sessionInfo.sessionId, result);
         
-        if (sessionInfo.isNewSession && !sessionInfo.originalSessionId) {
-            result.newSessionInfo = {
-                sessionId: sessionInfo.sessionId,
-                message: "A new session has been created. This ID must be used for all future requests in this conversation."
-            };
-        } else if (sessionInfo.isNonStandardId) {
-            result.sessionIdCorrection = {
-                originalId: sessionInfo.originalSessionId,
-                correctedId: sessionInfo.sessionId,
-                message: "Your session ID has been standardized. Please use this corrected session ID for all future requests in this conversation."
-            };
-        }
-        
         let responseText = "";
         
-        if (result.sessionIdCorrection) {
-            responseText += `🔄 SESSION ID UPDATED: Please use session ID "${result.sessionIdCorrection.correctedId}" for all future requests in this conversation.\n\n`;
-        } else if (result.newSessionInfo) {
-            responseText += `🆕 SESSION CREATED: Please use session ID "${result.newSessionInfo.sessionId}" for all future requests in this conversation.\n\n`;
+        if (sessionInfo.isNonStandardId) {
+            responseText += `🔄 SESSION ID: ${sessionInfo.sessionId} - MANDATORY: Use this ID in all future requests\n\n`;
+        } else if (sessionInfo.isNewSession) {
+            responseText += `🆕 SESSION ID: ${sessionInfo.sessionId} - MANDATORY: Use this ID in all future requests\n\n`;
         }
         
         responseText += safeStringify(result);

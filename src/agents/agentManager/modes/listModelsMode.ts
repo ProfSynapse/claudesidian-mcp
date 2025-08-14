@@ -116,8 +116,8 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
             'LLM Provider Manager not initialized. Please ensure you have configured at least one LLM provider with valid API keys.',
             undefined,
             undefined,
-            params.sessionId,
-            typeof params.context === 'object' ? JSON.stringify(params.context) : params.context
+            params.context.sessionId,
+            params.context
           );
         }
       }
@@ -213,7 +213,7 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
         undefined,
         undefined,
         undefined,
-        params.sessionId,
+        params.context.sessionId,
         params.context
       );
 
@@ -224,7 +224,7 @@ export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult>
         `Failed to list models: ${error instanceof Error ? error.message : 'Unknown error'}`,
         undefined,
         undefined,
-        params.sessionId,
+        params.context.sessionId,
         params.context
       );
     }

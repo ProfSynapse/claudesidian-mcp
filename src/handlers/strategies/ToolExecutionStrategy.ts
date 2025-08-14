@@ -155,15 +155,28 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             context.fullToolName
         );
 
-        if (this.sessionContextManager && enhancedParams.sessionId) {
+        if (this.sessionContextManager && enhancedParams.context?.sessionId) {
             try {
-                const validatedSessionId = await this.sessionContextManager.validateSessionId(enhancedParams.sessionId);
+                const {id: validatedSessionId, created} = await this.sessionContextManager.validateSessionId(
+                    enhancedParams.context.sessionId, 
+                    enhancedParams.context.sessionDescription
+                );
                 
-                if (validatedSessionId !== enhancedParams.sessionId) {
+                if (validatedSessionId !== enhancedParams.context.sessionId) {
                     enhancedParams._isNonStandardId = true;
-                    enhancedParams._originalSessionId = enhancedParams.sessionId;
-                    enhancedParams.sessionId = validatedSessionId;
-                    logger.systemLog(`Session ID standardized from "${enhancedParams._originalSessionId}" to "${validatedSessionId}"`);
+                    enhancedParams._originalSessionId = enhancedParams.context.sessionId;
+                    enhancedParams.context.sessionId = validatedSessionId;
+                    
+                    if (created) {
+                        logger.systemLog(`Auto-created session "${enhancedParams._originalSessionId}" with ID: ${validatedSessionId}`);
+                    } else {
+                        logger.systemLog(`Session ID standardized from "${enhancedParams._originalSessionId}" to "${validatedSessionId}"`);
+                    }
+                }
+                
+                // Update session description if provided and session already exists
+                if (!created && enhancedParams.context.sessionDescription) {
+                    await this.sessionContextManager.updateSessionDescription(validatedSessionId, enhancedParams.context.sessionDescription);
                 }
             } catch (error) {
                 logger.systemWarn(`Session validation failed: ${getErrorMessage(error)}. Using original ID`);
@@ -171,12 +184,26 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
         }
 
         let processedParams = { ...enhancedParams };
-        if (this.sessionContextManager && processedParams.sessionId) {
-            if (!processedParams.workspaceContext || !processedParams.workspaceContext.workspaceId) {
+        if (this.sessionContextManager && processedParams.context?.sessionId) {
+            // Check if we need to apply workspace context from session manager
+            // Skip if we already have workspaceId in context or workspaceContext
+            const hasWorkspaceId = processedParams.context?.workspaceId || 
+                                   (processedParams.workspaceContext && processedParams.workspaceContext.workspaceId);
+            
+            if (!hasWorkspaceId) {
                 processedParams = this.sessionContextManager.applyWorkspaceContext(
-                    processedParams.sessionId, 
+                    processedParams.context.sessionId, 
                     processedParams
                 );
+            }
+            
+            // If we have workspaceId in context but no workspaceContext, create one for backward compatibility
+            if (processedParams.context?.workspaceId && !processedParams.workspaceContext) {
+                processedParams.workspaceContext = {
+                    workspaceId: processedParams.context.workspaceId,
+                    workspacePath: [],
+                    contextDepth: 'standard'
+                };
             }
         }
 

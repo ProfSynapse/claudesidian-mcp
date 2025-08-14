@@ -202,10 +202,6 @@ export interface LoadStateResult extends CommonResult {
 // Legacy parameter types for backward compatibility
 export interface LoadWorkspaceParameters extends CommonParameters {
   id: string;
-  includeChildren?: boolean;
-  includeFileDetails?: boolean;
-  includeDirectoryStructure?: boolean;
-  includeSessionContext?: boolean;
 }
 
 export interface LoadStateParams extends CommonParameters {
@@ -214,7 +210,6 @@ export interface LoadStateParams extends CommonParameters {
   sessionDescription?: string;
   restorationGoal?: string;
   createContinuationSession?: boolean;
-  contextDepth?: 'minimal' | 'standard' | 'comprehensive';
   tags?: string[];
 }
 

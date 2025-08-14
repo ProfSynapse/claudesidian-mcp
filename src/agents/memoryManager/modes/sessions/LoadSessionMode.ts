@@ -240,13 +240,7 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             const continuationData = {
                 workspaceId: originalSession.workspaceId,
                 name: params.sessionName || `Continuation of "${originalSession.name}"`,
-                description: params.sessionDescription || `Continuing session from ${new Date(originalSession.startTime).toLocaleDateString()}`,
-                sessionGoal: `Continue work from previous session: ${originalSession.name}`,
-                previousSessionId: originalSession.id,
-                tags: [...(originalSession.tags || []), ...(params.tags || [])],
-                isActive: true,
-                toolCalls: 0,
-                startTime: Date.now()
+                description: params.sessionDescription || `Continuing session from previous session: ${originalSession.name}`
             };
 
             const continuationSession = await memoryService.createSession(continuationData);

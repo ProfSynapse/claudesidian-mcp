@@ -161,7 +161,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
             },
             relatedFiles: []
           },
-          sessionId: params.sessionId
+          sessionId: params.context.sessionId
         }
       );
     } catch (error) {

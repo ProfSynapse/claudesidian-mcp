@@ -99,19 +99,24 @@ export abstract class BaseAgent implements IAgent {
       throw new Error(`Mode ${modeSlug} not found in agent ${this.name}`);
     }
     
-    // Session ID is now required for all tool calls
-    if (!params.sessionId) {
-      // Return error if sessionId is missing - it's now a required parameter
+    // Session ID and description are now required for all tool calls (in context)
+    if (!params.context?.sessionId) {
+      // Return error if sessionId is missing - provide helpful message about providing session name
       return {
         success: false,
         error: createErrorMessage('Session ID required: ', 
-          `Mode ${modeSlug} cannot execute without a sessionId.`),
+          `Mode ${modeSlug} requires context.sessionId. Provide a 2-4 word session name or existing session ID in the context block.`),
         data: null
       };
     }
     
+    // sessionDescription is optional but recommended for better session management
+    if (!params.context?.sessionDescription) {
+      console.warn(`[${this.name}] context.sessionDescription not provided for ${modeSlug}. Consider providing a brief description for better session tracking.`);
+    }
+    
     // Store the sessionId on the mode instance for use in prepareResult
-    (mode as any).sessionId = params.sessionId;
+    (mode as any).sessionId = params.context.sessionId;
     
     // If the mode has setParentContext method, use it to propagate workspace context
     // Pass the workspace context even if undefined, as the mode's setParentContext
@@ -212,14 +217,19 @@ export abstract class BaseAgent implements IAgent {
         }
       }
       
-      // Ensure sessionId is passed to the handoff
-      const sessionId = originalResult.sessionId || handoff.parameters.sessionId;
+      // Ensure sessionId is passed to the handoff (now from context)
+      const sessionId = (originalResult.context && typeof originalResult.context === 'object') 
+        ? originalResult.context.sessionId 
+        : handoff.parameters.context?.sessionId;
       
       // Create the handoff parameters
       const handoffParams = {
         ...handoff.parameters,
         workspaceContext: handoffWorkspaceContext,
-        sessionId: sessionId
+        context: {
+          ...handoff.parameters.context,
+          sessionId: sessionId
+        }
       };
       
       // Execute the target mode
@@ -251,8 +261,7 @@ export abstract class BaseAgent implements IAgent {
       return {
         success: false,
         error: createErrorMessage('Handoff error: ', error),
-        workspaceContext: originalResult.workspaceContext,
-        sessionId: originalResult.sessionId
+        workspaceContext: originalResult.workspaceContext
       };
     }
   }
@@ -421,7 +430,7 @@ export abstract class BaseAgent implements IAgent {
       // Use utility function to prepare parameters with proper context inheritance
       const callParams = prepareModeCallParams(
         modeCall, 
-        originalResult.sessionId, 
+        (originalResult.context && typeof originalResult.context === 'object') ? originalResult.context.sessionId : undefined, 
         currentWorkspaceContext || originalResult.workspaceContext
       );
       
@@ -459,7 +468,6 @@ export abstract class BaseAgent implements IAgent {
         startTime,
         endTime,
         duration,
-        sessionId: originalResult.sessionId,
         workspaceContext: currentWorkspaceContext
       };
     }

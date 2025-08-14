@@ -385,7 +385,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
     return {
       dateRange: params.dateRange,
       toolCallFilters: params.toolCallFilters,
-      sessionId: params.sessionId,
+      sessionId: params.context.sessionId,
       workspaceId: params.workspace || params.workspaceId,
       filterBySession: params.filterBySession
     };

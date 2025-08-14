@@ -183,14 +183,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             const sessionData = {
                 workspaceId: workspaceData.workspaceId,
                 name: params.name || `Session ${new Date().toLocaleString()}`,
-                description: params.description || '',
-                sessionGoal: params.sessionGoal,
-                previousSessionId: params.previousSessionId,
-                context: params.context,
-                tags: params.tags || [],
-                isActive: true,
-                toolCalls: 0,
-                startTime: Date.now()
+                description: params.description || ''
             };
 
             // Use specific session ID if provided
@@ -236,8 +229,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             return {
                 summary,
                 associatedNotes: [],
-                sessionCreatedAt: new Date().toISOString(),
-                tags: params.tags || []
+                sessionCreatedAt: new Date().toISOString()
             };
 
         } catch (error) {
@@ -245,8 +237,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             return {
                 summary: 'Session created successfully',
                 associatedNotes: [],
-                sessionCreatedAt: new Date().toISOString(),
-                tags: params.tags || []
+                sessionCreatedAt: new Date().toISOString()
             };
         }
     }
@@ -282,7 +273,7 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
                 activityType: 'checkpoint',
                 importance: 0.8,
                 timestamp: Date.now(),
-                tags: params.tags || [],
+                tags: [],
                 metadata: {
                     tool: 'createSession',
                     params: { sessionName: params.name },
@@ -317,9 +308,8 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
         const resultData: any = {
             sessionId: sessionData.id,
             name: sessionData.name,
+            description: sessionData.description,
             workspaceId: workspaceData.workspaceId,
-            startTime: sessionData.startTime,
-            previousSessionId: sessionData.previousSessionId,
             sessionContext: contextResult
         };
 

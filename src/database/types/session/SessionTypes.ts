@@ -7,6 +7,7 @@ import { WorkspaceContext } from '../workspace/WorkspaceTypes';
 
 /**
  * Session tracking for workspace activities
+ * Simplified to only essential fields for clean auto-session creation
  */
 export interface WorkspaceSession {
   /**
@@ -20,21 +21,6 @@ export interface WorkspaceSession {
   workspaceId: string;
   
   /**
-   * Session start time
-   */
-  startTime: number;
-  
-  /**
-   * Session end time (if session is complete)
-   */
-  endTime?: number;
-  
-  /**
-   * Whether the session is currently active
-   */
-  isActive: boolean;
-  
-  /**
    * Optional session name
    */
   name?: string;
@@ -43,21 +29,6 @@ export interface WorkspaceSession {
    * Optional session description
    */
   description?: string;
-  
-  /**
-   * Session tags for categorization and search
-   */
-  tags?: string[];
-  
-  /**
-   * Number of tool calls in this session
-   */
-  toolCalls: number;
-  
-  /**
-   * Auto-generated summary of session activity
-   */
-  activitySummary?: string;
 }
 
 /**

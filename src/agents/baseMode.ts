@@ -262,7 +262,7 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
             startTime: Date.now(),
             endTime: Date.now(),
             duration: 0,
-            sessionId: currentResult.sessionId
+            sessionId: (currentResult.context && typeof currentResult.context === 'object') ? currentResult.context.sessionId : undefined
           })),
           handoffSummary: {
             successCount: 0,
@@ -298,7 +298,7 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
             startTime: Date.now(),
             endTime: Date.now(),
             duration: 0,
-            sessionId: currentResult.sessionId
+            sessionId: (currentResult.context && typeof currentResult.context === 'object') ? currentResult.context.sessionId : undefined
           })),
           handoffSummary: {
             successCount: 0,

@@ -48,15 +48,10 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       const finalWorkspaceId = workspaceId || 'global-workspace-default';
 
       // Get sessions
-      const sessions = await memoryService.getSessions(finalWorkspaceId, params.activeOnly);
+      const sessions = await memoryService.getSessions(finalWorkspaceId);
 
-      // Filter by tags if provided
-      let filteredSessions = sessions;
-      if (params.tags && params.tags.length > 0) {
-        filteredSessions = sessions.filter(session => 
-          session.tags && params.tags!.some(tag => session.tags!.includes(tag))
-        );
-      }
+      // No tag filtering needed since tags are not part of sessions anymore
+      const filteredSessions = sessions;
 
       // Sort sessions
       const sortedSessions = this.sortSessions(filteredSessions, params.order || 'desc');
@@ -69,8 +64,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
         ? await this.enhanceSessionsWithWorkspaceNames(limitedSessions, workspaceService)
         : limitedSessions.map(session => ({
             ...session,
-            workspaceName: 'Unknown Workspace',
-            created: session.startTime
+            workspaceName: 'Unknown Workspace'
           }));
 
       // Prepare result
@@ -86,8 +80,6 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
           filtered: limitedSessions.length,
           workspaceId: workspaceId,
           filters: {
-            activeOnly: params.activeOnly || false,
-            tags: params.tags || [],
             order: params.order || 'desc',
             limit: params.limit
           }
@@ -103,13 +95,13 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
   }
 
   /**
-   * Sort sessions by the specified order
+   * Sort sessions by the specified order (by name since we don't have timestamps)
    */
   private sortSessions(sessions: any[], order: 'asc' | 'desc'): any[] {
     return sessions.sort((a, b) => {
-      const timeA = a.startTime || 0;
-      const timeB = b.startTime || 0;
-      return order === 'asc' ? timeA - timeB : timeB - timeA;
+      const nameA = (a.name || '').toLowerCase();
+      const nameB = (b.name || '').toLowerCase();
+      return order === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
     });
   }
 
@@ -136,8 +128,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
 
       return {
         ...session,
-        workspaceName,
-        created: session.startTime
+        workspaceName
       };
     }));
 
@@ -167,15 +158,6 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
     return {
       type: 'object',
       properties: {
-        activeOnly: {
-          type: 'boolean',
-          description: 'Only return active sessions'
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Filter by tags'
-        },
         limit: {
           type: 'number',
           description: 'Maximum number of sessions to return'
@@ -183,7 +165,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
         order: {
           type: 'string',
           enum: ['asc', 'desc'],
-          description: 'Sort order by creation date'
+          description: 'Sort order by name'
         },
         sessionId: {
           type: 'string',

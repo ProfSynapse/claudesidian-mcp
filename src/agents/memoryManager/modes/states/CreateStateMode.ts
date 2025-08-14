@@ -21,6 +21,7 @@ import { MemoryService } from "../../services/MemoryService";
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from "../../services/WorkspaceService";
 import { createServiceIntegration, ValidationError } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
+import { CommonParameters } from '../../../../types/mcp/AgentTypes';
 
 /**
  * Consolidated CreateStateMode - combines all state creation functionality
@@ -113,7 +114,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
                 persistResult.savedSnapshot,
                 snapshotResult,
                 workspaceResult.data,
-                startTime
+                startTime,
+                params
             );
 
         } catch (error) {
@@ -256,7 +258,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             // Build WorkspaceStateSnapshot for storage following the architecture design
             const snapshotData = {
                 workspaceId: workspaceId,
-                sessionId: params.targetSessionId || params.sessionId || 'current',
+                sessionId: params.targetSessionId || params.context.sessionId || 'current',
                 timestamp: now,
                 name: params.name,
                 created: now,
@@ -335,7 +337,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         savedSnapshot: any,
         snapshotResult: any,
         workspaceData: any,
-        startTime: number
+        startTime: number,
+        params: CreateStateParams
     ): StateResult {
         const { workspace } = workspaceData;
         
@@ -367,7 +370,17 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         };
 
         const contextString = `State "${savedSnapshot.name}" created and persisted successfully with ID: ${savedSnapshot.id}`;
-        const workspaceContext = this.getInheritedWorkspaceContext({ workspaceContext: { workspaceId: workspaceData.workspaceId } });
+        const workspaceContext = this.getInheritedWorkspaceContext({ 
+            context: { 
+                sessionId: params.context.sessionId,
+                sessionDescription: params.context.sessionDescription,
+                sessionMemory: params.context.sessionMemory,
+                toolContext: params.context.toolContext,
+                primaryGoal: params.context.primaryGoal,
+                subgoal: params.context.subgoal
+            },
+            workspaceContext: { workspaceId: workspaceData.workspaceId } 
+        } as CommonParameters);
 
         return this.prepareResult(
             true,

@@ -54,14 +54,12 @@ export interface ModeCall {
  */
 export interface CommonParameters {
   /**
-   * Session identifier to track related tool calls
+   * Rich contextual information for this tool call including session management
    */
-  sessionId?: string;
-  
-  /**
-   * Rich contextual information for this tool call
-   */
-  context?: {
+  context: {
+    sessionId: string;
+    workspaceId?: string;
+    sessionDescription: string;
     sessionMemory: string;
     toolContext: string;
     primaryGoal: string;
@@ -73,12 +71,6 @@ export interface CommonParameters {
    * Can be either an object with workspaceId or a JSON string representation
    */
   workspaceContext?: WorkspaceContext | string;
-  
-  /**
-   * Simple workspace ID for focused search modes
-   * Defaults to "global-workspace-default" if not specified
-   */
-  workspaceId?: string;
   
   /**
    * Optional handoff to another agent/mode for workflow chaining
@@ -107,15 +99,13 @@ export interface CommonResult {
   data?: any;
   
   /**
-   * Session identifier used for tracking related operations
-   */
-  sessionId?: string;
-  
-  /**
-   * Contextual information for this tool call
+   * Contextual information for this tool call including session management
    * Results can contain string context for backward compatibility
    */
   context?: {
+    sessionId: string;
+    workspaceId?: string;
+    sessionDescription: string;
     sessionMemory: string;
     toolContext: string;
     primaryGoal: string;

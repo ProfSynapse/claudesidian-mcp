@@ -1,5 +1,6 @@
 import { SimpleMemoryService } from '../memory/SimpleMemoryService';
 import { SessionService } from '../session/SessionService';
+import { DefaultWorkspaceManager } from '../workspace/DefaultWorkspaceManager';
 
 // Heavy dependencies - loaded on upgrade
 type MemoryTraceService = any;
@@ -115,7 +116,8 @@ export class ToolCallCaptureService {
 
   constructor(
     private simpleMemoryService: SimpleMemoryService,
-    private sessionService: SessionService
+    private sessionService: SessionService,
+    private defaultWorkspaceManager?: DefaultWorkspaceManager
   ) {
     // Start with simple in-memory storage
     this.memoryStorage = simpleMemoryService;
@@ -257,32 +259,53 @@ export class ToolCallCaptureService {
   }
 
   private async extractSessionContext(request: ToolCallRequest): Promise<SessionContext> {
-    // Extract workspace context from request parameters
-    const workspaceContext = request.workspaceContext || 
-                           request.params?.workspaceContext;
+    // Extract workspace ID from multiple sources with priority order:
+    // 1. context.workspaceId (new primary method)
+    // 2. workspaceContext.workspaceId (legacy fallback)
+    // 3. 'default' (fallback when none specified)
+    
+    let workspaceId: string | undefined;
+    let workspacePath: string[] | undefined;
+    
+    // Check context first (new primary method)
+    if (request.params?.context?.workspaceId) {
+      workspaceId = request.params.context.workspaceId;
+    } 
+    // Fallback to legacy workspaceContext
+    else if (request.workspaceContext?.workspaceId) {
+      workspaceId = request.workspaceContext.workspaceId;
+      workspacePath = request.workspaceContext.workspacePath;
+    }
+    // Fallback to params.workspaceContext
+    else if (request.params?.workspaceContext?.workspaceId) {
+      const wc = typeof request.params.workspaceContext === 'string' 
+        ? JSON.parse(request.params.workspaceContext) 
+        : request.params.workspaceContext;
+      workspaceId = wc.workspaceId;
+      workspacePath = wc.workspacePath;
+    }
 
-    if (!workspaceContext?.workspaceId) {
-      // No workspace context - create minimal session info
+    if (!workspaceId) {
+      // No workspace ID found - use default workspace manager
+      const defaultId = this.defaultWorkspaceManager?.getDefaultWorkspaceId() || 'default';
       return {
-        workspaceId: 'unknown',
+        workspaceId: defaultId,
         sessionId: 'auto-generated',
         sessionCreated: false
       };
     }
 
     // Get or create session for this workspace
-    let sessionId = workspaceContext.sessionId;
+    let sessionId = request.params?.context?.sessionId;
     let sessionCreated = false;
 
     if (!sessionId) {
       try {
         // Auto-create session for this tool call
         const newSession = await this.sessionService.createSession({
-          workspaceId: workspaceContext.workspaceId,
+          workspaceId: workspaceId,
           name: `Auto-session for ${request.agent}.${request.mode}`,
-          isActive: true,
-          toolCalls: 0,
-          startTime: Date.now()
+          description: `Automatically created for ${request.agent}.${request.mode} operation`
         });
 
         sessionId = newSession.id;
@@ -293,18 +316,18 @@ export class ToolCallCaptureService {
       }
     }
 
-    // Increment tool call counter for session
+    // Tool call counter increment no longer needed since we removed toolCalls field
     try {
-      await this.sessionService.incrementToolCalls?.(sessionId);
+      // No action needed for tool calls counting
     } catch (error) {
       console.warn('[ToolCallCapture] Failed to increment tool call count:', error);
     }
 
     return {
-      workspaceId: workspaceContext.workspaceId,
+      workspaceId: workspaceId,
       sessionId: sessionId,
       sessionCreated: sessionCreated,
-      workspacePath: workspaceContext.workspacePath
+      workspacePath: workspacePath
     };
   }
 

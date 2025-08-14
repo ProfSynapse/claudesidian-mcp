@@ -198,7 +198,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
           },
           relatedFiles: [params.filePath]
         },
-        sessionId: params.sessionId || '',
+        sessionId: params.context.sessionId || '',
         timestamp: Date.now(),
         importance: 0.5,
         contextLevel: 'workspace',

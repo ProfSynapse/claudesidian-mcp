@@ -49,8 +49,8 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
 
       // Filter by session ID if provided
       let filteredStates = states;
-      if (params.sessionId) {
-        filteredStates = states.filter(state => state.sessionId === params.sessionId);
+      if (params.context.sessionId) {
+        filteredStates = states.filter(state => state.sessionId === params.context.sessionId);
       }
 
       // Filter by tags if provided
@@ -89,7 +89,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
           filtered: limitedStates.length,
           workspaceId: workspaceId,
           filters: {
-            sessionId: params.sessionId,
+            sessionId: params.context.sessionId,
             tags: params.tags || [],
             order: params.order || 'desc',
             limit: params.limit,

@@ -91,8 +91,6 @@ export class MemoryManagerAgent extends BaseAgent {
     this.registerMode(new ListWorkspacesMode(this));
     this.registerMode(new LoadWorkspaceMode(this));
     this.registerMode(new UpdateWorkspaceMode(this));
-    // TODO: Add remaining workspace modes when created
-    // this.registerMode(new ManageWorkspaceMode(this));
   }
 
   /**
@@ -208,7 +206,7 @@ export class MemoryManagerAgent extends BaseAgent {
             return super.executeMode(modeSlug, params);
           }
           
-          const activeSessions = await memoryService.getSessions(workspaceId, true);
+          const activeSessions = await memoryService.getSessions(workspaceId);
           
           if (activeSessions && activeSessions.length > 0) {
             sessionId = activeSessions[0].id;
@@ -220,9 +218,7 @@ export class MemoryManagerAgent extends BaseAgent {
             const newSession = await memoryService.createSession({
               workspaceId: workspaceId,
               name: `Auto-created session for ${modeSlug}`,
-              isActive: true,
-              toolCalls: 0,
-              startTime: Date.now()
+              description: `Automatically created for ${modeSlug} operation`
             });
             
             sessionId = newSession.id;

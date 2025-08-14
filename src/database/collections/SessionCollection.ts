@@ -1,6 +1,6 @@
 import { BaseChromaCollection } from '../providers/chroma/ChromaCollections';
 import { IVectorStore } from '../interfaces/IVectorStore';
-import { WorkspaceSession } from '../workspace-types';
+import { WorkspaceSession } from '../types/session/SessionTypes';
 import { EmbeddingService } from '../services/core/EmbeddingService';
 import { generateSessionId } from '../../utils/sessionUtils';
 
@@ -43,16 +43,11 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
     // Create a text representation for embedding
     const document = this.sessionToDocument(session);
     
-    // Extract important metadata fields for filtering and searching
+    // Extract essential metadata fields for filtering and searching
     const metadata = {
       workspaceId: session.workspaceId,
-      startTime: session.startTime,
-      endTime: session.endTime || 0,
-      isActive: session.isActive,
       name: session.name || '',
       description: session.description || '',
-      toolCalls: session.toolCalls,
-      activitySummary: session.activitySummary || '',
       
       // Metadata field for searching
       isSession: true,
@@ -94,10 +89,7 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
     if (!storage.metadata) {
       return {
         id: storage.id,
-        workspaceId: '',
-        startTime: Date.now(),
-        isActive: false,
-        toolCalls: 0
+        workspaceId: ''
       };
     }
     
@@ -105,13 +97,8 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
     return {
       id: storage.id,
       workspaceId: storage.metadata.workspaceId,
-      startTime: storage.metadata.startTime,
-      endTime: storage.metadata.endTime > 0 ? storage.metadata.endTime : undefined,
-      isActive: storage.metadata.isActive,
       name: storage.metadata.name || undefined,
-      description: storage.metadata.description || undefined,
-      toolCalls: storage.metadata.toolCalls,
-      activitySummary: storage.metadata.activitySummary || undefined
+      description: storage.metadata.description || undefined
     };
   }
   
@@ -129,18 +116,6 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
     }
     
     document += `Workspace: ${session.workspaceId}\n`;
-    document += `Status: ${session.isActive ? 'Active' : 'Completed'}\n`;
-    document += `Started: ${new Date(session.startTime).toISOString()}\n`;
-    
-    if (session.endTime) {
-      document += `Ended: ${new Date(session.endTime).toISOString()}\n`;
-    }
-    
-    document += `Tool Calls: ${session.toolCalls}\n`;
-    
-    if (session.activitySummary) {
-      document += `Summary: ${session.activitySummary}\n`;
-    }
     
     return document;
   }
@@ -185,12 +160,10 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
     const id = session.id || generateSessionId();
     
     const newSession: WorkspaceSession = {
-      ...session,
       id,
       workspaceId: session.workspaceId || 'default-workspace',
-      startTime: session.startTime || Date.now(),
-      isActive: session.isActive !== undefined ? session.isActive : true,
-      toolCalls: session.toolCalls || 0
+      name: session.name,
+      description: session.description
     };
     
     await this.add(newSession);
@@ -200,67 +173,13 @@ export class SessionCollection extends BaseChromaCollection<WorkspaceSession> {
   /**
    * Get sessions for a workspace
    * @param workspaceId Workspace ID
-   * @param activeOnly Only return active sessions
    * @returns Sessions for the workspace
    */
-  async getSessionsByWorkspace(workspaceId: string, activeOnly = false): Promise<WorkspaceSession[]> {
-    const where: Record<string, any> = { workspaceId };
-    
-    if (activeOnly) {
-      where.isActive = true;
-    }
-    
+  async getSessionsByWorkspace(workspaceId: string): Promise<WorkspaceSession[]> {
     const sessions = await this.getAll({
-      where,
-      sortBy: 'startTime',
-      sortOrder: 'desc'
+      where: { workspaceId }
     });
     
     return sessions;
-  }
-  
-  /**
-   * Get all active sessions across all workspaces
-   * @returns All active sessions
-   */
-  async getActiveSessions(): Promise<WorkspaceSession[]> {
-    const sessions = await this.getAll({
-      where: { isActive: true },
-      sortBy: 'startTime',
-      sortOrder: 'desc'
-    });
-    
-    return sessions;
-  }
-  
-  /**
-   * End an active session
-   * @param id Session ID
-   * @param summary Optional session summary
-   */
-  async endSession(id: string, summary?: string): Promise<void> {
-    const session = await this.get(id);
-    
-    if (session && session.isActive) {
-      await this.update(id, {
-        isActive: false,
-        endTime: Date.now(),
-        activitySummary: summary
-      });
-    }
-  }
-  
-  /**
-   * Increment tool call count for a session
-   * @param id Session ID
-   */
-  async incrementToolCalls(id: string): Promise<void> {
-    const session = await this.get(id);
-    
-    if (session) {
-      await this.update(id, {
-        toolCalls: session.toolCalls + 1
-      });
-    }
   }
 }

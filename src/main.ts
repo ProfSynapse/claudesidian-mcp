@@ -21,6 +21,7 @@ import type { CacheManager } from './database/services/cache/CacheManager';
 import type { ProcessedFilesStateManager } from './database/services/indexing/state/ProcessedFilesStateManager';
 import type { MemoryTraceService } from './agents/memoryManager/services/MemoryTraceService';
 import type { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
+import { DefaultWorkspaceManager } from './services/workspace/DefaultWorkspaceManager';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
@@ -28,6 +29,7 @@ export default class ClaudesidianPlugin extends Plugin {
     private serviceManager!: ServiceManager;
     private serviceAccessMixin!: ServiceAccessMixin;
     private lifecycleManager!: PluginLifecycleManager;
+    private defaultWorkspaceManager!: DefaultWorkspaceManager;
     
     // Service properties - delegated to ServiceAccessMixin for consistent access
     public get vectorStore(): IVectorStore | null { 
@@ -70,6 +72,10 @@ export default class ClaudesidianPlugin extends Plugin {
         return this.serviceAccessMixin?.toolCallCaptureService || null; 
     }
     
+    public getDefaultWorkspaceManager(): DefaultWorkspaceManager | null {
+        return this.defaultWorkspaceManager || null;
+    }
+    
     /**
      * Get a service asynchronously, waiting for it to be ready if needed
      */
@@ -103,6 +109,10 @@ export default class ClaudesidianPlugin extends Plugin {
             
             // PHASE 2: Create service access mixin for typed service access
             this.serviceAccessMixin = new ServiceAccessMixin(this.serviceManager);
+            
+            // Initialize default workspace manager
+            this.defaultWorkspaceManager = new DefaultWorkspaceManager(this.app);
+            await this.defaultWorkspaceManager.initialize();
             
             // PHASE 3: Initialize connector skeleton (no agents yet)
             this.connector = new MCPConnector(this.app, this);

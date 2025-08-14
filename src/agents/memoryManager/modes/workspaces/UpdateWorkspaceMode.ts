@@ -13,10 +13,10 @@ import { BaseMode } from '../../../baseMode';
 import { MemoryManagerAgent } from '../../memoryManager';
 import { createServiceIntegration } from '../../services/ValidationService';
 import { createErrorMessage } from '../../../../utils/errorUtils';
-import { CommonResult } from '../../../../types/mcp/AgentTypes';
+import { CommonResult, CommonParameters } from '../../../../types/mcp/AgentTypes';
 
 // Define parameter and result types for workspace updates
-export interface UpdateWorkspaceParameters {
+export interface UpdateWorkspaceParameters extends CommonParameters {
     workspaceId: string;
     name?: string;
     description?: string;

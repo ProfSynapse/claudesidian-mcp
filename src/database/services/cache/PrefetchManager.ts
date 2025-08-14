@@ -40,7 +40,7 @@ export class PrefetchManager extends EventEmitter {
             // Get recent sessions for this workspace
             const sessions = await this.memoryService.getSessions(workspaceId);
             const recentSessions = sessions
-                .sort((a, b) => b.startTime - a.startTime)
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
                 .slice(0, 5);
 
             // Queue prefetch for recent sessions
