@@ -64,9 +64,9 @@ export class ResponseFormatter implements IResponseFormatter {
         let responseText = "";
         
         if (sessionInfo.isNonStandardId) {
-            responseText += `🔄 SESSION ID: ${sessionInfo.sessionId} - MANDATORY: Use this ID in all future requests\n\n`;
+            responseText += `🔄 SESSION ID: ${sessionInfo.sessionId} - MANDATORY: Use this ID in all future requests, do NOT use the name.\n\n`;
         } else if (sessionInfo.isNewSession) {
-            responseText += `🆕 SESSION ID: ${sessionInfo.sessionId} - MANDATORY: Use this ID in all future requests\n\n`;
+            responseText += `🆕 SESSION ID: ${sessionInfo.sessionId} - MANDATORY: Use this ID in all future requests, do NOT use the name.\n\n`;
         }
         
         responseText += safeStringify(result);

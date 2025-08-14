@@ -19,7 +19,7 @@ export function generateSessionId(): string {
  * @returns Formatted instruction string
  */
 export function formatSessionInstructions(sessionId: string): string {
-    return `🔄 SESSION ID: ${sessionId} - MANDATORY:Use this ID in all future requests`;
+    return `🔄 SESSION ID: ${sessionId} - MANDATORY: Use this ID in all future requests, do NOT use the name.`;
 }
 
 /**
