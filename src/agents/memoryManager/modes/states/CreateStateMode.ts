@@ -22,6 +22,7 @@ import { WorkspaceService, GLOBAL_WORKSPACE_ID } from "../../services/WorkspaceS
 import { createServiceIntegration, ValidationError } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 import { CommonParameters } from '../../../../types/mcp/AgentTypes';
+import { addRecommendations } from '../../../../utils/recommendationUtils';
 
 /**
  * Consolidated CreateStateMode - combines all state creation functionality
@@ -365,8 +366,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             performance: {
                 totalDuration: Date.now() - startTime,
                 persistenceVerified: true
-            },
-            recommendation: "STRONGLY RECOMMENDED: Use the updateWorkspace tool to ensure you have the latest workspace information (such as preferences, workflow, etc.) based on this conversation before proceeding with any tasks."
+            }
         };
 
         const contextString = `State "${savedSnapshot.name}" created and persisted successfully with ID: ${savedSnapshot.id}`;
@@ -382,13 +382,21 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             workspaceContext: { workspaceId: workspaceData.workspaceId } 
         } as CommonParameters);
 
-        return this.prepareResult(
+        const result = this.prepareResult(
             true,
             resultData,
             undefined,
             contextString,
             workspaceContext || undefined
         );
+
+        // Add standardized recommendation
+        return addRecommendations(result, [
+            {
+                type: "workspace_update",
+                message: "STRONGLY RECOMMENDED: Use the updateWorkspace tool to ensure you have the latest workspace information (such as preferences, workflow, etc.) based on this conversation before proceeding with any tasks."
+            }
+        ]);
     }
 
     /**

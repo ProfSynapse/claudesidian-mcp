@@ -3,6 +3,8 @@ import { CreatePromptParams, CreatePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
+import { addRecommendations } from '../../../utils/recommendationUtils';
+import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
 /**
  * Mode for creating a new custom prompt
@@ -55,7 +57,8 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
         isEnabled
       });
       
-      return this.prepareResult(true, newPrompt, undefined, extractContextFromParams(params));
+      const result = this.prepareResult(true, newPrompt, undefined, extractContextFromParams(params));
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.createPrompt);
     } catch (error) {
       return this.prepareResult(false, null, `Failed to create prompt: ${error}`, extractContextFromParams(params));
     }
@@ -120,6 +123,18 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
             isEnabled: { type: 'boolean' }
           },
           required: ['id', 'name', 'description', 'prompt', 'isEnabled']
+        },
+        recommendations: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string' },
+              message: { type: 'string' }
+            },
+            required: ['type', 'message']
+          },
+          description: 'Workspace-agent optimization recommendations'
         }
       }
     };

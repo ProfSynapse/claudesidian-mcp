@@ -17,6 +17,8 @@ import {
     BudgetManager,
     ServiceDependencies
 } from './services';
+import { addRecommendations } from '../../../../utils/recommendationUtils';
+import { AGENT_MANAGER_RECOMMENDATIONS } from '../../recommendations';
 
 export interface ExecutePromptParams extends CommonParameters {
     agent?: string;
@@ -221,7 +223,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                 actionPerformed: actionResult.actionPerformed
             };
 
-            return createResult<ExecutePromptResult>(
+            const result = createResult<ExecutePromptResult>(
                 true,
                 resultData,
                 undefined,
@@ -230,6 +232,8 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                 params.context.sessionId,
                 params.context
             );
+            
+            return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.executePrompt);
 
         } catch (error) {
             return createResult<ExecutePromptResult>(
@@ -360,6 +364,18 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                         }
                     },
                     required: ['response', 'model', 'provider', 'agentUsed']
+                },
+                recommendations: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            type: { type: 'string' },
+                            message: { type: 'string' }
+                        },
+                        required: ['type', 'message']
+                    },
+                    description: 'Workspace-agent optimization recommendations'
                 }
             }
         };

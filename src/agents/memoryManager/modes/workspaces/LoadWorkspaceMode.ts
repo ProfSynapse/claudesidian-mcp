@@ -154,6 +154,9 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Fetch states for this workspace
       const states = await this.fetchWorkspaceStates(workspace.id, memoryService);
       
+      // Fetch agent data if workspace has associated agents
+      const agent = await this.fetchWorkspaceAgent(workspace);
+      
       // Update workspace context
       const workspacePathResult = await this.buildWorkspacePath(workspace.rootFolder);
       const workspaceContext = {
@@ -170,6 +173,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           preferences: preferences,
           sessions: sessions,
           states: states,
+          ...(agent && { agent: agent })
         },
         workspaceContext: workspaceContext
       };
@@ -585,6 +589,55 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       return [];
     }
   }
+
+  /**
+   * Fetch workspace agent data if available
+   */
+  private async fetchWorkspaceAgent(workspace: ProjectWorkspace): Promise<{
+    id: string;
+    name: string;
+    systemPrompt: string;
+  } | null> {
+    try {
+      // Check if workspace has associated agents
+      if (!workspace.context?.agents || workspace.context.agents.length === 0) {
+        return null;
+      }
+
+      // Get the first agent (primary workspace agent)
+      const agentRef = workspace.context.agents[0];
+      
+      // Get CustomPromptStorageService through plugin's agentManager
+      const plugin = this.agent.getApp().plugins.getPlugin('claudesidian-mcp') as any;
+      if (!plugin || !plugin.agentManager) {
+        console.warn('[LoadWorkspaceMode] AgentManager not available');
+        return null;
+      }
+      
+      const agentManagerAgent = plugin.agentManager.getAgent('agentManager');
+      if (!agentManagerAgent || !agentManagerAgent.storageService) {
+        console.warn('[LoadWorkspaceMode] AgentManagerAgent or storage service not available');
+        return null;
+      }
+
+      // Fetch agent by name
+      const agent = agentManagerAgent.storageService.getPromptByName(agentRef.name);
+      if (!agent) {
+        console.warn(`[LoadWorkspaceMode] Agent '${agentRef.name}' not found in storage`);
+        return null;
+      }
+
+      return {
+        id: agent.id,
+        name: agent.name,
+        systemPrompt: agent.prompt
+      };
+
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Failed to fetch workspace agent:', error);
+      return null;
+    }
+  }
   
   /**
    * Get the parameter schema
@@ -702,6 +755,25 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                 required: ['id', 'name', 'sessionId', 'created']
               },
               description: 'States in this workspace'
+            },
+            agent: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'string',
+                  description: 'Agent ID'
+                },
+                name: {
+                  type: 'string',
+                  description: 'Agent name'
+                },
+                systemPrompt: {
+                  type: 'string',
+                  description: 'Agent system prompt'
+                }
+              },
+              required: ['id', 'name', 'systemPrompt'],
+              description: 'Associated workspace agent (if available)'
             }
           }
         },

@@ -3,6 +3,8 @@ import { ListPromptsParams, ListPromptsResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
+import { addRecommendations } from '../../../utils/recommendationUtils';
+import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
 /**
  * Mode for listing custom prompts
@@ -51,12 +53,14 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
       // Add warning message about execute mode
       const warningMessage = "IMPORTANT: Do not use the executePrompt mode or run any tasks automatically when working with these agents. Only take on their persona and respond in character. If the user wants you to actually execute tasks or use the executePrompt functionality, they must explicitly ask you to do so.";
       
-      return this.prepareResult(true, {
+      const result = this.prepareResult(true, {
         prompts: promptList,
         totalCount: allPrompts.length,
         enabledCount: enabledPrompts.length,
         message: warningMessage
       }, undefined, extractContextFromParams(params));
+      
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.listPrompts);
     } catch (error) {
       return this.prepareResult(false, null, `Failed to list prompts: ${error}`, extractContextFromParams(params));
     }

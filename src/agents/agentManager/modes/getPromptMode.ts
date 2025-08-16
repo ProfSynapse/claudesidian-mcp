@@ -3,6 +3,8 @@ import { GetPromptParams, GetPromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
+import { addRecommendations } from '../../../utils/recommendationUtils';
+import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
 /**
  * Mode for getting a specific custom prompt
@@ -67,7 +69,8 @@ IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Onl
         message: message
       };
       
-      return this.prepareResult(true, resultWithMessage, undefined, extractContextFromParams(params));
+      const result = this.prepareResult(true, resultWithMessage, undefined, extractContextFromParams(params));
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.getPrompt);
     } catch (error) {
       return this.prepareResult(false, null, `Failed to get prompt: ${error}`, extractContextFromParams(params));
     }

@@ -25,6 +25,8 @@ import {
   ActionExecutor
 } from './services';
 import { PromptParser } from './utils';
+import { addRecommendations } from '../../../../utils/recommendationUtils';
+import { AGENT_MANAGER_RECOMMENDATIONS } from '../../recommendations';
 
 /**
  * Refactored batch mode for executing multiple LLM prompts concurrently
@@ -221,7 +223,7 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         params.prompts.length
       );
       
-      return createResult<BatchExecutePromptResult>(
+      const result = createResult<BatchExecutePromptResult>(
         processedResults.success,
         processedResults,
         processedResults.error,
@@ -230,6 +232,8 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         params.context.sessionId,
         params.context
       );
+      
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.batchExecutePrompt);
       
     } catch (error) {
       console.error('Batch LLM prompt execution failed:', error);

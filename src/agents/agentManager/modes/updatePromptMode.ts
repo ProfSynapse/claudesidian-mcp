@@ -3,6 +3,8 @@ import { UpdatePromptParams, UpdatePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema } from '../../../utils/schemaUtils';
 import { extractContextFromParams } from '../../../utils/contextUtils';
+import { addRecommendations } from '../../../utils/recommendationUtils';
+import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
 /**
  * Mode for updating an existing custom prompt
@@ -75,7 +77,8 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       // Update the prompt
       const updatedPrompt = await this.storageService.updatePrompt(id.trim(), updates);
       
-      return this.prepareResult(true, updatedPrompt, undefined, extractContextFromParams(params));
+      const result = this.prepareResult(true, updatedPrompt, undefined, extractContextFromParams(params));
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.updatePrompt);
     } catch (error) {
       return this.prepareResult(false, null, `Failed to update prompt: ${error}`, extractContextFromParams(params));
     }
@@ -144,6 +147,18 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
             isEnabled: { type: 'boolean' }
           },
           required: ['id', 'name', 'description', 'prompt', 'isEnabled']
+        },
+        recommendations: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string' },
+              message: { type: 'string' }
+            },
+            required: ['type', 'message']
+          },
+          description: 'Workspace-agent optimization recommendations'
         }
       }
     };
