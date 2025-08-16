@@ -5,6 +5,8 @@ import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
 import { MemoryService } from '../../memoryManager/services/MemoryService';
+import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
  * Mode for creating a new file with content
@@ -63,12 +65,16 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       const result = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
+      // Generate nudges based on file creation
+      const nudges = this.generateCreateContentNudges(params, resultData);
+      const resultWithNudges = addRecommendations(result, nudges);
+      
       // Handle handoff if specified
       if (handoff) {
-        return this.handleHandoff(handoff, result);
+        return this.handleHandoff(handoff, resultWithNudges);
       }
       
-      return result;
+      return resultWithNudges;
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error creating file: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
@@ -221,5 +227,23 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
     } catch (error) {
       console.error('Failed to record create content activity:', getErrorMessage(error));
     }
+  }
+
+  /**
+   * Generate nudges for file creation
+   */
+  private generateCreateContentNudges(params: CreateContentParams, resultData: { filePath: string }): Recommendation[] {
+    const nudges: Recommendation[] = [];
+
+    // Always suggest Obsidian features for new files
+    nudges.push(NudgeHelpers.suggestObsidianFeatures());
+
+    // Check session for multiple file creations (this would need enhanced session tracking)
+    const multipleFilesNudge = NudgeHelpers.checkMultipleFilesInSession(params.context);
+    if (multipleFilesNudge) {
+      nudges.push(multipleFilesNudge);
+    }
+
+    return nudges;
   }
 }

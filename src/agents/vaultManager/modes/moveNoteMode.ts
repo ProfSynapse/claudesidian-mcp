@@ -3,6 +3,8 @@ import { BaseMode } from '../../baseMode';
 import { MoveNoteArgs, MoveNoteResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
  * Mode for moving a note
@@ -36,11 +38,16 @@ export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
     try {
       await FileOperations.moveNote(this.app, path, newPath, overwrite);
       
-      return {
+      const result = {
         path,
         newPath,
         success: true
       };
+
+      // Generate nudges for move operations
+      const nudges = this.generateMoveNudges();
+      
+      return addRecommendations(result, nudges);
     } catch (error) {
       return {
         path,
@@ -78,5 +85,17 @@ export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
     
     // Merge with common schema (sessionId and context)
     return this.getMergedSchema(modeSchema);
+  }
+
+  /**
+   * Generate nudges for move operations
+   */
+  private generateMoveNudges(): Recommendation[] {
+    const nudges: Recommendation[] = [];
+
+    // Always suggest link checking after moving files
+    nudges.push(NudgeHelpers.suggestLinkChecking());
+
+    return nudges;
   }
 }

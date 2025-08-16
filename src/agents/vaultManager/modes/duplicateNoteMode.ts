@@ -5,6 +5,8 @@ import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
  * Mode for duplicating a note
@@ -80,13 +82,18 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
       // Record activity in workspace memory if applicable
       await this.recordActivity(params, result);
       
-      return {
+      const response = {
         sourcePath: result.sourcePath,
         targetPath: result.targetPath,
         success: true,
         wasAutoIncremented: result.wasAutoIncremented,
         wasOverwritten: result.wasOverwritten
       };
+
+      // Generate nudges for duplicate operations
+      const nudges = this.generateDuplicateNudges();
+      
+      return addRecommendations(response, nudges);
     } catch (error) {
       return {
         sourcePath: params.sourcePath || '',
@@ -238,5 +245,17 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
     };
     
     return baseSchema;
+  }
+
+  /**
+   * Generate nudges for duplicate operations
+   */
+  private generateDuplicateNudges(): Recommendation[] {
+    const nudges: Recommendation[] = [];
+
+    // Always suggest customization after duplicating files
+    nudges.push(NudgeHelpers.suggestCustomization());
+
+    return nudges;
   }
 }

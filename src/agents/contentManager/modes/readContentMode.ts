@@ -5,6 +5,8 @@ import { ContentOperations } from '../utils/ContentOperations';
 import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
 import { MemoryService } from '../../memoryManager/services/MemoryService';
 import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
+import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
  * Mode for reading content from a file
@@ -79,12 +81,16 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       
       const result = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
       
+      // Generate nudges based on content
+      const nudges = this.generateReadContentNudges(resultData);
+      const resultWithNudges = addRecommendations(result, nudges);
+      
       // Handle handoff if specified
       if (handoff) {
-        return this.handleHandoff(handoff, result);
+        return this.handleHandoff(handoff, resultWithNudges);
       }
       
-      return result;
+      return resultWithNudges;
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error reading content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
     }
@@ -296,5 +302,20 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     };
     
     return baseSchema;
+  }
+
+  /**
+   * Generate nudges based on content reading results
+   */
+  private generateReadContentNudges(resultData: { content: string; filePath: string }): Recommendation[] {
+    const nudges: Recommendation[] = [];
+
+    // Check for large content (>7,000 characters)
+    const largeContentNudge = NudgeHelpers.checkLargeContent(resultData.content.length);
+    if (largeContentNudge) {
+      nudges.push(largeContentNudge);
+    }
+
+    return nudges;
   }
 }

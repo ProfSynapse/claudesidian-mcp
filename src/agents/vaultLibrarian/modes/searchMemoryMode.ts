@@ -15,6 +15,8 @@ import { ResultFormatter, ResultFormatterInterface } from '../services/ResultFor
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
+import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
  * Memory types available for search (aligned with MemorySearchParameters)
@@ -163,7 +165,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
         query: params.query
       });
 
-      return {
+      const result = {
         success: true,
         query: params.query,
         results: results,
@@ -171,6 +173,11 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
         searchCapabilities: this.getCapabilities(),
         executionTime: Date.now() - startTime
       };
+
+      // Generate nudges based on memory search results
+      const nudges = this.generateMemorySearchNudges(results);
+
+      return addRecommendations(result, nudges);
       
     } catch (error) {
       console.error('[SearchMemoryMode] Search error:', error);
@@ -409,5 +416,30 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       memorySearch: !!this.memoryService,
       hybridSearch: false
     };
+  }
+
+  /**
+   * Generate nudges based on memory search results
+   */
+  private generateMemorySearchNudges(results: any[]): Recommendation[] {
+    const nudges: Recommendation[] = [];
+
+    if (!Array.isArray(results) || results.length === 0) {
+      return nudges;
+    }
+
+    // Check for previous states in results
+    const previousStatesNudge = NudgeHelpers.checkPreviousStates(results);
+    if (previousStatesNudge) {
+      nudges.push(previousStatesNudge);
+    }
+
+    // Check for workspace sessions in results
+    const workspaceSessionsNudge = NudgeHelpers.checkWorkspaceSessions(results);
+    if (workspaceSessionsNudge) {
+      nudges.push(workspaceSessionsNudge);
+    }
+
+    return nudges;
   }
 }

@@ -15,6 +15,8 @@ import { BatchExecutor } from './execution/BatchExecutor';
 import { ResultCollector } from './results/ResultCollector';
 import { ActivityRecorder } from './activity/ActivityRecorder';
 import { SchemaBuilder } from './schemas/SchemaBuilder';
+import { addRecommendations, Recommendation } from '../../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../../utils/nudgeHelpers';
 
 /**
  * Refactored BatchContentMode following SOLID principles
@@ -81,12 +83,16 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
         parseWorkspaceContext(workspaceContext) || undefined
       );
 
-      // 6. Handle handoff if specified
+      // 6. Generate nudges based on batch operations
+      const nudges = this.generateBatchContentNudges(operations, processedResults);
+      const responseWithNudges = addRecommendations(response, nudges);
+
+      // 7. Handle handoff if specified
       if (handoff) {
-        return this.handleHandoff(handoff, response);
+        return this.handleHandoff(handoff, responseWithNudges);
       }
 
-      return response;
+      return responseWithNudges;
     } catch (error: unknown) {
       return this.prepareResult(
         false, 
@@ -110,5 +116,29 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
    */
   getResultSchema(): any {
     return this.schemaBuilder.getResultSchema();
+  }
+
+  /**
+   * Generate nudges based on batch operations
+   */
+  private generateBatchContentNudges(operations: any[], results: any[]): Recommendation[] {
+    const nudges: Recommendation[] = [];
+
+    // Count operations by type
+    const operationCounts = NudgeHelpers.countOperationsByType(operations);
+
+    // Check for multiple read operations (>3 files read)
+    const batchReadNudge = NudgeHelpers.checkBatchReadOperations(operationCounts.read);
+    if (batchReadNudge) {
+      nudges.push(batchReadNudge);
+    }
+
+    // Check for multiple create operations (>2 files created)
+    const batchCreateNudge = NudgeHelpers.checkBatchCreateOperations(operationCounts.create);
+    if (batchCreateNudge) {
+      nudges.push(batchCreateNudge);
+    }
+
+    return nudges;
   }
 }

@@ -3,6 +3,8 @@ import { BaseMode } from '../../baseMode';
 import { ExecuteCommandParams, ExecuteCommandResult } from '../types';
 import { CommandManagerAgent } from '../commandManager';
 import { parseWorkspaceContext, extractContextFromParams } from '../../../utils/contextUtils';
+import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
  * Mode for executing a command
@@ -74,12 +76,16 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
         parseWorkspaceContext(workspaceContext) || undefined
       );
       
+      // Generate nudges for command execution
+      const nudges = this.generateCommandNudges();
+      const responseWithNudges = addRecommendations(response, nudges);
+      
       // Handle handoff if requested
       if (handoff) {
-        return this.handleHandoff(handoff, response);
+        return this.handleHandoff(handoff, responseWithNudges);
       }
       
-      return response;
+      return responseWithNudges;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return this.prepareResult(false, undefined, `Error executing command: ${errorMessage}`);
@@ -128,5 +134,17 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
     };
     
     return baseSchema;
+  }
+
+  /**
+   * Generate nudges for command execution
+   */
+  private generateCommandNudges(): Recommendation[] {
+    const nudges: Recommendation[] = [];
+
+    // Always suggest impact awareness after command execution
+    nudges.push(NudgeHelpers.suggestImpactAwareness());
+
+    return nudges;
   }
 }

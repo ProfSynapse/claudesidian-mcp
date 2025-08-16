@@ -11,6 +11,8 @@ import { getErrorMessage } from '../../../utils/errorUtils';
 import { UniversalSearchService } from './services/universal/UniversalSearchService';
 import { globalValidationErrorMonitor } from './services/universal/validation/ValidationErrorMonitor';
 import { UniversalSearchValidator } from './services/universal/validation/UniversalSearchValidator';
+import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
+import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
  * Universal search mode that searches across all content types intelligently
@@ -72,7 +74,10 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
       // Validation system monitoring for error prevention
       const errorSummary = globalValidationErrorMonitor.getErrorSummary();
       
-      return result;
+      // Generate nudges based on search results
+      const nudges = this.generateSearchNudges(result);
+      
+      return addRecommendations(result, nudges);
       
     } catch (error) {
       const executionTime = performance.now() - startTime;
@@ -255,5 +260,33 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
       required: ['success'],
       additionalProperties: false
     };
+  }
+
+  /**
+   * Generate nudges based on search results
+   */
+  private generateSearchNudges(result: any): Recommendation[] {
+    const nudges: Recommendation[] = [];
+    
+    if (!result.success || !result.results) {
+      return nudges;
+    }
+
+    // Extract file paths from results
+    const filePaths = NudgeHelpers.extractFilePathsFromResults(result.results);
+    
+    // Check for multiple files (>3) to suggest batch operations
+    const multipleFilesNudge = NudgeHelpers.checkMultipleFiles(filePaths.length);
+    if (multipleFilesNudge) {
+      nudges.push(multipleFilesNudge);
+    }
+
+    // Check for files from different folders to suggest organization
+    const differentFoldersNudge = NudgeHelpers.checkDifferentFolders(filePaths);
+    if (differentFoldersNudge) {
+      nudges.push(differentFoldersNudge);
+    }
+
+    return nudges;
   }
 }
