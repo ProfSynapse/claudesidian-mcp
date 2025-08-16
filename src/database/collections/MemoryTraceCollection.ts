@@ -34,10 +34,21 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
     id: string;
     embedding: number[];
     metadata: Record<string, any>;
-    document: string;
+    document: any;
   } {
-    // Use the trace content as the document
-    const document = trace.content;
+    // Parse trace content into structured JSON document
+    let document: any;
+    try {
+      // Attempt to parse content as structured trace data
+      document = JSON.parse(trace.content);
+    } catch {
+      // If parsing fails, create structured format from basic content
+      document = {
+        content: trace.content,
+        tool: trace.metadata.tool,
+        timestamp: trace.timestamp
+      };
+    }
     
     // Extract important metadata fields for filtering and searching
     const metadata = {
@@ -78,7 +89,7 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
     id: string;
     embedding?: number[];
     metadata?: Record<string, any>;
-    document?: string;
+    document?: any;
   }): WorkspaceMemoryTrace {
     // If no metadata or embedding is provided, we'll create a minimal trace
     if (!storage.metadata || !storage.embedding) {
@@ -89,7 +100,9 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
         contextLevel: 'workspace',
         timestamp: Date.now(),
         activityType: 'research',
-        content: storage.document || '',
+        content: typeof storage.document === 'object' 
+          ? JSON.stringify(storage.document) 
+          : (storage.document || ''),
         embedding: storage.embedding || [],
         metadata: {
           tool: 'unknown',
@@ -111,7 +124,9 @@ export class MemoryTraceCollection extends BaseChromaCollection<WorkspaceMemoryT
       contextLevel: storage.metadata.contextLevel,
       timestamp: storage.metadata.timestamp,
       activityType: storage.metadata.activityType,
-      content: storage.document || '',
+      content: typeof storage.document === 'object' 
+        ? JSON.stringify(storage.document) 
+        : (storage.document || ''),
       embedding: storage.embedding,
       metadata: {
         tool: storage.metadata.tool,

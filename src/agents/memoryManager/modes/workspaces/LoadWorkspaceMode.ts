@@ -487,64 +487,31 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Processing trace ${i + 1}/${traces.length}:`, {
         id: trace.id,
         hasContent: !!trace.content,
-        hasDocument: !!trace.document,
-        hasMetadata: !!trace.metadata,
-        allKeys: Object.keys(trace),
-        contentPreview: trace.content?.substring(0, 100),
-        documentPreview: trace.document?.substring(0, 100)
+        contentPreview: trace.content?.substring(0, 100)
       });
       
       try {
-        // Check the old format first (for backward compatibility)
-        if (trace.metadata?.request?.originalParams?.context?.sessionMemory) {
-          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory in old format`);
-          sessionMemories.push(trace.metadata.request.originalParams.context.sessionMemory);
+        // Parse the structured document from content
+        let document: any;
+        try {
+          document = JSON.parse(trace.content);
+          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Parsed structured document:`, {
+            hasRequest: !!document.request,
+            hasContext: !!document.request?.context,
+            hasSessionMemory: !!document.request?.context?.sessionMemory
+          });
+        } catch (parseError) {
+          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Could not parse as JSON, skipping trace`);
           continue;
         }
         
-        // Parse the new format from document content (note: using 'document' not 'content')
-        if (trace.document) {
-          // Look for the COMPLETE REQUEST section - handle multiline JSON properly
-          const requestStart = trace.document.indexOf('=== COMPLETE REQUEST ===');
-          const responseStart = trace.document.indexOf('=== COMPLETE RESPONSE ===');
-          
-          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Request markers found: start=${requestStart}, end=${responseStart}`);
-          
-          if (requestStart !== -1 && responseStart !== -1) {
-            // Extract the JSON between the markers
-            const jsonSection = trace.document.substring(requestStart + '=== COMPLETE REQUEST ==='.length, responseStart).trim();
-            console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Extracted JSON section length: ${jsonSection.length}`);
-            
-            try {
-              const requestData = JSON.parse(jsonSection);
-              console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Parsed request data, has context: ${!!requestData.context}`);
-              
-              // Parse the nested context JSON string
-              if (requestData.context && typeof requestData.context === 'string') {
-                const contextData = JSON.parse(requestData.context);
-                console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Parsed context data, has sessionMemory: ${!!contextData.sessionMemory}`);
-                if (contextData.sessionMemory) {
-                  console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory: ${contextData.sessionMemory}`);
-                  sessionMemories.push(contextData.sessionMemory);
-                }
-              }
-            } catch (jsonError) {
-              console.log(`[LoadWorkspaceMode] 🔍 DEBUG: JSON parsing failed, trying regex approach:`, jsonError instanceof Error ? jsonError.message : String(jsonError));
-              // Try alternative parsing - sometimes the JSON might have escape issues
-              try {
-                // Look for sessionMemory directly in the text
-                const sessionMemoryMatch = trace.document.match(/"sessionMemory":\s*"([^"\\]*(\\.[^"\\]*)*)"/);
-                if (sessionMemoryMatch) {
-                  console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory via regex`);
-                  // Unescape the string
-                  const sessionMemory = sessionMemoryMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\\\/g, '\\');
-                  sessionMemories.push(sessionMemory);
-                }
-              } catch (regexError) {
-                console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Regex parsing also failed:`, regexError instanceof Error ? regexError.message : String(regexError));
-              }
-            }
-          }
+        // Extract sessionMemory from structured document
+        if (document.request?.context?.sessionMemory) {
+          const sessionMemory = document.request.context.sessionMemory;
+          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory: ${sessionMemory}`);
+          sessionMemories.push(sessionMemory);
+        } else {
+          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: No sessionMemory found in structured document`);
         }
       } catch (error) {
         console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Error processing trace ${i + 1}:`, error instanceof Error ? error.message : String(error));
@@ -553,7 +520,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     }
     
     console.log(`[LoadWorkspaceMode] 🔍 DEBUG: extractSessionMemories found ${sessionMemories.length} session memories`);
-    return sessionMemories.slice(0, 5); // Latest 5 activities instead of 3
+    return sessionMemories.slice(0, 5);
   }
 
   
