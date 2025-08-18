@@ -14,6 +14,7 @@ import {
   ProviderCapabilities,
   ModelPricing
 } from '../types';
+import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './AnthropicModels';
 
 export class AnthropicAdapter extends BaseAdapter {
   readonly name = 'anthropic';
@@ -22,7 +23,7 @@ export class AnthropicAdapter extends BaseAdapter {
   private client: Anthropic;
 
   constructor(apiKey: string, model?: string) {
-    super(apiKey, model || 'claude-3-5-sonnet-20241022');
+    super(apiKey, model || ANTHROPIC_DEFAULT_MODEL);
     
     this.client = new Anthropic({
       apiKey: this.apiKey,
@@ -163,61 +164,23 @@ export class AnthropicAdapter extends BaseAdapter {
 
   async listModels(): Promise<ModelInfo[]> {
     try {
-      // Claude models available as of 2025
-      const models = [
-        {
-          id: 'claude-4-opus-20250124',
-          name: 'Claude 4 Opus',
-          contextWindow: 200000,
-          maxOutputTokens: 4096,
-          supportsThinking: true,
-          tier: 'premium'
-        },
-        {
-          id: 'claude-4-sonnet-20250124',
-          name: 'Claude 4 Sonnet',
-          contextWindow: 200000,
-          maxOutputTokens: 4096,
-          supportsThinking: true,
-          tier: 'standard'
-        },
-        {
-          id: 'claude-3.5-sonnet-20241022',
-          name: 'Claude 3.5 Sonnet',
-          contextWindow: 200000,
-          maxOutputTokens: 4096,
-          supportsThinking: false,
-          tier: 'standard'
-        },
-        {
-          id: 'claude-3.5-haiku-20241022',
-          name: 'Claude 3.5 Haiku',
-          contextWindow: 200000,
-          maxOutputTokens: 4096,
-          supportsThinking: false,
-          tier: 'fast'
-        }
-      ];
-
-      return models.map(model => ({
-        id: model.id,
+      return ANTHROPIC_MODELS.map(model => ({
+        id: model.apiName,
         name: model.name,
         contextWindow: model.contextWindow,
-        maxOutputTokens: model.maxOutputTokens,
-        supportsJSON: true,
-        supportsImages: true,
-        supportsFunctions: true,
-        supportsStreaming: true,
-        supportsThinking: model.supportsThinking,
-        costPer1kTokens: this.getCostPer1kTokens(model.id),
-        pricing: this.getCostPer1kTokens(model.id) ? {
-          inputPerMillion: this.getCostPer1kTokens(model.id)!.input * 1000,
-          outputPerMillion: this.getCostPer1kTokens(model.id)!.output * 1000,
-          currency: 'USD',
-          lastUpdated: new Date().toISOString()
-        } : {
-          inputPerMillion: 0,
-          outputPerMillion: 0,
+        maxOutputTokens: model.maxTokens,
+        supportsJSON: model.capabilities.supportsJSON,
+        supportsImages: model.capabilities.supportsImages,
+        supportsFunctions: model.capabilities.supportsFunctions,
+        supportsStreaming: model.capabilities.supportsStreaming,
+        supportsThinking: model.capabilities.supportsThinking,
+        costPer1kTokens: {
+          input: model.inputCostPerMillion / 1000,
+          output: model.outputCostPerMillion / 1000
+        },
+        pricing: {
+          inputPerMillion: model.inputCostPerMillion,
+          outputPerMillion: model.outputCostPerMillion,
           currency: 'USD',
           lastUpdated: new Date().toISOString()
         }
@@ -253,10 +216,8 @@ export class AnthropicAdapter extends BaseAdapter {
 
   // Private methods
   private supportsThinking(modelId: string): boolean {
-    return [
-      'claude-4-opus-20250124',
-      'claude-4-sonnet-20250124'
-    ].includes(modelId);
+    const model = ANTHROPIC_MODELS.find(m => m.apiName === modelId);
+    return model?.capabilities.supportsThinking || false;
   }
 
   private convertTools(tools: any[]): any[] {
@@ -324,13 +285,13 @@ export class AnthropicAdapter extends BaseAdapter {
   }
 
   private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
-    const costs: Record<string, { input: number; output: number }> = {
-      'claude-4-opus-20250124': { input: 0.015, output: 0.075 }, // Estimated
-      'claude-4-sonnet-20250124': { input: 0.003, output: 0.015 }, // Estimated
-      'claude-3.5-sonnet-20241022': { input: 0.003, output: 0.015 },
-      'claude-3.5-haiku-20241022': { input: 0.00025, output: 0.00125 }
+    const model = ANTHROPIC_MODELS.find(m => m.apiName === modelId);
+    if (!model) return undefined;
+    
+    return {
+      input: model.inputCostPerMillion / 1000,
+      output: model.outputCostPerMillion / 1000
     };
-    return costs[modelId];
   }
 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {

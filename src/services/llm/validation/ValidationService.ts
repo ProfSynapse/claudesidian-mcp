@@ -7,11 +7,38 @@ import OpenAI from 'openai';
 import { requestUrl } from 'obsidian';
 
 export class LLMValidationService {
+  private static readonly VALIDATION_TIMEOUT = 10000; // 10 seconds
+  private static readonly VALIDATION_DELAY = 2000; // 2 seconds delay before validation
+
+  /**
+   * Wrapper for requestUrl with timeout support
+   */
+  private static async requestWithTimeout(config: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Request timeout'));
+      }, this.VALIDATION_TIMEOUT);
+
+      requestUrl(config)
+        .then(response => {
+          clearTimeout(timeoutId);
+          resolve(response);
+        })
+        .catch(error => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+  }
+
   /**
    * Validate an API key by making a simple test request
    */
   static async validateApiKey(provider: string, apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Wait a couple seconds before validation as requested
+      await new Promise(resolve => setTimeout(resolve, this.VALIDATION_DELAY));
+      
       switch (provider) {
         case 'openai':
           return await this.validateOpenAI(apiKey);
@@ -44,7 +71,8 @@ export class LLMValidationService {
     try {
       const client = new OpenAI({
         apiKey: apiKey,
-        dangerouslyAllowBrowser: true
+        dangerouslyAllowBrowser: true,
+        timeout: this.VALIDATION_TIMEOUT
       });
 
       // Make a simple test request
@@ -66,7 +94,7 @@ export class LLMValidationService {
   private static async validateAnthropic(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
       // Use Obsidian's requestUrl to bypass CORS restrictions
-      const response = await requestUrl({
+      const response = await this.requestWithTimeout({
         url: 'https://api.anthropic.com/v1/messages',
         method: 'POST',
         headers: {
@@ -100,7 +128,7 @@ export class LLMValidationService {
 
   private static async validateGoogle(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await requestUrl({
+      const response = await this.requestWithTimeout({
         url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         method: 'POST',
         headers: {
@@ -132,7 +160,7 @@ export class LLMValidationService {
 
   private static async validateMistral(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await requestUrl({
+      const response = await this.requestWithTimeout({
         url: 'https://api.mistral.ai/v1/chat/completions',
         method: 'POST',
         headers: {
@@ -165,7 +193,7 @@ export class LLMValidationService {
 
   private static async validateGroq(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await requestUrl({
+      const response = await this.requestWithTimeout({
         url: 'https://api.groq.com/openai/v1/chat/completions',
         method: 'POST',
         headers: {
@@ -198,7 +226,7 @@ export class LLMValidationService {
 
   private static async validateOpenRouter(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await requestUrl({
+      const response = await this.requestWithTimeout({
         url: 'https://openrouter.ai/api/v1/chat/completions',
         method: 'POST',
         headers: {
@@ -233,7 +261,7 @@ export class LLMValidationService {
 
   private static async validatePerplexity(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await requestUrl({
+      const response = await this.requestWithTimeout({
         url: 'https://api.perplexity.ai/chat/completions',
         method: 'POST',
         headers: {
@@ -266,7 +294,7 @@ export class LLMValidationService {
 
   private static async validateRequesty(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await requestUrl({
+      const response = await this.requestWithTimeout({
         url: 'https://router.requesty.ai/v1/chat/completions',
         method: 'POST',
         headers: {

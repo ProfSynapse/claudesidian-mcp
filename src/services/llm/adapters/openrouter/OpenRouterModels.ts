@@ -194,8 +194,8 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
   },
   {
     provider: 'openrouter',
-    name: 'Claude 4 Opus',
-    apiName: 'anthropic/claude-opus-4',
+    name: 'Claude 4.1 Opus',
+    apiName: 'anthropic/claude-opus-4.1',
     contextWindow: 200000,
     maxTokens: 32000,
     inputCostPerMillion: 15.00,

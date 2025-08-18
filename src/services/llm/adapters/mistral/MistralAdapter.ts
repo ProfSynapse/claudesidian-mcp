@@ -6,13 +6,14 @@
 
 import { BaseAdapter } from '../BaseAdapter';
 import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, ModelPricing } from '../types';
+import { MISTRAL_MODELS, MISTRAL_DEFAULT_MODEL } from './MistralModels';
 
 export class MistralAdapter extends BaseAdapter {
   readonly name = 'mistral';
   readonly baseUrl = 'https://api.mistral.ai/v1';
 
   constructor(apiKey: string, model?: string) {
-    super(apiKey, model || 'mistral-large-latest');
+    super(apiKey, model || MISTRAL_DEFAULT_MODEL);
     this.initializeCache();
   }
 
@@ -131,67 +132,32 @@ export class MistralAdapter extends BaseAdapter {
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    const models = [
-      {
-        id: 'mistral-large-latest',
-        name: 'Mistral Large Latest',
-        contextWindow: 128000,
-        maxOutputTokens: 8192,
-        features: ['chat', 'function_calling', 'json_mode', 'multimodal']
-      },
-      {
-        id: 'mistral-medium-latest',
-        name: 'Mistral Medium Latest', 
-        contextWindow: 128000,
-        maxOutputTokens: 8192,
-        features: ['chat', 'function_calling', 'json_mode']
-      },
-      {
-        id: 'mistral-small-3.1-25.03',
-        name: 'Mistral Small 3.1',
-        contextWindow: 128000,
-        maxOutputTokens: 4096,
-        features: ['chat', 'multimodal', 'function_calling']
-      },
-      {
-        id: 'mistral-ocr-25.05',
-        name: 'Mistral OCR 25.05',
-        contextWindow: 32000,
-        maxOutputTokens: 4096,
-        features: ['ocr', 'document_understanding']
-      },
-      {
-        id: 'codestral-25.01',
-        name: 'Codestral 25.01',
-        contextWindow: 32000,
-        maxOutputTokens: 4096,
-        features: ['code_generation', 'code_completion']
-      }
-    ];
-
-    return models.map(model => ({
-      id: model.id,
-      name: model.name,
-      contextWindow: model.contextWindow,
-      maxOutputTokens: model.maxOutputTokens,
-      supportsJSON: model.features.includes('json_mode'),
-      supportsImages: model.features.includes('multimodal'),
-      supportsFunctions: model.features.includes('function_calling'),
-      supportsStreaming: true,
-      supportsThinking: false,
-      costPer1kTokens: this.getCostPer1kTokens(model.id),
-      pricing: this.getCostPer1kTokens(model.id) ? {
-        inputPerMillion: this.getCostPer1kTokens(model.id)!.input * 1000,
-        outputPerMillion: this.getCostPer1kTokens(model.id)!.output * 1000,
-        currency: 'USD',
-        lastUpdated: new Date().toISOString()
-      } : {
-        inputPerMillion: 0,
-        outputPerMillion: 0,
-        currency: 'USD',
-        lastUpdated: new Date().toISOString()
-      }
-    }));
+    try {
+      return MISTRAL_MODELS.map(model => ({
+        id: model.apiName,
+        name: model.name,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxTokens,
+        supportsJSON: model.capabilities.supportsJSON,
+        supportsImages: model.capabilities.supportsImages,
+        supportsFunctions: model.capabilities.supportsFunctions,
+        supportsStreaming: model.capabilities.supportsStreaming,
+        supportsThinking: model.capabilities.supportsThinking,
+        costPer1kTokens: {
+          input: model.inputCostPerMillion / 1000,
+          output: model.outputCostPerMillion / 1000
+        },
+        pricing: {
+          inputPerMillion: model.inputCostPerMillion,
+          outputPerMillion: model.outputCostPerMillion,
+          currency: 'USD',
+          lastUpdated: new Date().toISOString()
+        }
+      }));
+    } catch (error) {
+      this.handleError(error, 'listing models');
+      return [];
+    }
   }
 
   getCapabilities(): ProviderCapabilities {
@@ -215,15 +181,13 @@ export class MistralAdapter extends BaseAdapter {
   }
 
   private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
-    const costs: Record<string, { input: number; output: number }> = {
-      'mistral-large-latest': { input: 0.002, output: 0.006 },
-      'mistral-medium-latest': { input: 0.0025, output: 0.0075 },
-      'mistral-small-3.1-25.03': { input: 0.001, output: 0.003 },
-      'mistral-ocr-25.05': { input: 0.00015, output: 0.00015 }, // Per 1K tokens
-      'codestral-25.01': { input: 0.001, output: 0.003 }
+    const model = MISTRAL_MODELS.find(m => m.apiName === modelId);
+    if (!model) return undefined;
+    
+    return {
+      input: model.inputCostPerMillion / 1000,
+      output: model.outputCostPerMillion / 1000
     };
-    // Note: Free tier available on La Plateforme for experimentation
-    return costs[modelId];
   }
 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {

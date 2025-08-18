@@ -1442,18 +1442,21 @@ a:hover {
 }
 
 .llm-provider-input.validating {
-    border-color: #3b82f6;
-    background-color: rgba(59, 130, 246, 0.1);
+    border-color: #fbbf24 !important;
+    background-color: rgba(251, 191, 36, 0.2) !important;
+    border-width: 2px !important;
 }
 
 .llm-provider-input.success {
-    border-color: #22c55e;
-    background-color: rgba(34, 197, 94, 0.1);
+    border-color: #22c55e !important;
+    background-color: rgba(34, 197, 94, 0.1) !important;
+    border-width: 2px !important;
 }
 
 .llm-provider-input.error {
-    border-color: #ef4444;
-    background-color: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444 !important;
+    background-color: rgba(239, 68, 68, 0.1) !important;
+    border-width: 2px !important;
 }
 
 .llm-provider-button-container {

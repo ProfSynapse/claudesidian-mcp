@@ -95,13 +95,15 @@ export class LLMProviderModal extends Modal {
         .setDesc('Enter your Ollama server URL (default: http://127.0.0.1:11434)')
         .addText(text => {
           this.apiKeyInput = text.inputEl;
+          this.apiKeyInput.addClass('llm-provider-input');
           text
             .setPlaceholder('http://127.0.0.1:11434')
             .setValue(this.config.config.apiKey || 'http://127.0.0.1:11434')
             .onChange((value) => {
               // Reset validation when URL changes
               this.isValidated = false;
-              this.apiKeyInput.removeClass('validating success error');
+              this.apiKeyInput.removeClass('success');
+              this.apiKeyInput.removeClass('error');
               
               // Clear existing timeout
               if (this.validationTimeout) {
@@ -109,8 +111,10 @@ export class LLMProviderModal extends Modal {
                 this.validationTimeout = null;
               }
               
-              // Auto-validate after 2 second delay if URL is entered
+              // Show yellow outline immediately when typing
               if (value.trim()) {
+                this.apiKeyInput.addClass('validating');
+                // Auto-validate after 2 second delay
                 this.validationTimeout = setTimeout(() => {
                   this.validateApiKey();
                 }, 2000);
@@ -119,6 +123,8 @@ export class LLMProviderModal extends Modal {
                 if (!this.config.config.enabled) {
                   this.config.config.enabled = true;
                 }
+              } else {
+                this.apiKeyInput.removeClass('validating');
               }
             });
         })
@@ -140,13 +146,15 @@ export class LLMProviderModal extends Modal {
         .addText(text => {
           this.apiKeyInput = text.inputEl;
           this.apiKeyInput.type = 'password'; // Make it a password field
+          this.apiKeyInput.addClass('llm-provider-input');
           text
             .setPlaceholder(`Enter your ${this.config.providerName} API key`)
             .setValue(this.config.config.apiKey || '')
             .onChange((value) => {
               // Reset validation when key changes
               this.isValidated = false;
-              this.apiKeyInput.removeClass('validating success error');
+              this.apiKeyInput.removeClass('success');
+              this.apiKeyInput.removeClass('error');
               
               // Clear existing timeout
               if (this.validationTimeout) {
@@ -154,8 +162,10 @@ export class LLMProviderModal extends Modal {
                 this.validationTimeout = null;
               }
               
-              // Auto-validate after 2 second delay if key is entered
+              // Show yellow outline immediately when typing
               if (value.trim()) {
+                this.apiKeyInput.addClass('validating');
+                // Auto-validate after 2 second delay
                 this.validationTimeout = setTimeout(() => {
                   this.validateApiKey();
                 }, 2000);
@@ -164,6 +174,8 @@ export class LLMProviderModal extends Modal {
                 if (!this.config.config.enabled) {
                   this.config.config.enabled = true;
                 }
+              } else {
+                this.apiKeyInput.removeClass('validating');
               }
             });
         })
@@ -314,7 +326,8 @@ export class LLMProviderModal extends Modal {
     }
 
     // Show visual feedback that validation is in progress
-    this.apiKeyInput.removeClass('success error');
+    this.apiKeyInput.removeClass('success');
+    this.apiKeyInput.removeClass('error');
     this.apiKeyInput.addClass('validating');
 
     try {
@@ -324,7 +337,8 @@ export class LLMProviderModal extends Modal {
       if (result.success) {
         // Mark as validated
         this.isValidated = true;
-        this.apiKeyInput.removeClass('validating error');
+        this.apiKeyInput.removeClass('validating');
+        this.apiKeyInput.removeClass('error');
         this.apiKeyInput.addClass('success');
         
         new Notice(`✅ ${this.config.providerName} API key validated successfully!`);
@@ -336,7 +350,8 @@ export class LLMProviderModal extends Modal {
       console.error('API key validation failed:', error);
       
       this.isValidated = false;
-      this.apiKeyInput.removeClass('validating success');
+      this.apiKeyInput.removeClass('validating');
+      this.apiKeyInput.removeClass('success');
       this.apiKeyInput.addClass('error');
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -421,7 +436,8 @@ export class LLMProviderModal extends Modal {
         
         // Mark as validated
         this.isValidated = true;
-        this.apiKeyInput.removeClass('validating error');
+        this.apiKeyInput.removeClass('validating');
+        this.apiKeyInput.removeClass('error');
         this.apiKeyInput.addClass('success');
       } else {
         throw new Error('Model test returned invalid response');
@@ -431,7 +447,8 @@ export class LLMProviderModal extends Modal {
       console.error('Ollama connection test failed:', error);
       
       this.isValidated = false;
-      this.apiKeyInput.removeClass('validating success');
+      this.apiKeyInput.removeClass('validating');
+      this.apiKeyInput.removeClass('success');
       this.apiKeyInput.addClass('error');
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
