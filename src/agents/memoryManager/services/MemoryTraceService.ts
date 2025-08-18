@@ -117,10 +117,7 @@ export class MemoryTraceService {
       embedding
     });
     
-    // Increment tool calls for the session if provided
-    if (trace.sessionId && this.sessionService) {
-      await this.sessionService.incrementToolCalls(trace.sessionId);
-    }
+    // Tool call counting removed - unnecessary complexity
     
     return newTrace.id;
   }
@@ -262,7 +259,7 @@ export class MemoryTraceService {
       
       // Increment tool calls for the session if provided
       if (context.sessionContext.sessionId && this.sessionService) {
-        await this.sessionService.incrementToolCalls?.(context.sessionContext.sessionId);
+        // Tool call counting removed - unnecessary complexity
       }
       
       return newTrace.id;

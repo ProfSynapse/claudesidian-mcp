@@ -242,7 +242,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
         // Also use the FileEventManager to record the activity across all relevant workspaces
         const fileEventManager = plugin?.services?.fileEventManager;
         
-        if (fileEventManager) {
+        if (fileEventManager && typeof fileEventManager.updateFileActivity === 'function') {
           // This will automatically update all workspaces that contain this file
           await fileEventManager.updateFileActivity(
             params.filePath,

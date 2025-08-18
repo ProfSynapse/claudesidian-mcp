@@ -41,7 +41,6 @@ export class DefaultWorkspaceManager {
       // Ensure default workspace exists
       await this.ensureDefaultWorkspace();
       this.initialized = true;
-      console.log('[DefaultWorkspaceManager] Initialized with default workspace:', this.defaultWorkspaceId);
     } catch (error) {
       console.error('[DefaultWorkspaceManager] Failed to initialize:', error);
       // Continue with basic functionality even if workspace creation fails
@@ -110,7 +109,6 @@ export class DefaultWorkspaceManager {
 
       // Default workspace is conceptual - it represents the entire vault
       // No need to create physical folders or files for it
-      console.log('[DefaultWorkspaceManager] Default workspace conceptually established for vault root');
       
     } catch (error) {
       console.warn('[DefaultWorkspaceManager] Could not verify default workspace setup:', error);
