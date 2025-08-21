@@ -250,6 +250,15 @@ export class FilesystemCollection implements Collection {
       filtered = filtered.filter(item => item && item.id && params.ids!.includes(item.id));
     }
 
+    // CRITICAL FIX: Apply where clause filtering - this was missing and causing cross-workspace data leakage
+    if (params?.where) {
+      // Import FilterEngine dynamically to avoid circular dependencies
+      const { FilterEngine } = await import('./services/FilterEngine');
+      
+      // Filter using the where clause - this ensures workspace isolation
+      filtered = FilterEngine.filterByWhere(filtered, params.where);
+    }
+
     // Apply offset and limit with proper validation
     const offset = Math.max(0, params?.offset || 0);
     const limit = params?.limit;

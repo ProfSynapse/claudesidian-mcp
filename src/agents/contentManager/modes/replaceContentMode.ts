@@ -74,7 +74,7 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filePath: {
@@ -95,11 +95,12 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
           default: 0.95,
           minimum: 0.0,
           maximum: 1.0
-        },
-        ...this.getCommonParameterSchema()
+        }
       },
       required: ['filePath', 'oldContent', 'newContent']
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

@@ -87,7 +87,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filePath: {
@@ -116,11 +116,12 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
           type: 'boolean',
           description: 'Whether to use whole word matching',
           default: false
-        },
-        ...this.getCommonParameterSchema()
+        }
       },
       required: ['filePath', 'findText', 'replaceText']
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

@@ -67,7 +67,7 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filePath: {
@@ -85,11 +85,12 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
         newContent: {
           type: 'string',
           description: 'Content to replace with'
-        },
-        ...this.getCommonParameterSchema()
+        }
       },
       required: ['filePath', 'startLine', 'endLine', 'newContent']
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

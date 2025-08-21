@@ -614,11 +614,15 @@ export class MemoryService {
   }
 
   /**
-   * Get all states
-   * @param workspaceId Optional workspace ID filter
-   * @returns Array of state snapshots
+   * Get all states with mandatory workspace context for security
+   * @param workspaceId Required workspace ID for security isolation
+   * @returns Array of state snapshots filtered by workspace
    */
   async getStates(workspaceId?: string): Promise<WorkspaceStateSnapshot[]> {
+    if (!workspaceId) {
+      console.warn('[MemoryService] getStates called without workspace context');
+      return [];
+    }
     return this.getSnapshots(workspaceId);
   }
 

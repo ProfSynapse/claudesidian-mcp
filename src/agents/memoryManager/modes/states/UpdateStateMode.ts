@@ -214,7 +214,7 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
     }
 
     getParameterSchema(): any {
-        return {
+        const customSchema = {
             type: 'object',
             properties: {
                 // Edit parameters
@@ -233,6 +233,8 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
             },
             additionalProperties: false
         };
+        
+        return this.getMergedSchema(customSchema);
     }
 
     getResultSchema(): any {

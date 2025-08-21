@@ -196,7 +196,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
     }
 
     getParameterSchema(): any {
-        return {
+        const customSchema = {
             type: 'object',
             properties: {
                 name: { type: 'string', description: 'Workspace name (REQUIRED)' },
@@ -238,6 +238,8 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             },
             required: ['name', 'rootFolder', 'purpose', 'currentGoal', 'workflows']
         };
+        
+        return this.getMergedSchema(customSchema);
     }
     
     getResultSchema(): any {

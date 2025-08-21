@@ -281,23 +281,31 @@ export class SnapshotCollection extends BaseChromaCollection<WorkspaceStateSnaps
   }
   
   /**
-   * Get snapshots for a session
+   * Get snapshots for a session with optional workspace filtering
    * @param sessionId Session ID
-   * @returns Snapshots for the session
+   * @param workspaceId Optional workspace ID for additional filtering
+   * @returns Snapshots for the session, optionally filtered by workspace
    */
-  async getSnapshotsBySession(sessionId: string): Promise<WorkspaceStateSnapshot[]> {
-    console.log(`SnapshotCollection.getSnapshotsBySession called with sessionId: ${sessionId}`);
+  async getSnapshotsBySession(sessionId: string, workspaceId?: string): Promise<WorkspaceStateSnapshot[]> {
+    console.log(`SnapshotCollection.getSnapshotsBySession called with sessionId: ${sessionId}, workspaceId: ${workspaceId || 'none'}`);
     try {
+      const where: Record<string, any> = { sessionId };
+      
+      // Add workspace filtering if provided
+      if (workspaceId) {
+        where.workspaceId = workspaceId;
+      }
+      
       const snapshots = await this.getAll({
-        where: { sessionId },
+        where,
         sortBy: 'timestamp',
         sortOrder: 'desc'
       });
       
-      console.log(`Found ${snapshots.length} snapshots for session ${sessionId}`);
+      console.log(`Found ${snapshots.length} snapshots for session ${sessionId}${workspaceId ? ` in workspace ${workspaceId}` : ''}`);
       return snapshots;
     } catch (error) {
-      console.error(`Error in getSnapshotsBySession for ${sessionId}:`, error);
+      console.error(`Error in getSnapshotsBySession for ${sessionId}${workspaceId ? ` in workspace ${workspaceId}` : ''}:`, error);
       throw error;
     }
   }

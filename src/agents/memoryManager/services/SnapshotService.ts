@@ -71,57 +71,45 @@ export class SnapshotService {
   }
 
   /**
-   * Get snapshots with flexible filtering by workspace and/or session.
-   * Provides intelligent fallback behavior when no filters are specified.
+   * Get snapshots with mandatory workspace filtering for security.
+   * Ensures cross-workspace data isolation by requiring workspace context.
    * 
-   * @param workspaceId - Optional workspace ID filter
-   * @param sessionId - Optional session ID filter
-   * @returns Promise resolving to array of snapshots
+   * @param workspaceId - Required workspace ID for security isolation
+   * @param sessionId - Optional session ID filter within workspace
+   * @returns Promise resolving to array of snapshots filtered by workspace
    * 
    * @remarks
-   * Filter behavior:
-   * - If sessionId provided: Returns session snapshots (optionally filtered by workspaceId)
-   * - If only workspaceId provided: Returns workspace snapshots
-   * - If neither provided: Returns recent snapshots (limited to 100)
+   * Security-first filter behavior:
+   * - Workspace context is mandatory - prevents cross-workspace data leakage
+   * - If sessionId provided: Returns session snapshots within specified workspace
+   * - If only workspaceId provided: Returns all workspace snapshots
+   * - Invalid workspace context results in empty array and warning
    * 
    * @example
    * ```typescript
-   * // Get all snapshots for a session
-   * const sessionSnapshots = await snapshotService.getSnapshots(undefined, 'session-123');
+   * // Get all snapshots for a workspace
+   * const workspaceSnapshots = await snapshotService.getSnapshots('workspace-456');
    * 
    * // Get workspace snapshots for a specific session
    * const filteredSnapshots = await snapshotService.getSnapshots('workspace-456', 'session-123');
-   * 
-   * // Get all snapshots for a workspace
-   * const workspaceSnapshots = await snapshotService.getSnapshots('workspace-456');
    * ```
    */
   async getSnapshots(workspaceId?: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
     try {
+      // Validate workspace context - security requirement
+      const validatedWorkspaceId = this.validateWorkspaceContext(workspaceId, 'getSnapshots');
+      
       if (sessionId) {
-        // If sessionId is provided, prioritize that
-        const sessionSnapshots = await this.snapshots.getSnapshotsBySession(sessionId);
-        
-        // If workspaceId is also provided, filter the results
-        if (workspaceId) {
-          return sessionSnapshots.filter(snapshot => snapshot.workspaceId === workspaceId);
-        }
-        
-        return sessionSnapshots;
-      } else if (workspaceId) {
-        // If only workspaceId is provided, use the existing method
-        return this.snapshots.getSnapshotsByWorkspace(workspaceId);
+        // Both session and workspace provided - use enhanced collection method
+        const sessionSnapshots = await this.snapshots.getSnapshotsBySession(sessionId, validatedWorkspaceId);
+        return this.validateWorkspaceResults(sessionSnapshots, validatedWorkspaceId, 'getSnapshots[session]');
       } else {
-        // If neither is provided, return all snapshots (with reasonable limits)
-        return this.snapshots.getAll({ 
-          sortBy: 'timestamp',
-          sortOrder: 'desc',
-          limit: 100 
-        });
+        // Only workspace provided - use existing workspace method
+        const workspaceSnapshots = await this.snapshots.getSnapshotsByWorkspace(validatedWorkspaceId);
+        return this.validateWorkspaceResults(workspaceSnapshots, validatedWorkspaceId, 'getSnapshots[workspace]');
       }
     } catch (error) {
-      console.error('Error retrieving snapshots:', error);
-      // Return empty array instead of throwing to avoid breaking UI
+      console.error('[SnapshotService] Error retrieving snapshots:', error);
       return [];
     }
   }
@@ -318,6 +306,45 @@ export class SnapshotService {
       console.error(`Failed to restore state snapshot ${stateId}:`, error);
       throw new Error(`Failed to restore state snapshot: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Validate workspace context to prevent security violations
+   * @param workspaceId - Workspace ID to validate
+   * @param operation - Operation name for logging
+   * @returns Validated workspace ID
+   * @throws Error if workspace context is invalid
+   * @private
+   */
+  private validateWorkspaceContext(workspaceId: string | undefined, operation: string): string {
+    if (!workspaceId || workspaceId === 'unknown' || workspaceId.trim() === '') {
+      console.error(`[SnapshotService] ${operation} called without valid workspace context - security risk`);
+      throw new Error(`Workspace context required for ${operation}`);
+    }
+    return workspaceId;
+  }
+
+  /**
+   * Validate that results contain only workspace-scoped data
+   * @param results - Results to validate
+   * @param expectedWorkspaceId - Expected workspace ID
+   * @param operation - Operation name for logging
+   * @returns Filtered results with only valid workspace data
+   * @private
+   */
+  private validateWorkspaceResults<T extends { workspaceId: string }>(
+    results: T[], 
+    expectedWorkspaceId: string, 
+    operation: string
+  ): T[] {
+    const invalidResults = results.filter(r => r.workspaceId !== expectedWorkspaceId);
+    
+    if (invalidResults.length > 0) {
+      console.error(`[SnapshotService] ${operation} returned ${invalidResults.length} cross-workspace results - filtering`);
+      return results.filter(r => r.workspaceId === expectedWorkspaceId);
+    }
+    
+    return results;
   }
 
   /**

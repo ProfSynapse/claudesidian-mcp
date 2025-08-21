@@ -75,7 +75,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filePath: {
@@ -92,11 +92,12 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
           default: 0.95,
           minimum: 0.0,
           maximum: 1.0
-        },
-        ...this.getCommonParameterSchema()
+        }
       },
       required: ['filePath', 'content']
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

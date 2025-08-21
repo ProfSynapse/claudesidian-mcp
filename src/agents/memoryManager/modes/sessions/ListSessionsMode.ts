@@ -155,7 +155,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
   }
 
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         limit: {
@@ -166,18 +166,12 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
           type: 'string',
           enum: ['asc', 'desc'],
           description: 'Sort order by name'
-        },
-        sessionId: {
-          type: 'string',
-          description: 'Session ID for tracking this operation'
-        },
-        workspaceContext: {
-          type: 'object',
-          description: 'Workspace context for scoping operations'
         }
       },
       additionalProperties: false
     };
+    
+    return this.getMergedSchema(customSchema);
   }
 
   getResultSchema(): any {

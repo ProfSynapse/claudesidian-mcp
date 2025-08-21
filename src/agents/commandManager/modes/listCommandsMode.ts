@@ -86,16 +86,17 @@ export class ListCommandsMode extends BaseMode<ListCommandsParams, ListCommandsR
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filter: {
           type: 'string',
           description: 'Optional filter to apply to command list'
-        },
-        ...this.getCommonParameterSchema()
+        }
       }
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

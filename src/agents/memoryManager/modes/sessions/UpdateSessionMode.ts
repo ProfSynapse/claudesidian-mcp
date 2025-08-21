@@ -175,7 +175,7 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
      */
     getParameterSchema(): any {
         // Combined schema that supports edit and delete operations
-        return {
+        const customSchema = {
             type: 'object',
             properties: {
                 // Common parameters
@@ -222,6 +222,8 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
             },
             additionalProperties: false
         };
+        
+        return this.getMergedSchema(customSchema);
     }
 
     getResultSchema(): any {

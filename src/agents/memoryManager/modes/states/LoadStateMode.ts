@@ -525,7 +525,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
      * Schema methods using consolidated logic
      */
     getParameterSchema(): any {
-        return {
+        const customSchema = {
             type: 'object',
             properties: {
                 stateId: {
@@ -552,6 +552,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             required: ['stateId'],
             additionalProperties: false
         };
+        
+        return this.getMergedSchema(customSchema);
     }
 
     getResultSchema(): any {

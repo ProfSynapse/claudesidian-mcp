@@ -86,7 +86,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filePath: {
@@ -96,11 +96,12 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
         content: {
           type: 'string',
           description: 'Content to write to the file (REQUIRED)'
-        },
-        ...this.getCommonParameterSchema()
+        }
       },
       required: ['filePath', 'content']
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

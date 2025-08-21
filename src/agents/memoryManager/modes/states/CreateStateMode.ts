@@ -403,7 +403,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
      * Schema methods using consolidated logic
      */
     getParameterSchema(): any {
-        return {
+        const customSchema = {
             type: 'object',
             properties: {
                 name: {
@@ -471,6 +471,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             required: ['name', 'conversationContext', 'activeTask', 'activeFiles', 'nextSteps', 'reasoning'],
             additionalProperties: false
         };
+        
+        return this.getMergedSchema(customSchema);
     }
 
     getResultSchema(): any {

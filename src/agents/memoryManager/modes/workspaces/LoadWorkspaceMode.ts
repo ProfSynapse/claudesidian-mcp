@@ -542,23 +542,41 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         return [];
       }
       
-      const sessions = await memoryService.getSessions(workspaceId, false); // Get all sessions, not just active
+      // Validate workspace ID
+      if (!workspaceId || workspaceId === 'unknown') {
+        console.warn('[LoadWorkspaceMode] Invalid workspace ID for session fetching');
+        return [];
+      }
       
-      return sessions.map((session: any) => ({
+      const sessions = await memoryService.getSessions(workspaceId); // Get sessions for workspace
+      
+      console.log(`[LoadWorkspaceMode] DEBUG: Retrieved ${sessions.length} sessions for workspace ${workspaceId}`);
+      console.log(`[LoadWorkspaceMode] DEBUG: Session IDs:`, sessions.map((s: any) => s.id));
+      
+      // Defensive validation: ensure all sessions belong to workspace
+      const validSessions = sessions.filter((session: any) => session.workspaceId === workspaceId);
+      
+      if (validSessions.length !== sessions.length) {
+        console.error(`[LoadWorkspaceMode] CRITICAL: Database filtering failed! Retrieved ${sessions.length} sessions, only ${validSessions.length} belong to workspace ${workspaceId}`);
+        console.error(`[LoadWorkspaceMode] Cross-workspace sessions:`, sessions.filter((s: any) => s.workspaceId !== workspaceId).map((s: any) => ({id: s.id, workspaceId: s.workspaceId})));
+      }
+      
+      return validSessions.map((session: any) => ({
         id: session.id,
         name: session.name,
         description: session.description,
-        created: session.startTime
+        created: session.startTime,
+        workspaceId: session.workspaceId // Include for validation
       }));
       
     } catch (error) {
-      console.warn('[LoadWorkspaceMode] Failed to fetch sessions:', error);
+      console.error('[LoadWorkspaceMode] Failed to fetch workspace sessions:', error);
       return [];
     }
   }
 
   /**
-   * Fetch states for a workspace
+   * Fetch states for a workspace with defensive filtering
    */
   private async fetchWorkspaceStates(workspaceId: string, memoryService: any): Promise<Array<{
     id: string;
@@ -573,19 +591,33 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         return [];
       }
       
+      // Validate workspace ID
+      if (!workspaceId || workspaceId === 'unknown') {
+        console.warn('[LoadWorkspaceMode] Invalid workspace ID for state fetching');
+        return [];
+      }
+      
       const states = await memoryService.getStates(workspaceId);
       
-      return states.map((state: any) => ({
+      // Defensive validation: ensure all states belong to workspace
+      const validStates = states.filter((state: any) => state.workspaceId === workspaceId);
+      
+      if (validStates.length !== states.length) {
+        console.error(`[LoadWorkspaceMode] Filtered ${states.length - validStates.length} cross-workspace states`);
+      }
+      
+      return validStates.map((state: any) => ({
         id: state.id,
         name: state.name,
         description: state.description,
         sessionId: state.sessionId,
         created: state.created || state.timestamp,
-        tags: state.state?.metadata?.tags || []
+        tags: state.state?.metadata?.tags || [],
+        workspaceId: state.workspaceId // Include for validation
       }));
       
     } catch (error) {
-      console.warn('[LoadWorkspaceMode] Failed to fetch states:', error);
+      console.error('[LoadWorkspaceMode] Failed to fetch workspace states:', error);
       return [];
     }
   }

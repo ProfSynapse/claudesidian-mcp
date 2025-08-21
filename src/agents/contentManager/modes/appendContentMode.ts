@@ -69,7 +69,7 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filePath: {
@@ -79,11 +79,12 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
         content: {
           type: 'string',
           description: 'Content to append to the file'
-        },
-        ...this.getCommonParameterSchema()
+        }
       },
       required: ['filePath', 'content']
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

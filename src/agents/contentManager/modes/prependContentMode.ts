@@ -69,7 +69,7 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
    * @returns JSON schema object
    */
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         filePath: {
@@ -79,11 +79,12 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
         content: {
           type: 'string',
           description: 'Content to prepend to the file'
-        },
-        ...this.getCommonParameterSchema()
+        }
       },
       required: ['filePath', 'content']
     };
+    
+    return this.getMergedSchema(customSchema);
   }
   
   /**

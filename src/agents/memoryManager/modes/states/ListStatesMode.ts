@@ -177,7 +177,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
   }
 
   getParameterSchema(): any {
-    return {
+    const customSchema = {
       type: 'object',
       properties: {
         sessionId: {
@@ -201,14 +201,12 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         includeContext: {
           type: 'boolean',
           description: 'Include context information'
-        },
-        workspaceContext: {
-          type: 'object',
-          description: 'Workspace context for scoping operations'
         }
       },
       additionalProperties: false
     };
+    
+    return this.getMergedSchema(customSchema);
   }
 
   getResultSchema(): any {

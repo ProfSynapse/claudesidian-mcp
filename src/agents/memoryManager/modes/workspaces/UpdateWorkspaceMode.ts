@@ -238,7 +238,7 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
     }
 
     getParameterSchema(): any {
-        return {
+        const customSchema = {
             type: 'object',
             properties: {
                 workspaceId: { 
@@ -317,6 +317,8 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
             },
             required: ['workspaceId']
         };
+        
+        return this.getMergedSchema(customSchema);
     }
     
     getResultSchema(): any {
