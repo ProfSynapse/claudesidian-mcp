@@ -29,43 +29,14 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
     private readonly stateManager: IInitializationStateManager,
     private readonly vectorStore: any // Will be injected as dependency
   ) {
-    // TODO: Replace CollectionLoader with CollectionManager functionality
-    // this.initializeCollectionLoader();
+    // CollectionManager functionality is accessed through vectorStore
+    // No initialization needed as vectorStore handles collection management
   }
   
   /**
-   * Initialize the collection loader with proper file system interface
+   * Collection loading is now handled through the vector store's collection manager.
+   * This eliminates the need for separate collection loader initialization.
    */
-  /* TODO: Replace CollectionLoader with CollectionManager functionality
-  private initializeCollectionLoader(): void {
-    try {
-      // Note: fs import removed - now using Obsidian API only
-      const path = require('path');
-      
-      // Get the storage path from the plugin
-      let basePath;
-      if (this.plugin.app.vault.adapter instanceof require('obsidian').FileSystemAdapter) {
-        basePath = (this.plugin.app.vault.adapter as any).getBasePath();
-      } else {
-        throw new Error('FileSystemAdapter not available');
-      }
-      
-      // Use simple string concatenation to avoid path duplication in Electron environment
-      const pluginDir = `${basePath}/.obsidian/plugins/${this.plugin.manifest.id}`;
-      const dataDir = `${pluginDir}/data/chroma-db`;
-      
-      // Initialize collection loader using Obsidian API
-      // Obsidian App instance available for initialization
-      // Note: Collection loading is now handled by other services using Obsidian API
-      // this.collectionLoader = new CollectionLoader(
-      //   dataDir,
-      //   new PersistenceManager(this.plugin.app, 250, 5, this.plugin)
-      // );
-    } catch (error) {
-      console.error('[CollectionLoadingCoordinator] Failed to initialize collection loader:', error);
-    }
-  }
-  */
 
   /**
    * Ensures all collections are loaded exactly once
@@ -101,9 +72,8 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
   }
 
   /**
-   * Performs the actual collection loading using the CollectionLoader
+   * Performs the actual collection loading using the vector store's CollectionManager
    */
-  /* TODO: Replace CollectionLoader with CollectionManager functionality
   private async performCollectionLoading(): Promise<CollectionLoadingResult> {
     const startTime = Date.now();
     const errors: Array<{ collectionName: string; error: Error }> = [];
@@ -112,31 +82,33 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
     try {
       // Starting collection loading
       
-      if (!this.collectionLoader) {
-        throw new Error('Collection loader not initialized');
+      if (!this.vectorStore) {
+        throw new Error('Vector store not available');
       }
 
-      // Use the CollectionLoader to load collections from disk
-      const loadResult = await this.collectionLoader.loadCollectionsFromDisk();
+      // Use the vector store to list and load collections
+      const collectionNames = await this.vectorStore.listCollections();
       
-      if (loadResult.success && loadResult.loadedCollections) {
-        // Process loaded collections
-        for (const [collectionName, collection] of loadResult.loadedCollections) {
-          this.loadedCollections.set(collectionName, collection);
-          await this.updateCollectionMetadata(collectionName, collection);
-          collectionsLoaded++;
-          // Collection loaded
-        }
-        
-        // Add any errors from the loader
-        if (loadResult.error) {
+      // Process each collection
+      for (const collectionName of collectionNames) {
+        try {
+          // Check if collection exists and get basic metadata
+          const exists = await this.vectorStore.hasCollection(collectionName);
+          
+          if (exists) {
+            // Store minimal collection reference
+            this.loadedCollections.set(collectionName, { name: collectionName });
+            await this.updateCollectionMetadata(collectionName, { name: collectionName });
+            collectionsLoaded++;
+            // Collection loaded
+          }
+        } catch (collectionError) {
+          console.warn(`[CollectionLoadingCoordinator] Failed to load collection ${collectionName}:`, collectionError);
           errors.push({ 
-            collectionName: 'loader', 
-            error: new Error(loadResult.error) 
+            collectionName, 
+            error: collectionError as Error 
           });
         }
-      } else {
-        // No collections found on disk
       }
 
       const loadTime = Date.now() - startTime;
@@ -281,14 +253,4 @@ export class CollectionLoadingCoordinator implements ICollectionLoadingCoordinat
     throw new Error(`Failed to load collections: ${result.error?.message || 'Unknown error'}`);
   }
 
-  // Temporary stub implementation until CollectionManager integration is complete
-  private async performCollectionLoading(): Promise<CollectionLoadingResult> {
-    // Using stub implementation
-    return {
-      success: true,
-      collectionsLoaded: 0,
-      loadTime: 0,
-      errors: []
-    };
-  }
 }

@@ -20,7 +20,9 @@ export interface WorkspaceContext {
  * without requiring explicit context passing between every operation.
  */
 export class SessionContextManager {
-  // Reference to memory service (will be used for future session validation)
+  // Reference to session service for database validation
+  private sessionService: any = null;
+  
   // Map of sessionId -> workspace context
   private sessionContextMap: Map<string, WorkspaceContext> = new Map();
   
@@ -29,6 +31,15 @@ export class SessionContextManager {
   
   // Set of session IDs that have already received instructions
   private instructedSessions: Set<string> = new Set();
+  
+  /**
+   * Set the session service for database validation
+   * This is called during plugin initialization
+   */
+  setSessionService(sessionService: any): void {
+    this.sessionService = sessionService;
+    logger.systemLog('[SESSION-DEBUG] SessionService injected into SessionContextManager');
+  }
   
   /**
    * Get workspace context for a specific session
@@ -173,24 +184,58 @@ export class SessionContextManager {
    * @returns Object with validated session ID and creation status
    */
   async validateSessionId(sessionId: string, sessionDescription?: string): Promise<{id: string, created: boolean}> {
+    console.log(`🚨 [SESSION-DEBUG] SessionContextManager.validateSessionId - Input: "${sessionId}"`);
+    logger.systemLog(`[SESSION-DEBUG] SessionContextManager.validateSessionId - Input: "${sessionId}"`);
+    
     // If no session ID is provided, generate a new one in our standard format
     if (!sessionId) {
-      logger.systemWarn('Empty sessionId provided for validation, generating a new one');
+      logger.systemWarn('[SESSION-DEBUG] Empty sessionId provided for validation, generating a new one');
       const newId = generateSessionId();
       await this.createAutoSession(newId, 'Default Session', sessionDescription);
+      logger.systemLog(`[SESSION-DEBUG] Generated new session ID: "${newId}"`);
       return {id: newId, created: true};
     }
     
     // If the session ID doesn't match our standard format, it's a friendly name - create session
     if (!isStandardSessionId(sessionId)) {
-      logger.systemLog(`Creating new session with friendly name: "${sessionId}"`);
+      logger.systemLog(`[SESSION-DEBUG] Creating new session with friendly name: "${sessionId}"`);
       const newId = generateSessionId();
       await this.createAutoSession(newId, sessionId, sessionDescription);
+      logger.systemLog(`[SESSION-DEBUG] Created session "${newId}" for friendly name "${sessionId}"`);
       return {id: newId, created: true};
     }
     
-    // Return the original sessionId if it's already in our standard format
-    return {id: sessionId, created: false};
+    // Session ID is in standard format - check if it exists in database
+    console.log(`🚨 SessionService available: ${!!this.sessionService}`);
+    if (this.sessionService) {
+      try {
+        console.log(`🚨 [SESSION-DEBUG] Checking if session "${sessionId}" exists in database`);
+        logger.systemLog(`[SESSION-DEBUG] Checking if session "${sessionId}" exists in database`);
+        const existingSession = await this.sessionService.getSession(sessionId);
+        console.log(`🚨 [SESSION-DEBUG] Database lookup result:`, existingSession ? 'FOUND' : 'NOT FOUND');
+        if (existingSession) {
+          console.log(`🚨 [SESSION-DEBUG] Session "${sessionId}" found in database - reusing existing session`);
+          logger.systemLog(`[SESSION-DEBUG] Session "${sessionId}" found in database - reusing existing session`);
+          return {id: sessionId, created: false};
+        } else {
+          console.log(`🚨 [SESSION-DEBUG] Session "${sessionId}" not found in database - creating new session with this ID`);
+          logger.systemLog(`[SESSION-DEBUG] Session "${sessionId}" not found in database - creating new session with this ID`);
+          await this.createAutoSession(sessionId, `Session ${sessionId}`, sessionDescription);
+          return {id: sessionId, created: true};
+        }
+      } catch (error) {
+        console.log(`🚨 [SESSION-DEBUG] Error checking session existence:`, error);
+        logger.systemWarn(`[SESSION-DEBUG] Error checking session existence: ${error instanceof Error ? error.message : String(error)}`);
+        // Fallback to returning the session ID without verification
+        return {id: sessionId, created: false};
+      }
+    } else {
+      console.log(`🚨 [SESSION-DEBUG] SessionService not available - cannot validate session existence`);
+      logger.systemWarn('[SESSION-DEBUG] SessionService not available - cannot validate session existence');
+      // Return the original sessionId if it's already in our standard format
+      logger.systemLog(`[SESSION-DEBUG] Returning existing standard session ID: "${sessionId}"`);
+      return {id: sessionId, created: false};
+    }
   }
 
   /**
@@ -201,18 +246,31 @@ export class SessionContextManager {
    * @param sessionDescription Optional session description
    */
   private async createAutoSession(sessionId: string, sessionName: string, sessionDescription?: string): Promise<void> {
-    // For now, just log the auto-creation
-    // This will be enhanced when memory service integration is available
+    console.log(`🚨 [SESSION-DEBUG] createAutoSession called: ${sessionId}, name: "${sessionName}"`);
     logger.systemLog(`Auto-created session: ${sessionId} with name "${sessionName}" and description "${sessionDescription || 'No description'}"`);
     
-    // TODO: Integrate with memory service when available
-    // const sessionData = {
-    //   id: sessionId,
-    //   name: sessionName,
-    //   description: sessionDescription || '',
-    //   workspaceId: 'default-workspace'
-    // };
-    // await this.memoryService?.createSession(sessionData);
+    // Create session using the injected session service
+    if (this.sessionService) {
+      try {
+        console.log(`🚨 [SESSION-DEBUG] Creating session in database...`);
+        const sessionData = {
+          name: sessionName,
+          description: sessionDescription || '',
+          workspaceId: 'default-workspace',
+          id: sessionId
+        };
+        
+        const createdSession = await this.sessionService.createSession(sessionData);
+        console.log(`🚨 [SESSION-DEBUG] Session created successfully:`, createdSession ? 'SUCCESS' : 'FAILED');
+        logger.systemLog(`Session ${sessionId} successfully created in database`);
+      } catch (error) {
+        console.log(`🚨 [SESSION-DEBUG] Error creating session:`, error);
+        logger.systemError(error as Error, `Failed to create session ${sessionId}`);
+      }
+    } else {
+      console.log(`🚨 [SESSION-DEBUG] SessionService not available - session not saved to database`);
+      logger.systemWarn(`SessionService not available - session ${sessionId} not saved to database`);
+    }
   }
   
   /**
@@ -222,12 +280,26 @@ export class SessionContextManager {
    * @param sessionDescription New session description
    */
   async updateSessionDescription(sessionId: string, sessionDescription: string): Promise<void> {
-    // For now, just log the description update
-    // This will be enhanced when memory service integration is available
+    console.log(`🚨 [SESSION-DEBUG] updateSessionDescription called: ${sessionId}, description: "${sessionDescription}"`);
     logger.systemLog(`Updating session description for ${sessionId}: "${sessionDescription}"`);
     
-    // TODO: Integrate with memory service when available
-    // await this.memoryService?.updateSession(sessionId, { description: sessionDescription });
+    // Update session using the injected session service
+    if (this.sessionService) {
+      try {
+        console.log(`🚨 [SESSION-DEBUG] Updating session description in database...`);
+        // Note: This assumes the session service has an updateSession method
+        // If not, we may need to use a different method
+        await this.sessionService.updateSession?.(sessionId, { description: sessionDescription });
+        console.log(`🚨 [SESSION-DEBUG] Session description updated successfully`);
+        logger.systemLog(`Session ${sessionId} description updated in database`);
+      } catch (error) {
+        console.log(`🚨 [SESSION-DEBUG] Error updating session description:`, error);
+        logger.systemError(error as Error, `Failed to update session ${sessionId} description`);
+      }
+    } else {
+      console.log(`🚨 [SESSION-DEBUG] SessionService not available - description update not saved`);
+      logger.systemWarn(`SessionService not available - session ${sessionId} description update not saved`);
+    }
   }
 
   /**

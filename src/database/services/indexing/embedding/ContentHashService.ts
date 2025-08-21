@@ -59,14 +59,11 @@ export class ContentHashService {
       
       // Check our existing state manager (already implemented and working)
       if (this.stateManager.isFileProcessed(normalizedPath, currentHash)) {
-        console.log(`[ContentHashService] File ${normalizedPath} found in processed state with matching hash`);
         return false; // Already processed this exact version
       }
-      
-      console.log(`[ContentHashService] File ${normalizedPath} not in processed state or hash changed - needs embedding`);
       return true;
     } catch (error) {
-      console.error(`[ContentHashService] Error checking if file needs embedding for ${filePath}:`, error);
+      console.error('ContentHashService: Error checking if file needs embedding for', filePath, ':', error);
       return true; // If we can't determine, assume it needs embedding
     }
   }
@@ -87,7 +84,7 @@ export class ContentHashService {
       const content = await this.plugin.app.vault.read(file as TFile);
       return this.hashContent(content);
     } catch (error) {
-      console.error(`[ContentHashService] Error getting content hash for ${filePath}:`, error);
+      console.error('ContentHashService: Error getting content hash for', filePath, ':', error);
       return null;
     }
   }
@@ -149,7 +146,7 @@ export class ContentHashService {
       const bulkHashService = new AdaptiveBulkHashService(this.plugin, this, this.stateManager);
       return await bulkHashService.processBulkComparison(filePaths, vectorStore);
     } catch (error) {
-      console.error(`[ContentHashService] Error in bulk comparison:`, error);
+      console.error('ContentHashService: Error in bulk comparison:', error);
       
       // Fallback to individual processing
       const results = [];
@@ -162,7 +159,7 @@ export class ContentHashService {
             reason: 'Individual processing (fallback from bulk error)'
           });
         } catch (individualError) {
-          console.error(`[ContentHashService] Error in individual fallback for ${filePath}:`, individualError);
+          console.error('ContentHashService: Error in individual fallback for', filePath, ':', individualError);
           results.push({
             filePath: FileUtils.normalizePath(filePath),
             needsEmbedding: true, // Assume needs embedding on error

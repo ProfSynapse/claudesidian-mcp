@@ -21,15 +21,20 @@ export class SessionService {
   /**
    * Create a new session
    */
-  async createSession(sessionData: Omit<SessionData, 'id'>): Promise<SessionData> {
-    const id = this.generateSessionId();
+  async createSession(sessionData: Omit<SessionData, 'id'> | SessionData): Promise<SessionData> {
+    // Use provided ID if available, otherwise generate one
+    const id = (sessionData as any).id || this.generateSessionId();
     const session: SessionData = {
       ...sessionData,
       id
     };
     
+    console.log(`🚨 [SESSION-DEBUG] SessionService.createSession - using ID: "${id}"`);
+    
     this.sessions.set(id, session);
     await this.simpleMemoryService.storeSession(id, session);
+    
+    console.log(`🚨 [SESSION-DEBUG] SessionService.createSession - stored in memory service`);
     
     // Session created
     return session;

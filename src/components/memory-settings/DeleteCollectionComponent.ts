@@ -108,8 +108,8 @@ Are you absolutely sure you want to delete this collection?`;
             
             // Deleting collection
             
-            // TODO: Create backup before deletion (future enhancement)
-            // const backup = await this.createCollectionBackup(collection);
+            // Create backup before deletion
+            await this.createCollectionBackup(collection);
             
             // Delete the entire collection (all data)
             await this.vectorStore.deleteCollection(collection);
@@ -219,6 +219,101 @@ Are you absolutely sure you want to delete ALL collections?`;
             // Re-enable the button
             purgeButton.setDisabled(false);
             purgeButton.setButtonText('Purge All Collections');
+        }
+    }
+
+    /**
+     * Create a backup of the collection before deletion
+     */
+    private async createCollectionBackup(collectionName: string): Promise<void> {
+        try {
+            // Check if collection exists
+            const exists = await this.vectorStore.hasCollection(collectionName);
+            if (!exists) {
+                console.warn(`[DeleteCollectionComponent] Collection ${collectionName} does not exist, skipping backup`);
+                return;
+            }
+
+            // Get all items from the collection for backup
+            const allItems = await this.vectorStore.getAllItems(collectionName);
+            
+            if (!allItems || !allItems.ids || allItems.ids.length === 0) {
+                console.info(`[DeleteCollectionComponent] Collection ${collectionName} is empty, no backup needed`);
+                return;
+            }
+
+            // Create backup data structure
+            const backupData = {
+                collectionName,
+                timestamp: new Date().toISOString(),
+                itemCount: allItems.ids.length,
+                data: {
+                    ids: allItems.ids,
+                    embeddings: allItems.embeddings,
+                    metadatas: allItems.metadatas,
+                    documents: allItems.documents
+                }
+            };
+
+            // Store backup in localStorage with timestamp
+            const backupKey = `claudesidian-collection-backup-${collectionName}-${Date.now()}`;
+            try {
+                localStorage.setItem(backupKey, JSON.stringify(backupData));
+                console.info(`[DeleteCollectionComponent] Created backup for collection ${collectionName} with ${allItems.ids.length} items`);
+                
+                // Show notification about backup creation
+                new Notice(`Backup created for collection: ${collectionName} (${allItems.ids.length} items)`);
+                
+                // Clean up old backups (keep only last 5 per collection)
+                this.cleanupOldBackups(collectionName);
+                
+            } catch (storageError) {
+                console.warn(`[DeleteCollectionComponent] Failed to store backup in localStorage:`, storageError);
+                // Continue with deletion even if backup fails
+                new Notice(`Warning: Could not create backup for ${collectionName} - deletion will proceed`);
+            }
+
+        } catch (error) {
+            console.error(`[DeleteCollectionComponent] Failed to create backup for collection ${collectionName}:`, error);
+            // Show warning but don't prevent deletion
+            new Notice(`Warning: Backup creation failed for ${collectionName} - deletion will proceed`);
+        }
+    }
+
+    /**
+     * Clean up old backups to prevent localStorage bloat
+     */
+    private cleanupOldBackups(collectionName: string): void {
+        try {
+            const backupKeys: string[] = [];
+            
+            // Find all backup keys for this collection
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(`claudesidian-collection-backup-${collectionName}-`)) {
+                    backupKeys.push(key);
+                }
+            }
+
+            // Sort by timestamp (newest first) and keep only the latest 5
+            backupKeys.sort((a, b) => {
+                const timestampA = parseInt(a.split('-').pop() || '0');
+                const timestampB = parseInt(b.split('-').pop() || '0');
+                return timestampB - timestampA;
+            });
+
+            // Remove old backups beyond the limit
+            const maxBackups = 5;
+            if (backupKeys.length > maxBackups) {
+                const keysToRemove = backupKeys.slice(maxBackups);
+                keysToRemove.forEach(key => {
+                    localStorage.removeItem(key);
+                });
+                console.info(`[DeleteCollectionComponent] Cleaned up ${keysToRemove.length} old backups for ${collectionName}`);
+            }
+
+        } catch (error) {
+            console.warn(`[DeleteCollectionComponent] Failed to cleanup old backups:`, error);
         }
     }
 

@@ -256,6 +256,21 @@ export class MCPConnector {
             // Reinitialize request router with registered agents
             this.connectionManager.reinitializeRequestRouter();
             
+            // Inject session service into SessionContextManager for database validation
+            if (this.serviceManager) {
+                try {
+                    const sessionService = await this.serviceManager.getService<any>('sessionService');
+                    if (sessionService) {
+                        this.sessionContextManager.setSessionService(sessionService);
+                        logger.systemLog('[SESSION-DEBUG] SessionService successfully injected into SessionContextManager');
+                    } else {
+                        logger.systemWarn('[SESSION-DEBUG] SessionService not found in service manager');
+                    }
+                } catch (error) {
+                    logger.systemWarn(`[SESSION-DEBUG] Failed to inject SessionService: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+            
             logger.systemLog('Agent initialization completed successfully');
         } catch (error) {
             if (error instanceof McpError) {

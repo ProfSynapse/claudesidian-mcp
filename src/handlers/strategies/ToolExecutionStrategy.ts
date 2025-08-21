@@ -114,8 +114,44 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             );
         }
 
-        const sessionInfo = await this.dependencies.sessionService.processSessionId(params.sessionId);
-        params.sessionId = sessionInfo.sessionId;
+        // Use SessionContextManager for unified session handling instead of separate SessionService
+        const sessionId = params.context?.sessionId || params.sessionId;
+        
+        let sessionInfo: any;
+        if (this.sessionContextManager && sessionId) {
+            try {
+                const validationResult = await this.sessionContextManager.validateSessionId(sessionId);
+                const isNonStandardId = validationResult.id !== sessionId;
+                
+                sessionInfo = {
+                    sessionId: validationResult.id,
+                    isNewSession: validationResult.created,
+                    isNonStandardId: isNonStandardId,
+                    originalSessionId: isNonStandardId ? sessionId : undefined
+                };
+                
+                // Update params with validated session ID (both locations for compatibility)
+                if (params.context) {
+                    params.context.sessionId = validationResult.id;
+                }
+                params.sessionId = validationResult.id;
+            } catch (error) {
+                logger.systemWarn(`SessionContextManager validation failed: ${getErrorMessage(error)}. Falling back to SessionService`);
+                // Fallback to original SessionService if SessionContextManager fails
+                sessionInfo = await this.dependencies.sessionService.processSessionId(sessionId);
+                if (params.context) {
+                    params.context.sessionId = sessionInfo.sessionId;
+                }
+                params.sessionId = sessionInfo.sessionId;
+            }
+        } else {
+            // Fallback to original SessionService if no SessionContextManager or sessionId
+            sessionInfo = await this.dependencies.sessionService.processSessionId(sessionId);
+            if (params.context) {
+                params.context.sessionId = sessionInfo.sessionId;
+            }
+            params.sessionId = sessionInfo.sessionId;
+        }
         
         const shouldInjectInstructions = this.dependencies.sessionService.shouldInjectInstructions(
             sessionInfo.sessionId, 
@@ -155,31 +191,13 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             context.fullToolName
         );
 
-        if (this.sessionContextManager && enhancedParams.context?.sessionId) {
+        // Session validation is now handled in buildRequestContext() to avoid duplication
+        // Only handle session description updates here if needed
+        if (this.sessionContextManager && enhancedParams.context?.sessionId && enhancedParams.context?.sessionDescription) {
             try {
-                const {id: validatedSessionId, created} = await this.sessionContextManager.validateSessionId(
-                    enhancedParams.context.sessionId, 
-                    enhancedParams.context.sessionDescription
-                );
-                
-                if (validatedSessionId !== enhancedParams.context.sessionId) {
-                    enhancedParams._isNonStandardId = true;
-                    enhancedParams._originalSessionId = enhancedParams.context.sessionId;
-                    enhancedParams.context.sessionId = validatedSessionId;
-                    
-                    if (created) {
-                        logger.systemLog(`Auto-created session "${enhancedParams._originalSessionId}" with ID: ${validatedSessionId}`);
-                    } else {
-                        logger.systemLog(`Session ID standardized from "${enhancedParams._originalSessionId}" to "${validatedSessionId}"`);
-                    }
-                }
-                
-                // Update session description if provided and session already exists
-                if (!created && enhancedParams.context.sessionDescription) {
-                    await this.sessionContextManager.updateSessionDescription(validatedSessionId, enhancedParams.context.sessionDescription);
-                }
+                await this.sessionContextManager.updateSessionDescription(enhancedParams.context.sessionId, enhancedParams.context.sessionDescription);
             } catch (error) {
-                logger.systemWarn(`Session validation failed: ${getErrorMessage(error)}. Using original ID`);
+                logger.systemWarn(`Session description update failed: ${getErrorMessage(error)}`);
             }
         }
 

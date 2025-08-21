@@ -104,8 +104,17 @@ export class AgentExecutionManager {
         const originalSessionId = params.sessionId;
 
         try {
-            // Validate session ID
-            params.sessionId = await this.sessionContextManager.validateSessionId(params.sessionId);
+            // DIAGNOSTIC: Track session ID flow
+            logger.systemLog(`[SESSION-DEBUG] AgentExecutionManager - Input sessionId: "${params.sessionId}"`);
+            
+            // Validate session ID - destructure the result to get the actual ID
+            const {id: validatedSessionId, created} = await this.sessionContextManager.validateSessionId(params.sessionId);
+            
+            logger.systemLog(`[SESSION-DEBUG] AgentExecutionManager - validateSessionId returned: id="${validatedSessionId}", created=${created}`);
+            
+            params.sessionId = validatedSessionId;
+            
+            logger.systemLog(`[SESSION-DEBUG] AgentExecutionManager - Final sessionId: "${params.sessionId}"`);
 
             // Apply workspace context
             params = this.sessionContextManager.applyWorkspaceContext(params.sessionId, params);

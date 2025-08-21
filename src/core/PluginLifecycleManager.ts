@@ -167,11 +167,18 @@ export class PluginLifecycleManager {
         
         await serviceManager.registerService({
             name: 'sessionService',
-            dependencies: ['simpleMemoryService'],
+            dependencies: ['vectorStore', 'embeddingService'],
             create: async () => {
-                const { SessionService } = await import('../services/session/SessionService');
-                const memoryService = await serviceManager.getService<any>('simpleMemoryService');
-                return new SessionService(memoryService);
+                const { SessionService } = await import('../agents/memoryManager/services/SessionService');
+                const { VectorStoreFactory } = await import('../database/factory/VectorStoreFactory');
+                const vectorStore = await serviceManager.getService<any>('vectorStore');
+                const embeddingService = await serviceManager.getService<any>('embeddingService');
+                
+                console.log(`🚨 [SESSION-DEBUG] Creating ChromaDB-backed SessionService`);
+                
+                // Create session collection through factory (same pattern as workspaces/states)
+                const sessionCollection = VectorStoreFactory.createSessionCollection(vectorStore, embeddingService);
+                return new SessionService(plugin, sessionCollection);
             }
         });
         

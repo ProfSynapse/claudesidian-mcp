@@ -371,9 +371,8 @@ export class VectorStoreInitializer {
       
       console.info(`[VectorStoreInitializer] Standard collections: ${existingCount} existing, ${createdCount} created`);
       
-      // TEMPORARY FIX: Skip collection refresh to prevent bulk loading
-      // TODO: Implement context-aware collection refresh that doesn't load data
-      console.debug('[VectorStoreInitializer] Skipping collection refresh to prevent memory spike');
+      // Perform context-aware collection refresh without loading data
+      await this.performContextAwareCollectionRefresh(context);
       
     } catch (error) {
       const errorMsg = `Standard collection initialization failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -724,6 +723,66 @@ export class VectorStoreInitializer {
     } catch (error) {
       console.warn('[VectorStoreInitializer] Failed to disable context-aware mode for collections:', error);
       // Continue - this is not critical for initialization
+    }
+  }
+
+  /**
+   * Perform context-aware collection refresh that updates metadata without loading data
+   * MEMORY OPTIMIZATION: Refreshes collection registry without bulk data loading
+   */
+  private async performContextAwareCollectionRefresh(context: InitializationContext): Promise<void> {
+    try {
+      // Starting context-aware collection refresh
+      const memoryBefore = this.getMemoryUsage();
+      
+      // Refresh collection list with metadata-only approach
+      const collections = await context.collectionManager.listCollections();
+      
+      let refreshedCount = 0;
+      let skipCount = 0;
+      
+      for (const collectionName of collections) {
+        try {
+          // Check if collection exists without loading data
+          const exists = await context.collectionManager.hasCollection(collectionName);
+          
+          if (exists) {
+            // Update collection registry with minimal metadata
+            // This refreshes the internal cache without loading all data
+            const collection = await context.collectionManager.getOrCreateCollection(collectionName, true); // Context-aware mode
+            
+            if (collection) {
+              // Register collection for future operations
+              context.collectionManager.registerCollection(collectionName, collection);
+              refreshedCount++;
+            } else {
+              skipCount++;
+            }
+          } else {
+            skipCount++;
+          }
+          
+        } catch (collectionError) {
+          console.warn(`[VectorStoreInitializer] Failed to refresh collection ${collectionName}:`, collectionError);
+          skipCount++;
+        }
+      }
+      
+      const memoryAfter = this.getMemoryUsage();
+      const memoryDelta = memoryAfter - memoryBefore;
+      
+      // Memory impact monitoring
+      if (memoryDelta > 50 * 1024 * 1024) { // > 50MB
+        console.warn(`[VectorStoreInitializer] ⚠️ MEMORY SPIKE in context-aware refresh: ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+      } else {
+        console.debug(`[VectorStoreInitializer] Context-aware refresh completed with minimal memory impact: ${Math.round(memoryDelta / 1024 / 1024)}MB`);
+      }
+      
+      console.info(`[VectorStoreInitializer] Context-aware refresh: ${refreshedCount} collections refreshed, ${skipCount} skipped`);
+      
+    } catch (error) {
+      console.warn('[VectorStoreInitializer] Context-aware collection refresh failed:', error);
+      // Continue without refresh - not critical for initialization
     }
   }
 
