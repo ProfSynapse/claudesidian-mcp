@@ -10,6 +10,17 @@ import { parseWorkspaceContext } from '../utils/contextUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { enhanceSchemaDocumentation } from '../utils/validationUtils';
 
+// Import new validation utilities
+import { 
+  ValidationResultHelper, 
+  ValidationError,
+  ValidationResult
+} from '../utils/validation/ValidationResultHelper';
+import { 
+  CommonValidators,
+  ValidationRuleSet
+} from '../utils/validation/CommonValidators';
+
 /**
  * Base class for all modes in the MCP plugin
  * Provides common functionality for mode implementation
@@ -328,5 +339,107 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
         }
       } as R;
     }
+  }
+
+  // ========================================
+  // NEW VALIDATION UTILITIES (Phase 1)
+  // ========================================
+
+  /**
+   * Helper for standardized error responses
+   * 
+   * Creates consistent error results using ValidationResultHelper while maintaining
+   * backward compatibility with existing result creation patterns.
+   * 
+   * @param error Error string, Error object, or array of ValidationErrors
+   * @param params Original parameters (for context extraction)
+   * @param context Additional context to include in result
+   * @returns Standardized error result
+   */
+  protected createErrorResult(
+    error: string | Error | ValidationError[],
+    params?: T,
+    context?: any
+  ): R {
+    return ValidationResultHelper.createErrorResult(this as any, error, params, context);
+  }
+
+  /**
+   * Helper for standardized success responses
+   * 
+   * Creates consistent success results using ValidationResultHelper with proper
+   * context propagation and session tracking.
+   * 
+   * @param data Result data to include
+   * @param params Original parameters (for context extraction)
+   * @param additionalData Additional properties to include in result
+   * @returns Standardized success result
+   */
+  protected createSuccessResult(
+    data: any,
+    params?: T,
+    additionalData?: any
+  ): R {
+    return ValidationResultHelper.createSuccessResult(this as any, data, params, additionalData);
+  }
+
+  /**
+   * Enhanced validation execution pipeline
+   * 
+   * Validates multiple fields using CommonValidators and returns a comprehensive
+   * validation result with all errors collected.
+   * 
+   * @param params Parameters object to validate
+   * @param validators Mapping of field names to validation functions
+   * @returns Validation result with success status and error details
+   */
+  protected validateCustom<TParams>(
+    params: TParams,
+    validators: ValidationRuleSet<TParams>
+  ): ValidationResult<TParams> {
+    const errors = CommonValidators.validateFields(params, validators);
+    return ValidationResultHelper.createValidationResult(params, errors);
+  }
+
+  /**
+   * Validate session context using standardized patterns
+   * 
+   * Validates CommonParameters context structure using CommonValidators
+   * with appropriate options for the current mode.
+   * 
+   * @param params CommonParameters to validate
+   * @param options Validation options (optional)
+   * @returns Array of validation errors
+   */
+  protected validateSessionContext(
+    params: CommonParameters,
+    options?: {
+      requireSessionId?: boolean;
+      requireWorkspace?: boolean;
+      minContextLength?: number;
+    }
+  ): ValidationError[] {
+    return CommonValidators.validateSessionContext(params, this as any, options);
+  }
+
+  /**
+   * Helper for quick validation with automatic error result creation
+   * 
+   * Combines validation and error result creation into a single method
+   * for simpler error handling in mode implementations.
+   * 
+   * @param params Parameters to validate
+   * @param validators Validation rule set
+   * @returns Error result if validation fails, null if valid
+   */
+  protected quickValidate<TParams>(
+    params: TParams,
+    validators: ValidationRuleSet<TParams>
+  ): R | null {
+    const validation = this.validateCustom(params, validators);
+    if (!validation.success) {
+      return this.createErrorResult(validation.errors, params as any);
+    }
+    return null;
   }
 }
