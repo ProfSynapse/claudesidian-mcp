@@ -3,7 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { DeleteContentParams, DeleteContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
-import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { MemoryService } from '../../memoryManager/services/MemoryService';
 
 /**
@@ -56,7 +56,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       // Record session activity for memory tracking
       await this.recordActivity(params, resultData);
       
-      const response = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const response = this.prepareResult(true, resultData, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -65,7 +65,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       
       return response;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error deleting content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+      return this.prepareResult(false, undefined, createErrorMessage('Error deleting content: ', error), params.context, parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

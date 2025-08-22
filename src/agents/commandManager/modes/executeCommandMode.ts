@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ExecuteCommandParams, ExecuteCommandResult } from '../types';
 import { CommandManagerAgent } from '../commandManager';
-import { parseWorkspaceContext, extractContextFromParams } from '../../../utils/contextUtils';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
 import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
@@ -72,7 +72,7 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
           commandId
         },
         undefined,
-        extractContextFromParams(params),
+        params.context,
         parseWorkspaceContext(workspaceContext) || undefined
       );
       

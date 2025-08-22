@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ReadContentParams, ReadContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
+import {parseWorkspaceContext} from '../../../utils/contextUtils';
 import { MemoryService } from '../../memoryManager/services/MemoryService';
 import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
@@ -79,7 +79,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       // Record this activity in workspace memory if applicable
       await this.recordActivity(params, resultData);
       
-      const result = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const result = this.prepareResult(true, resultData, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
       
       // Generate nudges based on content
       const nudges = this.generateReadContentNudges(resultData);
@@ -92,7 +92,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       
       return resultWithNudges;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error reading content: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+      return this.prepareResult(false, undefined, createErrorMessage('Error reading content: ', error), params.context, parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

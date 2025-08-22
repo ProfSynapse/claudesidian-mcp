@@ -3,7 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { CreateContentParams, CreateContentResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
-import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { MemoryService } from '../../memoryManager/services/MemoryService';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
 import { NudgeHelpers } from '../../../utils/nudgeHelpers';
@@ -43,11 +43,11 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       // Validate parameters
       if (!filePath) {
-        return this.prepareResult(false, undefined, 'File path is required', extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+        return this.prepareResult(false, undefined, 'File path is required', params.context, parseWorkspaceContext(workspaceContext) || undefined);
       }
       
       if (content === undefined || content === null) {
-        return this.prepareResult(false, undefined, 'Content is required', extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+        return this.prepareResult(false, undefined, 'Content is required', params.context, parseWorkspaceContext(workspaceContext) || undefined);
       }
       
       // Create file
@@ -63,7 +63,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       // Record session activity for memory tracking
       await this.recordActivity(params, resultData);
       
-      const result = this.prepareResult(true, resultData, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+      const result = this.prepareResult(true, resultData, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
       
       // Generate nudges based on file creation
       const nudges = this.generateCreateContentNudges(params, resultData);
@@ -76,7 +76,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       
       return resultWithNudges;
     } catch (error) {
-      return this.prepareResult(false, undefined, createErrorMessage('Error creating file: ', error), extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+      return this.prepareResult(false, undefined, createErrorMessage('Error creating file: ', error), params.context, parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

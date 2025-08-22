@@ -179,15 +179,13 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       
     } catch (error) {
       console.error('[SearchMemoryMode] Search error:', error);
-      return {
-        success: false,
+      return this.prepareResult(false, {
         query: params.query || '',
         results: [],
         totalResults: 0,
         searchCapabilities: this.getCapabilities(),
-        executionTime: Date.now() - startTime,
-        error: `Memory search failed: ${getErrorMessage(error)}`
-      };
+        executionTime: Date.now() - startTime
+      }, `Memory search failed: ${getErrorMessage(error)}`, params.context);
     }
   }
 

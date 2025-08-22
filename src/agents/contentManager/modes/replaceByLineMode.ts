@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ReplaceByLineParams, ReplaceByLineResult } from '../types';
 import { ContentOperations } from '../utils/ContentOperations';
-import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for replacing content by line number in a file
@@ -47,7 +47,7 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
       const response = this.prepareResult(true, {
           filePath,
           linesReplaced
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+        }, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if specified
       if (handoff) {
@@ -57,7 +57,7 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
       return response;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return this.prepareResult(false, undefined, errorMessage, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+      return this.prepareResult(false, undefined, errorMessage, params.context, parseWorkspaceContext(params.workspaceContext) || undefined);
     }
   }
   

@@ -3,7 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { smartNormalizePath } from '../../../utils/pathUtils';
-import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 /**
  * Parameters for open note mode
  */
@@ -112,7 +112,7 @@ export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
           path: file.path,
           opened: true,
           mode: mode
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+        }, undefined, params.context, parseWorkspaceContext(params.workspaceContext) || undefined);
       
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to open note: ', error));

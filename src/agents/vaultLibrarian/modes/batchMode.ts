@@ -41,17 +41,11 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
     try {
       // Validate parameters
       if (!params.searches || params.searches.length === 0) {
-        return {
-          success: false,
-          error: 'At least one search query is required'
-        } as BatchUniversalSearchResult;
+        return this.prepareResult(false, undefined, 'At least one search query is required', params.context);
       }
 
       if (params.searches.length > (params.maxConcurrency || 10)) {
-        return {
-          success: false,
-          error: `Too many searches requested. Maximum allowed: ${params.maxConcurrency || 10}`
-        } as BatchUniversalSearchResult;
+        return this.prepareResult(false, undefined, `Too many searches requested. Maximum allowed: ${params.maxConcurrency || 10}`, params.context);
       }
 
       const startTime = performance.now();
@@ -96,10 +90,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
       }
       
     } catch (error) {
-      return {
-        success: false,
-        error: `Batch search failed: ${getErrorMessage(error)}`
-      } as BatchUniversalSearchResult;
+      return this.prepareResult(false, undefined, `Batch search failed: ${getErrorMessage(error)}`, params.context);
     }
   }
 

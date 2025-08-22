@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { ListCommandsParams, ListCommandsResult } from '../types';
-import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Mode for listing available commands
@@ -56,7 +56,7 @@ export class ListCommandsMode extends BaseMode<ListCommandsParams, ListCommandsR
       const response = this.prepareResult(true, {
           commands: mappedCommands,
           total: mappedCommands.length
-        }, undefined, extractContextFromParams(params), parseWorkspaceContext(workspaceContext) || undefined);
+        }, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
       
       // Handle handoff if requested
       if (handoff) {

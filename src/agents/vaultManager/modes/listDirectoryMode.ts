@@ -3,7 +3,7 @@ import { BaseDirectoryMode } from './baseDirectoryMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
-import { extractContextFromParams, parseWorkspaceContext } from '../../../utils/contextUtils';
+import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
  * Parameters for list directory mode
@@ -167,7 +167,7 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParameters
         true, 
         result, 
         message, 
-        extractContextFromParams(params), 
+        params.context, 
         parseWorkspaceContext(params.workspaceContext) || undefined
       );
       

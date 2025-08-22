@@ -113,16 +113,14 @@ export class SearchWorkspaceMode extends BaseMode<SearchWorkspaceParams, SearchW
     try {
       // Simple parameter validation
       if (!params.query || params.query.trim().length === 0) {
-        return {
-          success: false,
+        return this.prepareResult(false, {
           query: params.query || '',
           workspaceId: params.workspaceId || 'global-workspace-default',
           results: [],
           totalResults: 0,
           searchCapabilities: this.getCapabilities(),
-          executionTime: Date.now() - startTime,
-          error: 'Query parameter is required and cannot be empty'
-        };
+          executionTime: Date.now() - startTime
+        }, 'Query parameter is required and cannot be empty', params.context);
       }
 
       // Apply default workspace if not provided
@@ -162,16 +160,14 @@ export class SearchWorkspaceMode extends BaseMode<SearchWorkspaceParams, SearchW
       };
 
     } catch (error) {
-      return {
-        success: false,
+      return this.prepareResult(false, {
         query: params.query || '',
         workspaceId: params.workspaceId || 'global-workspace-default',
         results: [],
         totalResults: 0,
         searchCapabilities: this.getCapabilities(),
-        executionTime: Date.now() - startTime,
-        error: `Workspace search failed: ${getErrorMessage(error)}`
-      };
+        executionTime: Date.now() - startTime
+      }, `Workspace search failed: ${getErrorMessage(error)}`, params.context);
     }
   }
 

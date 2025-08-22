@@ -3,7 +3,7 @@ import { BaseMode } from '../../baseMode';
 import { CommonParameters, CommonResult } from '../../../types';
 import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
-import {parseWorkspaceContext, extractContextFromParams} from '../../../utils/contextUtils';
+import {parseWorkspaceContext} from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
@@ -99,7 +99,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
         await this.recordActivity(params, result);
       }
       
-      return this.prepareResult(true, result, undefined, extractContextFromParams(params), parseWorkspaceContext(params.workspaceContext) || undefined);
+      return this.prepareResult(true, result, undefined, params.context, parseWorkspaceContext(params.workspaceContext) || undefined);
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Failed to create folder: ', error));
     }

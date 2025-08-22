@@ -87,27 +87,23 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
     try {
       // Simple parameter validation
       if (!params.query || params.query.trim().length === 0) {
-        return {
-          success: false,
+        return this.prepareResult(false, {
           query: params.query || '',
           results: [],
           totalResults: 0,
           executionTime: Date.now() - startTime,
-          searchCapabilities: this.getCapabilities(),
-          error: 'Query parameter is required and cannot be empty'
-        };
+          searchCapabilities: this.getCapabilities()
+        }, 'Query parameter is required and cannot be empty', params.context);
       }
 
       if (!params.paths || params.paths.length === 0) {
-        return {
-          success: false,
+        return this.prepareResult(false, {
           query: params.query,
           results: [],
           totalResults: 0,
           executionTime: Date.now() - startTime,
-          searchCapabilities: this.getCapabilities(),
-          error: 'Paths parameter is required and cannot be empty - specify directories to search'
-        };
+          searchCapabilities: this.getCapabilities()
+        }, 'Paths parameter is required and cannot be empty - specify directories to search', params.context);
       }
 
       const query = params.query.trim();
@@ -144,16 +140,14 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
       };
       
     } catch (error) {
-      return {
-        success: false,
+      return this.prepareResult(false, {
         query: params.query || '',
         searchedPaths: params.paths || [],
         results: [],
         totalResults: 0,
         executionTime: Date.now() - startTime,
-        searchCapabilities: this.getCapabilities(),
-        error: `Directory search failed: ${getErrorMessage(error)}`
-      };
+        searchCapabilities: this.getCapabilities()
+      }, `Directory search failed: ${getErrorMessage(error)}`, params.context);
     }
   }
 
