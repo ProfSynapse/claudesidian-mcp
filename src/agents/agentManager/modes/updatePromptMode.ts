@@ -1,8 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { UpdatePromptParams, UpdatePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { getCommonResultSchema } from '../../../utils/schemaUtils';
-import { extractContextFromParams } from '../../../utils/contextUtils';
+import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
 import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
@@ -38,12 +37,12 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       
       // Validate required ID
       if (!id?.trim()) {
-        return this.prepareResult(false, null, 'ID is required', extractContextFromParams(params));
+        return createResult<UpdatePromptResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Check that at least one field is being updated
       if (name === undefined && description === undefined && prompt === undefined && isEnabled === undefined) {
-        return this.prepareResult(false, null, 'At least one field must be provided for update', extractContextFromParams(params));
+        return createResult<UpdatePromptResult>(false, null, 'At least one field must be provided for update', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Prepare updates object
@@ -51,21 +50,21 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       
       if (name !== undefined) {
         if (!name.trim()) {
-          return this.prepareResult(false, null, 'Name cannot be empty', extractContextFromParams(params));
+          return createResult<UpdatePromptResult>(false, null, 'Name cannot be empty', undefined, undefined, params.context.sessionId, params.context);
         }
         updates.name = name.trim();
       }
       
       if (description !== undefined) {
         if (!description.trim()) {
-          return this.prepareResult(false, null, 'Description cannot be empty', extractContextFromParams(params));
+          return createResult<UpdatePromptResult>(false, null, 'Description cannot be empty', undefined, undefined, params.context.sessionId, params.context);
         }
         updates.description = description.trim();
       }
       
       if (prompt !== undefined) {
         if (!prompt.trim()) {
-          return this.prepareResult(false, null, 'Prompt text cannot be empty', extractContextFromParams(params));
+          return createResult<UpdatePromptResult>(false, null, 'Prompt text cannot be empty', undefined, undefined, params.context.sessionId, params.context);
         }
         updates.prompt = prompt.trim();
       }
@@ -77,10 +76,10 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       // Update the prompt
       const updatedPrompt = await this.storageService.updatePrompt(id.trim(), updates);
       
-      const result = this.prepareResult(true, updatedPrompt, undefined, extractContextFromParams(params));
+      const result = createResult<UpdatePromptResult>(true, updatedPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.updatePrompt);
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to update prompt: ${error}`, extractContextFromParams(params));
+      return createResult<UpdatePromptResult>(false, null, `Failed to update prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

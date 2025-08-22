@@ -1,8 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { CreatePromptParams, CreatePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { getCommonResultSchema } from '../../../utils/schemaUtils';
-import { extractContextFromParams } from '../../../utils/contextUtils';
+import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
 import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
@@ -38,15 +37,15 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
       
       // Validate required fields
       if (!name?.trim()) {
-        return this.prepareResult(false, null, 'Name is required', extractContextFromParams(params));
+        return createResult<CreatePromptResult>(false, null, 'Name is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       if (!description?.trim()) {
-        return this.prepareResult(false, null, 'Description is required', extractContextFromParams(params));
+        return createResult<CreatePromptResult>(false, null, 'Description is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       if (!prompt?.trim()) {
-        return this.prepareResult(false, null, 'Prompt text is required', extractContextFromParams(params));
+        return createResult<CreatePromptResult>(false, null, 'Prompt text is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Create the prompt
@@ -57,10 +56,10 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
         isEnabled
       });
       
-      const result = this.prepareResult(true, newPrompt, undefined, extractContextFromParams(params));
+      const result = createResult<CreatePromptResult>(true, newPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.createPrompt);
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to create prompt: ${error}`, extractContextFromParams(params));
+      return createResult<CreatePromptResult>(false, null, `Failed to create prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

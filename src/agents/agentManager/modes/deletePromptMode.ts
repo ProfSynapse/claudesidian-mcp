@@ -1,8 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { DeletePromptParams, DeletePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { getCommonResultSchema } from '../../../utils/schemaUtils';
-import { extractContextFromParams } from '../../../utils/contextUtils';
+import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 
 /**
  * Mode for deleting a custom prompt
@@ -36,24 +35,24 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
       
       // Validate required ID
       if (!id?.trim()) {
-        return this.prepareResult(false, null, 'ID is required', extractContextFromParams(params));
+        return createResult<DeletePromptResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Check if prompt exists before deletion
       const existingPrompt = this.storageService.getPrompt(id.trim());
       if (!existingPrompt) {
-        return this.prepareResult(false, null, `Prompt with ID "${id}" not found`, extractContextFromParams(params));
+        return createResult<DeletePromptResult>(false, null, `Prompt with ID "${id}" not found`, undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Delete the prompt
       const deleted = await this.storageService.deletePrompt(id.trim());
       
-      return this.prepareResult(true, {
+      return createResult<DeletePromptResult>(true, {
         deleted,
         id: id.trim()
-      }, undefined, extractContextFromParams(params));
+      }, undefined, undefined, undefined, params.context.sessionId, params.context);
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to delete prompt: ${error}`, extractContextFromParams(params));
+      return createResult<DeletePromptResult>(false, null, `Failed to delete prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

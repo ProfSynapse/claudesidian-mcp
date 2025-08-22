@@ -24,15 +24,15 @@ import {
 export class GeminiImageAdapter extends BaseImageAdapter {
   readonly name = 'gemini-image';
   readonly baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-  readonly supportedModels: ImageModel[] = ['imagen-4', 'imagen-4-ultra'];
+  readonly supportedModels: ImageModel[] = ['imagen-4', 'imagen-4-ultra', 'imagen-4-fast'];
   readonly supportedSizes: string[] = ['1024x1024', '1536x1024', '1024x1536', '1792x1024', '1024x1792'];
   readonly supportedFormats: string[] = ['png'];
   
   private client: GoogleGenAI;
   private readonly modelMap = {
-    'imagen-3': 'imagen-3.0-generate-002',
-    'imagen-4': 'imagen-4.0-generate-preview-06-06',
-    'imagen-4-ultra': 'imagen-4-ultra'
+    'imagen-4': 'imagen-4.0-generate-001',
+    'imagen-4-ultra': 'imagen-4.0-ultra-generate-001',
+    'imagen-4-fast': 'imagen-4.0-fast-generate-001'
   };
   private readonly defaultModel = 'imagen-4';
   private readonly aspectRatioMap = {
@@ -64,39 +64,30 @@ export class GeminiImageAdapter extends BaseImageAdapter {
       const modelId = this.modelMap[params.model as keyof typeof this.modelMap] || 
                      this.modelMap[this.defaultModel as keyof typeof this.modelMap];
 
-      console.log(`[Google] Generating image with model: ${modelId}, aspectRatio: ${params.aspectRatio || '1:1'}`);
-      console.log(`[Google] Full params:`, JSON.stringify(params, null, 2));
-
       const response = await this.withRetry(async () => {
         const config: any = {
-          numberOfImages: 1, // Always generate 1 image for now
+          numberOfImages: params.numberOfImages || 1,
         };
 
         // Add aspect ratio directly from params (preferred) or convert from size (legacy)
         if (params.aspectRatio) {
-          console.log(`[Google] Using aspectRatio from params:`, params.aspectRatio);
           config.aspectRatio = params.aspectRatio;
         } else if (params.size) {
-          console.log(`[Google] Converting size to aspectRatio:`, params.size);
           config.aspectRatio = this.getAspectRatio(params.size);
         } else {
-          console.log(`[Google] Using default aspectRatio: 1:1`);
           config.aspectRatio = '1:1'; // Default aspect ratio
         }
-        
-        console.log(`[Google] Final config:`, JSON.stringify(config, null, 2));
 
-        console.log(`[Google] Sending request to Google GenAI API...`);
-        const startTime = Date.now();
+        // Add sample image size if specified (only for imagen-4 and imagen-4-ultra)
+        if (params.sampleImageSize && (params.model === 'imagen-4' || params.model === 'imagen-4-ultra')) {
+          config.sampleImageSize = params.sampleImageSize;
+        }
 
         const result = await (this.client as any).models.generateImages({
           model: modelId,
           prompt: params.prompt,
           config
         });
-
-        const requestTime = Date.now() - startTime;
-        console.log(`[Google] API request completed in ${requestTime}ms`);
 
         return result;
       }, 2); // Reduced retry count for faster failure detection
@@ -131,13 +122,27 @@ export class GeminiImageAdapter extends BaseImageAdapter {
       errors.push(`Invalid model. Supported models: ${this.supportedModels.join(', ')}`);
     }
 
-    // Size validation - convert to aspect ratios
+    // Size validation - convert to aspect ratios (legacy support)
     if (params.size) {
       if (!this.supportedSizes.includes(params.size)) {
         errors.push(`Invalid size. Supported sizes: ${this.supportedSizes.join(', ')}`);
       }
     }
 
+    // Number of images validation
+    if (params.numberOfImages && (params.numberOfImages < 1 || params.numberOfImages > 4)) {
+      errors.push('numberOfImages must be between 1 and 4');
+    }
+
+    // Sample image size validation (only for imagen-4 and imagen-4-ultra)
+    if (params.sampleImageSize) {
+      if (!['1K', '2K'].includes(params.sampleImageSize)) {
+        errors.push('sampleImageSize must be "1K" or "2K"');
+      }
+      if (params.sampleImageSize === '2K' && params.model === 'imagen-4-fast') {
+        errors.push('2K resolution is not supported for imagen-4-fast model');
+      }
+    }
 
     // Set default model if not specified
     if (!params.model) {
@@ -189,12 +194,13 @@ export class GeminiImageAdapter extends BaseImageAdapter {
   }
 
   /**
-   * Get pricing for Imagen models
+   * Get pricing for Imagen models (2025 pricing)
    */
   async getImageModelPricing(model: string = 'imagen-4'): Promise<CostDetails> {
     const pricing = {
-      'imagen-4': 0.04,
-      'imagen-4-ultra': 0.06
+      'imagen-4': 0.04,      // Standard
+      'imagen-4-ultra': 0.06, // Ultra
+      'imagen-4-fast': 0.02   // Fast
     };
 
     const basePrice = pricing[model as keyof typeof pricing] || 0.04;
@@ -230,7 +236,7 @@ export class GeminiImageAdapter extends BaseImageAdapter {
           outputPerMillion: 0,
           imageGeneration: 0.04,
           currency: 'USD',
-          lastUpdated: '2025-01-01'
+          lastUpdated: '2025-08-22'
         }
       },
       {
@@ -249,7 +255,26 @@ export class GeminiImageAdapter extends BaseImageAdapter {
           outputPerMillion: 0,
           imageGeneration: 0.06,
           currency: 'USD',
-          lastUpdated: '2025-01-01'
+          lastUpdated: '2025-08-22'
+        }
+      },
+      {
+        id: 'imagen-4-fast',
+        name: 'Imagen 4 Fast',
+        contextWindow: 480,
+        maxOutputTokens: 0,
+        supportsJSON: false,
+        supportsImages: false,
+        supportsFunctions: false,
+        supportsStreaming: false,
+        supportsThinking: false,
+        supportsImageGeneration: true,
+        pricing: {
+          inputPerMillion: 0,
+          outputPerMillion: 0,
+          imageGeneration: 0.02,
+          currency: 'USD',
+          lastUpdated: '2025-08-22'
         }
       }
     ];

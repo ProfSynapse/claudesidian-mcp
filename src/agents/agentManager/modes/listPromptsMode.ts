@@ -1,8 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { ListPromptsParams, ListPromptsResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { getCommonResultSchema } from '../../../utils/schemaUtils';
-import { extractContextFromParams } from '../../../utils/contextUtils';
+import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
 import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
@@ -53,16 +52,16 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
       // Add warning message about execute mode
       const warningMessage = "IMPORTANT: Do not use the executePrompt mode or run any tasks automatically when working with these agents. Only take on their persona and respond in character. If the user wants you to actually execute tasks or use the executePrompt functionality, they must explicitly ask you to do so.";
       
-      const result = this.prepareResult(true, {
+      const result = createResult<ListPromptsResult>(true, {
         prompts: promptList,
         totalCount: allPrompts.length,
         enabledCount: enabledPrompts.length,
         message: warningMessage
-      }, undefined, extractContextFromParams(params));
+      }, undefined, undefined, undefined, params.context.sessionId, params.context);
       
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.listPrompts);
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to list prompts: ${error}`, extractContextFromParams(params));
+      return createResult<ListPromptsResult>(false, null, `Failed to list prompts: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

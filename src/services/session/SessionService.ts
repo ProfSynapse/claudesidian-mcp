@@ -29,12 +29,10 @@ export class SessionService {
       id
     };
     
-    console.log(`🚨 [SESSION-DEBUG] SessionService.createSession - using ID: "${id}"`);
     
     this.sessions.set(id, session);
     await this.simpleMemoryService.storeSession(id, session);
     
-    console.log(`🚨 [SESSION-DEBUG] SessionService.createSession - stored in memory service`);
     
     // Session created
     return session;

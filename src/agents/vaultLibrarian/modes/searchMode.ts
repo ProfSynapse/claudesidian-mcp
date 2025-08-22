@@ -54,10 +54,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
       
       // Validate required parameters
       if (!params.query || params.query.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Query parameter is required and cannot be empty'
-        };
+        return this.prepareResult(false, undefined, 'Query parameter is required and cannot be empty', params.context);
       }
 
       // Set default values
@@ -82,10 +79,7 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
     } catch (error) {
       const executionTime = performance.now() - startTime;
       
-      return {
-        success: false,
-        error: `Search failed: ${getErrorMessage(error)}`
-      };
+      return this.prepareResult(false, undefined, `Search failed: ${getErrorMessage(error)}`, params.context);
     }
   }
 

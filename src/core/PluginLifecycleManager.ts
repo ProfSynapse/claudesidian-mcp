@@ -174,7 +174,6 @@ export class PluginLifecycleManager {
                 const vectorStore = await serviceManager.getService<any>('vectorStore');
                 const embeddingService = await serviceManager.getService<any>('embeddingService');
                 
-                console.log(`🚨 [SESSION-DEBUG] Creating ChromaDB-backed SessionService`);
                 
                 // Create session collection through factory (same pattern as workspaces/states)
                 const sessionCollection = VectorStoreFactory.createSessionCollection(vectorStore, embeddingService);

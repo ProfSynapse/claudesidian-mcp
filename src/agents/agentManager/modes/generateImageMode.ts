@@ -19,8 +19,10 @@ import { LLMProviderSettings } from '../../../types/llm/ProviderTypes';
 export interface GenerateImageParams extends CommonParameters {
   prompt: string;
   provider: 'google'; // Only Google Imagen supported
-  model?: 'imagen-4' | 'imagen-4-ultra';
+  model?: 'imagen-4' | 'imagen-4-ultra' | 'imagen-4-fast';
   aspectRatio?: AspectRatio;
+  numberOfImages?: number;
+  sampleImageSize?: '1K' | '2K';
   savePath: string;
 }
 
@@ -105,7 +107,11 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         return createResult<GenerateImageModeResult>(
           false,
           undefined,
-          'Image generation service not initialized. Vault instance required.'
+          'Image generation service not initialized. Vault instance required.',
+          undefined,
+          undefined,
+          params.context.sessionId,
+          params.context
         );
       }
 
@@ -114,7 +120,11 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         return createResult<GenerateImageModeResult>(
           false,
           undefined,
-          'No image generation providers available. Please configure OPENAI_API_KEY or GOOGLE_API_KEY environment variables.'
+          'No image generation providers available. Please configure Google API key in plugin settings.',
+          undefined,
+          undefined,
+          params.context.sessionId,
+          params.context
         );
       }
 
@@ -124,6 +134,8 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         provider: params.provider,
         model: params.model,
         aspectRatio: params.aspectRatio,
+        numberOfImages: params.numberOfImages,
+        sampleImageSize: params.sampleImageSize,
         savePath: params.savePath,
         sessionId: params.context.sessionId,
         context: typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
@@ -133,7 +145,11 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         return createResult<GenerateImageModeResult>(
           false,
           undefined,
-          `Parameter validation failed: ${validation.errors.join(', ')}`
+          `Parameter validation failed: ${validation.errors.join(', ')}`,
+          undefined,
+          undefined,
+          params.context.sessionId,
+          params.context
         );
       }
 
@@ -143,6 +159,8 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         provider: params.provider,
         model: params.model,
         aspectRatio: params.aspectRatio,
+        numberOfImages: params.numberOfImages,
+        sampleImageSize: params.sampleImageSize,
         savePath: params.savePath,
         sessionId: params.context.sessionId,
         context: typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
@@ -152,7 +170,11 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         return createResult<GenerateImageModeResult>(
           false,
           undefined,
-          result.error || 'Image generation failed'
+          result.error || 'Image generation failed',
+          undefined,
+          undefined,
+          params.context.sessionId,
+          params.context
         );
       }
 
@@ -172,14 +194,22 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
           usage: result.data.usage,
           metadata: result.data.metadata
         } : undefined,
-        'Image generated successfully'
+        'Image generated successfully',
+        undefined,
+        undefined,
+        params.context.sessionId,
+        params.context
       );
 
     } catch (error) {
       return createResult<GenerateImageModeResult>(
         false,
         undefined,
-        `Image generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Image generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        undefined,
+        undefined,
+        params.context.sessionId,
+        params.context
       );
     }
   }
@@ -204,23 +234,24 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
         },
         model: {
           type: 'string',
-          enum: ['imagen-4', 'imagen-4-ultra'],
+          enum: ['imagen-4', 'imagen-4-ultra', 'imagen-4-fast'],
           description: 'Specific model to use (optional, will use provider default)'
         },
-        size: {
+        aspectRatio: {
           type: 'string',
-          description: 'Image size (e.g., "1024x1024", "1536x1024", "1024x1536").',
-          examples: ['1024x1024', '1536x1024', '1024x1536', '1792x1024', 'auto']
+          enum: ['1:1', '3:4', '4:3', '9:16', '16:9'],
+          description: 'Aspect ratio for the generated image'
         },
-        quality: {
-          type: 'string',
-          enum: ['standard', 'hd'],
-          description: 'Image quality setting (standard or hd). HD costs more but provides better detail.'
+        numberOfImages: {
+          type: 'number',
+          minimum: 1,
+          maximum: 4,
+          description: 'Number of images to generate (1-4)'
         },
-        safety: {
+        sampleImageSize: {
           type: 'string',
-          enum: ['strict', 'standard', 'permissive'],
-          description: 'Content safety level. Strict blocks more content, permissive allows more creative freedom.'
+          enum: ['1K', '2K'],
+          description: 'Image resolution (1K or 2K). 2K only available for imagen-4 and imagen-4-ultra'
         },
         savePath: {
           type: 'string',

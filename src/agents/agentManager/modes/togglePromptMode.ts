@@ -1,8 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { TogglePromptParams, TogglePromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { getCommonResultSchema } from '../../../utils/schemaUtils';
-import { extractContextFromParams } from '../../../utils/contextUtils';
+import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 
 /**
  * Mode for toggling a custom prompt's enabled state
@@ -36,15 +35,15 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
       
       // Validate required ID
       if (!id?.trim()) {
-        return this.prepareResult(false, null, 'ID is required', extractContextFromParams(params));
+        return createResult<TogglePromptResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Toggle the prompt
       const toggledPrompt = await this.storageService.togglePrompt(id.trim());
       
-      return this.prepareResult(true, toggledPrompt, undefined, extractContextFromParams(params));
+      return createResult<TogglePromptResult>(true, toggledPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to toggle prompt: ${error}`, extractContextFromParams(params));
+      return createResult<TogglePromptResult>(false, null, `Failed to toggle prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

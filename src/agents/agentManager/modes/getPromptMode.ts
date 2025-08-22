@@ -1,8 +1,7 @@
 import { BaseMode } from '../../baseMode';
 import { GetPromptParams, GetPromptResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
-import { getCommonResultSchema } from '../../../utils/schemaUtils';
-import { extractContextFromParams } from '../../../utils/contextUtils';
+import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
 import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
@@ -38,7 +37,7 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       
       // Must provide either id or name
       if (!id && !name) {
-        return this.prepareResult(false, null, 'Either id or name must be provided', extractContextFromParams(params));
+        return createResult<GetPromptResult>(false, null, 'Either id or name must be provided', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Get prompt by id or name
@@ -56,7 +55,7 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       
       if (!prompt) {
         const identifier = id ? `ID "${id}"` : `name "${name}"`;
-        return this.prepareResult(false, null, `Prompt with ${identifier} not found`, extractContextFromParams(params));
+        return createResult<GetPromptResult>(false, null, `Prompt with ${identifier} not found`, undefined, undefined, params.context.sessionId, params.context);
       }
 
       // Create message with persona instruction and warning (prompt content is already in the prompt field)
@@ -69,10 +68,10 @@ IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Onl
         message: message
       };
       
-      const result = this.prepareResult(true, resultWithMessage, undefined, extractContextFromParams(params));
+      const result = createResult<GetPromptResult>(true, resultWithMessage, undefined, undefined, undefined, params.context.sessionId, params.context);
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.getPrompt);
     } catch (error) {
-      return this.prepareResult(false, null, `Failed to get prompt: ${error}`, extractContextFromParams(params));
+      return createResult<GetPromptResult>(false, null, `Failed to get prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

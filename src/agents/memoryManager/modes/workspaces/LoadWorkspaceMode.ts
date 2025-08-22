@@ -231,30 +231,24 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     rootFolder: string;
     recentActivity: string[];
   }> {
-    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Building context briefing for workspace ${workspace.id}`);
     
     // Get memory service for recent activity
     const memoryService = this.agent.getMemoryService();
-    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Memory service available: ${!!memoryService}`);
     
     let recentActivity: string[] = [];
     
     if (memoryService) {
-      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Calling getRecentActivity for workspace ${workspace.id}`);
       try {
         recentActivity = await this.getRecentActivity(workspace.id, memoryService);
-        console.log(`[LoadWorkspaceMode] 🔍 DEBUG: getRecentActivity returned ${recentActivity.length} items:`, recentActivity);
       } catch (error) {
-        console.error(`[LoadWorkspaceMode] 🔍 DEBUG: getRecentActivity failed:`, error);
+        console.error(`[LoadWorkspaceMode] getRecentActivity failed:`, error);
         recentActivity = [`Recent activity error: ${error instanceof Error ? error.message : String(error)}`];
       }
     } else {
-      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: No memory service - using fallback`);
       recentActivity = ["No recent activity"];
     }
     
     const finalActivity = recentActivity.length > 0 ? recentActivity : ["No recent activity"];
-    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Final recent activity:`, finalActivity);
 
     return {
       name: workspace.name,
@@ -376,33 +370,21 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    * Get recent activity from memory traces
    */
   private async getRecentActivity(workspaceId: string, memoryService: any): Promise<string[]> {
-    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: getRecentActivity called with workspaceId: ${workspaceId}`);
     let traces: any[] = [];
     try {
-      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Calling memoryService.getMemoryTraces`);
       traces = await memoryService.getMemoryTraces(workspaceId, 5);
-      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: getMemoryTraces returned ${traces.length} traces`);
       
       if (traces.length > 0) {
-        console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Sample trace structure:`, {
-          id: traces[0].id,
-          hasDocument: !!traces[0].document,
-          hasMetadata: !!traces[0].metadata,
-          workspaceIdInMetadata: traces[0].metadata?.workspaceId,
-          workspaceInMetadata: traces[0].metadata?.workspace
-        });
       }
       
-      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Calling extractSessionMemories`);
       const sessionMemories = this.extractSessionMemories(traces);
-      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: extractSessionMemories returned ${sessionMemories.length} activities:`, sessionMemories);
       
       // CRITICAL MEMORY CLEANUP: Clear large trace data immediately after processing
       this.cleanupTraceMemory(traces);
       
       return sessionMemories;
     } catch (error) {
-      console.warn('[LoadWorkspaceMode] 🔍 DEBUG: Failed to get recent activity:', error);
+      console.warn('[LoadWorkspaceMode] Failed to get recent activity:', error);
       // Cleanup traces even on error
       if (traces.length > 0) {
         this.cleanupTraceMemory(traces);
@@ -483,47 +465,31 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    * Extract sessionMemory values from memory traces
    */
   private extractSessionMemories(traces: any[]): string[] {
-    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: extractSessionMemories called with ${traces.length} traces`);
     const sessionMemories: string[] = [];
     
     for (let i = 0; i < traces.length; i++) {
       const trace = traces[i];
-      console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Processing trace ${i + 1}/${traces.length}:`, {
-        id: trace.id,
-        hasContent: !!trace.content,
-        contentPreview: trace.content?.substring(0, 100)
-      });
       
       try {
         // Parse the structured document from content
         let document: any;
         try {
           document = JSON.parse(trace.content);
-          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Parsed structured document:`, {
-            hasRequest: !!document.request,
-            hasContext: !!document.request?.context,
-            hasSessionMemory: !!document.request?.context?.sessionMemory
-          });
         } catch (parseError) {
-          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Could not parse as JSON, skipping trace`);
           continue;
         }
         
         // Extract sessionMemory from structured document
         if (document.request?.context?.sessionMemory) {
           const sessionMemory = document.request.context.sessionMemory;
-          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Found sessionMemory: ${sessionMemory}`);
           sessionMemories.push(sessionMemory);
         } else {
-          console.log(`[LoadWorkspaceMode] 🔍 DEBUG: No sessionMemory found in structured document`);
         }
       } catch (error) {
-        console.log(`[LoadWorkspaceMode] 🔍 DEBUG: Error processing trace ${i + 1}:`, error instanceof Error ? error.message : String(error));
         continue;
       }
     }
     
-    console.log(`[LoadWorkspaceMode] 🔍 DEBUG: extractSessionMemories found ${sessionMemories.length} session memories`);
     return sessionMemories.slice(0, 5);
   }
 
@@ -550,15 +516,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       
       const sessions = await memoryService.getSessions(workspaceId); // Get sessions for workspace
       
-      console.log(`[LoadWorkspaceMode] DEBUG: Retrieved ${sessions.length} sessions for workspace ${workspaceId}`);
-      console.log(`[LoadWorkspaceMode] DEBUG: Session IDs:`, sessions.map((s: any) => s.id));
       
       // Defensive validation: ensure all sessions belong to workspace
       const validSessions = sessions.filter((session: any) => session.workspaceId === workspaceId);
       
       if (validSessions.length !== sessions.length) {
-        console.error(`[LoadWorkspaceMode] CRITICAL: Database filtering failed! Retrieved ${sessions.length} sessions, only ${validSessions.length} belong to workspace ${workspaceId}`);
-        console.error(`[LoadWorkspaceMode] Cross-workspace sessions:`, sessions.filter((s: any) => s.workspaceId !== workspaceId).map((s: any) => ({id: s.id, workspaceId: s.workspaceId})));
+        console.error(`[LoadWorkspaceMode] Database filtering failed! Retrieved ${sessions.length} sessions, only ${validSessions.length} belong to workspace ${workspaceId}`);
       }
       
       return validSessions.map((session: any) => ({

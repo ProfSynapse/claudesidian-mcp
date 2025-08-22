@@ -262,12 +262,11 @@ export class MCPConnector {
                     const sessionService = await this.serviceManager.getService<any>('sessionService');
                     if (sessionService) {
                         this.sessionContextManager.setSessionService(sessionService);
-                        logger.systemLog('[SESSION-DEBUG] SessionService successfully injected into SessionContextManager');
                     } else {
-                        logger.systemWarn('[SESSION-DEBUG] SessionService not found in service manager');
+                        logger.systemWarn('SessionService not found in service manager');
                     }
                 } catch (error) {
-                    logger.systemWarn(`[SESSION-DEBUG] Failed to inject SessionService: ${error instanceof Error ? error.message : String(error)}`);
+                    logger.systemWarn(`Failed to inject SessionService: ${error instanceof Error ? error.message : String(error)}`);
                 }
             }
             

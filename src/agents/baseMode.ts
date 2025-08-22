@@ -156,8 +156,16 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
     workspaceContext?: CommonResult['workspaceContext'],
     handoffResult?: any
   ): R {
-    // Get the sessionId from the execution context if available
-    const sessionId = (this as any).sessionId;
+    // Extract sessionId from context parameter (DRY fix for all modes)
+    let sessionId: string | undefined;
+    
+    if (context && typeof context === 'object' && 'sessionId' in context) {
+      // New pattern: extract sessionId from context object
+      sessionId = context.sessionId;
+    } else {
+      // Fallback: try to get from instance (backward compatibility)
+      sessionId = (this as any).sessionId;
+    }
     
     if (!sessionId) {
       // Session ID is required, so we should report an error

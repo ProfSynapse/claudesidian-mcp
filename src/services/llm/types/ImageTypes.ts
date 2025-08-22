@@ -19,9 +19,11 @@ import { CostDetails, TokenUsage, LLMProviderError } from '../adapters/types';
 export interface ImageGenerationParams {
   prompt: string;
   provider: 'google'; // Only Google Imagen supported
-  model?: string; // imagen-4, imagen-4-ultra
+  model?: string; // imagen-4, imagen-4-ultra, imagen-4-fast
   size?: string; // Legacy support for pixel dimensions (converted to aspectRatio)
   aspectRatio?: AspectRatio; // Google Imagen aspect ratios
+  numberOfImages?: number; // 1-4 images
+  sampleImageSize?: '1K' | '2K'; // Image resolution
   savePath: string; // vault relative path
   sessionId?: string;
   context?: string;
@@ -220,7 +222,8 @@ export type ImageProvider = 'openai' | 'google'; // OpenAI available but not act
 export type ImageModel = 
   | 'gpt-image-1'        // OpenAI (available but not active)
   | 'imagen-4'           // Google
-  | 'imagen-4-ultra';    // Google
+  | 'imagen-4-ultra'     // Google
+  | 'imagen-4-fast';     // Google
 
 // Aspect ratio constants
 export enum AspectRatio {

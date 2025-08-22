@@ -126,15 +126,13 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
     try {
       // Simple parameter validation
       if (!params.query || params.query.trim().length === 0) {
-        return {
-          success: false,
+        return this.prepareResult(false, {
           query: params.query || '',
           results: [],
           totalResults: 0,
           searchCapabilities: this.getCapabilities(),
-          executionTime: Date.now() - startTime,
-          error: 'Query parameter is required and cannot be empty'
-        };
+          executionTime: Date.now() - startTime
+        }, 'Query parameter is required and cannot be empty', params.context);
       }
 
       // Apply default workspace if not provided

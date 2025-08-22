@@ -66,7 +66,7 @@ export class ImageGenerationService {
       }
 
       if (this.adapters.size === 0) {
-        console.warn('No image generation providers configured. Please configure OpenAI or Google API keys in plugin settings and enable the providers.');
+        console.warn('No image generation providers configured. Please configure Google API keys in plugin settings and enable the providers.');
       } else {
       }
     } catch (error) {
