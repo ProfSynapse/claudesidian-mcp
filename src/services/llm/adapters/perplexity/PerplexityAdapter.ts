@@ -196,15 +196,11 @@ export class PerplexityAdapter extends BaseAdapter {
         reader.releaseLock();
       }
 
-      // Final chunk with usage information and search results
+      // Final chunk with usage information (search results stored in metadata)
       yield { 
         content: '', 
         complete: true, 
-        usage: this.extractUsage({ usage }),
-        metadata: {
-          searchResults,
-          ...metadata
-        }
+        usage: this.extractUsage({ usage })
       };
       
       console.log('[PerplexityAdapter] Streaming completed');

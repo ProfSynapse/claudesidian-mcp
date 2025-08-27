@@ -21,6 +21,14 @@ import {
 } from '../types';
 
 export class OpenAIImageAdapter extends BaseImageAdapter {
+  
+  // Image adapters don't support streaming in the same way as text
+  async* generateStreamAsync(): AsyncGenerator<never, void, unknown> {
+    // Image generation is not streamable - it's a single result
+    // This method should not be called for image adapters
+    throw new Error('Image generation does not support streaming');
+  }
+  
   readonly name = 'openai-image';
   readonly baseUrl = 'https://api.openai.com/v1';
   readonly supportedModels: ImageModel[] = ['gpt-image-1'];

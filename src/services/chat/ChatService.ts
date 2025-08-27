@@ -571,6 +571,32 @@ export class ChatService {
   }
 
   /**
+   * Update conversation with new data
+   */
+  async updateConversation(conversation: ConversationData): Promise<{ success: boolean; error?: string }> {
+    try {
+      const result = await this.dependencies.conversationRepo.updateConversation(
+        conversation.id,
+        { 
+          title: conversation.title,
+          messages: conversation.messages
+        }
+      );
+
+      return {
+        success: result.success,
+        error: result.error
+      };
+    } catch (error) {
+      console.error('[ChatService] Failed to update conversation:', error);
+      return {
+        success: false,
+        error: getErrorMessage(error)
+      };
+    }
+  }
+
+  /**
    * Get conversation by ID
    */
   async getConversation(id: string): Promise<ConversationData | null> {

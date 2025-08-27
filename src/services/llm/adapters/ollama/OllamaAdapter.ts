@@ -126,7 +126,7 @@ export class OllamaAdapter extends BaseAdapter {
     }
   }
 
-  async generateStream(prompt: string, options?: StreamChunk): Promise<LLMResponse> {
+  async generateStream(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
       const model = options?.model || this.currentModel;
       
@@ -138,9 +138,7 @@ export class OllamaAdapter extends BaseAdapter {
           temperature: options?.temperature,
           num_predict: options?.maxTokens,
           stop: options?.stopSequences,
-          top_p: options?.topP,
-          frequency_penalty: options?.frequencyPenalty,
-          presence_penalty: options?.presencePenalty
+          top_p: options?.topP
         }
       };
 
@@ -203,7 +201,7 @@ export class OllamaAdapter extends BaseAdapter {
               
               if (data.response) {
                 fullText += data.response;
-                options?.onToken?.(data.response);
+                // Token callback removed - use generateStreamAsync for streaming
               }
               
               if (data.done) {
@@ -255,11 +253,11 @@ export class OllamaAdapter extends BaseAdapter {
         }
       };
 
-      options?.onComplete?.(result);
+      // Completion callback removed - use generateStreamAsync for streaming
       return result;
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error('Unknown streaming error');
-      options?.onError?.(errorObj);
+      // Error callback removed - use generateStreamAsync for streaming
       
       if (error instanceof LLMProviderError) {
         throw error;

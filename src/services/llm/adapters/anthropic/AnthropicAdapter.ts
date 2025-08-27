@@ -140,53 +140,56 @@ export class AnthropicAdapter extends BaseAdapter {
       for await (const event of stream) {
         console.log('[AnthropicAdapter] Stream event type:', event.type);
         
-        switch (event.type) {
-          case 'message_start':
-            usage = event.message.usage;
-            break;
-            
-          case 'content_block_delta':
-            if (event.delta.type === 'text_delta' && event.delta.text) {
-              yield { 
-                content: event.delta.text, 
-                complete: false 
-              };
-            } else if (event.delta.type === 'thinking_delta' && event.delta.thinking) {
-              // Stream thinking content if enabled
-              if (options?.enableThinking) {
+        if ('type' in event) {
+          switch (event.type) {
+            case 'message_start':
+              usage = (event as any).message.usage;
+              break;
+              
+            case 'content_block_delta':
+              const delta = (event as any).delta;
+              if (delta.type === 'text_delta' && delta.text) {
                 yield { 
-                  content: event.delta.thinking, 
+                  content: delta.text, 
                   complete: false 
                 };
+              } else if (delta.type === 'thinking_delta' && delta.thinking) {
+                // Stream thinking content if enabled
+                if (options?.enableThinking) {
+                  yield { 
+                    content: delta.thinking, 
+                    complete: false 
+                  };
+                }
               }
-            }
-            break;
-            
-          case 'message_delta':
-            if (event.usage) {
-              usage = event.usage;
-            }
-            break;
-            
-          case 'message_stop':
-            yield { 
-              content: '', 
-              complete: true, 
-              usage: this.extractUsage({ usage }) 
-            };
-            break;
-            
-          case 'ping':
-            // Ignore ping events
-            break;
-            
-          case 'error':
-            console.error('[AnthropicAdapter] Stream error:', event.error);
-            throw new Error(`Anthropic stream error: ${event.error.message}`);
-            
-          default:
-            console.log('[AnthropicAdapter] Unknown event type:', event.type);
-            break;
+              break;
+              
+            case 'message_delta':
+              if ((event as any).usage) {
+                usage = (event as any).usage;
+              }
+              break;
+              
+            case 'message_stop':
+              yield { 
+                content: '', 
+                complete: true, 
+                usage: this.extractUsage({ usage }) 
+              };
+              break;
+              
+            default:
+              // Handle ping, error, and other events
+              if ((event as any).type === 'ping') {
+                // Ignore ping events
+              } else if ((event as any).type === 'error') {
+                console.error('[AnthropicAdapter] Stream error:', (event as any).error);
+                throw new Error(`Anthropic stream error: ${(event as any).error.message}`);
+              } else {
+                console.log('[AnthropicAdapter] Unknown event type:', (event as any).type);
+              }
+              break;
+          }
         }
       }
       

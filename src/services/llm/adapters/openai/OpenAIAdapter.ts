@@ -219,15 +219,15 @@ export class OpenAIAdapter extends BaseAdapter {
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
     try {
       const models = ModelRegistry.getProviderModels('openai');
-      const model = models.find(m => m.id === modelId);
+      const model = models.find(m => m.apiName === modelId);
       if (!model) {
         return null;
       }
 
       return {
-        rateInputPerMillion: model.pricing.inputPerMillion,
-        rateOutputPerMillion: model.pricing.outputPerMillion,
-        currency: model.pricing.currency
+        rateInputPerMillion: model.inputCostPerMillion,
+        rateOutputPerMillion: model.outputCostPerMillion,
+        currency: 'USD'
       };
     } catch (error) {
       console.warn(`Failed to get pricing for model ${modelId}:`, error);

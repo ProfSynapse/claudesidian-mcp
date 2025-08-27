@@ -148,7 +148,7 @@ export interface AddMessageParams {
  */
 export interface UpdateConversationParams {
   title?: string;
-  summary?: string;
+  messages?: ConversationMessage[];
 }
 
 /**

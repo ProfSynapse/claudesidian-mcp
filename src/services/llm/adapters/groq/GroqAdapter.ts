@@ -26,7 +26,10 @@ export class GroqAdapter extends BaseAdapter {
   constructor(apiKey: string, model?: string) {
     super(apiKey, model || GROQ_DEFAULT_MODEL);
     
-    this.client = new Groq({ apiKey: this.apiKey });
+    this.client = new Groq({ 
+      apiKey: this.apiKey,
+      dangerouslyAllowBrowser: true 
+    });
     this.initializeCache();
   }
 
@@ -40,7 +43,7 @@ export class GroqAdapter extends BaseAdapter {
           max_completion_tokens: options?.maxTokens,
           top_p: options?.topP,
           stop: options?.stopSequences,
-          tools: options?.tools,
+          tools: options?.tools ? this.convertTools(options.tools) : undefined,
           response_format: options?.jsonMode ? { type: 'json_object' } : undefined
         });
 
@@ -79,7 +82,7 @@ export class GroqAdapter extends BaseAdapter {
         max_completion_tokens: options?.maxTokens,
         top_p: options?.topP,
         stop: options?.stopSequences,
-        tools: options?.tools,
+        tools: options?.tools ? this.convertTools(options.tools) : undefined,
         response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
         stream: true
       });
@@ -94,10 +97,10 @@ export class GroqAdapter extends BaseAdapter {
         }
         
         // Extract usage information if available (typically in the last chunk)
-        if (chunk.usage || chunk.x_groq) {
+        if ((chunk as any).usage || (chunk as any).x_groq) {
           usage = {
-            usage: chunk.usage,
-            x_groq: chunk.x_groq
+            usage: (chunk as any).usage,
+            x_groq: (chunk as any).x_groq
           };
         }
       }
@@ -166,6 +169,22 @@ export class GroqAdapter extends BaseAdapter {
   }
 
   // Private methods
+  private convertTools(tools: any[]): any[] {
+    return tools.map(tool => {
+      if (tool.type === 'function' && tool.function) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.function.name,
+            description: tool.function.description,
+            parameters: tool.function.parameters
+          }
+        };
+      }
+      return tool;
+    });
+  }
+
   private extractToolCalls(message: any): any[] {
     return message?.tool_calls || [];
   }

@@ -22,6 +22,13 @@ import {
 } from '../types';
 
 export class GeminiImageAdapter extends BaseImageAdapter {
+  
+  // Image adapters don't support streaming in the same way as text
+  async* generateStreamAsync(): AsyncGenerator<never, void, unknown> {
+    // Image generation is not streamable - it's a single result
+    // This method should not be called for image adapters
+    throw new Error('Image generation does not support streaming');
+  }
   readonly name = 'gemini-image';
   readonly baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
   readonly supportedModels: ImageModel[] = ['imagen-4', 'imagen-4-ultra', 'imagen-4-fast'];

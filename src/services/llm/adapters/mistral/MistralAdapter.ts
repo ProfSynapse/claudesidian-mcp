@@ -36,18 +36,18 @@ export class MistralAdapter extends BaseAdapter {
           model: options?.model || this.currentModel,
           messages: this.buildMessages(prompt, options?.systemPrompt),
           temperature: options?.temperature,
-          max_tokens: options?.maxTokens,
-          top_p: options?.topP,
+          maxTokens: options?.maxTokens,
+          topP: options?.topP,
           stop: options?.stopSequences,
-          tools: options?.tools
+          tools: options?.tools ? this.convertTools(options.tools) : undefined
         });
 
         const usage = this.extractUsage(response);
-        const finishReason = this.mapFinishReason(response.choices[0]?.finish_reason);
+        const finishReason = this.mapFinishReason(response.choices[0]?.finishReason);
         const toolCalls = this.extractToolCalls(response.choices[0]?.message);
 
         return await this.buildLLMResponse(
-          response.choices[0]?.message?.content || '',
+          this.extractMessageContent(response.choices[0]?.message?.content) || '',
           options?.model || this.currentModel,
           usage,
           { provider: 'mistral' },
@@ -68,10 +68,10 @@ export class MistralAdapter extends BaseAdapter {
         model: options?.model || this.currentModel,
         messages: this.buildMessages(prompt, options?.systemPrompt),
         temperature: options?.temperature,
-        max_tokens: options?.maxTokens,
-        top_p: options?.topP,
+        maxTokens: options?.maxTokens,
+        topP: options?.topP,
         stop: options?.stopSequences,
-        tools: options?.tools
+        tools: options?.tools ? this.convertTools(options.tools) : undefined
       });
 
       let usage: any = undefined;
@@ -150,8 +150,37 @@ export class MistralAdapter extends BaseAdapter {
   }
 
   // Private methods
+  private convertTools(tools: any[]): any[] {
+    return tools.map(tool => {
+      if (tool.type === 'function' && tool.function) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.function.name,
+            description: tool.function.description,
+            parameters: tool.function.parameters
+          }
+        };
+      }
+      return tool;
+    });
+  }
+
   private extractToolCalls(message: any): any[] {
     return message?.tool_calls || [];
+  }
+
+  private extractMessageContent(content: any): string {
+    if (typeof content === 'string') {
+      return content;
+    }
+    if (Array.isArray(content)) {
+      return content
+        .filter(chunk => chunk.type === 'text')
+        .map(chunk => chunk.text || '')
+        .join('');
+    }
+    return '';
   }
 
   private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {

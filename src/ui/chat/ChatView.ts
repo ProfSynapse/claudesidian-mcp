@@ -145,7 +145,11 @@ export class ChatView extends ItemView {
       (conversationId) => this.deleteConversation(conversationId)
     );
 
-    this.messageDisplay = new MessageDisplay(messageContainer);
+    this.messageDisplay = new MessageDisplay(
+      messageContainer,
+      (messageId) => this.handleRetryMessage(messageId),
+      (messageId, newContent) => this.handleEditMessage(messageId, newContent)
+    );
 
     this.chatInput = new ChatInput(
       inputContainer,
@@ -436,6 +440,64 @@ export class ChatView extends ItemView {
     } catch (error) {
       console.error('[ChatView] Failed to delete conversation:', error);
       this.showError('Failed to delete conversation');
+    }
+  }
+
+  /**
+   * Handle retry message action
+   */
+  private async handleRetryMessage(messageId: string): Promise<void> {
+    if (!this.currentConversation) return;
+    
+    const message = this.currentConversation.messages.find(msg => msg.id === messageId);
+    if (!message) return;
+    
+    // For user messages, just resend the content
+    if (message.role === 'user') {
+      await this.sendMessage(message.content);
+    }
+    // For AI messages, get the previous user message and regenerate
+    else if (message.role === 'assistant') {
+      const messageIndex = this.currentConversation.messages.findIndex(msg => msg.id === messageId);
+      if (messageIndex > 0) {
+        const previousUserMessage = this.currentConversation.messages[messageIndex - 1];
+        if (previousUserMessage.role === 'user') {
+          // Remove the AI response and regenerate
+          this.currentConversation.messages = this.currentConversation.messages.slice(0, messageIndex);
+          await this.chatService.updateConversation(this.currentConversation);
+          await this.sendMessage(previousUserMessage.content);
+        }
+      }
+    }
+  }
+
+  /**
+   * Handle edit message action
+   */
+  private async handleEditMessage(messageId: string, newContent: string): Promise<void> {
+    if (!this.currentConversation) return;
+    
+    const messageIndex = this.currentConversation.messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex === -1) return;
+    
+    // Update the message content
+    this.currentConversation.messages[messageIndex].content = newContent;
+    
+    // If this was a user message followed by AI responses, remove subsequent AI messages
+    if (this.currentConversation.messages[messageIndex].role === 'user') {
+      // Remove all messages after this one (they're now invalid)
+      this.currentConversation.messages = this.currentConversation.messages.slice(0, messageIndex + 1);
+    }
+    
+    // Update the conversation in storage
+    await this.chatService.updateConversation(this.currentConversation);
+    
+    // Refresh the display
+    this.messageDisplay.setConversation(this.currentConversation);
+    
+    // If this was a user message, automatically regenerate the response
+    if (this.currentConversation.messages[messageIndex].role === 'user') {
+      await this.sendMessage(newContent);
     }
   }
 

@@ -359,26 +359,34 @@
 
 .message-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     margin-bottom: 0.5rem;
-    font-size: 0.8rem;
+}
+
+.message-role-icon {
+    width: 20px;
+    height: 20px;
     opacity: 0.7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.message-role {
-    font-weight: 500;
-}
-
-.message-timestamp {
-    font-size: 0.7rem;
+.message-role-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
 }
 
 .message-actions {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(var(--mono-rgb-0), 0.1);
     opacity: 0;
     transition: opacity 0.2s;
+    justify-content: flex-end;
 }
 
 .message-bubble:hover .message-actions {
@@ -388,14 +396,72 @@
 .message-action-btn {
     background: none;
     border: none;
-    padding: 0.2rem;
-    border-radius: 3px;
+    padding: 0.4rem;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 0.7rem;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-action-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
 }
 
 .message-action-btn:hover {
+    background: var(--background-modifier-hover);
+    transform: scale(1.1);
+}
+
+.message-edit-textarea {
+    width: 100%;
+    min-height: 60px;
+    padding: 0.5rem;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-family: inherit;
+    font-size: inherit;
+    resize: vertical;
+}
+
+.message-edit-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    justify-content: flex-end;
+}
+
+.message-edit-save,
+.message-edit-cancel {
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.message-edit-save {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+}
+
+.message-edit-save:hover {
+    background: var(--interactive-accent-hover);
+}
+
+.message-edit-cancel {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.message-edit-cancel:hover {
     background: var(--background-modifier-hover);
 }
 

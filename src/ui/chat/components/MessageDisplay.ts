@@ -12,7 +12,11 @@ export class MessageDisplay {
   private conversation: ConversationData | null = null;
   private messageBubbles: MessageBubble[] = [];
 
-  constructor(private container: HTMLElement) {
+  constructor(
+    private container: HTMLElement,
+    private onRetryMessage?: (messageId: string) => void,
+    private onEditMessage?: (messageId: string, newContent: string) => void
+  ) {
     this.render();
   }
 
@@ -140,7 +144,8 @@ export class MessageDisplay {
     const bubble = new MessageBubble(
       message,
       (messageId) => this.onCopyMessage(messageId),
-      (messageId) => this.onRetryMessage(messageId)
+      (messageId) => this.handleRetryMessage(messageId),
+      (messageId, newContent) => this.handleEditMessage(messageId, newContent)
     );
 
     this.messageBubbles.push(bubble);
@@ -172,11 +177,23 @@ export class MessageDisplay {
   }
 
   /**
-   * Handle retry message action (for now, just log)
+   * Handle retry message action
    */
-  private onRetryMessage(messageId: string): void {
+  private handleRetryMessage(messageId: string): void {
     console.log('[MessageDisplay] Retry message:', messageId);
-    // TODO: Implement message retry functionality
+    if (this.onRetryMessage) {
+      this.onRetryMessage(messageId);
+    }
+  }
+
+  /**
+   * Handle edit message action
+   */
+  private handleEditMessage(messageId: string, newContent: string): void {
+    console.log('[MessageDisplay] Edit message:', messageId, 'New content:', newContent);
+    if (this.onEditMessage) {
+      this.onEditMessage(messageId, newContent);
+    }
   }
 
   /**

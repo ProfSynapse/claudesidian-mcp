@@ -85,15 +85,15 @@ export class ConversationRepository {
         });
       }
 
-      // Generate summary for embedding
-      const summary = this.generateConversationSummary(conversationData);
-      const embedding = await this.embeddingService.getEmbedding(summary) || [];
+      // Generate document content for embedding
+      const documentContent = this.extractConversationContent(conversationData);
+      const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
 
       // Create document for storage
       const document: ConversationDocument = {
         id: conversationId,
         embedding,
-        document: summary,
+        document: documentContent,
         metadata: {
           title: params.title,
           created_at: now,
@@ -162,14 +162,18 @@ export class ConversationRepository {
         conversationData.title = updates.title;
       }
 
-      // Generate updated summary and embedding
-      const summary = updates.summary || this.generateConversationSummary(conversationData);
-      const embedding = await this.embeddingService.getEmbedding(summary) || [];
+      if (updates.messages) {
+        conversationData.messages = updates.messages;
+      }
+
+      // Generate document content directly from conversation messages
+      const documentContent = this.extractConversationContent(conversationData);
+      const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
 
       // Update document
       await this.collection.updateConversation(conversationId, {
         embedding,
-        document: summary,
+        document: documentContent,
         metadata: {
           ...existingDocument.metadata,
           title: conversationData.title,
@@ -247,14 +251,14 @@ export class ConversationRepository {
       conversationData.messages.push(newMessage);
       conversationData.last_updated = now;
 
-      // Generate updated summary and embedding
-      const summary = this.generateConversationSummary(conversationData);
-      const embedding = await this.embeddingService.getEmbedding(summary) || [];
+      // Generate updated document content and embedding
+      const documentContent = this.extractConversationContent(conversationData);
+      const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
 
       // Update document
       await this.collection.updateConversation(params.conversationId, {
         embedding,
-        document: summary,
+        document: documentContent,
         metadata: {
           ...existingDocument.metadata,
           last_updated: now,
@@ -423,33 +427,23 @@ export class ConversationRepository {
   // =============================================================================
 
   /**
-   * Generate a conversation summary for embedding and display
+   * Extract full conversation content for embedding and search
    */
-  private generateConversationSummary(conversation: ConversationData): string {
+  private extractConversationContent(conversation: ConversationData): string {
     if (conversation.messages.length === 0) {
       return `Conversation: ${conversation.title}`;
     }
 
-    // Get first user message and last assistant message for context
-    const userMessages = conversation.messages.filter(msg => msg.role === 'user');
-    const assistantMessages = conversation.messages.filter(msg => msg.role === 'assistant');
-
-    let summary = `Title: ${conversation.title}`;
+    // Include title and all message content for comprehensive search
+    let content = `Title: ${conversation.title}\n\n`;
     
-    if (userMessages.length > 0) {
-      const firstUserMessage = userMessages[0];
-      summary += `\nFirst message: ${firstUserMessage.content.slice(0, 200)}`;
-    }
+    // Add all messages with role labels for context
+    conversation.messages.forEach((message, index) => {
+      const roleLabel = message.role === 'user' ? 'User' : 'Assistant';
+      content += `${roleLabel}: ${message.content}\n\n`;
+    });
 
-    if (assistantMessages.length > 0) {
-      const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
-      summary += `\nLast response: ${lastAssistantMessage.content.slice(0, 200)}`;
-    }
-
-    summary += `\nMessages: ${conversation.messages.length}`;
-    summary += `\nLast updated: ${new Date(conversation.last_updated).toISOString()}`;
-
-    return summary;
+    return content.trim();
   }
 
   /**
