@@ -1,57 +1,56 @@
 /**
- * Mistral AI Adapter with Agents API and latest models
- * Supports Mistral OCR 25.05, Agents API, and specialized models
- * Updated June 17, 2025 with latest La Plateforme API features
+ * Mistral AI Adapter with true streaming support
+ * Implements Mistral's native streaming using client.chat.stream()
+ * Based on official Mistral TypeScript SDK documentation
  */
 
+import { Mistral } from '@mistralai/mistralai';
 import { BaseAdapter } from '../BaseAdapter';
-import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, ModelPricing } from '../types';
+import { 
+  GenerateOptions, 
+  StreamChunk, 
+  LLMResponse, 
+  ModelInfo, 
+  ProviderCapabilities,
+  ModelPricing
+} from '../types';
 import { MISTRAL_MODELS, MISTRAL_DEFAULT_MODEL } from './MistralModels';
 
 export class MistralAdapter extends BaseAdapter {
   readonly name = 'mistral';
-  readonly baseUrl = 'https://api.mistral.ai/v1';
+  readonly baseUrl = 'https://api.mistral.ai';
+  
+  private client: Mistral;
 
   constructor(apiKey: string, model?: string) {
     super(apiKey, model || MISTRAL_DEFAULT_MODEL);
+    
+    this.client = new Mistral({ apiKey: this.apiKey });
     this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     return this.withRetry(async () => {
       try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`
-          },
-          body: JSON.stringify({
-            model: options?.model || this.currentModel,
-            messages: this.buildMessages(prompt, options?.systemPrompt),
-            temperature: options?.temperature,
-            max_tokens: options?.maxTokens,
-            response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
-            stop: options?.stopSequences,
-            tools: options?.tools
-          })
+        const response = await this.client.chat.complete({
+          model: options?.model || this.currentModel,
+          messages: this.buildMessages(prompt, options?.systemPrompt),
+          temperature: options?.temperature,
+          max_tokens: options?.maxTokens,
+          top_p: options?.topP,
+          stop: options?.stopSequences,
+          tools: options?.tools
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        const usage = this.extractUsage(response);
+        const finishReason = this.mapFinishReason(response.choices[0]?.finish_reason);
+        const toolCalls = this.extractToolCalls(response.choices[0]?.message);
 
-        const data = await response.json() as any;
-        
-        const usage = this.extractUsage(data);
-        const finishReason = data.choices[0].finish_reason;
-        const toolCalls = data.choices[0].message.tool_calls;
-        
         return await this.buildLLMResponse(
-          data.choices[0].message.content || '',
-          data.model,
+          response.choices[0]?.message?.content || '',
+          options?.model || this.currentModel,
           usage,
-          undefined,
+          { provider: 'mistral' },
           finishReason,
           toolCalls
         );
@@ -61,74 +60,47 @@ export class MistralAdapter extends BaseAdapter {
     });
   }
 
-  async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`
-          },
-          body: JSON.stringify({
-            model: options?.model || this.currentModel,
-            messages: this.buildMessages(prompt, options?.systemPrompt),
-            temperature: options?.temperature,
-            max_tokens: options?.maxTokens,
-            stream: true
-          })
-        });
+  async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    try {
+      console.log('[MistralAdapter] Starting streaming response');
+      
+      const result = await this.client.chat.stream({
+        model: options?.model || this.currentModel,
+        messages: this.buildMessages(prompt, options?.systemPrompt),
+        temperature: options?.temperature,
+        max_tokens: options?.maxTokens,
+        top_p: options?.topP,
+        stop: options?.stopSequences,
+        tools: options?.tools
+      });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      let usage: any = undefined;
+
+      for await (const chunk of result) {
+        const streamText = chunk.data.choices[0]?.delta?.content;
+        
+        if (typeof streamText === "string" && streamText) {
+          yield { content: streamText, complete: false };
         }
 
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response body');
-
-        let fullText = '';
-        const decoder = new TextDecoder();
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n').filter(line => line.trim());
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') break;
-
-              try {
-                const parsed = JSON.parse(data);
-                const deltaText = parsed.choices[0]?.delta?.content || '';
-                if (deltaText) {
-                  fullText += deltaText;
-                  options?.onToken?.(deltaText);
-                }
-              } catch (e) {
-                // Skip invalid JSON
-              }
-            }
-          }
+        // Extract usage information if available
+        if (chunk.data.usage) {
+          usage = chunk.data.usage;
         }
-
-        const result: LLMResponse = {
-          text: fullText,
-          model: options?.model || this.currentModel,
-          provider: this.name,
-          finishReason: 'stop'
-        };
-
-        options?.onComplete?.(result);
-        return result;
-      } catch (error) {
-        options?.onError?.(error as Error);
-        this.handleError(error, 'streaming generation');
       }
-    });
+
+      // Final chunk with usage information
+      yield { 
+        content: '', 
+        complete: true, 
+        usage: this.extractUsage({ usage }) 
+      };
+      
+      console.log('[MistralAdapter] Streaming completed');
+    } catch (error) {
+      console.error('[MistralAdapter] Streaming error:', error);
+      throw error;
+    }
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -142,7 +114,7 @@ export class MistralAdapter extends BaseAdapter {
         supportsImages: model.capabilities.supportsImages,
         supportsFunctions: model.capabilities.supportsFunctions,
         supportsStreaming: model.capabilities.supportsStreaming,
-        supportsThinking: model.capabilities.supportsThinking,
+        supportsThinking: false,
         costPer1kTokens: {
           input: model.inputCostPerMillion / 1000,
           output: model.outputCostPerMillion / 1000
@@ -164,20 +136,47 @@ export class MistralAdapter extends BaseAdapter {
     return {
       supportsStreaming: true,
       supportsJSON: true,
-      supportsImages: true,
+      supportsImages: false,
       supportsFunctions: true,
       supportsThinking: false,
       maxContextWindow: 128000,
       supportedFeatures: [
-        'chat_completions',
-        'agents_api',
+        'messages',
         'function_calling',
-        'json_mode',
-        'ocr',
-        'code_generation',
-        'streaming'
+        'streaming',
+        'json_mode'
       ]
     };
+  }
+
+  // Private methods
+  private extractToolCalls(message: any): any[] {
+    return message?.tool_calls || [];
+  }
+
+  private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
+    if (!reason) return 'stop';
+    
+    const reasonMap: Record<string, 'stop' | 'length' | 'tool_calls' | 'content_filter'> = {
+      'stop': 'stop',
+      'length': 'length',
+      'tool_calls': 'tool_calls',
+      'model_length': 'length',
+      'content_filter': 'content_filter'
+    };
+    return reasonMap[reason] || 'stop';
+  }
+
+  protected extractUsage(response: any): any {
+    const usage = response.usage;
+    if (usage) {
+      return {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      };
+    }
+    return undefined;
   }
 
   private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
@@ -191,23 +190,13 @@ export class MistralAdapter extends BaseAdapter {
   }
 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    console.log('MistralAdapter: getModelPricing called for model:', modelId);
-    
     const costs = this.getCostPer1kTokens(modelId);
-    console.log('MistralAdapter: getCostPer1kTokens result:', costs);
+    if (!costs) return null;
     
-    if (!costs) {
-      console.log('MistralAdapter: No costs found for model:', modelId);
-      return null;
-    }
-
-    const pricing: ModelPricing = {
+    return {
       rateInputPerMillion: costs.input * 1000,
       rateOutputPerMillion: costs.output * 1000,
       currency: 'USD'
     };
-    
-    console.log('MistralAdapter: returning pricing:', pricing);
-    return pricing;
   }
 }

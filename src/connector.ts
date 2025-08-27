@@ -288,6 +288,46 @@ export class MCPConnector {
      * Call a tool using the new agent-mode architecture with integrated tool call capture
      * Now delegates to ToolCallRouter service for validation and execution
      */
+    /**
+     * Get available tools for ChatService
+     */
+    getAvailableTools(): any[] {
+        const tools: any[] = [];
+        
+        if (!this.agentRegistry) {
+            console.warn('[MCPConnector] No agent registration service available for tool manifest');
+            return [];
+        }
+
+        const registeredAgents = this.agentRegistry.getAllAgents();
+        
+        for (const [agentName, agent] of registeredAgents) {
+            const modes = (agent as any).getModes?.() || [];
+            
+            // getModes returns an array, so iterate directly over modes
+            for (const mode of modes) {
+                const modeInstance = mode as any;
+                if (modeInstance && typeof modeInstance.getParameterSchema === 'function') {
+                    try {
+                        const paramSchema = modeInstance.getParameterSchema();
+                        const modeName = modeInstance.slug || modeInstance.name || 'unknown';
+                        tools.push({
+                            name: `${agentName}.${modeName}`,
+                            description: modeInstance.description || `Execute ${modeName} on ${agentName}`,
+                            inputSchema: paramSchema
+                        });
+                    } catch (error) {
+                        const modeName = modeInstance.slug || modeInstance.name || 'unknown';
+                        console.warn(`[MCPConnector] Failed to get schema for ${agentName}.${modeName}:`, error);
+                    }
+                }
+            }
+        }
+        
+        console.log(`[MCPConnector] Generated ${tools.length} tools for ChatService`);
+        return tools;
+    }
+
     async callTool(params: AgentModeParams): Promise<any> {
         const captureStartTime = Date.now();
         let toolCallId: string | undefined;

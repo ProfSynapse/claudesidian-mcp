@@ -1,14 +1,14 @@
 /**
- * Anthropic Claude Adapter with Claude 4 and extended thinking
- * Supports latest Claude features including extended thinking mode
- * Based on 2025 API documentation
+ * Anthropic Claude Adapter with true streaming support
+ * Implements Anthropic's SSE streaming protocol
+ * Based on official Anthropic streaming documentation
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { BaseAdapter } from '../BaseAdapter';
 import { 
   GenerateOptions, 
-  StreamOptions, 
+  StreamChunk, 
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
@@ -55,12 +55,10 @@ export class AnthropicAdapter extends BaseAdapter {
 
         // Extended thinking mode for Claude 4 models
         if (options?.enableThinking && this.supportsThinking(options?.model || this.currentModel)) {
-          requestParams.thinking = 'extended';
-        }
-
-        // Interleaved thinking (beta feature)
-        if (options?.enableInteractiveThinking) {
-          requestParams.beta = process.env.ANTHROPIC_BETA_FEATURES || 'interleaved-thinking-2025-05-14';
+          requestParams.thinking = {
+            type: 'enabled',
+            budget_tokens: 16000
+          };
         }
 
         // Add tools if provided
@@ -72,8 +70,9 @@ export class AnthropicAdapter extends BaseAdapter {
         if (options?.webSearch) {
           requestParams.tools = requestParams.tools || [];
           requestParams.tools.push({
-            type: 'web_search',
-            web_search: { max_results: 10 }
+            type: 'web_search_20250305',
+            name: 'web_search',
+            max_uses: 5
           });
         }
 
@@ -101,65 +100,101 @@ export class AnthropicAdapter extends BaseAdapter {
     });
   }
 
-  async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const messages = this.buildMessages(prompt, options?.systemPrompt);
-        
-        const requestParams: any = {
-          model: options?.model || this.currentModel,
-          max_tokens: options?.maxTokens || 4096,
-          messages: messages.filter(msg => msg.role !== 'system'),
-          temperature: options?.temperature,
-          stream: true
-        };
+  async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    try {
+      console.log('[AnthropicAdapter] Starting streaming response');
+      
+      const messages = this.buildMessages(prompt, options?.systemPrompt);
+      
+      const requestParams: any = {
+        model: options?.model || this.currentModel,
+        max_tokens: options?.maxTokens || 4096,
+        messages: messages.filter(msg => msg.role !== 'system'),
+        temperature: options?.temperature,
+        stream: true
+      };
 
-        // Add system message if provided
-        const systemMessage = messages.find(msg => msg.role === 'system');
-        if (systemMessage) {
-          requestParams.system = systemMessage.content;
-        }
-
-        const stream = await this.client.messages.create(requestParams as any);
-        
-        let fullText = '';
-        let usage: any = undefined;
-        let model = '';
-        let stopReason = '';
-
-        for await (const chunk of stream as any) {
-          if (chunk.type === 'content_block_delta') {
-            const deltaText = chunk.delta.text || '';
-            if (deltaText) {
-              fullText += deltaText;
-              options?.onToken?.(deltaText);
-            }
-          } else if (chunk.type === 'message_start') {
-            model = chunk.message.model;
-            usage = chunk.message.usage;
-          } else if (chunk.type === 'message_delta') {
-            stopReason = chunk.delta.stop_reason || '';
-            if (chunk.usage) {
-              usage = chunk.usage;
-            }
-          }
-        }
-
-        const response: LLMResponse = {
-          text: fullText,
-          model: model || this.currentModel,
-          provider: this.name,
-          usage: this.extractUsage({ usage }),
-          finishReason: this.mapStopReason(stopReason)
-        };
-
-        options?.onComplete?.(response);
-        return response;
-      } catch (error) {
-        options?.onError?.(error as Error);
-        this.handleError(error, 'streaming generation');
+      // Add system message if provided
+      const systemMessage = messages.find(msg => msg.role === 'system');
+      if (systemMessage) {
+        requestParams.system = systemMessage.content;
       }
-    });
+
+      // Extended thinking mode for Claude 4 models
+      if (options?.enableThinking && this.supportsThinking(options?.model || this.currentModel)) {
+        requestParams.thinking = {
+          type: 'enabled',
+          budget_tokens: 16000
+        };
+      }
+
+      // Add tools if provided
+      if (options?.tools && options.tools.length > 0) {
+        requestParams.tools = this.convertTools(options.tools);
+      }
+
+      const stream = this.client.messages.stream(requestParams);
+      
+      let usage: any = undefined;
+
+      for await (const event of stream) {
+        console.log('[AnthropicAdapter] Stream event type:', event.type);
+        
+        switch (event.type) {
+          case 'message_start':
+            usage = event.message.usage;
+            break;
+            
+          case 'content_block_delta':
+            if (event.delta.type === 'text_delta' && event.delta.text) {
+              yield { 
+                content: event.delta.text, 
+                complete: false 
+              };
+            } else if (event.delta.type === 'thinking_delta' && event.delta.thinking) {
+              // Stream thinking content if enabled
+              if (options?.enableThinking) {
+                yield { 
+                  content: event.delta.thinking, 
+                  complete: false 
+                };
+              }
+            }
+            break;
+            
+          case 'message_delta':
+            if (event.usage) {
+              usage = event.usage;
+            }
+            break;
+            
+          case 'message_stop':
+            yield { 
+              content: '', 
+              complete: true, 
+              usage: this.extractUsage({ usage }) 
+            };
+            break;
+            
+          case 'ping':
+            // Ignore ping events
+            break;
+            
+          case 'error':
+            console.error('[AnthropicAdapter] Stream error:', event.error);
+            throw new Error(`Anthropic stream error: ${event.error.message}`);
+            
+          default:
+            console.log('[AnthropicAdapter] Unknown event type:', event.type);
+            break;
+        }
+      }
+      
+      console.log('[AnthropicAdapter] Streaming completed');
+    } catch (error) {
+      console.error('[AnthropicAdapter] Streaming error:', error);
+      throw error;
+    }
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -202,12 +237,9 @@ export class AnthropicAdapter extends BaseAdapter {
       supportedFeatures: [
         'messages',
         'extended_thinking',
-        'interleaved_thinking',
         'function_calling',
         'web_search',
         'computer_use',
-        'code_execution',
-        'mcp_connector',
         'vision',
         'streaming'
       ]
@@ -255,14 +287,15 @@ export class AnthropicAdapter extends BaseAdapter {
 
   private extractThinking(response: any): string | undefined {
     // Extract thinking process from response if available
-    if (response.thinking) {
-      return typeof response.thinking === 'string' ? response.thinking : JSON.stringify(response.thinking);
+    const thinkingBlocks = response.content?.filter((block: any) => block.type === 'thinking') || [];
+    if (thinkingBlocks.length > 0) {
+      return thinkingBlocks.map((block: any) => block.thinking).join('\n');
     }
     return undefined;
   }
 
   private mapStopReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
-    if (!reason) return 'stop'; // Handle null case
+    if (!reason) return 'stop';
     
     const reasonMap: Record<string, 'stop' | 'length' | 'tool_calls' | 'content_filter'> = {
       'end_turn': 'stop',
@@ -295,23 +328,13 @@ export class AnthropicAdapter extends BaseAdapter {
   }
 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    console.log('AnthropicAdapter: getModelPricing called for model:', modelId);
-    
     const costs = this.getCostPer1kTokens(modelId);
-    console.log('AnthropicAdapter: getCostPer1kTokens result:', costs);
+    if (!costs) return null;
     
-    if (!costs) {
-      console.log('AnthropicAdapter: No costs found for model:', modelId);
-      return null;
-    }
-    
-    const pricing: ModelPricing = {
-      rateInputPerMillion: costs.input * 1000, // Convert per 1k to per million
+    return {
+      rateInputPerMillion: costs.input * 1000,
       rateOutputPerMillion: costs.output * 1000,
       currency: 'USD'
     };
-    
-    console.log('AnthropicAdapter: returning pricing:', pricing);
-    return pricing;
   }
 }

@@ -6,7 +6,7 @@
 
 import { 
   GenerateOptions, 
-  StreamOptions, 
+  StreamChunk, 
   LLMResponse, 
   ModelInfo, 
   LLMProviderError,
@@ -54,7 +54,7 @@ export abstract class BaseAdapter {
 
   // Abstract methods that each provider must implement
   abstract generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse>;
-  abstract generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse>;
+  abstract generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown>;
   abstract listModels(): Promise<ModelInfo[]>;
   abstract getCapabilities(): ProviderCapabilities;
   abstract getModelPricing(modelId: string): Promise<ModelPricing | null>;

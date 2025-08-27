@@ -1,21 +1,20 @@
 /**
- * Google Gemini Adapter with 2.5 models and thinking capabilities
- * Supports latest Gemini features including thinking mode
- * Based on 2025 API documentation from Google AI Studio
- * Updated June 17, 2025 with latest model availability and pricing
+ * Google Gemini Adapter with true streaming support
+ * Implements Google Gemini streaming protocol using generateContentStream
+ * Based on official Google Gemini JavaScript SDK documentation
  */
 
 import { GoogleGenAI } from '@google/genai';
 import { BaseAdapter } from '../BaseAdapter';
 import { 
   GenerateOptions, 
-  StreamOptions, 
+  StreamChunk, 
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
   ModelPricing
 } from '../types';
-import { ModelRegistry } from '../ModelRegistry';
+import { GOOGLE_MODELS, GOOGLE_DEFAULT_MODEL } from './GoogleModels';
 
 export class GoogleAdapter extends BaseAdapter {
   readonly name = 'google';
@@ -24,7 +23,7 @@ export class GoogleAdapter extends BaseAdapter {
   private client: GoogleGenAI;
 
   constructor(apiKey: string, model?: string) {
-    super(apiKey, model || 'gemini-2.5-flash');
+    super(apiKey, model || GOOGLE_DEFAULT_MODEL);
     
     this.client = new GoogleGenAI({ apiKey: this.apiKey });
     this.initializeCache();
@@ -39,7 +38,7 @@ export class GoogleAdapter extends BaseAdapter {
             role: 'user',
             parts: [{ text: prompt }]
           }],
-          config: {
+          generationConfig: {
             temperature: options?.temperature,
             maxOutputTokens: options?.maxTokens,
             topK: 40,
@@ -50,34 +49,29 @@ export class GoogleAdapter extends BaseAdapter {
         // Add system instruction if provided
         if (options?.systemPrompt) {
           request.systemInstruction = {
+            role: 'system',
             parts: [{ text: options.systemPrompt }]
           };
         }
 
-        // Enable thinking mode for 2.5 models
-        if (options?.enableThinking && this.supportsThinking(options?.model || this.currentModel)) {
-          request.thinking = true;
-        }
-
         // Add tools if provided
         if (options?.tools && options.tools.length > 0) {
-          request.config.tools = this.convertTools(options.tools);
+          request.tools = this.convertTools(options.tools);
         }
 
         const response = await this.client.models.generateContent(request);
         
-        const extractedUsage = this.extractGeminiUsage(response);
-        const finishReason = this.mapFinishReason(response.candidates?.[0]?.finishReason);
-        const metadata = {
-          thinking: options?.enableThinking ? response.candidates?.[0]?.content?.parts?.find((p: any) => p.thought !== undefined) : undefined
-        };
+        const extractedUsage = this.extractUsage(response);
+        const finishReason = this.mapFinishReason(response.finishReason);
+        const toolCalls = this.extractToolCalls(response);
 
         return await this.buildLLMResponse(
           response.text || '',
           options?.model || this.currentModel,
           extractedUsage,
-          metadata,
-          finishReason
+          {},
+          finishReason,
+          toolCalls
         );
       } catch (error) {
         this.handleError(error, 'generation');
@@ -85,67 +79,94 @@ export class GoogleAdapter extends BaseAdapter {
     });
   }
 
-  async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const request: any = {
-          model: options?.model || this.currentModel,
-          contents: [{
-            role: 'user',
-            parts: [{ text: prompt }]
-          }],
-          config: {
-            temperature: options?.temperature,
-            maxOutputTokens: options?.maxTokens
-          }
-        };
+  async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    try {
+      console.log('[GoogleAdapter] Starting streaming response');
+      
+      const request: any = {
+        model: options?.model || this.currentModel,
+        contents: [{
+          role: 'user',
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: options?.temperature,
+          maxOutputTokens: options?.maxTokens,
+          topK: 40,
+          topP: 0.95
+        }
+      };
 
-        if (options?.systemPrompt) {
-          request.systemInstruction = {
-            parts: [{ text: options.systemPrompt }]
+      // Add system instruction if provided
+      if (options?.systemPrompt) {
+        request.systemInstruction = {
+          role: 'system',
+          parts: [{ text: options.systemPrompt }]
+        };
+      }
+
+      // Add tools if provided
+      if (options?.tools && options.tools.length > 0) {
+        request.tools = this.convertTools(options.tools);
+      }
+
+      const response = await this.client.models.generateContentStream(request);
+      
+      let usage: any = undefined;
+
+      for await (const chunk of response) {
+        console.log('[GoogleAdapter] Stream chunk received');
+        
+        if (chunk.text) {
+          yield { 
+            content: chunk.text, 
+            complete: false 
           };
         }
-
-        const streamingResponse = await this.client.models.generateContentStream(request);
         
-        let fullText = '';
-        let usage: any = undefined;
-        let finalChunk: any = undefined;
-
-        for await (const chunk of streamingResponse) {
-          const chunkText = chunk.text;
-          if (chunkText) {
-            fullText += chunkText;
-            options?.onToken?.(chunkText);
-          }
-          finalChunk = chunk;
+        // Extract usage information if available
+        if (chunk.usageMetadata) {
+          usage = chunk.usageMetadata;
         }
-
-        // Get usage from the final chunk
-        usage = this.extractGeminiUsage(finalChunk);
-
-        const response: LLMResponse = {
-          text: fullText,
-          model: options?.model || this.currentModel,
-          provider: this.name,
-          usage,
-          finishReason: this.mapFinishReason(finalChunk?.candidates?.[0]?.finishReason)
-        };
-
-        options?.onComplete?.(response);
-        return response;
-      } catch (error) {
-        options?.onError?.(error as Error);
-        this.handleError(error, 'streaming generation');
       }
-    });
+      
+      // Final chunk with usage information
+      yield { 
+        content: '', 
+        complete: true, 
+        usage: this.extractUsage({ usageMetadata: usage }) 
+      };
+      
+      console.log('[GoogleAdapter] Streaming completed');
+    } catch (error) {
+      console.error('[GoogleAdapter] Streaming error:', error);
+      throw error;
+    }
   }
 
   async listModels(): Promise<ModelInfo[]> {
     try {
-      // Use centralized model registry
-      const googleModels = ModelRegistry.getProviderModels('google');
-      return googleModels.map(model => ModelRegistry.toModelInfo(model));
+      return GOOGLE_MODELS.map(model => ({
+        id: model.apiName,
+        name: model.name,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxTokens,
+        supportsJSON: model.capabilities.supportsJSON,
+        supportsImages: model.capabilities.supportsImages,
+        supportsFunctions: model.capabilities.supportsFunctions,
+        supportsStreaming: model.capabilities.supportsStreaming,
+        supportsThinking: model.capabilities.supportsThinking,
+        costPer1kTokens: {
+          input: model.inputCostPerMillion / 1000,
+          output: model.outputCostPerMillion / 1000
+        },
+        pricing: {
+          inputPerMillion: model.inputCostPerMillion,
+          outputPerMillion: model.outputCostPerMillion,
+          currency: 'USD',
+          lastUpdated: new Date().toISOString()
+        }
+      }));
     } catch (error) {
       this.handleError(error, 'listing models');
       return [];
@@ -159,34 +180,24 @@ export class GoogleAdapter extends BaseAdapter {
       supportsImages: true,
       supportsFunctions: true,
       supportsThinking: true,
-      maxContextWindow: 2000000, // Gemini 1.5 Pro
+      maxContextWindow: 2097152,
       supportedFeatures: [
-        'text_generation',
-        'multimodal',
+        'messages',
         'function_calling',
-        'thinking_mode',
+        'vision',
         'streaming',
-        'long_context',
-        'text_to_speech'
+        'json_mode',
+        'thinking_mode'
       ]
     };
   }
 
   // Private methods
-  private supportsThinking(modelId: string): boolean {
-    return [
-      'gemini-2.5-pro-exp-03-25',
-      'gemini-2.5-pro',
-      'gemini-2.5-flash',
-      'gemini-2.0-flash-001'
-    ].includes(modelId);
-  }
-
   private convertTools(tools: any[]): any[] {
     return tools.map(tool => {
       if (tool.type === 'function') {
         return {
-          functionDeclarations: [{
+          function_declarations: [{
             name: tool.function.name,
             description: tool.function.description,
             parameters: tool.function.parameters
@@ -197,46 +208,62 @@ export class GoogleAdapter extends BaseAdapter {
     });
   }
 
-  private extractGeminiUsage(response: any): any {
-    const usage = response.usageMetadata || response.response?.usageMetadata;
+  private extractToolCalls(response: any): any[] {
+    if (!response.functionCalls) return [];
+    
+    return response.functionCalls.map((call: any) => ({
+      id: call.name + '_' + Date.now(),
+      type: 'function',
+      function: {
+        name: call.name,
+        arguments: JSON.stringify(call.args || {})
+      }
+    }));
+  }
+
+  private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
+    if (!reason) return 'stop';
+    
+    const reasonMap: Record<string, 'stop' | 'length' | 'tool_calls' | 'content_filter'> = {
+      'STOP': 'stop',
+      'MAX_TOKENS': 'length',
+      'SAFETY': 'content_filter',
+      'RECITATION': 'content_filter',
+      'OTHER': 'stop'
+    };
+    return reasonMap[reason] || 'stop';
+  }
+
+  protected extractUsage(response: any): any {
+    const usage = response.usageMetadata || response.usage;
     if (usage) {
       return {
-        promptTokens: usage.promptTokenCount || 0,
-        completionTokens: usage.candidatesTokenCount || 0,
-        totalTokens: usage.totalTokenCount || 0
+        promptTokens: usage.promptTokenCount || usage.inputTokens || 0,
+        completionTokens: usage.candidatesTokenCount || usage.outputTokens || 0,
+        totalTokens: usage.totalTokenCount || usage.totalTokens || 0
       };
     }
     return undefined;
   }
 
-  private mapFinishReason(reason: any): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
-    const reasonMap: Record<string, 'stop' | 'length' | 'tool_calls' | 'content_filter'> = {
-      'FINISH_REASON_STOP': 'stop',
-      'FINISH_REASON_MAX_TOKENS': 'length',
-      'FINISH_REASON_SAFETY': 'content_filter',
-      'FINISH_REASON_RECITATION': 'content_filter'
+  private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
+    const model = GOOGLE_MODELS.find(m => m.apiName === modelId);
+    if (!model) return undefined;
+    
+    return {
+      input: model.inputCostPerMillion / 1000,
+      output: model.outputCostPerMillion / 1000
     };
-    return reasonMap[reason] || 'stop';
   }
 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    console.log('GoogleAdapter: getModelPricing called for model:', modelId);
+    const costs = this.getCostPer1kTokens(modelId);
+    if (!costs) return null;
     
-    // Use centralized model registry for pricing
-    const modelSpec = ModelRegistry.findModel('google', modelId);
-    console.log('GoogleAdapter: ModelRegistry.findModel result:', modelSpec);
-    
-    if (modelSpec) {
-      const pricing: ModelPricing = {
-        rateInputPerMillion: modelSpec.inputCostPerMillion,
-        rateOutputPerMillion: modelSpec.outputCostPerMillion,
-        currency: 'USD'
-      };
-      console.log('GoogleAdapter: returning pricing:', pricing);
-      return pricing;
-    }
-
-    console.log('GoogleAdapter: No model spec found for:', modelId);
-    return null;
+    return {
+      rateInputPerMillion: costs.input * 1000,
+      rateOutputPerMillion: costs.output * 1000,
+      currency: 'USD'
+    };
   }
 }

@@ -108,6 +108,9 @@ export class PluginLifecycleManager {
                 console.warn('[PluginLifecycleManager] MCP initialization failed:', error);
             }
             
+            // Register chat UI components
+            await this.registerChatUI();
+            
             // Create settings tab
             await this.initializeSettingsTab();
             
@@ -335,6 +338,75 @@ export class PluginLifecycleManager {
                 return fileEventManager;
             }
         });
+
+        // Agent Manager service - for tool execution coordination
+        await serviceManager.registerService({
+            name: 'agentManager',
+            dependencies: ['eventManager'],
+            create: async () => {
+                const { AgentManager } = await import('../services/AgentManager');
+                const eventManager = await serviceManager.getService<any>('eventManager');
+                return new AgentManager(plugin.app, plugin, eventManager);
+            }
+        });
+
+        // LLM Service - for AI response generation
+        await serviceManager.registerService({
+            name: 'llmService',
+            dependencies: [],
+            create: async () => {
+                const { LLMService } = await import('../services/llm/core/LLMService');
+                const llmProviderSettings = settings.settings.llmProviders || {
+                  providers: {},
+                  defaultModel: {
+                    provider: 'openai',
+                    model: 'gpt-3.5-turbo'
+                  }
+                };
+                return new LLMService(llmProviderSettings);
+            }
+        });
+
+        // Session Context Manager - for workspace context
+        await serviceManager.registerService({
+            name: 'sessionContextManager',
+            dependencies: ['eventManager'],
+            create: async () => {
+                const { SessionContextManager } = await import('../services/SessionContextManager');
+                return new SessionContextManager();
+            }
+        });
+
+        // Chat services - native chatbot functionality
+        await serviceManager.registerService({
+            name: 'conversationRepository',
+            dependencies: ['vectorStore', 'embeddingService'],
+            create: async () => {
+                const { ConversationRepository } = await import('../database/services/chat/ConversationRepository');
+                const vectorStore = await serviceManager.getService<any>('vectorStore');
+                const embeddingService = await serviceManager.getService<any>('embeddingService');
+                return new ConversationRepository(vectorStore, embeddingService);
+            }
+        });
+
+        await serviceManager.registerService({
+            name: 'chatService',
+            dependencies: ['conversationRepository', 'llmService', 'embeddingService'],
+            create: async () => {
+                const { ChatService } = await import('../services/chat/ChatService');
+                const conversationRepo = await serviceManager.getService<any>('conversationRepository');
+                const llmService = await serviceManager.getService<any>('llmService');
+                const embeddingService = await serviceManager.getService<any>('embeddingService');
+                
+                return new ChatService({
+                    conversationRepo,
+                    llmService,
+                    embeddingService,
+                    vaultName: plugin.app.vault.getName(),
+                    mcpConnector: (plugin as any).getConnector()
+                });
+            }
+        });
     }
 
     /**
@@ -366,6 +438,15 @@ export class PluginLifecycleManager {
             await this.config.serviceManager.getService('workspaceService');
             await this.config.serviceManager.getService('memoryTraceService');
             await this.config.serviceManager.getService('fileEventManager');
+            
+            // Initialize supporting services for chat
+            await this.config.serviceManager.getService('agentManager');
+            await this.config.serviceManager.getService('llmService');
+            await this.config.serviceManager.getService('sessionContextManager');
+            
+            // Initialize chat services
+            await this.config.serviceManager.getService('conversationRepository');
+            await this.config.serviceManager.getService('chatService');
         } catch (error) {
             console.error('[PluginLifecycleManager] Business service initialization failed:', error);
             throw error;
@@ -645,6 +726,72 @@ export class PluginLifecycleManager {
             },
             { dependencies: ['workspaceService', 'memoryService'] }
         );
+    }
+
+    /**
+     * Register chat UI components
+     */
+    private async registerChatUI(): Promise<void> {
+        try {
+            const { plugin, app } = this.config;
+            
+            // Get ChatService
+            const chatService = await this.getService<any>('chatService', 5000);
+            if (!chatService) {
+                console.warn('[PluginLifecycleManager] ChatService not available for UI registration');
+                return;
+            }
+            
+            // Import ChatView
+            const { ChatView, CHAT_VIEW_TYPE } = await import('../ui/chat/ChatView');
+            
+            // Register ChatView with Obsidian
+            plugin.registerView(
+                CHAT_VIEW_TYPE,
+                (leaf) => new ChatView(leaf, chatService)
+            );
+            
+            // Add ribbon icon for chat
+            plugin.addRibbonIcon('message-square', 'AI Chat', () => {
+                this.activateChatView();
+            });
+            
+            // Add command to open chat
+            plugin.addCommand({
+                id: 'open-chat',
+                name: 'Open AI Chat',
+                callback: () => {
+                    this.activateChatView();
+                }
+            });
+            
+        } catch (error) {
+            console.error('[PluginLifecycleManager] Failed to register chat UI:', error);
+        }
+    }
+
+    /**
+     * Activate chat view in sidebar
+     */
+    private async activateChatView(): Promise<void> {
+        const { app } = this.config;
+        const { CHAT_VIEW_TYPE } = await import('../ui/chat/ChatView');
+        
+        // Check if chat view already exists
+        const existingLeaf = app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0];
+        if (existingLeaf) {
+            app.workspace.revealLeaf(existingLeaf);
+            return;
+        }
+        
+        // Create new chat view in right sidebar
+        const leaf = app.workspace.getRightLeaf(false);
+        await leaf.setViewState({
+            type: CHAT_VIEW_TYPE,
+            active: true
+        });
+        
+        app.workspace.revealLeaf(leaf);
     }
 
     /**

@@ -1,19 +1,26 @@
 /**
- * Requesty AI Adapter for 150+ models via router
- * OpenAI-compatible interface with model routing
- * Updated June 17, 2025 with latest Requesty router features
+ * Requesty AI Adapter with true streaming support
+ * OpenAI-compatible streaming interface for 150+ models via router
+ * Based on Requesty streaming documentation
  */
 
 import { BaseAdapter } from '../BaseAdapter';
-import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, ModelPricing } from '../types';
-import { ModelRegistry } from '../ModelRegistry';
+import { 
+  GenerateOptions, 
+  StreamChunk, 
+  LLMResponse, 
+  ModelInfo, 
+  ProviderCapabilities, 
+  ModelPricing 
+} from '../types';
+import { REQUESTY_MODELS, REQUESTY_DEFAULT_MODEL } from './RequestyModels';
 
 export class RequestyAdapter extends BaseAdapter {
   readonly name = 'requesty';
   readonly baseUrl = 'https://router.requesty.ai/v1';
 
   constructor(apiKey: string, model?: string) {
-    super(apiKey, model || 'gpt-4.1-nano');
+    super(apiKey, model || REQUESTY_DEFAULT_MODEL);
     this.initializeCache();
   }
 
@@ -48,18 +55,14 @@ export class RequestyAdapter extends BaseAdapter {
         const data = await response.json() as any;
         
         const usage = this.extractUsage(data);
-        const finishReason = data.choices[0].finish_reason;
-        const toolCalls = data.choices[0].message.tool_calls;
-        const metadata = {
-          routed_provider: data.provider_used,
-          analytics: data.analytics
-        };
-        
+        const finishReason = this.mapFinishReason(data.choices[0]?.finish_reason);
+        const toolCalls = this.extractToolCalls(data.choices[0]?.message);
+
         return await this.buildLLMResponse(
-          data.choices[0].message.content || '',
-          data.model,
+          data.choices[0]?.message?.content || '',
+          options?.model || this.currentModel,
           usage,
-          metadata,
+          { provider: 'requesty' },
           finishReason,
           toolCalls
         );
@@ -69,111 +72,129 @@ export class RequestyAdapter extends BaseAdapter {
     });
   }
 
-  async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
+  async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    try {
+      console.log('[RequestyAdapter] Starting streaming response');
+      
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          ...this.buildHeaders(),
+          'Authorization': `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'https://synaptic-lab-kit.com',
+          'X-Title': 'Synaptic Lab Kit',
+          'User-Agent': 'Synaptic-Lab-Kit/1.0.0'
+        },
+        body: JSON.stringify({
+          model: options?.model || this.currentModel,
+          messages: this.buildMessages(prompt, options?.systemPrompt),
+          temperature: options?.temperature,
+          max_tokens: options?.maxTokens,
+          response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+          stop: options?.stopSequences,
+          tools: options?.tools,
+          stream: true
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let usage: any = undefined;
+
       try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://synaptic-lab-kit.com',
-            'X-Title': 'Synaptic Lab Kit',
-            'User-Agent': 'Synaptic-Lab-Kit/1.0.0'
-          },
-          body: JSON.stringify({
-            model: options?.model || this.currentModel,
-            messages: this.buildMessages(prompt, options?.systemPrompt),
-            temperature: options?.temperature,
-            max_tokens: options?.maxTokens,
-            stream: true
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response body');
-
-        let fullText = '';
-        const decoder = new TextDecoder();
-
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n').filter(line => line.trim());
-
-          for (const line of lines) {
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete lines from buffer
+          while (true) {
+            const lineEnd = buffer.indexOf('\n');
+            if (lineEnd === -1) break;
+            
+            const line = buffer.slice(0, lineEnd).trim();
+            buffer = buffer.slice(lineEnd + 1);
+            
+            // Skip empty lines and comments
+            if (!line || line.startsWith(':')) continue;
+            
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
               if (data === '[DONE]') break;
-
+              
               try {
                 const parsed = JSON.parse(data);
-                const deltaText = parsed.choices[0]?.delta?.content || '';
-                if (deltaText) {
-                  fullText += deltaText;
-                  options?.onToken?.(deltaText);
+                const content = parsed.choices[0]?.delta?.content;
+                
+                if (content) {
+                  yield { content, complete: false };
                 }
-              } catch (e) {
-                // Skip invalid JSON
+                
+                // Extract usage information
+                if (parsed.usage) {
+                  usage = parsed.usage;
+                }
+              } catch (error) {
+                console.warn('[RequestyAdapter] Failed to parse streaming chunk:', error);
               }
             }
           }
         }
-
-        const result: LLMResponse = {
-          text: fullText,
-          model: options?.model || this.currentModel,
-          provider: this.name,
-          finishReason: 'stop'
-        };
-
-        options?.onComplete?.(result);
-        return result;
-      } catch (error) {
-        options?.onError?.(error as Error);
-        this.handleError(error, 'streaming generation');
+      } finally {
+        reader.releaseLock();
       }
-    });
+
+      // Final chunk with usage information
+      yield { 
+        content: '', 
+        complete: true, 
+        usage: this.extractUsage({ usage }) 
+      };
+      
+      console.log('[RequestyAdapter] Streaming completed');
+    } catch (error) {
+      console.error('[RequestyAdapter] Streaming error:', error);
+      throw error;
+    }
   }
 
   async listModels(): Promise<ModelInfo[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/models`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json() as any;
-      
-      return data.data?.map((model: any) => ({
-        id: model.id,
-        name: model.name || model.id,
-        contextWindow: model.context_window || 8192,
-        maxOutputTokens: model.max_output_tokens || 4096,
-        supportsJSON: model.features?.includes('json_mode') || true,
-        supportsImages: model.features?.includes('vision') || false,
-        supportsFunctions: model.features?.includes('function_calling') || true,
-        supportsStreaming: true,
+      return REQUESTY_MODELS.map(model => ({
+        id: model.apiName,
+        name: model.name,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxTokens,
+        supportsJSON: model.capabilities.supportsJSON,
+        supportsImages: model.capabilities.supportsImages,
+        supportsFunctions: model.capabilities.supportsFunctions,
+        supportsStreaming: model.capabilities.supportsStreaming,
         supportsThinking: false,
-        costPer1kTokens: model.pricing ? {
-          input: model.pricing.input * 1000,
-          output: model.pricing.output * 1000
-        } : undefined
-      })) || this.getRegistryModels();
+        costPer1kTokens: {
+          input: model.inputCostPerMillion / 1000,
+          output: model.outputCostPerMillion / 1000
+        },
+        pricing: {
+          inputPerMillion: model.inputCostPerMillion,
+          outputPerMillion: model.outputCostPerMillion,
+          currency: 'USD',
+          lastUpdated: new Date().toISOString()
+        }
+      }));
     } catch (error) {
-      console.warn('Failed to fetch Requesty models, using defaults:', error);
-      return this.getRegistryModels();
+      this.handleError(error, 'listing models');
+      return [];
     }
   }
 
@@ -184,45 +205,65 @@ export class RequestyAdapter extends BaseAdapter {
       supportsImages: true,
       supportsFunctions: true,
       supportsThinking: false,
-      maxContextWindow: 128000, // Varies by model
+      maxContextWindow: 200000,
       supportedFeatures: [
-        'chat_completions',
-        'model_routing',
-        'analytics',
-        'cost_optimization',
-        'streaming',
+        'messages',
         'function_calling',
+        'vision',
+        'streaming',
         'json_mode',
-        'multi_provider'
+        'router_fallback'
       ]
     };
   }
 
-  private getRegistryModels(): ModelInfo[] {
-    // Use centralized model registry
-    const requestyModels = ModelRegistry.getProviderModels('requesty');
-    return requestyModels.map(model => ModelRegistry.toModelInfo(model));
+  // Private methods
+  private extractToolCalls(message: any): any[] {
+    return message?.tool_calls || [];
   }
 
+  private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
+    if (!reason) return 'stop';
+    
+    const reasonMap: Record<string, 'stop' | 'length' | 'tool_calls' | 'content_filter'> = {
+      'stop': 'stop',
+      'length': 'length',
+      'tool_calls': 'tool_calls',
+      'content_filter': 'content_filter'
+    };
+    return reasonMap[reason] || 'stop';
+  }
+
+  protected extractUsage(response: any): any {
+    const usage = response.usage;
+    if (usage) {
+      return {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      };
+    }
+    return undefined;
+  }
+
+  private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
+    const model = REQUESTY_MODELS.find(m => m.apiName === modelId);
+    if (!model) return undefined;
+    
+    return {
+      input: model.inputCostPerMillion / 1000,
+      output: model.outputCostPerMillion / 1000
+    };
+  }
 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    console.log('RequestyAdapter: getModelPricing called for model:', modelId);
+    const costs = this.getCostPer1kTokens(modelId);
+    if (!costs) return null;
     
-    // Use centralized model registry for pricing
-    const modelSpec = ModelRegistry.findModel('requesty', modelId);
-    console.log('RequestyAdapter: ModelRegistry.findModel result:', modelSpec);
-    
-    if (modelSpec) {
-      const pricing: ModelPricing = {
-        currency: 'USD',
-        rateInputPerMillion: modelSpec.inputCostPerMillion,
-        rateOutputPerMillion: modelSpec.outputCostPerMillion
-      };
-      console.log('RequestyAdapter: returning pricing:', pricing);
-      return pricing;
-    }
-
-    console.log('RequestyAdapter: No model spec found for:', modelId);
-    return null;
+    return {
+      rateInputPerMillion: costs.input * 1000,
+      rateOutputPerMillion: costs.output * 1000,
+      currency: 'USD'
+    };
   }
 }

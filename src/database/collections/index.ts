@@ -4,3 +4,4 @@ export * from './MemoryTraceCollection';
 export * from './SessionCollection';
 export * from './SnapshotCollection';
 export * from './FileEmbeddingCollection';
+export * from './ConversationCollection';

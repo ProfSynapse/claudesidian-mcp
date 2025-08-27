@@ -61,6 +61,28 @@ export type {
   EventSubscriber
 } from './common';
 
+// Chat types
+export type {
+  ConversationData,
+  ConversationMessage,
+  ToolCall,
+  ConversationDocument,
+  ConversationSearchOptions,
+  ConversationSearchResult,
+  CreateConversationParams,
+  AddMessageParams,
+  UpdateConversationParams,
+  ConversationOperationResult,
+  MessageQueryOptions,
+  PaginatedMessages,
+  ChatCollectionConfig,
+  ChatCollectionStats,
+  ChatDatabaseHealth,
+  ChatPerformanceMetrics,
+  ConversationSummary,
+  ConversationExport
+} from './chat/ChatTypes';
+
 // Create default settings object
 import { DEFAULT_MEMORY_SETTINGS } from './llm';
 import { DEFAULT_CUSTOM_PROMPTS_SETTINGS } from './mcp';

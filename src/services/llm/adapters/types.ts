@@ -24,10 +24,10 @@ export interface GenerateOptions {
   presencePenalty?: number;
 }
 
-export interface StreamOptions extends GenerateOptions {
-  onToken?: (token: string) => void;
-  onComplete?: (response: LLMResponse) => void;
-  onError?: (error: Error) => void;
+export interface StreamChunk {
+  content: string;
+  complete: boolean;
+  usage?: TokenUsage;
 }
 
 export interface LLMResponse {

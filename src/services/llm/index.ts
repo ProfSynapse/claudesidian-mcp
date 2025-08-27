@@ -9,8 +9,10 @@ export { OpenAIAdapter } from './adapters/openai/OpenAIAdapter';
 export { AnthropicAdapter } from './adapters/anthropic/AnthropicAdapter';
 export { GoogleAdapter } from './adapters/google/GoogleAdapter';
 export { MistralAdapter } from './adapters/mistral/MistralAdapter';
+export { GroqAdapter } from './adapters/groq/GroqAdapter';
 export { OpenRouterAdapter } from './adapters/openrouter/OpenRouterAdapter';
 export { RequestyAdapter } from './adapters/requesty/RequestyAdapter';
+export { PerplexityAdapter } from './adapters/perplexity/PerplexityAdapter';
 
 // Types
 export * from './adapters/types';
@@ -39,7 +41,7 @@ export { BaseCache, CacheManager, LRUCache, FileCache } from './utils/CacheManag
 export type {
   LLMResponse,
   GenerateOptions,
-  StreamOptions,
+  StreamChunk,
   ModelInfo,
   ProviderCapabilities,
   TokenUsage,

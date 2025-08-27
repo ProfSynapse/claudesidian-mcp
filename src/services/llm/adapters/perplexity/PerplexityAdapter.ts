@@ -1,14 +1,13 @@
 /**
- * Perplexity AI Adapter
+ * Perplexity AI Adapter with true streaming support
  * Supports Perplexity's Sonar models with web search and reasoning capabilities
- * Based on 2025 Perplexity API specifications
+ * Based on official Perplexity streaming documentation with SSE parsing
  */
 
-import axios, { AxiosInstance } from 'axios';
 import { BaseAdapter } from '../BaseAdapter';
 import { 
   GenerateOptions, 
-  StreamOptions, 
+  StreamChunk, 
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
@@ -18,102 +17,230 @@ import {
 import { PERPLEXITY_MODELS, PERPLEXITY_DEFAULT_MODEL } from './PerplexityModels';
 
 export interface PerplexityOptions extends GenerateOptions {
-  // Perplexity-specific search parameters
-  searchDomainFilter?: string[];
-  searchRecencyFilter?: 'month' | 'week' | 'day' | 'hour';
-  returnRelatedQuestions?: boolean;
-  searchAfterDateFilter?: string;
-  searchBeforeDateFilter?: string;
-}
-
-export interface PerplexityStreamOptions extends StreamOptions {
-  searchDomainFilter?: string[];
-  searchRecencyFilter?: 'month' | 'week' | 'day' | 'hour';
-  returnRelatedQuestions?: boolean;
-  searchAfterDateFilter?: string;
-  searchBeforeDateFilter?: string;
-}
-
-export interface PerplexityCitation {
-  url: string;
-  title: string;
-  text: string;
-}
-
-export interface PerplexityResponse extends LLMResponse {
-  citations?: PerplexityCitation[];
-  relatedQuestions?: string[];
+  webSearch?: boolean;
+  searchMode?: 'web' | 'academic';
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  searchContextSize?: 'low' | 'medium' | 'high';
 }
 
 export class PerplexityAdapter extends BaseAdapter {
   readonly name = 'perplexity';
   readonly baseUrl = 'https://api.perplexity.ai';
-  
-  private client: AxiosInstance;
 
   constructor(apiKey: string, model?: string) {
     super(apiKey, model || PERPLEXITY_DEFAULT_MODEL);
-    
-    this.client = axios.create({
-      baseURL: this.baseUrl,
-      headers: this.buildHeaders({
-        'Authorization': `Bearer ${this.apiKey}`
-      }),
-      timeout: 120000 // 2 minutes for search operations
-    });
-
     this.initializeCache();
   }
 
-  async generateUncached(prompt: string, options?: PerplexityOptions): Promise<PerplexityResponse> {
-    try {
-      const requestData = this.buildRequestData(prompt, options);
-      
-      const response = await this.withRetry(async () => {
-        return await this.client.post('/chat/completions', requestData);
-      });
+  async generateUncached(prompt: string, options?: PerplexityOptions): Promise<LLMResponse> {
+    return this.withRetry(async () => {
+      try {
+        const requestBody = {
+          model: options?.model || this.currentModel,
+          messages: this.buildMessages(prompt, options?.systemPrompt),
+          temperature: options?.temperature,
+          max_tokens: options?.maxTokens,
+          top_p: options?.topP,
+          presence_penalty: options?.presencePenalty,
+          frequency_penalty: options?.frequencyPenalty,
+          tools: options?.tools,
+          extra: {
+            search_mode: options?.searchMode || 'web',
+            reasoning_effort: options?.reasoningEffort || 'medium',
+            web_search_options: {
+              search_context_size: options?.searchContextSize || 'low'
+            }
+          }
+        };
 
-      return await this.parseResponse(response.data, options?.model || this.currentModel);
-    } catch (error) {
-      throw this.handleError(error, 'generation');
-    }
+        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json() as any;
+        
+        const usage = this.extractUsage(data);
+        const finishReason = this.mapFinishReason(data.choices[0]?.finish_reason);
+        const toolCalls = this.extractToolCalls(data.choices[0]?.message);
+
+        return await this.buildLLMResponse(
+          data.choices[0]?.message?.content || '',
+          options?.model || this.currentModel,
+          usage,
+          { 
+            provider: 'perplexity',
+            searchResults: data.search_results,
+            searchMode: options?.searchMode
+          },
+          finishReason,
+          toolCalls
+        );
+      } catch (error) {
+        this.handleError(error, 'generation');
+      }
+    });
   }
 
-  async generateStream(prompt: string, options?: PerplexityStreamOptions): Promise<PerplexityResponse> {
+  async* generateStreamAsync(prompt: string, options?: PerplexityOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
-      const requestData = this.buildRequestData(prompt, { ...options, stream: true });
+      console.log('[PerplexityAdapter] Starting streaming response');
       
-      const response = await this.withRetry(async () => {
-        return await this.client.post('/chat/completions', requestData, {
-          responseType: 'stream'
-        });
+      const requestBody = {
+        model: options?.model || this.currentModel,
+        messages: this.buildMessages(prompt, options?.systemPrompt),
+        temperature: options?.temperature,
+        max_tokens: options?.maxTokens,
+        top_p: options?.topP,
+        presence_penalty: options?.presencePenalty,
+        frequency_penalty: options?.frequencyPenalty,
+        tools: options?.tools,
+        stream: true,
+        extra: {
+          search_mode: options?.searchMode || 'web',
+          reasoning_effort: options?.reasoningEffort || 'medium',
+          web_search_options: {
+            search_context_size: options?.searchContextSize || 'low'
+          }
+        }
+      };
+
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
       });
 
-      return await this.handleStreamResponse(response, options);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let usage: any = undefined;
+      let searchResults: any[] = [];
+      let metadata: any = {};
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete lines from buffer
+          while (true) {
+            const lineEnd = buffer.indexOf('\n');
+            if (lineEnd === -1) break;
+            
+            const line = buffer.slice(0, lineEnd).trim();
+            buffer = buffer.slice(lineEnd + 1);
+            
+            // Skip empty lines
+            if (!line) continue;
+            
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') break;
+              
+              try {
+                const chunk = JSON.parse(data);
+                
+                // Process content chunks
+                const content = chunk.choices?.[0]?.delta?.content;
+                if (content) {
+                  yield { content, complete: false };
+                }
+                
+                // Collect metadata (arrives in final chunks)
+                if (chunk.search_results) {
+                  searchResults = chunk.search_results;
+                }
+                
+                if (chunk.usage) {
+                  usage = chunk.usage;
+                }
+                
+                // Collect other metadata
+                for (const key of ['reasoning_effort', 'search_mode']) {
+                  if (chunk[key]) {
+                    metadata[key] = chunk[key];
+                  }
+                }
+                
+              } catch (error) {
+                console.warn('[PerplexityAdapter] Failed to parse streaming chunk:', error);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Final chunk with usage information and search results
+      yield { 
+        content: '', 
+        complete: true, 
+        usage: this.extractUsage({ usage }),
+        metadata: {
+          searchResults,
+          ...metadata
+        }
+      };
+      
+      console.log('[PerplexityAdapter] Streaming completed');
     } catch (error) {
-      options?.onError?.(error as Error);
-      throw this.handleError(error, 'streaming generation');
+      console.error('[PerplexityAdapter] Streaming error:', error);
+      throw error;
     }
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    return PERPLEXITY_MODELS.map(model => ({
-      id: model.apiName,
-      name: model.name,
-      contextWindow: model.contextWindow,
-      maxOutputTokens: model.maxTokens,
-      supportsJSON: model.capabilities.supportsJSON,
-      supportsImages: model.capabilities.supportsImages,
-      supportsFunctions: model.capabilities.supportsFunctions,
-      supportsStreaming: model.capabilities.supportsStreaming,
-      supportsThinking: model.capabilities.supportsThinking,
-      pricing: {
-        inputPerMillion: model.inputCostPerMillion,
-        outputPerMillion: model.outputCostPerMillion,
-        currency: 'USD',
-        lastUpdated: '2025-01-17'
-      }
-    }));
+    try {
+      return PERPLEXITY_MODELS.map(model => ({
+        id: model.apiName,
+        name: model.name,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxTokens,
+        supportsJSON: model.capabilities.supportsJSON,
+        supportsImages: model.capabilities.supportsImages,
+        supportsFunctions: model.capabilities.supportsFunctions,
+        supportsStreaming: model.capabilities.supportsStreaming,
+        supportsThinking: false,
+        costPer1kTokens: {
+          input: model.inputCostPerMillion / 1000,
+          output: model.outputCostPerMillion / 1000
+        },
+        pricing: {
+          inputPerMillion: model.inputCostPerMillion,
+          outputPerMillion: model.outputCostPerMillion,
+          currency: 'USD',
+          lastUpdated: new Date().toISOString()
+        }
+      }));
+    } catch (error) {
+      this.handleError(error, 'listing models');
+      return [];
+    }
   }
 
   getCapabilities(): ProviderCapabilities {
@@ -121,285 +248,68 @@ export class PerplexityAdapter extends BaseAdapter {
       supportsStreaming: true,
       supportsJSON: true,
       supportsImages: false,
-      supportsFunctions: false,
-      supportsThinking: true, // For reasoning models
-      maxContextWindow: 200000, // Max for Sonar Pro models
+      supportsFunctions: true,
+      supportsThinking: false,
+      maxContextWindow: 127072,
       supportedFeatures: [
-        'chat',
+        'messages',
+        'function_calling',
         'streaming',
-        'json_mode',
         'web_search',
-        'citations',
         'reasoning',
-        'search_filtering',
-        'related_questions'
+        'sonar_models',
+        'academic_search'
       ]
     };
   }
 
-  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    console.log('PerplexityAdapter: getModelPricing called for model:', modelId);
-    
-    const modelSpec = PERPLEXITY_MODELS.find(m => m.apiName === modelId);
-    console.log('PerplexityAdapter: PERPLEXITY_MODELS.find result:', modelSpec);
-    
-    if (modelSpec) {
-      const pricing: ModelPricing = {
-        currency: 'USD',
-        rateInputPerMillion: modelSpec.inputCostPerMillion,
-        rateOutputPerMillion: modelSpec.outputCostPerMillion
-      };
-      console.log('PerplexityAdapter: returning pricing:', pricing);
-      return pricing;
-    }
-    
-    console.log('PerplexityAdapter: No model spec found for:', modelId);
-    return null;
-  }
-
   // Private methods
-  private buildRequestData(prompt: string, options?: PerplexityOptions): any {
-    const model = options?.model || this.currentModel;
-    const messages = this.buildMessages(prompt, options?.systemPrompt);
-
-    const requestData: any = {
-      model,
-      messages,
-      stream: options?.stream || false
-    };
-
-    // Standard parameters
-    if (options?.temperature !== undefined) requestData.temperature = options.temperature;
-    if (options?.maxTokens !== undefined) requestData.max_tokens = options.maxTokens;
-    if (options?.topP !== undefined) requestData.top_p = options.topP;
-    if (options?.stopSequences) requestData.stop = options.stopSequences;
-
-    // JSON mode
-    if (options?.jsonMode) {
-      requestData.response_format = { type: 'json_object' };
-    }
-
-    // Perplexity-specific search parameters
-    if (options?.searchDomainFilter) {
-      requestData.search_domain_filter = options.searchDomainFilter;
-    }
-    if (options?.searchRecencyFilter) {
-      requestData.search_recency_filter = options.searchRecencyFilter;
-    }
-    if (options?.returnRelatedQuestions !== undefined) {
-      requestData.return_related_questions = options.returnRelatedQuestions;
-    }
-    if (options?.searchAfterDateFilter) {
-      requestData.search_after_date_filter = options.searchAfterDateFilter;
-    }
-    if (options?.searchBeforeDateFilter) {
-      requestData.search_before_date_filter = options.searchBeforeDateFilter;
-    }
-
-    return requestData;
+  private extractToolCalls(message: any): any[] {
+    return message?.tool_calls || [];
   }
 
-  private async parseResponse(responseData: any, model: string): Promise<PerplexityResponse> {
-    const choice = responseData.choices?.[0];
-    if (!choice) {
-      throw new Error('No response choice received from Perplexity');
-    }
-
-    const content = choice.message?.content || '';
-    const citations = choice.message?.citations || [];
-    const relatedQuestions = responseData.related_questions || [];
+  private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
+    if (!reason) return 'stop';
     
-    const usage = this.extractUsage(responseData);
-    const finishReason = this.mapFinishReason(choice.finish_reason);
-    
-    const metadata = {
-      id: responseData.id,
-      created: responseData.created,
-      citationCount: citations.length,
-      relatedQuestionCount: relatedQuestions.length,
-      citations,
-      relatedQuestions
+    const reasonMap: Record<string, 'stop' | 'length' | 'tool_calls' | 'content_filter'> = {
+      'stop': 'stop',
+      'length': 'length',
+      'tool_calls': 'tool_calls',
+      'content_filter': 'content_filter'
     };
-
-    // Use buildLLMResponse for cost calculation
-    const baseResponse = await this.buildLLMResponse(
-      content,
-      responseData.model || model,
-      usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-      metadata,
-      finishReason
-    );
-    
-    // Add Perplexity-specific fields to the response
-    const response: PerplexityResponse = {
-      ...baseResponse,
-      citations,
-      relatedQuestions
-    };
-
-    return response;
-  }
-
-  private async handleStreamResponse(
-    response: any, 
-    options?: PerplexityStreamOptions
-  ): Promise<PerplexityResponse> {
-    let fullText = '';
-    let citations: PerplexityCitation[] = [];
-    let relatedQuestions: string[] = [];
-    let usage: TokenUsage | undefined;
-    let finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' = 'stop';
-    let responseId = '';
-    let created = 0;
-
-    return new Promise((resolve, reject) => {
-      response.data.on('data', (chunk: Buffer) => {
-        const lines = chunk.toString().split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              const finalResponse: PerplexityResponse = {
-                text: fullText,
-                model: options?.model || this.currentModel,
-                provider: this.name,
-                usage: usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-                citations,
-                relatedQuestions,
-                finishReason,
-                metadata: {
-                  id: responseId,
-                  created,
-                  citationCount: citations.length,
-                  relatedQuestionCount: relatedQuestions.length,
-                  streamed: true
-                }
-              };
-              
-              options?.onComplete?.(finalResponse);
-              resolve(finalResponse);
-              return;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              
-              // Extract response metadata
-              if (parsed.id) responseId = parsed.id;
-              if (parsed.created) created = parsed.created;
-              if (parsed.usage) usage = this.extractUsage(parsed);
-              if (parsed.related_questions) relatedQuestions = parsed.related_questions;
-
-              const choice = parsed.choices?.[0];
-              if (choice) {
-                const delta = choice.delta?.content || '';
-                if (delta) {
-                  fullText += delta;
-                  options?.onToken?.(delta);
-                }
-
-                if (choice.message?.citations) {
-                  citations = choice.message.citations;
-                }
-
-                if (choice.finish_reason) {
-                  finishReason = this.mapFinishReason(choice.finish_reason);
-                }
-              }
-            } catch (parseError) {
-              // Ignore parse errors for partial chunks
-            }
-          }
-        }
-      });
-
-      response.data.on('error', (error: Error) => {
-        options?.onError?.(error);
-        reject(error);
-      });
-
-      response.data.on('end', () => {
-        // Fallback if [DONE] wasn't received
-        const finalResponse: PerplexityResponse = {
-          text: fullText,
-          model: options?.model || this.currentModel,
-          provider: this.name,
-          usage: usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-          citations,
-          relatedQuestions,
-          finishReason,
-          metadata: {
-            id: responseId,
-            created,
-            citationCount: citations.length,
-            relatedQuestionCount: relatedQuestions.length,
-            streamed: true
-          }
-        };
-        
-        options?.onComplete?.(finalResponse);
-        resolve(finalResponse);
-      });
-    });
-  }
-
-  private mapFinishReason(reason: string): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
-    switch (reason) {
-      case 'stop':
-        return 'stop';
-      case 'length':
-        return 'length';
-      case 'tool_calls':
-        return 'tool_calls';
-      case 'content_filter':
-        return 'content_filter';
-      default:
-        return 'stop';
-    }
+    return reasonMap[reason] || 'stop';
   }
 
   protected extractUsage(response: any): TokenUsage | undefined {
-    if (response.usage) {
+    const usage = response?.usage;
+    if (usage) {
       return {
-        promptTokens: response.usage.prompt_tokens || 0,
-        completionTokens: response.usage.completion_tokens || 0,
-        totalTokens: response.usage.total_tokens || 0
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
       };
     }
     return undefined;
   }
 
-  // Utility methods for search features
-  async searchWithDomainFilter(
-    prompt: string, 
-    domains: string[], 
-    options?: PerplexityOptions
-  ): Promise<PerplexityResponse> {
-    return this.generateUncached(prompt, {
-      ...options,
-      searchDomainFilter: domains
-    });
+  private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
+    const model = PERPLEXITY_MODELS.find(m => m.apiName === modelId);
+    if (!model) return undefined;
+    
+    return {
+      input: model.inputCostPerMillion / 1000,
+      output: model.outputCostPerMillion / 1000
+    };
   }
 
-  async searchRecent(
-    prompt: string, 
-    recency: 'month' | 'week' | 'day' | 'hour',
-    options?: PerplexityOptions
-  ): Promise<PerplexityResponse> {
-    return this.generateUncached(prompt, {
-      ...options,
-      searchRecencyFilter: recency
-    });
-  }
-
-  async searchWithRelatedQuestions(
-    prompt: string,
-    options?: PerplexityOptions
-  ): Promise<PerplexityResponse> {
-    return this.generateUncached(prompt, {
-      ...options,
-      returnRelatedQuestions: true
-    });
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    const costs = this.getCostPer1kTokens(modelId);
+    if (!costs) return null;
+    
+    return {
+      rateInputPerMillion: costs.input * 1000,
+      rateOutputPerMillion: costs.output * 1000,
+      currency: 'USD'
+    };
   }
 }

@@ -81,6 +81,14 @@ export class LLMService {
       }
     }
 
+    if (providers.openrouter?.apiKey && providers.openrouter.enabled) {
+      try {
+        this.adapters.set('openrouter', new OpenRouterAdapter(providers.openrouter.apiKey));
+      } catch (error) {
+        console.warn('Failed to initialize OpenRouter adapter:', error);
+      }
+    }
+
     if (providers.anthropic?.apiKey && providers.anthropic.enabled) {
       try {
         this.adapters.set('anthropic', new AnthropicAdapter(providers.anthropic.apiKey));
@@ -110,14 +118,6 @@ export class LLMService {
         this.adapters.set('groq', new GroqAdapter(providers.groq.apiKey));
       } catch (error) {
         console.warn('Failed to initialize Groq adapter:', error);
-      }
-    }
-
-    if (providers.openrouter?.apiKey && providers.openrouter.enabled) {
-      try {
-        this.adapters.set('openrouter', new OpenRouterAdapter(providers.openrouter.apiKey));
-      } catch (error) {
-        console.warn('Failed to initialize OpenRouter adapter:', error);
       }
     }
 
@@ -378,5 +378,134 @@ export class LLMService {
    */
   getAllProviderConfigs(): { [providerId: string]: LLMProviderConfig } {
     return this.settings.providers;
+  }
+
+  /**
+   * Generate response compatible with ChatService
+   * Wrapper around executePrompt for tool-calling scenarios
+   */
+  async generateResponse(
+    messages: Array<{ role: string; content: string }>, 
+    options?: { 
+      tools?: any[]; 
+      toolChoice?: string;
+      provider?: string;
+      model?: string;
+    }
+  ): Promise<{ content: string; toolCalls?: any[] }> {
+    try {
+      // Convert message array to single prompt
+      const userPrompt = messages
+        .filter(msg => msg.role === 'user')
+        .map(msg => msg.content)
+        .join('\n');
+      
+      const systemPrompt = messages
+        .filter(msg => msg.role === 'system')
+        .map(msg => msg.content)
+        .join('\n');
+
+      // Execute prompt using existing method
+      const result = await this.executePrompt({
+        userPrompt,
+        systemPrompt: systemPrompt || undefined,
+        tools: options?.tools,
+        provider: options?.provider,
+        model: options?.model
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate response');
+      }
+
+      // Return in expected format
+      return {
+        content: result.response || '',
+        toolCalls: [] // TODO: Extract tool calls from result if supported
+      };
+    } catch (error) {
+      console.error('[LLMService] generateResponse error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Streaming wrapper for real-time response generation
+   * Returns an async generator that yields chunks of the response in real-time
+   * Following OpenAI streaming pattern from: https://platform.openai.com/docs/guides/streaming-responses
+   */
+  async* generateResponseStream(
+    messages: Array<{ role: string; content: string }>, 
+    options?: { 
+      provider?: string;
+      model?: string;
+      systemPrompt?: string;
+    }
+  ): AsyncGenerator<{ chunk: string; complete: boolean; content: string }, void, unknown> {
+    try {
+      // Validate settings
+      if (!this.settings || !this.settings.defaultModel) {
+        throw new Error('LLM service not properly configured - missing settings');
+      }
+
+      // Determine provider and model
+      const provider = options?.provider || this.settings.defaultModel.provider;
+      const model = options?.model || this.settings.defaultModel.model;
+
+      console.log(`[LLMService] Starting OpenAI-style streaming with ${provider}/${model}`);
+
+      // Get adapter
+      const adapter = this.adapters?.get(provider);
+      if (!adapter) {
+        throw new Error(`Provider not available: ${provider}`);
+      }
+
+      // Convert message array to single prompt
+      const userPrompt = messages
+        .filter(msg => msg.role === 'user')
+        .map(msg => msg.content)
+        .join('\n');
+      
+      const systemPrompt = messages
+        .filter(msg => msg.role === 'system')
+        .map(msg => msg.content)
+        .join('\n');
+
+      // Stream tokens using the new async generator method
+      let fullContent = '';
+      
+      for await (const chunk of adapter.generateStreamAsync(userPrompt, {
+        model,
+        systemPrompt: systemPrompt || options?.systemPrompt
+      })) {
+        if (chunk.content) {
+          fullContent += chunk.content;
+          console.log(`[LLMService] Token received: "${chunk.content}" (accumulated: ${fullContent.length} chars)`);
+          
+          // Yield each token as it arrives
+          yield {
+            chunk: chunk.content,
+            complete: false,
+            content: fullContent
+          };
+        }
+        
+        if (chunk.complete) {
+          console.log(`[LLMService] Streaming complete! Final content: ${fullContent.length} chars`);
+          
+          // Yield final completion
+          yield {
+            chunk: '',
+            complete: true,
+            content: fullContent
+          };
+          break;
+        }
+      }
+
+    } catch (error) {
+      console.error('[LLMService] generateResponseStream failed:', error);
+      throw error;
+    }
   }
 }

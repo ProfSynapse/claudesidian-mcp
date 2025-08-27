@@ -7,7 +7,7 @@
 import { BaseAdapter } from '../BaseAdapter';
 import { 
   GenerateOptions, 
-  StreamOptions, 
+  StreamChunk, 
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
@@ -30,6 +30,12 @@ export class OllamaAdapter extends BaseAdapter {
     this.baseUrl = ollamaUrl;
     
     this.initializeCache();
+  }
+
+  async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    // Non-streaming fallback - call regular generate() and yield as single chunk
+    const result = await this.generate(prompt, options);
+    yield { content: result.text || '', complete: true, usage: result.usage };
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
@@ -120,7 +126,7 @@ export class OllamaAdapter extends BaseAdapter {
     }
   }
 
-  async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
+  async generateStream(prompt: string, options?: StreamChunk): Promise<LLMResponse> {
     try {
       const model = options?.model || this.currentModel;
       

@@ -1,11 +1,18 @@
 /**
- * OpenRouter Adapter for 400+ models
- * Supports OpenRouter's unified API with model variants
- * Updated June 17, 2025 with latest OpenRouter features and authentication
+ * OpenRouter Adapter - Clean implementation with SSE streaming
+ * Supports 400+ models through OpenRouter's unified API
+ * Based on OpenRouter streaming documentation
  */
 
 import { BaseAdapter } from '../BaseAdapter';
-import { GenerateOptions, StreamOptions, LLMResponse, ModelInfo, ProviderCapabilities, ModelPricing } from '../types';
+import { 
+  GenerateOptions, 
+  StreamChunk, 
+  LLMResponse, 
+  ModelInfo, 
+  ProviderCapabilities,
+  ModelPricing 
+} from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 
 export class OpenRouterAdapter extends BaseAdapter {
@@ -17,166 +24,198 @@ export class OpenRouterAdapter extends BaseAdapter {
     this.initializeCache();
   }
 
+  /**
+   * Generate response without caching
+   */
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://synaptic-lab-kit.com',
-            'X-Title': 'Synaptic Lab Kit'
-          },
-          body: JSON.stringify({
-            model: options?.model || this.currentModel,
-            messages: this.buildMessages(prompt, options?.systemPrompt),
-            temperature: options?.temperature,
-            max_tokens: options?.maxTokens,
-            response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
-            stop: options?.stopSequences,
-            tools: options?.tools,
-            // Include usage information in response
-            usage: { include: true }
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json() as any;
-        
-        const usage = this.extractUsage(data);
-        const finishReason = data.choices[0].finish_reason;
-        const toolCalls = data.choices[0].message.tool_calls;
-        const metadata = {
-          provider_used: data.provider,
-          cost: data.cost
-        };
-        
-        return await this.buildLLMResponse(
-          data.choices[0].message.content || '',
-          data.model,
-          usage,
-          metadata,
-          finishReason,
-          toolCalls
-        );
-      } catch (error) {
-        this.handleError(error, 'generation');
-      }
-    });
-  }
-
-  async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://synaptic-lab-kit.com',
-            'X-Title': 'Synaptic Lab Kit'
-          },
-          body: JSON.stringify({
-            model: options?.model || this.currentModel,
-            messages: this.buildMessages(prompt, options?.systemPrompt),
-            temperature: options?.temperature,
-            max_tokens: options?.maxTokens,
-            stream: true
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response body');
-
-        let fullText = '';
-        const decoder = new TextDecoder();
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n').filter(line => line.trim());
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') break;
-
-              try {
-                const parsed = JSON.parse(data);
-                const deltaText = parsed.choices[0]?.delta?.content || '';
-                if (deltaText) {
-                  fullText += deltaText;
-                  options?.onToken?.(deltaText);
-                }
-              } catch (e) {
-                // Skip invalid JSON
-              }
-            }
-          }
-        }
-
-        const result: LLMResponse = {
-          text: fullText,
-          model: options?.model || this.currentModel,
-          provider: this.name,
-          finishReason: 'stop'
-        };
-
-        options?.onComplete?.(result);
-        return result;
-      } catch (error) {
-        options?.onError?.(error as Error);
-        this.handleError(error, 'streaming generation');
-      }
-    });
-  }
-
-  async listModels(): Promise<ModelInfo[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/models`, {
+      const model = options?.model || this.currentModel;
+      
+      const requestBody = {
+        model,
+        messages: this.buildMessages(prompt, options?.systemPrompt),
+        temperature: options?.temperature,
+        max_tokens: options?.maxTokens,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+        response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+        stop: options?.stopSequences,
+        tools: options?.tools
+      };
+
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
+          ...this.buildHeaders(),
+          'Authorization': `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'https://synaptic-lab-kit.com',
+          'X-Title': 'Synaptic Lab Kit'
+        },
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json() as any;
+      const data = await response.json();
       
-      return data.data.map((model: any) => ({
-        id: model.id,
-        name: model.name || model.id,
-        contextWindow: model.context_length || 8192,
-        maxOutputTokens: model.max_completion_tokens || 4096,
-        supportsJSON: true, // Most models support JSON through OpenRouter
-        supportsImages: model.modalities?.includes('image') || false,
-        supportsFunctions: model.modalities?.includes('tool') || false,
-        supportsStreaming: true,
-        supportsThinking: false,
-        costPer1kTokens: {
-          input: parseFloat(model.pricing?.prompt || '0') * 1000,
-          output: parseFloat(model.pricing?.completion || '0') * 1000
-        }
-      }));
+      const text = data.choices[0]?.message?.content || '';
+      const usage = this.extractUsage(data);
+      const finishReason = data.choices[0]?.finish_reason || 'stop';
+
+      return this.buildLLMResponse(
+        text,
+        model,
+        usage,
+        undefined,
+        finishReason as any
+      );
     } catch (error) {
-      // Fallback to centralized model registry
-      const openrouterModels = ModelRegistry.getProviderModels('openrouter');
-      return openrouterModels.map(model => ModelRegistry.toModelInfo(model));
+      throw this.handleError(error, 'generation');
     }
   }
 
+  /**
+   * Generate streaming response using OpenRouter's SSE format
+   */
+  async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    try {
+      const model = options?.model || this.currentModel;
+      
+      console.log(`[OpenRouterAdapter] Starting streaming for model: ${model}`);
+
+      const requestBody = {
+        model,
+        messages: this.buildMessages(prompt, options?.systemPrompt),
+        temperature: options?.temperature,
+        max_tokens: options?.maxTokens,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+        response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+        stop: options?.stopSequences,
+        tools: options?.tools,
+        stream: true // Enable streaming
+      };
+
+      console.log(`[OpenRouterAdapter] Creating stream for ${model}`);
+
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          ...this.buildHeaders(),
+          'Authorization': `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'https://synaptic-lab-kit.com',
+          'X-Title': 'Synaptic Lab Kit'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let tokenCount = 0;
+      let usage: any = undefined;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Append new chunk to buffer
+          buffer += decoder.decode(value, { stream: true });
+
+          // Process complete lines from buffer
+          while (true) {
+            const lineEnd = buffer.indexOf('\n');
+            if (lineEnd === -1) break;
+
+            const line = buffer.slice(0, lineEnd).trim();
+            buffer = buffer.slice(lineEnd + 1);
+
+            // Skip empty lines and comments (OpenRouter sends ": OPENROUTER PROCESSING")
+            if (!line || line.startsWith(':')) continue;
+
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                console.log(`[OpenRouterAdapter] Streaming complete! Total tokens: ${tokenCount}`);
+                break;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices[0]?.delta;
+                const content = delta?.content;
+                
+                if (content) {
+                  tokenCount++;
+                  console.log(`[OpenRouterAdapter] Token ${tokenCount}: "${content}"`);
+                  
+                  // Yield each token immediately
+                  yield { 
+                    content, 
+                    complete: false
+                  };
+                }
+
+                // Capture usage info when available
+                if (parsed.usage) {
+                  usage = parsed.usage;
+                }
+              } catch (parseError) {
+                console.warn(`[OpenRouterAdapter] Failed to parse SSE data:`, parseError);
+                // Continue processing other chunks
+              }
+            }
+          }
+        }
+
+        // Yield final completion with usage info
+        const extractedUsage = this.extractUsage({ usage });
+        yield { 
+          content: '', 
+          complete: true, 
+          usage: extractedUsage 
+        };
+
+      } finally {
+        reader.cancel();
+      }
+
+    } catch (error) {
+      console.error('[OpenRouterAdapter] Streaming error:', error);
+      throw this.handleError(error, 'streaming generation');
+    }
+  }
+
+  /**
+   * List available models
+   */
+  async listModels(): Promise<ModelInfo[]> {
+    try {
+      // Use centralized model registry
+      const openrouterModels = ModelRegistry.getProviderModels('openrouter');
+      return openrouterModels.map(model => ModelRegistry.toModelInfo(model));
+    } catch (error) {
+      this.handleError(error, 'listing models');
+      return [];
+    }
+  }
+
+  /**
+   * Get provider capabilities
+   */
   getCapabilities(): ProviderCapabilities {
     return {
       supportsStreaming: true,
@@ -186,53 +225,34 @@ export class OpenRouterAdapter extends BaseAdapter {
       supportsThinking: false,
       maxContextWindow: 2000000, // Varies by model
       supportedFeatures: [
-        'chat_completions',
-        'model_routing',
-        'fallback_providers',
-        'cost_optimization',
         'streaming',
-        'function_calling',
         'json_mode',
-        'free_models'
+        'function_calling',
+        'image_input',
+        '400+ models'
       ]
     };
   }
 
-  // Model variants
-  addModelVariant(baseModel: string, variant: 'free' | 'nitro' | 'floor' | 'online'): string {
-    return `${baseModel}:${variant}`;
-  }
-
   /**
-   * Check if a model name is valid (including :online suffix)
+   * Get model pricing
    */
-  isValidModel(modelName: string): boolean {
-    return ModelRegistry.isValidOpenRouterModel(modelName);
-  }
-
-
-
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    console.log('OpenRouterAdapter: getModelPricing called for model:', modelId);
-    
-    // Handle :online suffix for OpenRouter models
-    const baseModelId = modelId.endsWith(':online') ? modelId.replace(':online', '') : modelId;
-    
-    // Use centralized model registry for pricing
-    const modelSpec = ModelRegistry.findModel('openrouter', baseModelId);
-    console.log('OpenRouterAdapter: ModelRegistry.findModel result:', modelSpec);
-    
-    if (modelSpec) {
-      const pricing: ModelPricing = {
-        currency: 'USD',
-        rateInputPerMillion: modelSpec.inputCostPerMillion,
-        rateOutputPerMillion: modelSpec.outputCostPerMillion
-      };
-      console.log('OpenRouterAdapter: returning pricing:', pricing);
-      return pricing;
-    }
+    try {
+      const models = ModelRegistry.getProviderModels('openrouter');
+      const model = models.find(m => m.id === modelId);
+      if (!model) {
+        return null;
+      }
 
-    console.log('OpenRouterAdapter: No model spec found for:', modelId);
-    return null;
+      return {
+        rateInputPerMillion: model.pricing.inputPerMillion,
+        rateOutputPerMillion: model.pricing.outputPerMillion,
+        currency: model.pricing.currency
+      };
+    } catch (error) {
+      console.warn(`Failed to get pricing for model ${modelId}:`, error);
+      return null;
+    }
   }
 }

@@ -1,41 +1,21 @@
 /**
- * Groq Adapter with Ultra-Fast Inference
+ * Groq Adapter with true streaming support and Ultra-Fast Inference
  * Leverages Groq's high-performance LLM serving infrastructure
- * Uses OpenAI-compatible API with extended usage metrics
- * 
- * Key Features:
- * - Ultra-fast inference (up to 750 tokens/second)
- * - Extended usage metrics (queueTime, promptTime, completionTime)
- * - OpenAI API compatibility
- * - Vision and audio model support
- * - Compound model capabilities
+ * Uses OpenAI-compatible streaming API with extended usage metrics
+ * Based on official Groq SDK streaming documentation
  */
 
 import Groq from 'groq-sdk';
 import { BaseAdapter } from '../BaseAdapter';
 import { 
   GenerateOptions, 
-  StreamOptions, 
+  StreamChunk, 
   LLMResponse, 
   ModelInfo, 
   ProviderCapabilities,
-  ModelPricing,
-  TokenUsage,
-  LLMProviderError
+  ModelPricing
 } from '../types';
-import { ModelRegistry } from '../ModelRegistry';
-import { ModelSpec } from '../modelTypes';
 import { GROQ_MODELS, GROQ_DEFAULT_MODEL } from './GroqModels';
-
-/**
- * Extended usage metrics specific to Groq
- */
-interface GroqUsage extends TokenUsage {
-  queueTime?: number;      // Time spent in queue (ms)
-  promptTime?: number;     // Time to process prompt (ms)
-  completionTime?: number; // Time to generate completion (ms)
-  totalTime?: number;      // Total request time (ms)
-}
 
 export class GroqAdapter extends BaseAdapter {
   readonly name = 'groq';
@@ -46,222 +26,119 @@ export class GroqAdapter extends BaseAdapter {
   constructor(apiKey: string, model?: string) {
     super(apiKey, model || GROQ_DEFAULT_MODEL);
     
-    // Initialize Groq client with official SDK
-    this.client = new Groq({
-      apiKey: this.apiKey,
-      timeout: 120000, // 2 minutes for complex requests
-      maxRetries: 3,
-      dangerouslyAllowBrowser: true
-    });
-    
-    this.initializeCache({
-      maxSize: 2000, // Larger cache for fast responses
-      defaultTTL: 7200000 // 2 hours - longer TTL for stable results
-    });
+    this.client = new Groq({ apiKey: this.apiKey });
+    this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     return this.withRetry(async () => {
       try {
-        const model = options?.model || this.currentModel;
-        this.validateModel(model);
+        const response = await this.client.chat.completions.create({
+          model: options?.model || this.currentModel,
+          messages: this.buildMessages(prompt, options?.systemPrompt),
+          temperature: options?.temperature,
+          max_completion_tokens: options?.maxTokens,
+          top_p: options?.topP,
+          stop: options?.stopSequences,
+          tools: options?.tools,
+          response_format: options?.jsonMode ? { type: 'json_object' } : undefined
+        });
 
-        const messages = this.buildMessages(prompt, options?.systemPrompt);
-        
-        const requestParams: any = {
-          model,
-          messages,
-          temperature: options?.temperature ?? 0.7,
-          max_tokens: options?.maxTokens ?? 8192,
-          stream: false
-        };
+        const usage = this.extractUsage(response);
+        const finishReason = this.mapFinishReason(response.choices[0]?.finish_reason);
+        const toolCalls = this.extractToolCalls(response.choices[0]?.message);
 
-        // Add optional parameters
-        if (options?.topP !== undefined) requestParams.top_p = options.topP;
-        if (options?.frequencyPenalty !== undefined) requestParams.frequency_penalty = options.frequencyPenalty;
-        if (options?.presencePenalty !== undefined) requestParams.presence_penalty = options.presencePenalty;
-        if (options?.stopSequences) requestParams.stop = options.stopSequences;
-
-        // JSON mode support
-        if (options?.jsonMode) {
-          requestParams.response_format = { type: 'json_object' };
-        }
-
-        // Function calling support
-        if (options?.tools && options.tools.length > 0) {
-          requestParams.tools = this.convertTools(options.tools);
-          requestParams.tool_choice = 'auto';
-        }
-
-        // Record start time for performance metrics
-        const startTime = Date.now();
-        
-        const response = await this.client.chat.completions.create(requestParams);
-        
-        const endTime = Date.now();
-        const totalTime = endTime - startTime;
-
-        const choice = response.choices?.[0];
-        if (!choice) {
-          throw new LLMProviderError(
-            'No response choice received from Groq',
-            this.name,
-            'NO_RESPONSE_CHOICE'
-          );
-        }
-
-        // Extract Groq-specific usage metrics
-        const usage = this.extractGroqUsage(response, totalTime);
-        
-        // Build response with extended metadata
-        const llmResponse = await this.buildLLMResponse(
-          choice.message?.content || '',
-          response.model,
+        return await this.buildLLMResponse(
+          response.choices[0]?.message?.content || '',
+          options?.model || this.currentModel,
           usage,
-          {
-            groqMetrics: {
-              totalTime,
-              queueTime: usage.queueTime,
-              promptTime: usage.promptTime,
-              completionTime: usage.completionTime,
-              tokensPerSecond: usage.completionTokens && usage.completionTime 
-                ? Math.round((usage.completionTokens / usage.completionTime) * 1000)
-                : undefined
-            },
-            finishReason: choice.finish_reason,
-            logprobs: choice.logprobs
+          { 
+            provider: 'groq',
+            // Groq provides extended performance metrics
+            queueTime: (response as any).x_groq?.queue_time,
+            promptTime: (response as any).x_groq?.prompt_time,
+            completionTime: (response as any).x_groq?.completion_time
           },
-          this.mapFinishReason(choice.finish_reason),
-          choice.message?.tool_calls
+          finishReason,
+          toolCalls
         );
-
-        return llmResponse;
       } catch (error) {
-        return this.handleGroqError(error, 'generation');
+        this.handleError(error, 'generation');
       }
     });
   }
 
-  async generateStream(prompt: string, options?: StreamOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const model = options?.model || this.currentModel;
-        this.validateModel(model);
+  async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    try {
+      console.log('[GroqAdapter] Starting streaming response');
+      
+      const stream = await this.client.chat.completions.create({
+        model: options?.model || this.currentModel,
+        messages: this.buildMessages(prompt, options?.systemPrompt),
+        temperature: options?.temperature,
+        max_completion_tokens: options?.maxTokens,
+        top_p: options?.topP,
+        stop: options?.stopSequences,
+        tools: options?.tools,
+        response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+        stream: true
+      });
 
-        const messages = this.buildMessages(prompt, options?.systemPrompt);
+      let usage: any = undefined;
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content;
         
-        const streamParams: any = {
-          model,
-          messages,
-          temperature: options?.temperature ?? 0.7,
-          max_tokens: options?.maxTokens ?? 8192,
-          stream: true,
-          stream_options: { include_usage: true } // Get usage metrics in stream
-        };
-
-        // Add optional parameters
-        if (options?.topP !== undefined) streamParams.top_p = options.topP;
-        if (options?.frequencyPenalty !== undefined) streamParams.frequency_penalty = options.frequencyPenalty;
-        if (options?.presencePenalty !== undefined) streamParams.presence_penalty = options.presencePenalty;
-        if (options?.stopSequences) streamParams.stop = options.stopSequences;
-
-        // JSON mode support
-        if (options?.jsonMode) {
-          streamParams.response_format = { type: 'json_object' };
+        if (content) {
+          yield { content, complete: false };
         }
-
-        // Function calling support
-        if (options?.tools && options.tools.length > 0) {
-          streamParams.tools = this.convertTools(options.tools);
-          streamParams.tool_choice = 'auto';
-        }
-
-        const startTime = Date.now();
-        const stream = await this.client.chat.completions.create(streamParams);
-
-        let fullText = '';
-        let usage: GroqUsage | undefined;
-        let finishReason: string | null = null;
-        let toolCalls: any[] = [];
-        let responseModel = model;
-
-        for await (const chunk of stream as any) {
-          // Handle content deltas
-          const delta = chunk.choices?.[0]?.delta;
-          if (delta?.content) {
-            fullText += delta.content;
-            options?.onToken?.(delta.content);
-          }
-
-          // Handle tool calls
-          if (delta?.tool_calls) {
-            toolCalls = delta.tool_calls;
-          }
-
-          // Handle finish reason
-          if (chunk.choices?.[0]?.finish_reason) {
-            finishReason = chunk.choices[0].finish_reason;
-          }
-
-          // Handle usage metrics (typically in the last chunk)
-          if (chunk.usage) {
-            const endTime = Date.now();
-            const totalTime = endTime - startTime;
-            usage = this.extractGroqUsage({ usage: chunk.usage }, totalTime);
-          }
-
-          // Handle model info
-          if (chunk.model) {
-            responseModel = chunk.model;
-          }
-        }
-
-        const endTime = Date.now();
-        const totalTime = endTime - startTime;
-
-        // Ensure we have usage metrics
-        if (!usage) {
+        
+        // Extract usage information if available (typically in the last chunk)
+        if (chunk.usage || chunk.x_groq) {
           usage = {
-            promptTokens: 0,
-            completionTokens: fullText.length / 4, // Rough estimate
-            totalTokens: fullText.length / 4,
-            totalTime
+            usage: chunk.usage,
+            x_groq: chunk.x_groq
           };
         }
-
-        const response = await this.buildLLMResponse(
-          fullText,
-          responseModel,
-          usage,
-          {
-            groqMetrics: {
-              totalTime,
-              queueTime: usage.queueTime,
-              promptTime: usage.promptTime,
-              completionTime: usage.completionTime,
-              tokensPerSecond: usage.completionTokens && usage.completionTime 
-                ? Math.round((usage.completionTokens / usage.completionTime) * 1000)
-                : undefined
-            },
-            streaming: true
-          },
-          this.mapFinishReason(finishReason),
-          toolCalls
-        );
-
-        options?.onComplete?.(response);
-        return response;
-      } catch (error) {
-        options?.onError?.(error as Error);
-        return this.handleGroqError(error, 'streaming generation');
       }
-    });
+
+      // Final chunk with usage information
+      yield { 
+        content: '', 
+        complete: true, 
+        usage: this.extractUsage(usage) 
+      };
+      
+      console.log('[GroqAdapter] Streaming completed');
+    } catch (error) {
+      console.error('[GroqAdapter] Streaming error:', error);
+      throw error;
+    }
   }
 
   async listModels(): Promise<ModelInfo[]> {
     try {
-      // Use centralized model registry for consistent model information
-      return GROQ_MODELS.map(model => ModelRegistry.toModelInfo(model));
+      return GROQ_MODELS.map(model => ({
+        id: model.apiName,
+        name: model.name,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxTokens,
+        supportsJSON: model.capabilities.supportsJSON,
+        supportsImages: model.capabilities.supportsImages,
+        supportsFunctions: model.capabilities.supportsFunctions,
+        supportsStreaming: model.capabilities.supportsStreaming,
+        supportsThinking: false,
+        costPer1kTokens: {
+          input: model.inputCostPerMillion / 1000,
+          output: model.outputCostPerMillion / 1000
+        },
+        pricing: {
+          inputPerMillion: model.inputCostPerMillion,
+          outputPerMillion: model.outputCostPerMillion,
+          currency: 'USD',
+          lastUpdated: new Date().toISOString()
+        }
+      }));
     } catch (error) {
       this.handleError(error, 'listing models');
       return [];
@@ -272,112 +149,27 @@ export class GroqAdapter extends BaseAdapter {
     return {
       supportsStreaming: true,
       supportsJSON: true,
-      supportsImages: true, // Via vision models
+      supportsImages: true,
       supportsFunctions: true,
-      supportsThinking: true, // Via reasoning models
-      maxContextWindow: 131072, // Llama 3.1/3.2 context window
+      supportsThinking: false,
+      maxContextWindow: 128000,
       supportedFeatures: [
-        'chat',
+        'messages',
+        'function_calling',
+        'vision',
         'streaming',
         'json_mode',
-        'function_calling',
-        'vision', // Llama 3.2 vision models
-        'audio_transcription', // Whisper models
         'ultra_fast_inference',
-        'extended_usage_metrics',
-        'compound_models',
-        'reasoning' // Llama 3.1 405B reasoning
+        'extended_metrics'
       ]
     };
   }
 
-  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    console.log('GroqAdapter: getModelPricing called for model:', modelId);
-    
-    const modelSpec = GROQ_MODELS.find(m => m.apiName === modelId);
-    console.log('GroqAdapter: GROQ_MODELS.find result:', modelSpec);
-    
-    if (!modelSpec) {
-      console.log('GroqAdapter: No model spec found for:', modelId);
-      return null;
-    }
-
-    const pricing: ModelPricing = {
-      rateInputPerMillion: modelSpec.inputCostPerMillion,
-      rateOutputPerMillion: modelSpec.outputCostPerMillion,
-      currency: 'USD'
-    };
-    
-    console.log('GroqAdapter: returning pricing:', pricing);
-    return pricing;
+  // Private methods
+  private extractToolCalls(message: any): any[] {
+    return message?.tool_calls || [];
   }
 
-  // Private helper methods
-
-  /**
-   * Validate that the requested model is supported by Groq
-   */
-  private validateModel(model: string): void {
-    const supportedModel = GROQ_MODELS.find(m => m.apiName === model);
-    if (!supportedModel) {
-      throw new LLMProviderError(
-        `Model ${model} is not supported by Groq. Available models: ${GROQ_MODELS.map(m => m.apiName).join(', ')}`,
-        this.name,
-        'UNSUPPORTED_MODEL'
-      );
-    }
-  }
-
-  /**
-   * Convert tools to OpenAI format for Groq compatibility
-   */
-  private convertTools(tools: any[]): any[] {
-    return tools.map(tool => {
-      if (tool.type === 'function') {
-        return {
-          type: 'function',
-          function: {
-            name: tool.function.name,
-            description: tool.function.description,
-            parameters: tool.function.parameters
-          }
-        };
-      }
-      return tool;
-    });
-  }
-
-  /**
-   * Extract Groq-specific usage metrics with performance data
-   */
-  private extractGroqUsage(response: any, totalTime: number): GroqUsage {
-    const baseUsage = this.extractUsage(response);
-    
-    // Groq provides extended usage metrics in x-groq headers or usage object
-    const groqUsage: GroqUsage = {
-      promptTokens: baseUsage?.promptTokens || 0,
-      completionTokens: baseUsage?.completionTokens || 0,
-      totalTokens: baseUsage?.totalTokens || 0,
-      totalTime
-    };
-
-    // Extract Groq-specific timing metrics if available
-    if (response.usage) {
-      const usage = response.usage;
-      
-      // Groq may provide these in extended usage object
-      if (usage.queue_time) groqUsage.queueTime = usage.queue_time;
-      if (usage.prompt_time) groqUsage.promptTime = usage.prompt_time;
-      if (usage.completion_time) groqUsage.completionTime = usage.completion_time;
-      if (usage.total_time) groqUsage.totalTime = usage.total_time;
-    }
-
-    return groqUsage;
-  }
-
-  /**
-   * Map Groq finish reasons to standard format
-   */
   private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {
     if (!reason) return 'stop';
     
@@ -385,122 +177,45 @@ export class GroqAdapter extends BaseAdapter {
       'stop': 'stop',
       'length': 'length',
       'tool_calls': 'tool_calls',
-      'content_filter': 'content_filter',
-      'function_call': 'tool_calls' // Legacy mapping
+      'content_filter': 'content_filter'
     };
-    
     return reasonMap[reason] || 'stop';
   }
 
-  /**
-   * Enhanced error handling for Groq-specific errors
-   */
-  private handleGroqError(error: any, operation: string): never {
-    if (error instanceof LLMProviderError) {
-      throw error;
+  protected extractUsage(response: any): any {
+    const usage = response?.usage;
+    if (usage) {
+      return {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0,
+        // Groq-specific extended metrics
+        queueTime: response?.x_groq?.queue_time,
+        promptTime: response?.x_groq?.prompt_time,
+        completionTime: response?.x_groq?.completion_time
+      };
     }
-
-    // Handle Groq SDK error responses
-    if (error instanceof Groq.APIError) {
-      const status = error.status;
-      let errorCode = 'HTTP_ERROR';
-      let message = error.message;
-
-      // Groq-specific error codes
-      switch (status) {
-        case 400:
-          errorCode = 'INVALID_REQUEST';
-          if (message.includes('model')) {
-            errorCode = 'UNSUPPORTED_MODEL';
-          }
-          break;
-        case 401:
-          errorCode = 'AUTHENTICATION_ERROR';
-          message = 'Invalid Groq API key. Please check your GROQ_API_KEY environment variable.';
-          break;
-        case 429:
-          errorCode = 'RATE_LIMIT_ERROR';
-          message = 'Groq rate limit exceeded. Please try again later.';
-          break;
-        case 503:
-          errorCode = 'SERVICE_UNAVAILABLE';
-          message = 'Groq service temporarily unavailable. Please try again.';
-          break;
-        default:
-          if (status && status >= 500) {
-            errorCode = 'SERVER_ERROR';
-            message = `Groq server error: ${message}`;
-          }
-          break;
-      }
-
-      throw new LLMProviderError(
-        `${operation} failed: ${message}`,
-        this.name,
-        errorCode,
-        error
-      );
-    }
-
-    // Handle network errors
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      throw new LLMProviderError(
-        `${operation} failed: Unable to connect to Groq API. Please check your internet connection.`,
-        this.name,
-        'NETWORK_ERROR',
-        error
-      );
-    }
-
-    // Generic error fallback
-    throw new LLMProviderError(
-      `${operation} failed: ${error.message}`,
-      this.name,
-      'UNKNOWN_ERROR',
-      error
-    );
+    return undefined;
   }
 
-  /**
-   * Get performance metrics for the last request
-   * Useful for monitoring Groq's ultra-fast inference
-   */
-  getPerformanceMetrics(): {
-    averageTokensPerSecond?: number;
-    lastRequestTime?: number;
-    cacheHitRate?: number;
-  } {
-    const cacheMetrics = this.getCacheMetrics();
+  private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
+    const model = GROQ_MODELS.find(m => m.apiName === modelId);
+    if (!model) return undefined;
     
     return {
-      cacheHitRate: cacheMetrics.hits > 0 ? cacheMetrics.hits / (cacheMetrics.hits + cacheMetrics.misses) : 0,
-      // Additional metrics would be tracked in a real implementation
-      // These would come from request history or monitoring
+      input: model.inputCostPerMillion / 1000,
+      output: model.outputCostPerMillion / 1000
     };
   }
 
-  /**
-   * Check if a model supports specific capabilities
-   */
-  supportsCapability(model: string, capability: keyof ModelSpec['capabilities']): boolean {
-    const modelSpec = GROQ_MODELS.find(m => m.apiName === model);
-    if (!modelSpec) return false;
+  async getModelPricing(modelId: string): Promise<ModelPricing | null> {
+    const costs = this.getCostPer1kTokens(modelId);
+    if (!costs) return null;
     
-    return modelSpec.capabilities[capability] || false;
-  }
-
-  /**
-   * Get recommended model for specific use cases
-   */
-  getRecommendedModel(useCase: 'speed' | 'quality' | 'vision' | 'audio' | 'reasoning'): string {
-    const recommendations = {
-      speed: 'llama-3.1-8b-instant',
-      quality: 'llama-3.1-70b-versatile', 
-      vision: 'llama-3.2-90b-vision-preview',
-      audio: 'whisper-large-v3',
-      reasoning: 'llama-3.1-405b-reasoning'
+    return {
+      rateInputPerMillion: costs.input * 1000,
+      rateOutputPerMillion: costs.output * 1000,
+      currency: 'USD'
     };
-    
-    return recommendations[useCase] || GROQ_DEFAULT_MODEL;
   }
 }

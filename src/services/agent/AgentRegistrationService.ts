@@ -148,6 +148,8 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
             await this.initializeAgentManager(enableLLMModes);
             await this.initializeVaultLibrarian(enableVectorModes, memorySettings);
             await this.initializeMemoryManager();
+            // ChatAgent removed - native chatbot UI handles chat functionality
+            logger.systemLog('Using native chatbot UI instead of ChatAgent');
 
             // Calculate final statistics
             const agents = this.agentManager.getAgents();
