@@ -20,10 +20,14 @@ export class MessageBubble {
    * Create the message bubble element
    */
   createElement(): HTMLElement {
-    const bubble = document.createElement('div');
-    bubble.addClass('message-bubble');
-    bubble.addClass(`message-${this.message.role}`);
-    bubble.setAttribute('data-message-id', this.message.id);
+    // Create wrapper container that holds both bubble and actions
+    const messageContainer = document.createElement('div');
+    messageContainer.addClass('message-container');
+    messageContainer.addClass(`message-${this.message.role}`);
+    messageContainer.setAttribute('data-message-id', this.message.id);
+
+    // Create the actual bubble
+    const bubble = messageContainer.createDiv('message-bubble');
 
     // Message header with role icon only
     const header = bubble.createDiv('message-header');
@@ -42,8 +46,8 @@ export class MessageBubble {
     // Render content with basic markdown support
     this.renderContent(content, this.message.content);
 
-    // Actions at bottom
-    const actions = bubble.createDiv('message-actions');
+    // Actions outside and underneath the bubble, justified right
+    const actions = messageContainer.createDiv('message-actions-external');
     
     if (this.message.role === 'user') {
       // Edit button for user messages
@@ -73,8 +77,8 @@ export class MessageBubble {
       copyBtn.addEventListener('click', () => this.onCopy(this.message.id));
     }
 
-    this.element = bubble;
-    return bubble;
+    this.element = messageContainer;
+    return messageContainer;
   }
 
   /**
@@ -172,7 +176,7 @@ export class MessageBubble {
   private handleEdit(): void {
     if (!this.onEdit || !this.element) return;
     
-    const contentDiv = this.element.querySelector('.message-content');
+    const contentDiv = this.element.querySelector('.message-bubble .message-content');
     if (!contentDiv) return;
 
     // Create textarea for editing

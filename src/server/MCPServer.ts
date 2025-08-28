@@ -17,7 +17,7 @@ import { getErrorMessage } from '../utils/errorUtils';
 // Import specialized services
 import { ServerConfiguration } from './services/ServerConfiguration';
 import { AgentRegistry } from './services/AgentRegistry';
-import { StdioTransportManager } from './transport/StdioTransportManager';
+import { HttpTransportManager } from './transport/HttpTransportManager';
 import { IPCTransportManager } from './transport/IPCTransportManager';
 import { RequestHandlerFactory } from './handlers/RequestHandlerFactory';
 import { ServerLifecycleManager } from './lifecycle/ServerLifecycleManager';
@@ -34,7 +34,7 @@ export class MCPServer implements IMCPServer {
     // Specialized services following Dependency Injection principle
     private configuration: ServerConfiguration;
     private agentRegistry: AgentRegistry;
-    private stdioTransportManager: StdioTransportManager;
+    private httpTransportManager: HttpTransportManager;
     private ipcTransportManager: IPCTransportManager;
     private requestHandlerFactory: RequestHandlerFactory;
     private lifecycleManager: ServerLifecycleManager;
@@ -61,8 +61,8 @@ export class MCPServer implements IMCPServer {
         
         // Initialize specialized services
         this.agentRegistry = new AgentRegistry();
-        this.stdioTransportManager = new StdioTransportManager(this.server);
-        this.ipcTransportManager = new IPCTransportManager(this.configuration, this.stdioTransportManager);
+        this.httpTransportManager = new HttpTransportManager(this.server, 3000, 'localhost');
+        this.ipcTransportManager = new IPCTransportManager(this.configuration, this.httpTransportManager as any);
         this.executionManager = new AgentExecutionManager(this.agentRegistry, sessionContextManager);
         
         // Initialize request routing
@@ -78,7 +78,7 @@ export class MCPServer implements IMCPServer {
         // Initialize lifecycle manager
         this.lifecycleManager = new ServerLifecycleManager(
             this.agentRegistry,
-            this.stdioTransportManager,
+            this.httpTransportManager as any,
             this.ipcTransportManager,
             this.eventManager
         );
@@ -126,7 +126,9 @@ export class MCPServer implements IMCPServer {
      * Start the MCP server
      */
     async start(): Promise<void> {
+        console.log('[MCP Debug] MCPServer.start() called - about to call lifecycleManager.startServer()');
         await this.lifecycleManager.startServer();
+        console.log('[MCP Debug] MCPServer.start() completed - lifecycleManager.startServer() finished');
     }
 
     /**
@@ -252,13 +254,20 @@ export class MCPServer implements IMCPServer {
      * Get transport status
      */
     getTransportStatus(): {
-        stdio: any;
+        http: any;
         ipc: any;
     } {
         return {
-            stdio: this.stdioTransportManager.getTransportStatus(),
+            http: this.httpTransportManager.getTransportStatus(),
             ipc: this.ipcTransportManager.getTransportStatus()
         };
+    }
+
+    /**
+     * Get HTTP server URL for MCP integration
+     */
+    getServerUrl(): string {
+        return this.httpTransportManager.getServerUrl();
     }
 
     /**

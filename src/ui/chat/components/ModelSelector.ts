@@ -21,7 +21,8 @@ export class ModelSelector {
   constructor(
     private container: HTMLElement,
     private onModelChange: (model: ModelOption) => void,
-    private getAvailableModels: () => Promise<ModelOption[]>
+    private getAvailableModels: () => Promise<ModelOption[]>,
+    private getDefaultModel?: () => Promise<{ provider: string; model: string }>
   ) {
     this.render();
   }
@@ -114,12 +115,31 @@ export class ModelSelector {
         });
       });
 
-      // Select first model by default
+      // Select configured default model or first model as fallback
       if (models.length > 0) {
-        const firstModel = models[0];
-        this.selectElement.value = `${firstModel.providerId}:${firstModel.modelId}`;
-        this.currentModel = firstModel;
-        this.onModelChange(firstModel);
+        let defaultModel = models[0]; // Fallback to first model
+
+        // Try to get configured default model
+        if (this.getDefaultModel) {
+          try {
+            const configuredDefault = await this.getDefaultModel();
+            const foundDefault = models.find(
+              m => m.providerId === configuredDefault.provider && 
+                   m.modelId === configuredDefault.model
+            );
+            if (foundDefault) {
+              defaultModel = foundDefault;
+            } else {
+              console.warn('[ModelSelector] Configured default model not found in available models:', configuredDefault);
+            }
+          } catch (error) {
+            console.warn('[ModelSelector] Failed to get configured default model:', error);
+          }
+        }
+
+        this.selectElement.value = `${defaultModel.providerId}:${defaultModel.modelId}`;
+        this.currentModel = defaultModel;
+        this.onModelChange(defaultModel);
       }
 
     } catch (error) {

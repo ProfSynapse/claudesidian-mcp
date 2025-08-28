@@ -4,7 +4,7 @@
  */
 
 import { AgentRegistry } from '../services/AgentRegistry';
-import { StdioTransportManager } from '../transport/StdioTransportManager';
+import { HttpTransportManager } from '../transport/HttpTransportManager';
 import { IPCTransportManager } from '../transport/IPCTransportManager';
 import { EventManager } from '../../services/EventManager';
 import { ServerStatus } from '../../types';
@@ -19,7 +19,7 @@ export class ServerLifecycleManager {
 
     constructor(
         private agentRegistry: AgentRegistry,
-        private stdioTransportManager: StdioTransportManager,
+        private httpTransportManager: HttpTransportManager,
         private ipcTransportManager: IPCTransportManager,
         private eventManager: EventManager
     ) {}
@@ -28,25 +28,56 @@ export class ServerLifecycleManager {
      * Start the server
      */
     async startServer(): Promise<void> {
+        console.log('[MCP Debug] ServerLifecycleManager.startServer() called - ACTUAL METHOD');
+        logger.systemLog('[MCP Debug] ServerLifecycleManager.startServer() called');
+        
+        console.log('[MCP Debug] Current server status:', this.status);
+        
         if (this.status === 'running') {
-            logger.systemWarn('Server is already running');
+            console.log('[MCP Debug] Server is already running - returning early');
+            logger.systemWarn('[MCP Debug] Server is already running');
             return;
         }
 
         try {
+            console.log('[MCP Debug] Setting status to starting');
             this.status = 'starting';
-            logger.systemLog('Starting server...');
+            console.log('[MCP Debug] Status set to starting, about to log');
+            logger.systemLog('[MCP Debug] Starting server...');
 
             // Initialize agents
+            console.log('[MCP Debug] About to initialize agents');
+            logger.systemLog('[MCP Debug] About to initialize agents');
             await this.initializeAgents();
+            console.log('[MCP Debug] Agents initialized successfully');
 
             // Start transports
+            console.log('[MCP Debug] About to start transports');
+            logger.systemLog('[MCP Debug] About to start transports');
             await this.startTransports();
+            console.log('[MCP Debug] Transports started successfully');
 
             this.status = 'running';
             this.eventManager.emit('server:started', null);
-            logger.systemLog('Server started successfully');
+            console.log('[MCP Debug] Server started successfully');
+            logger.systemLog('[MCP Debug] Server started successfully');
+            
+            // Test if HTTP server is actually running
+            try {
+                const httpStatus = this.httpTransportManager.getTransportStatus();
+                console.log('[MCP Debug] HTTP transport status:', httpStatus);
+                if (httpStatus.isRunning) {
+                    console.log('[MCP Debug] ✅ HTTP server confirmed running on:', httpStatus.endpoint);
+                    logger.systemLog(`✅ MCP HTTP server confirmed running on: ${httpStatus.endpoint}`);
+                } else {
+                    console.log('[MCP Debug] ❌ HTTP server not running despite successful startup');
+                }
+            } catch (error) {
+                console.error('[MCP Debug] Error checking HTTP transport status:', error);
+            }
         } catch (error) {
+            console.error('[MCP Debug] ServerLifecycleManager.startServer() caught error:', error);
+            logger.systemError(error as Error, '[MCP Debug] ServerLifecycleManager.startServer() failed');
             this.status = 'error';
             logger.systemError(error as Error, 'Server Start');
             throw error;
@@ -105,14 +136,22 @@ export class ServerLifecycleManager {
      * Start both transports
      */
     private async startTransports(): Promise<void> {
+        logger.systemLog('[MCP Debug] startTransports() called');
         try {
-            const [stdioTransport, ipcServer] = await Promise.all([
-                this.stdioTransportManager.startTransport(),
-                this.ipcTransportManager.startTransport()
-            ]);
+            logger.systemLog('[MCP Debug] About to start HTTP transport first');
+            // Start HTTP transport first (critical for MCP functionality)
+            const httpResult = await this.httpTransportManager.startTransport();
+            logger.systemLog('[MCP Debug] HTTP transport started successfully');
+            
+            logger.systemLog('[MCP Debug] About to start IPC transport');
+            // Start IPC transport second
+            const ipcResult = await this.ipcTransportManager.startTransport();
+            logger.systemLog('[MCP Debug] IPC transport started successfully');
 
+            logger.systemLog('[MCP Debug] Both transports started successfully');
             logger.systemLog('Both transports started successfully');
         } catch (error) {
+            logger.systemError(error as Error, '[MCP Debug] Transport start failed');
             logger.systemError(error as Error, 'Transport Start');
             throw error;
         }
@@ -124,7 +163,7 @@ export class ServerLifecycleManager {
     private async stopTransports(): Promise<void> {
         try {
             await Promise.all([
-                this.stdioTransportManager.stopTransport(),
+                this.httpTransportManager.stopTransport(),
                 this.ipcTransportManager.stopTransport()
             ]);
 
@@ -163,7 +202,7 @@ export class ServerLifecycleManager {
         status: ServerStatus;
         isRunning: boolean;
         agentCount: number;
-        stdioTransportStatus: any;
+        httpTransportStatus: any;
         ipcTransportStatus: any;
         uptime?: number;
     } {
@@ -171,8 +210,8 @@ export class ServerLifecycleManager {
             status: this.status,
             isRunning: this.isRunning(),
             agentCount: this.agentRegistry.getAgentCount(),
-            stdioTransportStatus: this.stdioTransportManager.getTransportStatus(),
-            ipcTransportStatus: this.ipcTransportManager.getTransportStatus()
+            ipcTransportStatus: this.ipcTransportManager.getTransportStatus(),
+            httpTransportStatus: this.httpTransportManager.getTransportStatus()
         };
     }
 
@@ -209,10 +248,10 @@ export class ServerLifecycleManager {
         }
 
         // Check transports
-        const stdioStatus = this.stdioTransportManager.getTransportStatus();
+        const httpStatus = this.httpTransportManager.getTransportStatus();
         const ipcStatus = this.ipcTransportManager.getTransportStatus();
 
-        if (!stdioStatus.isConnected) {
+        if (!httpStatus.isRunning) {
             issues.push('STDIO transport not connected');
         }
 
@@ -225,7 +264,7 @@ export class ServerLifecycleManager {
             status: this.status,
             agentStatus: agentStats,
             transportStatus: {
-                stdio: stdioStatus,
+                http: httpStatus,
                 ipc: ipcStatus
             },
             issues
@@ -249,7 +288,7 @@ export class ServerLifecycleManager {
             },
             agents: this.agentRegistry.getAgentStatistics(),
             transports: {
-                stdio: this.stdioTransportManager.getDiagnostics(),
+                http: this.httpTransportManager.getTransportStatus(),
                 ipc: this.ipcTransportManager.getDiagnostics()
             },
             events: {

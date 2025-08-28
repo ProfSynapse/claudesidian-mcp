@@ -11,15 +11,33 @@ export interface WorkspaceContext {
 
 /**
  * Parse workspace context from parameters
- * @param workspaceContext String or object representation of workspace context
+ * @param workspaceContext String or object representation of workspace context  
  * @param fallbackId Optional fallback workspace ID if parsing fails
+ * @param contextParam Optional context parameter containing workspaceId
  * @returns Parsed workspace context or null if not provided
  */
 export function parseWorkspaceContext(
   workspaceContext: CommonParameters['workspaceContext'] | null | undefined,
-  fallbackId = 'default-workspace'
+  fallbackId = 'default-workspace',
+  contextParam?: any
 ): WorkspaceContext | null {
+  // First, try to get workspaceId from context parameter if available
+  let workspaceId: string | undefined;
+  
+  if (contextParam?.workspaceId) {
+    workspaceId = contextParam.workspaceId;
+    console.log('[parseWorkspaceContext] Using workspaceId from context:', workspaceId);
+  }
+
   if (!workspaceContext) {
+    // If no workspaceContext but we have workspaceId from context, create a minimal context
+    if (workspaceId) {
+      return {
+        workspaceId: workspaceId,
+        workspacePath: [],
+        activeWorkspace: true
+      };
+    }
     return null;
   }
 
@@ -32,7 +50,7 @@ export function parseWorkspaceContext(
     } catch (e) {
       console.warn('Invalid workspace context JSON:', e);
       return {
-        workspaceId: fallbackId,
+        workspaceId: workspaceId || fallbackId,
         workspacePath: [],
         activeWorkspace: true
       };
@@ -41,11 +59,11 @@ export function parseWorkspaceContext(
     parsedContext = workspaceContext;
   }
 
-  // Extract and validate workspaceId
-  const workspaceId = parsedContext.workspaceId;
+  // Use workspaceId from context if available, otherwise from workspaceContext
+  const finalWorkspaceId = workspaceId || parsedContext.workspaceId;
   
-  if (!workspaceId) {
-    console.warn('workspaceId is required in workspaceContext but was not provided');
+  if (!finalWorkspaceId) {
+    console.warn('workspaceId is required but was not provided in context or workspaceContext');
     return {
       workspaceId: fallbackId,
       workspacePath: [],
@@ -54,7 +72,7 @@ export function parseWorkspaceContext(
   }
 
   return {
-    workspaceId: workspaceId,
+    workspaceId: finalWorkspaceId,
     workspacePath: parsedContext.workspacePath || [],
     activeWorkspace: parsedContext.activeWorkspace !== undefined ? parsedContext.activeWorkspace : true
   };

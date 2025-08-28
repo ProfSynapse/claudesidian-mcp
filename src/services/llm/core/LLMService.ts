@@ -50,7 +50,7 @@ export class LLMService {
   private adapters: Map<string, BaseAdapter> = new Map();
   private settings: LLMProviderSettings;
 
-  constructor(settings: LLMProviderSettings) {
+  constructor(settings: LLMProviderSettings, private mcpConnector?: any) {
     this.settings = settings;
     this.initializeAdapters();
   }
@@ -69,7 +69,7 @@ export class LLMService {
     // Only initialize adapters for providers with API keys
     if (providers.openai?.apiKey && providers.openai.enabled) {
       try {
-        const adapter = new OpenAIAdapter(providers.openai.apiKey);
+        const adapter = new OpenAIAdapter(providers.openai.apiKey, this.mcpConnector);
         this.adapters.set('openai', adapter);
       } catch (error) {
         console.error('Failed to initialize OpenAI adapter:', error);
@@ -440,9 +440,17 @@ export class LLMService {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      tools?: any[];
     }
   ): AsyncGenerator<{ chunk: string; complete: boolean; content: string }, void, unknown> {
     try {
+      console.log('[LLMService] generateResponseStream called with:', {
+        provider: options?.provider,
+        model: options?.model,
+        hasTools: !!(options?.tools && options.tools.length > 0),
+        toolCount: options?.tools?.length || 0
+      });
+
       // Validate settings
       if (!this.settings || !this.settings.defaultModel) {
         throw new Error('LLM service not properly configured - missing settings');
@@ -452,13 +460,14 @@ export class LLMService {
       const provider = options?.provider || this.settings.defaultModel.provider;
       const model = options?.model || this.settings.defaultModel.model;
 
-      console.log(`[LLMService] Starting OpenAI-style streaming with ${provider}/${model}`);
 
       // Get adapter
       const adapter = this.adapters?.get(provider);
       if (!adapter) {
         throw new Error(`Provider not available: ${provider}`);
       }
+
+      console.log('[LLMService] Using adapter:', provider, 'Type:', adapter.constructor.name);
 
       // Convert message array to single prompt
       const userPrompt = messages
@@ -471,16 +480,59 @@ export class LLMService {
         .map(msg => msg.content)
         .join('\n');
 
+      // Build generate options with tools
+      const generateOptions = {
+        model,
+        systemPrompt: systemPrompt || options?.systemPrompt,
+        tools: options?.tools
+      };
+
+      console.log('[LLMService] Calling generateStreamAsync with options:', {
+        model: generateOptions.model,
+        hasSystemPrompt: !!generateOptions.systemPrompt,
+        hasTools: !!(generateOptions.tools && generateOptions.tools.length > 0),
+        toolCount: generateOptions.tools?.length || 0
+      });
+
+      // For tool calls, use non-streaming mode due to complexity of tool execution + continuation
+      if (provider === 'openai' && generateOptions.tools && generateOptions.tools.length > 0) {
+        console.log('[LLMService] Using non-streaming mode for OpenAI + tools (tool execution complexity)');
+        
+        // Use non-streaming generation for tool execution
+        const result = await adapter.generate(userPrompt, generateOptions);
+        
+        console.log('[LLMService] Tool execution result:', {
+          hasText: !!result.text,
+          textLength: result.text?.length || 0,
+          textPreview: result.text?.substring(0, 200) || '[NO TEXT]',
+          finishReason: result.finishReason,
+          hasMetadata: !!result.metadata
+        });
+        
+        const responseText = result.text || '[No response from AI]';
+        
+        // Simulate streaming for smooth UI experience
+        yield {
+          chunk: responseText,
+          complete: false,
+          content: responseText
+        };
+        
+        yield {
+          chunk: '',
+          complete: true,
+          content: responseText
+        };
+        
+        return;
+      }
+
       // Stream tokens using the new async generator method
       let fullContent = '';
       
-      for await (const chunk of adapter.generateStreamAsync(userPrompt, {
-        model,
-        systemPrompt: systemPrompt || options?.systemPrompt
-      })) {
+      for await (const chunk of adapter.generateStreamAsync(userPrompt, generateOptions)) {
         if (chunk.content) {
           fullContent += chunk.content;
-          console.log(`[LLMService] Token received: "${chunk.content}" (accumulated: ${fullContent.length} chars)`);
           
           // Yield each token as it arrives
           yield {
@@ -491,7 +543,6 @@ export class LLMService {
         }
         
         if (chunk.complete) {
-          console.log(`[LLMService] Streaming complete! Final content: ${fullContent.length} chars`);
           
           // Yield final completion
           yield {
@@ -508,4 +559,12 @@ export class LLMService {
       throw error;
     }
   }
+
+  /**
+   * Get a specific adapter instance for direct access
+   */
+  getAdapter(providerId: string): BaseAdapter | undefined {
+    return this.adapters.get(providerId);
+  }
+
 }

@@ -7,11 +7,11 @@
  * Flow: User message → LLM → Tool calls → MCP client → Our agents → Results → LLM → Response
  */
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { ConversationRepository } from '../../database/services/chat/ConversationRepository';
 import { ConversationData, ConversationMessage, ToolCall, CreateConversationParams } from '../../types/chat/ChatTypes';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { MCPChatIntegration, MCPChatOptions } from './MCPChatIntegration';
+import { MCPConfigurationManager } from '../mcp/MCPConfigurationManager';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -26,12 +26,14 @@ export interface ChatServiceDependencies {
   embeddingService: any; // For conversation summaries
   vaultName: string; // Name of the vault for conversation context
   mcpConnector?: any; // MCP connector for tool execution
+  mcpServerUrl?: string; // HTTP URL of MCP server
 }
 
 export class ChatService {
-  private mcpClient: Client | null = null;
   private availableTools: any[] = [];
   private toolCallHistory = new Map<string, ToolCall[]>();
+  private mcpIntegration: MCPChatIntegration;
+  private mcpConfig: MCPConfigurationManager;
   
   constructor(
     private dependencies: ChatServiceDependencies,
@@ -43,33 +45,43 @@ export class ChatService {
       enableToolChaining: true,
       ...options
     };
+    
+    // Initialize MCP integration
+    this.mcpConfig = new MCPConfigurationManager();
+    this.mcpIntegration = new MCPChatIntegration(this.mcpConfig);
   }
 
   /**
-   * Initialize the MCP client connection to our own server
+   * Initialize the HTTP MCP integration
    */
   async initialize(): Promise<void> {
     try {
-      console.log('[ChatService] Initializing MCP client connection');
+      
+      // Initialize with MCP server URL if provided
+      if (this.dependencies.mcpServerUrl) {
+        this.mcpIntegration.initialize(this.dependencies.mcpServerUrl);
+      }
       
       // Get real tools from MCP connector if available
       if (this.dependencies.mcpConnector && typeof this.dependencies.mcpConnector.getAvailableTools === 'function') {
         this.availableTools = this.dependencies.mcpConnector.getAvailableTools();
-        console.log(`[ChatService] Loaded ${this.availableTools.length} tools from MCP connector`);
       } else {
         // Fallback: use static tool manifest for MVP
         console.warn('[ChatService] MCP connector not available, using static tool manifest');
         this.availableTools = this.getStaticToolManifest();
-        console.log(`[ChatService] Loaded ${this.availableTools.length} static tools`);
+      }
+      
+      // Auto-configure MCP for supported providers
+      if (this.dependencies.llmService) {
+        this.mcpIntegration.autoConfigureProviders(this.dependencies.llmService);
       }
       
       // Log available tools for debugging
       this.availableTools.forEach(tool => {
-        console.log(`[ChatService] Available tool: ${tool.name} - ${tool.description}`);
       });
       
     } catch (error) {
-      console.error('[ChatService] Failed to initialize MCP client:', error);
+      console.error('[ChatService] Failed to initialize MCP integration:', error);
       // Continue without MCP connection - chatbot will work without tools
       this.availableTools = [];
     }
@@ -115,16 +127,12 @@ export class ChatService {
       // If there's an initial message, get AI response
       if (initialMessage?.trim()) {
         // Get AI response with potential tool calls
-        const aiResponse = await this.generateResponseWithTools(conversation.id, initialMessage, undefined, options);
-        if (aiResponse) {
-          // Add AI response
-          await this.dependencies.conversationRepo.addMessage({
-            conversationId: conversation.id,
-            role: 'assistant',
-            content: aiResponse.content,
-            toolCalls: aiResponse.tool_calls
-          });
+        // Use streaming method and collect complete response  
+        let completeResponse = '';
+        for await (const chunk of this.generateResponseStreaming(conversation.id, initialMessage, undefined, options)) {
+          completeResponse += chunk.chunk;
         }
+        // Note: AI response is automatically saved by the streaming method
       }
 
       return {
@@ -202,16 +210,12 @@ export class ChatService {
       });
 
       // Generate AI response with tool execution
-      const aiResponse = await this.generateResponseWithTools(conversationId, message, conversation, options);
-      if (aiResponse) {
-        // Add AI response to repository
-        await this.dependencies.conversationRepo.addMessage({
-          conversationId,
-          role: 'assistant',
-          content: aiResponse.content,
-          toolCalls: aiResponse.tool_calls
-        });
+      // Use streaming method and collect complete response  
+      let completeResponse = '';
+      for await (const chunk of this.generateResponseStreaming(conversationId, message, conversation, options)) {
+        completeResponse += chunk.chunk;
       }
+      // Note: AI response is automatically saved by the streaming method
 
       return {
         success: true,
@@ -255,13 +259,30 @@ export class ChatService {
       
       messages.push({ role: 'user', content: userMessage });
 
-      console.log(`[ChatService] Starting streaming response for conversation: ${conversationId}`);
 
-      // Stream the response from LLM service
-      for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, options)) {
+      // Get defaults from LLMService if user didn't select provider/model
+      const defaultModel = this.dependencies.llmService.getDefaultModel();
+      
+      // Prepare MCP-enabled LLM options - use user selection or fallback to configured defaults
+      const mcpOptions: MCPChatOptions = {
+        providerId: options?.provider || defaultModel.provider,
+        model: options?.model || defaultModel.model,  
+        systemPrompt: options?.systemPrompt,
+        enableMCP: this.availableTools.length > 0
+      };
+      
+      const llmOptions = await this.mcpIntegration.prepareLLMOptions(
+        {
+          toolChoice: 'auto'
+        },
+        mcpOptions,
+        this.availableTools
+      );
+
+      // Stream the response from LLM service with MCP tools
+      for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
         accumulatedContent += chunk.chunk;
         
-        console.log(`[ChatService] Streaming chunk:`, chunk.chunk.substring(0, 50) + '...');
         
         yield {
           chunk: chunk.chunk,
@@ -270,7 +291,6 @@ export class ChatService {
         };
 
         if (chunk.complete) {
-          console.log(`[ChatService] Streaming complete, saving message to repository`);
           
           // Save the complete message to the repository
           await this.dependencies.conversationRepo.addMessage({
@@ -289,111 +309,6 @@ export class ChatService {
     }
   }
 
-  /**
-   * Generate AI response with iterative tool execution via MCP
-   * This is where the MCP magic happens - LLM can chain tool calls
-   */
-  private async generateResponseWithTools(
-    conversationId: string, 
-    userMessage: string,
-    conversation?: ConversationData,
-    options?: {
-      provider?: string;
-      model?: string;
-      systemPrompt?: string;
-    }
-  ): Promise<ConversationMessage | null> {
-    try {
-      const messageId = `msg_${Date.now()}_ai`;
-      const toolCalls: ToolCall[] = [];
-      let finalResponse = '';
-      
-      // Build conversation context for LLM
-      const messages = conversation ? this.buildLLMMessages(conversation) : [];
-      
-      // Add system prompt if provided
-      if (options?.systemPrompt) {
-        messages.unshift({ role: 'system', content: options.systemPrompt });
-      }
-      
-      messages.push({ role: 'user', content: userMessage });
-
-      // Start iterative tool execution loop
-      let iteration = 0;
-      let currentMessages = [...messages];
-      
-      while (iteration < this.options.maxToolIterations!) {
-        console.log(`[ChatService] Tool iteration ${iteration + 1}`);
-        
-        // Call LLM with current context and available tools
-        const llmResponse = await this.dependencies.llmService.generateResponse(
-          currentMessages,
-          {
-            tools: this.availableTools,
-            toolChoice: 'auto',
-            provider: options?.provider,
-            model: options?.model
-          }
-        );
-
-        // Update final response
-        finalResponse = llmResponse.content || '';
-        
-        // Check if LLM wants to use tools
-        if (!llmResponse.toolCalls || llmResponse.toolCalls.length === 0) {
-          console.log('[ChatService] No more tool calls, finishing');
-          break;
-        }
-
-        // Execute tool calls via MCP
-        console.log(`[ChatService] Executing ${llmResponse.toolCalls.length} tool calls via MCP`);
-        const toolResults = await this.executeToolCallsViaMCP(llmResponse.toolCalls);
-        
-        // Add tool calls to our tracking
-        toolCalls.push(...toolResults);
-
-        // Add assistant message with tool calls to context
-        currentMessages.push({
-          role: 'assistant',
-          content: finalResponse,
-          toolCalls: llmResponse.toolCalls
-        });
-
-        // Add tool results to context for next iteration
-        for (const toolResult of toolResults) {
-          currentMessages.push({
-            role: 'tool',
-            content: JSON.stringify(toolResult.result),
-            toolCallId: toolResult.id
-          });
-        }
-
-        iteration++;
-      }
-
-      // Store tool call history
-      if (toolCalls.length > 0) {
-        this.toolCallHistory.set(conversationId, toolCalls);
-      }
-
-      return {
-        id: messageId,
-        role: 'assistant',
-        content: finalResponse,
-        timestamp: Date.now(),
-        tool_calls: toolCalls.length > 0 ? toolCalls : undefined
-      };
-
-    } catch (error) {
-      console.error('[ChatService] Error generating response with tools:', error);
-      return {
-        id: `msg_${Date.now()}_error`,
-        role: 'assistant',
-        content: `Error: ${getErrorMessage(error)}`,
-        timestamp: Date.now()
-      };
-    }
-  }
 
   /**
    * Execute tool calls via MCP client
@@ -403,15 +318,15 @@ export class ChatService {
 
     for (const toolCall of toolCalls) {
       try {
-        console.log(`[ChatService] Executing tool via MCP: ${toolCall.name}`);
 
         let result: any;
 
-        // If we have an MCP client, use it; otherwise simulate/fallback
-        if (this.mcpClient) {
-          result = await this.mcpClient.callTool({
-            name: toolCall.name,
-            arguments: toolCall.arguments || toolCall.parameters
+        // Use MCP connector for tool execution (fallback mode)
+        if (this.dependencies.mcpConnector) {
+          result = await this.dependencies.mcpConnector.callTool({
+            agent: toolCall.name.split('.')[0] || toolCall.name.split('_')[0],
+            mode: toolCall.name.split('.')[1] || toolCall.name.split('_')[1],
+            params: toolCall.arguments || toolCall.parameters
           });
         } else {
           // Fallback: direct execution (for MVP)
@@ -666,13 +581,11 @@ export class ChatService {
    * Cleanup resources
    */
   async dispose(): Promise<void> {
-    if (this.mcpClient) {
-      try {
-        await this.mcpClient.close();
-        this.mcpClient = null;
-      } catch (error) {
-        console.error('[ChatService] Error disposing MCP client:', error);
-      }
+    // Clean up MCP integration resources
+    try {
+      this.mcpConfig.removeAllListeners();
+    } catch (error) {
+      console.error('[ChatService] Error disposing MCP integration:', error);
     }
   }
 }

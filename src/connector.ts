@@ -574,9 +574,21 @@ export class MCPConnector {
      * Start the MCP server - delegates to MCPConnectionManager
      */
     async start(): Promise<void> {
+        console.log('[MCP Debug] MCPConnector.start() called - ACTUAL METHOD');
+        logger.systemLog('[MCP Debug] MCPConnector.start() called - ACTUAL METHOD');
+        
+        console.log('[MCP Debug] connectionManager exists:', !!this.connectionManager);
+        console.log('[MCP Debug] connectionManager type:', typeof this.connectionManager);
+        
         try {
+            console.log('[MCP Debug] About to call connectionManager.start()');
+            logger.systemLog('[MCP Debug] About to call connectionManager.start()');
             await this.connectionManager.start();
+            console.log('[MCP Debug] connectionManager.start() completed successfully');
+            logger.systemLog('[MCP Debug] connectionManager.start() completed successfully');
         } catch (error) {
+            console.error('[MCP Debug] MCPConnector.start() failed:', error);
+            logger.systemError(error as Error, '[MCP Debug] MCPConnector.start() failed');
             if (error instanceof McpError) {
                 throw error;
             }

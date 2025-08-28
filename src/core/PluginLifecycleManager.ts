@@ -102,9 +102,16 @@ export class PluginLifecycleManager {
             
             // Initialize connector with agents
             try {
+                console.log('[MCP Debug] PluginLifecycleManager about to call initializeAgents()');
                 await this.config.connector.initializeAgents();
+                console.log('[MCP Debug] PluginLifecycleManager about to call connector.start()');
+                console.log('[MCP Debug] connector object:', this.config.connector);
+                console.log('[MCP Debug] connector.start method:', typeof this.config.connector.start);
+                console.log('[MCP Debug] connector constructor:', this.config.connector.constructor.name);
                 await this.config.connector.start();
+                console.log('[MCP Debug] PluginLifecycleManager connector.start() completed');
             } catch (error) {
+                console.error('[MCP Debug] PluginLifecycleManager MCP initialization failed:', error);
                 console.warn('[PluginLifecycleManager] MCP initialization failed:', error);
             }
             
@@ -363,7 +370,8 @@ export class PluginLifecycleManager {
                     model: 'gpt-3.5-turbo'
                   }
                 };
-                return new LLMService(llmProviderSettings);
+                const mcpConnector = (plugin as any).getConnector();
+                return new LLMService(llmProviderSettings, mcpConnector);
             }
         });
 
@@ -398,12 +406,25 @@ export class PluginLifecycleManager {
                 const llmService = await serviceManager.getService<any>('llmService');
                 const embeddingService = await serviceManager.getService<any>('embeddingService');
                 
+                // Get MCP server URL from connector
+                const mcpConnector = (plugin as any).getConnector();
+                let mcpServerUrl: string | undefined;
+                
+                try {
+                    const mcpServer = mcpConnector?.getServer();
+                    mcpServerUrl = mcpServer?.getServerUrl?.() || 'http://localhost:3000/sse';
+                } catch (error) {
+                    console.warn('[PluginLifecycleManager] Failed to get MCP server URL:', error);
+                    mcpServerUrl = 'http://localhost:3000/sse'; // Fallback
+                }
+                
                 return new ChatService({
                     conversationRepo,
                     llmService,
                     embeddingService,
                     vaultName: plugin.app.vault.getName(),
-                    mcpConnector: (plugin as any).getConnector()
+                    mcpConnector,
+                    mcpServerUrl
                 });
             }
         });

@@ -324,13 +324,25 @@
     gap: 1rem;
 }
 
-/* Message Bubbles */
-.message-bubble {
-    max-width: 80%;
-    border-radius: 1rem;
-    padding: 0.75rem 1rem;
+/* Message Container (wrapper for bubble + external actions) */
+.message-container {
+    width: 75%;
     position: relative;
     animation: messageSlideIn 0.3s ease-out;
+}
+
+/* Wider screens - reduce bubble width for better readability */
+@media (min-width: 1200px) {
+    .message-container {
+        width: 65%;
+    }
+}
+
+/* Very wide screens - further reduce for optimal reading */
+@media (min-width: 1600px) {
+    .message-container {
+        width: 55%;
+    }
 }
 
 @keyframes messageSlideIn {
@@ -344,14 +356,30 @@
     }
 }
 
-.message-user {
+.message-container.message-user {
     align-self: flex-end;
+}
+
+.message-container.message-assistant {
+    align-self: flex-start;
+}
+
+/* Message Bubbles */
+.message-bubble {
+    width: 100%;
+    border-radius: 1rem;
+    padding: 0.75rem 1rem;
+    position: relative;
+    box-sizing: border-box;
+    min-height: fit-content;
+}
+
+.message-container.message-user .message-bubble {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
 }
 
-.message-assistant {
-    align-self: flex-start;
+.message-container.message-assistant .message-bubble {
     background: var(--background-secondary);
     color: var(--text-normal);
     border: 1px solid var(--background-modifier-border);
@@ -378,18 +406,18 @@
     stroke: currentColor;
 }
 
-.message-actions {
+/* External message actions (positioned outside and below the bubble) */
+.message-actions-external {
     display: flex;
     gap: 0.5rem;
-    margin-top: 0.75rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid rgba(var(--mono-rgb-0), 0.1);
+    margin-top: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    justify-content: flex-end;
     opacity: 0;
     transition: opacity 0.2s;
-    justify-content: flex-end;
 }
 
-.message-bubble:hover .message-actions {
+.message-container:hover .message-actions-external {
     opacity: 1;
 }
 
@@ -467,6 +495,10 @@
 
 .message-content {
     line-height: 1.5;
+    width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
 }
 
 .message-content p {
@@ -748,8 +780,8 @@
         width: 250px;
     }
     
-    .message-bubble {
-        max-width: 90%;
+    .message-container {
+        width: 85%;
     }
     
     .chat-input-flex {
@@ -771,6 +803,10 @@
 
 /* Extra small screens and narrow sidebars */
 @media (max-width: 480px), (max-width: 320px) {
+    .message-container {
+        width: 95% !important;
+    }
+    
     .chat-input-flex {
         flex-direction: column !important;
         align-items: stretch !important;

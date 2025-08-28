@@ -14,14 +14,21 @@ import {
   ModelPricing 
 } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
+import { MCPFunctionBridge } from '../../../mcp-bridge/core/MCPFunctionBridge';
+import { ToolCallRequest, ToolCallResult } from '../../../mcp-bridge/types/BridgeTypes';
 
 export class OpenRouterAdapter extends BaseAdapter {
   readonly name = 'openrouter';
   readonly baseUrl = 'https://openrouter.ai/api/v1';
+  
+  private mcpBridge: MCPFunctionBridge | null = null;
 
   constructor(apiKey: string, model?: string) {
     super(apiKey, model || 'anthropic/claude-3.5-sonnet');
     this.initializeCache();
+    
+    // Initialize MCP bridge for tool calling
+    this.initializeMCPBridge();
   }
 
   /**
@@ -30,6 +37,14 @@ export class OpenRouterAdapter extends BaseAdapter {
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
       const model = options?.model || this.currentModel;
+      
+      // Check if MCP bridge is available and tools should be used
+      const enableTools = (options as any)?.enableTools !== false; // Default to true
+      
+      if (this.mcpBridge && enableTools && this.mcpBridge.isInitialized()) {
+        console.log('[OpenRouter Bridge] Using MCP bridge for tool-enabled generation');
+        return await this.generateWithMCPTools(prompt, options);
+      }
       
       const requestBody = {
         model,
@@ -84,8 +99,6 @@ export class OpenRouterAdapter extends BaseAdapter {
     try {
       const model = options?.model || this.currentModel;
       
-      console.log(`[OpenRouterAdapter] Starting streaming for model: ${model}`);
-
       const requestBody = {
         model,
         messages: this.buildMessages(prompt, options?.systemPrompt),
@@ -99,8 +112,6 @@ export class OpenRouterAdapter extends BaseAdapter {
         tools: options?.tools,
         stream: true // Enable streaming
       };
-
-      console.log(`[OpenRouterAdapter] Creating stream for ${model}`);
 
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -149,7 +160,6 @@ export class OpenRouterAdapter extends BaseAdapter {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
               if (data === '[DONE]') {
-                console.log(`[OpenRouterAdapter] Streaming complete! Total tokens: ${tokenCount}`);
                 break;
               }
 
@@ -160,7 +170,6 @@ export class OpenRouterAdapter extends BaseAdapter {
                 
                 if (content) {
                   tokenCount++;
-                  console.log(`[OpenRouterAdapter] Token ${tokenCount}: "${content}"`);
                   
                   // Yield each token immediately
                   yield { 
@@ -217,7 +226,7 @@ export class OpenRouterAdapter extends BaseAdapter {
    * Get provider capabilities
    */
   getCapabilities(): ProviderCapabilities {
-    return {
+    const baseCapabilities = {
       supportsStreaming: true,
       supportsJSON: true,
       supportsImages: true,
@@ -232,6 +241,219 @@ export class OpenRouterAdapter extends BaseAdapter {
         '400+ models'
       ]
     };
+
+    // Add MCP support if available
+    if (this.supportsMCP()) {
+      baseCapabilities.supportedFeatures.push('mcp_integration');
+    }
+
+    return baseCapabilities;
+  }
+
+  /**
+   * Initialize MCP bridge for tool calling
+   */
+  private initializeMCPBridge(): void {
+    try {
+      this.mcpBridge = new MCPFunctionBridge();
+      console.log('[OpenRouter Bridge] MCP bridge initialized successfully');
+    } catch (error) {
+      console.error('[OpenRouter Bridge] Failed to initialize MCP bridge:', error);
+    }
+  }
+
+  /**
+   * Initialize MCP bridge and connect to server
+   */
+  async configureMCPServer(serverUrl?: string): Promise<void> {
+    if (!this.mcpBridge) {
+      console.warn('[OpenRouterAdapter] Cannot configure MCP - bridge not initialized');
+      return;
+    }
+
+    try {
+      // Update server URL if provided
+      if (serverUrl) {
+        this.mcpBridge.updateConfiguration({
+          mcpServer: { 
+            url: serverUrl,
+            timeout: 30000,
+            retries: 2,
+            healthCheckInterval: 60000
+          }
+        });
+      }
+
+      await this.mcpBridge.initialize();
+      console.log(`[OpenRouterAdapter] MCP bridge connected successfully`);
+    } catch (error) {
+      console.error('[OpenRouterAdapter] Failed to configure MCP bridge:', error);
+    }
+  }
+
+  /**
+   * Check if MCP bridge is available and healthy
+   */
+  supportsMCP(): boolean {
+    return this.mcpBridge !== null && this.mcpBridge.isInitialized() && this.mcpBridge.isHealthy();
+  }
+
+  /**
+   * Get MCP bridge configuration
+   */
+  getMCPConfig(): { serverUrl: string } | null {
+    if (!this.mcpBridge) return null;
+    const config = this.mcpBridge.getConfiguration();
+    return { serverUrl: config.mcpServer.url };
+  }
+
+  /**
+   * Generate response using MCP bridge for tool calling
+   */
+  private async generateWithMCPTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    if (!this.mcpBridge) {
+      throw new Error('MCP bridge not available');
+    }
+
+    const model = options?.model || this.currentModel;
+    const messages = this.buildMessages(prompt, options?.systemPrompt);
+    
+    try {
+      // Get available tools from MCP bridge (using openrouter provider)
+      const mcpTools = await this.mcpBridge.getToolsForProvider('openrouter');
+      
+      console.log(`[OpenRouter Bridge] Using ${mcpTools.length} tools for generation`);
+
+      // Build OpenRouter request with tools (same format as OpenAI)
+      const requestBody = {
+        model,
+        messages,
+        tools: mcpTools.map(t => t.tool), // Extract OpenAI-compatible tool format
+        tool_choice: 'auto', // Let the model decide when to use tools
+        temperature: options?.temperature,
+        max_tokens: options?.maxTokens,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+        response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+        stop: options?.stopSequences
+      };
+
+      // Call OpenRouter API
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          ...this.buildHeaders(),
+          'Authorization': `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'https://synaptic-lab-kit.com',
+          'X-Title': 'Synaptic Lab Kit'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const choice = data.choices[0];
+
+      if (!choice) {
+        throw new Error('No response from OpenRouter');
+      }
+
+      let finalText = choice.message?.content || '';
+      const usage = this.extractUsage(data);
+      let finishReason = choice.finish_reason || 'stop';
+      const toolCalls: any[] = [];
+
+      // Handle tool calls if present
+      if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
+        console.log(`[OpenRouter Bridge] Processing ${choice.message.tool_calls.length} tool calls`);
+
+        // Convert OpenRouter tool calls to bridge format (same as OpenAI)
+        const bridgeToolCalls: ToolCallRequest[] = choice.message.tool_calls.map((toolCall: any) => ({
+          id: toolCall.id,
+          name: toolCall.function.name,
+          parameters: JSON.parse(toolCall.function.arguments || '{}'),
+          provider: 'openrouter' as const,
+          metadata: {
+            timestamp: new Date().toISOString()
+          }
+        }));
+
+        // Execute tool calls via bridge
+        const toolResults = await this.mcpBridge.executeToolCalls(bridgeToolCalls);
+
+        // Format tool results for OpenRouter continuation
+        const toolMessages = toolResults.map(result => ({
+          role: 'tool' as const,
+          tool_call_id: result.id,
+          content: result.success 
+            ? JSON.stringify(result.result)
+            : `Error: ${result.error}`
+        }));
+
+        // Continue conversation with tool results
+        const continuationMessages = [
+          ...messages,
+          choice.message, // Include the assistant message with tool calls
+          ...toolMessages
+        ];
+
+        const continuationResponse = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            ...this.buildHeaders(),
+            'Authorization': `Bearer ${this.apiKey}`,
+            'HTTP-Referer': 'https://synaptic-lab-kit.com',
+            'X-Title': 'Synaptic Lab Kit'
+          },
+          body: JSON.stringify({
+            ...requestBody,
+            messages: continuationMessages,
+            tools: undefined, // Remove tools for continuation
+            tool_choice: undefined
+          })
+        });
+
+        if (continuationResponse.ok) {
+          const continuationData = await continuationResponse.json();
+          const continuationChoice = continuationData.choices[0];
+          
+          if (continuationChoice?.message?.content) {
+            finalText = continuationChoice.message.content;
+            finishReason = continuationChoice.finish_reason || 'stop';
+          }
+        }
+
+        // Add tool execution info to response metadata
+        toolCalls.push(...toolResults.map(result => ({
+          id: result.id,
+          name: result.name,
+          parameters: result.result,
+          success: result.success,
+          error: result.error,
+          executionTime: result.executionTime
+        })));
+      }
+
+      return this.buildLLMResponse(
+        finalText,
+        model,
+        usage,
+        {
+          mcpEnabled: true,
+          toolCallCount: toolCalls.length,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+        },
+        finishReason as any
+      );
+
+    } catch (error) {
+      console.error('[OpenRouter Bridge] Tool-enabled generation failed:', error);
+      throw error;
+    }
   }
 
   /**

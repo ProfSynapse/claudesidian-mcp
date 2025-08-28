@@ -333,13 +333,21 @@ export function getCommonResultSchema(): any {
 export function mergeWithCommonSchema(customSchema: any): any {
   const commonSchema = getCommonParameterSchema();
   
+  // Merge properties without duplication
+  const mergedProperties = {
+    ...customSchema.properties,
+    ...commonSchema
+  };
+  
+  // Merge required arrays without duplicates
+  const customRequired = customSchema.required || [];
+  const commonRequired = ['sessionId', 'context'];
+  const mergedRequired = Array.from(new Set([...customRequired, ...commonRequired]));
+  
   return {
     type: 'object',
-    properties: {
-      ...customSchema.properties,
-      ...commonSchema
-    },
-    required: [...(customSchema.required || []), 'sessionId', 'context']
+    properties: mergedProperties,
+    required: mergedRequired
   };
 }
 

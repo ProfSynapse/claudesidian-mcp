@@ -168,7 +168,7 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParameters
         result, 
         message, 
         params.context, 
-        parseWorkspaceContext(params.workspaceContext) || undefined
+        parseWorkspaceContext(params.workspaceContext, 'default-workspace', params.context) || undefined
       );
       
     } catch (error) {

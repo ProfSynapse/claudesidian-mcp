@@ -49,22 +49,16 @@ export class MessageDisplay {
    * Update a specific message content without full re-render (for streaming)
    */
   updateMessageContent(messageId: string, content: string, isStreaming: boolean = false): void {
-    console.log(`[MessageDisplay] updateMessageContent called - messageId: ${messageId}, isStreaming: ${isStreaming}, content length: ${content.length}`);
-    
     const messageElement = this.container.querySelector(`[data-message-id="${messageId}"]`);
-    console.log(`[MessageDisplay] Found message element:`, !!messageElement);
     
     if (messageElement) {
-      const contentElement = messageElement.querySelector('.message-content');
-      console.log(`[MessageDisplay] Found content element:`, !!contentElement);
+      const contentElement = messageElement.querySelector('.message-bubble .message-content');
       
       if (contentElement) {
         if (isStreaming) {
           contentElement.innerHTML = `<div class="streaming-content">${this.escapeHtml(content)}<span class="streaming-cursor">|</span></div>`;
-          console.log(`[MessageDisplay] Set streaming content with cursor`);
         } else {
           contentElement.innerHTML = `<div class="final-content">${this.escapeHtml(content)}</div>`;
-          console.log(`[MessageDisplay] Set final content`);
         }
       } else {
         console.error(`[MessageDisplay] Content element not found for messageId: ${messageId}`);
