@@ -83,7 +83,7 @@ export class LLMService {
 
     if (providers.openrouter?.apiKey && providers.openrouter.enabled) {
       try {
-        this.adapters.set('openrouter', new OpenRouterAdapter(providers.openrouter.apiKey));
+        this.adapters.set('openrouter', new OpenRouterAdapter(providers.openrouter.apiKey, this.mcpConnector));
       } catch (error) {
         console.warn('Failed to initialize OpenRouter adapter:', error);
       }
@@ -495,8 +495,8 @@ export class LLMService {
       });
 
       // For tool calls, use non-streaming mode due to complexity of tool execution + continuation
-      if (provider === 'openai' && generateOptions.tools && generateOptions.tools.length > 0) {
-        console.log('[LLMService] Using non-streaming mode for OpenAI + tools (tool execution complexity)');
+      if ((provider === 'openai' || provider === 'openrouter') && generateOptions.tools && generateOptions.tools.length > 0) {
+        console.log(`[LLMService] Using non-streaming mode for ${provider} + tools (tool execution complexity)`);
         
         // Use non-streaming generation for tool execution
         const result = await adapter.generate(userPrompt, generateOptions);

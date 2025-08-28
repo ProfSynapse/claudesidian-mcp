@@ -14,6 +14,7 @@ export interface GenerateOptions {
   enableThinking?: boolean;
   enableInteractiveThinking?: boolean;
   tools?: Tool[];
+  enableTools?: boolean;
   webSearch?: boolean;
   fileSearch?: boolean;
   // Cache options

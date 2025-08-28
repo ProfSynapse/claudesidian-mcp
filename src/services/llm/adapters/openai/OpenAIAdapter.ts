@@ -15,18 +15,15 @@ import {
 } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 import { DeepResearchHandler } from './DeepResearchHandler';
-import { MCPFunctionBridge } from '../../../mcp-bridge/core/MCPFunctionBridge';
-import { ToolCallRequest, ToolCallResult } from '../../../mcp-bridge/types/BridgeTypes';
+import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 
-export class OpenAIAdapter extends BaseAdapter {
+export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'openai';
   readonly baseUrl = 'https://api.openai.com/v1';
   
   private client: OpenAI;
   private deepResearch: DeepResearchHandler;
-  private mcpBridge: MCPFunctionBridge | null = null;
-  private mcpSessionId: string | null = null;
-  private mcpConnector?: any;
+  mcpConnector?: any;
 
   constructor(apiKey: string, mcpConnector?: any) {
     super(apiKey, 'gpt-5');
@@ -40,8 +37,7 @@ export class OpenAIAdapter extends BaseAdapter {
     this.mcpConnector = mcpConnector;
     this.initializeCache();
     
-    // Initialize MCP bridge for tool calling
-    this.initializeMCPBridge();
+    // MCP connector will be provided via constructor
   }
 
   /**
@@ -156,10 +152,14 @@ export class OpenAIAdapter extends BaseAdapter {
 
   /**
    * Generate with pre-converted tools (from ChatService bridge)
+   * Implements user confirmation system for extended tool use
    */
   private async generateWithProvidedTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     const model = options?.model || this.currentModel;
     const messages = this.buildMessages(prompt, options?.systemPrompt);
+    
+    const TOOL_ITERATION_THRESHOLD = 15;
+    let totalToolIterations = 0;
     
     const chatParams: any = {
       model,
@@ -197,59 +197,107 @@ export class OpenAIAdapter extends BaseAdapter {
       toolCallCount: choice.message?.tool_calls?.length || 0
     });
 
-    // Handle tool calls if present - implement full execution flow
-    if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
-      console.log(`[OpenAI Adapter] Processing ${choice.message.tool_calls.length} tool calls`);
+    // Implement iterative tool execution with user confirmation system
+    let currentResponse = response;
+    let currentChoice = choice;
+    let conversationMessages = [...messages];
+    
+    // Tool execution loop with threshold protection
+    while (currentChoice?.message?.tool_calls && currentChoice.message.tool_calls.length > 0) {
+      totalToolIterations++;
       
-      // DEBUG: Log the actual tool calls from OpenAI to see if common parameters are included
-      console.log('[DEBUG] Raw tool calls from OpenAI:', JSON.stringify(choice.message.tool_calls, null, 2));
+      console.log(`[OpenAI Tool Safety] Tool iteration ${totalToolIterations}/${TOOL_ITERATION_THRESHOLD}`);
+      
+      // Check if we've hit the threshold
+      if (totalToolIterations >= TOOL_ITERATION_THRESHOLD) {
+        console.log(`[OpenAI Tool Safety] Hit ${TOOL_ITERATION_THRESHOLD} tool iteration threshold - activating dead switch`);
+        
+        // Create dead switch response for the LLM
+        const deadSwitchMessage = {
+          role: 'system' as const,
+          content: `TOOL_LIMIT_REACHED: You have used ${TOOL_ITERATION_THRESHOLD} tool iterations. You must now ask the user if they want to continue with more tool calls. Explain what you've accomplished so far and what you still need to do. Wait for user confirmation before proceeding further.`
+        };
+        
+        // Get final response with dead switch message
+        const deadSwitchMessages = [
+          ...conversationMessages,
+          currentChoice.message,
+          deadSwitchMessage
+        ];
+        
+        const deadSwitchResponse = await this.client.chat.completions.create({
+          model,
+          messages: deadSwitchMessages,
+          // Remove tools to force user interaction
+          temperature: options?.temperature,
+          max_tokens: options?.maxTokens
+        });
+        
+        const deadSwitchChoice = deadSwitchResponse.choices[0];
+        if (deadSwitchChoice?.message?.content) {
+          finalText = deadSwitchChoice.message.content;
+          finishReason = 'stop';
+          console.log(`[OpenAI Tool Safety] Dead switch activated - awaiting user confirmation`);
+        }
+        break;
+      }
+      
+      // Execute current tool calls
+      console.log(`[OpenAI Adapter] Processing ${currentChoice.message.tool_calls.length} tool calls (iteration ${totalToolIterations})`);
       
       try {
-        // Execute tools via MCP server (HTTP request to localhost:3000)
-        const toolResults = await this.executeToolsViaMCP(choice.message.tool_calls);
-        
-        // Create tool result messages for OpenAI continuation
-        const toolMessages = toolResults.map(result => ({
-          role: 'tool' as const,
-          tool_call_id: result.id,
-          content: result.success 
-            ? JSON.stringify(result.result)
-            : `Error: ${result.error}`
+        // Convert OpenAI tool calls to MCPToolCall format
+        const mcpToolCalls = currentChoice.message.tool_calls.map(tc => ({
+          id: tc.id,
+          function: {
+            name: (tc as any).function?.name || '',
+            arguments: (tc as any).function?.arguments || '{}'
+          }
         }));
         
-        console.log(`[OpenAI Adapter] Tool messages being sent back to OpenAI:`, JSON.stringify(toolMessages, null, 2));
-
-        // Continue conversation with tool results
-        const continuationMessages = [
-          ...messages,
-          choice.message, // Include the assistant message with tool calls
+        // Execute tools via shared MCP utility
+        const toolResults = await MCPToolExecution.executeToolCalls(this, mcpToolCalls, 'openai');
+        
+        // Create tool result messages for OpenAI continuation
+        const toolMessages = MCPToolExecution.buildToolMessages(toolResults);
+        
+        // Update conversation with tool call and results
+        conversationMessages = [
+          ...conversationMessages,
+          currentChoice.message,
           ...toolMessages
         ];
-
+        
         console.log(`[OpenAI Adapter] Continuing conversation with ${toolResults.length} tool results`);
 
-        // Make continuation request to get final response
+        // Make continuation request with tools still available
         const continuationResponse = await this.client.chat.completions.create({
           model,
-          messages: continuationMessages,
-          // Remove tools for continuation to prevent infinite loop
+          messages: conversationMessages,
+          tools: options?.tools as any,
+          tool_choice: 'auto',
           temperature: options?.temperature,
           max_tokens: options?.maxTokens
         });
 
-        const continuationChoice = continuationResponse.choices[0];
-        if (continuationChoice?.message?.content) {
-          finalText = continuationChoice.message.content;
-          finishReason = continuationChoice.finish_reason || 'stop';
-          console.log(`[OpenAI Adapter] Got continuation response: ${finalText.substring(0, 100)}...`);
+        // Update for next iteration
+        currentResponse = continuationResponse;
+        currentChoice = continuationResponse.choices[0];
+        
+        if (currentChoice?.message?.content) {
+          finalText = currentChoice.message.content;
+          finishReason = currentChoice.finish_reason || 'stop';
         }
-
+        
       } catch (error) {
         console.error('[OpenAI Adapter] Tool execution failed:', error);
-        const toolNames = choice.message.tool_calls.map((tc: any) => tc.function?.name).join(', ');
+        const toolNames = (currentChoice.message.tool_calls || []).map((tc: any) => tc.function?.name).join(', ');
         finalText = `I tried to use tools (${toolNames}) but encountered an error: ${error instanceof Error ? error.message : String(error)}`;
+        break;
       }
     }
+    
+    console.log(`[OpenAI Tool Safety] Tool execution completed after ${totalToolIterations} iterations`);
 
     return this.buildLLMResponse(
       finalText,
@@ -309,207 +357,7 @@ export class OpenAIAdapter extends BaseAdapter {
     );
   }
 
-  /**
-   * Execute tools via existing MCP connector (not HTTP)
-   */
-  private async executeToolsViaMCP(toolCalls: any[]): Promise<Array<{
-    id: string;
-    success: boolean;
-    result?: any;
-    error?: string;
-  }>> {
-    const results = [];
-    
-    for (const toolCall of toolCalls) {
-      try {
-        const sanitizedToolName = toolCall.function?.name;
-        const parameters = JSON.parse(toolCall.function?.arguments || '{}');
-        
-        // Convert back from sanitized name to original MCP name  
-        // The converter replaces dots with underscores, so convert first underscore back to dot
-        const originalToolName = sanitizedToolName.replace(/([a-zA-Z])_([a-zA-Z])/, '$1.$2');
-        
-        console.log(`[OpenAI Tool Execution] Executing ${sanitizedToolName} -> ${originalToolName} with params:`, parameters);
-        
-        // Convert tool call to AgentModeParams format for existing connector
-        const [agent, mode] = originalToolName.split('.');
-        const agentModeParams = {
-          agent,
-          mode, 
-          params: parameters
-        };
-        
-        console.log(`[OpenAI Tool Execution] Calling existing connector with:`, agentModeParams);
-        
-        // Use existing MCP connector (should be available from plugin instance)
-        // This uses the existing working MCP infrastructure
-        let result: any;
-        if (this.mcpConnector) {
-          result = await this.mcpConnector.callTool(agentModeParams);
-          console.log(`[OpenAI Tool Execution] Tool result for ${originalToolName}:`, JSON.stringify(result, null, 2));
-        } else {
-          throw new Error('MCP connector not available');
-        }
-        
-        results.push({
-          id: toolCall.id,
-          success: result.success,
-          result: result
-        });
 
-      } catch (error) {
-        console.error(`[OpenAI Tool Execution] Failed to execute ${toolCall.function?.name}:`, error);
-        results.push({
-          id: toolCall.id,
-          success: false,
-          error: error instanceof Error ? error.message : String(error)
-        });
-      }
-    }
-    
-    return results;
-  }
-
-  /**
-   * Generate response using MCP bridge for tool calling
-   */
-  private async generateWithMCPTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
-    if (!this.mcpBridge) {
-      throw new Error('MCP bridge not available');
-    }
-
-    const model = options?.model || this.currentModel;
-    const messages = this.buildMessages(prompt, options?.systemPrompt);
-    
-    try {
-      // Get available tools from MCP bridge
-      const mcpTools = await this.mcpBridge.getToolsForProvider('openai');
-      
-      console.log(`[OpenAI Bridge] Using ${mcpTools.length} tools for generation`);
-      
-      // Extract OpenAI tool format
-      const openAITools = mcpTools.map(t => t.tool);
-      
-      // DEBUG: Log a sample tool schema to verify common parameters are included
-      if (openAITools.length > 0) {
-        console.log('[DEBUG] Sample tool schema sent to OpenAI:', JSON.stringify(openAITools[0], null, 2));
-      }
-
-      // Build OpenAI request with tools
-      const chatParams: any = {
-        model,
-        messages,
-        tools: openAITools,
-        tool_choice: 'auto' // Let OpenAI decide when to use tools
-      };
-
-      // Add optional parameters
-      if (options?.temperature !== undefined) chatParams.temperature = options.temperature;
-      if (options?.maxTokens !== undefined) chatParams.max_tokens = options.maxTokens;
-      if (options?.jsonMode) chatParams.response_format = { type: 'json_object' };
-      if (options?.stopSequences) chatParams.stop = options.stopSequences;
-      if (options?.topP !== undefined) chatParams.top_p = options.topP;
-      if (options?.frequencyPenalty !== undefined) chatParams.frequency_penalty = options.frequencyPenalty;
-      if (options?.presencePenalty !== undefined) chatParams.presence_penalty = options.presencePenalty;
-
-      // Call OpenAI API
-      const response = await this.client.chat.completions.create(chatParams);
-      const choice = response.choices[0];
-
-      if (!choice) {
-        throw new Error('No response from OpenAI');
-      }
-
-      let finalText = choice.message?.content || '';
-      const usage = this.extractUsage({ usage: response.usage });
-      let finishReason = choice.finish_reason || 'stop';
-      const toolCalls: any[] = [];
-
-      console.log(`[OpenAI Bridge] Response analysis:`, {
-        hasContent: !!finalText,
-        contentLength: finalText.length,
-        finishReason,
-        hasMessage: !!choice.message,
-        hasToolCalls: !!(choice.message?.tool_calls),
-        toolCallCount: choice.message?.tool_calls?.length || 0,
-        messageKeys: choice.message ? Object.keys(choice.message) : []
-      });
-
-      // Handle tool calls if present
-      if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
-        console.log(`[OpenAI Bridge] Processing ${choice.message.tool_calls.length} tool calls`);
-
-        // Convert OpenAI tool calls to bridge format
-        const bridgeToolCalls: ToolCallRequest[] = choice.message.tool_calls.map((toolCall: any) => ({
-          id: toolCall.id,
-          name: toolCall.function?.name || toolCall.name,
-          parameters: JSON.parse((toolCall.function?.arguments || toolCall.arguments) || '{}'),
-          provider: 'openai' as const,
-          metadata: {
-            timestamp: new Date().toISOString()
-          }
-        }));
-
-        // Execute tool calls via bridge
-        const toolResults = await this.mcpBridge.executeToolCalls(bridgeToolCalls);
-
-        // Format tool results for OpenAI continuation
-        const toolMessages = toolResults.map(result => ({
-          role: 'tool' as const,
-          tool_call_id: result.id,
-          content: result.success 
-            ? JSON.stringify(result.result)
-            : `Error: ${result.error}`
-        }));
-
-        // Continue conversation with tool results
-        const continuationMessages = [
-          ...messages,
-          choice.message, // Include the assistant message with tool calls
-          ...toolMessages
-        ];
-
-        const continuationResponse = await this.client.chat.completions.create({
-          ...chatParams,
-          messages: continuationMessages,
-          tools: undefined, // Remove tools for continuation
-          tool_choice: undefined
-        });
-
-        const continuationChoice = continuationResponse.choices[0];
-        if (continuationChoice?.message?.content) {
-          finalText = continuationChoice.message.content;
-          finishReason = continuationChoice.finish_reason || 'stop';
-        }
-
-        // Add tool execution info to response metadata
-        toolCalls.push(...toolResults.map(result => ({
-          id: result.id,
-          name: result.name,
-          parameters: result.result,
-          success: result.success,
-          error: result.error,
-          executionTime: result.executionTime
-        })));
-      }
-
-      return this.buildLLMResponse(
-        finalText,
-        model,
-        usage,
-        {
-          mcpEnabled: true,
-          toolCallCount: toolCalls.length,
-          toolCalls: toolCalls.length > 0 ? toolCalls : undefined
-        },
-        finishReason as any
-      );
-
-    } catch (error) {
-      console.error('[OpenAI Bridge] Tool-enabled generation failed:', error);
-      throw error;
-    }
-  }
 
   /**
    * List available models
@@ -525,62 +373,14 @@ export class OpenAIAdapter extends BaseAdapter {
     }
   }
 
-  /**
-   * Initialize MCP bridge for tool calling
-   */
-  private initializeMCPBridge(): void {
-    try {
-      this.mcpBridge = new MCPFunctionBridge();
-      console.log('[OpenAI Bridge] MCP bridge initialized successfully');
-    } catch (error) {
-      console.error('[OpenAI Bridge] Failed to initialize MCP bridge:', error);
-    }
-  }
 
   /**
-   * Initialize MCP bridge and connect to server
-   */
-  async configureMCPServer(serverUrl?: string): Promise<void> {
-    if (!this.mcpBridge) {
-      console.warn('[OpenAIAdapter] Cannot configure MCP - bridge not initialized');
-      return;
-    }
-
-    try {
-      // Update server URL if provided
-      if (serverUrl) {
-        this.mcpBridge.updateConfiguration({
-          mcpServer: { 
-            url: serverUrl,
-            timeout: 30000,
-            retries: 2,
-            healthCheckInterval: 60000
-          }
-        });
-      }
-
-      await this.mcpBridge.initialize();
-      console.log(`[OpenAIAdapter] MCP bridge connected successfully`);
-    } catch (error) {
-      console.error('[OpenAIAdapter] Failed to configure MCP bridge:', error);
-    }
-  }
-
-  /**
-   * Check if MCP bridge is available and healthy
+   * Check if MCP is available via connector
    */
   supportsMCP(): boolean {
-    return this.mcpBridge !== null && this.mcpBridge.isInitialized() && this.mcpBridge.isHealthy();
+    return MCPToolExecution.supportsMCP(this);
   }
 
-  /**
-   * Get MCP bridge configuration
-   */
-  getMCPConfig(): { serverUrl: string } | null {
-    if (!this.mcpBridge) return null;
-    const config = this.mcpBridge.getConfiguration();
-    return { serverUrl: config.mcpServer.url };
-  }
 
   /**
    * Get provider capabilities
