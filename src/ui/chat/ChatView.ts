@@ -13,7 +13,7 @@ import { ModelSelector, ModelOption } from './components/ModelSelector';
 import { AgentSelector, AgentOption } from './components/AgentSelector';
 import { ContextProgressBar } from './components/ContextProgressBar';
 import { ChatService } from '../../services/chat/ChatService';
-import { ConversationData } from '../../types/chat/ChatTypes';
+import { ConversationData, ConversationMessage } from '../../types/chat/ChatTypes';
 
 // Services
 import { ConversationManager, ConversationManagerEvents } from './services/ConversationManager';
@@ -180,8 +180,9 @@ export class ChatView extends ItemView {
     // Message handling
     const messageEvents: MessageManagerEvents = {
       onMessageAdded: (message) => this.messageDisplay.addUserMessage(message.content),
+      onAIMessageStarted: (message) => this.handleAIMessageStarted(message),
       onStreamingUpdate: (messageId, content, isComplete) => 
-        this.streamingController.updateStreamingMessage(messageId, content, !isComplete),
+        this.messageDisplay.updateMessageContent(messageId, content, !isComplete),
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
       onLoadingStateChanged: (loading) => this.uiStateController.setInputLoading(loading),
       onError: (message) => this.uiStateController.showError(message),
@@ -295,6 +296,11 @@ export class ChatView extends ItemView {
 
   private handleConversationsChanged(): void {
     this.conversationList.setConversations(this.conversationManager.getConversations());
+  }
+
+  private handleAIMessageStarted(message: ConversationMessage): void {
+    // Create AI message bubble directly without full conversation re-render
+    this.messageDisplay.addAIMessage(message);
   }
 
   private handleConversationUpdated(conversation: ConversationData): void {

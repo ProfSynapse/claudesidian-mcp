@@ -12,6 +12,7 @@ import { ConversationData, ConversationMessage, ToolCall, CreateConversationPara
 import { getErrorMessage } from '../../utils/errorUtils';
 import { MCPChatIntegration, MCPChatOptions } from './MCPChatIntegration';
 import { MCPConfigurationManager } from '../mcp/MCPConfigurationManager';
+import { ConversationContextBuilder } from './ConversationContextBuilder';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -35,6 +36,7 @@ export class ChatService {
   private mcpIntegration: MCPChatIntegration;
   private mcpConfig: MCPConfigurationManager;
   private toolEventCallback?: (messageId: string, event: 'started' | 'completed', data: any) => void;
+  private currentProvider?: string; // Track current provider for context building
   
   constructor(
     private dependencies: ChatServiceDependencies,
@@ -256,19 +258,27 @@ export class ChatService {
       const messageId = options?.messageId || `msg_${Date.now()}_ai`;
       let accumulatedContent = '';
 
-      // Build conversation context for LLM
-      const messages = conversation ? this.buildLLMMessages(conversation) : [];
+      // Get defaults from LLMService if user didn't select provider/model
+      const defaultModel = this.dependencies.llmService.getDefaultModel();
       
-      // Add system prompt if provided
-      if (options?.systemPrompt) {
+      // Get provider for context building
+      const provider = options?.provider || defaultModel.provider;
+      this.currentProvider = provider; // Store for context building
+      
+      console.log(`[ChatService] Using provider: ${provider} for conversation context`);
+
+      // Build conversation context for LLM with provider-specific formatting
+      const messages = conversation ? 
+        this.buildLLMMessages(conversation, provider, options?.systemPrompt) : [];
+      
+      // Add system prompt if provided and not already added by buildLLMMessages
+      if (options?.systemPrompt && !messages.some(m => m.role === 'system')) {
         messages.unshift({ role: 'system', content: options.systemPrompt });
       }
       
       messages.push({ role: 'user', content: userMessage });
-
-
-      // Get defaults from LLMService if user didn't select provider/model
-      const defaultModel = this.dependencies.llmService.getDefaultModel();
+      
+      console.log(`[ChatService] Final message context has ${messages.length} messages for LLM`);
       
       // Prepare MCP-enabled LLM options - use user selection or fallback to configured defaults
       const mcpOptions: MCPChatOptions = {
@@ -522,14 +532,34 @@ export class ChatService {
   }
 
   /**
-   * Build message history for LLM context
+   * Build message history for LLM context using provider-specific formatting
+   * 
+   * This method now uses ConversationContextBuilder to properly reconstruct
+   * conversation history with tool calls in the correct format for each provider.
    */
-  private buildLLMMessages(conversation: ConversationData): any[] {
-    return conversation.messages.map(msg => ({
-      role: msg.role,
-      content: msg.content,
-      toolCalls: msg.tool_calls
-    }));
+  private buildLLMMessages(conversation: ConversationData, provider?: string, systemPrompt?: string): any[] {
+    const currentProvider = provider || this.getCurrentProvider();
+    
+    console.log(`[ChatService] Building LLM context for provider: ${currentProvider}`);
+    console.log(`[ChatService] Conversation has ${conversation.messages.length} messages`);
+    
+    // Count tool calls for debugging
+    const totalToolCalls = conversation.messages.reduce((count, msg) => 
+      count + (msg.tool_calls?.length || 0), 0);
+    console.log(`[ChatService] Total tool calls in conversation: ${totalToolCalls}`);
+    
+    return ConversationContextBuilder.buildContextForProvider(
+      conversation, 
+      currentProvider, 
+      systemPrompt
+    );
+  }
+
+  /**
+   * Get current provider for context building
+   */
+  private getCurrentProvider(): string {
+    return this.currentProvider || this.dependencies.llmService.getDefaultModel().provider;
   }
 
   /**

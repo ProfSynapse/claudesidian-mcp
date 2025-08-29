@@ -7,6 +7,7 @@ import { ConversationData, ConversationMessage } from '../../../types/chat/ChatT
 
 export interface MessageManagerEvents {
   onMessageAdded: (message: ConversationMessage) => void;
+  onAIMessageStarted: (message: ConversationMessage) => void;
   onStreamingUpdate: (messageId: string, content: string, isComplete: boolean) => void;
   onConversationUpdated: (conversation: ConversationData) => void;
   onLoadingStateChanged: (isLoading: boolean) => void;
@@ -54,9 +55,9 @@ export class MessageManager {
         timestamp: Date.now()
       };
       
-      // Add user message to conversation and notify
+      // Add user message to conversation and display immediately (progressive updates only)
       conversation.messages.push(userMessage);
-      this.events.onConversationUpdated(conversation);
+      this.events.onMessageAdded(userMessage);
       
       // 2. Create placeholder AI message with loading animation
       const aiMessageId = `msg_${Date.now()}_ai`;
@@ -68,9 +69,9 @@ export class MessageManager {
         isLoading: true
       };
       
-      // Add placeholder AI message
+      // Add placeholder AI message and create bubble for streaming
       conversation.messages.push(placeholderAiMessage);
-      this.events.onConversationUpdated(conversation);
+      this.events.onAIMessageStarted(placeholderAiMessage);
 
       // 3. Stream AI response
       try {
@@ -143,8 +144,8 @@ export class MessageManager {
             // Save the final AI message to database (ChatService already handles tool calls)
             // No need to save again here as ChatService saves it in generateResponseStreaming
             
-            // Final conversation update
-            this.events.onConversationUpdated(conversation);
+            // No need for final conversation update - progressive updates handle everything
+            console.log('[MessageManager DEBUG] Streaming complete - no conversation re-render needed');
             break;
           }
         }
