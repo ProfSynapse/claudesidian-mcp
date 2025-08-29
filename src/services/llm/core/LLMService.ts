@@ -91,7 +91,7 @@ export class LLMService {
 
     if (providers.anthropic?.apiKey && providers.anthropic.enabled) {
       try {
-        this.adapters.set('anthropic', new AnthropicAdapter(providers.anthropic.apiKey));
+        this.adapters.set('anthropic', new AnthropicAdapter(providers.anthropic.apiKey, this.mcpConnector));
       } catch (error) {
         console.warn('Failed to initialize Anthropic adapter:', error);
       }
@@ -107,7 +107,7 @@ export class LLMService {
 
     if (providers.mistral?.apiKey && providers.mistral.enabled) {
       try {
-        this.adapters.set('mistral', new MistralAdapter(providers.mistral.apiKey));
+        this.adapters.set('mistral', new MistralAdapter(providers.mistral.apiKey, this.mcpConnector));
       } catch (error) {
         console.warn('Failed to initialize Mistral adapter:', error);
       }
@@ -115,7 +115,7 @@ export class LLMService {
 
     if (providers.groq?.apiKey && providers.groq.enabled) {
       try {
-        this.adapters.set('groq', new GroqAdapter(providers.groq.apiKey));
+        this.adapters.set('groq', new GroqAdapter(providers.groq.apiKey, this.mcpConnector));
       } catch (error) {
         console.warn('Failed to initialize Groq adapter:', error);
       }
@@ -123,7 +123,7 @@ export class LLMService {
 
     if (providers.requesty?.apiKey && providers.requesty.enabled) {
       try {
-        this.adapters.set('requesty', new RequestyAdapter(providers.requesty.apiKey));
+        this.adapters.set('requesty', new RequestyAdapter(providers.requesty.apiKey, this.mcpConnector));
       } catch (error) {
         console.warn('Failed to initialize Requesty adapter:', error);
       }
@@ -131,7 +131,7 @@ export class LLMService {
 
     if (providers.perplexity?.apiKey && providers.perplexity.enabled) {
       try {
-        this.adapters.set('perplexity', new PerplexityAdapter(providers.perplexity.apiKey));
+        this.adapters.set('perplexity', new PerplexityAdapter(providers.perplexity.apiKey, this.mcpConnector));
       } catch (error) {
         console.warn('Failed to initialize Perplexity adapter:', error);
       }
@@ -441,15 +441,14 @@ export class LLMService {
       model?: string;
       systemPrompt?: string;
       tools?: any[];
+      onToolEvent?: (event: 'started' | 'completed', data: any) => void;
     }
-  ): AsyncGenerator<{ chunk: string; complete: boolean; content: string }, void, unknown> {
+  ): AsyncGenerator<{ chunk: string; complete: boolean; content: string; toolCalls?: any[] }, void, unknown> {
     try {
-      console.log('[LLMService] generateResponseStream called with:', {
-        provider: options?.provider,
-        model: options?.model,
-        hasTools: !!(options?.tools && options.tools.length > 0),
-        toolCount: options?.tools?.length || 0
-      });
+      // Clean logs - only show tool count for debugging tool calls
+      if (options?.tools && options.tools.length > 0) {
+        console.log(`[LLMService] Using tools: ${options.tools.length} available`);
+      }
 
       // Validate settings
       if (!this.settings || !this.settings.defaultModel) {
@@ -467,7 +466,10 @@ export class LLMService {
         throw new Error(`Provider not available: ${provider}`);
       }
 
-      console.log('[LLMService] Using adapter:', provider, 'Type:', adapter.constructor.name);
+      // Adapter info only when using tools
+      if (options?.tools && options.tools.length > 0) {
+        console.log(`[LLMService] ${provider} adapter will handle ${options.tools.length} tools`);
+      }
 
       // Convert message array to single prompt
       const userPrompt = messages
@@ -484,30 +486,26 @@ export class LLMService {
       const generateOptions = {
         model,
         systemPrompt: systemPrompt || options?.systemPrompt,
-        tools: options?.tools
+        tools: options?.tools,
+        onToolEvent: options?.onToolEvent // Pass through tool event callback for live UI updates
       };
+      
+      console.log('[LLMService Debug] generateOptions built with onToolEvent:', !!generateOptions.onToolEvent);
 
-      console.log('[LLMService] Calling generateStreamAsync with options:', {
-        model: generateOptions.model,
-        hasSystemPrompt: !!generateOptions.systemPrompt,
-        hasTools: !!(generateOptions.tools && generateOptions.tools.length > 0),
-        toolCount: generateOptions.tools?.length || 0
-      });
+      // Remove verbose logging - only show model when using tools
+      if (generateOptions.tools && generateOptions.tools.length > 0) {
+        console.log(`[LLMService] Model: ${generateOptions.model}, Tools: ${generateOptions.tools.length}`);
+      }
 
       // For tool calls, use non-streaming mode due to complexity of tool execution + continuation
-      if ((provider === 'openai' || provider === 'openrouter') && generateOptions.tools && generateOptions.tools.length > 0) {
-        console.log(`[LLMService] Using non-streaming mode for ${provider} + tools (tool execution complexity)`);
+      // Note: Perplexity does not support function calling, so excluded from this list
+      if ((provider === 'openai' || provider === 'openrouter' || provider === 'groq' || provider === 'mistral' || provider === 'requesty') && generateOptions.tools && generateOptions.tools.length > 0) {
+        console.log(`[LLMService] ${provider}: Non-streaming tool execution mode`);
         
         // Use non-streaming generation for tool execution
         const result = await adapter.generate(userPrompt, generateOptions);
         
-        console.log('[LLMService] Tool execution result:', {
-          hasText: !!result.text,
-          textLength: result.text?.length || 0,
-          textPreview: result.text?.substring(0, 200) || '[NO TEXT]',
-          finishReason: result.finishReason,
-          hasMetadata: !!result.metadata
-        });
+        console.log(`[LLMService] Tool execution result: ${result.toolCalls?.length || 0} tool calls received`);
         
         const responseText = result.text || '[No response from AI]';
         
@@ -515,13 +513,15 @@ export class LLMService {
         yield {
           chunk: responseText,
           complete: false,
-          content: responseText
+          content: responseText,
+          toolCalls: result.toolCalls
         };
         
         yield {
           chunk: '',
           complete: true,
-          content: responseText
+          content: responseText,
+          toolCalls: result.toolCalls
         };
         
         return;
@@ -538,17 +538,18 @@ export class LLMService {
           yield {
             chunk: chunk.content,
             complete: false,
-            content: fullContent
+            content: fullContent,
+            toolCalls: undefined // Streaming mode typically doesn't have tool calls mid-stream
           };
         }
         
         if (chunk.complete) {
-          
           // Yield final completion
           yield {
             chunk: '',
             complete: true,
-            content: fullContent
+            content: fullContent,
+            toolCalls: undefined // Streaming mode typically doesn't have tool calls
           };
           break;
         }

@@ -34,6 +34,7 @@ export class ChatService {
   private toolCallHistory = new Map<string, ToolCall[]>();
   private mcpIntegration: MCPChatIntegration;
   private mcpConfig: MCPConfigurationManager;
+  private toolEventCallback?: (messageId: string, event: 'started' | 'completed', data: any) => void;
   
   constructor(
     private dependencies: ChatServiceDependencies,
@@ -49,6 +50,13 @@ export class ChatService {
     // Initialize MCP integration
     this.mcpConfig = new MCPConfigurationManager();
     this.mcpIntegration = new MCPChatIntegration(this.mcpConfig);
+  }
+
+  /**
+   * Set tool event callback for live UI updates
+   */
+  setToolEventCallback(callback: (messageId: string, event: 'started' | 'completed', data: any) => void): void {
+    this.toolEventCallback = callback;
   }
 
   /**
@@ -76,9 +84,8 @@ export class ChatService {
         this.mcpIntegration.autoConfigureProviders(this.dependencies.llmService);
       }
       
-      // Log available tools for debugging
-      this.availableTools.forEach(tool => {
-      });
+      // Log available tool count for debugging
+      console.log(`[ChatService] Initialized with ${this.availableTools.length} tools available`);
       
     } catch (error) {
       console.error('[ChatService] Failed to initialize MCP integration:', error);
@@ -244,7 +251,7 @@ export class ChatService {
       systemPrompt?: string;
       messageId?: string; // Allow passing existing messageId for UI consistency
     }
-  ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string }, void, unknown> {
+  ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string; toolCalls?: any[] }, void, unknown> {
     try {
       const messageId = options?.messageId || `msg_${Date.now()}_ai`;
       let accumulatedContent = '';
@@ -278,27 +285,67 @@ export class ChatService {
         mcpOptions,
         this.availableTools
       );
+      
+      // Add tool event callback for live UI updates
+      if (this.toolEventCallback) {
+        llmOptions.onToolEvent = (event: 'started' | 'completed', data: any) => {
+          this.toolEventCallback!(messageId, event, data);
+        };
+        console.log('[ChatService] Added tool event callback to llmOptions');
+      }
 
       // Stream the response from LLM service with MCP tools
+      let toolCalls: any[] | undefined = undefined;
+      
       for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
         accumulatedContent += chunk.chunk;
         
+        // Extract tool calls when available (typically on completion)
+        if (chunk.toolCalls) {
+          toolCalls = chunk.toolCalls;
+          console.log('[ChatService] Tool calls received in stream:', {
+            toolCallCount: toolCalls?.length || 0,
+            toolNames: toolCalls?.map(tc => tc.name || tc.function?.name).filter(Boolean) || [],
+            toolCallsStructure: toolCalls?.map(tc => ({
+              id: tc.id,
+              name: tc.name || tc.function?.name,
+              hasParameters: !!(tc.parameters || tc.arguments)
+            })) || []
+          });
+        }
         
-        yield {
-          chunk: chunk.chunk,
-          complete: chunk.complete,
-          messageId
-        };
-
+        // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
+          console.log('[ChatService] Saving message to repository:', {
+            conversationId,
+            role: 'assistant',
+            contentLength: accumulatedContent.length,
+            hasToolCalls: !!(toolCalls && toolCalls.length > 0),
+            toolCallCount: toolCalls?.length || 0,
+            toolCallsPreview: toolCalls?.slice(0, 2).map(tc => ({
+              id: tc.id,
+              name: tc.name || tc.function?.name,
+              hasResult: !!tc.result
+            })) || []
+          });
           
-          // Save the complete message to the repository
+          // Save the complete message to the repository with tool calls
           await this.dependencies.conversationRepo.addMessage({
             conversationId,
             role: 'assistant',
-            content: accumulatedContent
+            content: accumulatedContent,
+            toolCalls: toolCalls
           });
-          
+        }
+
+        yield {
+          chunk: chunk.chunk,
+          complete: chunk.complete,
+          messageId,
+          toolCalls: toolCalls
+        };
+
+        if (chunk.complete) {
           break;
         }
       }

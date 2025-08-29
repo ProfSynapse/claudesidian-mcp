@@ -4,6 +4,7 @@
 
 import { ModelOption } from '../components/ModelSelector';
 import { AgentOption } from '../components/AgentSelector';
+import { ProviderUtils } from '../utils/ProviderUtils';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -204,16 +205,9 @@ export class ModelAgentManager {
   }
 
   /**
-   * Get display name for provider
+   * Get display name for provider with tool calling indicator
    */
   private getProviderDisplayName(providerId: string): string {
-    const displayNames: Record<string, string> = {
-      'openai': 'OpenAI',
-      'anthropic': 'Anthropic',
-      'mistral': 'Mistral AI',
-      'ollama': 'Ollama',
-      'openrouter': 'OpenRouter'
-    };
-    return displayNames[providerId] || providerId;
+    return ProviderUtils.getProviderDisplayNameWithTools(providerId);
   }
 }

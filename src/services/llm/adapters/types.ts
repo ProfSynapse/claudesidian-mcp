@@ -17,6 +17,8 @@ export interface GenerateOptions {
   enableTools?: boolean;
   webSearch?: boolean;
   fileSearch?: boolean;
+  // Tool event callback for live UI updates
+  onToolEvent?: (event: 'started' | 'completed', data: any) => void;
   // Cache options
   disableCache?: boolean;
   cacheTTL?: number;

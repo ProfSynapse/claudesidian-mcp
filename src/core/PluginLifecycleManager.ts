@@ -102,16 +102,9 @@ export class PluginLifecycleManager {
             
             // Initialize connector with agents
             try {
-                console.log('[MCP Debug] PluginLifecycleManager about to call initializeAgents()');
                 await this.config.connector.initializeAgents();
-                console.log('[MCP Debug] PluginLifecycleManager about to call connector.start()');
-                console.log('[MCP Debug] connector object:', this.config.connector);
-                console.log('[MCP Debug] connector.start method:', typeof this.config.connector.start);
-                console.log('[MCP Debug] connector constructor:', this.config.connector.constructor.name);
                 await this.config.connector.start();
-                console.log('[MCP Debug] PluginLifecycleManager connector.start() completed');
             } catch (error) {
-                console.error('[MCP Debug] PluginLifecycleManager MCP initialization failed:', error);
                 console.warn('[PluginLifecycleManager] MCP initialization failed:', error);
             }
             

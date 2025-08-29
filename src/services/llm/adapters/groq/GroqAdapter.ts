@@ -16,59 +16,44 @@ import {
   ModelPricing
 } from '../types';
 import { GROQ_MODELS, GROQ_DEFAULT_MODEL } from './GroqModels';
+import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 
-export class GroqAdapter extends BaseAdapter {
+export class GroqAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'groq';
   readonly baseUrl = 'https://api.groq.com/openai/v1';
   
   private client: Groq;
+  mcpConnector?: any;
 
-  constructor(apiKey: string, model?: string) {
+  constructor(apiKey: string, mcpConnector?: any, model?: string) {
     super(apiKey, model || GROQ_DEFAULT_MODEL);
     
     this.client = new Groq({ 
       apiKey: this.apiKey,
       dangerouslyAllowBrowser: true 
     });
+    this.mcpConnector = mcpConnector;
     this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const response = await this.client.chat.completions.create({
-          model: options?.model || this.currentModel,
-          messages: this.buildMessages(prompt, options?.systemPrompt),
-          temperature: options?.temperature,
-          max_completion_tokens: options?.maxTokens,
-          top_p: options?.topP,
-          stop: options?.stopSequences,
-          tools: options?.tools ? this.convertTools(options.tools) : undefined,
-          response_format: options?.jsonMode ? { type: 'json_object' } : undefined
+    try {
+      const model = options?.model || this.currentModel;
+      
+      // If tools are provided (pre-converted by ChatService), use tool-enabled generation
+      if (options?.tools && options.tools.length > 0) {
+        console.log('[Groq Adapter] Using tool-enabled generation', {
+          toolCount: options.tools.length
         });
-
-        const usage = this.extractUsage(response);
-        const finishReason = this.mapFinishReason(response.choices[0]?.finish_reason);
-        const toolCalls = this.extractToolCalls(response.choices[0]?.message);
-
-        return await this.buildLLMResponse(
-          response.choices[0]?.message?.content || '',
-          options?.model || this.currentModel,
-          usage,
-          { 
-            provider: 'groq',
-            // Groq provides extended performance metrics
-            queueTime: (response as any).x_groq?.queue_time,
-            promptTime: (response as any).x_groq?.prompt_time,
-            completionTime: (response as any).x_groq?.completion_time
-          },
-          finishReason,
-          toolCalls
-        );
-      } catch (error) {
-        this.handleError(error, 'generation');
+        return await this.generateWithProvidedTools(prompt, options);
       }
-    });
+      
+      // Otherwise use basic chat completions
+      console.log('[Groq Adapter] Using basic chat completions (no tools)');
+      return await this.generateWithChatCompletions(prompt, options);
+    } catch (error) {
+      throw this.handleError(error, 'generation');
+    }
   }
 
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
@@ -149,7 +134,7 @@ export class GroqAdapter extends BaseAdapter {
   }
 
   getCapabilities(): ProviderCapabilities {
-    return {
+    const baseCapabilities = {
       supportsStreaming: true,
       supportsJSON: true,
       supportsImages: true,
@@ -166,6 +151,130 @@ export class GroqAdapter extends BaseAdapter {
         'extended_metrics'
       ]
     };
+
+    // Add MCP support if available
+    if (this.supportsMCP()) {
+      baseCapabilities.supportedFeatures.push('mcp_integration');
+    }
+
+    return baseCapabilities;
+  }
+
+  /**
+   * Check if MCP is available via connector
+   */
+  supportsMCP(): boolean {
+    return MCPToolExecution.supportsMCP(this);
+  }
+
+  /**
+   * Generate with pre-converted tools (from ChatService) using centralized execution
+   */
+  private async generateWithProvidedTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    // Use centralized tool execution wrapper to eliminate code duplication
+    const model = options?.model || this.currentModel;
+
+    return MCPToolExecution.executeWithToolSupport(
+      this,
+      'groq',
+      {
+        model,
+        tools: options?.tools || [],
+        prompt,
+        systemPrompt: options?.systemPrompt
+      },
+      {
+        buildMessages: (prompt: string, systemPrompt?: string) => 
+          this.buildMessages(prompt, systemPrompt),
+        
+        buildRequestBody: (messages: any[], isInitial: boolean) => ({
+          model,
+          messages,
+          tools: options?.tools,
+          tool_choice: 'auto',
+          temperature: options?.temperature,
+          max_completion_tokens: options?.maxTokens,
+          top_p: options?.topP,
+          stop: options?.stopSequences,
+          response_format: options?.jsonMode ? { type: 'json_object' } : undefined
+        }),
+        
+        makeApiCall: async (requestBody: any) => {
+          return await this.client.chat.completions.create(requestBody);
+        },
+        
+        extractResponse: async (response: any) => {
+          const choice = response.choices[0];
+          
+          return {
+            content: choice?.message?.content || '',
+            usage: this.extractUsage(response),
+            finishReason: choice?.finish_reason || 'stop',
+            toolCalls: choice?.message?.tool_calls,
+            choice: choice
+          };
+        },
+        
+        buildLLMResponse: async (
+          content: string,
+          model: string,
+          usage?: any,
+          metadata?: any,
+          finishReason?: any,
+          toolCalls?: any[]
+        ) => {
+          return this.buildLLMResponse(content, model, usage, metadata, finishReason, toolCalls);
+        }
+      }
+    );
+  }
+
+  /**
+   * Generate using standard chat completions
+   */
+  private async generateWithChatCompletions(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    const model = options?.model || this.currentModel;
+    
+    const chatParams: any = {
+      model,
+      messages: this.buildMessages(prompt, options?.systemPrompt),
+      temperature: options?.temperature,
+      max_completion_tokens: options?.maxTokens,
+      top_p: options?.topP,
+      stop: options?.stopSequences,
+      response_format: options?.jsonMode ? { type: 'json_object' } : undefined
+    };
+
+    // Add tools if provided
+    if (options?.tools) {
+      chatParams.tools = this.convertTools(options.tools);
+    }
+
+    const response = await this.client.chat.completions.create(chatParams);
+    const choice = response.choices[0];
+    
+    if (!choice) {
+      throw new Error('No response from Groq');
+    }
+    
+    let text = choice.message?.content || '';
+    const usage = this.extractUsage(response);
+    let finishReason = choice.finish_reason || 'stop';
+
+    // If tools were provided and we got tool calls, we need to handle them
+    // For now, just return the response as-is since tool execution is complex
+    if (options?.tools && choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
+      console.log(`[Groq Adapter] Received ${choice.message.tool_calls.length} tool calls, but tool execution not implemented in basic mode`);
+      text = text || '[AI requested tool calls but tool execution not available]';
+    }
+
+    return this.buildLLMResponse(
+      text,
+      model,
+      usage,
+      undefined,
+      finishReason as any
+    );
   }
 
   // Private methods

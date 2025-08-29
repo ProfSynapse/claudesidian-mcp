@@ -151,160 +151,72 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
   }
 
   /**
-   * Generate with pre-converted tools (from ChatService bridge)
-   * Implements user confirmation system for extended tool use
+   * Generate with pre-converted tools (from ChatService) using centralized execution
    */
   private async generateWithProvidedTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    // Use centralized tool execution wrapper to eliminate code duplication
     const model = options?.model || this.currentModel;
-    const messages = this.buildMessages(prompt, options?.systemPrompt);
-    
-    const TOOL_ITERATION_THRESHOLD = 15;
-    let totalToolIterations = 0;
-    
-    const chatParams: any = {
-      model,
-      messages,
-      tools: options?.tools, // Use pre-converted tools
-      tool_choice: 'auto'
-    };
 
-    // Add optional parameters
-    if (options?.temperature !== undefined) chatParams.temperature = options.temperature;
-    if (options?.maxTokens !== undefined) chatParams.max_tokens = options.maxTokens;
-    if (options?.jsonMode) chatParams.response_format = { type: 'json_object' };
-    if (options?.stopSequences) chatParams.stop = options.stopSequences;
-    if (options?.topP !== undefined) chatParams.top_p = options.topP;
-    if (options?.frequencyPenalty !== undefined) chatParams.frequency_penalty = options.frequencyPenalty;
-    if (options?.presencePenalty !== undefined) chatParams.presence_penalty = options.presencePenalty;
-
-    // Call OpenAI API
-    const response = await this.client.chat.completions.create(chatParams);
-    const choice = response.choices[0];
-
-    if (!choice) {
-      throw new Error('No response from OpenAI');
-    }
-
-    let finalText = choice.message?.content || '';
-    const usage = this.extractUsage({ usage: response.usage });
-    let finishReason = choice.finish_reason || 'stop';
-
-    console.log(`[OpenAI Adapter] Tool response analysis:`, {
-      hasContent: !!finalText,
-      contentLength: finalText.length,
-      finishReason,
-      hasToolCalls: !!(choice.message?.tool_calls),
-      toolCallCount: choice.message?.tool_calls?.length || 0
-    });
-
-    // Implement iterative tool execution with user confirmation system
-    let currentResponse = response;
-    let currentChoice = choice;
-    let conversationMessages = [...messages];
-    
-    // Tool execution loop with threshold protection
-    while (currentChoice?.message?.tool_calls && currentChoice.message.tool_calls.length > 0) {
-      totalToolIterations++;
-      
-      console.log(`[OpenAI Tool Safety] Tool iteration ${totalToolIterations}/${TOOL_ITERATION_THRESHOLD}`);
-      
-      // Check if we've hit the threshold
-      if (totalToolIterations >= TOOL_ITERATION_THRESHOLD) {
-        console.log(`[OpenAI Tool Safety] Hit ${TOOL_ITERATION_THRESHOLD} tool iteration threshold - activating dead switch`);
+    return MCPToolExecution.executeWithToolSupport(
+      this,
+      'openai',
+      {
+        model,
+        tools: options?.tools || [],
+        prompt,
+        systemPrompt: options?.systemPrompt
+      },
+      {
+        buildMessages: (prompt: string, systemPrompt?: string) => 
+          this.buildMessages(prompt, systemPrompt),
         
-        // Create dead switch response for the LLM
-        const deadSwitchMessage = {
-          role: 'system' as const,
-          content: `TOOL_LIMIT_REACHED: You have used ${TOOL_ITERATION_THRESHOLD} tool iterations. You must now ask the user if they want to continue with more tool calls. Explain what you've accomplished so far and what you still need to do. Wait for user confirmation before proceeding further.`
-        };
+        buildRequestBody: (messages: any[], isInitial: boolean) => {
+          const chatParams: any = {
+            model,
+            messages,
+            tools: options?.tools,
+            tool_choice: 'auto'
+          };
+
+          // Add optional parameters
+          if (options?.temperature !== undefined) chatParams.temperature = options.temperature;
+          if (options?.maxTokens !== undefined) chatParams.max_tokens = options.maxTokens;
+          if (options?.jsonMode) chatParams.response_format = { type: 'json_object' };
+          if (options?.stopSequences) chatParams.stop = options.stopSequences;
+          if (options?.topP !== undefined) chatParams.top_p = options.topP;
+          if (options?.frequencyPenalty !== undefined) chatParams.frequency_penalty = options.frequencyPenalty;
+          if (options?.presencePenalty !== undefined) chatParams.presence_penalty = options.presencePenalty;
+
+          return chatParams;
+        },
         
-        // Get final response with dead switch message
-        const deadSwitchMessages = [
-          ...conversationMessages,
-          currentChoice.message,
-          deadSwitchMessage
-        ];
+        makeApiCall: async (requestBody: any) => {
+          return await this.client.chat.completions.create(requestBody);
+        },
         
-        const deadSwitchResponse = await this.client.chat.completions.create({
-          model,
-          messages: deadSwitchMessages,
-          // Remove tools to force user interaction
-          temperature: options?.temperature,
-          max_tokens: options?.maxTokens
-        });
+        extractResponse: async (response: any) => {
+          const choice = response.choices[0];
+          
+          return {
+            content: choice?.message?.content || '',
+            usage: this.extractUsage({ usage: response.usage }),
+            finishReason: choice?.finish_reason || 'stop',
+            toolCalls: choice?.message?.tool_calls,
+            choice: choice
+          };
+        },
         
-        const deadSwitchChoice = deadSwitchResponse.choices[0];
-        if (deadSwitchChoice?.message?.content) {
-          finalText = deadSwitchChoice.message.content;
-          finishReason = 'stop';
-          console.log(`[OpenAI Tool Safety] Dead switch activated - awaiting user confirmation`);
+        buildLLMResponse: async (
+          content: string,
+          model: string,
+          usage?: any,
+          metadata?: any,
+          finishReason?: any,
+          toolCalls?: any[]
+        ) => {
+          return this.buildLLMResponse(content, model, usage, metadata, finishReason, toolCalls);
         }
-        break;
       }
-      
-      // Execute current tool calls
-      console.log(`[OpenAI Adapter] Processing ${currentChoice.message.tool_calls.length} tool calls (iteration ${totalToolIterations})`);
-      
-      try {
-        // Convert OpenAI tool calls to MCPToolCall format
-        const mcpToolCalls = currentChoice.message.tool_calls.map(tc => ({
-          id: tc.id,
-          function: {
-            name: (tc as any).function?.name || '',
-            arguments: (tc as any).function?.arguments || '{}'
-          }
-        }));
-        
-        // Execute tools via shared MCP utility
-        const toolResults = await MCPToolExecution.executeToolCalls(this, mcpToolCalls, 'openai');
-        
-        // Create tool result messages for OpenAI continuation
-        const toolMessages = MCPToolExecution.buildToolMessages(toolResults);
-        
-        // Update conversation with tool call and results
-        conversationMessages = [
-          ...conversationMessages,
-          currentChoice.message,
-          ...toolMessages
-        ];
-        
-        console.log(`[OpenAI Adapter] Continuing conversation with ${toolResults.length} tool results`);
-
-        // Make continuation request with tools still available
-        const continuationResponse = await this.client.chat.completions.create({
-          model,
-          messages: conversationMessages,
-          tools: options?.tools as any,
-          tool_choice: 'auto',
-          temperature: options?.temperature,
-          max_tokens: options?.maxTokens
-        });
-
-        // Update for next iteration
-        currentResponse = continuationResponse;
-        currentChoice = continuationResponse.choices[0];
-        
-        if (currentChoice?.message?.content) {
-          finalText = currentChoice.message.content;
-          finishReason = currentChoice.finish_reason || 'stop';
-        }
-        
-      } catch (error) {
-        console.error('[OpenAI Adapter] Tool execution failed:', error);
-        const toolNames = (currentChoice.message.tool_calls || []).map((tc: any) => tc.function?.name).join(', ');
-        finalText = `I tried to use tools (${toolNames}) but encountered an error: ${error instanceof Error ? error.message : String(error)}`;
-        break;
-      }
-    }
-    
-    console.log(`[OpenAI Tool Safety] Tool execution completed after ${totalToolIterations} iterations`);
-
-    return this.buildLLMResponse(
-      finalText,
-      model,
-      usage,
-      undefined,
-      finishReason as any
     );
   }
 

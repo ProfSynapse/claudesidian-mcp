@@ -27,7 +27,7 @@ type JSONSchema = {
 /**
  * Supported LLM providers that can use the bridge system
  */
-export type SupportedProvider = 'openai' | 'openrouter' | 'anthropic' | 'google' | 'groq' | 'mistral';
+export type SupportedProvider = 'openai' | 'openrouter' | 'anthropic' | 'google' | 'groq' | 'mistral' | 'perplexity' | 'requesty';
 
 /**
  * Diagnostic levels for bridge system logging

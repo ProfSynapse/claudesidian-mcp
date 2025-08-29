@@ -326,7 +326,7 @@
 
 /* Message Container (wrapper for bubble + external actions) */
 .message-container {
-    width: 75%;
+    width: 90%;
     position: relative;
     animation: messageSlideIn 0.3s ease-out;
 }
@@ -334,14 +334,14 @@
 /* Wider screens - reduce bubble width for better readability */
 @media (min-width: 1200px) {
     .message-container {
-        width: 65%;
+        width: 85%;
     }
 }
 
 /* Very wide screens - further reduce for optimal reading */
 @media (min-width: 1600px) {
     .message-container {
-        width: 55%;
+        width: 70%;
     }
 }
 
@@ -649,6 +649,165 @@
 .tool-error-content {
     color: var(--text-error);
     font-size: 0.8rem;
+}
+
+/* Progressive Tool Accordion - Real-time execution display */
+.progressive-tool-accordion {
+    margin-top: 0.75rem;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.progressive-tool-header {
+    padding: 0.5rem 0.75rem;
+    background: var(--background-secondary);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.progressive-tool-header:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* Glow effect during tool execution */
+.progressive-tool-header.tool-executing {
+    background: var(--interactive-accent);
+    background-image: linear-gradient(90deg, 
+        var(--interactive-accent) 0%, 
+        var(--interactive-accent-hover) 50%, 
+        var(--interactive-accent) 100%);
+    background-size: 200% 100%;
+    animation: toolGlow 2s ease-in-out infinite;
+    box-shadow: 0 0 12px var(--interactive-accent);
+}
+
+@keyframes toolGlow {
+    0% { 
+        background-position: -200% 0;
+        box-shadow: 0 0 8px var(--interactive-accent);
+    }
+    50% {
+        background-position: 200% 0;
+        box-shadow: 0 0 16px var(--interactive-accent);
+    }
+    100% { 
+        background-position: -200% 0;
+        box-shadow: 0 0 8px var(--interactive-accent);
+    }
+}
+
+/* Executing tool icon animation */
+.tool-icon.tool-executing {
+    animation: toolSpin 1s linear infinite;
+}
+
+@keyframes toolSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Spinning status icons */
+.tool-status-icon.spinning {
+    animation: toolSpin 1s linear infinite;
+}
+
+.progressive-tool-content {
+    background: var(--background-primary);
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Progressive tool items */
+.progressive-tool-item {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--background-modifier-border);
+    transition: all 0.3s ease;
+}
+
+.progressive-tool-item:last-child {
+    border-bottom: none;
+}
+
+/* Tool execution states */
+.progressive-tool-item.tool-pending {
+    opacity: 0.6;
+    background: var(--background-secondary);
+}
+
+.progressive-tool-item.tool-executing {
+    background: linear-gradient(90deg, 
+        var(--background-primary) 0%, 
+        var(--background-modifier-hover) 50%, 
+        var(--background-primary) 100%);
+    background-size: 200% 100%;
+    animation: toolExecuting 2s ease-in-out infinite;
+    border-left: 3px solid var(--interactive-accent);
+}
+
+@keyframes toolExecuting {
+    0% { background-position: -200% 0; }
+    50% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.progressive-tool-item.tool-completed {
+    background: var(--background-success);
+    border-left: 3px solid var(--text-success);
+    animation: toolCompleted 0.5s ease-out;
+}
+
+@keyframes toolCompleted {
+    0% { 
+        transform: scale(1.02);
+        box-shadow: 0 0 12px var(--color-green);
+    }
+    100% { 
+        transform: scale(1);
+        box-shadow: none;
+    }
+}
+
+.progressive-tool-item.tool-failed {
+    background: var(--background-modifier-error);
+    border-left: 3px solid var(--text-error);
+    animation: toolFailed 0.5s ease-out;
+}
+
+@keyframes toolFailed {
+    0% { 
+        transform: scale(1.02);
+        box-shadow: 0 0 12px var(--color-red);
+    }
+    100% { 
+        transform: scale(1);
+        box-shadow: none;
+    }
+}
+
+.progressive-tool-header-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+}
+
+/* Enhanced color coding for different states */
+.tool-executing .tool-text {
+    color: var(--interactive-accent);
+    font-weight: 500;
+}
+
+.tool-completed .tool-text {
+    color: var(--text-success);
+}
+
+.tool-failed .tool-text {
+    color: var(--text-error);
 }
 
 /* Chat Input */

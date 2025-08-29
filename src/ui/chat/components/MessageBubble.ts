@@ -5,15 +5,20 @@
  */
 
 import { ConversationMessage } from '../../../types/chat/ChatTypes';
+import { ToolAccordion } from './ToolAccordion';
+import { ProgressiveToolAccordion } from './ProgressiveToolAccordion';
 
 export class MessageBubble {
   private element: HTMLElement | null = null;
+  private loadingInterval: any = null;
+  private progressiveToolAccordion: ProgressiveToolAccordion | null = null;
 
   constructor(
     private message: ConversationMessage,
     private onCopy: (messageId: string) => void,
     private onRetry: (messageId: string) => void,
-    private onEdit?: (messageId: string, newContent: string) => void
+    private onEdit?: (messageId: string, newContent: string) => void,
+    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void
   ) {}
 
   /**
@@ -85,6 +90,13 @@ export class MessageBubble {
    * Render message content with basic markdown
    */
   private renderContent(container: HTMLElement, content: string): void {
+    // Handle loading state for AI messages
+    if (this.message.isLoading && this.message.role === 'assistant' && !content.trim()) {
+      container.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
+      this.startLoadingAnimation(container);
+      return;
+    }
+
     // Simple markdown rendering - can be enhanced later
     const lines = content.split('\n');
     
@@ -131,6 +143,54 @@ export class MessageBubble {
       // Empty lines (line breaks)
       else if (i > 0 && lines[i - 1].trim()) {
         container.createEl('br');
+      }
+    }
+
+    // Add tool accordion if there are tool calls
+    this.renderToolCalls(container);
+  }
+
+  /**
+   * Render tool calls accordion within the message content
+   */
+  private renderToolCalls(container: HTMLElement): void {
+    // For streaming/live messages, create progressive accordion
+    if (this.message.role === 'assistant' && !this.progressiveToolAccordion) {
+      this.progressiveToolAccordion = new ProgressiveToolAccordion();
+      const progressiveEl = this.progressiveToolAccordion.createElement();
+      container.appendChild(progressiveEl);
+    }
+
+    // For completed messages, show static tool accordion
+    if (this.message.tool_calls && this.message.tool_calls.length > 0 && !this.message.isLoading) {
+      console.log('[MessageBubble] Rendering static tool accordion inside message:', {
+        messageId: this.message.id,
+        toolCallCount: this.message.tool_calls.length,
+        toolNames: this.message.tool_calls.map(tc => tc.name).filter(Boolean)
+      });
+      
+      // If we have a progressive accordion, populate it with completed tools
+      if (this.progressiveToolAccordion) {
+        this.message.tool_calls.forEach(toolCall => {
+          // Simulate the execution flow for completed tools
+          this.progressiveToolAccordion!.startTool({
+            id: toolCall.id,
+            name: toolCall.name,
+            parameters: toolCall.parameters
+          });
+          
+          this.progressiveToolAccordion!.completeTool(
+            toolCall.id,
+            toolCall.result,
+            toolCall.success,
+            toolCall.error
+          );
+        });
+      } else {
+        // Fallback to static accordion for non-assistant messages
+        const toolAccordion = new ToolAccordion(this.message.tool_calls);
+        const toolEl = toolAccordion.createElement();
+        container.appendChild(toolEl);
       }
     }
   }
@@ -249,10 +309,210 @@ export class MessageBubble {
   }
 
   /**
+   * Start loading animation (animated dots)
+   */
+  private startLoadingAnimation(container: HTMLElement): void {
+    const dotsElement = container.querySelector('.dots');
+    if (dotsElement) {
+      let dotCount = 0;
+      this.loadingInterval = setInterval(() => {
+        dotCount = (dotCount + 1) % 4;
+        dotsElement.textContent = '.'.repeat(dotCount);
+      }, 500);
+    }
+  }
+
+  /**
+   * Stop loading animation
+   */
+  private stopLoadingAnimation(): void {
+    if (this.loadingInterval) {
+      clearInterval(this.loadingInterval);
+      this.loadingInterval = null;
+    }
+  }
+
+  /**
+   * Update content after streaming starts
+   */
+  updateContent(content: string, isStreaming: boolean = false): void {
+    if (!this.element) return;
+
+    const contentElement = this.element.querySelector('.message-content');
+    if (!contentElement) return;
+
+    // Stop loading animation
+    this.stopLoadingAnimation();
+
+    // Preserve existing progressive tool accordion if it exists
+    let progressiveAccordionElement: HTMLElement | null = null;
+    if (this.progressiveToolAccordion) {
+      progressiveAccordionElement = contentElement.querySelector('.progressive-tool-accordion');
+    }
+
+    // Update content
+    if (isStreaming) {
+      contentElement.innerHTML = `<div class="streaming-content">${this.escapeHtml(content)}<span class="streaming-cursor">|</span></div>`;
+    } else {
+      contentElement.innerHTML = `<div class="final-content">${this.escapeHtml(content)}</div>`;
+    }
+
+    // Re-append progressive tool accordion if it existed
+    if (progressiveAccordionElement && this.progressiveToolAccordion) {
+      contentElement.appendChild(progressiveAccordionElement);
+      console.log('[MessageBubble] Preserved progressive tool accordion during content update');
+    }
+  }
+
+  /**
+   * Update MessageBubble with new message data (including tool calls)
+   * This triggers a re-render when tool calls are detected from LLM
+   */
+  updateWithNewMessage(newMessage: ConversationMessage): void {
+    console.log('[MessageBubble] Updating with new message data:', {
+      messageId: newMessage.id,
+      hasToolCalls: !!(newMessage.tool_calls && newMessage.tool_calls.length > 0),
+      toolCallCount: newMessage.tool_calls?.length || 0,
+      isLoading: newMessage.isLoading
+    });
+
+    // Update stored message reference
+    this.message = newMessage;
+
+    if (!this.element) return;
+    const contentElement = this.element.querySelector('.message-content');
+    if (!contentElement) return;
+
+    // Clear existing content
+    contentElement.empty();
+
+    // Re-render content with the new message data
+    this.renderContent(contentElement as HTMLElement, newMessage.content);
+
+    // If there are tool calls, render them
+    if (newMessage.tool_calls && newMessage.tool_calls.length > 0) {
+      this.renderToolCalls(contentElement as HTMLElement);
+    }
+
+    // If still loading, show appropriate loading state
+    if (newMessage.isLoading && newMessage.role === 'assistant') {
+      const loadingDiv = contentElement.createDiv('ai-loading-continuation');
+      loadingDiv.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
+      this.startLoadingAnimation(loadingDiv);
+    }
+
+    console.log('[MessageBubble] Re-rendered with tool calls and loading state');
+  }
+
+  /**
+   * Escape HTML for safe display
+   */
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Start tool execution (real-time)
+   */
+  startToolExecution(toolCall: { id: string; name: string; parameters?: any }): void {
+    console.log('[MessageBubble] Starting tool execution:', toolCall.name);
+    if (this.progressiveToolAccordion) {
+      this.progressiveToolAccordion.startTool(toolCall);
+    }
+  }
+
+  /**
+   * Complete tool execution (real-time)
+   */
+  completeToolExecution(toolId: string, result: any, success: boolean, error?: string): void {
+    console.log('[MessageBubble] Completing tool execution:', toolId);
+    if (this.progressiveToolAccordion) {
+      this.progressiveToolAccordion.completeTool(toolId, result, success, error);
+    }
+  }
+
+  /**
+   * Handle tool events from MessageManager
+   */
+  handleToolEvent(event: 'detected' | 'started' | 'completed', data: any): void {
+    console.log('[MessageBubble] Handling tool event:', event, data);
+    
+    switch(event) {
+      case 'detected':
+        // Tool calls detected - but don't show accordions yet (they come individually via 'started' events)
+        console.log('[MessageBubble] Tool calls detected, waiting for individual execution events');
+        break;
+      case 'started':
+        // Individual tool started - show accordion for this specific tool
+        console.log('[MessageBubble] Individual tool started - adding accordion:', data.name);
+        
+        // Initialize ProgressiveToolAccordion if needed for assistant messages
+        if (this.message.role === 'assistant' && !this.progressiveToolAccordion) {
+          console.log('[MessageBubble] Initializing ProgressiveToolAccordion for progressive tool execution');
+          this.initializeProgressiveToolAccordion();
+        }
+        
+        // Add accordion for this specific tool
+        if (this.progressiveToolAccordion) {
+          this.startToolExecution({
+            id: data.id,
+            name: data.name,
+            parameters: data.parameters
+          });
+        }
+        break;
+      case 'completed':
+        // Individual tool completed  
+        this.completeToolExecution(data.toolId, data.result, data.success, data.error);
+        break;
+    }
+  }
+
+  /**
+   * Initialize ProgressiveToolAccordion for live tool execution
+   */
+  private initializeProgressiveToolAccordion(): void {
+    if (!this.element) return;
+    
+    const contentElement = this.element.querySelector('.message-content');
+    if (!contentElement) return;
+    
+    // Keep existing content and loading state, but add accordion alongside it
+    // Don't clear loading state - we want "Thinking..." to continue during tool execution
+    
+    // Create the progressive tool accordion
+    this.progressiveToolAccordion = new ProgressiveToolAccordion();
+    const progressiveEl = this.progressiveToolAccordion.createElement();
+    
+    // Append accordion to message content (alongside existing content/loading)
+    contentElement.appendChild(progressiveEl);
+    
+    // Add a continuation loading state for additional tools
+    const continuationLoading = contentElement.createDiv('ai-loading-continuation');
+    continuationLoading.innerHTML = '<span class="ai-loading">Processing more tools<span class="dots">...</span></span>';
+    this.startLoadingAnimation(continuationLoading);
+    
+    console.log('[MessageBubble] ProgressiveToolAccordion initialized, keeping existing loading state');
+  }
+
+  /**
+   * Get progressive tool accordion for external updates
+   */
+  getProgressiveToolAccordion(): ProgressiveToolAccordion | null {
+    return this.progressiveToolAccordion;
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup(): void {
-    // Clean up event listeners if needed
+    this.stopLoadingAnimation();
+    if (this.progressiveToolAccordion) {
+      this.progressiveToolAccordion.cleanup();
+      this.progressiveToolAccordion = null;
+    }
     this.element = null;
   }
 }

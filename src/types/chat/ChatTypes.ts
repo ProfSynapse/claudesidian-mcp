@@ -44,6 +44,7 @@ export interface ToolCall {
   result?: any;
   success: boolean;
   error?: string;
+  executionTime?: number;        // Execution time in milliseconds
 }
 
 /**

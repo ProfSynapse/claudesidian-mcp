@@ -15,14 +15,16 @@ import {
   ModelPricing
 } from '../types';
 import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './AnthropicModels';
+import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 
-export class AnthropicAdapter extends BaseAdapter {
+export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'anthropic';
   readonly baseUrl = 'https://api.anthropic.com';
   
   private client: Anthropic;
+  mcpConnector?: any;
 
-  constructor(apiKey: string, model?: string) {
+  constructor(apiKey: string, mcpConnector?: any, model?: string) {
     super(apiKey, model || ANTHROPIC_DEFAULT_MODEL);
     
     this.client = new Anthropic({
@@ -31,69 +33,24 @@ export class AnthropicAdapter extends BaseAdapter {
       dangerouslyAllowBrowser: true
     });
     
+    this.mcpConnector = mcpConnector;
     this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     return this.withRetry(async () => {
       try {
-        const messages = this.buildMessages(prompt, options?.systemPrompt);
-        
-        const requestParams: any = {
-          model: options?.model || this.currentModel,
-          max_tokens: options?.maxTokens || 4096,
-          messages: messages.filter(msg => msg.role !== 'system'),
-          temperature: options?.temperature,
-          stop_sequences: options?.stopSequences
-        };
-
-        // Add system message if provided
-        const systemMessage = messages.find(msg => msg.role === 'system');
-        if (systemMessage) {
-          requestParams.system = systemMessage.content;
-        }
-
-        // Extended thinking mode for Claude 4 models
-        if (options?.enableThinking && this.supportsThinking(options?.model || this.currentModel)) {
-          requestParams.thinking = {
-            type: 'enabled',
-            budget_tokens: 16000
-          };
-        }
-
-        // Add tools if provided
+        // If tools are provided (pre-converted by ChatService), use tool-enabled generation
         if (options?.tools && options.tools.length > 0) {
-          requestParams.tools = this.convertTools(options.tools);
-        }
-
-        // Special tools
-        if (options?.webSearch) {
-          requestParams.tools = requestParams.tools || [];
-          requestParams.tools.push({
-            type: 'web_search_20250305',
-            name: 'web_search',
-            max_uses: 5
+          console.log('[Anthropic Adapter] Using tool-enabled generation', {
+            toolCount: options.tools.length
           });
+          return await this.generateWithProvidedTools(prompt, options);
         }
-
-        const response = await this.client.messages.create(requestParams);
         
-        const extractedUsage = this.extractUsage(response);
-        const finishReason = this.mapStopReason(response.stop_reason);
-        const toolCalls = this.extractToolCalls(response.content);
-        const metadata = {
-          thinking: this.extractThinking(response),
-          stopSequence: response.stop_sequence
-        };
-
-        return await this.buildLLMResponse(
-          this.extractTextFromContent(response.content),
-          response.model,
-          extractedUsage,
-          metadata,
-          finishReason,
-          toolCalls
-        );
+        // Otherwise use basic message generation
+        console.log('[Anthropic Adapter] Using basic message generation (no tools)');
+        return await this.generateWithBasicMessages(prompt, options);
       } catch (error) {
         this.handleError(error, 'generation');
       }
@@ -247,6 +204,161 @@ export class AnthropicAdapter extends BaseAdapter {
         'streaming'
       ]
     };
+  }
+
+  /**
+   * Generate with pre-converted tools (from ChatService) using centralized execution
+   */
+  private async generateWithProvidedTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    // Use centralized tool execution wrapper to eliminate code duplication
+    const model = options?.model || this.currentModel;
+    let systemMessage: string | undefined;
+
+    return MCPToolExecution.executeWithToolSupport(
+      this,
+      'anthropic',
+      {
+        model,
+        tools: options?.tools || [],
+        prompt,
+        systemPrompt: options?.systemPrompt
+      },
+      {
+        buildMessages: (prompt: string, systemPrompt?: string) => {
+          const messages = this.buildMessages(prompt, systemPrompt);
+          systemMessage = messages.find(msg => msg.role === 'system')?.content;
+          return messages.filter(msg => msg.role !== 'system');
+        },
+        
+        buildRequestBody: (messages: any[], isInitial: boolean) => {
+          const requestParams: any = {
+            model,
+            max_tokens: options?.maxTokens || 4096,
+            messages,
+            temperature: options?.temperature,
+            stop_sequences: options?.stopSequences,
+            tools: this.convertTools(options?.tools || [])
+          };
+
+          // Add system message if available
+          if (systemMessage) {
+            requestParams.system = systemMessage;
+          }
+
+          // Extended thinking mode for Claude 4 models
+          if (options?.enableThinking && this.supportsThinking(model)) {
+            requestParams.thinking = {
+              type: 'enabled',
+              budget_tokens: 16000
+            };
+          }
+
+          return requestParams;
+        },
+        
+        makeApiCall: async (requestBody: any) => {
+          return await this.client.messages.create(requestBody);
+        },
+        
+        extractResponse: async (response: any) => {
+          const toolCalls = this.extractToolCalls(response.content);
+          
+          return {
+            content: this.extractTextFromContent(response.content),
+            usage: this.extractUsage(response),
+            finishReason: this.mapStopReason(response.stop_reason),
+            toolCalls: toolCalls,
+            choice: {
+              message: {
+                content: response.content,
+                tool_calls: toolCalls.length > 0 ? toolCalls : undefined
+              }
+            }
+          };
+        },
+        
+        buildLLMResponse: async (
+          content: string,
+          model: string,
+          usage?: any,
+          metadata?: any,
+          finishReason?: any,
+          toolCalls?: any[]
+        ) => {
+          // Find latest response to extract metadata
+          const finalMetadata = {
+            ...metadata,
+            thinking: this.extractThinking({ content: [] }), // Will be properly extracted during execution
+            stopSequence: undefined // Will be properly extracted during execution
+          };
+          
+          return this.buildLLMResponse(content, model, usage, finalMetadata, finishReason, toolCalls);
+        }
+      }
+    );
+  }
+
+  /**
+   * Generate using basic message API without tools
+   */
+  private async generateWithBasicMessages(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    const messages = this.buildMessages(prompt, options?.systemPrompt);
+    
+    const requestParams: any = {
+      model: options?.model || this.currentModel,
+      max_tokens: options?.maxTokens || 4096,
+      messages: messages.filter(msg => msg.role !== 'system'),
+      temperature: options?.temperature,
+      stop_sequences: options?.stopSequences
+    };
+
+    // Add system message if provided
+    const systemMessage = messages.find(msg => msg.role === 'system');
+    if (systemMessage) {
+      requestParams.system = systemMessage.content;
+    }
+
+    // Extended thinking mode for Claude 4 models
+    if (options?.enableThinking && this.supportsThinking(options?.model || this.currentModel)) {
+      requestParams.thinking = {
+        type: 'enabled',
+        budget_tokens: 16000
+      };
+    }
+
+    // Add tools if provided
+    if (options?.tools && options.tools.length > 0) {
+      requestParams.tools = this.convertTools(options.tools);
+    }
+
+    // Special tools
+    if (options?.webSearch) {
+      requestParams.tools = requestParams.tools || [];
+      requestParams.tools.push({
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 5
+      });
+    }
+
+    const response = await this.client.messages.create(requestParams);
+    
+    const extractedUsage = this.extractUsage(response);
+    const finishReason = this.mapStopReason(response.stop_reason);
+    const toolCalls = this.extractToolCalls(response.content);
+    const metadata = {
+      thinking: this.extractThinking(response),
+      stopSequence: response.stop_sequence
+    };
+
+    return await this.buildLLMResponse(
+      this.extractTextFromContent(response.content),
+      response.model,
+      extractedUsage,
+      metadata,
+      finishReason,
+      toolCalls
+    );
   }
 
   // Private methods

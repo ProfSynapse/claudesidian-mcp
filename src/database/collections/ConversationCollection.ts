@@ -150,22 +150,45 @@ export class ConversationCollection {
    */
   async getConversation(conversationId: string): Promise<ConversationDocument | null> {
     try {
+      console.log(`[ConversationCollection] Getting conversation: ${conversationId}`);
+      
       const results = await this.vectorStore.getItems(
         ConversationCollection.COLLECTION_NAME, 
         [conversationId],
         ['documents', 'metadatas', 'embeddings']
       );
 
+      console.log(`[ConversationCollection] VectorStore results:`, {
+        conversationId,
+        found: !!(results.documents && results.documents.length > 0),
+        documentsCount: results.documents?.length || 0,
+        hasMetadata: !!(results.metadatas && results.metadatas.length > 0),
+        metadataPreview: results.metadatas?.[0] ? {
+          title: results.metadatas[0].title,
+          messageCount: results.metadatas[0].message_count,
+          hasConversationData: !!(results.metadatas[0].conversation)
+        } : null
+      });
+
       if (!results.documents || results.documents.length === 0) {
+        console.log(`[ConversationCollection] No conversation found for ID: ${conversationId}`);
         return null;
       }
 
-      return {
+      const document = {
         id: conversationId,
         document: results.documents[0],
         metadata: results.metadatas?.[0] as ConversationDocument['metadata'],
         embedding: results.embeddings?.[0] || []
       };
+      
+      console.log(`[ConversationCollection] Returning conversation:`, {
+        conversationId,
+        hasConversationInMetadata: !!(document.metadata?.conversation),
+        messageCount: document.metadata?.conversation?.messages?.length || 0
+      });
+
+      return document;
     } catch (error) {
       console.error(`[ConversationCollection] Failed to get conversation ${conversationId}:`, error);
       return null;

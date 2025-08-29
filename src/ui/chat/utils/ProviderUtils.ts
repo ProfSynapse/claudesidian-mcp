@@ -15,7 +15,10 @@ export class ProviderUtils {
       'openrouter': 'OpenRouter',
       'google': 'Google',
       'cohere': 'Cohere',
-      'huggingface': 'Hugging Face'
+      'huggingface': 'Hugging Face',
+      'groq': 'Groq',
+      'perplexity': 'Perplexity',
+      'requesty': 'Requesty'
     };
     return displayNames[providerId] || this.capitalizeString(providerId);
   }
@@ -140,15 +143,55 @@ export class ProviderUtils {
   }
 
   /**
-   * Check if provider supports function calling
+   * Check if provider supports function calling (tool calling)
+   * Based on API documentation research as of 2024-2025
    */
   static supportsFunctionCalling(providerId: string): boolean {
     const functionCallingProviders = [
-      'openai',
-      'anthropic',
-      'mistral'
+      'openai',      // ✅ Native OpenAI function calling
+      'openrouter',  // ✅ OpenAI-compatible function calling
+      'groq',        // ✅ OpenAI-compatible function calling  
+      'mistral',     // ✅ Native Mistral function calling
+      'requesty',    // ✅ OpenAI-compatible function calling
+      'anthropic'    // ✅ Native Claude tool calling
     ];
+    // Note: Perplexity does NOT support function calling (web search focused)
     return functionCallingProviders.includes(providerId);
+  }
+
+  /**
+   * Get lucide wrench icon SVG for providers that support function calling
+   */
+  static getToolIconSVG(): string {
+    return '<svg class="lucide lucide-wrench" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
+  }
+
+  /**
+   * Get provider display name with tool icon if supported
+   * For optgroup labels, uses text-based indicator since HTML isn't supported
+   */
+  static getProviderDisplayNameWithTools(providerId: string): string {
+    const displayName = this.getProviderDisplayName(providerId);
+    const supportsTools = this.supportsFunctionCalling(providerId);
+    
+    if (supportsTools) {
+      return `${displayName} 🔧`; // Using emoji for optgroup compatibility
+    }
+    return displayName;
+  }
+
+  /**
+   * Get provider display name with HTML tool icon for other UI contexts
+   * Returns HTML string with SVG icon for tool-capable providers
+   */
+  static getProviderDisplayNameWithToolsHTML(providerId: string): string {
+    const displayName = this.getProviderDisplayName(providerId);
+    const supportsTools = this.supportsFunctionCalling(providerId);
+    
+    if (supportsTools) {
+      return `${displayName} ${this.getToolIconSVG()}`;
+    }
+    return displayName;
   }
 
   /**

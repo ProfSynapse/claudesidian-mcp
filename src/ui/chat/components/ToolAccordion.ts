@@ -37,7 +37,17 @@ export class ToolAccordion {
     
     // Text
     const text = summary.createSpan('tool-text');
-    text.textContent = `${totalCount} tool${totalCount !== 1 ? 's' : ''} executed`;
+    if (totalCount === 1) {
+      text.textContent = this.toolCalls[0].name;
+    } else {
+      const toolNames = this.toolCalls.map(tc => tc.name).slice(0, 2);
+      const remaining = totalCount - 2;
+      if (remaining > 0) {
+        text.textContent = `${toolNames.join(', ')} +${remaining} more`;
+      } else {
+        text.textContent = toolNames.join(', ');
+      }
+    }
     
     // Expand indicator
     const expandIcon = header.createDiv('tool-expand-icon');
@@ -76,9 +86,11 @@ export class ToolAccordion {
     const name = header.createSpan('tool-name');
     name.textContent = toolCall.name;
     
-    // Execution time (if available)
-    const meta = header.createSpan('tool-meta');
-    meta.textContent = `#${index + 1}`;
+    // Execution time (if available) 
+    if (toolCall.executionTime) {
+      const meta = header.createSpan('tool-meta');
+      meta.textContent = `${toolCall.executionTime}ms`;
+    }
 
     // Parameters section
     if (toolCall.parameters && Object.keys(toolCall.parameters).length > 0) {

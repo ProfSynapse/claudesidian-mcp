@@ -28,56 +28,35 @@ export class ServerLifecycleManager {
      * Start the server
      */
     async startServer(): Promise<void> {
-        console.log('[MCP Debug] ServerLifecycleManager.startServer() called - ACTUAL METHOD');
-        logger.systemLog('[MCP Debug] ServerLifecycleManager.startServer() called');
-        
-        console.log('[MCP Debug] Current server status:', this.status);
-        
         if (this.status === 'running') {
-            console.log('[MCP Debug] Server is already running - returning early');
-            logger.systemWarn('[MCP Debug] Server is already running');
+            logger.systemWarn('Server is already running');
             return;
         }
 
         try {
-            console.log('[MCP Debug] Setting status to starting');
             this.status = 'starting';
-            console.log('[MCP Debug] Status set to starting, about to log');
-            logger.systemLog('[MCP Debug] Starting server...');
+            logger.systemLog('Starting server...');
 
             // Initialize agents
-            console.log('[MCP Debug] About to initialize agents');
-            logger.systemLog('[MCP Debug] About to initialize agents');
             await this.initializeAgents();
-            console.log('[MCP Debug] Agents initialized successfully');
 
             // Start transports
-            console.log('[MCP Debug] About to start transports');
-            logger.systemLog('[MCP Debug] About to start transports');
             await this.startTransports();
-            console.log('[MCP Debug] Transports started successfully');
 
             this.status = 'running';
             this.eventManager.emit('server:started', null);
-            console.log('[MCP Debug] Server started successfully');
-            logger.systemLog('[MCP Debug] Server started successfully');
+            logger.systemLog('Server started successfully');
             
             // Test if HTTP server is actually running
             try {
                 const httpStatus = this.httpTransportManager.getTransportStatus();
-                console.log('[MCP Debug] HTTP transport status:', httpStatus);
                 if (httpStatus.isRunning) {
-                    console.log('[MCP Debug] ✅ HTTP server confirmed running on:', httpStatus.endpoint);
                     logger.systemLog(`✅ MCP HTTP server confirmed running on: ${httpStatus.endpoint}`);
-                } else {
-                    console.log('[MCP Debug] ❌ HTTP server not running despite successful startup');
                 }
             } catch (error) {
-                console.error('[MCP Debug] Error checking HTTP transport status:', error);
+                // Silently continue if status check fails
             }
         } catch (error) {
-            console.error('[MCP Debug] ServerLifecycleManager.startServer() caught error:', error);
-            logger.systemError(error as Error, '[MCP Debug] ServerLifecycleManager.startServer() failed');
             this.status = 'error';
             logger.systemError(error as Error, 'Server Start');
             throw error;
@@ -136,22 +115,15 @@ export class ServerLifecycleManager {
      * Start both transports
      */
     private async startTransports(): Promise<void> {
-        logger.systemLog('[MCP Debug] startTransports() called');
         try {
-            logger.systemLog('[MCP Debug] About to start HTTP transport first');
             // Start HTTP transport first (critical for MCP functionality)
             const httpResult = await this.httpTransportManager.startTransport();
-            logger.systemLog('[MCP Debug] HTTP transport started successfully');
             
-            logger.systemLog('[MCP Debug] About to start IPC transport');
             // Start IPC transport second
             const ipcResult = await this.ipcTransportManager.startTransport();
-            logger.systemLog('[MCP Debug] IPC transport started successfully');
 
-            logger.systemLog('[MCP Debug] Both transports started successfully');
             logger.systemLog('Both transports started successfully');
         } catch (error) {
-            logger.systemError(error as Error, '[MCP Debug] Transport start failed');
             logger.systemError(error as Error, 'Transport Start');
             throw error;
         }

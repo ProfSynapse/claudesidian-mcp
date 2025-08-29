@@ -164,14 +164,9 @@ export class HttpTransportManager {
      * Start the HTTP transport
      */
     async startTransport(): Promise<{ httpServer: http.Server; app: express.Application }> {
-        logger.systemLog('[MCP Debug] HttpTransportManager.startTransport() called');
-        
         if (this.httpServer) {
-            logger.systemLog('[MCP Debug] HTTP server already exists, returning existing instance');
             return { httpServer: this.httpServer, app: this.app };
         }
-
-        logger.systemLog('[MCP Debug] Creating new HTTP server');
         try {
             // Create HTTP server with Express app
             this.httpServer = http.createServer(this.app);

@@ -126,9 +126,7 @@ export class MCPServer implements IMCPServer {
      * Start the MCP server
      */
     async start(): Promise<void> {
-        console.log('[MCP Debug] MCPServer.start() called - about to call lifecycleManager.startServer()');
         await this.lifecycleManager.startServer();
-        console.log('[MCP Debug] MCPServer.start() completed - lifecycleManager.startServer() finished');
     }
 
     /**

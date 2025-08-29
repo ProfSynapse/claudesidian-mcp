@@ -14,62 +14,38 @@ import {
   ModelPricing 
 } from '../types';
 import { REQUESTY_MODELS, REQUESTY_DEFAULT_MODEL } from './RequestyModels';
+import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 
-export class RequestyAdapter extends BaseAdapter {
+export class RequestyAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'requesty';
   readonly baseUrl = 'https://router.requesty.ai/v1';
+  
+  mcpConnector?: any;
 
-  constructor(apiKey: string, model?: string) {
+  constructor(apiKey: string, mcpConnector?: any, model?: string) {
     super(apiKey, model || REQUESTY_DEFAULT_MODEL);
+    this.mcpConnector = mcpConnector;
     this.initializeCache();
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
-    return this.withRetry(async () => {
-      try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://synaptic-lab-kit.com',
-            'X-Title': 'Synaptic Lab Kit',
-            'User-Agent': 'Synaptic-Lab-Kit/1.0.0'
-          },
-          body: JSON.stringify({
-            model: options?.model || this.currentModel,
-            messages: this.buildMessages(prompt, options?.systemPrompt),
-            temperature: options?.temperature,
-            max_tokens: options?.maxTokens,
-            response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
-            stop: options?.stopSequences,
-            tools: options?.tools
-          })
+    try {
+      const model = options?.model || this.currentModel;
+      
+      // If tools are provided (pre-converted by ChatService), use tool-enabled generation
+      if (options?.tools && options.tools.length > 0) {
+        console.log('[Requesty Adapter] Using tool-enabled generation', {
+          toolCount: options.tools.length
         });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-
-        const data = await response.json() as any;
-        
-        const usage = this.extractUsage(data);
-        const finishReason = this.mapFinishReason(data.choices[0]?.finish_reason);
-        const toolCalls = this.extractToolCalls(data.choices[0]?.message);
-
-        return await this.buildLLMResponse(
-          data.choices[0]?.message?.content || '',
-          options?.model || this.currentModel,
-          usage,
-          { provider: 'requesty' },
-          finishReason,
-          toolCalls
-        );
-      } catch (error) {
-        this.handleError(error, 'generation');
+        return await this.generateWithProvidedTools(prompt, options);
       }
-    });
+      
+      // Otherwise use basic chat completions
+      console.log('[Requesty Adapter] Using basic chat completions (no tools)');
+      return await this.generateWithChatCompletions(prompt, options);
+    } catch (error) {
+      throw this.handleError(error, 'generation');
+    }
   }
 
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
@@ -199,7 +175,7 @@ export class RequestyAdapter extends BaseAdapter {
   }
 
   getCapabilities(): ProviderCapabilities {
-    return {
+    const baseCapabilities = {
       supportsStreaming: true,
       supportsJSON: true,
       supportsImages: true,
@@ -215,6 +191,160 @@ export class RequestyAdapter extends BaseAdapter {
         'router_fallback'
       ]
     };
+
+    // Add MCP support if available
+    if (this.supportsMCP()) {
+      baseCapabilities.supportedFeatures.push('mcp_integration');
+    }
+
+    return baseCapabilities;
+  }
+
+  /**
+   * Check if MCP is available via connector
+   */
+  supportsMCP(): boolean {
+    return MCPToolExecution.supportsMCP(this);
+  }
+
+  /**
+   * Generate with pre-converted tools (from ChatService) using centralized execution
+   */
+  private async generateWithProvidedTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    // Use centralized tool execution wrapper to eliminate code duplication
+    const model = options?.model || this.currentModel;
+
+    return MCPToolExecution.executeWithToolSupport(
+      this,
+      'requesty',
+      {
+        model,
+        tools: options?.tools || [],
+        prompt,
+        systemPrompt: options?.systemPrompt
+      },
+      {
+        buildMessages: (prompt: string, systemPrompt?: string) => 
+          this.buildMessages(prompt, systemPrompt),
+        
+        buildRequestBody: (messages: any[], isInitial: boolean) => ({
+          model,
+          messages,
+          tools: options?.tools,
+          tool_choice: 'auto',
+          temperature: options?.temperature,
+          max_tokens: options?.maxTokens,
+          response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+          stop: options?.stopSequences
+        }),
+        
+        makeApiCall: async (requestBody: any) => {
+          return await fetch(`${this.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              ...this.buildHeaders(),
+              'Authorization': `Bearer ${this.apiKey}`,
+              'HTTP-Referer': 'https://synaptic-lab-kit.com',
+              'X-Title': 'Synaptic Lab Kit',
+              'User-Agent': 'Synaptic-Lab-Kit/1.0.0'
+            },
+            body: JSON.stringify(requestBody)
+          });
+        },
+        
+        extractResponse: async (response: Response) => {
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+          const data = await response.json();
+          const choice = data.choices[0];
+          
+          return {
+            content: choice?.message?.content || '',
+            usage: this.extractUsage(data),
+            finishReason: choice?.finish_reason || 'stop',
+            toolCalls: choice?.message?.tool_calls,
+            choice: choice
+          };
+        },
+        
+        buildLLMResponse: async (
+          content: string,
+          model: string,
+          usage?: any,
+          metadata?: any,
+          finishReason?: any,
+          toolCalls?: any[]
+        ) => {
+          return this.buildLLMResponse(content, model, usage, metadata, finishReason, toolCalls);
+        }
+      }
+    );
+  }
+
+  /**
+   * Generate using standard chat completions
+   */
+  private async generateWithChatCompletions(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    const model = options?.model || this.currentModel;
+    
+    const requestBody: any = {
+      model,
+      messages: this.buildMessages(prompt, options?.systemPrompt),
+      temperature: options?.temperature,
+      max_tokens: options?.maxTokens,
+      response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+      stop: options?.stopSequences
+    };
+
+    // Add tools if provided
+    if (options?.tools) {
+      requestBody.tools = options.tools;
+    }
+
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        ...this.buildHeaders(),
+        'Authorization': `Bearer ${this.apiKey}`,
+        'HTTP-Referer': 'https://synaptic-lab-kit.com',
+        'X-Title': 'Synaptic Lab Kit',
+        'User-Agent': 'Synaptic-Lab-Kit/1.0.0'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json() as any;
+    const choice = data.choices[0];
+    
+    if (!choice) {
+      throw new Error('No response from Requesty');
+    }
+    
+    let text = choice.message?.content || '';
+    const usage = this.extractUsage(data);
+    let finishReason = choice.finish_reason || 'stop';
+
+    // If tools were provided and we got tool calls, we need to handle them
+    // For now, just return the response as-is since tool execution is complex
+    if (options?.tools && choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
+      console.log(`[Requesty Adapter] Received ${choice.message.tool_calls.length} tool calls, but tool execution not implemented in basic mode`);
+      text = text || '[AI requested tool calls but tool execution not available]';
+    }
+
+    return this.buildLLMResponse(
+      text,
+      model,
+      usage,
+      { provider: 'requesty' },
+      finishReason as any
+    );
   }
 
   // Private methods

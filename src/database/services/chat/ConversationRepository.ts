@@ -226,6 +226,20 @@ export class ConversationRepository {
    */
   async addMessage(params: AddMessageParams): Promise<ConversationOperationResult> {
     try {
+      console.log('[ConversationRepository] addMessage called with params:', {
+        conversationId: params.conversationId,
+        role: params.role,
+        contentLength: params.content?.length || 0,
+        hasToolCalls: !!(params.toolCalls && params.toolCalls.length > 0),
+        toolCallCount: params.toolCalls?.length || 0,
+        toolCallsPreview: params.toolCalls?.slice(0, 2).map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          hasResult: !!tc.result,
+          hasParameters: !!(tc.parameters)
+        })) || []
+      });
+      
       const existingDocument = await this.collection.getConversation(params.conversationId);
       if (!existingDocument) {
         return {
@@ -245,6 +259,13 @@ export class ConversationRepository {
         timestamp: now,
         tool_calls: params.toolCalls
       };
+      
+      console.log('[ConversationRepository] Created message object:', {
+        messageId,
+        role: newMessage.role,
+        hasToolCalls: !!(newMessage.tool_calls && newMessage.tool_calls.length > 0),
+        toolCallCount: newMessage.tool_calls?.length || 0
+      });
 
       // Update conversation data
       const conversationData = { ...existingDocument.metadata.conversation };

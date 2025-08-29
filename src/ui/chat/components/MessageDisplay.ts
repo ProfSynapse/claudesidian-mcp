@@ -6,7 +6,6 @@
 
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { MessageBubble } from './MessageBubble';
-import { ToolAccordion } from './ToolAccordion';
 
 export class MessageDisplay {
   private conversation: ConversationData | null = null;
@@ -15,7 +14,8 @@ export class MessageDisplay {
   constructor(
     private container: HTMLElement,
     private onRetryMessage?: (messageId: string) => void,
-    private onEditMessage?: (messageId: string, newContent: string) => void
+    private onEditMessage?: (messageId: string, newContent: string) => void,
+    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void
   ) {
     this.render();
   }
@@ -49,25 +49,77 @@ export class MessageDisplay {
    * Update a specific message content without full re-render (for streaming)
    */
   updateMessageContent(messageId: string, content: string, isStreaming: boolean = false): void {
-    const messageElement = this.container.querySelector(`[data-message-id="${messageId}"]`);
-    
-    if (messageElement) {
-      const contentElement = messageElement.querySelector('.message-bubble .message-content');
-      
-      if (contentElement) {
-        if (isStreaming) {
-          contentElement.innerHTML = `<div class="streaming-content">${this.escapeHtml(content)}<span class="streaming-cursor">|</span></div>`;
-        } else {
-          contentElement.innerHTML = `<div class="final-content">${this.escapeHtml(content)}</div>`;
-        }
-      } else {
-        console.error(`[MessageDisplay] Content element not found for messageId: ${messageId}`);
-      }
+    // Find the MessageBubble instance for this message ID
+    const messageBubble = this.messageBubbles.find(bubble => {
+      const element = bubble.getElement();
+      return element?.getAttribute('data-message-id') === messageId;
+    });
+
+    if (messageBubble) {
+      // Use the MessageBubble's updateContent method
+      messageBubble.updateContent(content, isStreaming);
     } else {
-      console.error(`[MessageDisplay] Message element not found for messageId: ${messageId}`);
-      // Debug: log all existing message elements
-      const allMessages = this.container.querySelectorAll('[data-message-id]');
-      console.log(`[MessageDisplay] All message elements:`, Array.from(allMessages).map(el => el.getAttribute('data-message-id')));
+      console.error(`[MessageDisplay] MessageBubble not found for messageId: ${messageId}`);
+      // Debug: log all existing message bubbles
+      console.log(`[MessageDisplay] Available message bubbles:`, 
+        this.messageBubbles.map(bubble => bubble.getElement()?.getAttribute('data-message-id')).filter(Boolean));
+    }
+  }
+
+  /**
+   * Update a specific message with new data (including tool calls) without full re-render
+   */
+  updateMessage(messageId: string, updatedMessage: ConversationMessage): void {
+    console.log(`[MessageDisplay DEBUG] updateMessage called:`, {
+      messageId,
+      hasConversation: !!this.conversation,
+      hasToolCalls: !!(updatedMessage.tool_calls && updatedMessage.tool_calls.length > 0),
+      toolCallCount: updatedMessage.tool_calls?.length || 0,
+      isLoading: updatedMessage.isLoading
+    });
+
+    if (!this.conversation) {
+      console.error('[MessageDisplay DEBUG] No conversation available for updateMessage');
+      return;
+    }
+
+    // Find and update the message in conversation data
+    const messageIndex = this.conversation.messages.findIndex(msg => msg.id === messageId);
+    console.log(`[MessageDisplay DEBUG] Message index in conversation:`, {
+      messageIndex,
+      totalMessages: this.conversation.messages.length
+    });
+    
+    if (messageIndex !== -1) {
+      this.conversation.messages[messageIndex] = updatedMessage;
+      console.log(`[MessageDisplay DEBUG] Updated conversation message at index ${messageIndex}`);
+    }
+
+    // Find the MessageBubble instance
+    const messageBubble = this.messageBubbles.find(bubble => {
+      const element = bubble.getElement();
+      return element?.getAttribute('data-message-id') === messageId;
+    });
+
+    console.log(`[MessageDisplay DEBUG] MessageBubble search result:`, {
+      bubbleFound: !!messageBubble,
+      totalBubbles: this.messageBubbles.length,
+      bubbleIds: this.messageBubbles.map(bubble => bubble.getElement()?.getAttribute('data-message-id')).filter(Boolean)
+    });
+
+    if (messageBubble) {
+      // Tell the MessageBubble to re-render with updated message data
+      console.log(`[MessageDisplay DEBUG] About to call updateWithNewMessage`);
+      messageBubble.updateWithNewMessage(updatedMessage);
+      console.log(`[MessageDisplay DEBUG] MessageBubble.updateWithNewMessage completed`);
+    } else {
+      console.error(`[MessageDisplay DEBUG] MessageBubble not found for messageId: ${messageId}`);
+      console.error('[MessageDisplay DEBUG] Available MessageBubbles:', 
+        this.messageBubbles.map(bubble => ({
+          element: bubble.getElement(),
+          messageId: bubble.getElement()?.getAttribute('data-message-id')
+        }))
+      );
     }
   }
 
@@ -139,19 +191,21 @@ export class MessageDisplay {
       message,
       (messageId) => this.onCopyMessage(messageId),
       (messageId) => this.handleRetryMessage(messageId),
-      (messageId, newContent) => this.handleEditMessage(messageId, newContent)
+      (messageId, newContent) => this.handleEditMessage(messageId, newContent),
+      this.onToolEvent
     );
 
     this.messageBubbles.push(bubble);
     
     const bubbleEl = bubble.createElement();
 
-    // Add tool accordion if there are tool calls
-    if (message.tool_calls && message.tool_calls.length > 0) {
-      const toolAccordion = new ToolAccordion(message.tool_calls);
-      const toolEl = toolAccordion.createElement();
-      bubbleEl.appendChild(toolEl);
-    }
+    // Tool accordion is now rendered inside MessageBubble's content area
+    console.log('[MessageDisplay] Message bubble created with tool calls:', {
+      messageId: message.id,
+      role: message.role,
+      hasToolCalls: !!(message.tool_calls && message.tool_calls.length > 0),
+      toolCallCount: message.tool_calls?.length || 0
+    });
 
     return bubbleEl;
   }
@@ -195,6 +249,19 @@ export class MessageDisplay {
    */
   private findMessage(messageId: string): ConversationMessage | undefined {
     return this.conversation?.messages.find(msg => msg.id === messageId);
+  }
+
+  /**
+   * Find MessageBubble by messageId for tool events
+   */
+  findMessageBubble(messageId: string): MessageBubble | undefined {
+    if (!this.conversation) return undefined;
+    
+    const messageIndex = this.conversation.messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex === -1) return undefined;
+    
+    // MessageBubbles are created in same order as messages
+    return this.messageBubbles[messageIndex];
   }
 
   /**

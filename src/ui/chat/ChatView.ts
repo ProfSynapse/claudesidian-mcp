@@ -74,6 +74,17 @@ export class ChatView extends ItemView {
 
     try {
       await this.chatService.initialize();
+      
+      // Set up tool event callback for live UI updates
+      this.chatService.setToolEventCallback((messageId, event, data) => {
+        console.log('[ChatView] Received tool event from ChatService:', messageId, event, data);
+        if (event === 'started') {
+          this.handleToolExecutionStarted(messageId, data);
+        } else if (event === 'completed') {
+          this.handleToolExecutionCompleted(messageId, data.toolId, data.result, data.success, data.error);
+        }
+      });
+      
       console.log('[ChatView] ChatService initialized successfully');
     } catch (error) {
       console.error('[ChatView] Failed to initialize ChatService:', error);
@@ -173,7 +184,11 @@ export class ChatView extends ItemView {
         this.streamingController.updateStreamingMessage(messageId, content, !isComplete),
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
       onLoadingStateChanged: (loading) => this.uiStateController.setInputLoading(loading),
-      onError: (message) => this.uiStateController.showError(message)
+      onError: (message) => this.uiStateController.showError(message),
+      onToolCallsDetected: (messageId, toolCalls) => this.handleToolCallsDetected(messageId, toolCalls),
+      onToolExecutionStarted: (messageId, toolCall) => this.handleToolExecutionStarted(messageId, toolCall),
+      onToolExecutionCompleted: (messageId, toolId, result, success, error) => 
+        this.handleToolExecutionCompleted(messageId, toolId, result, success, error)
     };
     this.messageManager = new MessageManager(this.chatService, messageEvents);
 
@@ -212,7 +227,8 @@ export class ChatView extends ItemView {
     this.messageDisplay = new MessageDisplay(
       refs.messageContainer,
       (messageId) => this.handleRetryMessage(messageId),
-      (messageId, newContent) => this.handleEditMessage(messageId, newContent)
+      (messageId, newContent) => this.handleEditMessage(messageId, newContent),
+      (messageId, event, data) => this.handleToolEvent(messageId, event, data)
     );
 
     this.chatInput = new ChatInput(
@@ -351,6 +367,39 @@ export class ChatView extends ItemView {
       await this.contextProgressBar.update();
       this.contextProgressBar.checkWarningThresholds();
     }
+  }
+
+  // Tool event handlers
+  private handleToolCallsDetected(messageId: string, toolCalls: any[]): void {
+    console.log('[ChatView DEBUG] Tool calls detected - using progressive individual tool approach:', {
+      messageId,
+      toolCallCount: toolCalls.length,
+      toolNames: toolCalls.map(tc => tc.name || tc.function?.name).filter(Boolean)
+    });
+    
+    // With progressive tool execution, we don't need to batch re-render here
+    // Individual tool accordions will be added via 'started' events
+    // Just notify the MessageBubble that tool calls were detected
+    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
+    messageBubble?.handleToolEvent('detected', toolCalls);
+  }
+
+  private handleToolExecutionStarted(messageId: string, toolCall: { id: string; name: string; parameters?: any }): void {
+    console.log('[ChatView] Tool execution started:', messageId, toolCall);
+    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
+    messageBubble?.handleToolEvent('started', toolCall);
+  }
+
+  private handleToolExecutionCompleted(messageId: string, toolId: string, result: any, success: boolean, error?: string): void {
+    console.log('[ChatView] Tool execution completed:', messageId, toolId, success);
+    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
+    messageBubble?.handleToolEvent('completed', { toolId, result, success, error });
+  }
+
+  private handleToolEvent(messageId: string, event: 'detected' | 'started' | 'completed', data: any): void {
+    console.log('[ChatView] Tool event:', messageId, event, data);
+    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
+    messageBubble?.handleToolEvent(event, data);
   }
 
   // Element reference management (simple store/retrieve)

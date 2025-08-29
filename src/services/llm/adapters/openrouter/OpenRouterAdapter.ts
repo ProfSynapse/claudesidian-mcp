@@ -263,181 +263,79 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
    * Generate with pre-converted tools (from ChatService) using iterative execution
    */
   private async generateWithProvidedTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    // Use centralized tool execution wrapper to eliminate code duplication
     const model = options?.model || this.currentModel;
-    const messages = this.buildMessages(prompt, options?.systemPrompt);
-    
-    const TOOL_ITERATION_THRESHOLD = 15;
-    let totalToolIterations = 0;
-    
-    // Initial request with pre-converted tools
-    const requestBody = {
-      model,
-      messages,
-      tools: options?.tools, // Use pre-converted tools from ChatService
-      tool_choice: 'auto',
-      temperature: options?.temperature,
-      max_tokens: options?.maxTokens,
-      top_p: options?.topP,
-      frequency_penalty: options?.frequencyPenalty,
-      presence_penalty: options?.presencePenalty,
-      response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
-      stop: options?.stopSequences
-    };
 
-    // Initial API call
-    let response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        ...this.buildHeaders(),
-        'Authorization': `Bearer ${this.apiKey}`,
-        'HTTP-Referer': 'https://synaptic-lab-kit.com',
-        'X-Title': 'Synaptic Lab Kit'
+    console.log('[OpenRouter Debug] generateWithProvidedTools called, onToolEvent callback:', !!options?.onToolEvent);
+    
+    return MCPToolExecution.executeWithToolSupport(
+      this,
+      'openrouter',
+      {
+        model,
+        tools: options?.tools || [],
+        prompt,
+        systemPrompt: options?.systemPrompt,
+        onToolEvent: options?.onToolEvent
       },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    let data = await response.json();
-    let choice = data.choices[0];
-
-    if (!choice) {
-      throw new Error('No response from OpenRouter');
-    }
-
-    let finalText = choice.message?.content || '';
-    const usage = this.extractUsage(data);
-    let finishReason = choice.finish_reason || 'stop';
-    let conversationMessages = [...messages];
-
-    // Implement iterative tool execution with user confirmation system
-    while (choice?.message?.tool_calls && choice.message.tool_calls.length > 0) {
-      totalToolIterations++;
-      
-      console.log(`[OpenRouter Tool Safety] Tool iteration ${totalToolIterations}/${TOOL_ITERATION_THRESHOLD}`);
-      
-      // Check if we've hit the threshold
-      if (totalToolIterations >= TOOL_ITERATION_THRESHOLD) {
-        console.log(`[OpenRouter Tool Safety] Hit ${TOOL_ITERATION_THRESHOLD} tool iteration threshold - activating dead switch`);
+      {
+        buildMessages: (prompt: string, systemPrompt?: string) => 
+          this.buildMessages(prompt, systemPrompt),
         
-        // Create dead switch response for the LLM
-        const deadSwitchMessage = {
-          role: 'system' as const,
-          content: `TOOL_LIMIT_REACHED: You have used ${TOOL_ITERATION_THRESHOLD} tool iterations. You must now ask the user if they want to continue with more tool calls. Explain what you've accomplished so far and what you still need to do. Wait for user confirmation before proceeding further.`
-        };
+        buildRequestBody: (messages: any[], isInitial: boolean) => ({
+          model,
+          messages,
+          tools: options?.tools,
+          tool_choice: 'auto',
+          temperature: options?.temperature,
+          max_tokens: options?.maxTokens,
+          top_p: options?.topP,
+          frequency_penalty: options?.frequencyPenalty,
+          presence_penalty: options?.presencePenalty,
+          response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+          stop: options?.stopSequences
+        }),
         
-        // Get final response with dead switch message
-        const deadSwitchMessages = [
-          ...conversationMessages,
-          choice.message,
-          deadSwitchMessage
-        ];
+        makeApiCall: async (requestBody: any) => {
+          return await fetch(`${this.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              ...this.buildHeaders(),
+              'Authorization': `Bearer ${this.apiKey}`,
+              'HTTP-Referer': 'https://synaptic-lab-kit.com',
+              'X-Title': 'Synaptic Lab Kit'
+            },
+            body: JSON.stringify(requestBody)
+          });
+        },
         
-        const deadSwitchResponse = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://synaptic-lab-kit.com',
-            'X-Title': 'Synaptic Lab Kit'
-          },
-          body: JSON.stringify({
-            model,
-            messages: deadSwitchMessages,
-            // Remove tools to force user interaction
-            temperature: options?.temperature,
-            max_tokens: options?.maxTokens
-          })
-        });
-        
-        if (deadSwitchResponse.ok) {
-          const deadSwitchData = await deadSwitchResponse.json();
-          const deadSwitchChoice = deadSwitchData.choices[0];
-          if (deadSwitchChoice?.message?.content) {
-            finalText = deadSwitchChoice.message.content;
-            finishReason = 'stop';
-            console.log(`[OpenRouter Tool Safety] Dead switch activated - awaiting user confirmation`);
+        extractResponse: async (response: Response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
-        }
-        break;
-      }
-      
-      // Execute current tool calls
-      console.log(`[OpenRouter Adapter] Processing ${choice.message.tool_calls.length} tool calls (iteration ${totalToolIterations})`);
-      
-      try {
-        // Convert OpenRouter tool calls to MCPToolCall format  
-        const mcpToolCalls = choice.message.tool_calls.map((tc: any) => ({
-          id: tc.id,
-          function: {
-            name: tc.function?.name || '',
-            arguments: tc.function?.arguments || '{}'
-          }
-        }));
-
-        // Execute tool calls via shared utility
-        const toolResults = await MCPToolExecution.executeToolCalls(this, mcpToolCalls, 'openrouter');
-
-        // Format tool results for OpenRouter continuation
-        const toolMessages = MCPToolExecution.buildToolMessages(toolResults);
-
-        // Update conversation with tool call and results
-        conversationMessages = [
-          ...conversationMessages,
-          choice.message,
-          ...toolMessages
-        ];
-
-        console.log(`[OpenRouter Adapter] Continuing conversation with ${toolResults.length} tool results`);
-
-        // Make continuation request with tools still available
-        const continuationResponse = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            ...this.buildHeaders(),
-            'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://synaptic-lab-kit.com',
-            'X-Title': 'Synaptic Lab Kit'
-          },
-          body: JSON.stringify({
-            ...requestBody,
-            messages: conversationMessages,
-            tools: options?.tools, // Keep tools available
-            tool_choice: 'auto'
-          })
-        });
-
-        if (!continuationResponse.ok) {
-          throw new Error(`HTTP ${continuationResponse.status}: ${continuationResponse.statusText}`);
-        }
-
-        // Update for next iteration
-        data = await continuationResponse.json();
-        choice = data.choices[0];
+          const data = await response.json();
+          const choice = data.choices[0];
+          
+          return {
+            content: choice?.message?.content || '',
+            usage: this.extractUsage(data),
+            finishReason: choice?.finish_reason || 'stop',
+            toolCalls: choice?.message?.tool_calls,
+            choice: choice
+          };
+        },
         
-        if (choice?.message?.content) {
-          finalText = choice.message.content;
-          finishReason = choice.finish_reason || 'stop';
+        buildLLMResponse: async (
+          content: string,
+          model: string,
+          usage?: any,
+          metadata?: any,
+          finishReason?: any,
+          toolCalls?: any[]
+        ) => {
+          return this.buildLLMResponse(content, model, usage, metadata, finishReason, toolCalls);
         }
-
-      } catch (error) {
-        console.error('[OpenRouter Adapter] Tool execution failed:', error);
-        const toolNames = (choice.message.tool_calls || []).map((tc: any) => tc.function?.name).join(', ');
-        finalText = `I tried to use tools (${toolNames}) but encountered an error: ${error instanceof Error ? error.message : String(error)}`;
-        break;
       }
-    }
-    
-    console.log(`[OpenRouter Tool Safety] Tool execution completed after ${totalToolIterations} iterations`);
-
-    return this.buildLLMResponse(
-      finalText,
-      model,
-      usage,
-      MCPToolExecution.buildToolMetadata([]),
-      finishReason as any
     );
   }
 

@@ -106,24 +106,17 @@ export class MCPConnectionManager implements MCPConnectionManagerInterface {
      * Initializes MCP connection manager
      */
     async initialize(): Promise<void> {
-        console.log('[MCP Debug] MCPConnectionManager.initialize() called');
-        
         if (this.isInitialized) {
-            console.log('[MCP Debug] Already initialized, returning early');
             return; // Already initialized
         }
 
         try {
-            console.log('[MCP Debug] About to create MCP server');
             // Create the MCP server
             this.server = await this.createServer();
-            console.log('[MCP Debug] MCP server created successfully:', !!this.server);
             this.isInitialized = true;
             
-            console.log('[MCP Debug] MCP Connection Manager initialized successfully');
             logger.systemLog('MCP Connection Manager initialized successfully');
         } catch (error) {
-            console.error('[MCP Debug] MCPConnectionManager initialization failed:', error);
             this.lastError = {
                 message: (error as Error).message,
                 timestamp: new Date()
@@ -177,36 +170,20 @@ export class MCPConnectionManager implements MCPConnectionManagerInterface {
      * Starts the MCP server
      */
     async start(): Promise<void> {
-        console.log('[MCP Debug] MCPConnectionManager.start() called - ACTUAL METHOD');
-        logger.systemLog('[MCP Debug] MCPConnectionManager.start() called - ACTUAL METHOD');
-        
-        console.log('[MCP Debug] this.server exists:', !!this.server);
-        console.log('[MCP Debug] this.isInitialized:', this.isInitialized);
-        console.log('[MCP Debug] this.isServerRunning:', this.isServerRunning);
-        
         if (!this.server) {
-            console.error('[MCP Debug] Server is null - cannot start');
-            logger.systemError(new Error('Server not initialized'), '[MCP Debug] Cannot start server: server not initialized');
+            logger.systemError(new Error('Server not initialized'), 'Cannot start server: server not initialized');
             throw new McpError(
                 ErrorCode.InternalError,
                 'Cannot start server: server not initialized'
             );
         }
 
-        console.log('[MCP Debug] Passed all checks, about to call server.start()');
-        logger.systemLog('[MCP Debug] About to call server.start()');
         try {
-            console.log('[MCP Debug] Calling this.server.start() now...');
             await this.server.start();
-            console.log('[MCP Debug] this.server.start() call completed');
             this.isServerRunning = true;
             
-            console.log('[MCP Debug] server.start() completed successfully');
-            logger.systemLog('[MCP Debug] server.start() completed successfully');
             logger.systemLog('MCP Server started successfully');
         } catch (error) {
-            console.error('[MCP Debug] server.start() threw error:', error);
-            logger.systemError(error as Error, '[MCP Debug] server.start() failed');
             this.lastError = {
                 message: (error as Error).message,
                 timestamp: new Date()

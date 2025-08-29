@@ -11,6 +11,9 @@ export interface MessageManagerEvents {
   onConversationUpdated: (conversation: ConversationData) => void;
   onLoadingStateChanged: (isLoading: boolean) => void;
   onError: (message: string) => void;
+  onToolCallsDetected: (messageId: string, toolCalls: any[]) => void;
+  onToolExecutionStarted: (messageId: string, toolCall: { id: string; name: string; parameters?: any }) => void;
+  onToolExecutionCompleted: (messageId: string, toolId: string, result: any, success: boolean, error?: string) => void;
 }
 
 export class MessageManager {
@@ -79,6 +82,7 @@ export class MessageManager {
         });
 
         let streamedContent = '';
+        let toolCalls: any[] | undefined = undefined;
 
         // Stream the AI response
         for await (const chunk of this.chatService.generateResponseStreaming(
@@ -98,26 +102,46 @@ export class MessageManager {
             streamedContent += chunk.chunk;
           }
 
+          // Extract tool calls when available
+          if (chunk.toolCalls) {
+            toolCalls = chunk.toolCalls;
+            console.log('[MessageManager] Tool calls received in message:', {
+              messageId: aiMessageId,
+              toolCallCount: toolCalls.length,
+              toolNames: toolCalls.map(tc => tc.name || tc.function?.name).filter(Boolean)
+            });
+            
+          }
+
           // Update the placeholder message in conversation data
           const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
           if (placeholderMessageIndex >= 0) {
             conversation.messages[placeholderMessageIndex] = {
               ...conversation.messages[placeholderMessageIndex],
               content: streamedContent,
+              tool_calls: toolCalls, // Include tool calls in the message
               isLoading: !chunk.complete
             };
+          }
+
+          // Emit event when tool calls are detected for live UI updates (AFTER message is updated)
+          if (toolCalls) {
+            console.log('[MessageManager DEBUG] About to emit onToolCallsDetected event:', {
+              messageId: aiMessageId,
+              hasEventHandler: !!this.events.onToolCallsDetected,
+              toolCallsData: toolCalls,
+              messageUpdated: placeholderMessageIndex >= 0
+            });
+            this.events.onToolCallsDetected(aiMessageId, toolCalls);
+            console.log('[MessageManager DEBUG] onToolCallsDetected event emitted');
           }
 
           // Notify about streaming update
           this.events.onStreamingUpdate(aiMessageId, streamedContent, !chunk.complete);
 
           if (chunk.complete) {
-            // Save the final AI message to database
-            await this.chatService.addMessage({
-              conversationId: conversation.id,
-              role: 'assistant',
-              content: streamedContent
-            });
+            // Save the final AI message to database (ChatService already handles tool calls)
+            // No need to save again here as ChatService saves it in generateResponseStreaming
             
             // Final conversation update
             this.events.onConversationUpdated(conversation);
