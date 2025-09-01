@@ -7,11 +7,13 @@
 import { ConversationMessage } from '../../../types/chat/ChatTypes';
 import { ToolAccordion } from './ToolAccordion';
 import { ProgressiveToolAccordion } from './ProgressiveToolAccordion';
+import { setIcon } from 'obsidian';
 
 export class MessageBubble {
   private element: HTMLElement | null = null;
   private loadingInterval: any = null;
   private progressiveToolAccordions: Map<string, ProgressiveToolAccordion> = new Map();
+  private accumulatedStreamContent: string = ''; // Track accumulated streaming content
 
   constructor(
     private message: ConversationMessage,
@@ -19,7 +21,10 @@ export class MessageBubble {
     private onRetry: (messageId: string) => void,
     private onEdit?: (messageId: string, newContent: string) => void,
     private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void
-  ) {}
+  ) {
+    // Reset accumulated content for new message
+    this.accumulatedStreamContent = '';
+  }
 
   /**
    * Create the message bubble element
@@ -40,9 +45,11 @@ export class MessageBubble {
     // Role icon
     const roleIcon = header.createDiv('message-role-icon');
     if (this.message.role === 'user') {
-      roleIcon.innerHTML = this.createLucideIcon('user');
+      setIcon(roleIcon, 'user');
+    } else if (this.message.role === 'tool') {
+      setIcon(roleIcon, 'wrench');
     } else {
-      roleIcon.innerHTML = this.createLucideIcon('bot');
+      setIcon(roleIcon, 'bot');
     }
 
     // Message content
@@ -61,7 +68,7 @@ export class MessageBubble {
           cls: 'message-action-btn',
           attr: { title: 'Edit message' }
         });
-        editBtn.innerHTML = this.createLucideIcon('edit');
+        setIcon(editBtn, 'edit');
         editBtn.addEventListener('click', () => this.handleEdit());
       }
       
@@ -70,15 +77,23 @@ export class MessageBubble {
         cls: 'message-action-btn',
         attr: { title: 'Retry message' }
       });
-      retryBtn.innerHTML = this.createLucideIcon('rotate-ccw');
+      setIcon(retryBtn, 'rotate-ccw');
       retryBtn.addEventListener('click', () => this.onRetry(this.message.id));
+    } else if (this.message.role === 'tool') {
+      // Tool messages get minimal actions - just copy for debugging
+      const copyBtn = actions.createEl('button', { 
+        cls: 'message-action-btn',
+        attr: { title: 'Copy tool execution details' }
+      });
+      setIcon(copyBtn, 'copy');
+      copyBtn.addEventListener('click', () => this.onCopy(this.message.id));
     } else {
       // Copy button for AI messages
       const copyBtn = actions.createEl('button', { 
         cls: 'message-action-btn',
         attr: { title: 'Copy message' }
       });
-      copyBtn.innerHTML = this.createLucideIcon('copy');
+      setIcon(copyBtn, 'copy');
       copyBtn.addEventListener('click', () => this.onCopy(this.message.id));
     }
 
@@ -154,25 +169,23 @@ export class MessageBubble {
    * Render tool calls accordion within the message content
    */
   private renderToolCalls(container: HTMLElement): void {
-    // For completed messages with tool calls, show static tool accordion
-    if (this.message.tool_calls && this.message.tool_calls.length > 0 && !this.message.isLoading) {
-      console.log('[MessageBubble] Rendering static tool accordion inside message:', {
+    // For tool role messages, always render the tool accordion 
+    if (this.message.role === 'tool' && this.message.tool_calls && this.message.tool_calls.length > 0) {
+      console.log('[MessageBubble] Rendering tool accordion for tool message:', {
         messageId: this.message.id,
         toolCallCount: this.message.tool_calls.length,
         toolNames: this.message.tool_calls.map(tc => tc.name).filter(Boolean)
       });
-      
-      // If we already have individual progressive accordions, don't render static ones
-      if (this.progressiveToolAccordions.size > 0) {
-        console.log('[MessageBubble] Already have individual progressive accordions, skipping static rendering');
-        return;
-      }
 
-      // Create static accordion for completed tools (fallback for static messages)
+      // Create accordion for tool execution message
       const accordion = new ToolAccordion(this.message.tool_calls);
       const accordionEl = accordion.createElement();
       container.appendChild(accordionEl);
+      return;
     }
+
+    // Assistant messages should never render tool accordions - tools are in separate tool messages
+    // This ensures clean separation: assistant = text only, tool = accordions only
   }
 
   /**
@@ -196,19 +209,6 @@ export class MessageBubble {
     container.innerHTML = processed;
   }
 
-  /**
-   * Create Lucide icon SVG
-   */
-  private createLucideIcon(iconName: string): string {
-    const icons: { [key: string]: string } = {
-      'user': '<svg class="lucide lucide-user" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
-      'bot': '<svg class="lucide lucide-bot" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg>',
-      'copy': '<svg class="lucide lucide-copy" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>',
-      'edit': '<svg class="lucide lucide-edit" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>',
-      'rotate-ccw': '<svg class="lucide lucide-rotate-ccw" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>'
-    };
-    return icons[iconName] || '';
-  }
 
   /**
    * Handle edit functionality
@@ -313,15 +313,9 @@ export class MessageBubble {
   }
 
   /**
-   * Update content after streaming starts - insert chronologically
+   * Update content for streaming - completely rewritten for clarity
    */
-  updateContent(content: string, isStreaming: boolean = false): void {
-    console.log('[MessageBubble DEBUG] updateContent called:', {
-      hasContent: !!content,
-      isStreaming,
-      progressiveAccordionCount: this.progressiveToolAccordions.size
-    });
-
+  updateContent(content: string, isComplete: boolean = false, isIncremental?: boolean): void {
     if (!this.element) return;
 
     const contentElement = this.element.querySelector('.message-content');
@@ -330,79 +324,66 @@ export class MessageBubble {
     // Stop loading animation
     this.stopLoadingAnimation();
 
-    // If we have individual accordions, we need to insert content chronologically
-    if (this.progressiveToolAccordions.size > 0) {
-      this.insertContentChronologically(content, isStreaming);
-    } else {
-      // No accordions yet - normal content replacement
-      if (isStreaming) {
-        contentElement.innerHTML = `<div class="streaming-content">${this.escapeHtml(content)}<span class="streaming-cursor">|</span></div>`;
-      } else {
-        contentElement.innerHTML = `<div class="final-content">${this.escapeHtml(content)}</div>`;
-      }
-    }
-  }
-
-  /**
-   * Insert content chronologically at the "thinking" position
-   */
-  private insertContentChronologically(content: string, isStreaming: boolean): void {
-    if (!this.element) return;
-    const contentElement = this.element.querySelector('.message-content');
-    if (!contentElement) return;
-
-    // Find the continuation thinking element (this marks where new content should go)
-    const continuationLoading = contentElement.querySelector('.ai-loading-continuation');
-    
-    // Create content element with spacing from accordions
-    let contentDiv: HTMLElement;
-    if (isStreaming) {
-      contentDiv = document.createElement('div');
-      contentDiv.className = 'streaming-content';
-      contentDiv.style.marginTop = '8px'; // Add spacing from accordions
-      contentDiv.innerHTML = `${this.escapeHtml(content)}<span class="streaming-cursor">|</span>`;
-    } else {
-      contentDiv = document.createElement('div');
-      contentDiv.className = 'final-content';
-      contentDiv.style.marginTop = '8px'; // Add spacing from accordions
-      contentDiv.innerHTML = this.escapeHtml(content);
-    }
-
-    // Insert content chronologically
-    if (continuationLoading) {
-      // Insert content before the "thinking" element (chronological position)
-      contentElement.insertBefore(contentDiv, continuationLoading);
-      console.log('[MessageBubble DEBUG] Inserted content chronologically before "Thinking..."');
+    if (isIncremental) {
+      // Streaming chunk: accumulate content and update single streaming div
+      console.log(`[MessageBubble] Streaming chunk: "${content}" (${content.length} chars)`);
       
-      if (!isStreaming) {
-        // Remove thinking when final content is inserted
-        this.removeContinuationThinking();
+      this.accumulatedStreamContent += content;
+      
+      console.log(`[MessageBubble] Total accumulated: ${this.accumulatedStreamContent.length} chars`);
+      
+      // Find or create streaming div
+      let streamingDiv = contentElement.querySelector('.streaming-content') as HTMLElement;
+      if (!streamingDiv) {
+        streamingDiv = document.createElement('div');
+        streamingDiv.className = 'streaming-content';
+        streamingDiv.style.marginTop = this.progressiveToolAccordions.size > 0 ? '8px' : '0px';
+        contentElement.appendChild(streamingDiv);
+        console.log(`[MessageBubble] Created streaming div`);
       }
-    } else {
-      // No thinking element, append at the end
-      contentElement.appendChild(contentDiv);
-      console.log('[MessageBubble DEBUG] Appended content at end (no thinking element found)');
+      
+      // Update streaming div with accumulated content
+      streamingDiv.innerHTML = `${this.escapeHtml(this.accumulatedStreamContent)}<span class="streaming-cursor">|</span>`;
+      
+    } else if (isComplete) {
+      // Final content: replace streaming div with final div
+      console.log(`[MessageBubble] Final content: ${content.length} chars`);
+      
+      const streamingDiv = contentElement.querySelector('.streaming-content');
+      if (streamingDiv) {
+        const finalDiv = document.createElement('div');
+        finalDiv.className = 'final-content';
+        finalDiv.style.marginTop = this.progressiveToolAccordions.size > 0 ? '8px' : '0px';
+        finalDiv.innerHTML = this.escapeHtml(content);
+        
+        contentElement.replaceChild(finalDiv, streamingDiv);
+        console.log(`[MessageBubble] Replaced streaming div with final content`);
+      } else {
+        // No streaming div exists, create final content div
+        const finalDiv = document.createElement('div');
+        finalDiv.className = 'final-content';
+        finalDiv.innerHTML = this.escapeHtml(content);
+        contentElement.appendChild(finalDiv);
+        console.log(`[MessageBubble] Created final content div`);
+      }
+      
+      // Remove thinking when final content is inserted
+      this.removeContinuationThinking();
     }
   }
+
 
   /**
    * Update MessageBubble with new message data (including tool calls)
    * This triggers a re-render when tool calls are detected from LLM
    */
   updateWithNewMessage(newMessage: ConversationMessage): void {
-    console.log('[MessageBubble DEBUG] updateWithNewMessage called - THIS CAUSES REORDERING:', {
-      messageId: newMessage.id,
-      hasToolCalls: !!(newMessage.tool_calls && newMessage.tool_calls.length > 0),
-      toolCallCount: newMessage.tool_calls?.length || 0,
-      isLoading: newMessage.isLoading,
-      progressiveAccordionCount: this.progressiveToolAccordions.size,
-      contentLength: newMessage.content?.length || 0
-    });
+    // Update with new message data
 
     // PROBLEM: This method completely re-renders and puts tool calls at the end
     // We should avoid calling this if we already have progressive accordions
     if (this.progressiveToolAccordions.size > 0 && newMessage.tool_calls) {
-      console.log('[MessageBubble DEBUG] SKIPPING updateWithNewMessage - already have', this.progressiveToolAccordions.size, 'individual progressive accordions');
+      // Skip update - preserving progressive accordions
       // Just update the stored message reference but don't re-render
       this.message = newMessage;
       return;
@@ -433,7 +414,7 @@ export class MessageBubble {
       this.startLoadingAnimation(loadingDiv);
     }
 
-    console.log('[MessageBubble DEBUG] Re-rendered with tool calls and loading state');
+    // Re-rendered with tool calls
   }
 
   /**

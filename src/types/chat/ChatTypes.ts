@@ -27,7 +27,7 @@ export interface ConversationData {
  */
 export interface ConversationMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
   timestamp: number;
   tool_calls?: ToolCall[];
@@ -139,7 +139,7 @@ export interface CreateConversationParams {
  */
 export interface AddMessageParams {
   conversationId: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
   toolCalls?: ToolCall[];
 }

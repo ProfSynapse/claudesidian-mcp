@@ -95,14 +95,29 @@ export class MCPToolExecution {
 
     for (const toolCall of toolCalls) {
       try {
-        // Notify tool started
+        // Parse and validate tool arguments with error handling
+        let parameters: any = {};
+        const argumentsStr = toolCall.function.arguments || '{}';
+        
+        console.log(`[MCPToolExecution] Parsing arguments for ${toolCall.function.name}:`, argumentsStr.slice(0, 100) + (argumentsStr.length > 100 ? '...' : ''));
+        
+        try {
+          parameters = JSON.parse(argumentsStr);
+        } catch (parseError) {
+          console.error(`[MCPToolExecution] Failed to parse tool arguments:`, parseError);
+          console.error(`[MCPToolExecution] Raw arguments (${argumentsStr.length} chars):`, argumentsStr);
+          
+          // Try to fix common JSON issues or use empty parameters
+          throw new Error(`Invalid tool arguments: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+        }
+
+        // Notify tool started with parsed parameters
         onToolEvent?.('started', {
           id: toolCall.id,
           name: toolCall.function.name,
-          parameters: JSON.parse(toolCall.function.arguments || '{}')
+          parameters: parameters
         });
 
-        const parameters = JSON.parse(toolCall.function.arguments || '{}');
         const originalToolName = toolCall.function.name.replace('_', '.');
         const [agent, mode] = originalToolName.split('.');
         const agentModeParams = { agent, mode, params: parameters };
@@ -174,6 +189,7 @@ export class MCPToolExecution {
       toolCalls: toolResults.length > 0 ? toolResults.map(result => ({
         id: result.id,
         name: result.name, // Include the tool name for UI display
+        result: result.result, // Include actual tool execution result
         success: result.success,
         error: result.error,
         executionTime: result.executionTime

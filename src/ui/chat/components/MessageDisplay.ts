@@ -24,11 +24,11 @@ export class MessageDisplay {
    * Set conversation to display
    */
   setConversation(conversation: ConversationData): void {
-    console.log('[MessageDisplay DEBUG] setConversation called - will trigger full re-render');
+    // Set conversation data
     
     // Check if we're just updating an existing conversation with progressive accordions
     if (this.conversation && this.conversation.id === conversation.id) {
-      console.log('[MessageDisplay DEBUG] Same conversation - checking for progressive accordions');
+      // Same conversation - checking for progressive accordions
       
       // Check if any message bubbles have progressive accordions
       const hasProgressiveAccordions = this.messageBubbles.some(bubble => 
@@ -36,7 +36,7 @@ export class MessageDisplay {
       );
       
       if (hasProgressiveAccordions) {
-        console.log('[MessageDisplay DEBUG] SKIPPING full re-render - progressive accordions would be destroyed');
+        // Skip re-render to preserve progressive accordions
         // Just update the conversation data without re-rendering
         this.conversation = conversation;
         this.scrollToBottom();
@@ -44,7 +44,7 @@ export class MessageDisplay {
       }
     }
     
-    console.log('[MessageDisplay DEBUG] Proceeding with full re-render');
+    // Proceeding with full re-render
     this.conversation = conversation;
     this.render();
     this.scrollToBottom();
@@ -78,8 +78,8 @@ export class MessageDisplay {
   /**
    * Update a specific message content without full re-render (for streaming)
    */
-  updateMessageContent(messageId: string, content: string, isStreaming: boolean = false): void {
-    console.log(`[MessageDisplay] updateMessageContent called:`, { messageId, contentLength: content.length, isStreaming });
+  updateMessageContent(messageId: string, content: string, isComplete: boolean = false, isIncremental?: boolean): void {
+    console.log(`[MessageDisplay] updateMessageContent called:`, { messageId, contentLength: content.length, isComplete, isIncremental });
     
     // Find the MessageBubble instance for this message ID
     const messageBubble = this.messageBubbles.find(bubble => {
@@ -90,7 +90,7 @@ export class MessageDisplay {
     if (messageBubble) {
       // Use the MessageBubble's updateContent method for progressive updates
       console.log(`[MessageDisplay] Calling messageBubble.updateContent with progressive accordion support`);
-      messageBubble.updateContent(content, isStreaming);
+      messageBubble.updateContent(content, isComplete, isIncremental);
     } else {
       console.error(`[MessageDisplay] MessageBubble not found for messageId: ${messageId}`);
       // Debug: log all existing message bubbles
@@ -103,13 +103,7 @@ export class MessageDisplay {
    * Update a specific message with new data (including tool calls) without full re-render
    */
   updateMessage(messageId: string, updatedMessage: ConversationMessage): void {
-    console.log(`[MessageDisplay DEBUG] updateMessage called:`, {
-      messageId,
-      hasConversation: !!this.conversation,
-      hasToolCalls: !!(updatedMessage.tool_calls && updatedMessage.tool_calls.length > 0),
-      toolCallCount: updatedMessage.tool_calls?.length || 0,
-      isLoading: updatedMessage.isLoading
-    });
+    // Update message with new data
 
     if (!this.conversation) {
       console.error('[MessageDisplay DEBUG] No conversation available for updateMessage');
@@ -118,14 +112,11 @@ export class MessageDisplay {
 
     // Find and update the message in conversation data
     const messageIndex = this.conversation.messages.findIndex(msg => msg.id === messageId);
-    console.log(`[MessageDisplay DEBUG] Message index in conversation:`, {
-      messageIndex,
-      totalMessages: this.conversation.messages.length
-    });
+    // Update conversation data
     
     if (messageIndex !== -1) {
       this.conversation.messages[messageIndex] = updatedMessage;
-      console.log(`[MessageDisplay DEBUG] Updated conversation message at index ${messageIndex}`);
+      // Message updated in conversation
     }
 
     // Find the MessageBubble instance
@@ -134,17 +125,13 @@ export class MessageDisplay {
       return element?.getAttribute('data-message-id') === messageId;
     });
 
-    console.log(`[MessageDisplay DEBUG] MessageBubble search result:`, {
-      bubbleFound: !!messageBubble,
-      totalBubbles: this.messageBubbles.length,
-      bubbleIds: this.messageBubbles.map(bubble => bubble.getElement()?.getAttribute('data-message-id')).filter(Boolean)
-    });
+    // Find message bubble for update
 
     if (messageBubble) {
       // Tell the MessageBubble to re-render with updated message data
-      console.log(`[MessageDisplay DEBUG] About to call updateWithNewMessage`);
+      // Update message bubble
       messageBubble.updateWithNewMessage(updatedMessage);
-      console.log(`[MessageDisplay DEBUG] MessageBubble.updateWithNewMessage completed`);
+      // Message bubble updated
     } else {
       console.error(`[MessageDisplay DEBUG] MessageBubble not found for messageId: ${messageId}`);
       console.error('[MessageDisplay DEBUG] Available MessageBubbles:', 
@@ -193,7 +180,7 @@ export class MessageDisplay {
    * Render the message display
    */
   private render(): void {
-    console.log('[MessageDisplay DEBUG] Full render triggered - THIS DESTROYS PROGRESSIVE ACCORDIONS');
+    // Full render - clears existing progressive accordions
     
     this.container.empty();
     this.container.addClass('message-display');

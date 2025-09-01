@@ -181,8 +181,8 @@ export class ChatView extends ItemView {
     const messageEvents: MessageManagerEvents = {
       onMessageAdded: (message) => this.messageDisplay.addUserMessage(message.content),
       onAIMessageStarted: (message) => this.handleAIMessageStarted(message),
-      onStreamingUpdate: (messageId, content, isComplete) => 
-        this.messageDisplay.updateMessageContent(messageId, content, !isComplete),
+      onStreamingUpdate: (messageId, content, isComplete, isIncremental) => 
+        this.messageDisplay.updateMessageContent(messageId, content, isComplete, isIncremental),
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
       onLoadingStateChanged: (loading) => this.uiStateController.setInputLoading(loading),
       onError: (message) => this.uiStateController.showError(message),

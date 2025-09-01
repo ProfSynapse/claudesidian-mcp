@@ -25,12 +25,17 @@ export interface GenerateOptions {
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
+  // Pre-detected tool calls for post-stream execution
+  detectedToolCalls?: any[];
+  // Conversation history for pingpong pattern (overrides prompt-based message building)
+  conversationHistory?: any[];
 }
 
 export interface StreamChunk {
   content: string;
   complete: boolean;
   usage?: TokenUsage;
+  toolCalls?: ToolCall[];
 }
 
 export interface LLMResponse {

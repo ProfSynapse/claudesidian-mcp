@@ -326,12 +326,11 @@ export class ChatService {
         
         // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
-          console.log('[ChatService] Saving message to repository:', {
+          console.log('[ChatService] Saving chronological messages to repository:', {
             conversationId,
-            role: 'assistant',
-            contentLength: accumulatedContent.length,
             hasToolCalls: !!(toolCalls && toolCalls.length > 0),
             toolCallCount: toolCalls?.length || 0,
+            assistantContentLength: accumulatedContent.length,
             toolCallsPreview: toolCalls?.slice(0, 2).map(tc => ({
               id: tc.id,
               name: tc.name || tc.function?.name,
@@ -339,12 +338,23 @@ export class ChatService {
             })) || []
           });
           
-          // Save the complete message to the repository with tool calls
+          // Save separate tool and assistant messages
+          if (toolCalls && toolCalls.length > 0) {
+            // First: Save tool message with complete tool calls (including results)
+            await this.dependencies.conversationRepo.addMessage({
+              conversationId,
+              role: 'tool',
+              content: `Executed ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}: ${toolCalls.map(tc => tc.name || tc.function?.name).join(', ')}`,
+              toolCalls: toolCalls
+            });
+          }
+          
+          // Second: Save assistant response message (clean text only)
           await this.dependencies.conversationRepo.addMessage({
             conversationId,
             role: 'assistant',
-            content: accumulatedContent,
-            toolCalls: toolCalls
+            content: accumulatedContent
+            // No toolCalls here - they're in the separate tool message above
           });
         }
 

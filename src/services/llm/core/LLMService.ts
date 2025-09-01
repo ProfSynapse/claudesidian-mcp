@@ -17,6 +17,8 @@ import { OllamaAdapter } from '../adapters/ollama/OllamaAdapter';
 import { BaseAdapter } from '../adapters/BaseAdapter';
 import { GenerateOptions, LLMResponse, ModelInfo } from '../adapters/types';
 import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
+import { MCPToolExecution } from '../adapters/shared/MCPToolExecution';
+import { ConversationContextBuilder } from '../../chat/ConversationContextBuilder';
 
 export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;
@@ -497,40 +499,19 @@ export class LLMService {
         console.log(`[LLMService] Model: ${generateOptions.model}, Tools: ${generateOptions.tools.length}`);
       }
 
-      // For tool calls, use non-streaming mode due to complexity of tool execution + continuation
-      // Note: Perplexity does not support function calling, so excluded from this list
-      if ((provider === 'openai' || provider === 'openrouter' || provider === 'groq' || provider === 'mistral' || provider === 'requesty') && generateOptions.tools && generateOptions.tools.length > 0) {
-        console.log(`[LLMService] ${provider}: Non-streaming tool execution mode`);
-        
-        // Use non-streaming generation for tool execution
-        const result = await adapter.generate(userPrompt, generateOptions);
-        
-        console.log(`[LLMService] Tool execution result: ${result.toolCalls?.length || 0} tool calls received`);
-        
-        const responseText = result.text || '[No response from AI]';
-        
-        // Simulate streaming for smooth UI experience
-        yield {
-          chunk: responseText,
-          complete: false,
-          content: responseText,
-          toolCalls: result.toolCalls
-        };
-        
-        yield {
-          chunk: '',
-          complete: true,
-          content: responseText,
-          toolCalls: result.toolCalls
-        };
-        
-        return;
-      }
+      // STREAMING-FIRST APPROACH: Use streaming for all providers
+      // Tool calls are detected dynamically during the stream
+      console.log(`[LLMService] ${provider}: Using streaming-first approach (tools will be detected dynamically)`);
+      
+      // Note: Perplexity doesn't support tool calls, so it will just stream normally
 
       // Stream tokens using the new async generator method
       let fullContent = '';
+      let detectedToolCalls: any[] = [];
+      let completeToolCallsWithResults: any[] = []; // Store complete tool calls with execution results
       
       for await (const chunk of adapter.generateStreamAsync(userPrompt, generateOptions)) {
+        // Handle text content streaming
         if (chunk.content) {
           fullContent += chunk.content;
           
@@ -539,26 +520,221 @@ export class LLMService {
             chunk: chunk.content,
             complete: false,
             content: fullContent,
-            toolCalls: undefined // Streaming mode typically doesn't have tool calls mid-stream
+            toolCalls: undefined
+          };
+        }
+        
+        // Handle dynamic tool call detection
+        if (chunk.toolCalls) {
+          console.log(`[LLMService] Tool calls detected during streaming: ${chunk.toolCalls.length} tools`);
+          
+          // Only store tool calls for post-stream execution if they're complete
+          // We know they're complete when the chunk is marked as complete OR
+          // when we get a subsequent chunk without tool calls (meaning they're finalized)
+          if (chunk.complete) {
+            console.log('[LLMService] Final tool calls captured for post-stream execution');
+            detectedToolCalls = chunk.toolCalls;
+          } else {
+            // For intermediate chunks, only update if we don't have any yet (first detection)
+            // or if this chunk has more complete arguments (longer JSON strings)
+            if (detectedToolCalls.length === 0) {
+              detectedToolCalls = chunk.toolCalls;
+              console.log('[LLMService] First tool call detection - storing for post-stream execution');
+            } else {
+              // Compare argument completeness - use the chunk with more complete arguments
+              const currentArgLength = detectedToolCalls.reduce((sum, tc) => sum + (tc.function?.arguments?.length || 0), 0);
+              const newArgLength = chunk.toolCalls.reduce((sum, tc) => sum + (tc.function?.arguments?.length || 0), 0);
+              
+              if (newArgLength > currentArgLength) {
+                detectedToolCalls = chunk.toolCalls;
+                console.log(`[LLMService] Updated tool calls with more complete arguments: ${newArgLength} vs ${currentArgLength} chars`);
+              }
+            }
+          }
+          
+          // Yield tool calls for UI to show progressive accordions
+          yield {
+            chunk: '',
+            complete: false,
+            content: fullContent,
+            toolCalls: chunk.toolCalls
           };
         }
         
         if (chunk.complete) {
-          // Yield final completion
-          yield {
-            chunk: '',
-            complete: true,
-            content: fullContent,
-            toolCalls: undefined // Streaming mode typically doesn't have tool calls
-          };
           break;
         }
       }
+      
+      // POST-STREAM TOOL EXECUTION: If tools were detected, execute them via MCP then start new stream
+      if (detectedToolCalls.length > 0 && generateOptions.tools && generateOptions.tools.length > 0) {
+        console.log(`[LLMService] Stream complete, executing ${detectedToolCalls.length} detected tool calls via MCP`);
+        
+        try {
+          // Step 1: Execute tools via MCP to get results
+          console.log('[LLMService] Executing detected tool calls via MCP...');
+          
+          // Convert tool calls to MCP format and execute
+          const mcpToolCalls = detectedToolCalls.map((tc: any) => ({
+            id: tc.id,
+            function: {
+              name: tc.function?.name || tc.name,
+              arguments: tc.function?.arguments || JSON.stringify(tc.parameters || {})
+            }
+          }));
+
+          const toolResults = await MCPToolExecution.executeToolCalls(
+            adapter as any, // Cast to MCPCapableAdapter since all our adapters support MCP
+            mcpToolCalls,
+            provider as any,
+            generateOptions.onToolEvent
+          );
+          
+          console.log(`[LLMService] Tool execution completed, got ${toolResults.length} results`);
+          
+          // Build complete tool calls with execution results for final yield
+          completeToolCallsWithResults = detectedToolCalls.map(originalCall => {
+            const result = toolResults.find(r => r.id === originalCall.id);
+            return {
+              id: originalCall.id,
+              name: originalCall.function?.name || originalCall.name,
+              parameters: JSON.parse(originalCall.function?.arguments || '{}'),
+              result: result?.result,
+              success: result?.success || false,
+              error: result?.error,
+              executionTime: result?.executionTime,
+              // Preserve original structure for compatibility
+              function: originalCall.function
+            };
+          });
+          
+          console.log(`[LLMService] Built complete tool calls with results: ${completeToolCallsWithResults.length} tools`);
+          
+          // Step 2: Build conversation history with tool results for pingpong
+          const conversationHistory = this.buildConversationWithToolResults(
+            userPrompt, 
+            generateOptions.systemPrompt,
+            detectedToolCalls, 
+            toolResults,
+            provider
+          );
+          
+          console.log('[LLMService] Starting NEW stream for AI response to tool results...');
+          
+          // Step 3: Start NEW stream with conversation history (pingpong)
+          // Reset fullContent since this is a new conversation response
+          fullContent = '';
+          
+          for await (const chunk of adapter.generateStreamAsync('', {
+            ...generateOptions,
+            // Clear tools since we already executed them
+            tools: undefined,
+            detectedToolCalls: undefined,
+            // Pass conversation history for pingpong
+            conversationHistory: conversationHistory
+          })) {
+            if (chunk.content) {
+              fullContent += chunk.content;
+              
+              yield {
+                chunk: chunk.content,
+                complete: false,
+                content: fullContent,
+                toolCalls: undefined
+              };
+            }
+            
+            // Handle potential recursive tool calls (another pingpong iteration)
+            if (chunk.toolCalls) {
+              console.log(`[LLMService] Detected additional tool calls in response: ${chunk.toolCalls.length}`);
+              // For now, just show them in UI - recursive tool calling can be added later
+              yield {
+                chunk: '',
+                complete: false,
+                content: fullContent,
+                toolCalls: chunk.toolCalls
+              };
+            }
+            
+            if (chunk.complete) {
+              console.log(`[LLMService] Tool response stream complete, final content length: ${fullContent.length}`);
+              break;
+            }
+          }
+          
+        } catch (toolError) {
+          console.error('[LLMService] Tool execution failed:', toolError);
+          // Add error message to the response
+          const errorMessage = `\n\nTool execution failed: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
+          fullContent += errorMessage;
+          yield {
+            chunk: errorMessage,
+            complete: false,
+            content: fullContent,
+            toolCalls: undefined
+          };
+        }
+      }
+      
+      // Yield final completion with complete tool calls (including results)
+      yield {
+        chunk: '',
+        complete: true,
+        content: fullContent,
+        toolCalls: completeToolCallsWithResults.length > 0 ? completeToolCallsWithResults : undefined
+      };
 
     } catch (error) {
       console.error('[LLMService] generateResponseStream failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Build conversation history with tool results for pingpong pattern using ConversationContextBuilder
+   */
+  private buildConversationWithToolResults(
+    originalPrompt: string,
+    systemPrompt: string | undefined,
+    toolCalls: any[],
+    toolResults: any[],
+    provider: string
+  ): any[] {
+    // Convert tool calls and results to ConversationData format
+    const conversationData = {
+      id: 'temp',
+      title: 'Tool Execution',
+      created_at: Date.now(),
+      last_updated: Date.now(),
+      messages: [
+        // User message
+        {
+          id: 'user-1',
+          role: 'user' as const,
+          content: originalPrompt,
+          timestamp: Date.now()
+        },
+        // Assistant message with tool calls
+        {
+          id: 'assistant-1',
+          role: 'assistant' as const,
+          content: '',
+          timestamp: Date.now(),
+          tool_calls: toolCalls.map((tc, index) => ({
+            id: tc.id,
+            name: tc.function?.name || tc.name,
+            parameters: tc.function?.arguments ? JSON.parse(tc.function.arguments) : (tc.parameters || {}),
+            result: toolResults[index]?.result,
+            success: toolResults[index]?.success || false,
+            error: toolResults[index]?.error,
+            executionTime: toolResults[index]?.executionTime
+          }))
+        }
+      ]
+    };
+    
+    // Use ConversationContextBuilder to build proper conversation context
+    return ConversationContextBuilder.buildContextForProvider(conversationData, provider, systemPrompt);
   }
 
   /**

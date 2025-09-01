@@ -1,7 +1,7 @@
 /**
- * OpenRouter Adapter - Clean implementation with SSE streaming
+ * OpenRouter Adapter - Clean implementation with centralized SSE streaming
  * Supports 400+ models through OpenRouter's unified API
- * Based on OpenRouter streaming documentation
+ * Uses BaseAdapter's processSSEStream for reliable streaming
  */
 
 import { BaseAdapter } from '../BaseAdapter';
@@ -26,8 +26,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     super(apiKey, 'anthropic/claude-3.5-sonnet');
     this.mcpConnector = mcpConnector;
     this.initializeCache();
-    
-    // MCP connector will be provided via constructor
   }
 
   /**
@@ -36,6 +34,15 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
       const model = options?.model || this.currentModel;
+      
+      // Handle post-stream tool execution: if detectedToolCalls are provided, execute only tools
+      if (options?.detectedToolCalls && options.detectedToolCalls.length > 0) {
+        console.log('[OpenRouter Adapter] Post-stream tool execution', {
+          detectedToolCalls: options.detectedToolCalls.length,
+          onToolEvent: !!options?.onToolEvent
+        });
+        return await this.executeDetectedToolCalls(options.detectedToolCalls, model, prompt, options);
+      }
       
       // If tools are provided (pre-converted by ChatService), use tool-enabled generation
       if (options?.tools && options.tools.length > 0) {
@@ -92,7 +99,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
   }
 
   /**
-   * Generate streaming response using OpenRouter's SSE format
+   * Generate streaming response using centralized SSE processing
    */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
@@ -100,7 +107,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       
       const requestBody = {
         model,
-        messages: this.buildMessages(prompt, options?.systemPrompt),
+        messages: options?.conversationHistory || this.buildMessages(prompt, options?.systemPrompt),
         temperature: options?.temperature,
         max_tokens: options?.maxTokens,
         top_p: options?.topP,
@@ -127,79 +134,58 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
+      // Use centralized SSE streaming with OpenRouter-specific extraction
+      yield* this.processSSEStream(response, {
+        debugLabel: 'OpenRouter',
+        accumulateToolCalls: true,
+        toolCallThrottling: {
+          initialYield: true,
+          progressInterval: 50
+        },
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let tokenCount = 0;
-      let usage: any = undefined;
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Append new chunk to buffer
-          buffer += decoder.decode(value, { stream: true });
-
-          // Process complete lines from buffer
-          while (true) {
-            const lineEnd = buffer.indexOf('\n');
-            if (lineEnd === -1) break;
-
-            const line = buffer.slice(0, lineEnd).trim();
-            buffer = buffer.slice(lineEnd + 1);
-
-            // Skip empty lines and comments (OpenRouter sends ": OPENROUTER PROCESSING")
-            if (!line || line.startsWith(':')) continue;
-
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                break;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices[0]?.delta;
-                const content = delta?.content;
-                
-                if (content) {
-                  tokenCount++;
-                  
-                  // Yield each token immediately
-                  yield { 
-                    content, 
-                    complete: false
-                  };
-                }
-
-                // Capture usage info when available
-                if (parsed.usage) {
-                  usage = parsed.usage;
-                }
-              } catch (parseError) {
-                console.warn(`[OpenRouterAdapter] Failed to parse SSE data:`, parseError);
-                // Continue processing other chunks
-              }
+        extractContent: (parsed: any) => {
+          // Process all available choices - reasoning models may use multiple choices
+          // Choice 0 might be reasoning, Choice 1 might be actual response
+          for (const choice of parsed.choices || []) {
+            const delta = choice?.delta;
+            const content = delta?.content || delta?.text || choice?.text;
+            if (content) {
+              return content;
             }
           }
+          return null;
+        },
+
+        extractToolCalls: (parsed: any) => {
+          // Extract tool calls from any choice that has them
+          for (const choice of parsed.choices || []) {
+            const toolCalls = choice?.delta?.tool_calls;
+            if (toolCalls) {
+              return toolCalls;
+            }
+          }
+          return null;
+        },
+
+        extractFinishReason: (parsed: any) => {
+          // Extract finish reason from any choice
+          for (const choice of parsed.choices || []) {
+            if (choice?.finish_reason) {
+              return choice.finish_reason;
+            }
+          }
+          return null;
+        },
+
+        extractUsage: (parsed: any) => {
+          return parsed.usage || null;
+        },
+
+        onParseError: (error: Error, rawData: string) => {
+          console.warn(`[OpenRouter Streaming] Failed to parse SSE data:`, error);
+          console.log(`[OpenRouter Streaming] Raw data:`, rawData.substring(0, 200));
         }
-
-        // Yield final completion with usage info
-        const extractedUsage = this.extractUsage({ usage });
-        yield { 
-          content: '', 
-          complete: true, 
-          usage: extractedUsage 
-        };
-
-      } finally {
-        reader.cancel();
-      }
+      });
 
     } catch (error) {
       console.error('[OpenRouterAdapter] Streaming error:', error);
@@ -249,15 +235,12 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     return baseCapabilities;
   }
 
-
-
   /**
    * Check if MCP is available via connector
    */
   supportsMCP(): boolean {
     return MCPToolExecution.supportsMCP(this);
   }
-
 
   /**
    * Generate with pre-converted tools (from ChatService) using iterative execution
@@ -339,7 +322,122 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     );
   }
 
-  // The basic OpenRouter generation logic is now handled by the main generateUncached method
+  /**
+   * Execute detected tool calls from streaming and get AI response
+   * Used for post-stream tool execution - implements pingpong pattern
+   */
+  private async executeDetectedToolCalls(detectedToolCalls: any[], model: string, prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+    console.log('[OpenRouter Adapter] Executing detected tool calls:', {
+      toolCount: detectedToolCalls.length,
+      onToolEvent: !!options?.onToolEvent
+    });
+
+    try {
+      // Convert to MCP format
+      const mcpToolCalls: any[] = detectedToolCalls.map((tc: any) => ({
+        id: tc.id,
+        function: {
+          name: tc.function?.name || tc.name,
+          arguments: tc.function?.arguments || JSON.stringify(tc.parameters || {})
+        }
+      }));
+
+      // Execute tool calls directly using MCPToolExecution
+      const toolResults = await MCPToolExecution.executeToolCalls(
+        this, 
+        mcpToolCalls, 
+        'openrouter',
+        options?.onToolEvent
+      );
+
+      console.log('[OpenRouter Adapter] Tool execution completed:', {
+        resultsCount: toolResults.length,
+        successCount: toolResults.filter(r => r.success).length
+      });
+
+      // Now do the "pingpong" - send the conversation with tool results back to the LLM
+      const messages = this.buildMessages(prompt, options?.systemPrompt);
+      
+      // Add the assistant message with tool calls
+      messages.push({
+        role: 'assistant' as const,
+        content: '', // Empty content since this was a tool call
+        tool_calls: detectedToolCalls
+      });
+
+      // Add tool result messages
+      const toolMessages = MCPToolExecution.buildToolMessages(toolResults);
+      messages.push(...toolMessages);
+
+      console.log('[OpenRouter Adapter] Sending conversation with tool results back to LLM for final response');
+
+      // Make API call to get AI's response to the tool results  
+      const requestBody = {
+        model,
+        messages,
+        temperature: options?.temperature,
+        max_tokens: options?.maxTokens,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+        response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
+        stop: options?.stopSequences
+      };
+      
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          ...this.buildHeaders(),
+          'Authorization': `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'https://synaptic-lab-kit.com',
+          'X-Title': 'Synaptic Lab Kit'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const choice = data.choices[0];
+      const finalContent = choice?.message?.content || 'No response from AI after tool execution';
+      const usage = this.extractUsage(data);
+
+      console.log('[OpenRouter Adapter] Got AI response to tool results:', {
+        contentLength: finalContent.length,
+        finishReason: choice?.finish_reason
+      });
+
+      // Combine original tool calls with their execution results
+      const completeToolCalls = detectedToolCalls.map(originalCall => {
+        const result = toolResults.find(r => r.id === originalCall.id);
+        return {
+          id: originalCall.id,
+          name: originalCall.function?.name || originalCall.name,
+          parameters: JSON.parse(originalCall.function?.arguments || '{}'),
+          result: result?.result,
+          success: result?.success || false,
+          error: result?.error,
+          executionTime: result?.executionTime
+        };
+      });
+
+      // Return LLMResponse with AI's natural language response to tool results
+      return this.buildLLMResponse(
+        finalContent,
+        model,
+        usage,
+        MCPToolExecution.buildToolMetadata(toolResults),
+        choice?.finish_reason || 'stop',
+        completeToolCalls
+      );
+
+    } catch (error) {
+      console.error('[OpenRouter Adapter] Post-stream tool execution failed:', error);
+      throw this.handleError(error, 'post-stream tool execution');
+    }
+  }
 
   /**
    * Get model pricing

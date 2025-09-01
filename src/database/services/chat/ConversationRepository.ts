@@ -264,7 +264,8 @@ export class ConversationRepository {
         messageId,
         role: newMessage.role,
         hasToolCalls: !!(newMessage.tool_calls && newMessage.tool_calls.length > 0),
-        toolCallCount: newMessage.tool_calls?.length || 0
+        toolCallCount: newMessage.tool_calls?.length || 0,
+        toolCallsWithResults: newMessage.tool_calls?.filter(tc => tc.result !== undefined).length || 0
       });
 
       // Update conversation data

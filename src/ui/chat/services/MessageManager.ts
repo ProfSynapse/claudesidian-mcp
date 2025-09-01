@@ -8,7 +8,7 @@ import { ConversationData, ConversationMessage } from '../../../types/chat/ChatT
 export interface MessageManagerEvents {
   onMessageAdded: (message: ConversationMessage) => void;
   onAIMessageStarted: (message: ConversationMessage) => void;
-  onStreamingUpdate: (messageId: string, content: string, isComplete: boolean) => void;
+  onStreamingUpdate: (messageId: string, content: string, isComplete: boolean, isIncremental?: boolean) => void;
   onConversationUpdated: (conversation: ConversationData) => void;
   onLoadingStateChanged: (isLoading: boolean) => void;
   onError: (message: string) => void;
@@ -98,9 +98,14 @@ export class MessageManager {
           }
         )) {
           
-          // For token chunks, add to accumulated content
+          // For token chunks, add to accumulated content AND emit incremental update
           if (chunk.chunk) {
+            // Real-time chunk received - send to UI immediately
+            
             streamedContent += chunk.chunk;
+            
+            // Send only the new chunk to UI for incremental updates
+            this.events.onStreamingUpdate(aiMessageId, chunk.chunk, false, true); // isComplete = false, isIncremental = true
           }
 
           // Extract tool calls when available
@@ -112,40 +117,27 @@ export class MessageManager {
               toolNames: toolCalls.map(tc => tc.name || tc.function?.name).filter(Boolean)
             });
             
+            // Only emit tool calls event for final chunk to avoid duplication
+            if (chunk.complete) {
+                this.events.onToolCallsDetected(aiMessageId, toolCalls);
+            }
           }
-
-          // Update the placeholder message in conversation data
-          const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-          if (placeholderMessageIndex >= 0) {
-            conversation.messages[placeholderMessageIndex] = {
-              ...conversation.messages[placeholderMessageIndex],
-              content: streamedContent,
-              tool_calls: toolCalls, // Include tool calls in the message
-              isLoading: !chunk.complete
-            };
-          }
-
-          // Emit event when tool calls are detected for live UI updates (AFTER message is updated)
-          if (toolCalls) {
-            console.log('[MessageManager DEBUG] About to emit onToolCallsDetected event:', {
-              messageId: aiMessageId,
-              hasEventHandler: !!this.events.onToolCallsDetected,
-              toolCallsData: toolCalls,
-              messageUpdated: placeholderMessageIndex >= 0
-            });
-            this.events.onToolCallsDetected(aiMessageId, toolCalls);
-            console.log('[MessageManager DEBUG] onToolCallsDetected event emitted');
-          }
-
-          // Notify about streaming update
-          this.events.onStreamingUpdate(aiMessageId, streamedContent, !chunk.complete);
 
           if (chunk.complete) {
-            // Save the final AI message to database (ChatService already handles tool calls)
-            // No need to save again here as ChatService saves it in generateResponseStreaming
+            // Update conversation with final accumulated content
+            const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+            if (placeholderMessageIndex >= 0) {
+              conversation.messages[placeholderMessageIndex] = {
+                ...conversation.messages[placeholderMessageIndex],
+                content: streamedContent,
+                tool_calls: toolCalls,
+                isLoading: false
+              };
+            }
             
-            // No need for final conversation update - progressive updates handle everything
-            console.log('[MessageManager DEBUG] Streaming complete - no conversation re-render needed');
+            // Send final complete content for any final processing
+            this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false); // isComplete = true, isIncremental = false
+            // Streaming complete - conversation updated without re-render
             break;
           }
         }
