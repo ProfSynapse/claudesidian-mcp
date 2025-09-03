@@ -37,7 +37,7 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
    */
   async execute(params: ExecuteCommandParams): Promise<ExecuteCommandResult> {
     try {
-      const { commandId, workspaceContext, handoff } = params;
+      const { commandId, workspaceContext } = params;
       
       if (!commandId) {
         return this.prepareResult(false, undefined, 'Command ID is required');
@@ -80,11 +80,6 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
       const nudges = this.generateCommandNudges();
       const responseWithNudges = addRecommendations(response, nudges);
       
-      // Handle handoff if requested
-      if (handoff) {
-        return this.handleHandoff(handoff, responseWithNudges);
-      }
-      
       return responseWithNudges;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -109,7 +104,7 @@ export class ExecuteCommandMode extends BaseMode<ExecuteCommandParams, ExecuteCo
       required: ['commandId']
     };
     
-    // Merge with common schema (workspace context and handoff)
+    // Merge with common schema (workspace context)
     return this.getMergedSchema(modeSchema);
   }
   

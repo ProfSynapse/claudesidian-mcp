@@ -42,8 +42,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
         replaceAll = false, 
         caseSensitive = true, 
         wholeWord = false,
-        workspaceContext, 
-        handoff
+        workspaceContext
       } = params;
       
       
@@ -70,11 +69,6 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
       await this.recordActivity(params, resultData);
       
       const response = this.prepareResult(true, resultData, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
-      
-      // Handle handoff if specified
-      if (handoff) {
-        return this.handleHandoff(handoff, response);
-      }
       
       return response;
     } catch (error) {
@@ -182,10 +176,6 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
             }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of handoff operation if handoff was specified'
-        }
       },
       required: ['success']
     };

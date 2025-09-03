@@ -39,7 +39,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
    */
   async execute(params: CreateContentParams): Promise<CreateContentResult> {
     try {
-      const { filePath, content, workspaceContext, handoff } = params;
+      const { filePath, content, workspaceContext } = params;
       
       // Validate parameters
       if (!filePath) {
@@ -68,11 +68,6 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       // Generate nudges based on file creation
       const nudges = this.generateCreateContentNudges(params, resultData);
       const resultWithNudges = addRecommendations(result, nudges);
-      
-      // Handle handoff if specified
-      if (handoff) {
-        return this.handleHandoff(handoff, resultWithNudges);
-      }
       
       return resultWithNudges;
     } catch (error) {
@@ -154,10 +149,6 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
             }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of handoff operation if handoff was specified'
-        }
       },
       required: ['success']
     };

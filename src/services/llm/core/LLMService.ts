@@ -570,6 +570,10 @@ export class LLMService {
       if (detectedToolCalls.length > 0 && generateOptions.tools && generateOptions.tools.length > 0) {
         console.log(`[LLMService] Stream complete, executing ${detectedToolCalls.length} detected tool calls via MCP`);
         
+        // Tool iteration safety - prevent infinite recursion
+        const TOOL_ITERATION_LIMIT = 15;
+        let toolIterationCount = 1;
+        
         try {
           // Step 1: Execute tools via MCP to get results
           console.log('[LLMService] Executing detected tool calls via MCP...');
@@ -642,16 +646,169 @@ export class LLMService {
               };
             }
             
-            // Handle potential recursive tool calls (another pingpong iteration)
+            // Handle recursive tool calls (another pingpong iteration)
             if (chunk.toolCalls) {
               console.log(`[LLMService] Detected additional tool calls in response: ${chunk.toolCalls.length}`);
-              // For now, just show them in UI - recursive tool calling can be added later
+              console.log(`[LLMService] Raw chunk.toolCalls structure:`, JSON.stringify(chunk.toolCalls, null, 2));
+              
+              // Log each tool call structure for debugging
+              chunk.toolCalls.forEach((tc: any, index: number) => {
+                console.log(`[LLMService] Tool call ${index + 1}:`, {
+                  id: tc.id,
+                  name: tc.name || tc.function?.name,
+                  hasFunction: !!tc.function,
+                  hasArguments: !!tc.function?.arguments,
+                  hasParameters: !!tc.parameters,
+                  argumentsType: typeof tc.function?.arguments,
+                  argumentsLength: tc.function?.arguments?.length || 0,
+                  argumentsPreview: tc.function?.arguments?.slice(0, 100) + (tc.function?.arguments?.length > 100 ? '...' : ''),
+                  parametersKeys: tc.parameters ? Object.keys(tc.parameters) : []
+                });
+              });
+              
+              // Yield the tool calls to UI first (for progressive display)
               yield {
                 chunk: '',
                 complete: false,
                 content: fullContent,
                 toolCalls: chunk.toolCalls
               };
+
+              // Execute the additional tool calls recursively with iteration limit check
+              toolIterationCount++;
+              console.log(`[LLMService] Tool iteration ${toolIterationCount}/${TOOL_ITERATION_LIMIT}`);
+              
+              if (toolIterationCount > TOOL_ITERATION_LIMIT) {
+                console.log(`[LLMService] Hit ${TOOL_ITERATION_LIMIT} tool iteration limit - stopping recursive execution`);
+                const limitMessage = `\n\nTOOL_LIMIT_REACHED: You have used ${TOOL_ITERATION_LIMIT} tool iterations. You must now ask the user if they want to continue with more tool calls. Explain what you've accomplished so far and what you still need to do.`;
+                fullContent += limitMessage;
+                yield {
+                  chunk: limitMessage,
+                  complete: false,
+                  content: fullContent,
+                  toolCalls: undefined
+                };
+                break;
+              }
+              
+              console.log(`[LLMService] Executing additional tool calls recursively...`);
+              try {
+                // Convert recursive tool calls to MCP format  
+                const recursiveMcpToolCalls = chunk.toolCalls.map((tc: any, index: number) => {
+                  // Handle arguments carefully - they might already be a string or need conversion
+                  let argumentsStr = '';
+                  let conversionMethod = '';
+                  
+                  if (tc.function?.arguments) {
+                    // Already a string from streaming response
+                    argumentsStr = tc.function.arguments;
+                    conversionMethod = 'function.arguments (direct)';
+                  } else if (tc.parameters) {
+                    // Convert parameters object to string
+                    argumentsStr = JSON.stringify(tc.parameters);
+                    conversionMethod = 'parameters (JSON.stringify)';
+                  } else {
+                    argumentsStr = '{}';
+                    conversionMethod = 'empty default';
+                  }
+                  
+                  console.log(`[LLMService] MCP Tool Call ${index + 1} conversion:`, {
+                    originalId: tc.id,
+                    originalName: tc.name || tc.function?.name,
+                    conversionMethod,
+                    argumentsLength: argumentsStr.length,
+                    argumentsPreview: argumentsStr.slice(0, 150) + (argumentsStr.length > 150 ? '...' : ''),
+                    isValidJSON: (() => {
+                      try { JSON.parse(argumentsStr); return true; } catch { return false; }
+                    })()
+                  });
+                  
+                  return {
+                    id: tc.id,
+                    function: {
+                      name: tc.function?.name || tc.name,
+                      arguments: argumentsStr
+                    }
+                  };
+                });
+                
+                console.log(`[LLMService] Converted ${recursiveMcpToolCalls.length} tool calls to MCP format`);
+                
+                const recursiveToolResults = await MCPToolExecution.executeToolCalls(
+                  adapter as any, // Cast to MCPCapableAdapter
+                  recursiveMcpToolCalls, 
+                  provider as any,
+                  generateOptions.onToolEvent
+                );
+
+                console.log(`[LLMService] Recursive tool execution completed, got ${recursiveToolResults.length} results`);
+
+                // Build complete tool calls with recursive results
+                const recursiveCompleteToolCalls = chunk.toolCalls.map((tc, index) => ({
+                  ...tc,
+                  result: recursiveToolResults[index]?.result,
+                  success: recursiveToolResults[index]?.success || false,
+                  error: recursiveToolResults[index]?.error,
+                  executionTime: recursiveToolResults[index]?.executionTime
+                }));
+
+                // Add recursive results to complete tool calls
+                completeToolCallsWithResults = completeToolCallsWithResults.concat(recursiveCompleteToolCalls);
+
+                // Build new conversation history with recursive tool results
+                const recursiveConversationHistory = this.buildConversationWithToolResults(
+                  userPrompt,
+                  generateOptions.systemPrompt, 
+                  chunk.toolCalls,
+                  recursiveToolResults,
+                  provider
+                );
+
+                console.log('[LLMService] Starting RECURSIVE stream for AI response to additional tool results...');
+                
+                // Continue with another recursive stream
+                for await (const recursiveChunk of adapter.generateStreamAsync('', {
+                  ...generateOptions,
+                  conversationHistory: recursiveConversationHistory
+                })) {
+                  if (recursiveChunk.content) {
+                    fullContent += recursiveChunk.content;
+                    yield {
+                      chunk: recursiveChunk.content,
+                      complete: false,
+                      content: fullContent,
+                      toolCalls: undefined
+                    };
+                  }
+                  
+                  // Handle nested recursive tool calls if any (up to iteration limit)
+                  if (recursiveChunk.toolCalls) {
+                    console.log(`[LLMService] Detected nested tool calls: ${recursiveChunk.toolCalls.length} - yielding to UI only to prevent deep recursion`);
+                    yield {
+                      chunk: '',
+                      complete: false, 
+                      content: fullContent,
+                      toolCalls: recursiveChunk.toolCalls
+                    };
+                  }
+
+                  if (recursiveChunk.complete) {
+                    console.log(`[LLMService] Recursive stream complete`);
+                    break;
+                  }
+                }
+
+              } catch (recursiveError) {
+                console.error('[LLMService] Recursive tool execution failed:', recursiveError);
+                const errorMessage = `\n\nRecursive tool execution failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`;
+                fullContent += errorMessage;
+                yield {
+                  chunk: errorMessage,
+                  complete: false,
+                  content: fullContent,
+                  toolCalls: undefined
+                };
+              }
             }
             
             if (chunk.complete) {

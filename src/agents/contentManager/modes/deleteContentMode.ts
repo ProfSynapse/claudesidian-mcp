@@ -37,7 +37,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
    */
   async execute(params: DeleteContentParams): Promise<DeleteContentResult> {
     try {
-      const { filePath, content, similarityThreshold = 0.95, workspaceContext, handoff } = params;
+      const { filePath, content, similarityThreshold = 0.95, workspaceContext } = params;
       
       const deletions = await ContentOperations.deleteContent(
         this.app,
@@ -57,11 +57,6 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
       await this.recordActivity(params, resultData);
       
       const response = this.prepareResult(true, resultData, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
-      
-      // Handle handoff if specified
-      if (handoff) {
-        return this.handleHandoff(handoff, response);
-      }
       
       return response;
     } catch (error) {
@@ -150,10 +145,6 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
             }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of handoff operation if handoff was specified'
-        }
       },
       required: ['success']
     };

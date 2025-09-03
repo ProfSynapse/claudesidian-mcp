@@ -32,7 +32,7 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
    */
   async execute(params: ReplaceByLineParams): Promise<ReplaceByLineResult> {
     try {
-      const { filePath, startLine, endLine, newContent, workspaceContext, handoff } = params;
+      const { filePath, startLine, endLine, newContent, workspaceContext } = params;
       
       const linesReplaced = await ContentOperations.replaceByLine(
         this.app,
@@ -48,11 +48,6 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
           filePath,
           linesReplaced
         }, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
-      
-      // Handle handoff if specified
-      if (handoff) {
-        return this.handleHandoff(handoff, response);
-      }
       
       return response;
     } catch (error) {
@@ -143,10 +138,6 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
             }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of handoff operation if handoff was specified'
-        }
       },
       required: ['success']
     };

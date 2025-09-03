@@ -631,10 +631,6 @@ class ContentBatchSchemaBuilder implements ISchemaBuilder {
           type: 'string',
           description: 'Session identifier for tracking'
         },
-        handoff: {
-          type: 'object',
-          description: 'Handoff configuration'
-        }
       },
       required: ['operations']
     };
@@ -679,10 +675,6 @@ class ContentBatchSchemaBuilder implements ISchemaBuilder {
             activeWorkspace: { type: 'boolean', description: 'Whether this is the active workspace' }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of handoff operation if handoff was specified'
-        }
       },
       required: ['success']
     };

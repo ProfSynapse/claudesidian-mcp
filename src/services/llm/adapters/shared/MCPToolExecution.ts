@@ -99,13 +99,23 @@ export class MCPToolExecution {
         let parameters: any = {};
         const argumentsStr = toolCall.function.arguments || '{}';
         
-        console.log(`[MCPToolExecution] Parsing arguments for ${toolCall.function.name}:`, argumentsStr.slice(0, 100) + (argumentsStr.length > 100 ? '...' : ''));
+        console.log(`[MCPToolExecution] Parsing arguments for ${toolCall.function.name}:`);
+        console.log(`[MCPToolExecution] Arguments details:`, {
+          length: argumentsStr.length,
+          startsWithBrace: argumentsStr.startsWith('{'),
+          endsWithBrace: argumentsStr.endsWith('}'),
+          preview: argumentsStr.slice(0, 150) + (argumentsStr.length > 150 ? '...' : ''),
+          lastChars: argumentsStr.slice(-20)
+        });
         
         try {
           parameters = JSON.parse(argumentsStr);
+          console.log(`[MCPToolExecution] Successfully parsed arguments:`, Object.keys(parameters));
         } catch (parseError) {
           console.error(`[MCPToolExecution] Failed to parse tool arguments:`, parseError);
           console.error(`[MCPToolExecution] Raw arguments (${argumentsStr.length} chars):`, argumentsStr);
+          console.error(`[MCPToolExecution] Character codes at failure point:`, 
+            argumentsStr.split('').slice(0, 50).map((c, i) => `${i}:'${c}'(${c.charCodeAt(0)})`));
           
           // Try to fix common JSON issues or use empty parameters
           throw new Error(`Invalid tool arguments: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);

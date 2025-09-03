@@ -45,7 +45,7 @@ export class AgentManagerAgent extends BaseAgent {
   private providerManager: LLMProviderManager | null = null;
 
   /**
-   * Agent Manager for handoff operations
+   * Agent Manager for inter-agent communication
    */
   private parentAgentManager: AgentManager | null = null;
   
@@ -176,7 +176,7 @@ export class AgentManagerAgent extends BaseAgent {
   }
 
   /**
-   * Set the Agent Manager for handoff operations
+   * Set the Agent Manager for inter-agent communication
    */
   setParentAgentManager(agentManager: AgentManager): void {
     this.parentAgentManager = agentManager;

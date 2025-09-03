@@ -37,7 +37,7 @@ export interface ExecutePromptParams extends CommonParameters {
         caseSensitive?: boolean;
         wholeWord?: boolean;
     };
-    // sessionId, context, workspaceContext, handoff now inherited from CommonParameters
+    // sessionId, context, workspaceContext now inherited from CommonParameters
 }
 
 export interface ExecutePromptResult extends CommonResult {

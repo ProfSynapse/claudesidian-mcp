@@ -228,7 +228,6 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         processedResults,
         processedResults.error,
         undefined, // workspaceContext
-        undefined, // handoffResult
         params.context.sessionId,
         params.context
       );
@@ -242,7 +241,6 @@ export class BatchExecutePromptMode extends BaseMode<BatchExecutePromptParams, B
         undefined,
         `Batch execution failed: ${getErrorMessage(error)}`,
         undefined, // workspaceContext
-        undefined, // handoffResult
         params.context.sessionId,
         params.context
       );

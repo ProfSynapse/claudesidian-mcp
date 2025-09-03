@@ -31,7 +31,7 @@ export class ListCommandsMode extends BaseMode<ListCommandsParams, ListCommandsR
    */
   async execute(params: ListCommandsParams): Promise<ListCommandsResult> {
     try {
-      const { filter, workspaceContext, handoff } = params;
+      const { filter, workspaceContext } = params;
       
       // Get all commands from the app
       const commands = this.app.commands.listCommands();
@@ -57,11 +57,6 @@ export class ListCommandsMode extends BaseMode<ListCommandsParams, ListCommandsR
           commands: mappedCommands,
           total: mappedCommands.length
         }, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
-      
-      // Handle handoff if requested
-      if (handoff) {
-        return this.handleHandoff(handoff, response);
-      }
       
       return response;
     } catch (error) {
@@ -174,10 +169,6 @@ export class ListCommandsMode extends BaseMode<ListCommandsParams, ListCommandsR
             }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of the handoff operation'
-        }
       },
       required: ['success']
     };

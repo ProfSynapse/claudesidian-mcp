@@ -211,7 +211,7 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
       required: ['sourcePath', 'targetPath']
     };
     
-    // Merge with common schema (workspace context and handoff)
+    // Merge with common schema (workspace context)
     return this.getMergedSchema(modeSchema);
   }
   

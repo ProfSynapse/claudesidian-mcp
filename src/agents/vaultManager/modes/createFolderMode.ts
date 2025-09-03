@@ -121,7 +121,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
       required: ['path']
     };
     
-    // Merge with common schema (workspace context and handoff)
+    // Merge with common schema (workspace context)
     return this.getMergedSchema(modeSchema);
   }
   

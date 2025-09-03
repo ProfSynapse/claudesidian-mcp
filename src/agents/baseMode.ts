@@ -59,7 +59,7 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
   abstract getParameterSchema(): any;
   
   /**
-   * Get common parameter schema elements for workspace context and handoff
+   * Get common parameter schema elements for workspace context
    * This is now a proxy to the central utility for DRY implementation
    * @returns JSON schema for common parameters
    */
@@ -77,14 +77,8 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
   }
   
   /**
-   * Helper method to merge mode-specific schema with common schema
-   * This ensures that every mode has workspace context and handoff parameters
-   * @param customSchema The mode-specific schema
-   * @returns Merged schema with common parameters
-   */
-  /**
    * Helper method to merge mode-specific schema with common schema and enhance documentation
-   * This ensures that every mode has workspace context and handoff parameters,
+   * This ensures that every mode has workspace context parameters,
    * and provides clear documentation on which parameters are required vs. optional
    * 
    * @param customSchema The mode-specific schema
@@ -98,8 +92,8 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
     mergedSchema.type = mergedSchema.type || 'object';
     mergedSchema.properties = mergedSchema.properties || {};
     
-    // Make sure workspaceContext and handoff are defined as optional properties
-    // This is a safety check in case they're not included in the common schema for some reason
+    // Make sure workspaceContext is defined as optional property
+    // This is a safety check in case it's not included in the common schema for some reason
     if (!mergedSchema.properties.workspaceContext) {
       mergedSchema.properties.workspaceContext = {
         type: 'object',
@@ -122,28 +116,6 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
       };
     }
     
-    if (!mergedSchema.properties.handoff) {
-      mergedSchema.properties.handoff = {
-        type: 'object',
-        properties: {
-          tool: { 
-            type: 'string',
-            description: 'Agent name to hand off to' 
-          },
-          mode: { 
-            type: 'string',
-            description: 'Mode to execute' 
-          },
-          parameters: { 
-            type: 'object',
-            description: 'Parameters to pass to the next mode'
-          }
-        },
-        required: ['tool', 'mode', 'parameters'],
-        description: 'Optional handoff to another tool'
-      };
-    }
-    
     // Enhance schema with detailed documentation on required vs. optional parameters
     // and type information, to improve user experience
     return enhanceSchemaDocumentation(mergedSchema);
@@ -156,7 +128,6 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
    * @param error Error message if operation failed
    * @param context Either a string with contextual information or a record of additional properties to include
    * @param workspaceContext Workspace context used
-   * @param handoffResult Result from handoff operation
    * @returns Standardized result object
    */
   protected prepareResult(
@@ -164,8 +135,7 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
     data?: any,
     error?: string,
     context?: CommonResult['context'],
-    workspaceContext?: CommonResult['workspaceContext'],
-    handoffResult?: any
+    workspaceContext?: CommonResult['workspaceContext']
   ): R {
     // Extract sessionId from context parameter (DRY fix for all modes)
     let sessionId: string | undefined;
@@ -185,7 +155,6 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
         null, 
         'Session ID is required but not provided',
         workspaceContext, 
-        null,
         undefined,
         undefined
       );
@@ -202,7 +171,6 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
       data, 
       error, 
       workspaceContext, 
-      handoffResult, 
       sessionId,
       context
     );
@@ -247,99 +215,6 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
     return null;
   }
   
-  /**
-   * Handle handoff to another agent/mode(s)
-   * @param handoff Handoff parameters - can be a single mode call or an array of mode calls
-   * @param currentResult Current result to include in handoff
-   * @returns Promise resolving to result with handoff result(s)
-   */
-  protected async handleHandoff(
-    handoff: CommonParameters['handoff'],
-    currentResult: R
-  ): Promise<R> {
-    if (!handoff) {
-      return currentResult;
-    }
-    
-    try {
-      // This is a placeholder - actual implementation requires agent manager
-      // which should be injected into each agent during initialization
-      // The actual implementation will be in BaseAgent
-      console.log('Warning: Base handleHandoff called - not implemented in BaseMode');
-      
-      // Check if this is a multi-mode handoff (array of mode calls)
-      if (Array.isArray(handoff)) {
-        return {
-          ...currentResult,
-          handoffResults: handoff.map((call, index) => ({
-            success: false,
-            error: 'Multi-mode handoff not implemented in BaseMode',
-            tool: call.tool,
-            mode: call.mode,
-            callName: call.callName,
-            sequence: index,
-            startTime: Date.now(),
-            endTime: Date.now(),
-            duration: 0,
-            sessionId: (currentResult.context && typeof currentResult.context === 'object') ? currentResult.context.sessionId : undefined
-          })),
-          handoffSummary: {
-            successCount: 0,
-            failureCount: handoff.length,
-            startTime: Date.now(),
-            endTime: Date.now(),
-            totalDuration: 0,
-            executionStrategy: 'serial'
-          }
-        } as R;
-      }
-      
-      // Single mode handoff (legacy support)
-      return {
-        ...currentResult,
-        handoffResult: {
-          success: false,
-          error: 'Handoff not implemented in BaseMode'
-        }
-      } as R;
-    } catch (error) {
-      // Check if this was a multi-mode handoff attempt
-      if (Array.isArray(handoff)) {
-        return {
-          ...currentResult,
-          handoffResults: handoff.map((call, index) => ({
-            success: false,
-            error: getErrorMessage(error) || 'Failed to handle multi-mode handoff',
-            tool: call.tool,
-            mode: call.mode,
-            callName: call.callName,
-            sequence: index,
-            startTime: Date.now(),
-            endTime: Date.now(),
-            duration: 0,
-            sessionId: (currentResult.context && typeof currentResult.context === 'object') ? currentResult.context.sessionId : undefined
-          })),
-          handoffSummary: {
-            successCount: 0,
-            failureCount: handoff.length,
-            startTime: Date.now(),
-            endTime: Date.now(),
-            totalDuration: 0,
-            executionStrategy: 'serial'
-          }
-        } as R;
-      }
-      
-      // Single mode handoff error
-      return {
-        ...currentResult,
-        handoffResult: {
-          success: false,
-          error: getErrorMessage(error) || 'Failed to handle handoff'
-        }
-      } as R;
-    }
-  }
 
   // ========================================
   // NEW VALIDATION UTILITIES (Phase 1)

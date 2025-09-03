@@ -50,7 +50,7 @@ export interface ModeCall {
 
 /**
  * Common parameters structure for standardized agent modes
- * Provides session tracking, workspace context and handoff mechanism
+ * Provides session tracking and workspace context
  */
 export interface CommonParameters {
   /**
@@ -72,11 +72,6 @@ export interface CommonParameters {
    */
   workspaceContext?: WorkspaceContext | string;
   
-  /**
-   * Optional handoff to another agent/mode for workflow chaining
-   * Can be a single mode call or an array of mode calls for multi-mode execution
-   */
-  handoff?: ModeCall | ModeCall[];
 }
 
 /**
@@ -117,52 +112,6 @@ export interface CommonResult {
    */
   workspaceContext?: WorkspaceContext;
   
-  /**
-   * Handoff result if a single handoff was processed
-   * @deprecated Use handoffResults for multi-mode execution
-   */
-  handoffResult?: any;
-  
-  /**
-   * Results from multiple handoffs when executing multiple modes
-   * Each entry contains the result of a single mode execution
-   */
-  handoffResults?: Array<ModeCallResult>;
-  
-  /**
-   * Summary of multi-mode execution results
-   */
-  handoffSummary?: {
-    /**
-     * Number of successful mode calls
-     */
-    successCount: number;
-    
-    /**
-     * Number of failed mode calls
-     */
-    failureCount: number;
-    
-    /**
-     * Timestamp when execution started
-     */
-    startTime?: number;
-    
-    /**
-     * Timestamp when execution completed
-     */
-    endTime?: number;
-    
-    /**
-     * Total duration of all handoffs in milliseconds
-     */
-    totalDuration?: number;
-    
-    /**
-     * How modes were executed (serial, parallel, mixed)
-     */
-    executionStrategy: 'serial' | 'parallel' | 'mixed';
-  };
 }
 
 /**

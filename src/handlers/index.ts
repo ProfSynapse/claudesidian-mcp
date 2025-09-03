@@ -8,7 +8,6 @@ export type * from './interfaces/IRequestHandlerServices';
 export { ValidationService } from './services/ValidationService';
 export { SessionService } from './services/SessionService';
 export { ToolExecutionService } from './services/ToolExecutionService';
-export { HandoffProcessor } from './services/HandoffProcessor';
 export { ResponseFormatter } from './services/ResponseFormatter';
 export { ToolListService } from './services/ToolListService';
 

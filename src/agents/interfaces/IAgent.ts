@@ -49,7 +49,7 @@ export interface IAgent {
   executeMode(modeSlug: string, params: any): Promise<any>;
   
   /**
-   * Set the agent manager reference for handoff capability
+   * Set the agent manager reference
    * @param agentManager Agent manager instance
    */
   setAgentManager(agentManager: any): void;

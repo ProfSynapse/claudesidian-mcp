@@ -9,7 +9,6 @@ import { IRequestStrategy } from './strategies/IRequestStrategy';
 import { ValidationService } from './services/ValidationService';
 import { SessionService } from './services/SessionService';
 import { ToolExecutionService } from './services/ToolExecutionService';
-import { HandoffProcessor } from './services/HandoffProcessor';
 import { ResponseFormatter } from './services/ResponseFormatter';
 import { ToolListService } from './services/ToolListService';
 import { ResourceListService } from './services/ResourceListService';
@@ -75,7 +74,6 @@ export class RequestRouter {
             validationService: new ValidationService(),
             sessionService: new SessionService(),
             toolExecutionService: new ToolExecutionService(),
-            handoffProcessor: new HandoffProcessor(),
             responseFormatter: new ResponseFormatter(),
             toolListService: toolListService,
             resourceListService: new ResourceListService(this.app),

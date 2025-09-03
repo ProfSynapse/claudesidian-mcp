@@ -649,7 +649,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       required: ['id']
     };
     
-    // Merge with common schema (adds sessionId, workspaceContext, handoff)
+    // Merge with common schema (adds sessionId, workspaceContext)
     return this.getMergedSchema(modeSchema);
   }
   

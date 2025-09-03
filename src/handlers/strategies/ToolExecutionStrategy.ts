@@ -46,7 +46,7 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
         try {
             context = await this.buildRequestContext(request);
             const processedParams = await this.processParameters(context);
-            result = await this.executeToolWithHandoffs(context, processedParams);
+            result = await this.executeTool(context, processedParams);
             success = true;
             
             // Trigger response capture callback if available
@@ -228,7 +228,7 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
         return processedParams;
     }
 
-    private async executeToolWithHandoffs(context: IRequestContext, processedParams: any): Promise<any> {
+    private async executeTool(context: IRequestContext, processedParams: any): Promise<any> {
         const agent = this.getAgent(context.agentName);
         const result = await this.dependencies.toolExecutionService.executeAgent(
             agent,
@@ -240,22 +240,6 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             this.sessionContextManager.updateFromResult(processedParams.sessionId, result);
         }
 
-        if (result.handoff && result.success) {
-            const handoffResult = await this.dependencies.handoffProcessor.processHandoff(
-                result,
-                this.getAgent,
-                processedParams.sessionId,
-                this.sessionContextManager
-            );
-
-            if (handoffResult.handoffResult) {
-                return this.dependencies.responseFormatter.formatHandoffResponse(
-                    result,
-                    handoffResult.handoffResult,
-                    handoffResult.returnHere
-                );
-            }
-        }
 
         return result;
     }

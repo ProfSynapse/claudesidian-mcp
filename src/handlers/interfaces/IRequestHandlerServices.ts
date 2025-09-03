@@ -30,32 +30,10 @@ export interface IToolExecutionService {
     ): Promise<any>;
 }
 
-export interface IHandoffProcessor {
-    processHandoff(
-        result: any,
-        getAgent: (name: string) => IAgent,
-        sessionId: string,
-        sessionContextManager?: SessionContextManager
-    ): Promise<any>;
-    processSingleHandoff(
-        handoff: ModeCall,
-        getAgent: (name: string) => IAgent,
-        sessionId: string,
-        workspaceContext?: any,
-        sessionContextManager?: SessionContextManager
-    ): Promise<any>;
-    processMultiHandoff(
-        handoffs: ModeCall[],
-        result: any,
-        sessionId: string,
-        sessionContextManager?: SessionContextManager
-    ): Promise<any>;
-}
 
 export interface IResponseFormatter {
     formatToolExecutionResponse(result: any, sessionInfo?: any): any;
     formatSessionInstructions(sessionId: string, result: any): any;
-    formatHandoffResponse(result: any, handoffResult: any, returnHere: boolean): any;
     formatErrorResponse(error: Error): any;
 }
 
@@ -128,7 +106,6 @@ export interface IRequestHandlerDependencies {
     validationService: IValidationService;
     sessionService: ISessionService;
     toolExecutionService: IToolExecutionService;
-    handoffProcessor: IHandoffProcessor;
     responseFormatter: IResponseFormatter;
     toolListService: IToolListService;
     resourceListService: IResourceListService;

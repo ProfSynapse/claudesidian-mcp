@@ -51,10 +51,6 @@ export class SchemaBuilder {
           type: 'string',
           description: 'Session identifier for tracking'
         },
-        handoff: {
-          type: 'object',
-          description: 'Handoff configuration'
-        }
       },
       required: ['operations']
     };
@@ -106,10 +102,6 @@ export class SchemaBuilder {
             }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of handoff operation if handoff was specified'
-        }
       },
       required: ['success']
     };

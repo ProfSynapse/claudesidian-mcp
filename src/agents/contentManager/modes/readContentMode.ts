@@ -42,7 +42,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
    */
   async execute(params: ReadContentParams): Promise<ReadContentResult> {
     try {
-      const { filePath, limit, offset, includeLineNumbers, workspaceContext, handoff } = params;
+      const { filePath, limit, offset, includeLineNumbers, workspaceContext } = params;
       
       let content: string;
       let startLine: number | undefined;
@@ -85,11 +85,6 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       const nudges = this.generateReadContentNudges(resultData);
       const resultWithNudges = addRecommendations(result, nudges);
       
-      // Handle handoff if specified
-      if (handoff) {
-        return this.handleHandoff(handoff, resultWithNudges);
-      }
-      
       return resultWithNudges;
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error reading content: ', error), params.context, parseWorkspaceContext(params.workspaceContext) || undefined);
@@ -126,7 +121,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       required: ['filePath']
     };
     
-    // Merge with common schema (workspace context and handoff)
+    // Merge with common schema (workspace context)
     return this.getMergedSchema(modeSchema);
   }
   

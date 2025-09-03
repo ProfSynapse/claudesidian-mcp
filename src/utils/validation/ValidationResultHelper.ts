@@ -197,7 +197,6 @@ export class ValidationResultHelper {
         null,
         errorMessage,
         contextResult.workspaceContext,
-        undefined,
         contextResult.sessionId,
         contextResult.contextString,
         {
@@ -264,7 +263,6 @@ export class ValidationResultHelper {
         data,
         undefined,
         contextResult.workspaceContext,
-        undefined,
         contextResult.sessionId,
         contextResult.contextString,
         {

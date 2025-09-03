@@ -24,24 +24,6 @@ export class ResponseFormatter implements IResponseFormatter {
         return result;
     }
 
-    formatHandoffResponse(result: any, handoffResult: any, returnHere: boolean): any {
-        if (returnHere) {
-            result.handoffResult = handoffResult;
-            return {
-                content: [{
-                    type: "text",
-                    text: safeStringify(result)
-                }]
-            };
-        } else {
-            return {
-                content: [{
-                    type: "text",
-                    text: safeStringify(handoffResult)
-                }]
-            };
-        }
-    }
 
     formatErrorResponse(error: Error): any {
         return {

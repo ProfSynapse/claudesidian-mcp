@@ -35,7 +35,7 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
    */
   async execute(params: PrependContentParams): Promise<PrependContentResult> {
     try {
-      const { filePath, content, workspaceContext, handoff } = params;
+      const { filePath, content, workspaceContext } = params;
       
       const result = await ContentOperations.prependContent(this.app, filePath, content);
       
@@ -51,11 +51,6 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
       await this.recordActivity(params, resultData);
       
       const response = this.prepareResult(true, resultData, undefined, params.context, parseWorkspaceContext(workspaceContext) || undefined);
-      
-      // Handle handoff if specified
-      if (handoff) {
-        return this.handleHandoff(handoff, response);
-      }
       
       return response;
     } catch (error) {
@@ -141,10 +136,6 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
             }
           }
         },
-        handoffResult: {
-          type: 'object',
-          description: 'Result of handoff operation if handoff was specified'
-        }
       },
       required: ['success']
     };

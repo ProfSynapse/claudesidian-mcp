@@ -86,30 +86,6 @@ export function getModeCallSchema(): any {
   });
 }
 
-/**
- * Get schema for handoff parameters
- * @returns JSON schema for handoff
- */
-export function getHandoffSchema(): any {
-  const modeCallSchema = getModeCallSchema();
-  
-  return enhanceSchemaDocumentation({
-    handoff: {
-      oneOf: [
-        // Single mode call (backward compatibility)
-        modeCallSchema,
-        
-        // Array of mode calls (multi-mode execution)
-        {
-          type: 'array',
-          items: modeCallSchema,
-          description: 'Array of mode calls to execute'
-        }
-      ],
-      description: 'Optional handoff to another agent/mode(s)'
-    }
-  });
-}
 
 /**
  * Get schema for session parameters (now part of context - kept for backward compatibility)
@@ -172,7 +148,6 @@ export function getCommonParameterSchema(): any {
   return {
     ...getSessionSchema(),
     ...getWorkspaceContextSchema(),
-    ...getHandoffSchema(),
     ...getContextSchema()
   };
 }
@@ -229,93 +204,6 @@ export function getCommonResultSchema(): any {
         },
         description: 'Workspace context that was used'
       },
-      handoffResult: {
-        type: 'object',
-        description: 'Result from handoff operation if one was performed (legacy support)'
-      },
-      handoffResults: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            success: {
-              type: 'boolean',
-              description: 'Whether the operation succeeded'
-            },
-            error: {
-              type: 'string', 
-              description: 'Error message if operation failed'
-            },
-            data: {
-              type: 'object',
-              description: 'Operation-specific result data'
-            },
-            tool: {
-              type: 'string',
-              description: 'Agent name that executed the mode'
-            },
-            mode: {
-              type: 'string',
-              description: 'Mode that was executed'
-            },
-            callName: {
-              type: 'string',
-              description: 'Name of the mode call if specified'
-            },
-            sequence: {
-              type: 'number',
-              description: 'Sequence number of this mode call'
-            },
-            startTime: {
-              type: 'number',
-              description: 'Timestamp when the mode call started'
-            },
-            endTime: {
-              type: 'number',
-              description: 'Timestamp when the mode call completed'
-            },
-            duration: {
-              type: 'number',
-              description: 'Duration of the mode call in milliseconds'
-            }
-          },
-          required: ['success', 'tool', 'mode'],
-          description: 'Result of a single mode execution'
-        },
-        description: 'Results from multiple handoffs when executing multiple modes'
-      },
-      handoffSummary: {
-        type: 'object',
-        properties: {
-          successCount: {
-            type: 'number',
-            description: 'Number of successful mode calls'
-          },
-          failureCount: {
-            type: 'number',
-            description: 'Number of failed mode calls'
-          },
-          startTime: {
-            type: 'number',
-            description: 'Timestamp when execution started'
-          },
-          endTime: {
-            type: 'number',
-            description: 'Timestamp when execution completed'
-          },
-          totalDuration: {
-            type: 'number',
-            description: 'Total duration of all handoffs in milliseconds'
-          },
-          executionStrategy: {
-            type: 'string',
-            enum: ['serial', 'parallel', 'mixed'],
-            description: 'How modes were executed'
-          }
-        },
-        required: ['successCount', 'failureCount', 'executionStrategy'],
-        description: 'Summary of multi-mode execution results'
-      },
       sessionId: {
         type: 'string',
         description: 'Session identifier used for tracking tool calls'
@@ -357,7 +245,6 @@ export function mergeWithCommonSchema(customSchema: any): any {
  * @param data Operation-specific data
  * @param error Error message if operation failed
  * @param workspaceContext Workspace context used
- * @param handoffResult Result from handoff operation
  * @param sessionId Session identifier
  * @param context Contextual information (rich object or string for backward compatibility)
  * @param additionalProps Additional properties to include in the result
@@ -368,7 +255,6 @@ export function createResult<T extends CommonResult>(
   data?: any,
   error?: string,
   workspaceContext?: CommonResult['workspaceContext'],
-  handoffResult?: any,
   sessionId?: string,
   context?: CommonResult['context'] | string,
   additionalProps?: Record<string, any>
@@ -378,7 +264,6 @@ export function createResult<T extends CommonResult>(
     ...(data !== undefined && { data }),
     ...(error !== undefined && { error }),
     ...(workspaceContext !== undefined && { workspaceContext }),
-    ...(handoffResult !== undefined && { handoffResult }),
     ...(sessionId !== undefined && { sessionId }),
     ...(context !== undefined && { context })
   };

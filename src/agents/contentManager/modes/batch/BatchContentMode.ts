@@ -57,7 +57,7 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
    */
   async execute(params: BatchContentParams): Promise<BatchContentResult> {
     try {
-      const { operations, workspaceContext, handoff } = params;
+      const { operations, workspaceContext } = params;
       
       // 1. Validate operations
       const validationResult = this.operationValidator.validateOperations(operations);
@@ -86,11 +86,6 @@ export class BatchContentMode extends BaseMode<BatchContentParams, BatchContentR
       // 6. Generate nudges based on batch operations
       const nudges = this.generateBatchContentNudges(operations, processedResults);
       const responseWithNudges = addRecommendations(response, nudges);
-
-      // 7. Handle handoff if specified
-      if (handoff) {
-        return this.handleHandoff(handoff, responseWithNudges);
-      }
 
       return responseWithNudges;
     } catch (error: unknown) {
