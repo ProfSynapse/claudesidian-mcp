@@ -14,8 +14,10 @@ import type {
   ConversationSearchResult,
   ConversationData,
   ConversationMessage,
-  PaginatedMessages
+  PaginatedMessages,
+  ConversationDocument
 } from '../../../types/chat/ChatTypes';
+import { documentToConversationData, documentToSearchResult } from '../../../types/chat/ChatTypes';
 
 export interface MessageSearchOptions {
   conversationId?: string;
@@ -74,7 +76,7 @@ export class ConversationSearchService {
     const startTime = Date.now();
     
     try {
-      const results = await this.conversationRepository.searchConversations(query, options);
+      const results = await this.conversationRepository.searchConversationsWithResults(query, options);
       
       // Apply additional filtering if needed
       let filteredResults = results;
@@ -118,18 +120,12 @@ export class ConversationSearchService {
         if (!conversation) {
           return [];
         }
+        const conversationData = documentToConversationData(conversation);
         conversationsToSearch = [{
           id: conversation.id,
-          title: conversation.title,
+          title: conversation.metadata.title,
           summary: '',
-          metadata: {
-            title: conversation.title,
-            created_at: conversation.created_at,
-            last_updated: conversation.last_updated,
-            vault_name: options.vaultName || '',
-            message_count: conversation.messages.length,
-            conversation
-          },
+          metadata: conversation.metadata,
           relevanceScore: 1.0
         }];
       } else {
@@ -266,7 +262,7 @@ export class ConversationSearchService {
   ): Promise<ConversationSearchResult[]> {
     try {
       // Get all conversations and filter by tool calls
-      const allConversations = await this.conversationRepository.searchConversations('', {
+      const allConversations = await this.conversationRepository.searchConversationsWithResults('', {
         ...options,
         limit: 1000 // Get more results to filter
       });
@@ -302,11 +298,12 @@ export class ConversationSearchService {
     conversation: ConversationData | null;
   }> {
     try {
-      const conversation = await this.conversationRepository.getConversation(conversationId);
-      if (!conversation) {
+      const conversationDoc = await this.conversationRepository.getConversation(conversationId);
+      if (!conversationDoc) {
         return { targetMessage: null, context: [], conversation: null };
       }
 
+      const conversation = documentToConversationData(conversationDoc);
       const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
       if (messageIndex === -1) {
         return { targetMessage: null, context: [], conversation };
@@ -334,21 +331,22 @@ export class ConversationSearchService {
    */
   async getSuggestedQueries(sessionId: string, limit: number = 10): Promise<string[]> {
     try {
-      const recentConversations = await this.conversationRepository.getRecentConversations(sessionId, 20);
+      const recentConversations = await this.conversationRepository.getRecentConversations(20);
       
       const suggestions = new Set<string>();
       
       for (const conv of recentConversations) {
         // Extract key phrases from conversation titles
-        const titleWords = conv.title.split(' ')
+        const title = conv.metadata.title;
+        const titleWords = title.split(' ')
           .filter((word: string) => word.length > 3)
           .slice(0, 3);
         
         titleWords.forEach((word: string) => suggestions.add(word));
 
         // Add conversation title as suggestion if it's descriptive
-        if (conv.title.length > 5 && conv.title.length < 50) {
-          suggestions.add(conv.title);
+        if (title.length > 5 && title.length < 50) {
+          suggestions.add(title);
         }
       }
 
@@ -374,7 +372,7 @@ export class ConversationSearchService {
       }
 
       // Use the conversation title as search query
-      const relatedResults = await this.searchConversations(conversation.title, { limit: limit + 1 });
+      const relatedResults = await this.searchConversations(conversation.metadata.title, { limit: limit + 1 });
       
       // Remove the original conversation from results
       return relatedResults.filter(result => result.id !== conversationId).slice(0, limit);

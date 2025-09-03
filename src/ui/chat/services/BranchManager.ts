@@ -1,25 +1,17 @@
 /**
- * BranchManager - Handles conversation branching operations
+ * BranchManager - Handles message-level alternative operations
  * 
- * Coordinates branch creation, switching, and management
- * between the UI and the ConversationRepository.
+ * Manages creating and switching between alternative responses for individual messages
+ * instead of conversation-level branching.
  */
 
 import { ConversationRepository } from '../../../database/services/chat/ConversationRepository';
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 
 export interface BranchManagerEvents {
-  onBranchCreated: (conversationId: string, branchId: string) => void;
-  onBranchSwitched: (conversationId: string, branchId: string) => void;
+  onMessageAlternativeCreated: (messageId: string, alternativeIndex: number) => void;
+  onMessageAlternativeSwitched: (messageId: string, alternativeIndex: number) => void;
   onError: (message: string) => void;
-}
-
-export interface BranchInfo {
-  id: string;
-  createdFrom: string;
-  lastMessageId: string;
-  isActive: boolean;
-  messageCount: number;
 }
 
 export class BranchManager {
@@ -29,263 +21,211 @@ export class BranchManager {
   ) {}
 
   /**
-   * Create a new branch from a specific message
+   * Create an alternative response for a specific message
    */
-  async createBranchFromMessage(
+  async createMessageAlternative(
     conversation: ConversationData,
-    fromMessageId: string
-  ): Promise<string | null> {
+    messageId: string,
+    alternativeResponse: ConversationMessage
+  ): Promise<number | null> {
     try {
-      console.log('[BranchManager] Creating branch from message:', {
+      console.log('[BranchManager] Creating message alternative:', {
         conversationId: conversation.id,
-        fromMessageId,
-        currentActiveBranch: conversation.activeBranchId
+        messageId,
+        alternativeContent: alternativeResponse.content.substring(0, 50) + '...'
       });
 
-      const branchId = await this.conversationRepo.createBranch(conversation.id, fromMessageId);
-      
-      // Reload conversation from repository to get updated branch data
-      const updatedConversation = await this.conversationRepo.getConversation(conversation.id);
-      if (updatedConversation) {
-        // Update the local conversation object with fresh data
-        conversation.branches = updatedConversation.branches;
-        conversation.mainBranchId = updatedConversation.mainBranchId;
-        conversation.activeBranchId = updatedConversation.activeBranchId;
+      // Find the message in the conversation
+      const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
+      if (messageIndex === -1) {
+        console.error('[BranchManager] Message not found:', messageId);
+        return null;
       }
 
-      console.log('[BranchManager] Branch created, updated conversation:', {
-        branchId,
-        branchCount: Object.keys(conversation.branches || {}).length,
-        activeBranchId: conversation.activeBranchId
+      const message = conversation.messages[messageIndex];
+      
+      // Initialize alternatives array if it doesn't exist
+      if (!message.alternatives) {
+        message.alternatives = [];
+      }
+
+      // Add the new alternative
+      message.alternatives.push(alternativeResponse);
+      const alternativeIndex = message.alternatives.length - 1;
+
+      // Set the new alternative as active
+      message.activeAlternativeIndex = alternativeIndex + 1; // +1 because 0 is the original message
+
+      // Save the updated conversation to repository
+      await this.conversationRepo.updateConversation(conversation.id, { messages: conversation.messages });
+
+      console.log('[BranchManager] Message alternative created successfully:', {
+        messageId,
+        alternativeIndex: alternativeIndex + 1,
+        totalAlternatives: message.alternatives.length + 1 // +1 for original
       });
 
-      this.events.onBranchCreated(conversation.id, branchId);
-      return branchId;
+      this.events.onMessageAlternativeCreated(messageId, alternativeIndex + 1);
+      return alternativeIndex + 1;
+
     } catch (error) {
-      console.error('[BranchManager] Failed to create branch:', error);
-      this.events.onError('Failed to create branch');
+      console.error('[BranchManager] Failed to create message alternative:', error);
+      this.events.onError('Failed to create alternative response');
       return null;
     }
   }
 
   /**
-   * Switch to a different branch
+   * Switch to a specific alternative for a message
    */
-  async switchToBranch(conversation: ConversationData, branchId: string): Promise<boolean> {
+  async switchToMessageAlternative(
+    conversation: ConversationData,
+    messageId: string,
+    alternativeIndex: number
+  ): Promise<boolean> {
     try {
-      if (!conversation.branches?.[branchId]) {
-        this.events.onError('Branch not found');
+      console.log('[BranchManager] Switching message alternative:', {
+        conversationId: conversation.id,
+        messageId,
+        alternativeIndex
+      });
+
+      // Find the message in the conversation
+      const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
+      if (messageIndex === -1) {
+        console.error('[BranchManager] Message not found:', messageId);
         return false;
       }
 
-      console.log('[BranchManager] Switching to branch:', {
-        conversationId: conversation.id,
-        fromBranch: conversation.activeBranchId,
-        toBranch: branchId
-      });
+      const message = conversation.messages[messageIndex];
+      const totalAlternatives = this.getMessageAlternativeCount(message);
 
-      await this.conversationRepo.switchToBranch(conversation.id, branchId);
-
-      // Reload conversation from repository to get updated branch data
-      const updatedConversation = await this.conversationRepo.getConversation(conversation.id);
-      if (updatedConversation) {
-        // Update the local conversation object with fresh data
-        conversation.branches = updatedConversation.branches;
-        conversation.activeBranchId = updatedConversation.activeBranchId;
+      // Validate alternative index
+      if (alternativeIndex < 0 || alternativeIndex >= totalAlternatives) {
+        console.error('[BranchManager] Invalid alternative index:', { alternativeIndex, totalAlternatives });
+        return false;
       }
 
-      console.log('[BranchManager] Branch switched, updated conversation:', {
-        branchId,
-        activeBranchId: conversation.activeBranchId,
-        branchCount: Object.keys(conversation.branches || {}).length
+      // Update the active alternative index
+      message.activeAlternativeIndex = alternativeIndex;
+
+      // Save the updated conversation to repository
+      await this.conversationRepo.updateConversation(conversation.id, { messages: conversation.messages });
+
+      console.log('[BranchManager] Switched to message alternative:', {
+        messageId,
+        alternativeIndex,
+        totalAlternatives
       });
 
-      this.events.onBranchSwitched(conversation.id, branchId);
+      // Don't emit event here - ChatView handles this directly to avoid recursion
       return true;
+
     } catch (error) {
-      console.error('[BranchManager] Failed to switch branch:', error);
-      this.events.onError('Failed to switch branch');
+      console.error('[BranchManager] Failed to switch message alternative:', error);
+      this.events.onError('Failed to switch to alternative response');
       return false;
     }
   }
 
   /**
-   * Get all branches for a conversation with metadata
+   * Get the currently active message content (original or alternative)
    */
-  getBranchesInfo(conversation: ConversationData): BranchInfo[] {
-    if (!conversation.branches) {
-      return [];
+  getActiveMessageContent(message: ConversationMessage): string {
+    const activeIndex = message.activeAlternativeIndex || 0;
+    
+    // Index 0 is the original message
+    if (activeIndex === 0) {
+      return message.content;
     }
 
-    return Object.entries(conversation.branches).map(([branchId, branch]) => ({
-      id: branchId,
-      createdFrom: branch.createdFrom,
-      lastMessageId: branch.lastMessageId,
-      isActive: branch.isActive,
-      messageCount: this.getBranchMessageCount(conversation, branchId)
-    }));
-  }
-
-  /**
-   * Get the currently active branch
-   */
-  getActiveBranch(conversation: ConversationData): BranchInfo | null {
-    const branches = this.getBranchesInfo(conversation);
-    return branches.find(branch => branch.isActive) || null;
-  }
-
-  /**
-   * Get messages for the currently active branch
-   */
-  getActiveBranchMessages(conversation: ConversationData): ConversationMessage[] {
-    const activeBranchId = conversation.activeBranchId || conversation.mainBranchId || 'main';
-    return this.getBranchMessages(conversation, activeBranchId);
-  }
-
-  /**
-   * Get messages for a specific branch
-   */
-  getBranchMessages(conversation: ConversationData, branchId: string): ConversationMessage[] {
-    if (!conversation.branches?.[branchId]) {
-      // Fallback for backward compatibility
-      return conversation.messages;
+    // Alternative indices are 1-based, so subtract 1 to get array index
+    const alternativeArrayIndex = activeIndex - 1;
+    if (message.alternatives && alternativeArrayIndex < message.alternatives.length) {
+      return message.alternatives[alternativeArrayIndex].content;
     }
 
-    const branch = conversation.branches[branchId];
+    // Fallback to original content if alternative not found
+    return message.content;
+  }
+
+  /**
+   * Get the currently active message tool calls
+   */
+  getActiveMessageToolCalls(message: ConversationMessage): any[] | undefined {
+    const activeIndex = message.activeAlternativeIndex || 0;
     
-    // For main branch, return messages that belong to main or have no branchId
-    if (branchId === conversation.mainBranchId || branchId === 'main') {
-      return conversation.messages.filter(msg => 
-        !msg.branchId || msg.branchId === branchId || msg.branchId === 'main'
-      );
+    // Index 0 is the original message
+    if (activeIndex === 0) {
+      return message.tool_calls;
     }
 
-    // For other branches: messages up to branch point + branch-specific messages only
-    const branchPointIndex = conversation.messages.findIndex(msg => msg.id === branch.createdFrom);
-    if (branchPointIndex === -1) {
-      console.warn('[BranchManager] Branch point message not found:', branch.createdFrom);
-      return [];
+    // Alternative indices are 1-based, so subtract 1 to get array index
+    const alternativeArrayIndex = activeIndex - 1;
+    if (message.alternatives && alternativeArrayIndex < message.alternatives.length) {
+      return message.alternatives[alternativeArrayIndex].tool_calls;
     }
 
-    // Include all messages up to and including the branch point
-    const preBranchMessages = conversation.messages.slice(0, branchPointIndex + 1);
-    
-    // Include only messages that specifically belong to this branch
-    const branchSpecificMessages = conversation.messages.filter(msg => msg.branchId === branchId);
-    
-    const result = [...preBranchMessages, ...branchSpecificMessages];
-    
-    console.log('[BranchManager] getBranchMessages result:', {
-      branchId,
-      branchPointIndex,
-      preBranchCount: preBranchMessages.length,
-      branchSpecificCount: branchSpecificMessages.length,
-      totalCount: result.length,
-      messageIds: result.map(m => m.id)
-    });
-    
-    return result;
+    // Fallback to original tool calls if alternative not found
+    return message.tool_calls;
   }
 
   /**
-   * Check if a conversation has multiple branches
+   * Get alternative information for a message
    */
-  hasMultipleBranches(conversation: ConversationData): boolean {
-    return Object.keys(conversation.branches || {}).length > 1;
-  }
-
-  /**
-   * Get the next available branch (for navigation)
-   */
-  getNextBranch(conversation: ConversationData): string | null {
-    const branchIds = Object.keys(conversation.branches || {});
-    if (branchIds.length <= 1) return null;
-
-    const currentIndex = branchIds.indexOf(conversation.activeBranchId);
-    const nextIndex = (currentIndex + 1) % branchIds.length;
-    return branchIds[nextIndex];
-  }
-
-  /**
-   * Get the previous available branch (for navigation)
-   */
-  getPreviousBranch(conversation: ConversationData): string | null {
-    const branchIds = Object.keys(conversation.branches || {});
-    if (branchIds.length <= 1) return null;
-
-    const currentIndex = branchIds.indexOf(conversation.activeBranchId);
-    const previousIndex = currentIndex <= 0 ? branchIds.length - 1 : currentIndex - 1;
-    return branchIds[previousIndex];
-  }
-
-  /**
-   * Get branch navigation info for UI display
-   */
-  getBranchNavigationInfo(conversation: ConversationData): { 
-    current: number; 
-    total: number; 
-    hasMultiple: boolean; 
-  } {
-    this.initializeBranchesIfNeeded(conversation);
-    const branchIds = Object.keys(conversation.branches || {});
-    const currentIndex = branchIds.indexOf(conversation.activeBranchId);
-    
-    console.log('[BranchManager] Navigation info:', {
-      branchIds,
-      activeBranchId: conversation.activeBranchId,
-      currentIndex,
-      hasMultiple: branchIds.length > 1
-    });
+  getMessageAlternativeInfo(message: ConversationMessage): { current: number; total: number; hasAlternatives: boolean } {
+    const activeIndex = message.activeAlternativeIndex || 0;
+    const totalAlternatives = this.getMessageAlternativeCount(message);
     
     return {
-      current: Math.max(0, currentIndex) + 1,
-      total: branchIds.length,
-      hasMultiple: branchIds.length > 1
+      current: activeIndex + 1, // 1-based for display
+      total: totalAlternatives,
+      hasAlternatives: totalAlternatives > 1
     };
   }
 
   /**
-   * Initialize branches for backward compatibility
+   * Get total alternative count for a message (including original)
    */
-  private initializeBranchesIfNeeded(conversation: ConversationData): void {
-    if (!conversation.branches) {
-      conversation.branches = {};
-    }
-
-    if (!conversation.mainBranchId) {
-      conversation.mainBranchId = 'main';
-      conversation.branches['main'] = {
-        createdFrom: conversation.messages[0]?.id || '',
-        lastMessageId: conversation.messages[conversation.messages.length - 1]?.id || '',
-        isActive: true
-      };
-      conversation.activeBranchId = 'main';
-    }
-
-    // Ensure all existing messages are assigned to main branch
-    conversation.messages.forEach(msg => {
-      if (!msg.branchId) {
-        msg.branchId = conversation.mainBranchId;
-      }
-    });
+  private getMessageAlternativeCount(message: ConversationMessage): number {
+    const alternativesCount = message.alternatives?.length || 0;
+    return alternativesCount + 1; // +1 for the original message
   }
 
   /**
-   * Count messages in a specific branch
+   * Check if a message has alternatives
    */
-  private getBranchMessageCount(conversation: ConversationData, branchId: string): number {
-    if (branchId === conversation.mainBranchId) {
-      return conversation.messages.filter(msg => 
-        !msg.branchId || msg.branchId === branchId
-      ).length;
-    }
+  hasMessageAlternatives(message: ConversationMessage): boolean {
+    return !!(message.alternatives && message.alternatives.length > 0);
+  }
 
-    const branch = conversation.branches?.[branchId];
-    if (!branch) return 0;
-
-    const branchPointIndex = conversation.messages.findIndex(msg => msg.id === branch.createdFrom);
-    const branchMessages = conversation.messages.filter(msg => msg.branchId === branchId);
+  /**
+   * Get all alternatives for a message (including original as index 0)
+   */
+  getAllMessageAlternatives(message: ConversationMessage): ConversationMessage[] {
+    const alternatives: ConversationMessage[] = [message]; // Original message at index 0
     
-    return (branchPointIndex + 1) + branchMessages.length;
+    if (message.alternatives) {
+      alternatives.push(...message.alternatives);
+    }
+    
+    return alternatives;
+  }
+
+  /**
+   * Get the previous alternative index for navigation
+   */
+  getPreviousAlternativeIndex(message: ConversationMessage): number | null {
+    const currentIndex = message.activeAlternativeIndex || 0;
+    return currentIndex > 0 ? currentIndex - 1 : null;
+  }
+
+  /**
+   * Get the next alternative index for navigation
+   */
+  getNextAlternativeIndex(message: ConversationMessage): number | null {
+    const currentIndex = message.activeAlternativeIndex || 0;
+    const totalCount = this.getMessageAlternativeCount(message);
+    return currentIndex < totalCount - 1 ? currentIndex + 1 : null;
   }
 }

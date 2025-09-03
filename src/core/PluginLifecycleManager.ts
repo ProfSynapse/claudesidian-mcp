@@ -384,9 +384,11 @@ export class PluginLifecycleManager {
             dependencies: ['vectorStore', 'embeddingService'],
             create: async () => {
                 const { ConversationRepository } = await import('../database/services/chat/ConversationRepository');
+                const { ConversationCollection } = await import('../database/collections/ConversationCollection');
                 const vectorStore = await serviceManager.getService<any>('vectorStore');
                 const embeddingService = await serviceManager.getService<any>('embeddingService');
-                return new ConversationRepository(vectorStore, embeddingService);
+                const conversationCollection = new ConversationCollection(vectorStore);
+                return new ConversationRepository(conversationCollection, embeddingService);
             }
         });
 

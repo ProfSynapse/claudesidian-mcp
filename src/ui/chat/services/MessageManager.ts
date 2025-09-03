@@ -55,8 +55,7 @@ export class MessageManager {
         id: `msg_${Date.now()}_user`,
         role: 'user' as const,
         content: message,
-        timestamp: Date.now(),
-        branchId: conversation.activeBranchId || conversation.mainBranchId || 'main'
+        timestamp: Date.now()
       };
       
       // Add user message to conversation and display immediately (progressive updates only)
@@ -70,8 +69,7 @@ export class MessageManager {
         role: 'assistant' as const,
         content: '',
         timestamp: Date.now(),
-        isLoading: true,
-        branchId: conversation.activeBranchId || conversation.mainBranchId || 'main'
+        isLoading: true
       };
       
       // Add placeholder AI message and create bubble for streaming
@@ -191,7 +189,7 @@ export class MessageManager {
   }
 
   /**
-   * Handle retry message action with branching
+   * Handle retry message action - creates message-level alternatives
    */
   async handleRetryMessage(
     conversation: ConversationData,
@@ -206,145 +204,145 @@ export class MessageManager {
     if (!message) return;
     
     try {
-      // Create new branch from the retry point
-      const branchId = await this.branchManager.createBranchFromMessage(conversation, messageId);
-      if (!branchId) {
-        this.events.onError('Failed to create branch for retry');
-        return;
-      }
+      console.log('[MessageManager] Handling retry for message:', { messageId, role: message.role });
 
-      // Switch to the new branch
-      const switchSuccess = await this.branchManager.switchToBranch(conversation, branchId);
-      if (!switchSuccess) {
-        this.events.onError('Failed to switch to new branch');
-        return;
-      }
-
-      // For user messages, resend the content in the new branch
+      // For user messages, regenerate the AI response
       if (message.role === 'user') {
-        await this.sendMessageToBranch(conversation, branchId, message.content, options);
+        await this.regenerateAIResponse(conversation, messageId, options);
       }
-      // For AI messages, find the previous user message and regenerate
+      // For AI messages, create an alternative response
       else if (message.role === 'assistant') {
-        const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
-        if (messageIndex > 0) {
-          const previousUserMessage = conversation.messages[messageIndex - 1];
-          if (previousUserMessage.role === 'user') {
-            await this.sendMessageToBranch(conversation, branchId, previousUserMessage.content, options);
-          }
-        }
+        await this.createAlternativeAIResponse(conversation, messageId, options);
       }
 
-      // Notify that conversation structure changed due to branching
+      // Notify that conversation was updated
       this.events.onConversationUpdated(conversation);
       
     } catch (error) {
-      console.error('[MessageManager] Failed to handle retry with branching:', error);
+      console.error('[MessageManager] Failed to handle retry:', error);
       this.events.onError('Failed to retry message');
     }
   }
 
   /**
-   * Send message to a specific branch
+   * Regenerate AI response for a user message (creates alternative in following AI message)
    */
-  private async sendMessageToBranch(
+  private async regenerateAIResponse(
     conversation: ConversationData,
-    branchId: string,
-    content: string,
+    userMessageId: string,
     options?: {
       provider?: string;
       model?: string;
       systemPrompt?: string;
     }
   ): Promise<void> {
+    const userMessage = conversation.messages.find(msg => msg.id === userMessageId);
+    if (!userMessage || userMessage.role !== 'user') return;
+
+    // Find the AI message that follows this user message
+    const userMessageIndex = conversation.messages.findIndex(msg => msg.id === userMessageId);
+    if (userMessageIndex === -1) return;
+
+    const aiMessageIndex = userMessageIndex + 1;
+    const aiMessage = conversation.messages[aiMessageIndex];
+    
+    if (aiMessage && aiMessage.role === 'assistant') {
+      // Create alternative for existing AI message
+      await this.createAlternativeAIResponse(conversation, aiMessage.id, options);
+    } else {
+      // No AI response exists, generate a new one
+      await this.sendMessage(conversation, userMessage.content, options);
+    }
+  }
+
+  /**
+   * Create an alternative response for an AI message
+   */
+  private async createAlternativeAIResponse(
+    conversation: ConversationData,
+    aiMessageId: string,
+    options?: {
+      provider?: string;
+      model?: string;
+      systemPrompt?: string;
+    }
+  ): Promise<void> {
+    const aiMessage = conversation.messages.find(msg => msg.id === aiMessageId);
+    if (!aiMessage || aiMessage.role !== 'assistant') return;
+
+    // Find the user message that prompted this AI response
+    const aiMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+    if (aiMessageIndex === 0) return; // No previous message
+
+    const userMessage = conversation.messages[aiMessageIndex - 1];
+    if (!userMessage || userMessage.role !== 'user') return;
+
     try {
       this.setLoading(true);
 
-      // For retry, don't duplicate user message - just generate new AI response
-      // Use branch-filtered messages for context
-      const branchMessages = this.branchManager.getBranchMessages(conversation, branchId);
-      
-      console.log('[MessageManager] sendMessageToBranch - generating response for existing user message:', {
-        branchId,
-        content,
-        branchMessageCount: branchMessages.length
-      });
+      // Reset the existing AI message to loading state by clearing its content
+      this.events.onStreamingUpdate(aiMessageId, '', false, false);
 
-      // Create AI response placeholder for the branch
-      const aiMessageId = `msg_${Date.now() + 1}_${Math.random().toString(36).substring(2, 10)}`;
-      const aiMessage: ConversationMessage = {
-        id: aiMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        isLoading: true,
-        branchId: branchId
-      };
-
-      conversation.messages.push(aiMessage);
-      this.events.onAIMessageStarted(aiMessage);
-
-      // Send message with branch context using streaming
-      const chatResponse = this.chatService.generateResponseStreaming(conversation.id, content, conversation, options);
-
-      // Handle streaming response
+      // Generate new AI response with streaming
       let streamedContent = '';
-      let toolCalls: any[] = [];
+      let toolCalls: any[] | undefined = undefined;
 
-      for await (const chunk of chatResponse) {
+      for await (const chunk of this.chatService.generateResponseStreaming(
+        conversation.id,
+        userMessage.content,
+        conversation,
+        {
+          provider: options?.provider,
+          model: options?.model,
+          systemPrompt: options?.systemPrompt
+        }
+      )) {
         if (chunk.chunk) {
           streamedContent += chunk.chunk;
-          this.events.onStreamingUpdate(aiMessageId, streamedContent, false, true);
+          // Stream only the new chunk to the UI in real-time (not accumulated content)
+          this.events.onStreamingUpdate(aiMessageId, chunk.chunk, false, true);
         }
-
-        if (chunk.toolCalls && chunk.toolCalls.length > 0) {
-          toolCalls.push(...chunk.toolCalls);
-          this.events.onToolCallsDetected(aiMessageId, toolCalls);
+        if (chunk.toolCalls) {
+          toolCalls = chunk.toolCalls;
         }
-
         if (chunk.complete) {
-          // Update the message in the conversation
-          const messageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-          if (messageIndex >= 0) {
-            conversation.messages[messageIndex] = {
-              ...conversation.messages[messageIndex],
-              content: streamedContent,
-              tool_calls: toolCalls,
-              isLoading: false
-            };
-          }
-
-          // Save the final message to repository with branch association
-          try {
-            await this.chatService.getConversationRepository().addMessageToBranch(
-              conversation.id,
-              branchId,
-              {
-                role: 'assistant',
-                content: streamedContent,
-                toolCalls: toolCalls
-              }
-            );
-            console.log('[MessageManager] Successfully saved branch message:', { aiMessageId, branchId });
-          } catch (error) {
-            console.error('[MessageManager] Failed to save branch message:', error);
-          }
-
+          // Final streaming update
           this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false);
           break;
         }
       }
 
+      // Create alternative response
+      const alternativeResponse: ConversationMessage = {
+        id: `alt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+        role: 'assistant',
+        content: streamedContent,
+        timestamp: Date.now(),
+        tool_calls: toolCalls
+      };
+
+      // Add alternative using BranchManager
+      const alternativeIndex = await this.branchManager.createMessageAlternative(
+        conversation,
+        aiMessageId,
+        alternativeResponse
+      );
+
+      console.log('[MessageManager] Created alternative response:', { aiMessageId, alternativeIndex });
+
     } catch (error) {
-      console.error('[MessageManager] Failed to send message to branch:', error);
-      this.events.onError('Failed to send message');
+      console.error('[MessageManager] Failed to create alternative response:', error);
+      this.events.onError('Failed to generate alternative response');
     } finally {
       this.setLoading(false);
     }
   }
 
+  // Removed legacy sendMessageToBranch method - using message-level alternatives now
+
+
   /**
-   * Handle edit message action
+   * Handle edit message action - ONLY updates content, does NOT regenerate
    */
   async handleEditMessage(
     conversation: ConversationData,
@@ -359,25 +357,16 @@ export class MessageManager {
     const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
     if (messageIndex === -1) return;
     
-    // Update the message content
+    // Update ONLY the message content
     conversation.messages[messageIndex].content = newContent;
-    
-    // If this was a user message followed by AI responses, remove subsequent AI messages
-    if (conversation.messages[messageIndex].role === 'user') {
-      // Remove all messages after this one (they're now invalid)
-      conversation.messages = conversation.messages.slice(0, messageIndex + 1);
-    }
     
     // Update the conversation in storage
     await this.chatService.updateConversation(conversation);
     
-    // Notify about conversation update
+    // Notify about conversation update so UI can refresh
     this.events.onConversationUpdated(conversation);
     
-    // If this was a user message, automatically regenerate the response
-    if (conversation.messages[messageIndex].role === 'user') {
-      await this.sendMessage(conversation, newContent, options);
-    }
+    // That's it! No auto-regeneration - user must click retry if they want to branch
   }
 
   /**
@@ -388,8 +377,7 @@ export class MessageManager {
       id: `temp_${Date.now()}`,
       role: 'user',
       content,
-      timestamp: Date.now(),
-      branchId: conversation.activeBranchId || conversation.mainBranchId || 'main'
+      timestamp: Date.now()
     };
     
     conversation.messages.push(message);

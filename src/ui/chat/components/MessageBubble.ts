@@ -7,6 +7,7 @@
 import { ConversationMessage } from '../../../types/chat/ChatTypes';
 import { ToolAccordion } from './ToolAccordion';
 import { ProgressiveToolAccordion } from './ProgressiveToolAccordion';
+import { MessageBranchNavigator, MessageBranchNavigatorEvents } from './MessageBranchNavigator';
 import { setIcon } from 'obsidian';
 
 export class MessageBubble {
@@ -14,13 +15,15 @@ export class MessageBubble {
   private loadingInterval: any = null;
   private progressiveToolAccordions: Map<string, ProgressiveToolAccordion> = new Map();
   private accumulatedStreamContent: string = ''; // Track accumulated streaming content
+  private messageBranchNavigator: MessageBranchNavigator | null = null;
 
   constructor(
     private message: ConversationMessage,
     private onCopy: (messageId: string) => void,
     private onRetry: (messageId: string) => void,
     private onEdit?: (messageId: string, newContent: string) => void,
-    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void
+    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void,
+    private onMessageAlternativeChanged?: (messageId: string, alternativeIndex: number) => void
   ) {
     // Reset accumulated content for new message
     this.accumulatedStreamContent = '';
@@ -55,8 +58,9 @@ export class MessageBubble {
     // Message content
     const content = bubble.createDiv('message-content');
     
-    // Render content with basic markdown support
-    this.renderContent(content, this.message.content);
+    // Render content with basic markdown support (use active alternative if any)
+    const activeContent = this.getActiveMessageContent(this.message);
+    this.renderContent(content, activeContent);
 
     // Actions outside and underneath the bubble, justified right
     const actions = messageContainer.createDiv('message-actions-external');
@@ -116,6 +120,23 @@ export class MessageBubble {
         this.showCopyFeedback(copyBtn);
         this.onCopy(this.message.id);
       });
+      
+      // Message branch navigator for AI messages with alternatives
+      if (this.message.alternatives && this.message.alternatives.length > 0) {
+        const navigatorContainer = actions.createDiv('message-branch-navigator-container');
+        
+        const navigatorEvents: MessageBranchNavigatorEvents = {
+          onAlternativeChanged: (messageId, alternativeIndex) => {
+            if (this.onMessageAlternativeChanged) {
+              this.onMessageAlternativeChanged(messageId, alternativeIndex);
+            }
+          },
+          onError: (message) => console.error('[MessageBubble] Branch navigation error:', message)
+        };
+        
+        this.messageBranchNavigator = new MessageBranchNavigator(navigatorContainer, navigatorEvents);
+        this.messageBranchNavigator.updateMessage(this.message);
+      }
     }
 
     this.element = messageContainer;
@@ -337,6 +358,14 @@ export class MessageBubble {
     const contentElement = this.element.querySelector('.message-content');
     if (!contentElement) return;
 
+    // Special case: empty content and not complete means show "Thinking..." (for retry reset)
+    if (!content.trim() && !isComplete && this.message.role === 'assistant') {
+      contentElement.empty();
+      contentElement.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
+      this.startLoadingAnimation(contentElement as HTMLElement);
+      return;
+    }
+
     // Stop loading animation
     this.stopLoadingAnimation();
     
@@ -408,11 +437,21 @@ export class MessageBubble {
       // Just update the stored message reference but don't re-render
       console.log('[MessageBubble] Preserving progressive accordions, only updating message reference');
       this.message = newMessage;
+      
+      // Update branch navigator if it exists
+      if (this.messageBranchNavigator) {
+        this.messageBranchNavigator.updateMessage(newMessage);
+      }
       return;
     }
 
     // Update stored message reference
     this.message = newMessage;
+    
+    // Update branch navigator if it exists
+    if (this.messageBranchNavigator) {
+      this.messageBranchNavigator.updateMessage(newMessage);
+    }
 
     if (!this.element) return;
     const contentElement = this.element.querySelector('.message-content');
@@ -421,8 +460,9 @@ export class MessageBubble {
     // Clear existing content
     contentElement.empty();
 
-    // Re-render content with the new message data
-    this.renderContent(contentElement as HTMLElement, newMessage.content);
+    // Re-render content with the active alternative (if any)
+    const activeContent = this.getActiveMessageContent(newMessage);
+    this.renderContent(contentElement as HTMLElement, activeContent);
 
     // If there are tool calls, render them
     if (newMessage.tool_calls && newMessage.tool_calls.length > 0) {
@@ -437,6 +477,29 @@ export class MessageBubble {
     }
 
     // Re-rendered with tool calls
+  }
+
+  /**
+   * Get the active content for the message (original or alternative)
+   */
+  private getActiveMessageContent(message: ConversationMessage): string {
+    const activeIndex = message.activeAlternativeIndex || 0;
+    
+    // Index 0 is the original message
+    if (activeIndex === 0) {
+      return message.content;
+    }
+    
+    // Alternative messages start at index 1
+    if (message.alternatives && message.alternatives.length > 0) {
+      const alternativeIndex = activeIndex - 1;
+      if (alternativeIndex >= 0 && alternativeIndex < message.alternatives.length) {
+        return message.alternatives[alternativeIndex].content;
+      }
+    }
+    
+    // Fallback to original content
+    return message.content;
   }
 
   /**
@@ -595,6 +658,13 @@ export class MessageBubble {
       accordion.cleanup();
     });
     this.progressiveToolAccordions.clear();
+    
+    // Cleanup branch navigator
+    if (this.messageBranchNavigator) {
+      this.messageBranchNavigator.destroy();
+      this.messageBranchNavigator = null;
+    }
+    
     this.element = null;
   }
 }

@@ -12,7 +12,7 @@ import { ChatInput } from './components/ChatInput';
 import { ModelSelector, ModelOption } from './components/ModelSelector';
 import { AgentSelector, AgentOption } from './components/AgentSelector';
 import { ContextProgressBar } from './components/ContextProgressBar';
-import { BranchNavigator } from './components/BranchNavigator';
+// BranchNavigator removed - using message-level navigation
 import { ChatService } from '../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../types/chat/ChatTypes';
 
@@ -40,7 +40,7 @@ export class ChatView extends ItemView {
   private modelSelector!: ModelSelector;
   private agentSelector!: AgentSelector;
   private contextProgressBar!: ContextProgressBar;
-  private branchNavigator!: BranchNavigator;
+  // Branch navigation is now handled at message level
   
   // Services
   private conversationManager!: ConversationManager;
@@ -129,7 +129,7 @@ export class ChatView extends ItemView {
     const chatTitle = chatHeader.createDiv('chat-title');
     chatTitle.textContent = 'AI Chat';
     
-    const branchNavigatorContainer = chatHeader.createDiv('branch-navigator-container');
+    // Branch navigation is now at message level - no global navigator needed
     
     // Main content areas
     const messageContainer = mainContainer.createDiv('message-display-container');
@@ -161,7 +161,7 @@ export class ChatView extends ItemView {
       inputContainer,
       contextContainer,
       conversationListContainer,
-      branchNavigatorContainer,
+      // branchNavigatorContainer removed - using message-level navigation
       newChatButton
     });
   }
@@ -172,8 +172,8 @@ export class ChatView extends ItemView {
   private initializeServices(): void {
     // Branch management - needed by other services
     const branchEvents: BranchManagerEvents = {
-      onBranchCreated: (conversationId, branchId) => this.handleBranchCreated(conversationId, branchId),
-      onBranchSwitched: (conversationId, branchId) => this.handleBranchSwitched(conversationId, branchId),
+      onMessageAlternativeCreated: (messageId, alternativeIndex) => this.handleMessageAlternativeCreated(messageId, alternativeIndex),
+      onMessageAlternativeSwitched: (messageId, alternativeIndex) => this.handleMessageAlternativeSwitched(messageId, alternativeIndex),
       onError: (message) => this.uiStateController.showError(message)
     };
     this.branchManager = new BranchManager(this.chatService.getConversationRepository(), branchEvents);
@@ -182,7 +182,6 @@ export class ChatView extends ItemView {
     const conversationEvents: ConversationManagerEvents = {
       onConversationSelected: (conversation) => this.handleConversationSelected(conversation),
       onConversationsChanged: () => this.handleConversationsChanged(),
-      onBranchSwitched: (conversation, branchId) => this.handleBranchSwitched(conversation.id, branchId),
       onError: (message) => this.uiStateController.showError(message)
     };
     this.conversationManager = new ConversationManager(this.chatService, this.branchManager, conversationEvents);
@@ -241,7 +240,8 @@ export class ChatView extends ItemView {
       this.branchManager,
       (messageId) => this.handleRetryMessage(messageId),
       (messageId, newContent) => this.handleEditMessage(messageId, newContent),
-      (messageId, event, data) => this.handleToolEvent(messageId, event, data)
+      (messageId, event, data) => this.handleToolEvent(messageId, event, data),
+      (messageId, alternativeIndex) => this.handleMessageAlternativeSwitched(messageId, alternativeIndex)
     );
 
     this.chatInput = new ChatInput(
@@ -268,14 +268,7 @@ export class ChatView extends ItemView {
       () => this.getContextUsage()
     );
 
-    this.branchNavigator = new BranchNavigator(
-      refs.branchNavigatorContainer,
-      this.branchManager,
-      {
-        onBranchChanged: (branchId) => this.handleBranchNavigatorChange(branchId),
-        onError: (message) => this.uiStateController.showError(message)
-      }
-    );
+    // Branch navigation is now handled at message level - no global navigator needed
   }
 
   /**
@@ -311,7 +304,7 @@ export class ChatView extends ItemView {
 
   private handleConversationSelected(conversation: ConversationData): void {
     this.messageDisplay.setConversation(conversation);
-    this.branchNavigator.updateConversation(conversation);
+    // Branch navigation is now at message level
     this.uiStateController.setInputPlaceholder('Type your message...');
     this.updateContextProgress();
   }
@@ -448,41 +441,43 @@ export class ChatView extends ItemView {
   // =============================================================================
 
   /**
-   * Handle branch creation
+   * Handle message alternative creation
    */
-  private handleBranchCreated(conversationId: string, branchId: string): void {
-    console.log('[ChatView] Branch created:', { conversationId, branchId });
+  private handleMessageAlternativeCreated(messageId: string, alternativeIndex: number): void {
+    console.log('[ChatView] Message alternative created:', { messageId, alternativeIndex });
     
-    // Update UI to reflect new branch structure
-    if (this.conversationManager.getCurrentConversation()?.id === conversationId) {
-      this.branchNavigator.updateConversation(this.conversationManager.getCurrentConversation());
+    // Update the message display to reflect new alternatives
+    const currentConversation = this.conversationManager.getCurrentConversation();
+    if (currentConversation) {
+      this.messageDisplay.setConversation(currentConversation);
     }
   }
 
   /**
-   * Handle branch switching
+   * Handle message alternative switching
    */
-  private handleBranchSwitched(conversationId: string, branchId: string): void {
-    console.log('[ChatView] Branch switched:', { conversationId, branchId });
+  private async handleMessageAlternativeSwitched(messageId: string, alternativeIndex: number): Promise<void> {
+    console.log('[ChatView] Message alternative switched:', { messageId, alternativeIndex });
     
-    // Refresh message display to show new branch
-    this.messageDisplay.refreshBranchDisplay();
-    
-    // Update branch navigator
-    if (this.conversationManager.getCurrentConversation()?.id === conversationId) {
-      this.branchNavigator.updateConversation(this.conversationManager.getCurrentConversation());
+    // Use BranchManager to switch to the alternative (this updates the conversation)
+    const currentConversation = this.conversationManager.getCurrentConversation();
+    if (currentConversation) {
+      const success = await this.branchManager.switchToMessageAlternative(
+        currentConversation,
+        messageId,
+        alternativeIndex
+      );
+      
+      if (success) {
+        // Get the updated message and update the bubble
+        const updatedMessage = currentConversation.messages.find(msg => msg.id === messageId);
+        if (updatedMessage) {
+          this.messageDisplay.updateMessage(messageId, updatedMessage);
+        }
+      }
     }
   }
 
-  /**
-   * Handle branch navigator change (user clicked arrows)
-   */
-  private handleBranchNavigatorChange(branchId: string): void {
-    console.log('[ChatView] Branch navigator change:', { branchId });
-    
-    // Switch to the selected branch
-    this.conversationManager.switchToBranch(branchId);
-  }
 
   private cleanup(): void {
     this.conversationList?.cleanup();
@@ -491,7 +486,7 @@ export class ChatView extends ItemView {
     this.modelSelector?.cleanup();
     this.agentSelector?.cleanup();
     this.contextProgressBar?.cleanup();
-    this.branchNavigator?.destroy();
+    // Branch navigator cleanup no longer needed
     this.uiStateController?.cleanup();
     this.streamingController?.cleanup();
   }

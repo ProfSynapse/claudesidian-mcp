@@ -20,17 +20,6 @@ export interface ConversationData {
   created_at: number;
   last_updated: number;
   messages: ConversationMessage[];
-  
-  // Branch tracking
-  branches: {
-    [branchId: string]: {
-      createdFrom: string;    // Message ID where branch started
-      lastMessageId: string;  // Last message in this branch
-      isActive: boolean;      // Currently selected branch
-    };
-  };
-  activeBranchId: string;     // Currently displayed branch
-  mainBranchId: string;       // Original conversation branch
 }
 
 /**
@@ -44,16 +33,9 @@ export interface ConversationMessage {
   tool_calls?: ToolCall[];
   isLoading?: boolean;  // For UI loading state
   
-  // Branching support
-  parentMessageId?: string;    // Points to the message this branches from
-  branchId: string;           // Unique branch identifier
-  alternativeResponses?: {     // For AI messages that have multiple attempts
-    [branchId: string]: {
-      content: string;
-      tool_calls?: ToolCall[];
-      timestamp: number;
-    };
-  };
+  // Message-level alternatives (for AI responses that have been retried)
+  alternatives?: ConversationMessage[];  // Array of alternative responses
+  activeAlternativeIndex?: number;       // Currently selected alternative (0-based)
 }
 
 /**
@@ -395,4 +377,49 @@ export interface DeleteConversationResult extends CommonResult {
 export interface SearchConversationsResult extends CommonResult {
   results: ConversationSearchResult[];
   totalFound: number;
+}
+
+// =============================================================================
+// TYPE CONVERSION UTILITIES
+// =============================================================================
+
+/**
+ * Convert ConversationDocument to ConversationData
+ */
+export function documentToConversationData(document: ConversationDocument): ConversationData {
+  return document.metadata.conversation;
+}
+
+/**
+ * Convert ConversationDocument to ConversationSearchResult
+ */
+export function documentToSearchResult(document: ConversationDocument, relevanceScore: number = 1.0): ConversationSearchResult {
+  return {
+    id: document.id,
+    title: document.metadata.title,
+    summary: document.document,
+    metadata: document.metadata,
+    relevanceScore,
+    snippet: document.document.length > 150 
+      ? document.document.slice(0, 150) + '...'
+      : document.document
+  };
+}
+
+/**
+ * Convert ConversationData to ConversationSummary
+ */
+export function conversationDataToSummary(conversation: ConversationData, vaultName: string): ConversationSummary {
+  const lastMessage = conversation.messages.length > 0 
+    ? conversation.messages[conversation.messages.length - 1].content
+    : 'No messages';
+    
+  return {
+    id: conversation.id,
+    title: conversation.title,
+    lastMessage: lastMessage.length > 100 ? lastMessage.slice(0, 100) + '...' : lastMessage,
+    messageCount: conversation.messages.length,
+    lastUpdated: conversation.last_updated,
+    vaultName
+  };
 }

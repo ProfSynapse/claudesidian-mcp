@@ -17,7 +17,8 @@ export class MessageDisplay {
     private branchManager: BranchManager,
     private onRetryMessage?: (messageId: string) => void,
     private onEditMessage?: (messageId: string, newContent: string) => void,
-    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void
+    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void,
+    private onMessageAlternativeChanged?: (messageId: string, alternativeIndex: number) => void
   ) {
     this.render();
   }
@@ -37,11 +38,8 @@ export class MessageDisplay {
         bubble.getProgressiveToolAccordions().size > 0
       );
       
-      // For branch operations, always do full re-render to avoid UI state issues
-      const isBranchOperation = conversation.activeBranchId !== this.conversation.activeBranchId ||
-        Object.keys(conversation.branches || {}).length !== Object.keys(this.conversation.branches || {}).length;
-      
-      if (hasProgressiveAccordions && !isBranchOperation) {
+      // For message alternatives, we can preserve progressive accordions since alternatives don't affect structure
+      if (hasProgressiveAccordions) {
         // Skip re-render to preserve progressive accordions
         // Just update the conversation data without re-rendering
         this.conversation = conversation;
@@ -64,8 +62,7 @@ export class MessageDisplay {
       id: `temp_${Date.now()}`,
       role: 'user',
       content,
-      timestamp: Date.now(),
-      branchId: this.conversation?.activeBranchId || 'main'
+      timestamp: Date.now()
     };
     
     const bubble = this.createMessageBubble(message);
@@ -157,14 +154,6 @@ export class MessageDisplay {
     return div.innerHTML;
   }
 
-  /**
-   * Refresh display to show current active branch messages
-   */
-  refreshBranchDisplay(): void {
-    if (this.conversation) {
-      this.render();
-    }
-  }
 
   /**
    * Show welcome state
@@ -210,11 +199,8 @@ export class MessageDisplay {
     // Clear previous message bubbles
     this.messageBubbles = [];
 
-    // Get messages for active branch only
-    const branchMessages = this.branchManager.getActiveBranchMessages(this.conversation);
-    
-    // Render branch-filtered messages
-    branchMessages.forEach(message => {
+    // Render all messages (no branch filtering needed for message-level alternatives)
+    this.conversation.messages.forEach(message => {
       const messageEl = this.createMessageBubble(message);
       messagesContainer.appendChild(messageEl);
     });
@@ -231,7 +217,8 @@ export class MessageDisplay {
       (messageId) => this.onCopyMessage(messageId),
       (messageId) => this.handleRetryMessage(messageId),
       (messageId, newContent) => this.handleEditMessage(messageId, newContent),
-      this.onToolEvent
+      this.onToolEvent,
+      this.onMessageAlternativeChanged ? (messageId, alternativeIndex) => this.handleMessageAlternativeChanged(messageId, alternativeIndex) : undefined
     );
 
     this.messageBubbles.push(bubble);
@@ -272,6 +259,15 @@ export class MessageDisplay {
   private handleEditMessage(messageId: string, newContent: string): void {
     if (this.onEditMessage) {
       this.onEditMessage(messageId, newContent);
+    }
+  }
+
+  /**
+   * Handle message alternative changed action
+   */
+  private handleMessageAlternativeChanged(messageId: string, alternativeIndex: number): void {
+    if (this.onMessageAlternativeChanged) {
+      this.onMessageAlternativeChanged(messageId, alternativeIndex);
     }
   }
 

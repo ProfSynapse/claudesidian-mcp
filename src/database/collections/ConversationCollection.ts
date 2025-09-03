@@ -402,6 +402,97 @@ export class ConversationCollection {
   }
 
   /**
+   * Add a conversation (alias for storeConversation for compatibility)
+   */
+  async addConversation(conversation: ConversationDocument): Promise<void> {
+    return this.storeConversation(conversation);
+  }
+
+  /**
+   * Get all conversations with pagination
+   */
+  async getAllConversations(limit: number = 50, offset: number = 0): Promise<ConversationDocument[]> {
+    try {
+      const results = await this.vectorStore.query(ConversationCollection.COLLECTION_NAME, {
+        nResults: limit,
+        include: ['documents', 'metadatas', 'embeddings']
+      });
+
+      if (!results.documents || !results.metadatas || !results.embeddings) {
+        return [];
+      }
+
+      const conversations: ConversationDocument[] = [];
+      
+      if (results.documents?.[0] && results.ids?.[0] && results.metadatas?.[0]) {
+        const docs = results.documents[0];
+        const ids = results.ids[0];
+        const metadatas = results.metadatas[0];
+        const embeddings = results.embeddings?.[0] || [];
+        
+        // Apply pagination offset
+        const startIndex = offset;
+        const endIndex = Math.min(startIndex + limit, docs.length);
+        
+        for (let i = startIndex; i < endIndex; i++) {
+          conversations.push({
+            id: ids[i] || '',
+            document: docs[i] || '',
+            metadata: metadatas[i] as ConversationDocument['metadata'],
+            embedding: embeddings[i] || []
+          });
+        }
+      }
+
+      // Sort by last_updated timestamp (most recent first)
+      return conversations.sort((a, b) => b.metadata.last_updated - a.metadata.last_updated);
+    } catch (error) {
+      console.error('[ConversationCollection] Failed to get all conversations:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get conversations by vault name
+   */
+  async getConversationsByVault(vaultName: string, limit: number = 20): Promise<ConversationDocument[]> {
+    try {
+      const whereClause = {
+        'metadata.vault_name': vaultName
+      };
+
+      const results = await this.vectorStore.query(ConversationCollection.COLLECTION_NAME, {
+        where: whereClause,
+        nResults: limit,
+        include: ['documents', 'metadatas', 'embeddings']
+      });
+
+      if (!results.documents || !results.metadatas || !results.embeddings) {
+        return [];
+      }
+
+      const conversations: ConversationDocument[] = [];
+      
+      if (results.documents?.[0] && results.ids?.[0] && results.metadatas?.[0]) {
+        for (let i = 0; i < results.documents[0].length; i++) {
+          conversations.push({
+            id: results.ids[0][i] || '',
+            document: results.documents[0][i] || '',
+            metadata: results.metadatas[0][i] as ConversationDocument['metadata'],
+            embedding: results.embeddings?.[0]?.[i] || []
+          });
+        }
+      }
+
+      // Sort by last_updated timestamp (most recent first)
+      return conversations.sort((a, b) => b.metadata.last_updated - a.metadata.last_updated);
+    } catch (error) {
+      console.error('[ConversationCollection] Failed to get conversations by vault:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get the collection name (useful for external references)
    */
   static getCollectionName(): string {

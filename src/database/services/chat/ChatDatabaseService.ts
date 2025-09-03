@@ -13,6 +13,7 @@
 import type { IVectorStore } from '../../interfaces/IVectorStore';
 import type { EmbeddingService } from '../core/EmbeddingService';
 import { ConversationRepository } from './ConversationRepository';
+import { ConversationCollection } from '../../collections/ConversationCollection';
 import { ChatCollectionService } from './ChatCollectionService';
 import type {
   ConversationData,
@@ -27,6 +28,7 @@ import type {
   ChatDatabaseHealth,
   ChatCollectionStats
 } from '../../../types/chat/ChatTypes';
+import { documentToConversationData, documentToSearchResult, conversationDataToSummary } from '../../../types/chat/ChatTypes';
 
 export interface ChatDatabaseConfig {
   enableHealthMonitoring?: boolean;
@@ -45,6 +47,7 @@ export interface ChatServiceInitResult {
  */
 export class ChatDatabaseService {
   private repository: ConversationRepository;
+  private conversationCollection: ConversationCollection;
   private collectionService: ChatCollectionService;
   private config: ChatDatabaseConfig;
   private initialized = false;
@@ -61,7 +64,8 @@ export class ChatDatabaseService {
     };
 
     // Initialize core components
-    this.repository = new ConversationRepository(vectorStore, embeddingService);
+    this.conversationCollection = new ConversationCollection(vectorStore);
+    this.repository = new ConversationRepository(this.conversationCollection, embeddingService);
     this.collectionService = new ChatCollectionService(
       vectorStore,
       embeddingService,
@@ -151,7 +155,8 @@ export class ChatDatabaseService {
    */
   async getConversation(conversationId: string): Promise<ConversationData | null> {
     if (!this.initialized) return null;
-    return await this.repository.getConversation(conversationId);
+    const document = await this.repository.getConversation(conversationId);
+    return document ? documentToConversationData(document) : null;
   }
 
   /**
@@ -176,7 +181,12 @@ export class ChatDatabaseService {
       return { success: false, error: 'Service not initialized' };
     }
 
-    return await this.repository.deleteConversation(conversationId);
+    const success = await this.repository.deleteConversation(conversationId);
+    return {
+      success,
+      conversationId: success ? conversationId : undefined,
+      error: success ? undefined : 'Failed to delete conversation'
+    };
   }
 
   /**
@@ -198,7 +208,33 @@ export class ChatDatabaseService {
     options: MessageQueryOptions = {}
   ): Promise<PaginatedMessages | null> {
     if (!this.initialized) return null;
-    return await this.repository.getMessages(conversationId, options);
+    const messages = await this.repository.getMessages(conversationId);
+    
+    // Apply pagination
+    const offset = options.offset || 0;
+    const limit = options.limit || messages.length;
+    const paginatedMessages = messages.slice(offset, offset + limit);
+    
+    // Filter by role if specified
+    let filteredMessages = paginatedMessages;
+    if (options.role) {
+      filteredMessages = filteredMessages.filter(msg => msg.role === options.role);
+    }
+    
+    // Filter by timestamp if specified
+    if (options.afterTimestamp) {
+      filteredMessages = filteredMessages.filter(msg => msg.timestamp > options.afterTimestamp!);
+    }
+    
+    return {
+      messages: filteredMessages,
+      pagination: {
+        offset,
+        limit,
+        total: messages.length,
+        hasMore: offset + limit < messages.length
+      }
+    };
   }
 
   // =============================================================================
@@ -213,7 +249,7 @@ export class ChatDatabaseService {
     options: ConversationSearchOptions = {}
   ): Promise<ConversationSearchResult[]> {
     if (!this.initialized) return [];
-    return await this.repository.searchConversations(query, options);
+    return await this.repository.searchConversationsWithResults(query, options);
   }
 
   /**
@@ -224,7 +260,8 @@ export class ChatDatabaseService {
     limit: number = 20
   ): Promise<ConversationSearchResult[]> {
     if (!this.initialized) return [];
-    return await this.repository.listConversations(vaultName, limit);
+    const documents = await this.repository.listConversations(vaultName, limit);
+    return documents.map(doc => documentToSearchResult(doc));
   }
 
   // =============================================================================
@@ -247,7 +284,9 @@ export class ChatDatabaseService {
 
     const stats = await this.repository.getStatistics();
     return {
-      ...stats,
+      totalConversations: stats.totalConversations,
+      totalMessages: stats.totalConversations * stats.averageMessageCount, // Approximate
+      averageMessagesPerConversation: stats.averageMessageCount,
       storageSize: 0, // Not calculated in simplified version
       lastUpdated: Date.now()
     };

@@ -1,60 +1,57 @@
 /**
- * ConversationRepository - Repository pattern for conversation CRUD operations
- * 
- * Provides clean data access layer for chat conversations following the repository pattern.
- * Implements simplified single collection design with complete conversation data storage.
- * 
- * Based on: /docs/architecture/database-architecture-specification.md
+ * ConversationRepository - Database operations for conversation data
+ * Updated for message-level alternatives (removed conversation-level branching)
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { ConversationData, ConversationMessage, ConversationDocument, CreateConversationParams, AddMessageParams, UpdateConversationParams, ConversationOperationResult, ConversationSearchOptions, ConversationSearchResult } from '../../../types/chat/ChatTypes';
 import { ConversationCollection } from '../../collections/ConversationCollection';
-import type { IVectorStore } from '../../interfaces/IVectorStore';
-import type { EmbeddingService } from '../core/EmbeddingService';
-import type {
-  ConversationDocument,
-  ConversationData,
-  ConversationMessage,
-  ConversationSearchOptions,
-  ConversationSearchResult,
-  CreateConversationParams,
-  AddMessageParams,
-  UpdateConversationParams,
-  ConversationOperationResult,
-  MessageQueryOptions,
-  PaginatedMessages
-} from '../../../types/chat/ChatTypes';
+import { EmbeddingService } from '../core/EmbeddingService';
+import { v4 as uuidv4 } from 'uuid';
 
 export class ConversationRepository {
-  private collection: ConversationCollection;
-
   constructor(
-    private vectorStore: IVectorStore,
+    private collection: ConversationCollection,
     private embeddingService: EmbeddingService
-  ) {
-    this.collection = new ConversationCollection(vectorStore);
-  }
+  ) {}
 
   // =============================================================================
-  // COLLECTION MANAGEMENT
+  // REPOSITORY LIFECYCLE
   // =============================================================================
 
   /**
-   * Initialize the conversation repository
+   * Initialize the repository and underlying collection
    */
   async initialize(): Promise<void> {
-    await this.collection.initialize();
+    try {
+      await this.collection.initialize();
+      console.log('[ConversationRepository] Repository initialized successfully');
+    } catch (error) {
+      console.error('[ConversationRepository] Failed to initialize repository:', error);
+      throw error;
+    }
   }
 
   /**
-   * Check if the collection exists and is healthy
+   * Check if repository and collection are healthy
    */
   async isHealthy(): Promise<boolean> {
-    return await this.collection.exists();
+    try {
+      const exists = await this.collection.exists();
+      if (!exists) {
+        return false;
+      }
+      
+      // Try a simple query to verify accessibility
+      await this.collection.getConversationCount();
+      return true;
+    } catch (error) {
+      console.error('[ConversationRepository] Health check failed:', error);
+      return false;
+    }
   }
 
   // =============================================================================
-  // CONVERSATION CRUD OPERATIONS
+  // CORE CONVERSATION OPERATIONS
   // =============================================================================
 
   /**
@@ -62,6 +59,7 @@ export class ConversationRepository {
    */
   async createConversation(params: CreateConversationParams): Promise<ConversationOperationResult> {
     try {
+      // Generate unique conversation ID
       const now = Date.now();
       const conversationId = `conv_${now}_${uuidv4().slice(0, 8)}`;
       
@@ -71,16 +69,7 @@ export class ConversationRepository {
         title: params.title,
         created_at: now,
         last_updated: now,
-        messages: [],
-        branches: {
-          'main': {
-            createdFrom: '',
-            lastMessageId: '',
-            isActive: true
-          }
-        },
-        activeBranchId: 'main',
-        mainBranchId: 'main'
+        messages: []
       };
 
       // Add initial message if provided
@@ -90,12 +79,8 @@ export class ConversationRepository {
           id: messageId,
           role: params.initialMessage.role,
           content: params.initialMessage.content,
-          timestamp: now,
-          branchId: 'main'
+          timestamp: now
         });
-        
-        // Update main branch lastMessageId
-        conversationData.branches['main'].lastMessageId = messageId;
       }
 
       // Generate document content for embedding
@@ -108,24 +93,24 @@ export class ConversationRepository {
         embedding,
         document: documentContent,
         metadata: {
-          title: params.title,
-          created_at: now,
-          last_updated: now,
+          title: conversationData.title,
+          created_at: conversationData.created_at,
+          last_updated: conversationData.last_updated,
           vault_name: params.vaultName,
           message_count: conversationData.messages.length,
           conversation: conversationData
         }
       };
 
-      await this.collection.storeConversation(document);
+      await this.collection.addConversation(document);
 
       return {
         success: true,
-        conversationId
+        conversationId,
+        messageId: params.initialMessage ? conversationData.messages[0].id : undefined
       };
-
     } catch (error) {
-      console.error('[ConversationRepository] Failed to create conversation:', error);
+      console.error(`[ConversationRepository] Failed to create conversation:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -134,99 +119,39 @@ export class ConversationRepository {
   }
 
   /**
-   * Retrieve a conversation by ID
+   * Get conversation by ID
    */
-  async getConversation(conversationId: string): Promise<ConversationData | null> {
+  async getConversation(conversationId: string): Promise<ConversationDocument | null> {
     try {
-      const document = await this.collection.getConversation(conversationId);
-      if (!document) {
-        return null;
-      }
-
-      return document.metadata.conversation;
-
+      return await this.collection.getConversation(conversationId);
     } catch (error) {
-      console.error(`[ConversationRepository] Failed to get conversation ${conversationId}:`, error);
+      console.error(`[ConversationRepository] Failed to get conversation:`, error);
       return null;
     }
   }
 
   /**
-   * Update conversation metadata (title, summary)
+   * Get all conversations with pagination
    */
-  async updateConversation(
-    conversationId: string,
-    updates: UpdateConversationParams
-  ): Promise<ConversationOperationResult> {
+  async getAllConversations(limit: number = 50, offset: number = 0): Promise<ConversationDocument[]> {
     try {
-      const existingDocument = await this.collection.getConversation(conversationId);
-      if (!existingDocument) {
-        return {
-          success: false,
-          error: 'Conversation not found'
-        };
-      }
-
-      // Update conversation data
-      const conversationData = { ...existingDocument.metadata.conversation };
-      conversationData.last_updated = Date.now();
-
-      if (updates.title) {
-        conversationData.title = updates.title;
-      }
-
-      if (updates.messages) {
-        conversationData.messages = updates.messages;
-      }
-
-      // Generate document content directly from conversation messages
-      const documentContent = this.extractConversationContent(conversationData);
-      const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
-
-      // Update document
-      await this.collection.updateConversation(conversationId, {
-        embedding,
-        document: documentContent,
-        metadata: {
-          ...existingDocument.metadata,
-          title: conversationData.title,
-          last_updated: conversationData.last_updated,
-          conversation: conversationData
-        }
-      });
-
-      return {
-        success: true,
-        conversationId
-      };
-
+      return await this.collection.getAllConversations(limit, offset);
     } catch (error) {
-      console.error(`[ConversationRepository] Failed to update conversation ${conversationId}:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+      console.error(`[ConversationRepository] Failed to get conversations:`, error);
+      return [];
     }
   }
 
   /**
-   * Delete a conversation
+   * Delete conversation by ID
    */
-  async deleteConversation(conversationId: string): Promise<ConversationOperationResult> {
+  async deleteConversation(conversationId: string): Promise<boolean> {
     try {
       await this.collection.deleteConversation(conversationId);
-
-      return {
-        success: true,
-        conversationId
-      };
-
+      return true;
     } catch (error) {
-      console.error(`[ConversationRepository] Failed to delete conversation ${conversationId}:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+      console.error(`[ConversationRepository] Failed to delete conversation:`, error);
+      return false;
     }
   }
 
@@ -235,7 +160,7 @@ export class ConversationRepository {
   // =============================================================================
 
   /**
-   * Add a message to a conversation
+   * Add a message to an existing conversation
    */
   async addMessage(params: AddMessageParams): Promise<ConversationOperationResult> {
     try {
@@ -266,15 +191,13 @@ export class ConversationRepository {
 
       // Create new message
       const conversation = existingDocument.metadata.conversation;
-      const activeBranchId = conversation.activeBranchId || conversation.mainBranchId || 'main';
       
       const newMessage: ConversationMessage = {
         id: messageId,
         role: params.role,
         content: params.content,
         timestamp: now,
-        tool_calls: params.toolCalls,
-        branchId: activeBranchId
+        tool_calls: params.toolCalls
       };
       
       console.log('[ConversationRepository] Created message object:', {
@@ -289,31 +212,32 @@ export class ConversationRepository {
       const conversationData = { ...existingDocument.metadata.conversation };
       conversationData.messages.push(newMessage);
       conversationData.last_updated = now;
-
-      // Generate updated document content and embedding
+      
+      // Generate document content for embedding
       const documentContent = this.extractConversationContent(conversationData);
       const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
+      
+      // Update metadata with new message count
+      const metadata = { ...existingDocument.metadata };
+      metadata.conversation = conversationData;
+      metadata.last_updated = now;
+      metadata.message_count = conversationData.messages.length;
 
-      // Update document
       await this.collection.updateConversation(params.conversationId, {
         embedding,
         document: documentContent,
-        metadata: {
-          ...existingDocument.metadata,
-          last_updated: now,
-          message_count: conversationData.messages.length,
-          conversation: conversationData
-        }
+        metadata
       });
+
+      console.log('[ConversationCollection] Updated conversation:', params.conversationId);
 
       return {
         success: true,
         conversationId: params.conversationId,
         messageId
       };
-
     } catch (error) {
-      console.error(`[ConversationRepository] Failed to add message to ${params.conversationId}:`, error);
+      console.error(`[ConversationRepository] Failed to add message:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -322,129 +246,188 @@ export class ConversationRepository {
   }
 
   /**
-   * Get messages from a conversation with pagination
+   * Update conversation metadata and/or messages
    */
-  async getMessages(
-    conversationId: string,
-    options: MessageQueryOptions = {}
-  ): Promise<PaginatedMessages | null> {
+  async updateConversation(conversationId: string, params: UpdateConversationParams): Promise<ConversationOperationResult> {
+    try {
+      const existingDocument = await this.collection.getConversation(conversationId);
+      if (!existingDocument) {
+        return {
+          success: false,
+          error: 'Conversation not found'
+        };
+      }
+
+      // Create updated conversation data
+      const conversationData = { ...existingDocument.metadata.conversation };
+      if (params.title !== undefined) {
+        conversationData.title = params.title;
+      }
+      if (params.messages !== undefined) {
+        conversationData.messages = params.messages;
+      }
+      conversationData.last_updated = Date.now();
+
+      // Generate document content for embedding
+      const documentContent = this.extractConversationContent(conversationData);
+      const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
+
+      // Update metadata
+      const metadata = { ...existingDocument.metadata };
+      metadata.conversation = conversationData;
+      metadata.title = conversationData.title;
+      metadata.last_updated = conversationData.last_updated;
+      metadata.message_count = conversationData.messages.length;
+
+      await this.collection.updateConversation(conversationId, {
+        embedding,
+        document: documentContent,
+        metadata
+      });
+
+      return {
+        success: true,
+        conversationId
+      };
+    } catch (error) {
+      console.error(`[ConversationRepository] Failed to update conversation:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  // =============================================================================
+  // SEARCH AND QUERY OPERATIONS  
+  // =============================================================================
+
+  /**
+   * Search conversations by query string (returns documents)
+   */
+  async searchConversations(query: string, limit: number = 10): Promise<ConversationDocument[]> {
+    try {
+      const queryEmbedding = await this.embeddingService.getEmbedding(query);
+      if (!queryEmbedding) {
+        console.warn('[ConversationRepository] Could not generate embedding for search query');
+        return [];
+      }
+
+      const searchResults = await this.collection.searchConversations(queryEmbedding, { limit });
+      // Convert search results back to documents (for backward compatibility)
+      const documents: ConversationDocument[] = [];
+      
+      for (const result of searchResults) {
+        const document = await this.collection.getConversation(result.id);
+        if (document) {
+          documents.push(document);
+        }
+      }
+      
+      return documents;
+    } catch (error) {
+      console.error(`[ConversationRepository] Failed to search conversations:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Search conversations and return search results with relevance scores
+   */
+  async searchConversationsWithResults(query: string, options: ConversationSearchOptions = {}): Promise<ConversationSearchResult[]> {
+    try {
+      const queryEmbedding = await this.embeddingService.getEmbedding(query);
+      if (!queryEmbedding) {
+        console.warn('[ConversationRepository] Could not generate embedding for search query');
+        return [];
+      }
+
+      return await this.collection.searchConversations(queryEmbedding, options);
+    } catch (error) {
+      console.error(`[ConversationRepository] Failed to search conversations with results:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get conversations for a specific vault
+   */
+  async getConversationsByVault(vaultName: string, limit: number = 50): Promise<ConversationDocument[]> {
+    try {
+      return await this.collection.getConversationsByVault(vaultName, limit);
+    } catch (error) {
+      console.error(`[ConversationRepository] Failed to get conversations by vault:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get recent conversations sorted by last_updated
+   */
+  async getRecentConversations(limit: number = 20): Promise<ConversationDocument[]> {
+    try {
+      const allConversations = await this.collection.getAllConversations(limit * 2, 0);
+      
+      // Sort by last_updated in descending order
+      return allConversations
+        .sort((a: ConversationDocument, b: ConversationDocument) => b.metadata.last_updated - a.metadata.last_updated)
+        .slice(0, limit);
+    } catch (error) {
+      console.error(`[ConversationRepository] Failed to get recent conversations:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get messages for a specific conversation
+   */
+  async getMessages(conversationId: string): Promise<ConversationMessage[]> {
     try {
       const document = await this.collection.getConversation(conversationId);
       if (!document) {
-        return null;
+        return [];
       }
-
-      let messages = document.metadata.conversation.messages;
-
-      // Apply filters
-      if (options.role) {
-        messages = messages.filter(msg => msg.role === options.role);
-      }
-
-      if (options.afterTimestamp) {
-        messages = messages.filter(msg => msg.timestamp >= options.afterTimestamp!);
-      }
-
-      // Apply pagination
-      const offset = options.offset || 0;
-      const limit = Math.min(options.limit || 50, 500); // Max 500 messages per query
-      const total = messages.length;
-      const paginatedMessages = messages.slice(offset, offset + limit);
-
-      return {
-        messages: paginatedMessages,
-        pagination: {
-          offset,
-          limit,
-          total,
-          hasMore: offset + paginatedMessages.length < total
-        }
-      };
-
+      return document.metadata.conversation.messages;
     } catch (error) {
-      console.error(`[ConversationRepository] Failed to get messages from ${conversationId}:`, error);
-      return null;
-    }
-  }
-
-  // =============================================================================
-  // SEARCH OPERATIONS
-  // =============================================================================
-
-  /**
-   * Search conversations by semantic similarity
-   */
-  async searchConversations(
-    query: string,
-    options: ConversationSearchOptions = {}
-  ): Promise<ConversationSearchResult[]> {
-    try {
-      const queryEmbedding = await this.embeddingService.getEmbedding(query) || [];
-      return await this.collection.searchConversations(queryEmbedding, options);
-
-    } catch (error) {
-      console.error('[ConversationRepository] Failed to search conversations:', error);
+      console.error(`[ConversationRepository] Failed to get messages:`, error);
       return [];
     }
   }
 
   /**
-   * List conversations for a vault
+   * List conversations with optional filtering
    */
-  async listConversations(
-    vaultName?: string,
-    limit: number = 20
-  ): Promise<ConversationSearchResult[]> {
+  async listConversations(vaultName?: string, limit: number = 20): Promise<ConversationDocument[]> {
     try {
-      return await this.collection.listConversations(vaultName, limit);
-
+      if (vaultName) {
+        return await this.collection.getConversationsByVault(vaultName, limit);
+      } else {
+        return await this.collection.getAllConversations(limit, 0);
+      }
     } catch (error) {
-      console.error('[ConversationRepository] Failed to list conversations:', error);
-      return [];
-    }
-  }
-
-  // =============================================================================
-  // UTILITY OPERATIONS
-  // =============================================================================
-
-  /**
-   * Get recent conversations for a session
-   */
-  async getRecentConversations(sessionId: string, limit: number = 20): Promise<ConversationSearchResult[]> {
-    try {
-      const searchResults = await this.collection.listConversations(sessionId, limit);
-      return searchResults;
-    } catch (error) {
-      console.error('[ConversationRepository] Error getting recent conversations:', error);
+      console.error(`[ConversationRepository] Failed to list conversations:`, error);
       return [];
     }
   }
 
   /**
-   * Get conversation statistics
+   * Get repository statistics
    */
   async getStatistics(): Promise<{
     totalConversations: number;
-    totalMessages: number;
-    averageMessagesPerConversation: number;
+    activeConversations: number;
+    averageMessageCount: number;
+    topicDistribution: Record<string, number>;
   }> {
     try {
-      const baseStats = await this.collection.getStatistics();
-      const totalMessages = baseStats.totalConversations * baseStats.averageMessageCount;
-
-      return {
-        totalConversations: baseStats.totalConversations,
-        totalMessages: Math.round(totalMessages),
-        averageMessagesPerConversation: baseStats.averageMessageCount
-      };
-
+      return await this.collection.getStatistics();
     } catch (error) {
-      console.error('[ConversationRepository] Failed to get statistics:', error);
+      console.error(`[ConversationRepository] Failed to get statistics:`, error);
       return {
         totalConversations: 0,
-        totalMessages: 0,
-        averageMessagesPerConversation: 0
+        activeConversations: 0,
+        averageMessageCount: 0,
+        topicDistribution: {}
       };
     }
   }
@@ -457,230 +440,8 @@ export class ConversationRepository {
       const document = await this.collection.getConversation(conversationId);
       return document !== null;
     } catch (error) {
+      console.error(`[ConversationRepository] Failed to check conversation existence:`, error);
       return false;
-    }
-  }
-
-  // =============================================================================
-  // BRANCH OPERATIONS
-  // =============================================================================
-
-  /**
-   * Create a new branch from a specific message
-   */
-  async createBranch(conversationId: string, fromMessageId: string): Promise<string> {
-    try {
-      const document = await this.collection.getConversation(conversationId);
-      if (!document) {
-        throw new Error('Conversation not found');
-      }
-
-      const conversation = document.metadata.conversation;
-      const fromMessage = conversation.messages.find(msg => msg.id === fromMessageId);
-      if (!fromMessage) {
-        throw new Error('Message not found');
-      }
-
-      // Generate new branch ID
-      const branchId = `branch_${Date.now()}_${uuidv4().slice(0, 8)}`;
-      
-      // Add branch to conversation
-      if (!conversation.branches) {
-        conversation.branches = {};
-      }
-      
-      conversation.branches[branchId] = {
-        createdFrom: fromMessageId,
-        lastMessageId: fromMessageId,
-        isActive: false
-      };
-
-      // Initialize main branch if not exists
-      if (!conversation.mainBranchId) {
-        conversation.mainBranchId = 'main';
-        conversation.branches['main'] = {
-          createdFrom: conversation.messages[0]?.id || '',
-          lastMessageId: conversation.messages[conversation.messages.length - 1]?.id || '',
-          isActive: conversation.activeBranchId === 'main' || !conversation.activeBranchId
-        };
-      }
-
-      // Update conversation metadata
-      conversation.last_updated = Date.now();
-      
-      // Generate document content for embedding
-      const documentContent = this.extractConversationContent(conversation);
-      const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
-      
-      // Save updated conversation with proper format
-      const metadata = { ...document.metadata };
-      metadata.conversation = conversation;
-      metadata.last_updated = conversation.last_updated;
-      metadata.message_count = conversation.messages.length;
-      
-      await this.collection.updateConversation(conversationId, {
-        embedding,
-        document: documentContent,
-        metadata
-      });
-
-      return branchId;
-    } catch (error) {
-      console.error(`[ConversationRepository] Failed to create branch:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Switch to a different branch
-   */
-  async switchToBranch(conversationId: string, branchId: string): Promise<void> {
-    try {
-      const document = await this.collection.getConversation(conversationId);
-      if (!document) {
-        throw new Error('Conversation not found');
-      }
-
-      const conversation = document.metadata.conversation;
-      if (!conversation.branches?.[branchId]) {
-        throw new Error('Branch not found');
-      }
-
-      // Update branch active states
-      Object.keys(conversation.branches).forEach(id => {
-        conversation.branches[id].isActive = id === branchId;
-      });
-      
-      conversation.activeBranchId = branchId;
-      conversation.last_updated = Date.now();
-      
-      // Generate document content for embedding
-      const documentContent = this.extractConversationContent(conversation);
-      const embedding = await this.embeddingService.getEmbedding(documentContent) || [];
-      
-      // Update metadata with new conversation data
-      const metadata = { ...document.metadata };
-      metadata.conversation = conversation;
-      metadata.last_updated = conversation.last_updated;
-      metadata.message_count = conversation.messages.length;
-
-      await this.collection.updateConversation(conversationId, {
-        embedding,
-        document: documentContent,
-        metadata
-      });
-    } catch (error) {
-      console.error(`[ConversationRepository] Failed to switch branch:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get messages for a specific branch
-   */
-  async getBranchMessages(conversationId: string, branchId: string): Promise<ConversationMessage[]> {
-    try {
-      const document = await this.collection.getConversation(conversationId);
-      if (!document) {
-        throw new Error('Conversation not found');
-      }
-
-      const conversation = document.metadata.conversation;
-      const branch = conversation.branches?.[branchId];
-      if (!branch) {
-        throw new Error('Branch not found');
-      }
-
-      // For main branch, return all messages up to the branch point
-      if (branchId === conversation.mainBranchId) {
-        return conversation.messages.filter(msg => 
-          msg.branchId === branchId || !msg.branchId // Backward compatibility
-        );
-      }
-
-      // For other branches, find messages from branch point onwards
-      const branchPoint = conversation.messages.findIndex(msg => msg.id === branch.createdFrom);
-      if (branchPoint === -1) {
-        return [];
-      }
-
-      // Include messages up to branch point + messages in this branch
-      const preBranchMessages = conversation.messages.slice(0, branchPoint + 1);
-      const branchMessages = conversation.messages.filter(msg => msg.branchId === branchId);
-      
-      return [...preBranchMessages, ...branchMessages];
-    } catch (error) {
-      console.error(`[ConversationRepository] Failed to get branch messages:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Add message to a specific branch
-   */
-  async addMessageToBranch(
-    conversationId: string, 
-    branchId: string, 
-    params: Omit<AddMessageParams, 'conversationId'>
-  ): Promise<ConversationOperationResult> {
-    try {
-      const document = await this.collection.getConversation(conversationId);
-      if (!document) {
-        return { success: false, error: 'Conversation not found' };
-      }
-
-      const conversation = document.metadata.conversation;
-      const branch = conversation.branches?.[branchId];
-      if (!branch) {
-        return { success: false, error: 'Branch not found' };
-      }
-
-      // Create message with branch ID
-      const messageId = `msg_${Date.now()}_${uuidv4().slice(0, 8)}`;
-      const newMessage: ConversationMessage = {
-        id: messageId,
-        role: params.role,
-        content: params.content,
-        timestamp: Date.now(),
-        tool_calls: params.toolCalls,
-        branchId: branchId,
-        parentMessageId: branch.lastMessageId
-      };
-
-      // Add message to conversation
-      conversation.messages.push(newMessage);
-      
-      // Update branch metadata
-      branch.lastMessageId = messageId;
-      conversation.last_updated = Date.now();
-
-      // Update metadata
-      const metadata = { ...document.metadata };
-      metadata.conversation = conversation;
-      metadata.last_updated = conversation.last_updated;
-      metadata.message_count = conversation.messages.length;
-
-      // Generate new summary embedding
-      const summary = this.extractConversationContent(conversation);
-      const embedding = await this.embeddingService.getEmbedding(summary) || [];
-      
-      await this.collection.updateConversation(conversationId, {
-        embedding,
-        document: summary,
-        metadata
-      });
-
-      return {
-        success: true,
-        conversationId,
-        messageId
-      };
-    } catch (error) {
-      console.error(`[ConversationRepository] Failed to add message to branch:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
     }
   }
 

@@ -868,8 +868,7 @@ export class LLMService {
           id: 'user-1',
           role: 'user' as const,
           content: originalPrompt,
-          timestamp: Date.now(),
-          branchId: 'main'
+          timestamp: Date.now()
         },
         // Assistant message with tool calls
         {
@@ -877,7 +876,6 @@ export class LLMService {
           role: 'assistant' as const,
           content: '',
           timestamp: Date.now(),
-          branchId: 'main',
           tool_calls: toolCalls.map((tc, index) => ({
             id: tc.id,
             name: tc.function?.name || tc.name,
@@ -889,15 +887,6 @@ export class LLMService {
           }))
         }
       ],
-      branches: {
-        'main': {
-          createdFrom: '',
-          lastMessageId: 'assistant-1',
-          isActive: true
-        }
-      },
-      activeBranchId: 'main',
-      mainBranchId: 'main'
     };
     
     // Use ConversationContextBuilder to build proper conversation context

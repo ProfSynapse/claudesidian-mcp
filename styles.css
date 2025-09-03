@@ -2979,7 +2979,123 @@ a:hover {
 /* BRANCH NAVIGATION STYLES   */
 /* =========================== */
 
-/* Branch Navigator Container */
+/* Message-level Branch Navigator - appears in message header */
+.message-branch-navigator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(var(--text-muted-rgb), 0.1);
+  border: 1px solid var(--background-modifier-border);
+  margin-left: 8px;
+  transition: all 0.2s ease;
+}
+
+.message-branch-navigator-hidden {
+  display: none;
+}
+
+.message-branch-navigator-visible {
+  display: flex;
+}
+
+/* Message Branch Navigation Buttons */
+.message-branch-nav-button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  width: 16px;
+  height: 16px;
+}
+
+.message-branch-nav-button:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.message-branch-nav-button:active:not(:disabled) {
+  background: var(--background-modifier-active);
+  transform: scale(0.9);
+}
+
+.message-branch-nav-button:disabled,
+.message-branch-nav-button.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  color: var(--text-faint);
+}
+
+.message-branch-nav-button svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.5;
+}
+
+/* Message Branch Indicator */
+.message-branch-indicator {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 18px;
+  text-align: center;
+  user-select: none;
+  letter-spacing: 0.3px;
+}
+
+/* Only show on hover for AI messages to reduce clutter */
+.message-container.message-assistant .message-branch-navigator {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message-container.message-assistant:hover .message-branch-navigator,
+.message-container.message-assistant .message-branch-navigator.has-alternatives {
+  opacity: 1;
+}
+
+/* Dark Mode Adjustments */
+.theme-dark .message-branch-navigator {
+  background: rgba(var(--text-muted-rgb), 0.15);
+  border-color: var(--background-modifier-border-hover);
+}
+
+.theme-dark .message-branch-nav-button:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .message-branch-navigator {
+    gap: 4px;
+    padding: 1px 4px;
+  }
+  
+  .message-branch-nav-button {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .message-branch-nav-button svg {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .message-branch-indicator {
+    font-size: 9px;
+    min-width: 16px;
+  }
+}
+
+/* Conversation-level Branch Navigator Container (Legacy) */
 .branch-navigator-container {
   margin-left: auto; /* Push to right side of header */
 }

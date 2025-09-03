@@ -9,6 +9,7 @@
 
 import { ConversationRepository } from '../../database/services/chat/ConversationRepository';
 import { ConversationData, ConversationMessage, ToolCall, CreateConversationParams } from '../../types/chat/ChatTypes';
+import { documentToConversationData } from '../../types/chat/ChatTypes';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { MCPChatIntegration, MCPChatOptions } from './MCPChatIntegration';
 import { MCPConfigurationManager } from '../mcp/MCPConfigurationManager';
@@ -118,16 +119,7 @@ export class ChatService {
         title,
         created_at: Date.now(),
         last_updated: Date.now(),
-        messages: [],
-        branches: {
-          'main': {
-            createdFrom: '',
-            lastMessageId: '',
-            isActive: true
-          }
-        },
-        activeBranchId: 'main',
-        mainBranchId: 'main'
+        messages: []
       };
 
       const createParams: CreateConversationParams = {
@@ -230,7 +222,8 @@ export class ChatService {
       // Generate AI response with tool execution
       // Use streaming method and collect complete response  
       let completeResponse = '';
-      for await (const chunk of this.generateResponseStreaming(conversationId, message, conversation, options)) {
+      const conversationData = documentToConversationData(conversation);
+      for await (const chunk of this.generateResponseStreaming(conversationId, message, conversationData, options)) {
         completeResponse += chunk.chunk;
       }
       // Note: AI response is automatically saved by the streaming method
@@ -611,7 +604,8 @@ export class ChatService {
    * Get conversation by ID
    */
   async getConversation(id: string): Promise<ConversationData | null> {
-    return await this.dependencies.conversationRepo.getConversation(id);
+    const document = await this.dependencies.conversationRepo.getConversation(id);
+    return document ? documentToConversationData(document) : null;
   }
 
   /**
@@ -623,22 +617,13 @@ export class ChatService {
       options?.limit || 50
     );
     
-    // Convert ConversationSearchResult[] to ConversationData[]
-    return searchResults.map(result => ({
-      id: result.id,
-      title: result.title,
-      created_at: result.metadata.created_at,
-      last_updated: result.metadata.last_updated,
-      messages: [], // Messages not loaded in list view for performance
-      branches: {
-        'main': {
-          createdFrom: '',
-          lastMessageId: '',
-          isActive: true
-        }
-      },
-      activeBranchId: 'main',
-      mainBranchId: 'main'
+    // Convert ConversationDocument[] to ConversationData[]
+    return searchResults.map(document => ({
+      id: document.id,
+      title: document.metadata.title,
+      created_at: document.metadata.created_at,
+      last_updated: document.metadata.last_updated,
+      messages: [] // Messages not loaded in list view for performance
     }));
   }
 
