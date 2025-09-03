@@ -627,9 +627,7 @@ export class LLMService {
           
           for await (const chunk of adapter.generateStreamAsync('', {
             ...generateOptions,
-            // Clear tools since we already executed them
-            tools: undefined,
-            detectedToolCalls: undefined,
+            // Keep tools available for continued tool calling
             // Pass conversation history for pingpong
             conversationHistory: conversationHistory
           })) {

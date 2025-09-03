@@ -83,7 +83,6 @@ export class MCPChatIntegration {
     // MCP is available if we have a server URL and tools
     // Provider doesn't matter - we use bridge system for all providers
     const available = this.serverUrl !== null;
-    console.log(`[MCP Integration] Tools available via bridge system:`, available);
     return available;
   }
 
@@ -97,10 +96,8 @@ export class MCPChatIntegration {
   ): Promise<any> {
     // If MCP is not available or disabled, return base options
     const mcpAvailable = this.isMCPAvailable(mcpOptions.providerId);
-    console.log(`[MCP Integration] Preparing options - Available: ${mcpAvailable}, Enabled: ${mcpOptions.enableMCP}`);
     
     if (!mcpAvailable || !mcpOptions.enableMCP) {
-      console.log(`[MCP Integration] Using base options (no MCP)`);
       return baseOptions;
     }
 
@@ -118,18 +115,14 @@ export class MCPChatIntegration {
             const providerTool = converter.convertMCPTool(mcpTool);
             return providerTool.tool; // Extract the OpenAI-formatted tool
           } catch (error) {
-            console.warn(`[MCP Integration] Failed to convert tool ${mcpTool.name}:`, error);
             return null;
           }
         }).filter(tool => tool !== null);
         
-        console.log(`[MCP Integration] Converted ${convertedTools.length}/${availableTools.length} MCP tools to ${mcpOptions.providerId} format`);
       } else {
-        console.warn(`[MCP Integration] No converter available for provider: ${mcpOptions.providerId}`);
         convertedTools = []; // No tools for unsupported providers
       }
     } catch (error) {
-      console.error('[MCP Integration] Failed to convert tools:', error);
       convertedTools = []; // Fallback to no tools
     }
 
@@ -229,7 +222,6 @@ export class MCPChatIntegration {
    */
   autoConfigureProviders(llmService: any): void {
     // Simplified: since we use bridge system, all function-calling providers support MCP
-    console.log('[MCP Integration] Auto-configuring providers with bridge system');
     
     // No need to configure individual adapters - bridge handles all providers
     logger.systemLog('[MCP Integration] Bridge system ready for all function-calling providers');

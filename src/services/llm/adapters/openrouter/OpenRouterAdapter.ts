@@ -182,13 +182,11 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         },
 
         onParseError: (error: Error, rawData: string) => {
-          console.warn(`[OpenRouter Streaming] Failed to parse SSE data:`, error);
-          console.log(`[OpenRouter Streaming] Raw data:`, rawData.substring(0, 200));
+          // Failed to parse SSE data
         }
       });
 
     } catch (error) {
-      console.error('[OpenRouterAdapter] Streaming error:', error);
       throw this.handleError(error, 'streaming generation');
     }
   }

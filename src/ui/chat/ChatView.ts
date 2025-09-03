@@ -65,10 +65,7 @@ export class ChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    console.log('[ChatView] Opening chat view');
-    
     if (!this.chatService) {
-      console.error('[ChatView] ChatService not available');
       return;
     }
 
@@ -77,7 +74,6 @@ export class ChatView extends ItemView {
       
       // Set up tool event callback for live UI updates
       this.chatService.setToolEventCallback((messageId, event, data) => {
-        console.log('[ChatView] Received tool event from ChatService:', messageId, event, data);
         if (event === 'started') {
           this.handleToolExecutionStarted(messageId, data);
         } else if (event === 'completed') {
@@ -85,9 +81,8 @@ export class ChatView extends ItemView {
         }
       });
       
-      console.log('[ChatView] ChatService initialized successfully');
     } catch (error) {
-      console.error('[ChatView] Failed to initialize ChatService:', error);
+      // ChatService initialization failed
     }
 
     this.initializeArchitecture();
@@ -95,7 +90,6 @@ export class ChatView extends ItemView {
   }
 
   async onClose(): Promise<void> {
-    console.log('[ChatView] Closing chat view');
     this.cleanup();
   }
 
@@ -207,7 +201,7 @@ export class ChatView extends ItemView {
    */
   private initializeControllers(): void {
     const uiStateEvents: UIStateControllerEvents = {
-      onSidebarToggled: (visible) => console.log(`[ChatView] Sidebar toggled: ${visible}`)
+      onSidebarToggled: (visible) => { /* Sidebar toggled */ }
     };
     this.uiStateController = new UIStateController(this.containerEl, uiStateEvents);
     this.streamingController = new StreamingController(this.containerEl);
@@ -352,12 +346,11 @@ export class ChatView extends ItemView {
   }
 
   private handleModelChanged(model: ModelOption | null): void {
-    console.log('[ChatView] Model changed:', model);
     this.updateContextProgress();
   }
 
   private handleAgentChanged(agent: AgentOption | null): void {
-    console.log('[ChatView] Agent changed:', agent ? agent.name : 'No agent');
+    // Agent changed
   }
 
   private async getContextUsage() {
@@ -377,11 +370,6 @@ export class ChatView extends ItemView {
 
   // Tool event handlers
   private handleToolCallsDetected(messageId: string, toolCalls: any[]): void {
-    console.log('[ChatView DEBUG] Tool calls detected - using progressive individual tool approach:', {
-      messageId,
-      toolCallCount: toolCalls.length,
-      toolNames: toolCalls.map(tc => tc.name || tc.function?.name).filter(Boolean)
-    });
     
     // With progressive tool execution, we don't need to batch re-render here
     // Individual tool accordions will be added via 'started' events
@@ -391,19 +379,16 @@ export class ChatView extends ItemView {
   }
 
   private handleToolExecutionStarted(messageId: string, toolCall: { id: string; name: string; parameters?: any }): void {
-    console.log('[ChatView] Tool execution started:', messageId, toolCall);
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent('started', toolCall);
   }
 
   private handleToolExecutionCompleted(messageId: string, toolId: string, result: any, success: boolean, error?: string): void {
-    console.log('[ChatView] Tool execution completed:', messageId, toolId, success);
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent('completed', { toolId, result, success, error });
   }
 
   private handleToolEvent(messageId: string, event: 'detected' | 'started' | 'completed', data: any): void {
-    console.log('[ChatView] Tool event:', messageId, event, data);
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent(event, data);
   }

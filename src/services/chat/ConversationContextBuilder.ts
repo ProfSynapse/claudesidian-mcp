@@ -53,16 +53,12 @@ export class ConversationContextBuilder {
    * 3. Final assistant message with response content
    */
   private static buildOpenAIContext(conversation: ConversationData, messages: any[]): any[] {
-    console.log(`[ConversationContextBuilder] Building OpenAI format context for ${conversation.messages.length} messages`);
-    
     conversation.messages.forEach((msg, index) => {
       if (msg.role === 'user') {
         messages.push({ role: 'user', content: msg.content });
-        console.log(`[ConversationContextBuilder] Added user message ${index + 1}`);
       } 
       else if (msg.role === 'assistant') {
         if (msg.tool_calls && msg.tool_calls.length > 0) {
-          console.log(`[ConversationContextBuilder] Processing assistant message ${index + 1} with ${msg.tool_calls.length} tool calls`);
           
           // 1. Assistant message with original tool calls format
           const assistantMessage: any = {
@@ -81,7 +77,6 @@ export class ConversationContextBuilder {
           }));
           
           messages.push(assistantMessage);
-          console.log(`[ConversationContextBuilder] Added assistant message with tool calls: ${msg.tool_calls.map(tc => tc.name).join(', ')}`);
           
           // 2. Tool result messages for each tool call
           msg.tool_calls.forEach(toolCall => {
@@ -94,7 +89,6 @@ export class ConversationContextBuilder {
             };
             
             messages.push(toolMessage);
-            console.log(`[ConversationContextBuilder] Added tool result for ${toolCall.name}: ${toolCall.success ? 'success' : 'error'}`);
           });
           
           // 3. If there's final content after tool execution, add another assistant message
@@ -103,17 +97,14 @@ export class ConversationContextBuilder {
               role: 'assistant', 
               content: msg.content 
             });
-            console.log(`[ConversationContextBuilder] Added final assistant response with content length: ${msg.content.length}`);
           }
         } else {
           // Regular assistant message without tools
           messages.push({ role: 'assistant', content: msg.content });
-          console.log(`[ConversationContextBuilder] Added regular assistant message ${index + 1}`);
         }
       }
     });
     
-    console.log(`[ConversationContextBuilder] Built OpenAI context with ${messages.length} messages total`);
     return messages;
   }
   
@@ -122,7 +113,6 @@ export class ConversationContextBuilder {
    * TODO: Implement Anthropic-specific format when needed
    */
   private static buildAnthropicContext(conversation: ConversationData, messages: any[]): any[] {
-    console.log(`[ConversationContextBuilder] Anthropic format not yet implemented, using OpenAI format as fallback`);
     return this.buildOpenAIContext(conversation, messages);
   }
   
@@ -131,7 +121,6 @@ export class ConversationContextBuilder {
    * TODO: Implement Google-specific format when needed  
    */
   private static buildGoogleContext(conversation: ConversationData, messages: any[]): any[] {
-    console.log(`[ConversationContextBuilder] Google format not yet implemented, using OpenAI format as fallback`);
     return this.buildOpenAIContext(conversation, messages);
   }
   

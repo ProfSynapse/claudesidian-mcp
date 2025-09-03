@@ -48,7 +48,6 @@ export class ModelAgentManager {
    */
   handleModelChange(model: ModelOption | null): void {
     this.selectedModel = model;
-    console.log('[ModelAgentManager] Model changed:', model);
     this.events.onModelChanged(model);
   }
 
@@ -59,11 +58,6 @@ export class ModelAgentManager {
     this.selectedAgent = agent;
     this.currentSystemPrompt = agent?.systemPrompt || null;
     
-    console.log('[ModelAgentManager] Agent changed:', agent ? agent.name : 'No agent');
-    if (agent) {
-      console.log('[ModelAgentManager] System prompt:', this.currentSystemPrompt);
-    }
-
     this.events.onAgentChanged(agent);
     this.events.onSystemPromptChanged(this.currentSystemPrompt);
   }
@@ -85,10 +79,8 @@ export class ModelAgentManager {
         throw new Error('No default model configured in settings');
       }
 
-      console.log('[ModelAgentManager] Default model from settings:', defaultModel);
       return defaultModel;
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to get default model:', error);
       throw error;
     }
   }
@@ -101,14 +93,12 @@ export class ModelAgentManager {
       // Get plugin instance to access settings data
       const plugin = this.app.plugins.plugins['claudesidian-mcp'];
       if (!plugin) {
-        console.warn('[ModelAgentManager] Plugin not found for model loading');
         return [];
       }
 
       // Load plugin data directly
       const pluginData = await plugin.loadData();
       if (!pluginData?.llmProviders?.providers) {
-        console.warn('[ModelAgentManager] No LLM providers found in plugin data');
         return [];
       }
 
@@ -122,7 +112,6 @@ export class ModelAgentManager {
       Object.entries(providers).forEach(([providerId, config]: [string, any]) => {
         // Only include providers that are enabled and have API keys
         if (!config.enabled || !config.apiKey || !config.apiKey.trim()) {
-          console.log(`[ModelAgentManager] Skipping ${providerId} - not enabled or no API key`);
           return;
         }
         
@@ -142,10 +131,8 @@ export class ModelAgentManager {
         });
       });
 
-      console.log('[ModelAgentManager] Found models:', models);
       return models;
     } catch (error) {
-      console.error('[ModelAgentManager] Error loading models:', error);
       return [];
     }
   }
@@ -158,7 +145,6 @@ export class ModelAgentManager {
       // Get plugin instance to access settings data
       const plugin = this.app.plugins.plugins['claudesidian-mcp'];
       if (!plugin) {
-        console.warn('[ModelAgentManager] Plugin not found for agent loading');
         return [];
       }
 
@@ -181,10 +167,8 @@ export class ModelAgentManager {
         }
       });
 
-      console.log('[ModelAgentManager] Found agents:', agentOptions);
       return agentOptions;
     } catch (error) {
-      console.error('[ModelAgentManager] Error loading agents:', error);
       return [];
     }
   }

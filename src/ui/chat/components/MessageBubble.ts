@@ -86,7 +86,10 @@ export class MessageBubble {
         attr: { title: 'Copy tool execution details' }
       });
       setIcon(copyBtn, 'copy');
-      copyBtn.addEventListener('click', () => this.onCopy(this.message.id));
+      copyBtn.addEventListener('click', () => {
+        this.showCopyFeedback(copyBtn);
+        this.onCopy(this.message.id);
+      });
     } else {
       // Copy button for AI messages
       const copyBtn = actions.createEl('button', { 
@@ -94,7 +97,10 @@ export class MessageBubble {
         attr: { title: 'Copy message' }
       });
       setIcon(copyBtn, 'copy');
-      copyBtn.addEventListener('click', () => this.onCopy(this.message.id));
+      copyBtn.addEventListener('click', () => {
+        this.showCopyFeedback(copyBtn);
+        this.onCopy(this.message.id);
+      });
     }
 
     this.element = messageContainer;
@@ -171,11 +177,6 @@ export class MessageBubble {
   private renderToolCalls(container: HTMLElement): void {
     // For tool role messages, always render the tool accordion 
     if (this.message.role === 'tool' && this.message.tool_calls && this.message.tool_calls.length > 0) {
-      console.log('[MessageBubble] Rendering tool accordion for tool message:', {
-        messageId: this.message.id,
-        toolCallCount: this.message.tool_calls.length,
-        toolNames: this.message.tool_calls.map(tc => tc.name).filter(Boolean)
-      });
 
       // Create accordion for tool execution message
       const accordion = new ToolAccordion(this.message.tool_calls);
@@ -326,11 +327,7 @@ export class MessageBubble {
 
     if (isIncremental) {
       // Streaming chunk: accumulate content and update single streaming div
-      console.log(`[MessageBubble] Streaming chunk: "${content}" (${content.length} chars)`);
-      
       this.accumulatedStreamContent += content;
-      
-      console.log(`[MessageBubble] Total accumulated: ${this.accumulatedStreamContent.length} chars`);
       
       // Find or create streaming div
       let streamingDiv = contentElement.querySelector('.streaming-content') as HTMLElement;
@@ -339,7 +336,6 @@ export class MessageBubble {
         streamingDiv.className = 'streaming-content';
         streamingDiv.style.marginTop = this.progressiveToolAccordions.size > 0 ? '8px' : '0px';
         contentElement.appendChild(streamingDiv);
-        console.log(`[MessageBubble] Created streaming div`);
       }
       
       // Update streaming div with accumulated content
@@ -347,7 +343,6 @@ export class MessageBubble {
       
     } else if (isComplete) {
       // Final content: replace streaming div with final div
-      console.log(`[MessageBubble] Final content: ${content.length} chars`);
       
       const streamingDiv = contentElement.querySelector('.streaming-content');
       if (streamingDiv) {
@@ -357,14 +352,12 @@ export class MessageBubble {
         finalDiv.innerHTML = this.escapeHtml(content);
         
         contentElement.replaceChild(finalDiv, streamingDiv);
-        console.log(`[MessageBubble] Replaced streaming div with final content`);
       } else {
         // No streaming div exists, create final content div
         const finalDiv = document.createElement('div');
         finalDiv.className = 'final-content';
         finalDiv.innerHTML = this.escapeHtml(content);
         contentElement.appendChild(finalDiv);
-        console.log(`[MessageBubble] Created final content div`);
       }
       
       // Remove thinking when final content is inserted
@@ -430,7 +423,6 @@ export class MessageBubble {
    * Create individual accordion for a specific tool
    */
   createIndividualToolAccordion(toolCall: { id: string; name: string; parameters?: any }): void {
-    console.log('[MessageBubble] Creating individual accordion for tool:', toolCall.name, toolCall.id);
     
     if (!this.element) return;
     const contentElement = this.element.querySelector('.message-content');
@@ -442,7 +434,6 @@ export class MessageBubble {
       const existingLoading = contentElement.querySelector('.ai-loading');
       if (existingLoading) {
         existingLoading.remove(); // Remove from current position
-        console.log('[MessageBubble] Removed existing "Thinking..." to reposition it');
       }
       
       // Stop any existing loading animation
@@ -464,8 +455,6 @@ export class MessageBubble {
     
     // Add "Thinking..." below all accordions for next potential tool calls
     this.addContinuationThinking(contentElement);
-    
-    console.log('[MessageBubble] Individual accordion created and "Thinking..." repositioned below');
   }
 
   /**
@@ -482,23 +471,15 @@ export class MessageBubble {
     const continuationLoading = contentElement.createDiv('ai-loading-continuation');
     continuationLoading.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
     this.startLoadingAnimation(continuationLoading);
-    
-    console.log('[MessageBubble] Added continuation "Thinking..." below accordions');
   }
 
   /**
    * Complete individual tool execution
    */
   completeIndividualTool(toolId: string, result: any, success: boolean, error?: string): void {
-    console.log('[MessageBubble] Completing individual tool:', toolId);
-    
     const toolAccordion = this.progressiveToolAccordions.get(toolId);
     if (toolAccordion) {
       toolAccordion.completeTool(toolId, result, success, error);
-      console.log('[MessageBubble] Individual tool completed successfully');
-    } else {
-      console.error('[MessageBubble] No accordion found for tool ID:', toolId);
-      console.log('[MessageBubble] Available tool accordions:', Array.from(this.progressiveToolAccordions.keys()));
     }
   }
 
@@ -514,7 +495,6 @@ export class MessageBubble {
     if (continuationLoading) {
       this.stopLoadingAnimation();
       continuationLoading.remove();
-      console.log('[MessageBubble] Removed continuation "Thinking..." - all tools complete');
     }
   }
 
@@ -522,20 +502,15 @@ export class MessageBubble {
    * Handle tool events from MessageManager
    */
   handleToolEvent(event: 'detected' | 'started' | 'completed', data: any): void {
-    console.log('[MessageBubble] Handling tool event:', event, data);
-    
     switch(event) {
       case 'detected':
         // Tool calls detected - but don't show accordions yet (they come individually via 'started' events)
-        console.log('[MessageBubble] Tool calls detected, waiting for individual execution events');
         break;
       case 'started':
         // Individual tool started - create separate accordion for this specific tool
-        console.log('[MessageBubble] Individual tool started - creating individual accordion:', data.name);
         
         // Check if this tool accordion already exists (avoid duplicates)
         if (this.progressiveToolAccordions.has(data.id)) {
-          console.log(`[MessageBubble] Tool accordion ${data.id} already exists, skipping duplicate`);
           break;
         }
         
@@ -560,6 +535,26 @@ export class MessageBubble {
    */
   getProgressiveToolAccordions(): Map<string, ProgressiveToolAccordion> {
     return this.progressiveToolAccordions;
+  }
+
+  /**
+   * Show visual feedback when copy button is clicked
+   */
+  private showCopyFeedback(button: HTMLElement): void {
+    const originalIcon = button.innerHTML;
+    const originalTitle = button.getAttribute('title') || '';
+    
+    // Change to checkmark icon and update tooltip
+    setIcon(button, 'check');
+    button.setAttribute('title', 'Copied!');
+    button.classList.add('copy-success');
+    
+    // Revert after 1.5 seconds
+    setTimeout(() => {
+      button.innerHTML = originalIcon;
+      button.setAttribute('title', originalTitle);
+      button.classList.remove('copy-success');
+    }, 1500);
   }
 
   /**

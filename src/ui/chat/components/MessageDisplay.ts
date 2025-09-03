@@ -79,8 +79,6 @@ export class MessageDisplay {
    * Update a specific message content without full re-render (for streaming)
    */
   updateMessageContent(messageId: string, content: string, isComplete: boolean = false, isIncremental?: boolean): void {
-    console.log(`[MessageDisplay] updateMessageContent called:`, { messageId, contentLength: content.length, isComplete, isIncremental });
-    
     // Find the MessageBubble instance for this message ID
     const messageBubble = this.messageBubbles.find(bubble => {
       const element = bubble.getElement();
@@ -89,13 +87,7 @@ export class MessageDisplay {
 
     if (messageBubble) {
       // Use the MessageBubble's updateContent method for progressive updates
-      console.log(`[MessageDisplay] Calling messageBubble.updateContent with progressive accordion support`);
       messageBubble.updateContent(content, isComplete, isIncremental);
-    } else {
-      console.error(`[MessageDisplay] MessageBubble not found for messageId: ${messageId}`);
-      // Debug: log all existing message bubbles
-      console.log(`[MessageDisplay] Available message bubbles:`, 
-        this.messageBubbles.map(bubble => bubble.getElement()?.getAttribute('data-message-id')).filter(Boolean));
     }
   }
 
@@ -106,7 +98,6 @@ export class MessageDisplay {
     // Update message with new data
 
     if (!this.conversation) {
-      console.error('[MessageDisplay DEBUG] No conversation available for updateMessage');
       return;
     }
 
@@ -132,14 +123,6 @@ export class MessageDisplay {
       // Update message bubble
       messageBubble.updateWithNewMessage(updatedMessage);
       // Message bubble updated
-    } else {
-      console.error(`[MessageDisplay DEBUG] MessageBubble not found for messageId: ${messageId}`);
-      console.error('[MessageDisplay DEBUG] Available MessageBubbles:', 
-        this.messageBubbles.map(bubble => ({
-          element: bubble.getElement(),
-          messageId: bubble.getElement()?.getAttribute('data-message-id')
-        }))
-      );
     }
   }
 
@@ -222,12 +205,6 @@ export class MessageDisplay {
     const bubbleEl = bubble.createElement();
 
     // Tool accordion is now rendered inside MessageBubble's content area
-    console.log('[MessageDisplay] Message bubble created with tool calls:', {
-      messageId: message.id,
-      role: message.role,
-      hasToolCalls: !!(message.tool_calls && message.tool_calls.length > 0),
-      toolCallCount: message.tool_calls?.length || 0
-    });
 
     return bubbleEl;
   }
@@ -239,9 +216,9 @@ export class MessageDisplay {
     const message = this.findMessage(messageId);
     if (message) {
       navigator.clipboard.writeText(message.content).then(() => {
-        console.log('[MessageDisplay] Message copied to clipboard');
+        // Message copied to clipboard
       }).catch(err => {
-        console.error('[MessageDisplay] Failed to copy message:', err);
+        // Failed to copy message
       });
     }
   }
@@ -250,7 +227,6 @@ export class MessageDisplay {
    * Handle retry message action
    */
   private handleRetryMessage(messageId: string): void {
-    console.log('[MessageDisplay] Retry message:', messageId);
     if (this.onRetryMessage) {
       this.onRetryMessage(messageId);
     }
@@ -260,7 +236,6 @@ export class MessageDisplay {
    * Handle edit message action
    */
   private handleEditMessage(messageId: string, newContent: string): void {
-    console.log('[MessageDisplay] Edit message:', messageId, 'New content:', newContent);
     if (this.onEditMessage) {
       this.onEditMessage(messageId, newContent);
     }

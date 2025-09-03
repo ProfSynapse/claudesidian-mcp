@@ -111,11 +111,6 @@ export class MessageManager {
           // Extract tool calls when available
           if (chunk.toolCalls) {
             toolCalls = chunk.toolCalls;
-            console.log('[MessageManager] Tool calls received in message:', {
-              messageId: aiMessageId,
-              toolCallCount: toolCalls.length,
-              toolNames: toolCalls.map(tc => tc.name || tc.function?.name).filter(Boolean)
-            });
             
             // Only emit tool calls event for final chunk to avoid duplication
             if (chunk.complete) {
@@ -143,13 +138,11 @@ export class MessageManager {
         }
 
       } catch (sendError) {
-        console.error('[MessageManager] Error during streaming:', sendError);
         this.events.onError('Failed to send message');
         this.removeLoadingMessage(conversation, aiMessageId);
         throw sendError;
       }
     } catch (error) {
-      console.error('[MessageManager] Failed to send message:', error);
       this.events.onError('Failed to send message');
     } finally {
       this.setLoading(false);
@@ -246,8 +239,6 @@ export class MessageManager {
    * Remove loading message from conversation
    */
   private removeLoadingMessage(conversation: ConversationData, messageId: string): void {
-    console.log(`[MessageManager] Removing loading message: ${messageId}`);
-    
     const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
     if (messageIndex >= 0) {
       conversation.messages.splice(messageIndex, 1);
