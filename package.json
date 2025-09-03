@@ -1,6 +1,6 @@
 {
     "name": "claudesidian-mcp",
-    "version": "2.7.6",
+    "version": "3.0.0",
     "description": "Model Context Protocol (MCP) integration for Obsidian",
     "main": "main.js",
     "scripts": {

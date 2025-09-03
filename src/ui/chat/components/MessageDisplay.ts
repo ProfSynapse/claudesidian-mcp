@@ -6,6 +6,7 @@
 
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { MessageBubble } from './MessageBubble';
+import { BranchManager } from '../services/BranchManager';
 
 export class MessageDisplay {
   private conversation: ConversationData | null = null;
@@ -13,6 +14,7 @@ export class MessageDisplay {
 
   constructor(
     private container: HTMLElement,
+    private branchManager: BranchManager,
     private onRetryMessage?: (messageId: string) => void,
     private onEditMessage?: (messageId: string, newContent: string) => void,
     private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void
@@ -26,16 +28,20 @@ export class MessageDisplay {
   setConversation(conversation: ConversationData): void {
     // Set conversation data
     
-    // Check if we're just updating an existing conversation with progressive accordions
+    // Check if we're just updating an existing conversation
     if (this.conversation && this.conversation.id === conversation.id) {
-      // Same conversation - checking for progressive accordions
+      // Same conversation - check if we can avoid full re-render
       
       // Check if any message bubbles have progressive accordions
       const hasProgressiveAccordions = this.messageBubbles.some(bubble => 
         bubble.getProgressiveToolAccordions().size > 0
       );
       
-      if (hasProgressiveAccordions) {
+      // For branch operations, always do full re-render to avoid UI state issues
+      const isBranchOperation = conversation.activeBranchId !== this.conversation.activeBranchId ||
+        Object.keys(conversation.branches || {}).length !== Object.keys(this.conversation.branches || {}).length;
+      
+      if (hasProgressiveAccordions && !isBranchOperation) {
         // Skip re-render to preserve progressive accordions
         // Just update the conversation data without re-rendering
         this.conversation = conversation;
@@ -58,8 +64,24 @@ export class MessageDisplay {
       id: `temp_${Date.now()}`,
       role: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      branchId: this.conversation?.activeBranchId || 'main'
     };
+    
+    const bubble = this.createMessageBubble(message);
+    this.container.querySelector('.messages-container')?.appendChild(bubble);
+    this.scrollToBottom();
+  }
+
+  /**
+   * Add a message immediately using the actual message object (prevents duplicate message creation)
+   */
+  addMessage(message: ConversationMessage): void {
+    console.log('[MessageDisplay] addMessage called with:', {
+      messageId: message.id,
+      messageRole: message.role,
+      messageContent: message.content.substring(0, 30) + '...'
+    });
     
     const bubble = this.createMessageBubble(message);
     this.container.querySelector('.messages-container')?.appendChild(bubble);
@@ -136,6 +158,15 @@ export class MessageDisplay {
   }
 
   /**
+   * Refresh display to show current active branch messages
+   */
+  refreshBranchDisplay(): void {
+    if (this.conversation) {
+      this.render();
+    }
+  }
+
+  /**
    * Show welcome state
    */
   showWelcome(): void {
@@ -179,8 +210,11 @@ export class MessageDisplay {
     // Clear previous message bubbles
     this.messageBubbles = [];
 
-    // Render messages
-    this.conversation.messages.forEach(message => {
+    // Get messages for active branch only
+    const branchMessages = this.branchManager.getActiveBranchMessages(this.conversation);
+    
+    // Render branch-filtered messages
+    branchMessages.forEach(message => {
       const messageEl = this.createMessageBubble(message);
       messagesContainer.appendChild(messageEl);
     });
@@ -259,6 +293,32 @@ export class MessageDisplay {
     
     // MessageBubbles are created in same order as messages
     return this.messageBubbles[messageIndex];
+  }
+
+  /**
+   * Update MessageBubble with new message ID (for handling temporary -> real ID updates)
+   */
+  updateMessageId(oldId: string, newId: string, updatedMessage: ConversationMessage): void {
+    // Find the MessageBubble that was created with the old (temporary) ID
+    const messageBubble = this.messageBubbles.find(bubble => {
+      const element = bubble.getElement();
+      return element?.getAttribute('data-message-id') === oldId;
+    });
+
+    if (messageBubble) {
+      console.log('[MessageDisplay] Updating MessageBubble ID:', { from: oldId, to: newId });
+      
+      // Update the MessageBubble's message reference and DOM attribute
+      messageBubble.updateWithNewMessage(updatedMessage);
+      
+      // Update the DOM attribute to reflect the new ID
+      const element = messageBubble.getElement();
+      if (element) {
+        element.setAttribute('data-message-id', newId);
+      }
+    } else {
+      console.log('[MessageDisplay] Could not find MessageBubble with old ID:', oldId);
+    }
   }
 
   /**

@@ -118,7 +118,16 @@ export class ChatService {
         title,
         created_at: Date.now(),
         last_updated: Date.now(),
-        messages: []
+        messages: [],
+        branches: {
+          'main': {
+            createdFrom: '',
+            lastMessageId: '',
+            isActive: true
+          }
+        },
+        activeBranchId: 'main',
+        mainBranchId: 'main'
       };
 
       const createParams: CreateConversationParams = {
@@ -620,7 +629,16 @@ export class ChatService {
       title: result.title,
       created_at: result.metadata.created_at,
       last_updated: result.metadata.last_updated,
-      messages: [] // Messages not loaded in list view for performance
+      messages: [], // Messages not loaded in list view for performance
+      branches: {
+        'main': {
+          createdFrom: '',
+          lastMessageId: '',
+          isActive: true
+        }
+      },
+      activeBranchId: 'main',
+      mainBranchId: 'main'
     }));
   }
 
@@ -662,6 +680,13 @@ export class ChatService {
       console.error('[ChatService] Search failed:', error);
       return [];
     }
+  }
+
+  /**
+   * Get conversation repository for branch management
+   */
+  getConversationRepository(): ConversationRepository {
+    return this.dependencies.conversationRepo;
   }
 
   /**

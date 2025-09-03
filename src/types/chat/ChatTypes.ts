@@ -20,6 +20,17 @@ export interface ConversationData {
   created_at: number;
   last_updated: number;
   messages: ConversationMessage[];
+  
+  // Branch tracking
+  branches: {
+    [branchId: string]: {
+      createdFrom: string;    // Message ID where branch started
+      lastMessageId: string;  // Last message in this branch
+      isActive: boolean;      // Currently selected branch
+    };
+  };
+  activeBranchId: string;     // Currently displayed branch
+  mainBranchId: string;       // Original conversation branch
 }
 
 /**
@@ -32,6 +43,17 @@ export interface ConversationMessage {
   timestamp: number;
   tool_calls?: ToolCall[];
   isLoading?: boolean;  // For UI loading state
+  
+  // Branching support
+  parentMessageId?: string;    // Points to the message this branches from
+  branchId: string;           // Unique branch identifier
+  alternativeResponses?: {     // For AI messages that have multiple attempts
+    [branchId: string]: {
+      content: string;
+      tool_calls?: ToolCall[];
+      timestamp: number;
+    };
+  };
 }
 
 /**

@@ -78,7 +78,22 @@ export class MessageBubble {
         attr: { title: 'Retry message' }
       });
       setIcon(retryBtn, 'rotate-ccw');
-      retryBtn.addEventListener('click', () => this.onRetry(this.message.id));
+      retryBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('[MessageBubble] Retry button clicked!', {
+          messageId: this.message.id,
+          messageRole: this.message.role,
+          messageContent: this.message.content.substring(0, 50) + '...',
+          onRetryExists: !!this.onRetry,
+          elementDataId: this.element?.getAttribute('data-message-id')
+        });
+        if (this.onRetry) {
+          this.onRetry(this.message.id);
+        } else {
+          console.error('[MessageBubble] onRetry callback is null/undefined!');
+        }
+      });
     } else if (this.message.role === 'tool') {
       // Tool messages get minimal actions - just copy for debugging
       const copyBtn = actions.createEl('button', { 
@@ -324,6 +339,13 @@ export class MessageBubble {
 
     // Stop loading animation
     this.stopLoadingAnimation();
+    
+    // Clear any "Thinking" text immediately
+    const thinkingSpan = contentElement.querySelector('.ai-loading');
+    if (thinkingSpan) {
+      console.log('[MessageBubble] Clearing thinking text for message:', this.message.id);
+      thinkingSpan.remove();
+    }
 
     if (isIncremental) {
       // Streaming chunk: accumulate content and update single streaming div
@@ -371,13 +393,20 @@ export class MessageBubble {
    * This triggers a re-render when tool calls are detected from LLM
    */
   updateWithNewMessage(newMessage: ConversationMessage): void {
-    // Update with new message data
+    console.log('[MessageBubble] updateWithNewMessage called:', {
+      oldId: this.message.id,
+      newId: newMessage.id,
+      oldContent: this.message.content.substring(0, 30) + '...',
+      newContent: newMessage.content.substring(0, 30) + '...',
+      hasProgressiveAccordions: this.progressiveToolAccordions.size > 0
+    });
 
     // PROBLEM: This method completely re-renders and puts tool calls at the end
     // We should avoid calling this if we already have progressive accordions
     if (this.progressiveToolAccordions.size > 0 && newMessage.tool_calls) {
       // Skip update - preserving progressive accordions
       // Just update the stored message reference but don't re-render
+      console.log('[MessageBubble] Preserving progressive accordions, only updating message reference');
       this.message = newMessage;
       return;
     }

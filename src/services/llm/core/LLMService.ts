@@ -19,6 +19,7 @@ import { GenerateOptions, LLMResponse, ModelInfo } from '../adapters/types';
 import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
 import { MCPToolExecution } from '../adapters/shared/MCPToolExecution';
 import { ConversationContextBuilder } from '../../chat/ConversationContextBuilder';
+import { ConversationData } from '../../../types/chat/ChatTypes';
 
 export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;
@@ -856,7 +857,7 @@ export class LLMService {
     provider: string
   ): any[] {
     // Convert tool calls and results to ConversationData format
-    const conversationData = {
+    const conversationData: ConversationData = {
       id: 'temp',
       title: 'Tool Execution',
       created_at: Date.now(),
@@ -867,7 +868,8 @@ export class LLMService {
           id: 'user-1',
           role: 'user' as const,
           content: originalPrompt,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          branchId: 'main'
         },
         // Assistant message with tool calls
         {
@@ -875,6 +877,7 @@ export class LLMService {
           role: 'assistant' as const,
           content: '',
           timestamp: Date.now(),
+          branchId: 'main',
           tool_calls: toolCalls.map((tc, index) => ({
             id: tc.id,
             name: tc.function?.name || tc.name,
@@ -885,7 +888,16 @@ export class LLMService {
             executionTime: toolResults[index]?.executionTime
           }))
         }
-      ]
+      ],
+      branches: {
+        'main': {
+          createdFrom: '',
+          lastMessageId: 'assistant-1',
+          isActive: true
+        }
+      },
+      activeBranchId: 'main',
+      mainBranchId: 'main'
     };
     
     // Use ConversationContextBuilder to build proper conversation context

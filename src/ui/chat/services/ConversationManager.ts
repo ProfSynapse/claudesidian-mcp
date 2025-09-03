@@ -4,10 +4,12 @@
 
 import { ChatService } from '../../../services/chat/ChatService';
 import { ConversationData } from '../../../types/chat/ChatTypes';
+import { BranchManager } from './BranchManager';
 
 export interface ConversationManagerEvents {
   onConversationSelected: (conversation: ConversationData) => void;
   onConversationsChanged: () => void;
+  onBranchSwitched: (conversation: ConversationData, branchId: string) => void;
   onError: (message: string) => void;
 }
 
@@ -17,6 +19,7 @@ export class ConversationManager {
 
   constructor(
     private chatService: ChatService,
+    private branchManager: BranchManager,
     private events: ConversationManagerEvents
   ) {}
 
@@ -280,5 +283,88 @@ export class ConversationManager {
       input.focus();
       input.select();
     });
+  }
+
+  // =============================================================================
+  // BRANCH MANAGEMENT METHODS
+  // =============================================================================
+
+  /**
+   * Switch to a different branch in the current conversation
+   */
+  async switchToBranch(branchId: string): Promise<void> {
+    if (!this.currentConversation) {
+      this.events.onError('No conversation selected');
+      return;
+    }
+
+    try {
+      const success = await this.branchManager.switchToBranch(this.currentConversation, branchId);
+      if (success) {
+        this.events.onBranchSwitched(this.currentConversation, branchId);
+      } else {
+        this.events.onError('Failed to switch branch');
+      }
+    } catch (error) {
+      console.error('[ConversationManager] Failed to switch branch:', error);
+      this.events.onError('Failed to switch branch');
+    }
+  }
+
+  /**
+   * Create a new branch from a specific message in the current conversation
+   */
+  async createBranch(fromMessageId: string): Promise<string | null> {
+    if (!this.currentConversation) {
+      this.events.onError('No conversation selected');
+      return null;
+    }
+
+    try {
+      const branchId = await this.branchManager.createBranchFromMessage(this.currentConversation, fromMessageId);
+      if (branchId) {
+        // The BranchManager events will handle UI updates
+        return branchId;
+      } else {
+        this.events.onError('Failed to create branch');
+        return null;
+      }
+    } catch (error) {
+      console.error('[ConversationManager] Failed to create branch:', error);
+      this.events.onError('Failed to create branch');
+      return null;
+    }
+  }
+
+  /**
+   * Get the current active branch information
+   */
+  getCurrentBranchInfo(): { current: number; total: number; hasMultiple: boolean } | null {
+    if (!this.currentConversation) return null;
+    return this.branchManager.getBranchNavigationInfo(this.currentConversation);
+  }
+
+  /**
+   * Check if the current conversation has multiple branches
+   */
+  hasMultipleBranches(): boolean {
+    if (!this.currentConversation) return false;
+    return this.branchManager.hasMultipleBranches(this.currentConversation);
+  }
+
+  /**
+   * Get the next available branch for navigation
+   */
+  getNextBranch(): string | null {
+    if (!this.currentConversation) return null;
+    return this.branchManager.getNextBranch(this.currentConversation);
+  }
+
+  /**
+   * Get the previous available branch for navigation
+   */
+  getPreviousBranch(): string | null {
+    if (!this.currentConversation) return null;
+    return this.branchManager.getPreviousBranch(this.currentConversation);
   }
 }

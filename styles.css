@@ -2974,3 +2974,144 @@ a:hover {
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+
+/* =========================== */
+/* BRANCH NAVIGATION STYLES   */
+/* =========================== */
+
+/* Branch Navigator Container */
+.branch-navigator-container {
+  margin-left: auto; /* Push to right side of header */
+}
+
+.branch-navigator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  transition: all 0.2s ease;
+}
+
+.branch-navigator-hidden {
+  display: none;
+}
+
+.branch-navigator-visible {
+  display: flex;
+}
+
+/* Branch Navigation Buttons */
+.branch-nav-button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  width: 20px;
+  height: 20px;
+}
+
+.branch-nav-button:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.branch-nav-button:active:not(:disabled) {
+  background: var(--background-modifier-active);
+  transform: scale(0.95);
+}
+
+.branch-nav-button:disabled,
+.branch-nav-button.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  color: var(--text-faint);
+}
+
+.branch-nav-button svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+}
+
+/* Branch Indicator */
+.branch-indicator {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 24px;
+  text-align: center;
+  user-select: none;
+  letter-spacing: 0.5px;
+}
+
+/* Header Integration */
+.chat-header .branch-navigator-container {
+  opacity: 0;
+  transform: translateX(10px);
+  transition: all 0.3s ease;
+}
+
+.chat-header:hover .branch-navigator-container,
+.chat-header .branch-navigator-container.branch-navigator-visible {
+  opacity: 1 !important;
+  transform: translateX(0) !important;
+}
+
+/* Branch Navigator Animations */
+@keyframes branch-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
+.branch-navigator-visible {
+  animation: branch-appear 0.3s ease;
+}
+
+/* Dark Mode Adjustments */
+.theme-dark .branch-navigator {
+  background: var(--background-primary-alt);
+  border-color: var(--background-modifier-border-hover);
+}
+
+.theme-dark .branch-nav-button:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .branch-navigator {
+    gap: 6px;
+    padding: 3px 6px;
+  }
+  
+  .branch-nav-button {
+    width: 18px;
+    height: 18px;
+  }
+  
+  .branch-nav-button svg {
+    width: 10px;
+    height: 10px;
+  }
+  
+  .branch-indicator {
+    font-size: 10px;
+    min-width: 20px;
+  }
+}

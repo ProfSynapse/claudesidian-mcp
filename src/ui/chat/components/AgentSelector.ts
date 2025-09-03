@@ -174,38 +174,6 @@ export class AgentSelector {
     await this.loadAgents();
   }
 
-  /**
-   * Get agent info display
-   */
-  private createAgentInfo(): HTMLElement {
-    const infoContainer = this.container.createDiv('agent-info');
-    
-    if (!this.currentAgent) {
-      infoContainer.textContent = 'Using default system behavior';
-      infoContainer.addClass('agent-info-default');
-      return infoContainer;
-    }
-
-    // Agent name
-    const nameEl = infoContainer.createDiv('agent-info-name');
-    nameEl.textContent = this.currentAgent.name;
-    
-    // Agent description (if available)
-    if (this.currentAgent.description) {
-      const descEl = infoContainer.createDiv('agent-info-description');
-      descEl.textContent = this.currentAgent.description;
-    }
-    
-    // Prompt preview (truncated)
-    const promptPreview = infoContainer.createDiv('agent-info-prompt');
-    const truncatedPrompt = this.currentAgent.systemPrompt.length > 100 
-      ? this.currentAgent.systemPrompt.substring(0, 97) + '...'
-      : this.currentAgent.systemPrompt;
-    promptPreview.textContent = `System prompt: ${truncatedPrompt}`;
-    
-    infoContainer.addClass('agent-info-active');
-    return infoContainer;
-  }
 
   /**
    * Update the agent info display
@@ -216,12 +184,7 @@ export class AgentSelector {
       existingInfo.remove();
     }
     
-    // Add updated info after the dropdown
-    const dropdownContainer = this.container.querySelector('.agent-selector-dropdown');
-    if (dropdownContainer) {
-      const infoEl = this.createAgentInfo();
-      dropdownContainer.insertAdjacentElement('afterend', infoEl);
-    }
+    // Removed agent info display - no longer showing description card
   }
 
   /**
