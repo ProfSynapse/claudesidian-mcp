@@ -37,18 +37,11 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       
       // Handle post-stream tool execution: if detectedToolCalls are provided, execute only tools
       if (options?.detectedToolCalls && options.detectedToolCalls.length > 0) {
-        console.log('[OpenRouter Adapter] Post-stream tool execution', {
-          detectedToolCalls: options.detectedToolCalls.length,
-          onToolEvent: !!options?.onToolEvent
-        });
         return await this.executeDetectedToolCalls(options.detectedToolCalls, model, prompt, options);
       }
       
       // If tools are provided (pre-converted by ChatService), use tool-enabled generation
       if (options?.tools && options.tools.length > 0) {
-        console.log('[OpenRouter Adapter] Using tool-enabled generation', {
-          toolCount: options.tools.length
-        });
         return await this.generateWithProvidedTools(prompt, options);
       }
       
@@ -247,7 +240,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     // Use centralized tool execution wrapper to eliminate code duplication
     const model = options?.model || this.currentModel;
 
-    console.log('[OpenRouter Debug] generateWithProvidedTools called, onToolEvent callback:', !!options?.onToolEvent);
     
     return MCPToolExecution.executeWithToolSupport(
       this,
@@ -325,10 +317,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
    * Used for post-stream tool execution - implements pingpong pattern
    */
   private async executeDetectedToolCalls(detectedToolCalls: any[], model: string, prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
-    console.log('[OpenRouter Adapter] Executing detected tool calls:', {
-      toolCount: detectedToolCalls.length,
-      onToolEvent: !!options?.onToolEvent
-    });
 
     try {
       // Convert to MCP format
@@ -348,10 +336,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         options?.onToolEvent
       );
 
-      console.log('[OpenRouter Adapter] Tool execution completed:', {
-        resultsCount: toolResults.length,
-        successCount: toolResults.filter(r => r.success).length
-      });
 
       // Now do the "pingpong" - send the conversation with tool results back to the LLM
       const messages = this.buildMessages(prompt, options?.systemPrompt);
@@ -367,7 +351,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       const toolMessages = MCPToolExecution.buildToolMessages(toolResults);
       messages.push(...toolMessages);
 
-      console.log('[OpenRouter Adapter] Sending conversation with tool results back to LLM for final response');
 
       // Make API call to get AI's response to the tool results  
       const requestBody = {
@@ -402,10 +385,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       const finalContent = choice?.message?.content || 'No response from AI after tool execution';
       const usage = this.extractUsage(data);
 
-      console.log('[OpenRouter Adapter] Got AI response to tool results:', {
-        contentLength: finalContent.length,
-        finishReason: choice?.finish_reason
-      });
 
       // Combine original tool calls with their execution results
       const completeToolCalls = detectedToolCalls.map(originalCall => {

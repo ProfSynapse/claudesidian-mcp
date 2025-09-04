@@ -7,6 +7,7 @@
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { MessageBubble } from './MessageBubble';
 import { BranchManager } from '../services/BranchManager';
+import { App } from 'obsidian';
 
 export class MessageDisplay {
   private conversation: ConversationData | null = null;
@@ -14,6 +15,7 @@ export class MessageDisplay {
 
   constructor(
     private container: HTMLElement,
+    private app: App,
     private branchManager: BranchManager,
     private onRetryMessage?: (messageId: string) => void,
     private onEditMessage?: (messageId: string, newContent: string) => void,
@@ -95,9 +97,9 @@ export class MessageDisplay {
   }
 
   /**
-   * Update a specific message content without full re-render (for streaming)
+   * Update a specific message content for final display (streaming handled by StreamingController)
    */
-  updateMessageContent(messageId: string, content: string, isComplete: boolean = false, isIncremental?: boolean): void {
+  updateMessageContent(messageId: string, content: string): void {
     // Find the MessageBubble instance for this message ID
     const messageBubble = this.messageBubbles.find(bubble => {
       const element = bubble.getElement();
@@ -105,8 +107,8 @@ export class MessageDisplay {
     });
 
     if (messageBubble) {
-      // Use the MessageBubble's updateContent method for progressive updates
-      messageBubble.updateContent(content, isComplete, isIncremental);
+      // Use the MessageBubble's updateContent method for final content only
+      messageBubble.updateContent(content);
     }
   }
 
@@ -214,6 +216,7 @@ export class MessageDisplay {
   private createMessageBubble(message: ConversationMessage): HTMLElement {
     const bubble = new MessageBubble(
       message,
+      this.app,
       (messageId) => this.onCopyMessage(messageId),
       (messageId) => this.handleRetryMessage(messageId),
       (messageId, newContent) => this.handleEditMessage(messageId, newContent),

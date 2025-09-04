@@ -1,6 +1,10 @@
 /**
  * StreamingController - Handles all streaming-related UI updates and animations
+ * Now with streaming-markdown integration for progressive markdown rendering
  */
+
+import { MarkdownRenderer } from '../utils/MarkdownRenderer';
+import { App, Component } from 'obsidian';
 
 export interface StreamingControllerEvents {
   onAnimationStarted: (messageId: string) => void;
@@ -9,9 +13,12 @@ export interface StreamingControllerEvents {
 
 export class StreamingController {
   private activeAnimations = new Map<string, any>(); // messageId -> intervalId
+  private streamingStates = new Map<string, any>(); // messageId -> streaming-markdown state
 
   constructor(
     private containerEl: HTMLElement,
+    private app: App,
+    private component: Component,
     private events?: StreamingControllerEvents
   ) {}
 
@@ -31,9 +38,9 @@ export class StreamingController {
   }
 
   /**
-   * Update streaming message content in real-time
+   * Start streaming for a message (initialize streaming-markdown parser)
    */
-  updateStreamingMessage(messageId: string, content: string, isStreaming: boolean): void {
+  startStreaming(messageId: string): void {
     const messageElement = this.containerEl.querySelector(`[data-message-id="${messageId}"]`);
     
     if (messageElement) {
@@ -43,22 +50,83 @@ export class StreamingController {
         // Stop loading animation
         this.stopLoadingAnimation(contentElement);
         
-        // Update content with streaming text
-        if (isStreaming) {
-          contentElement.innerHTML = `<div class="streaming-content">${this.escapeHtml(content)}<span class="streaming-cursor">|</span></div>`;
-        } else {
-          contentElement.innerHTML = `<div class="final-content">${this.escapeHtml(content)}</div>`;
-          console.log(`[StreamingController] Set final content`);
-        }
+        // Initialize streaming-markdown parser for this message
+        const streamingState = MarkdownRenderer.initializeStreamingParser(contentElement as HTMLElement);
+        this.streamingStates.set(messageId, streamingState);
+        
+        console.log('[STREAM DEBUG] StreamingController initialized streaming for:', {
+          messageId,
+          hasParser: !!streamingState?.parser,
+          hasContentDiv: !!streamingState?.contentDiv
+        });
       } else {
         console.warn(`[StreamingController] Content element not found for message ${messageId}`);
       }
     } else {
       console.warn(`[StreamingController] Message element not found for messageId: ${messageId}`);
-      // Log all message elements to debug
-      const allMessages = this.containerEl.querySelectorAll('[data-message-id]');
-      console.log(`[StreamingController] Found ${allMessages.length} message elements:`, 
-        Array.from(allMessages).map(el => el.getAttribute('data-message-id')));
+    }
+  }
+
+  /**
+   * Update streaming message with new chunk (progressive rendering)
+   */
+  updateStreamingChunk(messageId: string, chunk: string): void {
+    const streamingState = this.streamingStates.get(messageId);
+    
+    if (streamingState) {
+      console.log('[STREAM DEBUG] StreamingController processing chunk:', {
+        messageId,
+        chunkLength: chunk.length,
+        chunkContent: chunk.substring(0, 30) + '...'
+      });
+      
+      MarkdownRenderer.writeStreamingChunk(streamingState, chunk);
+    } else {
+      console.warn(`[StreamingController] No streaming state found for message ${messageId}`);
+      // Initialize streaming if we missed the start
+      this.startStreaming(messageId);
+      // Try again
+      const newStreamingState = this.streamingStates.get(messageId);
+      if (newStreamingState) {
+        MarkdownRenderer.writeStreamingChunk(newStreamingState, chunk);
+      }
+    }
+  }
+
+  /**
+   * Finalize streaming for a message (switch to final Obsidian rendering if needed)
+   */
+  finalizeStreaming(messageId: string, finalContent: string): void {
+    const streamingState = this.streamingStates.get(messageId);
+    const messageElement = this.containerEl.querySelector(`[data-message-id="${messageId}"]`);
+    
+    if (streamingState && messageElement) {
+      const contentElement = messageElement.querySelector('.message-bubble .message-content');
+      
+      if (contentElement) {
+        console.log('[STREAM DEBUG] StreamingController finalizing streaming for:', {
+          messageId,
+          finalContentLength: finalContent.length
+        });
+        
+        MarkdownRenderer.finalizeStreamingContent(
+          streamingState,
+          finalContent,
+          contentElement as HTMLElement,
+          this.app,
+          this.component
+        ).then(() => {
+          // Clean up streaming state
+          this.streamingStates.delete(messageId);
+          console.log('[STREAM DEBUG] StreamingController finalized and cleaned up:', messageId);
+        }).catch(error => {
+          console.error('[StreamingController] Error finalizing streaming:', error);
+          // Clean up anyway
+          this.streamingStates.delete(messageId);
+        });
+      }
+    } else {
+      console.warn(`[StreamingController] Cannot finalize - no streaming state or element for ${messageId}`);
     }
   }
 
@@ -182,5 +250,7 @@ export class StreamingController {
    */
   cleanup(): void {
     this.stopAllAnimations();
+    // Clean up streaming states
+    this.streamingStates.clear();
   }
 }

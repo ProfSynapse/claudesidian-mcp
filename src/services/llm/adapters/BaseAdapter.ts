@@ -107,13 +107,11 @@ export abstract class BaseAdapter {
 
       // Handle reconnect intervals
       if (event.type === 'reconnect-interval') {
-        console.log(`[${debugLabel} Streaming] Reconnect interval:`, event.value);
         return;
       }
 
       // Handle [DONE] event
       if (event.data === '[DONE]') {
-        console.log(`[${debugLabel} Streaming] Stream completed with [DONE]`);
         
         const finalUsage = usage ? { 
           promptTokens: usage.prompt_tokens || 0,
@@ -142,7 +140,6 @@ export abstract class BaseAdapter {
           // Extract content using adapter-specific logic
           const content = options.extractContent(parsed);
           if (content) {
-            console.log(`[${debugLabel} Streaming] Content chunk:`, content.substring(0, 50));
             tokenCount++;
             accumulatedContent += content;
             
@@ -155,7 +152,6 @@ export abstract class BaseAdapter {
           // Extract tool calls using adapter-specific logic
           const toolCalls = options.extractToolCalls(parsed);
           if (toolCalls && options.accumulateToolCalls) {
-            console.log(`[${debugLabel} Streaming] Processing tool calls:`, toolCalls.length);
             
             let shouldYieldToolCalls = false;
             
@@ -211,7 +207,6 @@ export abstract class BaseAdapter {
           // Handle completion
           const finishReason = options.extractFinishReason(parsed);
           if (finishReason === 'stop' || finishReason === 'length') {
-            console.log(`[${debugLabel} Streaming] Completion detected:`, finishReason);
             
             eventQueue.push({
               content: '',
@@ -222,7 +217,6 @@ export abstract class BaseAdapter {
           }
 
         } catch (parseError) {
-          console.warn(`[${debugLabel} Streaming] Parse error:`, parseError);
           if (options.onParseError) {
             options.onParseError(parseError as Error, event.data);
           }
@@ -236,7 +230,6 @@ export abstract class BaseAdapter {
         const { done, value } = await reader.read();
         
         if (done) {
-          console.log(`[${debugLabel} Streaming] Stream ended`);
           isCompleted = true;
           break;
         }
@@ -278,13 +271,11 @@ export abstract class BaseAdapter {
       }
 
     } catch (error) {
-      console.error(`[${debugLabel} Streaming] Stream processing error:`, error);
       throw error;
     } finally {
       try {
         reader.cancel();
       } catch (error) {
-        console.warn(`[${debugLabel} Streaming] Error cancelling reader:`, error);
       }
     }
 

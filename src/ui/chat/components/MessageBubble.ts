@@ -8,25 +8,25 @@ import { ConversationMessage } from '../../../types/chat/ChatTypes';
 import { ToolAccordion } from './ToolAccordion';
 import { ProgressiveToolAccordion } from './ProgressiveToolAccordion';
 import { MessageBranchNavigator, MessageBranchNavigatorEvents } from './MessageBranchNavigator';
-import { setIcon } from 'obsidian';
+import { MarkdownRenderer } from '../utils/MarkdownRenderer';
+import { setIcon, Component, App } from 'obsidian';
 
-export class MessageBubble {
+export class MessageBubble extends Component {
   private element: HTMLElement | null = null;
   private loadingInterval: any = null;
   private progressiveToolAccordions: Map<string, ProgressiveToolAccordion> = new Map();
-  private accumulatedStreamContent: string = ''; // Track accumulated streaming content
   private messageBranchNavigator: MessageBranchNavigator | null = null;
 
   constructor(
     private message: ConversationMessage,
+    private app: App,
     private onCopy: (messageId: string) => void,
     private onRetry: (messageId: string) => void,
     private onEdit?: (messageId: string, newContent: string) => void,
     private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void,
     private onMessageAlternativeChanged?: (messageId: string, alternativeIndex: number) => void
   ) {
-    // Reset accumulated content for new message
-    this.accumulatedStreamContent = '';
+    super();
   }
 
   /**
@@ -58,9 +58,11 @@ export class MessageBubble {
     // Message content
     const content = bubble.createDiv('message-content');
     
-    // Render content with basic markdown support (use active alternative if any)
+    // Render content with enhanced markdown support (use active alternative if any)
     const activeContent = this.getActiveMessageContent(this.message);
-    this.renderContent(content, activeContent);
+    this.renderContent(content, activeContent).catch(error => {
+      console.error('[MessageBubble] Error rendering initial content:', error);
+    });
 
     // Actions outside and underneath the bubble, justified right
     const actions = messageContainer.createDiv('message-actions-external');
@@ -144,9 +146,9 @@ export class MessageBubble {
   }
 
   /**
-   * Render message content with basic markdown
+   * Render message content using enhanced markdown renderer
    */
-  private renderContent(container: HTMLElement, content: string): void {
+  private async renderContent(container: HTMLElement, content: string): Promise<void> {
     // Handle loading state for AI messages
     if (this.message.isLoading && this.message.role === 'assistant' && !content.trim()) {
       container.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
@@ -154,53 +156,15 @@ export class MessageBubble {
       return;
     }
 
-    // Simple markdown rendering - can be enhanced later
-    const lines = content.split('\n');
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      
-      // Code blocks
-      if (line.startsWith('```')) {
-        const codeBlock = container.createEl('pre');
-        const code = codeBlock.createEl('code');
-        
-        i++; // Skip opening ```
-        const codeContent: string[] = [];
-        while (i < lines.length && !lines[i].startsWith('```')) {
-          codeContent.push(lines[i]);
-          i++;
-        }
-        
-        code.textContent = codeContent.join('\n');
-        continue;
-      }
-      
-      // Headers
-      if (line.startsWith('# ')) {
-        container.createEl('h1', { text: line.substring(2) });
-      } else if (line.startsWith('## ')) {
-        container.createEl('h2', { text: line.substring(3) });
-      } else if (line.startsWith('### ')) {
-        container.createEl('h3', { text: line.substring(4) });
-      }
-      // Lists
-      else if (line.startsWith('- ') || line.startsWith('* ')) {
-        if (!container.lastElementChild || container.lastElementChild.tagName !== 'UL') {
-          container.createEl('ul');
-        }
-        const ul = container.lastElementChild as HTMLUListElement;
-        ul.createEl('li', { text: line.substring(2) });
-      }
-      // Regular paragraphs
-      else if (line.trim()) {
-        const p = container.createEl('p');
-        this.renderInlineMarkdown(p, line);
-      }
-      // Empty lines (line breaks)
-      else if (i > 0 && lines[i - 1].trim()) {
-        container.createEl('br');
-      }
+    // Use enhanced markdown renderer with Obsidian's native rendering
+    try {
+      await MarkdownRenderer.renderMarkdown(content, container, this.app, this);
+    } catch (error) {
+      console.error('[MessageBubble] Error rendering markdown:', error);
+      // Fallback to plain text
+      const pre = container.createEl('pre');
+      pre.style.whiteSpace = 'pre-wrap';
+      pre.textContent = content;
     }
 
     // Add tool accordion if there are tool calls
@@ -225,26 +189,6 @@ export class MessageBubble {
     // This ensures clean separation: assistant = text only, tool = accordions only
   }
 
-  /**
-   * Render inline markdown (bold, italic, code)
-   */
-  private renderInlineMarkdown(container: HTMLElement, text: string): void {
-    // Simple regex-based inline markdown
-    // This is basic - could be enhanced with a proper markdown parser
-    
-    let processed = text;
-    
-    // Inline code
-    processed = processed.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
-    // Bold
-    processed = processed.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    
-    // Italic
-    processed = processed.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    
-    container.innerHTML = processed;
-  }
 
 
   /**
@@ -350,70 +294,29 @@ export class MessageBubble {
   }
 
   /**
-   * Update content for streaming - completely rewritten for clarity
+   * Update static message content - MessageBubble now handles final content only
+   * Streaming is handled by StreamingController
    */
-  updateContent(content: string, isComplete: boolean = false, isIncremental?: boolean): void {
+  updateContent(content: string): void {
     if (!this.element) return;
 
     const contentElement = this.element.querySelector('.message-content');
     if (!contentElement) return;
 
-    // Special case: empty content and not complete means show "Thinking..." (for retry reset)
-    if (!content.trim() && !isComplete && this.message.role === 'assistant') {
-      contentElement.empty();
-      contentElement.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
-      this.startLoadingAnimation(contentElement as HTMLElement);
-      return;
-    }
-
-    // Stop loading animation
+    // Stop any loading animations
     this.stopLoadingAnimation();
     
-    // Clear any "Thinking" text immediately
-    const thinkingSpan = contentElement.querySelector('.ai-loading');
-    if (thinkingSpan) {
-      console.log('[MessageBubble] Clearing thinking text for message:', this.message.id);
-      thinkingSpan.remove();
-    }
-
-    if (isIncremental) {
-      // Streaming chunk: accumulate content and update single streaming div
-      this.accumulatedStreamContent += content;
-      
-      // Find or create streaming div
-      let streamingDiv = contentElement.querySelector('.streaming-content') as HTMLElement;
-      if (!streamingDiv) {
-        streamingDiv = document.createElement('div');
-        streamingDiv.className = 'streaming-content';
-        streamingDiv.style.marginTop = this.progressiveToolAccordions.size > 0 ? '8px' : '0px';
-        contentElement.appendChild(streamingDiv);
-      }
-      
-      // Update streaming div with accumulated content
-      streamingDiv.innerHTML = `${this.escapeHtml(this.accumulatedStreamContent)}<span class="streaming-cursor">|</span>`;
-      
-    } else if (isComplete) {
-      // Final content: replace streaming div with final div
-      
-      const streamingDiv = contentElement.querySelector('.streaming-content');
-      if (streamingDiv) {
-        const finalDiv = document.createElement('div');
-        finalDiv.className = 'final-content';
-        finalDiv.style.marginTop = this.progressiveToolAccordions.size > 0 ? '8px' : '0px';
-        finalDiv.innerHTML = this.escapeHtml(content);
-        
-        contentElement.replaceChild(finalDiv, streamingDiv);
-      } else {
-        // No streaming div exists, create final content div
-        const finalDiv = document.createElement('div');
-        finalDiv.className = 'final-content';
-        finalDiv.innerHTML = this.escapeHtml(content);
-        contentElement.appendChild(finalDiv);
-      }
-      
-      // Remove thinking when final content is inserted
-      this.removeContinuationThinking();
-    }
+    // Clear any existing content
+    contentElement.empty();
+    
+    // Render final content using Obsidian's markdown renderer
+    this.renderContent(contentElement as HTMLElement, content).catch(error => {
+      console.error('[MessageBubble] Error rendering content:', error);
+      // Fallback to plain text
+      const fallbackDiv = document.createElement('div');
+      fallbackDiv.textContent = content;
+      contentElement.appendChild(fallbackDiv);
+    });
   }
 
 
@@ -462,7 +365,9 @@ export class MessageBubble {
 
     // Re-render content with the active alternative (if any)
     const activeContent = this.getActiveMessageContent(newMessage);
-    this.renderContent(contentElement as HTMLElement, activeContent);
+    this.renderContent(contentElement as HTMLElement, activeContent).catch(error => {
+      console.error('[MessageBubble] Error re-rendering content:', error);
+    });
 
     // If there are tool calls, render them
     if (newMessage.tool_calls && newMessage.tool_calls.length > 0) {

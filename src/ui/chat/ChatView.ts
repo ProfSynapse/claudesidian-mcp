@@ -191,7 +191,7 @@ export class ChatView extends ItemView {
       onMessageAdded: (message) => this.messageDisplay.addMessage(message),
       onAIMessageStarted: (message) => this.handleAIMessageStarted(message),
       onStreamingUpdate: (messageId, content, isComplete, isIncremental) => 
-        this.messageDisplay.updateMessageContent(messageId, content, isComplete, isIncremental),
+        this.handleStreamingUpdate(messageId, content, isComplete, isIncremental),
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
       onLoadingStateChanged: (loading) => this.uiStateController.setInputLoading(loading),
       onError: (message) => this.uiStateController.showError(message),
@@ -220,7 +220,7 @@ export class ChatView extends ItemView {
       onSidebarToggled: (visible) => { /* Sidebar toggled */ }
     };
     this.uiStateController = new UIStateController(this.containerEl, uiStateEvents);
-    this.streamingController = new StreamingController(this.containerEl);
+    this.streamingController = new StreamingController(this.containerEl, this.app, this);
   }
 
   /**
@@ -237,6 +237,7 @@ export class ChatView extends ItemView {
 
     this.messageDisplay = new MessageDisplay(
       refs.messageContainer,
+      this.app,
       this.branchManager,
       (messageId) => this.handleRetryMessage(messageId),
       (messageId, newContent) => this.handleEditMessage(messageId, newContent),
@@ -316,6 +317,21 @@ export class ChatView extends ItemView {
   private handleAIMessageStarted(message: ConversationMessage): void {
     // Create AI message bubble directly without full conversation re-render
     this.messageDisplay.addAIMessage(message);
+  }
+
+  private handleStreamingUpdate(messageId: string, content: string, isComplete: boolean, isIncremental?: boolean): void {
+    if (isIncremental) {
+      // Streaming chunk - route to StreamingController
+      this.streamingController.updateStreamingChunk(messageId, content);
+    } else if (isComplete) {
+      // Final content - finalize streaming and update MessageBubble
+      this.streamingController.finalizeStreaming(messageId, content);
+      this.messageDisplay.updateMessageContent(messageId, content);
+    } else {
+      // Start of new stream - initialize streaming
+      this.streamingController.startStreaming(messageId);
+      this.streamingController.updateStreamingChunk(messageId, content);
+    }
   }
 
   private handleConversationUpdated(conversation: ConversationData): void {
