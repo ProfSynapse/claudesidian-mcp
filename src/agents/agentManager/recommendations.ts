@@ -30,7 +30,7 @@ export const AGENT_MANAGER_RECOMMENDATIONS: Record<string, Recommendation[]> = {
 	],
 
 	// Prompt management recommendations
-	createPrompt: [
+	createAgent: [
 		{
 			type: "workspace_binding",
 			message: "Consider associating this new agent with your current workspace for automatic loading."
@@ -41,7 +41,7 @@ export const AGENT_MANAGER_RECOMMENDATIONS: Record<string, Recommendation[]> = {
 		}
 	],
 
-	updatePrompt: [
+	updateAgent: [
 		{
 			type: "workspace_sync",
 			message: "If this agent is bound to a workspace, the changes will be automatically available when the workspace loads."
@@ -52,7 +52,7 @@ export const AGENT_MANAGER_RECOMMENDATIONS: Record<string, Recommendation[]> = {
 		}
 	],
 
-	deletePrompt: [
+	deleteAgent: [
 		{
 			type: "workspace_cleanup",
 			message: "If this agent was bound to a workspace, you may want to update the workspace configuration."
@@ -63,7 +63,7 @@ export const AGENT_MANAGER_RECOMMENDATIONS: Record<string, Recommendation[]> = {
 		}
 	],
 
-	togglePrompt: [
+	toggleAgent: [
 		{
 			type: "workspace_management",
 			message: "Toggling agents on/off can help manage workspace-specific vs. global agent availability."
@@ -71,7 +71,7 @@ export const AGENT_MANAGER_RECOMMENDATIONS: Record<string, Recommendation[]> = {
 	],
 
 	// Discovery and browsing recommendations
-	listPrompts: [
+	listAgents: [
 		{
 			type: "workspace_discovery",
 			message: "Consider which of these agents would be most useful for your current workspace context."
@@ -82,7 +82,7 @@ export const AGENT_MANAGER_RECOMMENDATIONS: Record<string, Recommendation[]> = {
 		}
 	],
 
-	getPrompt: [
+	getAgent: [
 		{
 			type: "workspace_integration",
 			message: "If this agent fits your current workspace workflow, consider binding it for automatic availability."

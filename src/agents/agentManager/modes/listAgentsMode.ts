@@ -1,5 +1,5 @@
 import { BaseMode } from '../../baseMode';
-import { ListPromptsParams, ListPromptsResult } from '../types';
+import { ListAgentsParams, ListAgentsResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
@@ -8,7 +8,7 @@ import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 /**
  * Mode for listing custom prompts
  */
-export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResult> {
+export class ListAgentsMode extends BaseMode<ListAgentsParams, ListAgentsResult> {
   private storageService: CustomPromptStorageService;
   
   /**
@@ -17,9 +17,9 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
    */
   constructor(storageService: CustomPromptStorageService) {
     super(
-      'list',
-      'List Prompts',
-      'List all custom prompt agents',
+      'listAgents',
+      'List Agents',
+      'List all custom agents',
       '1.0.0'
     );
     
@@ -31,7 +31,7 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
    * @param params Mode parameters
    * @returns Promise that resolves with the list of prompts
    */
-  async execute(params: ListPromptsParams): Promise<ListPromptsResult> {
+  async execute(params: ListAgentsParams): Promise<ListAgentsResult> {
     try {
       const { enabledOnly = false } = params;
       
@@ -52,16 +52,16 @@ export class ListPromptsMode extends BaseMode<ListPromptsParams, ListPromptsResu
       // Add warning message about execute mode
       const warningMessage = "IMPORTANT: Do not use the executePrompt mode or run any tasks automatically when working with these agents. Only take on their persona and respond in character. If the user wants you to actually execute tasks or use the executePrompt functionality, they must explicitly ask you to do so.";
       
-      const result = createResult<ListPromptsResult>(true, {
+      const result = createResult<ListAgentsResult>(true, {
         prompts: promptList,
         totalCount: allPrompts.length,
         enabledCount: enabledPrompts.length,
         message: warningMessage
       }, undefined, undefined, undefined, params.context.sessionId, params.context);
       
-      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.listPrompts);
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.listAgents);
     } catch (error) {
-      return createResult<ListPromptsResult>(false, null, `Failed to list prompts: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<ListAgentsResult>(false, null, `Failed to list prompts: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

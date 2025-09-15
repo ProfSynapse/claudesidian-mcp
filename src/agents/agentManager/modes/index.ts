@@ -1,10 +1,10 @@
 // Export all AgentManager modes
-export { ListPromptsMode } from './listPromptsMode';
-export { GetPromptMode } from './getPromptMode';
-export { CreatePromptMode } from './createPromptMode';
-export { UpdatePromptMode } from './updatePromptMode';
-export { DeletePromptMode } from './deletePromptMode';
-export { TogglePromptMode } from './togglePromptMode';
+export { ListAgentsMode } from './listAgentsMode';
+export { GetAgentMode } from './getAgentMode';
+export { CreateAgentMode } from './createAgentMode';
+export { UpdateAgentMode } from './updateAgentMode';
+export { DeleteAgentMode } from './deleteAgentMode';
+export { ToggleAgentMode } from './toggleAgentMode';
 export { ListModelsMode } from './listModelsMode';
 export { ExecutePromptMode } from './executePromptMode';
 export { BatchExecutePromptMode } from './batchExecutePrompt';

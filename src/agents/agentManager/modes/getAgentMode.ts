@@ -1,25 +1,25 @@
 import { BaseMode } from '../../baseMode';
-import { GetPromptParams, GetPromptResult } from '../types';
+import { GetAgentParams, GetAgentResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
 import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
 /**
- * Mode for getting a specific custom prompt
+ * Mode for getting a specific custom agent for persona adoption
  */
-export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
+export class GetAgentMode extends BaseMode<GetAgentParams, GetAgentResult> {
   private storageService: CustomPromptStorageService;
   
   /**
-   * Create a new GetPromptMode
+   * Create a new GetAgentMode
    * @param storageService Custom prompt storage service
    */
   constructor(storageService: CustomPromptStorageService) {
     super(
-      'get',
-      'Get Prompt',
-      'Get a specific custom prompt agent by ID or name',
+      'getAgent',
+      'Get Agent',
+      'Get a custom agent for persona adoption - does NOT execute tasks automatically',
       '1.0.0'
     );
     
@@ -31,13 +31,13 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
    * @param params Mode parameters
    * @returns Promise that resolves with the prompt data
    */
-  async execute(params: GetPromptParams): Promise<GetPromptResult> {
+  async execute(params: GetAgentParams): Promise<GetAgentResult> {
     try {
       const { id, name } = params;
       
       // Must provide either id or name
       if (!id && !name) {
-        return createResult<GetPromptResult>(false, null, 'Either id or name must be provided', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<GetAgentResult>(false, null, 'Either id or name must be provided', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Get prompt by id or name
@@ -55,23 +55,30 @@ export class GetPromptMode extends BaseMode<GetPromptParams, GetPromptResult> {
       
       if (!prompt) {
         const identifier = id ? `ID "${id}"` : `name "${name}"`;
-        return createResult<GetPromptResult>(false, null, `Prompt with ${identifier} not found`, undefined, undefined, params.context.sessionId, params.context);
+        return createResult<GetAgentResult>(false, null, `Agent with ${identifier} not found`, undefined, undefined, params.context.sessionId, params.context);
       }
 
       // Create message with persona instruction and warning (prompt content is already in the prompt field)
-      const message = `You are now taking on the persona of "${prompt.name}".
+      const message = `🎭 AGENT PERSONA RETRIEVED: "${prompt.name}"
 
-IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Only take on the persona and respond in character. If the user wants you to actually execute tasks or use the executePrompt functionality, they must explicitly ask you to do so.`;
+⚠️  IMPORTANT EXECUTION BOUNDARY:
+❌ This is PERSONA ADOPTION only - no tasks will be executed
+❌ Do NOT automatically use executePrompt unless explicitly requested
+❌ Do NOT run actions, create files, or modify content
+✅ You may adopt this persona for conversation
+✅ Ask permission before switching to execution mode
+
+To execute tasks: User must explicitly request agentManager_executePrompt`;
       
       const resultWithMessage = {
         ...prompt,
         message: message
       };
       
-      const result = createResult<GetPromptResult>(true, resultWithMessage, undefined, undefined, undefined, params.context.sessionId, params.context);
-      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.getPrompt);
+      const result = createResult<GetAgentResult>(true, resultWithMessage, undefined, undefined, undefined, params.context.sessionId, params.context);
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.getAgent);
     } catch (error) {
-      return createResult<GetPromptResult>(false, null, `Failed to get prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<GetAgentResult>(false, null, `Failed to get agent: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   
@@ -85,11 +92,11 @@ IMPORTANT: Do not use the executePrompt mode or run any tasks automatically. Onl
       properties: {
         id: {
           type: 'string',
-          description: 'Unique ID or name of the prompt to retrieve (will try ID first, then name)'
+          description: 'Unique ID or name of the agent to retrieve for persona adoption (will try ID first, then name)'
         },
         name: {
           type: 'string',
-          description: 'Name of the prompt to retrieve'
+          description: 'Name of the agent to retrieve for persona adoption'
         }
       },
       required: [],

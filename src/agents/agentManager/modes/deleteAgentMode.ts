@@ -1,12 +1,12 @@
 import { BaseMode } from '../../baseMode';
-import { DeletePromptParams, DeletePromptResult } from '../types';
+import { DeleteAgentParams, DeleteAgentResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 
 /**
  * Mode for deleting a custom prompt
  */
-export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptResult> {
+export class DeleteAgentMode extends BaseMode<DeleteAgentParams, DeleteAgentResult> {
   private storageService: CustomPromptStorageService;
   
   /**
@@ -15,9 +15,9 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
    */
   constructor(storageService: CustomPromptStorageService) {
     super(
-      'delete',
-      'Delete Prompt',
-      'Delete a custom prompt agent',
+      'deleteAgent',
+      'Delete Agent',
+      'Delete a custom agent',
       '1.0.0'
     );
     
@@ -29,30 +29,30 @@ export class DeletePromptMode extends BaseMode<DeletePromptParams, DeletePromptR
    * @param params Mode parameters
    * @returns Promise that resolves with deletion result
    */
-  async execute(params: DeletePromptParams): Promise<DeletePromptResult> {
+  async execute(params: DeleteAgentParams): Promise<DeleteAgentResult> {
     try {
       const { id } = params;
       
       // Validate required ID
       if (!id?.trim()) {
-        return createResult<DeletePromptResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<DeleteAgentResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Check if prompt exists before deletion
       const existingPrompt = this.storageService.getPrompt(id.trim());
       if (!existingPrompt) {
-        return createResult<DeletePromptResult>(false, null, `Prompt with ID "${id}" not found`, undefined, undefined, params.context.sessionId, params.context);
+        return createResult<DeleteAgentResult>(false, null, `Prompt with ID "${id}" not found`, undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Delete the prompt
       const deleted = await this.storageService.deletePrompt(id.trim());
       
-      return createResult<DeletePromptResult>(true, {
+      return createResult<DeleteAgentResult>(true, {
         deleted,
         id: id.trim()
       }, undefined, undefined, undefined, params.context.sessionId, params.context);
     } catch (error) {
-      return createResult<DeletePromptResult>(false, null, `Failed to delete prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<DeleteAgentResult>(false, null, `Failed to delete prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

@@ -1,25 +1,25 @@
 import { BaseMode } from '../../baseMode';
-import { CreatePromptParams, CreatePromptResult } from '../types';
+import { CreateAgentParams, CreateAgentResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
 import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
 /**
- * Mode for creating a new custom prompt
+ * Mode for creating a new custom agent
  */
-export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptResult> {
+export class CreateAgentMode extends BaseMode<CreateAgentParams, CreateAgentResult> {
   private storageService: CustomPromptStorageService;
   
   /**
-   * Create a new CreatePromptMode
+   * Create a new CreateAgentMode
    * @param storageService Custom prompt storage service
    */
   constructor(storageService: CustomPromptStorageService) {
     super(
-      'create',
-      'Create Prompt',
-      'Create a new custom prompt agent',
+      'createAgent',
+      'Create Agent',
+      'Create a new custom agent',
       '1.0.0'
     );
     
@@ -31,21 +31,21 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
    * @param params Mode parameters
    * @returns Promise that resolves with the created prompt
    */
-  async execute(params: CreatePromptParams): Promise<CreatePromptResult> {
+  async execute(params: CreateAgentParams): Promise<CreateAgentResult> {
     try {
       const { name, description, prompt, isEnabled = true } = params;
       
       // Validate required fields
       if (!name?.trim()) {
-        return createResult<CreatePromptResult>(false, null, 'Name is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<CreateAgentResult>(false, null, 'Name is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       if (!description?.trim()) {
-        return createResult<CreatePromptResult>(false, null, 'Description is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<CreateAgentResult>(false, null, 'Description is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       if (!prompt?.trim()) {
-        return createResult<CreatePromptResult>(false, null, 'Prompt text is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<CreateAgentResult>(false, null, 'Agent prompt text is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Create the prompt
@@ -56,10 +56,10 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
         isEnabled
       });
       
-      const result = createResult<CreatePromptResult>(true, newPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
-      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.createPrompt);
+      const result = createResult<CreateAgentResult>(true, newPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.createAgent);
     } catch (error) {
-      return createResult<CreatePromptResult>(false, null, `Failed to create prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<CreateAgentResult>(false, null, `Failed to create agent: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   
@@ -73,24 +73,24 @@ export class CreatePromptMode extends BaseMode<CreatePromptParams, CreatePromptR
       properties: {
         name: {
           type: 'string',
-          description: 'Name of the prompt (must be unique)',
+          description: 'Name of the agent (must be unique)',
           minLength: 1,
           maxLength: 100
         },
         description: {
           type: 'string',
-          description: 'Description of what this prompt does',
+          description: 'Description of what this agent does',
           minLength: 1,
           maxLength: 500
         },
         prompt: {
           type: 'string',
-          description: 'The actual prompt text/persona',
+          description: 'The actual agent prompt text/persona',
           minLength: 1
         },
         isEnabled: {
           type: 'boolean',
-          description: 'Whether the prompt is enabled',
+          description: 'Whether the agent is enabled',
           default: true
         }
       },

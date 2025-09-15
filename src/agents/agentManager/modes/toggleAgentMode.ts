@@ -1,12 +1,12 @@
 import { BaseMode } from '../../baseMode';
-import { TogglePromptParams, TogglePromptResult } from '../types';
+import { ToggleAgentParams, ToggleAgentResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 
 /**
  * Mode for toggling a custom prompt's enabled state
  */
-export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptResult> {
+export class ToggleAgentMode extends BaseMode<ToggleAgentParams, ToggleAgentResult> {
   private storageService: CustomPromptStorageService;
   
   /**
@@ -15,9 +15,9 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
    */
   constructor(storageService: CustomPromptStorageService) {
     super(
-      'toggle',
-      'Toggle Prompt',
-      'Toggle a custom prompt agent enabled/disabled state',
+      'toggleAgent',
+      'Toggle Agent',
+      'Toggle a custom agent enabled/disabled state',
       '1.0.0'
     );
     
@@ -29,21 +29,21 @@ export class TogglePromptMode extends BaseMode<TogglePromptParams, TogglePromptR
    * @param params Mode parameters
    * @returns Promise that resolves with the toggled prompt
    */
-  async execute(params: TogglePromptParams): Promise<TogglePromptResult> {
+  async execute(params: ToggleAgentParams): Promise<ToggleAgentResult> {
     try {
       const { id } = params;
       
       // Validate required ID
       if (!id?.trim()) {
-        return createResult<TogglePromptResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<ToggleAgentResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Toggle the prompt
       const toggledPrompt = await this.storageService.togglePrompt(id.trim());
       
-      return createResult<TogglePromptResult>(true, toggledPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<ToggleAgentResult>(true, toggledPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
     } catch (error) {
-      return createResult<TogglePromptResult>(false, null, `Failed to toggle prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<ToggleAgentResult>(false, null, `Failed to toggle prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

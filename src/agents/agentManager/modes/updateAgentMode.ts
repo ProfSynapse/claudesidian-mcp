@@ -1,25 +1,25 @@
 import { BaseMode } from '../../baseMode';
-import { UpdatePromptParams, UpdatePromptResult } from '../types';
+import { UpdateAgentParams, UpdateAgentResult } from '../types';
 import { CustomPromptStorageService } from '../services/CustomPromptStorageService';
 import { getCommonResultSchema, createResult } from '../../../utils/schemaUtils';
 import { addRecommendations } from '../../../utils/recommendationUtils';
 import { AGENT_MANAGER_RECOMMENDATIONS } from '../recommendations';
 
 /**
- * Mode for updating an existing custom prompt
+ * Mode for updating an existing custom agent
  */
-export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptResult> {
+export class UpdateAgentMode extends BaseMode<UpdateAgentParams, UpdateAgentResult> {
   private storageService: CustomPromptStorageService;
   
   /**
-   * Create a new UpdatePromptMode
+   * Create a new UpdateAgentMode
    * @param storageService Custom prompt storage service
    */
   constructor(storageService: CustomPromptStorageService) {
     super(
-      'update',
-      'Update Prompt',
-      'Update an existing custom prompt agent',
+      'updateAgent',
+      'Update Agent',
+      'Update an existing custom agent',
       '1.0.0'
     );
     
@@ -31,18 +31,18 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
    * @param params Mode parameters
    * @returns Promise that resolves with the updated prompt
    */
-  async execute(params: UpdatePromptParams): Promise<UpdatePromptResult> {
+  async execute(params: UpdateAgentParams): Promise<UpdateAgentResult> {
     try {
       const { id, name, description, prompt, isEnabled } = params;
       
       // Validate required ID
       if (!id?.trim()) {
-        return createResult<UpdatePromptResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<UpdateAgentResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Check that at least one field is being updated
       if (name === undefined && description === undefined && prompt === undefined && isEnabled === undefined) {
-        return createResult<UpdatePromptResult>(false, null, 'At least one field must be provided for update', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<UpdateAgentResult>(false, null, 'At least one field must be provided for update', undefined, undefined, params.context.sessionId, params.context);
       }
       
       // Prepare updates object
@@ -50,21 +50,21 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       
       if (name !== undefined) {
         if (!name.trim()) {
-          return createResult<UpdatePromptResult>(false, null, 'Name cannot be empty', undefined, undefined, params.context.sessionId, params.context);
+          return createResult<UpdateAgentResult>(false, null, 'Name cannot be empty', undefined, undefined, params.context.sessionId, params.context);
         }
         updates.name = name.trim();
       }
       
       if (description !== undefined) {
         if (!description.trim()) {
-          return createResult<UpdatePromptResult>(false, null, 'Description cannot be empty', undefined, undefined, params.context.sessionId, params.context);
+          return createResult<UpdateAgentResult>(false, null, 'Description cannot be empty', undefined, undefined, params.context.sessionId, params.context);
         }
         updates.description = description.trim();
       }
       
       if (prompt !== undefined) {
         if (!prompt.trim()) {
-          return createResult<UpdatePromptResult>(false, null, 'Prompt text cannot be empty', undefined, undefined, params.context.sessionId, params.context);
+          return createResult<UpdateAgentResult>(false, null, 'Prompt text cannot be empty', undefined, undefined, params.context.sessionId, params.context);
         }
         updates.prompt = prompt.trim();
       }
@@ -76,10 +76,10 @@ export class UpdatePromptMode extends BaseMode<UpdatePromptParams, UpdatePromptR
       // Update the prompt
       const updatedPrompt = await this.storageService.updatePrompt(id.trim(), updates);
       
-      const result = createResult<UpdatePromptResult>(true, updatedPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
-      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.updatePrompt);
+      const result = createResult<UpdateAgentResult>(true, updatedPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
+      return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.updateAgent);
     } catch (error) {
-      return createResult<UpdatePromptResult>(false, null, `Failed to update prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<UpdateAgentResult>(false, null, `Failed to update prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
     }
   }
   

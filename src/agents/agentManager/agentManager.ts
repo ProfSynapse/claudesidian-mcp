@@ -1,12 +1,12 @@
 import { BaseAgent } from '../baseAgent';
 import { AgentManagerConfig } from '../../config/agents';
 import {
-  ListPromptsMode,
-  GetPromptMode,
-  CreatePromptMode,
-  UpdatePromptMode,
-  DeletePromptMode,
-  TogglePromptMode,
+  ListAgentsMode,
+  GetAgentMode,
+  CreateAgentMode,
+  UpdateAgentMode,
+  DeleteAgentMode,
+  ToggleAgentMode,
   ListModelsMode,
   ExecutePromptMode,
   BatchExecutePromptMode,
@@ -76,12 +76,12 @@ export class AgentManagerAgent extends BaseAgent {
     }
     
     // Register prompt management modes
-    this.registerMode(new ListPromptsMode(this.storageService));
-    this.registerMode(new GetPromptMode(this.storageService));
-    this.registerMode(new CreatePromptMode(this.storageService));
-    this.registerMode(new UpdatePromptMode(this.storageService));
-    this.registerMode(new DeletePromptMode(this.storageService));
-    this.registerMode(new TogglePromptMode(this.storageService));
+    this.registerMode(new ListAgentsMode(this.storageService));
+    this.registerMode(new GetAgentMode(this.storageService));
+    this.registerMode(new CreateAgentMode(this.storageService));
+    this.registerMode(new UpdateAgentMode(this.storageService));
+    this.registerMode(new DeleteAgentMode(this.storageService));
+    this.registerMode(new ToggleAgentMode(this.storageService));
 
     // Register LLM modes (will be initialized when provider manager is set)
     this.registerMode(new ListModelsMode());

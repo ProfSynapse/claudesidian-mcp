@@ -1,11 +1,11 @@
 import { CommonParameters, CommonResult, CustomPrompt } from '../../types';
 
-// List Prompts Mode
-export interface ListPromptsParams extends CommonParameters {
+// List Agents Mode
+export interface ListAgentsParams extends CommonParameters {
   enabledOnly?: boolean;
 }
 
-export interface ListPromptsResult extends CommonResult {
+export interface ListAgentsResult extends CommonResult {
   data: {
     prompts: Array<Pick<CustomPrompt, 'id' | 'name' | 'description' | 'isEnabled'>>;
     totalCount: number;
@@ -14,30 +14,30 @@ export interface ListPromptsResult extends CommonResult {
   };
 }
 
-// Get Prompt Mode
-export interface GetPromptParams extends CommonParameters {
+// Get Agent Mode
+export interface GetAgentParams extends CommonParameters {
   id?: string;
   name?: string;
 }
 
-export interface GetPromptResult extends CommonResult {
+export interface GetAgentResult extends CommonResult {
   data: (CustomPrompt & { message: string }) | null;
 }
 
-// Create Prompt Mode
-export interface CreatePromptParams extends CommonParameters {
+// Create Agent Mode
+export interface CreateAgentParams extends CommonParameters {
   name: string;
   description: string;
   prompt: string;
   isEnabled?: boolean;
 }
 
-export interface CreatePromptResult extends CommonResult {
+export interface CreateAgentResult extends CommonResult {
   data: CustomPrompt;
 }
 
-// Update Prompt Mode
-export interface UpdatePromptParams extends CommonParameters {
+// Update Agent Mode
+export interface UpdateAgentParams extends CommonParameters {
   id: string;
   name?: string;
   description?: string;
@@ -45,27 +45,27 @@ export interface UpdatePromptParams extends CommonParameters {
   isEnabled?: boolean;
 }
 
-export interface UpdatePromptResult extends CommonResult {
+export interface UpdateAgentResult extends CommonResult {
   data: CustomPrompt;
 }
 
-// Delete Prompt Mode
-export interface DeletePromptParams extends CommonParameters {
+// Delete Agent Mode
+export interface DeleteAgentParams extends CommonParameters {
   id: string;
 }
 
-export interface DeletePromptResult extends CommonResult {
+export interface DeleteAgentResult extends CommonResult {
   data: {
     deleted: boolean;
     id: string;
   };
 }
 
-// Toggle Prompt Mode
-export interface TogglePromptParams extends CommonParameters {
+// Toggle Agent Mode
+export interface ToggleAgentParams extends CommonParameters {
   id: string;
 }
 
-export interface TogglePromptResult extends CommonResult {
+export interface ToggleAgentResult extends CommonResult {
   data: CustomPrompt;
 }
