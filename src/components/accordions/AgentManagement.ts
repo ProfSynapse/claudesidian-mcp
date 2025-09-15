@@ -17,6 +17,7 @@ export class AgentManagementAccordion extends Accordion {
     private settings: Settings;
     private customPromptStorage: CustomPromptStorageService;
     private app: App;
+    private pluginLifecycleManager?: any;
     
     // Tab system
     private unifiedTabs: UnifiedTabs | null = null;
@@ -39,18 +40,21 @@ export class AgentManagementAccordion extends Accordion {
      * @param settings Plugin settings
      * @param customPromptStorage Custom prompt storage service
      * @param app Obsidian app instance
+     * @param pluginLifecycleManager Optional lifecycle manager for ChatView activation
      */
     constructor(
         containerEl: HTMLElement, 
         settings: Settings,
         customPromptStorage: CustomPromptStorageService,
-        app: App
+        app: App,
+        pluginLifecycleManager?: any
     ) {
         super(containerEl, 'Agent Management', false);
         
         this.settings = settings;
         this.customPromptStorage = customPromptStorage;
         this.app = app;
+        this.pluginLifecycleManager = pluginLifecycleManager;
         
         this.initializeContent();
     }
@@ -204,6 +208,12 @@ export class AgentManagementAccordion extends Accordion {
             onSettingsChange: async (chatViewSettings: ChatViewSettings) => {
                 this.settings.settings.chatView = chatViewSettings;
                 await this.settings.saveSettings();
+            },
+            onChatViewEnabled: async () => {
+                // Register ChatView UI and auto-open on first enable
+                if (this.pluginLifecycleManager) {
+                    await this.pluginLifecycleManager.enableChatViewUI();
+                }
             }
         });
     }

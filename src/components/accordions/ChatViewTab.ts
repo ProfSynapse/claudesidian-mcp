@@ -7,6 +7,7 @@ export interface ChatViewTabConfig {
     settings: ChatViewSettings;
     app: App;
     onSettingsChange: (settings: ChatViewSettings) => Promise<void>;
+    onChatViewEnabled?: () => Promise<void>;
 }
 
 /**
@@ -84,17 +85,27 @@ export class ChatViewTab {
                         if (value && !this.config.settings.acknowledgedExperimental) {
                             // If enabling but not acknowledged, show acknowledgment first
                             toggle.setValue(false);
-                            this.showAcknowledgmentDialog(() => {
+                            this.showAcknowledgmentDialog(async () => {
                                 // After acknowledgment, enable the toggle
                                 this.config.settings.acknowledgedExperimental = true;
                                 this.config.settings.enabled = true;
                                 toggle.setValue(true);
-                                this.saveSettings();
+                                await this.saveSettings();
                                 this.refreshAcknowledgmentDisplay();
+                                
+                                // Trigger ChatView activation (register UI and auto-open)
+                                if (this.config.onChatViewEnabled) {
+                                    await this.config.onChatViewEnabled();
+                                }
                             });
                         } else {
                             this.config.settings.enabled = value;
                             await this.saveSettings();
+                            
+                            // If enabling (and already acknowledged), trigger ChatView activation
+                            if (value && this.config.onChatViewEnabled) {
+                                await this.config.onChatViewEnabled();
+                            }
                         }
                     });
             });
@@ -134,7 +145,7 @@ export class ChatViewTab {
     /**
      * Show acknowledgment dialog
      */
-    private showAcknowledgmentDialog(onAcknowledge: () => void): void {
+    private showAcknowledgmentDialog(onAcknowledge: () => Promise<void>): void {
         const modal = document.createElement('div');
         modal.className = 'modal-container mod-dim';
         
@@ -173,8 +184,8 @@ export class ChatViewTab {
             text: 'I Understand - Enable Chat', 
             cls: 'mod-cta' 
         });
-        acknowledgeBtn.addEventListener('click', () => {
-            onAcknowledge();
+        acknowledgeBtn.addEventListener('click', async () => {
+            await onAcknowledge();
             document.body.removeChild(modal);
         });
         

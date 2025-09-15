@@ -42,6 +42,9 @@ export class SettingsTab extends PluginSettingTab {
     // Service manager
     private serviceManager: ServiceManager | undefined;
     
+    // Plugin lifecycle manager
+    private pluginLifecycleManager: any;
+    
     // Accordion references for updating
     private memoryManagementAccordion: MemoryManagementAccordion | undefined;
     
@@ -54,6 +57,7 @@ export class SettingsTab extends PluginSettingTab {
      * @param vaultLibrarian VaultLibrarian agent instance
      * @param memoryManager Memory Manager agent instance
      * @param serviceManager ServiceManager instance
+     * @param pluginLifecycleManager Plugin lifecycle manager instance
      */
     constructor(
         app: App, 
@@ -68,7 +72,8 @@ export class SettingsTab extends PluginSettingTab {
         },
         vaultLibrarian?: VaultLibrarianAgent,
         memoryManager?: MemoryManagerAgent,
-        serviceManager?: ServiceManager
+        serviceManager?: ServiceManager,
+        pluginLifecycleManager?: any
     ) {
         super(app, plugin);
         this.settings = settingsManager;
@@ -94,6 +99,9 @@ export class SettingsTab extends PluginSettingTab {
         
         // Store service manager reference
         this.serviceManager = serviceManager;
+        
+        // Store plugin lifecycle manager reference
+        this.pluginLifecycleManager = pluginLifecycleManager;
     }
 
     /**
@@ -287,7 +295,8 @@ export class SettingsTab extends PluginSettingTab {
             containerEl,
             this.settingsManager,
             customPromptStorage,
-            this.app
+            this.app,
+            this.pluginLifecycleManager
         );
 
         // Setup Instructions accordion

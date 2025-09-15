@@ -34,6 +34,7 @@ export class PluginLifecycleManager {
     private isInitialized: boolean = false;
     private startTime: number = Date.now();
     private hasRunBackgroundStartup: boolean = false;
+    private chatUIRegistered: boolean = false;
 
     constructor(config: PluginLifecycleConfig) {
         this.config = config;
@@ -646,7 +647,8 @@ export class PluginLifecycleManager {
                 services, // Pass current services (may be empty initially)
                 vaultLibrarian || undefined,
                 memoryManager || undefined,
-                this.config.serviceManager as any // Pass service manager for compatibility
+                this.config.serviceManager as any, // Pass service manager for compatibility
+                this // Pass this lifecycle manager for ChatView activation
             );
             this.config.plugin.addSettingTab(this.settingsTab);
             
@@ -757,6 +759,12 @@ export class PluginLifecycleManager {
                 return;
             }
             
+            // Skip if already registered
+            if (this.chatUIRegistered) {
+                console.log('[PluginLifecycleManager] ChatView UI already registered');
+                return;
+            }
+            
             // Get ChatService
             const chatService = await this.getService<any>('chatService', 5000);
             if (!chatService) {
@@ -786,6 +794,10 @@ export class PluginLifecycleManager {
                     this.activateChatView();
                 }
             });
+            
+            // Mark as registered
+            this.chatUIRegistered = true;
+            console.log('[PluginLifecycleManager] ChatView UI registered successfully');
             
         } catch (error) {
             console.error('[PluginLifecycleManager] Failed to register chat UI:', error);
@@ -829,6 +841,28 @@ export class PluginLifecycleManager {
     private isChatViewEnabled(): boolean {
         const chatViewSettings = this.config.settings.settings.chatView;
         return chatViewSettings?.enabled === true;
+    }
+    
+    /**
+     * Enable ChatView UI when user toggles it on in settings
+     * This registers the UI components and auto-opens the ChatView
+     */
+    async enableChatViewUI(): Promise<void> {
+        try {
+            if (!this.isChatViewEnabled()) {
+                console.warn('[PluginLifecycleManager] ChatView not enabled in settings');
+                return;
+            }
+            
+            // Register ChatView UI components if not already registered
+            await this.registerChatUI();
+            
+            // Auto-open ChatView in sidebar
+            await this.activateChatView();
+            
+        } catch (error) {
+            console.error('[PluginLifecycleManager] Failed to enable ChatView UI:', error);
+        }
     }
 
     /**
