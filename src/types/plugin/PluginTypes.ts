@@ -9,6 +9,14 @@ import { LLMProviderSettings } from '../llm/ProviderTypes';
 import { ProcessedFileState } from '../../database/services/indexing/state/ProcessedFilesStateManager';
 
 /**
+ * ChatView settings for experimental AI chat interface
+ */
+export interface ChatViewSettings {
+  enabled: boolean;
+  acknowledgedExperimental: boolean;
+}
+
+/**
  * Processed files data structure for embedding state management
  * Stores file processing state to prevent re-processing on startup
  */
@@ -28,6 +36,7 @@ export interface MCPSettings {
   memory?: MemorySettings;
   customPrompts?: CustomPromptsSettings;
   llmProviders?: LLMProviderSettings;
+  chatView?: ChatViewSettings;
   lastUpdateVersion?: string;
   lastUpdateDate?: string;
   availableUpdateVersion?: string;

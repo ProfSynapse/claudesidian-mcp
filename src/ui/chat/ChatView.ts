@@ -120,6 +120,15 @@ export class ChatView extends ItemView {
     const chatLayout = container.createDiv('chat-layout');
     const mainContainer = chatLayout.createDiv('chat-main');
     
+    // Experimental warning banner (always visible)
+    const warningBanner = mainContainer.createDiv('chat-experimental-warning');
+    warningBanner.innerHTML = `
+      <span class="warning-icon">⚠️</span>
+      <span class="warning-text">Experimental Feature: AI Chat is in beta.</span>
+      <a href="https://github.com/ProfSynapse/claudesidian-mcp/issues" target="_blank" rel="noopener noreferrer" class="warning-link">Report issues</a>
+      <span class="warning-text">• Use at your own risk</span>
+    `;
+    
     // Header
     const chatHeader = mainContainer.createDiv('chat-header');
     const hamburgerButton = chatHeader.createEl('button', { cls: 'chat-hamburger-button' });

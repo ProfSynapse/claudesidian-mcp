@@ -751,6 +751,12 @@ export class PluginLifecycleManager {
         try {
             const { plugin, app } = this.config;
             
+            // Check if ChatView is enabled in settings
+            if (!this.isChatViewEnabled()) {
+                console.log('[PluginLifecycleManager] ChatView disabled in settings - skipping UI registration');
+                return;
+            }
+            
             // Get ChatService
             const chatService = await this.getService<any>('chatService', 5000);
             if (!chatService) {
@@ -791,6 +797,13 @@ export class PluginLifecycleManager {
      */
     private async activateChatView(): Promise<void> {
         const { app } = this.config;
+        
+        // Check if ChatView is enabled in settings
+        if (!this.isChatViewEnabled()) {
+            new Notice('AI Chat is disabled. Enable it in Plugin Settings > Agent Management > AI Chat tab.');
+            return;
+        }
+        
         const { CHAT_VIEW_TYPE } = await import('../ui/chat/ChatView');
         
         // Check if chat view already exists
@@ -808,6 +821,14 @@ export class PluginLifecycleManager {
         });
         
         app.workspace.revealLeaf(leaf);
+    }
+    
+    /**
+     * Check if ChatView is enabled in settings
+     */
+    private isChatViewEnabled(): boolean {
+        const chatViewSettings = this.config.settings.settings.chatView;
+        return chatViewSettings?.enabled === true;
     }
 
     /**

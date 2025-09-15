@@ -1,10 +1,11 @@
 import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
 import { CustomPromptStorageService } from "../../agents/agentManager/services/CustomPromptStorageService";
-import { CustomPrompt, LLMProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
+import { CustomPrompt, LLMProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS, ChatViewSettings } from '../../types';
 import { Setting, Modal, App, ButtonComponent, ToggleComponent } from 'obsidian';
 import { LLMProviderTab } from '../LLMProviderTab';
 import { LLMUsageTab } from '../LLMUsageTab';
+import { ChatViewTab } from './ChatViewTab';
 import { UnifiedTabs, UnifiedTabConfig } from '../UnifiedTabs';
 import { CardManager, CardManagerConfig } from '../CardManager';
 
@@ -28,6 +29,9 @@ export class AgentManagementAccordion extends Accordion {
     
     // LLM Usage tab
     private llmUsageTab: LLMUsageTab | null = null;
+    
+    // ChatView tab
+    private chatViewTab: ChatViewTab | null = null;
     
     /**
      * Create a new Agent Management accordion
@@ -82,6 +86,14 @@ export class AgentManagementAccordion extends Accordion {
             };
         }
         
+        // Ensure ChatView settings exist with defaults
+        if (!this.settings.settings.chatView) {
+            this.settings.settings.chatView = {
+                enabled: false,
+                acknowledgedExperimental: false
+            };
+        }
+        
         // Save settings after ensuring they're properly initialized
         this.settings.saveSettings();
         
@@ -95,7 +107,8 @@ export class AgentManagementAccordion extends Accordion {
         const tabConfigs: UnifiedTabConfig[] = [
             { key: 'agents', label: '🤖 Custom Agents' },
             { key: 'llm-providers', label: '🔑 LLM Providers' },
-            { key: 'llm-usage', label: '📊 LLM Usage' }
+            { key: 'llm-usage', label: '📊 LLM Usage' },
+            { key: 'chatview', label: '💬 AI Chat (Experimental)' }
         ];
         
         this.unifiedTabs = new UnifiedTabs({
@@ -109,6 +122,7 @@ export class AgentManagementAccordion extends Accordion {
         this.createAgentsTab();
         this.createLLMProvidersTab();
         this.createLLMUsageTab();
+        this.createChatViewTab();
     }
 
     /**
@@ -177,6 +191,24 @@ export class AgentManagementAccordion extends Accordion {
     }
     
     /**
+     * Create the ChatView tab content
+     */
+    private createChatViewTab(): void {
+        const contentEl = this.unifiedTabs?.getTabContent('chatview');
+        if (!contentEl) return;
+        
+        this.chatViewTab = new ChatViewTab({
+            containerEl: contentEl,
+            settings: this.settings.settings.chatView!,
+            app: this.app,
+            onSettingsChange: async (chatViewSettings: ChatViewSettings) => {
+                this.settings.settings.chatView = chatViewSettings;
+                await this.settings.saveSettings();
+            }
+        });
+    }
+    
+    /**
      * Refresh the agent cards display
      */
     private refreshAgentCards(): void {
@@ -225,6 +257,10 @@ export class AgentManagementAccordion extends Accordion {
         if (this.llmUsageTab) {
             this.llmUsageTab.destroy();
             this.llmUsageTab = null;
+        }
+        if (this.chatViewTab) {
+            this.chatViewTab.destroy();
+            this.chatViewTab = null;
         }
         super.onunload();
     }
