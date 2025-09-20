@@ -5,17 +5,19 @@
 
 import OpenAI from 'openai';
 import { BaseAdapter } from '../BaseAdapter';
-import { 
-  GenerateOptions, 
-  StreamChunk, 
-  LLMResponse, 
-  ModelInfo, 
+import {
+  GenerateOptions,
+  StreamChunk,
+  LLMResponse,
+  ModelInfo,
   ProviderCapabilities,
-  ModelPricing 
+  ModelPricing,
+  SearchResult
 } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 import { DeepResearchHandler } from './DeepResearchHandler';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
+import { WebSearchUtils } from '../../utils/WebSearchUtils';
 
 export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'openai';
@@ -45,13 +47,27 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
    */
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
+      // Validate web search support
+      if (options?.webSearch) {
+        WebSearchUtils.validateWebSearchRequest('openai', options.webSearch);
+      }
+
       const model = options?.model || this.currentModel;
-      
+
       // Route deep research models to specialized handler
       if (this.deepResearch.isDeepResearchModel(model)) {
         return await this.deepResearch.generate(prompt, options);
       }
-      
+
+      // If web search is requested, add web search tool
+      if (options?.webSearch) {
+        const webSearchTool = {
+          type: 'web_search' as const
+        };
+        const toolsWithWebSearch = [...(options.tools || []), webSearchTool];
+        return await this.generateWithProvidedTools(prompt, { ...options, tools: toolsWithWebSearch });
+      }
+
       // If tools are provided (pre-converted by ChatService), use tool-enabled generation
       if (options?.tools && options.tools.length > 0) {
         console.log('[OpenAI Adapter] Using tool-enabled generation', {
@@ -59,7 +75,7 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
         });
         return await this.generateWithProvidedTools(prompt, options);
       }
-      
+
       // Otherwise use basic chat completions
       console.log('[OpenAI Adapter] Using basic chat completions (no tools)');
       return await this.generateWithChatCompletions(prompt, options);
@@ -269,7 +285,49 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
     );
   }
 
+  /**
+   * Extract search results from OpenAI response
+   * OpenAI may include sources in annotations or tool results
+   */
+  private extractOpenAISources(response: any): SearchResult[] {
+    try {
+      const sources: SearchResult[] = [];
 
+      // Check for annotations (if OpenAI includes web sources)
+      const annotations = response.choices?.[0]?.message?.annotations || [];
+      for (const annotation of annotations) {
+        if (annotation.type === 'url_citation' || annotation.type === 'citation') {
+          const result = WebSearchUtils.validateSearchResult({
+            title: annotation.title || annotation.text || 'Unknown Source',
+            url: annotation.url,
+            date: annotation.date || annotation.timestamp
+          });
+          if (result) sources.push(result);
+        }
+      }
+
+      // Check for tool calls with web search results
+      const toolCalls = response.choices?.[0]?.message?.tool_calls || [];
+      for (const toolCall of toolCalls) {
+        if (toolCall.function?.name === 'web_search' && toolCall.result) {
+          try {
+            const searchResult = JSON.parse(toolCall.result);
+            if (searchResult.sources && Array.isArray(searchResult.sources)) {
+              const extractedSources = WebSearchUtils.extractSearchResults(searchResult.sources);
+              sources.push(...extractedSources);
+            }
+          } catch (error) {
+            console.warn('[OpenAI] Failed to parse web search tool result:', error);
+          }
+        }
+      }
+
+      return sources;
+    } catch (error) {
+      console.warn('[OpenAI] Failed to extract search sources:', error);
+      return [];
+    }
+  }
 
   /**
    * List available models

@@ -5,6 +5,7 @@
 
 import { AgentManager } from '../../../../../services/AgentManager';
 import { ExecutePromptParams } from '../ExecutePromptMode';
+import { WebSearchUtils } from '../../../../../services/llm/utils/WebSearchUtils';
 
 export interface ActionExecutionResult {
     success: boolean;
@@ -29,7 +30,8 @@ export class ActionExecutor {
      */
     async executeAction(
         params: ExecutePromptParams,
-        llmResponse: string
+        llmResponse: string,
+        webSearchResults?: any[]
     ): Promise<ActionExecutionResult> {
         // Check if action is specified and agent manager is available
         if (!params.action) {
@@ -50,7 +52,8 @@ export class ActionExecutor {
                 params.action,
                 llmResponse,
                 params.context.sessionId || '',
-                typeof params.context === 'string' ? params.context : JSON.stringify(params.context)
+                typeof params.context === 'string' ? params.context : JSON.stringify(params.context),
+                webSearchResults
             );
 
             return {
@@ -81,9 +84,9 @@ export class ActionExecutor {
      * Execute a ContentManager action with the LLM response
      */
     private async executeContentAction(
-        action: { 
-            type: string; 
-            targetPath: string; 
+        action: {
+            type: string;
+            targetPath: string;
             position?: number;
             findText?: string;
             replaceAll?: boolean;
@@ -92,7 +95,8 @@ export class ActionExecutor {
         },
         content: string,
         sessionId: string,
-        context: string
+        context: string,
+        webSearchResults?: any[]
     ): Promise<{ success: boolean; error?: string }> {
         console.log('executeContentAction called with:', {
             actionType: action.type,
@@ -111,6 +115,13 @@ export class ActionExecutor {
             const contextObject = typeof context === 'string' ?
                 JSON.parse(context) : context;
 
+            // Prepare content with sources if available
+            let finalContent = content;
+            if (action.type === 'create' && webSearchResults && webSearchResults.length > 0) {
+                const sourcesSection = WebSearchUtils.generateSourcesSection(webSearchResults);
+                finalContent = content + sourcesSection;
+            }
+
             const actionParams: any = {
                 context: {
                     sessionId,
@@ -120,7 +131,7 @@ export class ActionExecutor {
                     toolContext: contextObject?.toolContext || '',
                     primaryGoal: contextObject?.primaryGoal || ''
                 },
-                content,
+                content: finalContent,
                 filePath: action.targetPath
             };
 

@@ -38,6 +38,12 @@ export interface StreamChunk {
   toolCalls?: ToolCall[];
 }
 
+export interface SearchResult {
+  title: string;
+  url: string;
+  date?: string;
+}
+
 export interface LLMResponse {
   text: string;
   model: string;
@@ -47,6 +53,7 @@ export interface LLMResponse {
   metadata?: Record<string, any>;
   finishReason?: 'stop' | 'length' | 'tool_calls' | 'content_filter';
   toolCalls?: ToolCall[];
+  webSearchResults?: SearchResult[];
 }
 
 export interface TokenUsage {

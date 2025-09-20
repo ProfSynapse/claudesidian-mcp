@@ -78,7 +78,7 @@ export class LLMProviderTab {
       .setDesc('The specific model to use by default');
     
     // Initial population of model dropdown
-    this.updateModelDropdown(this.settings.defaultModel.provider);
+    this.updateModelDropdown(this.settings.defaultModel.provider).catch(console.error);
   }
 
   /**
@@ -111,7 +111,7 @@ export class LLMProviderTab {
             this.settings.defaultModel.provider = value;
             // Reset model when provider changes
             this.settings.defaultModel.model = '';
-            this.updateModelDropdown(value);
+            await this.updateModelDropdown(value);
             this.onSettingsChange(this.settings);
           });
       });
@@ -120,7 +120,7 @@ export class LLMProviderTab {
   /**
    * Update the model dropdown based on selected provider
    */
-  private updateModelDropdown(providerId: string): void {
+  private async updateModelDropdown(providerId: string): Promise<void> {
     if (!this.modelDropdownSetting) return;
 
     // Clear existing dropdown
@@ -150,43 +150,52 @@ export class LLMProviderTab {
           return;
         }
 
-        try {
-          const models = this.staticModelsService.getModelsForProvider(providerId);
-          
-          if (models.length === 0) {
-            dropdown.addOption('', 'No models available');
-            dropdown.setValue('');
-            return;
-          }
-
-          // Add models to dropdown
-          models.forEach(model => {
-            dropdown.addOption(model.id, model.name);
-          });
-
-          // Set current value or first model if current is invalid
-          const currentModel = this.settings.defaultModel.model;
-          const modelExists = models.some(m => m.id === currentModel);
-          
-          if (modelExists) {
-            dropdown.setValue(currentModel);
-          } else if (models.length > 0) {
-            // Set to first model if current model is invalid
-            dropdown.setValue(models[0].id);
-            this.settings.defaultModel.model = models[0].id;
-          }
-
-          dropdown.onChange(async (value) => {
-            this.settings.defaultModel.model = value;
-            this.onSettingsChange(this.settings);
-          });
-
-        } catch (error) {
-          console.error('Error loading models for provider:', providerId, error);
-          dropdown.addOption('', 'Error loading models');
-          dropdown.setValue('');
-        }
+        // Load models asynchronously
+        this.loadModelsForDropdown(dropdown, providerId);
       });
+  }
+
+  /**
+   * Load models for dropdown asynchronously
+   */
+  private async loadModelsForDropdown(dropdown: any, providerId: string): Promise<void> {
+    try {
+      // Use ProviderManager to get filtered models (respects enabled status)
+      const models = await this.providerManager.getModelsForProvider(providerId);
+
+      if (models.length === 0) {
+        dropdown.addOption('', 'No models available');
+        dropdown.setValue('');
+        return;
+      }
+
+      // Add models to dropdown
+      models.forEach(model => {
+        dropdown.addOption(model.id, model.name);
+      });
+
+      // Set current value or first model if current is invalid
+      const currentModel = this.settings.defaultModel.model;
+      const modelExists = models.some(m => m.id === currentModel);
+
+      if (modelExists) {
+        dropdown.setValue(currentModel);
+      } else if (models.length > 0) {
+        // Set to first model if current model is invalid
+        dropdown.setValue(models[0].id);
+        this.settings.defaultModel.model = models[0].id;
+      }
+
+      dropdown.onChange(async (value: string) => {
+        this.settings.defaultModel.model = value;
+        this.onSettingsChange(this.settings);
+      });
+
+    } catch (error) {
+      console.error('Error loading models for provider:', providerId, error);
+      dropdown.addOption('', 'Error loading models');
+      dropdown.setValue('');
+    }
   }
 
   /**
@@ -218,7 +227,7 @@ export class LLMProviderTab {
         
         // Refresh both provider and model dropdowns when toggling providers
         this.updateProviderDropdown();
-        this.updateModelDropdown(this.settings.defaultModel.provider);
+        this.updateModelDropdown(this.settings.defaultModel.provider).catch(console.error);
         this.refreshProviderCards();
       },
       onEdit: (item: ProviderCardItem) => this.openProviderModal(item.providerId, item.displayConfig, item.config),
@@ -270,7 +279,7 @@ export class LLMProviderTab {
     this.updateProviderDropdown();
     
     // Also refresh the default model dropdown in case provider states changed
-    this.updateModelDropdown(this.settings.defaultModel.provider);
+    this.updateModelDropdown(this.settings.defaultModel.provider).catch(console.error);
   }
 
 
@@ -285,7 +294,6 @@ export class LLMProviderTab {
     const modalConfig: LLMProviderModalConfig = {
       providerId,
       providerName: config.name,
-      providerDescription: '', // Remove built-in descriptions
       keyFormat: config.keyFormat,
       signupUrl: config.signupUrl,
       config: providerConfig,
@@ -325,63 +333,63 @@ export class LLMProviderTab {
     return {
       openai: {
         name: 'OpenAI',
-        description: 'GPT models including GPT-4o, GPT-4 Turbo, and GPT-3.5',
+        description: '',
         keyFormat: 'sk-proj-...',
         signupUrl: 'https://platform.openai.com/api-keys',
         docsUrl: 'https://platform.openai.com/docs'
       },
       anthropic: {
         name: 'Anthropic',
-        description: 'Claude models with strong reasoning and safety features',
+        description: '',
         keyFormat: 'sk-ant-...',
         signupUrl: 'https://console.anthropic.com/login',
         docsUrl: 'https://docs.anthropic.com'
       },
       google: {
         name: 'Google AI',
-        description: 'Gemini models with multimodal capabilities',
+        description: '',
         keyFormat: 'AIza...',
         signupUrl: 'https://aistudio.google.com/app/apikey',
         docsUrl: 'https://ai.google.dev'
       },
       mistral: {
         name: 'Mistral AI',
-        description: 'European models with strong coding and multilingual support',
+        description: '',
         keyFormat: 'msak_...',
         signupUrl: 'https://console.mistral.ai/api-keys',
         docsUrl: 'https://docs.mistral.ai'
       },
       groq: {
         name: 'Groq',
-        description: 'Ultra-fast inference speeds for quick responses',
+        description: '',
         keyFormat: 'gsk_...',
         signupUrl: 'https://console.groq.com/keys',
         docsUrl: 'https://console.groq.com/docs'
       },
       openrouter: {
         name: 'OpenRouter',
-        description: 'Access to 400+ models from multiple providers',
+        description: '',
         keyFormat: 'sk-or-...',
         signupUrl: 'https://openrouter.ai/keys',
         docsUrl: 'https://openrouter.ai/docs'
       },
       requesty: {
         name: 'Requesty',
-        description: 'Premium model access with cost optimization',
+        description: '',
         keyFormat: 'req_...',
         signupUrl: 'https://requesty.com/api-keys',
         docsUrl: 'https://docs.requesty.com'
       },
       perplexity: {
         name: 'Perplexity',
-        description: 'Web search-enabled models with real-time information',
+        description: '',
         keyFormat: 'pplx-...',
         signupUrl: 'https://www.perplexity.ai/settings/api',
         docsUrl: 'https://docs.perplexity.ai'
       },
       ollama: {
         name: 'Ollama (Local)',
-        description: 'Local LLM execution with complete privacy and no API costs',
+        description: '',
         keyFormat: 'http://127.0.0.1:11434',
         signupUrl: 'https://ollama.com/download',
         docsUrl: 'https://github.com/ollama/ollama'

@@ -29,6 +29,7 @@ export interface ExecutePromptParams extends CommonParameters {
     temperature?: number;
     maxTokens?: number;
     returnContent?: boolean;
+    webSearch?: boolean;
     action?: {
         type: 'create' | 'append' | 'prepend' | 'replace' | 'findReplace';
         targetPath: string;
@@ -209,7 +210,11 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             }
 
             // Phase 6: Execute action if specified
-            const actionResult = await this.actionExecutor.executeAction(params, promptResult.response || '');
+            const actionResult = await this.actionExecutor.executeAction(
+                params,
+                promptResult.response || '',
+                promptResult.webSearchResults
+            );
 
             // Phase 7: Build result
             const resultData: ExecutePromptResult['data'] = {
@@ -296,6 +301,11 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                     type: 'boolean',
                     description: 'Whether to return the LLM response content in the result (defaults to true)',
                     default: true
+                },
+                webSearch: {
+                    type: 'boolean',
+                    description: 'Enable web search for current information (supported by: perplexity, openrouter, openai, google, anthropic, groq, mistral)',
+                    default: false
                 },
                 action: {
                     type: 'object',

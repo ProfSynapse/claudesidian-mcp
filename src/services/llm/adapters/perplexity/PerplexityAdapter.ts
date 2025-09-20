@@ -5,17 +5,19 @@
  */
 
 import { BaseAdapter } from '../BaseAdapter';
-import { 
-  GenerateOptions, 
-  StreamChunk, 
-  LLMResponse, 
-  ModelInfo, 
+import {
+  GenerateOptions,
+  StreamChunk,
+  LLMResponse,
+  ModelInfo,
   ProviderCapabilities,
   ModelPricing,
-  TokenUsage
+  TokenUsage,
+  SearchResult
 } from '../types';
 import { PERPLEXITY_MODELS, PERPLEXITY_DEFAULT_MODEL } from './PerplexityModels';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
+import { WebSearchUtils } from '../../utils/WebSearchUtils';
 
 export interface PerplexityOptions extends GenerateOptions {
   webSearch?: boolean;
@@ -38,14 +40,19 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
 
   async generateUncached(prompt: string, options?: PerplexityOptions): Promise<LLMResponse> {
     try {
+      // Validate web search support (Perplexity always supports web search)
+      if (options?.webSearch) {
+        WebSearchUtils.validateWebSearchRequest('perplexity', options.webSearch);
+      }
+
       const model = options?.model || this.currentModel;
-      
+
       // Perplexity does not support native function calling
       // If tools are requested, inform user and proceed without tools
       if (options?.tools && options.tools.length > 0) {
         console.warn('[Perplexity Adapter] Tools requested but Perplexity API does not support function calling. Proceeding without tools.');
       }
-      
+
       // Use standard chat completions (Perplexity's strength is web search, not tool calling)
       console.log('[Perplexity Adapter] Using chat completions with web search capabilities');
       return await this.generateWithChatCompletions(prompt, options);
@@ -371,20 +378,49 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
       text = text || '[AI requested tool calls but tool execution not available]';
     }
 
+    // Extract and format web search results
+    const webSearchResults = options?.webSearch || data.search_results
+      ? this.extractPerplexitySources(data.search_results || [])
+      : undefined;
+
     return this.buildLLMResponse(
       text,
       model,
       usage,
-      { 
+      {
         provider: 'perplexity',
-        searchResults: data.search_results,
-        searchMode: options?.searchMode
+        searchResults: data.search_results, // Keep raw data for debugging
+        searchMode: options?.searchMode,
+        webSearchResults
       },
       finishReason as any
     );
   }
 
   // Private methods
+
+  /**
+   * Extract search results from Perplexity response
+   */
+  private extractPerplexitySources(searchResults: any[]): SearchResult[] {
+    try {
+      if (!Array.isArray(searchResults)) {
+        return [];
+      }
+
+      return searchResults
+        .map(result => WebSearchUtils.validateSearchResult({
+          title: result.title || result.name || 'Unknown Source',
+          url: result.url,
+          date: result.date || result.timestamp
+        }))
+        .filter((result: SearchResult | null): result is SearchResult => result !== null);
+    } catch (error) {
+      console.warn('[Perplexity] Failed to extract search sources:', error);
+      return [];
+    }
+  }
+
   private extractToolCalls(message: any): any[] {
     return message?.tool_calls || [];
   }

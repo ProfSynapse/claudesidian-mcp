@@ -25,6 +25,7 @@ export interface PromptExecutionResult {
         currency: string;
     };
     filesIncluded?: string[];
+    webSearchResults?: any[];
     error?: string;
 }
 
@@ -56,7 +57,8 @@ export class PromptExecutor {
                 provider: params.provider,
                 model: params.model,
                 temperature: params.temperature,
-                maxTokens: params.maxTokens
+                maxTokens: params.maxTokens,
+                webSearch: params.webSearch
             });
 
             if (!result.success) {
@@ -75,7 +77,8 @@ export class PromptExecutor {
                 agentUsed,
                 usage: result.usage,
                 cost: result.cost,
-                filesIncluded: result.filesIncluded
+                filesIncluded: result.filesIncluded,
+                webSearchResults: result.webSearchResults
             };
         } catch (error) {
             return {

@@ -28,6 +28,7 @@ export {
   type CacheConfig,
   type CacheMetrics
 } from './CacheManager';
+export { WebSearchUtils } from './WebSearchUtils';
 
 /**
  * Quick setup function for basic lab kit initialization

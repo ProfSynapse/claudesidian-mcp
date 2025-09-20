@@ -11,7 +11,7 @@ export interface ModelWithProvider extends ModelInfo {
   provider: string;
   userDescription?: string;
   isDefault?: boolean;
-  modelDescription?: string; // User-defined description for when to use this specific model
+  modelDescription?: string; // User-defined description for when to use this specific model (deprecated)
 }
 
 export interface ProviderInfo {
@@ -109,28 +109,34 @@ export class LLMProviderManager {
         // For other providers, use static models
         const providerModels = staticModelsService.getModelsForProvider(provider.id);
         
-        const modelsWithProviderInfo = providerModels.map(model => ({
-          provider: model.provider,
-          id: model.id,
-          name: model.name,
-          contextWindow: model.contextWindow,
-          maxOutputTokens: model.maxTokens,
-          supportsJSON: model.capabilities.supportsJSON,
-          supportsImages: model.capabilities.supportsImages,
-          supportsFunctions: model.capabilities.supportsFunctions,
-          supportsStreaming: model.capabilities.supportsStreaming,
-          supportsThinking: model.capabilities.supportsThinking,
-          pricing: {
-            inputPerMillion: model.pricing.inputPerMillion,
-            outputPerMillion: model.pricing.outputPerMillion,
-            currency: model.pricing.currency,
-            lastUpdated: new Date().toISOString()
-          },
-          isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model,
-          userDescription: this.settings.providers[model.provider]?.userDescription,
-          // Add user-defined model description if available
-          modelDescription: this.settings.providers[model.provider]?.models?.[model.id]?.description
-        }));
+        const modelsWithProviderInfo = providerModels
+          .filter(model => {
+            // Filter by model-level enabled status (default to true for backwards compatibility)
+            const modelConfig = this.settings.providers[model.provider]?.models?.[model.id];
+            return modelConfig?.enabled !== false;
+          })
+          .map(model => ({
+            provider: model.provider,
+            id: model.id,
+            name: model.name,
+            contextWindow: model.contextWindow,
+            maxOutputTokens: model.maxTokens,
+            supportsJSON: model.capabilities.supportsJSON,
+            supportsImages: model.capabilities.supportsImages,
+            supportsFunctions: model.capabilities.supportsFunctions,
+            supportsStreaming: model.capabilities.supportsStreaming,
+            supportsThinking: model.capabilities.supportsThinking,
+            pricing: {
+              inputPerMillion: model.pricing.inputPerMillion,
+              outputPerMillion: model.pricing.outputPerMillion,
+              currency: model.pricing.currency,
+              lastUpdated: new Date().toISOString()
+            },
+            isDefault: model.provider === defaultModel.provider && model.id === defaultModel.model,
+            userDescription: this.settings.providers[model.provider]?.userDescription,
+            // Keep deprecated field for backwards compatibility
+            modelDescription: this.settings.providers[model.provider]?.models?.[model.id]?.description
+          }));
         
         allModels.push(...modelsWithProviderInfo);
       }

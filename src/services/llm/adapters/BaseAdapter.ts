@@ -569,6 +569,11 @@ export abstract class BaseAdapter {
       toolCalls: toolCalls || []
     };
 
+    // Extract webSearchResults from metadata if present
+    if (metadata?.webSearchResults) {
+      response.webSearchResults = metadata.webSearchResults;
+    }
+
     // Calculate cost if usage is available
     if (usage) {
       const cost = await this.calculateCost(usage, model);

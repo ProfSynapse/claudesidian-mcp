@@ -5,16 +5,18 @@
  */
 
 import { BaseAdapter } from '../BaseAdapter';
-import { 
-  GenerateOptions, 
-  StreamChunk, 
-  LLMResponse, 
-  ModelInfo, 
+import {
+  GenerateOptions,
+  StreamChunk,
+  LLMResponse,
+  ModelInfo,
   ProviderCapabilities,
-  ModelPricing 
+  ModelPricing,
+  SearchResult
 } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
+import { WebSearchUtils } from '../../utils/WebSearchUtils';
 
 export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'openrouter';
@@ -33,18 +35,26 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
    */
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
-      const model = options?.model || this.currentModel;
-      
+      // Validate web search support
+      if (options?.webSearch) {
+        WebSearchUtils.validateWebSearchRequest('openrouter', options.webSearch);
+      }
+
+      const baseModel = options?.model || this.currentModel;
+
+      // Add :online suffix for web search
+      const model = options?.webSearch ? `${baseModel}:online` : baseModel;
+
       // Handle post-stream tool execution: if detectedToolCalls are provided, execute only tools
       if (options?.detectedToolCalls && options.detectedToolCalls.length > 0) {
         return await this.executeDetectedToolCalls(options.detectedToolCalls, model, prompt, options);
       }
-      
+
       // If tools are provided (pre-converted by ChatService), use tool-enabled generation
       if (options?.tools && options.tools.length > 0) {
         return await this.generateWithProvidedTools(prompt, options);
       }
-      
+
       const requestBody = {
         model,
         messages: this.buildMessages(prompt, options?.systemPrompt),
@@ -74,16 +84,21 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       }
 
       const data = await response.json();
-      
+
       const text = data.choices[0]?.message?.content || '';
       const usage = this.extractUsage(data);
       const finishReason = data.choices[0]?.finish_reason || 'stop';
 
+      // Extract web search results if web search was enabled
+      const webSearchResults = options?.webSearch
+        ? this.extractOpenRouterSources(data)
+        : undefined;
+
       return this.buildLLMResponse(
         text,
-        model,
+        baseModel, // Use base model name, not :online version
         usage,
-        undefined,
+        { webSearchResults },
         finishReason as any
       );
     } catch (error) {
@@ -96,7 +111,15 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
    */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
-      const model = options?.model || this.currentModel;
+      // Validate web search support
+      if (options?.webSearch) {
+        WebSearchUtils.validateWebSearchRequest('openrouter', options.webSearch);
+      }
+
+      const baseModel = options?.model || this.currentModel;
+
+      // Add :online suffix for web search
+      const model = options?.webSearch ? `${baseModel}:online` : baseModel;
       
       const requestBody = {
         model,
@@ -413,6 +436,31 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     } catch (error) {
       console.error('[OpenRouter Adapter] Post-stream tool execution failed:', error);
       throw this.handleError(error, 'post-stream tool execution');
+    }
+  }
+
+  /**
+   * Extract search results from OpenRouter response annotations
+   */
+  private extractOpenRouterSources(response: any): SearchResult[] {
+    try {
+      const annotations = response.choices?.[0]?.message?.annotations || [];
+      const sources = annotations
+        .filter((ann: any) => ann.type === 'url_citation')
+        .map((ann: any) => {
+          const citation = ann.url_citation;
+          return WebSearchUtils.validateSearchResult({
+            title: citation?.title || citation?.text || 'Unknown Source',
+            url: citation?.url,
+            date: citation?.date || citation?.timestamp
+          });
+        })
+        .filter((result: SearchResult | null): result is SearchResult => result !== null);
+
+      return sources;
+    } catch (error) {
+      console.warn('[OpenRouter] Failed to extract search sources:', error);
+      return [];
     }
   }
 

@@ -27,6 +27,7 @@ export interface LLMExecutionOptions extends GenerateOptions {
   filepaths?: string[];
   systemPrompt?: string;
   userPrompt: string;
+  webSearch?: boolean;
 }
 
 export interface LLMExecutionResult {
@@ -46,6 +47,7 @@ export interface LLMExecutionResult {
     currency: string;
   };
   filesIncluded?: string[];
+  webSearchResults?: any[]; // SearchResult[] from adapters/types, avoiding circular import
   error?: string;
 }
 
@@ -280,7 +282,8 @@ export class LLMService {
         topP: options.topP,
         frequencyPenalty: options.frequencyPenalty,
         presencePenalty: options.presencePenalty,
-        stopSequences: options.stopSequences
+        stopSequences: options.stopSequences,
+        webSearch: options.webSearch
       };
 
       const result: LLMResponse = await adapter.generate(fullPrompt, generateOptions);
@@ -292,7 +295,8 @@ export class LLMService {
         provider: result.provider,
         usage: result.usage,
         cost: result.cost,
-        filesIncluded
+        filesIncluded,
+        webSearchResults: result.webSearchResults
       };
 
     } catch (error) {

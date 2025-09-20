@@ -12,7 +12,6 @@ import { LLMValidationService } from '../services/llm/validation/ValidationServi
 export interface LLMProviderModalConfig {
   providerId: string;
   providerName: string;
-  providerDescription: string;
   keyFormat: string;
   signupUrl: string;
   config: LLMProviderConfig;
@@ -31,6 +30,8 @@ export class LLMProviderModal extends Modal {
   private validationTimeout: NodeJS.Timeout | null = null;
   private ollamaModel: string = ''; // Temporary storage for Ollama model
   private testButton?: HTMLButtonElement; // Reference to test button
+  private autoSaveTimeout: NodeJS.Timeout | null = null;
+  private saveStatusEl?: HTMLElement;
 
   constructor(app: App, config: LLMProviderModalConfig, providerManager: LLMProviderManager) {
     super(app);
@@ -79,6 +80,12 @@ export class LLMProviderModal extends Modal {
       clearTimeout(this.validationTimeout);
       this.validationTimeout = null;
     }
+
+    // Clean up auto-save timeout
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
+      this.autoSaveTimeout = null;
+    }
   }
 
   /**
@@ -122,6 +129,7 @@ export class LLMProviderModal extends Modal {
                 // Auto-enable when URL is added
                 if (!this.config.config.enabled) {
                   this.config.config.enabled = true;
+                  this.autoSave();
                 }
               } else {
                 this.apiKeyInput.removeClass('validating');
@@ -173,6 +181,7 @@ export class LLMProviderModal extends Modal {
                 // Auto-enable when API key is added
                 if (!this.config.config.enabled) {
                   this.config.config.enabled = true;
+                  this.autoSave();
                 }
               } else {
                 this.apiKeyInput.removeClass('validating');
@@ -212,8 +221,11 @@ export class LLMProviderModal extends Modal {
           .setPlaceholder('e.g., llama3.1, mistral, phi3')
           .setValue(this.ollamaModel || '')
           .onChange(value => {
-            // Store the model selection temporarily
+            // Store the model selection and auto-save
             this.ollamaModel = value;
+            if (value.trim()) {
+              this.autoSave();
+            }
           })
         );
       
@@ -269,49 +281,55 @@ export class LLMProviderModal extends Modal {
     this.models.forEach(model => {
       const modelEl = modelsList.createDiv('model-item');
       
-      // Simple layout: | Model Name | Description Input |
+      // Simple layout: | Model Name | Toggle (right-aligned) |
       const modelRow = modelEl.createDiv('model-row llm-provider-model-row');
-      
+      modelRow.style.display = 'flex';
+      modelRow.style.justifyContent = 'space-between';
+      modelRow.style.alignItems = 'center';
+
       // Model name (left side)
       const modelNameEl = modelRow.createDiv('model-name llm-provider-model-name');
       modelNameEl.textContent = model.name;
-      
-      // Description input (right side)
-      const currentDescription = this.config.config.models?.[model.id]?.description || '';
-      const descInput = modelRow.createEl('input', {
-        type: 'text',
-        cls: 'model-description-input llm-provider-description-input'
-      });
-      descInput.placeholder = 'Describe when to use this model...';
-      descInput.value = currentDescription;
-      
-      descInput.addEventListener('input', (e) => {
-        const value = (e.target as HTMLInputElement).value;
-        
-        // Initialize models object if needed
-        if (!this.config.config.models) {
-          this.config.config.models = {};
-        }
-        if (!this.config.config.models[model.id]) {
-          this.config.config.models[model.id] = {};
-        }
-        
-        this.config.config.models[model.id].description = value;
-      });
+
+      // Model toggle (right side)
+      const currentEnabled = this.config.config.models?.[model.id]?.enabled ?? true;
+      const toggleContainer = modelRow.createDiv('model-toggle-container');
+      toggleContainer.style.marginLeft = 'auto';
+
+      new Setting(toggleContainer)
+        .addToggle(toggle => toggle
+          .setValue(currentEnabled)
+          .onChange(async (enabled) => {
+            // Initialize models object if needed
+            if (!this.config.config.models) {
+              this.config.config.models = {};
+            }
+            if (!this.config.config.models[model.id]) {
+              this.config.config.models[model.id] = { enabled: true };
+            }
+
+            // Update enabled status
+            this.config.config.models[model.id].enabled = enabled;
+            this.autoSave();
+          })
+        );
     });
   }
 
   /**
-   * Create action buttons
+   * Create status display (no action buttons - auto-save only)
    */
   private createButtons(contentEl: HTMLElement): void {
-    const buttonContainer = contentEl.createDiv('modal-button-container llm-provider-button-container');
+    const statusContainer = contentEl.createDiv('modal-status-container llm-provider-status-container');
 
-    const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
-    cancelBtn.addEventListener('click', () => this.close());
+    // Save status indicator
+    this.saveStatusEl = statusContainer.createDiv('save-status');
+    this.showSaveStatus('Ready');
 
-    const saveBtn = buttonContainer.createEl('button', { text: 'Save', cls: 'mod-cta' });
-    saveBtn.addEventListener('click', () => this.saveConfig());
+    // Only close button
+    const buttonContainer = statusContainer.createDiv('modal-button-container');
+    const closeBtn = buttonContainer.createEl('button', { text: 'Close', cls: 'mod-cta' });
+    closeBtn.addEventListener('click', () => this.close());
   }
 
   /**
@@ -335,12 +353,17 @@ export class LLMProviderModal extends Modal {
       const result = await LLMValidationService.validateApiKey(this.config.providerId, apiKey);
       
       if (result.success) {
-        // Mark as validated
+        // Mark as validated and auto-save
         this.isValidated = true;
         this.apiKeyInput.removeClass('validating');
         this.apiKeyInput.removeClass('error');
         this.apiKeyInput.addClass('success');
-        
+
+        // Auto-save the validated configuration
+        this.config.config.apiKey = apiKey;
+        this.config.config.enabled = true;
+        this.autoSave();
+
         new Notice(`✅ ${this.config.providerName} API key validated successfully!`);
       } else {
         throw new Error(result.error || 'API key validation failed');
@@ -433,12 +456,20 @@ export class LLMProviderModal extends Modal {
       const testData = await testResponse.json();
       if (testData.response) {
         new Notice(`✅ Ollama connection successful! Model '${modelName}' is working.`);
-        
-        // Mark as validated
+
+        // Mark as validated and auto-save
         this.isValidated = true;
         this.apiKeyInput.removeClass('validating');
         this.apiKeyInput.removeClass('error');
         this.apiKeyInput.addClass('success');
+
+        // Auto-save the validated Ollama configuration
+        this.config.config.apiKey = serverUrl;
+        this.config.config.enabled = true;
+        if (this.ollamaModel) {
+          (this.config.config as any).__ollamaModel = this.ollamaModel;
+        }
+        this.autoSave();
       } else {
         throw new Error('Model test returned invalid response');
       }
@@ -463,65 +494,45 @@ export class LLMProviderModal extends Modal {
   }
 
   /**
-   * Save the provider configuration
+   * Auto-save with debouncing and visual feedback
    */
-  private saveConfig(): void {
-    const apiKey = this.apiKeyInput.value.trim();
-
-    // Validation
-    if (!apiKey) {
-      const fieldName = this.config.providerId === 'ollama' ? 'Server URL' : 'API key';
-      new Notice(`${fieldName} is required`);
-      this.apiKeyInput.focus();
-      return;
+  private autoSave(): void {
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
     }
 
-    // Special validation for Ollama
-    if (this.config.providerId === 'ollama') {
-      // Validate URL format
-      try {
-        new URL(apiKey);
-      } catch (e) {
-        new Notice('Please enter a valid URL (e.g., http://127.0.0.1:11434)');
-        this.apiKeyInput.focus();
-        return;
+    this.showSaveStatus('Saving...');
+
+    this.autoSaveTimeout = setTimeout(() => {
+      // Update API key from current input
+      const apiKey = this.apiKeyInput?.value?.trim();
+      if (apiKey) {
+        this.config.config.apiKey = apiKey;
       }
-      
-      // Check if model is specified
-      if (!this.ollamaModel || !this.ollamaModel.trim()) {
-        new Notice('Please specify a default model name');
-        return;
+
+      // For Ollama, include model if available
+      if (this.config.providerId === 'ollama' && this.ollamaModel) {
+        (this.config.config as any).__ollamaModel = this.ollamaModel;
       }
-    } else {
-      // Regular API key validation
-      if (apiKey.length < 8) {
-        new Notice('API key appears to be too short');
-        this.apiKeyInput.focus();
-        return;
-      }
-    }
 
-    // Suggest validation if not done
-    if (!this.isValidated && this.config.providerId !== 'ollama') {
-      new Notice('Consider validating your API key before saving');
-    }
+      // Call the save callback
+      this.config.onSave(this.config.config);
+      this.showSaveStatus('Saved');
 
-    // Update the configuration
-    const updatedConfig: LLMProviderConfig = {
-      ...this.config.config,
-      apiKey: apiKey,
-      enabled: true // Auto-enable when saving
-    };
-    
-    // For Ollama, pass the model via a special marker in the config
-    if (this.config.providerId === 'ollama' && this.ollamaModel) {
-      // Store the model in a special field that the callback can extract
-      (updatedConfig as any).__ollamaModel = this.ollamaModel;
-    }
+      // Reset status after 2 seconds
+      setTimeout(() => {
+        this.showSaveStatus('Ready');
+      }, 2000);
+    }, 500);
+  }
 
-    this.config.onSave(updatedConfig);
-    
-    new Notice(`${this.config.providerName} configuration saved`);
-    this.close();
+  /**
+   * Show save status with visual feedback
+   */
+  private showSaveStatus(status: string): void {
+    if (this.saveStatusEl) {
+      this.saveStatusEl.textContent = status;
+      this.saveStatusEl.className = `save-status save-status-${status.toLowerCase()}`;
+    }
   }
 }
