@@ -66,6 +66,22 @@ export class ConversationCollection {
   }
 
   /**
+   * Wait for vector store to be ready with timeout
+   */
+  private async waitForVectorStore(timeoutMs: number = 10000): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      if ((this.vectorStore as any).initialized && (this.vectorStore as any).client) {
+        return;
+      }
+
+      // Wait 100ms before checking again
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  /**
    * Initialize the chat_conversations collection
    */
   async initialize(): Promise<void> {
@@ -413,6 +429,9 @@ export class ConversationCollection {
    */
   async getAllConversations(limit: number = 50, offset: number = 0): Promise<ConversationDocument[]> {
     try {
+      // Wait for vector store to be ready before querying
+      await this.waitForVectorStore();
+
       const results = await this.vectorStore.query(ConversationCollection.COLLECTION_NAME, {
         nResults: limit,
         include: ['documents', 'metadatas', 'embeddings']
@@ -457,6 +476,12 @@ export class ConversationCollection {
    */
   async getConversationsByVault(vaultName: string, limit: number = 20): Promise<ConversationDocument[]> {
     try {
+      // Wait for vector store to be ready before querying
+      await this.waitForVectorStore();
+      if (!(this.vectorStore as any).initialized || !(this.vectorStore as any).client) {
+        return [];
+      }
+
       const whereClause = {
         'metadata.vault_name': vaultName
       };

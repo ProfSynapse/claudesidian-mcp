@@ -613,10 +613,10 @@ export class ChatService {
    */
   async listConversations(options?: { limit?: number; offset?: number }): Promise<ConversationData[]> {
     const searchResults = await this.dependencies.conversationRepo.listConversations(
-      this.dependencies.vaultName, 
+      this.dependencies.vaultName,
       options?.limit || 50
     );
-    
+
     // Convert ConversationDocument[] to ConversationData[]
     return searchResults.map(document => ({
       id: document.id,

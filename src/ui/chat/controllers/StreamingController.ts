@@ -54,11 +54,6 @@ export class StreamingController {
         const streamingState = MarkdownRenderer.initializeStreamingParser(contentElement as HTMLElement);
         this.streamingStates.set(messageId, streamingState);
         
-        console.log('[STREAM DEBUG] StreamingController initialized streaming for:', {
-          messageId,
-          hasParser: !!streamingState?.parser,
-          hasContentDiv: !!streamingState?.contentDiv
-        });
       } else {
         console.warn(`[StreamingController] Content element not found for message ${messageId}`);
       }
@@ -74,11 +69,6 @@ export class StreamingController {
     const streamingState = this.streamingStates.get(messageId);
     
     if (streamingState) {
-      console.log('[STREAM DEBUG] StreamingController processing chunk:', {
-        messageId,
-        chunkLength: chunk.length,
-        chunkContent: chunk.substring(0, 30) + '...'
-      });
       
       MarkdownRenderer.writeStreamingChunk(streamingState, chunk);
     } else {
@@ -104,10 +94,6 @@ export class StreamingController {
       const contentElement = messageElement.querySelector('.message-bubble .message-content');
       
       if (contentElement) {
-        console.log('[STREAM DEBUG] StreamingController finalizing streaming for:', {
-          messageId,
-          finalContentLength: finalContent.length
-        });
         
         MarkdownRenderer.finalizeStreamingContent(
           streamingState,
@@ -118,7 +104,6 @@ export class StreamingController {
         ).then(() => {
           // Clean up streaming state
           this.streamingStates.delete(messageId);
-          console.log('[STREAM DEBUG] StreamingController finalized and cleaned up:', messageId);
         }).catch(error => {
           console.error('[StreamingController] Error finalizing streaming:', error);
           // Clean up anyway

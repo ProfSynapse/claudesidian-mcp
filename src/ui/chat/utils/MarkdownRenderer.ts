@@ -44,10 +44,6 @@ export class MarkdownRenderer {
    * Initialize streaming markdown parser for progressive rendering
    */
   static initializeStreamingParser(container: HTMLElement): any {
-    console.log('[STREAM DEBUG] MarkdownRenderer.initializeStreamingParser called', {
-      containerClassName: container.className,
-      containerChildCount: container.children.length
-    });
     
     // Clear container
     container.empty();
@@ -57,20 +53,11 @@ export class MarkdownRenderer {
     contentDiv.className = 'streaming-content';
     container.appendChild(contentDiv);
     
-    console.log('[STREAM DEBUG] Created contentDiv', {
-      contentDivClassName: contentDiv.className,
-      containerChildCount: container.children.length
-    });
     
     // Initialize streaming-markdown renderer with content div
     const renderer = smd.default_renderer(contentDiv);
     const parser = smd.parser(renderer);
     
-    console.log('[STREAM DEBUG] Created parser and renderer', {
-      hasRenderer: !!renderer,
-      hasParser: !!parser,
-      rendererData: renderer?.data
-    });
     
     return { parser, renderer, contentDiv };
   }
@@ -79,23 +66,11 @@ export class MarkdownRenderer {
    * Write chunk to streaming markdown parser
    */
   static writeStreamingChunk(streamingState: any, chunk: string): void {
-    console.log('[STREAM DEBUG] MarkdownRenderer.writeStreamingChunk called', {
-      hasStreamingState: !!streamingState,
-      hasParser: !!streamingState?.parser,
-      chunkLength: chunk.length,
-      chunkContent: chunk.substring(0, 30) + '...',
-      contentDivExists: !!streamingState?.contentDiv,
-      contentDivChildCount: streamingState?.contentDiv?.children?.length || 0
-    });
     
     if (streamingState && streamingState.parser) {
       try {
         smd.parser_write(streamingState.parser, chunk);
         
-        console.log('[STREAM DEBUG] After parser_write', {
-          contentDivChildCount: streamingState?.contentDiv?.children?.length || 0,
-          contentDivHTML: streamingState?.contentDiv?.innerHTML?.substring(0, 100) + '...'
-        });
       } catch (error) {
         console.error('[MarkdownRenderer] Error writing streaming chunk:', error);
       }

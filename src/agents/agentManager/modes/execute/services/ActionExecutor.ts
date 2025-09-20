@@ -107,39 +107,48 @@ export class ActionExecutor {
         }
 
         try {
+            // Build proper context object for CommonParameters
+            const contextObject = typeof context === 'string' ?
+                JSON.parse(context) : context;
+
             const actionParams: any = {
-                sessionId,
-                context,
-                content
+                context: {
+                    sessionId,
+                    workspaceId: contextObject?.workspaceId,
+                    sessionDescription: contextObject?.sessionDescription || '',
+                    sessionMemory: contextObject?.sessionMemory || '',
+                    toolContext: contextObject?.toolContext || '',
+                    primaryGoal: contextObject?.primaryGoal || ''
+                },
+                content,
+                filePath: action.targetPath
             };
 
             console.log('executeContentAction: Preparing to call agent with params:', {
                 actionType: action.type,
                 paramsKeys: Object.keys(actionParams),
-                targetPath: action.targetPath
+                targetPath: action.targetPath,
+                hasContent: !!content,
+                contentLength: content?.length || 0
             });
 
             switch (action.type) {
                 case 'create':
-                    actionParams.filePath = action.targetPath;
                     console.log('executeContentAction: Calling createContent mode');
                     await this.agentManager.executeAgentMode('contentManager', 'createContent', actionParams);
                     break;
 
                 case 'append':
-                    actionParams.filePath = action.targetPath;
                     console.log('executeContentAction: Calling appendContent mode');
                     await this.agentManager.executeAgentMode('contentManager', 'appendContent', actionParams);
                     break;
 
                 case 'prepend':
-                    actionParams.filePath = action.targetPath;
                     console.log('executeContentAction: Calling prependContent mode');
                     await this.agentManager.executeAgentMode('contentManager', 'prependContent', actionParams);
                     break;
 
                 case 'replace':
-                    actionParams.filePath = action.targetPath;
                     if (action.position !== undefined) {
                         actionParams.line = action.position;
                         console.log('executeContentAction: Calling replaceByLine mode');
@@ -155,7 +164,6 @@ export class ActionExecutor {
                         console.error('executeContentAction: findText is required for findReplace action');
                         return { success: false, error: 'findText is required for findReplace action' };
                     }
-                    actionParams.filePath = action.targetPath;
                     actionParams.findText = action.findText;
                     actionParams.replaceText = content; // LLM response becomes the replacement text
                     actionParams.replaceAll = action.replaceAll ?? false;

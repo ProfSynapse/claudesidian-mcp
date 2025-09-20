@@ -19,6 +19,7 @@ import { ServerConfiguration } from './services/ServerConfiguration';
 import { AgentRegistry } from './services/AgentRegistry';
 import { HttpTransportManager } from './transport/HttpTransportManager';
 import { IPCTransportManager } from './transport/IPCTransportManager';
+import { StdioTransportManager } from './transport/StdioTransportManager';
 import { RequestHandlerFactory } from './handlers/RequestHandlerFactory';
 import { ServerLifecycleManager } from './lifecycle/ServerLifecycleManager';
 import { AgentExecutionManager } from './execution/AgentExecutionManager';
@@ -35,6 +36,7 @@ export class MCPServer implements IMCPServer {
     private configuration: ServerConfiguration;
     private agentRegistry: AgentRegistry;
     private httpTransportManager: HttpTransportManager;
+    private stdioTransportManager: StdioTransportManager;
     private ipcTransportManager: IPCTransportManager;
     private requestHandlerFactory: RequestHandlerFactory;
     private lifecycleManager: ServerLifecycleManager;
@@ -62,7 +64,8 @@ export class MCPServer implements IMCPServer {
         // Initialize specialized services
         this.agentRegistry = new AgentRegistry();
         this.httpTransportManager = new HttpTransportManager(this.server, 3000, 'localhost');
-        this.ipcTransportManager = new IPCTransportManager(this.configuration, this.httpTransportManager as any);
+        this.stdioTransportManager = new StdioTransportManager(this.server);
+        this.ipcTransportManager = new IPCTransportManager(this.configuration, this.stdioTransportManager);
         this.executionManager = new AgentExecutionManager(this.agentRegistry, sessionContextManager);
         
         // Initialize request routing

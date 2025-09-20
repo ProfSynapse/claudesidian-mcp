@@ -28,6 +28,7 @@ export interface ExecutePromptParams extends CommonParameters {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    returnContent?: boolean;
     action?: {
         type: 'create' | 'append' | 'prepend' | 'replace' | 'findReplace';
         targetPath: string;
@@ -212,7 +213,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
 
             // Phase 7: Build result
             const resultData: ExecutePromptResult['data'] = {
-                response: promptResult.response || '',
+                response: (params.returnContent ?? true) ? (promptResult.response || '') : '[Content not returned]',
                 model: promptResult.model || 'unknown',
                 provider: promptResult.provider || 'unknown',
                 agentUsed: promptResult.agentUsed,
@@ -290,6 +291,11 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                 maxTokens: {
                     type: 'number',
                     description: 'Maximum tokens to generate'
+                },
+                returnContent: {
+                    type: 'boolean',
+                    description: 'Whether to return the LLM response content in the result (defaults to true)',
+                    default: true
                 },
                 action: {
                     type: 'object',

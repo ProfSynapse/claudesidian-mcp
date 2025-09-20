@@ -391,6 +391,11 @@
     margin-bottom: 0.5rem;
 }
 
+/* User messages: icon on the right */
+.message-container.message-user .message-header {
+    flex-direction: row-reverse;
+}
+
 .message-role-icon {
     width: 20px;
     height: 20px;

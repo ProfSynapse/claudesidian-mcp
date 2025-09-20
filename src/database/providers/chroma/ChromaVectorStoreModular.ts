@@ -49,7 +49,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   private services: ServiceRegistry;
   
   // ChromaDB client
-  private client: InstanceType<typeof ChromaClient> | null = null;
+  private _client: InstanceType<typeof ChromaClient> | null = null;
   
   // Plugin instance for accessing paths
   private plugin: Plugin;
@@ -160,7 +160,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       const initResult = await this.vectorStoreInitializer.initialize(context);
       
       // Store initialized components
-      this.client = initResult.client;
+      this._client = initResult.client;
       
       // Initialize health monitor through the collection service if available
       try {
@@ -212,9 +212,9 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
   async close(): Promise<void> {
     try {
       // Use VectorStoreInitializer for graceful shutdown
-      if (this.client) {
+      if (this._client) {
         const initResult: VectorStoreInitializationResult = {
-          client: this.client,
+          client: this._client,
           collectionService: this.collectionService || undefined
         };
         
@@ -225,7 +225,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
       await this.serviceCoordinator.shutdownServices(this.services);
       
       // Reset state
-      this.client = null;
+      this._client = null;
       this.initialized = false;
       this.collectionService = null;
       
@@ -234,7 +234,7 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
     } catch (error) {
       console.error("Error during shutdown:", error);
       // Reset state even if there was an error
-      this.client = null;
+      this._client = null;
       this.initialized = false;
       this.collectionService = null;
     }
@@ -609,9 +609,41 @@ export class ChromaVectorStoreModular extends BaseVectorStore {
    * Ensure the vector store is initialized
    */
   private ensureInitialized(): void {
-    if (!this.initialized || !this.client) {
+    if (!this.initialized || !this._client) {
       throw new Error('ChromaDB client not initialized');
     }
+  }
+
+  /**
+   * Get the ChromaDB client, waiting for initialization if needed
+   * This provides lazy access to the client for services that need it during construction
+   */
+  async getClient(timeoutMs: number = 30000): Promise<InstanceType<typeof ChromaClient>> {
+    // If already initialized, return immediately
+    if (this.initialized && this._client) {
+      return this._client;
+    }
+
+    // Wait for initialization to complete with timeout
+    const startTime = Date.now();
+    while (!this.initialized || !this._client) {
+      if (Date.now() - startTime > timeoutMs) {
+        throw new Error(`ChromaDB client initialization timeout after ${timeoutMs}ms`);
+      }
+
+      // Wait a short time before checking again
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    return this._client;
+  }
+
+  /**
+   * Get the ChromaDB client synchronously (returns null if not ready)
+   * Use this for backward compatibility with existing code
+   */
+  get client(): InstanceType<typeof ChromaClient> | null {
+    return this._client;
   }
 
   /**

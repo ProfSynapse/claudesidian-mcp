@@ -202,7 +202,26 @@ export class MessageDisplay {
     this.messageBubbles = [];
 
     // Render all messages (no branch filtering needed for message-level alternatives)
-    this.conversation.messages.forEach(message => {
+    console.log('[MessageDisplay] Rendering conversation messages:', {
+      conversationId: this.conversation.id,
+      messageCount: this.conversation.messages.length,
+      messageBreakdown: this.conversation.messages.reduce((acc, msg) => {
+        acc[msg.role] = (acc[msg.role] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      messagesWithToolCalls: this.conversation.messages.filter(msg => msg.tool_calls && msg.tool_calls.length > 0).length,
+      toolMessages: this.conversation.messages.filter(msg => msg.role === 'tool').length
+    });
+
+    this.conversation.messages.forEach((message, index) => {
+      console.log(`[MessageDisplay] Creating bubble for message ${index}:`, {
+        id: message.id,
+        role: message.role,
+        hasToolCalls: !!(message.tool_calls && message.tool_calls.length > 0),
+        toolCallCount: message.tool_calls?.length || 0,
+        contentPreview: message.content.substring(0, 50) + '...'
+      });
+
       const messageEl = this.createMessageBubble(message);
       messagesContainer.appendChild(messageEl);
     });

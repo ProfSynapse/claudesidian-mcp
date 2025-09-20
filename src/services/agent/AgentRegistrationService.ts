@@ -411,7 +411,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
                     } catch (error) {
                         logger.systemError(error as Error, 'VaultLibrarian Search Service Setup');
                     }
-                }, 15000); // Wait 15 seconds for service manager to complete
+                }, 5000); // Wait 5 seconds for service manager to complete (reduced from 15s to prevent timeout)
             }
             
             this.agentManager.registerAgent(vaultLibrarianAgent);

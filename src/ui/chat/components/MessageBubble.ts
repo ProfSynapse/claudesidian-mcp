@@ -175,8 +175,13 @@ export class MessageBubble extends Component {
    * Render tool calls accordion within the message content
    */
   private renderToolCalls(container: HTMLElement): void {
-    // For tool role messages, always render the tool accordion 
+    // For tool role messages, always render the tool accordion
     if (this.message.role === 'tool' && this.message.tool_calls && this.message.tool_calls.length > 0) {
+      console.log('[MessageBubble] Rendering tool accordion for tool message:', {
+        messageId: this.message.id,
+        toolCallCount: this.message.tool_calls.length,
+        toolNames: this.message.tool_calls.map(tc => tc.name)
+      });
 
       // Create accordion for tool execution message
       const accordion = new ToolAccordion(this.message.tool_calls);
@@ -185,8 +190,22 @@ export class MessageBubble extends Component {
       return;
     }
 
-    // Assistant messages should never render tool accordions - tools are in separate tool messages
-    // This ensures clean separation: assistant = text only, tool = accordions only
+    // For assistant messages with tool_calls (historical data), also render tool accordions
+    if (this.message.role === 'assistant' && this.message.tool_calls && this.message.tool_calls.length > 0) {
+      console.log('[MessageBubble] Rendering tool accordion for assistant message with tool_calls:', {
+        messageId: this.message.id,
+        toolCallCount: this.message.tool_calls.length,
+        toolNames: this.message.tool_calls.map(tc => tc.name)
+      });
+
+      // Create accordion for stored tool calls in assistant messages (legacy format)
+      const accordion = new ToolAccordion(this.message.tool_calls);
+      const accordionEl = accordion.createElement();
+      container.appendChild(accordionEl);
+      return;
+    }
+
+    // No tool calls to render
   }
 
 

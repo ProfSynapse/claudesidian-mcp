@@ -75,7 +75,7 @@ export class ChatView extends ItemView {
 
     try {
       await this.chatService.initialize();
-      
+
       // Set up tool event callback for live UI updates
       this.chatService.setToolEventCallback((messageId, event, data) => {
         if (event === 'started') {
@@ -84,7 +84,7 @@ export class ChatView extends ItemView {
           this.handleToolExecutionCompleted(messageId, data.toolId, data.result, data.success, data.error);
         }
       });
-      
+
     } catch (error) {
       // ChatService initialization failed
     }
@@ -120,7 +120,7 @@ export class ChatView extends ItemView {
     const chatLayout = container.createDiv('chat-layout');
     const mainContainer = chatLayout.createDiv('chat-main');
     
-    // Experimental warning banner (always visible)
+    // Experimental warning banner (auto-hide after 5 seconds)
     const warningBanner = mainContainer.createDiv('chat-experimental-warning');
     warningBanner.innerHTML = `
       <span class="warning-icon">⚠️</span>
@@ -128,6 +128,15 @@ export class ChatView extends ItemView {
       <a href="https://github.com/ProfSynapse/claudesidian-mcp/issues" target="_blank" rel="noopener noreferrer" class="warning-link">Report issues</a>
       <span class="warning-text">• Use at your own risk</span>
     `;
+
+    // Auto-hide warning after 5 seconds
+    setTimeout(() => {
+      warningBanner.style.opacity = '0';
+      warningBanner.style.transition = 'opacity 0.5s ease-out';
+      setTimeout(() => {
+        warningBanner.style.display = 'none';
+      }, 500); // Wait for fade transition to complete
+    }, 5000);
     
     // Header
     const chatHeader = mainContainer.createDiv('chat-header');
@@ -279,6 +288,12 @@ export class ChatView extends ItemView {
     );
 
     // Branch navigation is now handled at message level - no global navigator needed
+
+    // Update conversation list if conversations were already loaded
+    const conversations = this.conversationManager.getConversations();
+    if (conversations.length > 0) {
+      this.conversationList.setConversations(conversations);
+    }
   }
 
   /**
@@ -301,7 +316,7 @@ export class ChatView extends ItemView {
    */
   private async loadInitialData(): Promise<void> {
     await this.conversationManager.loadConversations();
-    
+
     // Only show welcome state if no conversations exist
     const conversations = this.conversationManager.getConversations();
     if (conversations.length === 0) {
@@ -320,7 +335,10 @@ export class ChatView extends ItemView {
   }
 
   private handleConversationsChanged(): void {
-    this.conversationList.setConversations(this.conversationManager.getConversations());
+    // Ensure component is initialized before updating
+    if (this.conversationList) {
+      this.conversationList.setConversations(this.conversationManager.getConversations());
+    }
   }
 
   private handleAIMessageStarted(message: ConversationMessage): void {

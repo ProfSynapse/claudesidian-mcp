@@ -78,22 +78,46 @@ export class SimpleMemoryService {
      */
     setVectorStore(vectorStore: any): void {
         this.vectorStore = vectorStore;
-        
-        // Create storage coordinator with collection lifecycle management
-        if (vectorStore && vectorStore.collectionManager) {
+
+        // Storage coordinator will be initialized lazily when first accessed
+        // This prevents ChromaClient access during construction
+    }
+
+    /**
+     * Lazily initialize storage coordinator when first needed
+     */
+    private async ensureStorageCoordinator(): Promise<MemoryTraceStorageCoordinator | null> {
+        if (this.storageCoordinator) {
+            return this.storageCoordinator;
+        }
+
+        if (!this.vectorStore || !this.vectorStore.collectionManager) {
+            return null; // Vector store not available yet
+        }
+
+        try {
             // Get required dependencies from vectorStore
-            const collectionManager = vectorStore.collectionManager;
-            const client = (vectorStore as any).client;
-            const directoryService = (vectorStore as any).getDirectoryService?.() || (vectorStore as any).services?.directoryService;
-            const plugin = (vectorStore as any).plugin;
-            
-            if (!collectionManager || !client || !directoryService || !plugin) {
-                throw new Error('CollectionService requires vectorStore to be fully initialized');
+            const collectionManager = this.vectorStore.collectionManager;
+            const directoryService = (this.vectorStore as any).getDirectoryService?.() || (this.vectorStore as any).services?.directoryService;
+            const plugin = (this.vectorStore as any).plugin;
+
+            // Try to get client using lazy access pattern
+            let client;
+            try {
+                client = await (this.vectorStore as any).getClient?.(5000); // Shorter timeout for background init
+            } catch (error) {
+                // Fallback to synchronous access
+                client = (this.vectorStore as any).client;
             }
-            
+
+            if (!collectionManager || !client || !directoryService || !plugin) {
+                console.warn('[SimpleMemoryService] Vector store dependencies not ready yet - deferring storage coordinator initialization');
+                return null;
+            }
+
             const collectionLifecycleManager = new CollectionService(
                 plugin,
-                vectorStore, 
+                this.vectorStore,
                 collectionManager,
                 client,
                 directoryService,
@@ -101,21 +125,18 @@ export class SimpleMemoryService {
                 null, // persistentPath - optional
                 undefined // logger - optional
             );
-            
+
             this.storageCoordinator = new MemoryTraceStorageCoordinator(
-                vectorStore,
+                this.vectorStore,
                 collectionLifecycleManager,
                 this.sessionService || null as any
             );
-            
-        }
 
-        // Legacy collection creation for backward compatibility
-        this.memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
-        
-        
-        // Attempt to persist any traces that were captured before vector store was available
-        this.persistPendingTraces();
+            return this.storageCoordinator;
+        } catch (error) {
+            console.error('[SimpleMemoryService] Failed to initialize storage coordinator:', error);
+            return null;
+        }
     }
 
     /**
@@ -130,9 +151,10 @@ export class SimpleMemoryService {
         });
 
         // Attempt persistence via storage coordinator
-        if (this.storageCoordinator) {
+        const storageCoordinator = await this.ensureStorageCoordinator();
+        if (storageCoordinator) {
             try {
-                const result: StorageResult = await this.storageCoordinator.storeMemoryTrace(traceId, trace);
+                const result: StorageResult = await storageCoordinator.storeMemoryTrace(traceId, trace);
                 
                 if (!result.success) {
                     console.error(`[SimpleMemoryService] Failed to persist trace ${traceId}`);
@@ -263,7 +285,12 @@ export class SimpleMemoryService {
     }
     
     private async persistPendingTraces(): Promise<void> {
-        if (!this.pendingTraces || this.pendingTraces.size === 0 || !this.storageCoordinator) {
+        if (!this.pendingTraces || this.pendingTraces.size === 0) {
+            return;
+        }
+
+        const storageCoordinator = await this.ensureStorageCoordinator();
+        if (!storageCoordinator) {
             return;
         }
 
@@ -271,7 +298,7 @@ export class SimpleMemoryService {
         const persistencePromises: Promise<any>[] = [];
         
         for (const [traceId, trace] of this.pendingTraces.entries()) {
-            const promise = this.storageCoordinator.storeMemoryTrace(traceId, trace)
+            const promise = storageCoordinator.storeMemoryTrace(traceId, trace)
                 .then(result => {
                     return { traceId, success: result.success };
                 })
@@ -299,21 +326,22 @@ export class SimpleMemoryService {
         queueStatus: any;
         collectionHealthy: boolean;
     }> {
+        const storageCoordinator = await this.ensureStorageCoordinator();
         const status = {
             inMemoryCount: this.traces.size,
             vectorStoreAvailable: !!this.vectorStore,
-            storageCoordinatorAvailable: !!this.storageCoordinator,
+            storageCoordinatorAvailable: !!storageCoordinator,
             pendingCount: this.pendingTraces?.size || 0,
             queueStatus: null as any,
             collectionHealthy: false
         };
 
-        if (this.storageCoordinator) {
+        if (storageCoordinator) {
             try {
-                const queueStatus = await this.storageCoordinator.getQueueStatus();
+                const queueStatus = await storageCoordinator.getQueueStatus();
                 status.queueStatus = queueStatus;
-                
-                const validationResult = await this.storageCoordinator.validateStorage();
+
+                const validationResult = await storageCoordinator.validateStorage();
                 status.collectionHealthy = validationResult.collectionHealthy;
             } catch (error) {
                 console.error('[SimpleMemoryService] Failed to get storage status:', error);
