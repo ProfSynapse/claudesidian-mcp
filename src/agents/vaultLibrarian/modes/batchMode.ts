@@ -1,6 +1,5 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
 import { 
@@ -20,7 +19,6 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
 
   constructor(
     plugin: Plugin,
-    embeddingService?: EmbeddingService,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService
   ) {
@@ -28,7 +26,6 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
     
     this.universalSearchService = new UniversalSearchService(
       plugin,
-      embeddingService,
       memoryService,
       workspaceService
     );

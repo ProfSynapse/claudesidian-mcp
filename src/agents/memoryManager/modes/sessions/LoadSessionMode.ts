@@ -304,14 +304,9 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             await memoryService.createMemoryTrace({
                 sessionId: continuationSessionId,
                 workspaceId: originalSession.workspaceId,
-                workspacePath: [originalSession.workspaceId],
-                contextLevel: 'workspace' as const,
                 content: traceContent,
                 type: 'session_restoration',
-                activityType: 'checkpoint',
-                importance: 0.9,
                 timestamp: Date.now(),
-                tags: ['restoration', 'continuation', ...(originalSession.tags || [])],
                 metadata: {
                     tool: 'loadSession',
                     params: { originalSessionId: originalSession.id },

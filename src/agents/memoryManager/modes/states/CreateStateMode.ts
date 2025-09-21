@@ -258,13 +258,13 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
 
             // Build WorkspaceStateSnapshot for storage following the architecture design
             const snapshotData = {
+                name: params.name,
                 workspaceId: workspaceId,
+                created: now,
+                snapshot: snapshot,
                 sessionId: params.targetSessionId || params.context.sessionId || 'current',
                 timestamp: now,
-                name: params.name,
-                created: now,
                 description: `${params.activeTask} - ${params.reasoning}`,
-                snapshot: snapshot,
                 state: {
                     workspace,
                     recentTraces: [], // Could be populated from current session

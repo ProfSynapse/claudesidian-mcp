@@ -1,7 +1,7 @@
 import { App, Plugin, TAbstractFile } from 'obsidian';
 import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
 import { WorkspaceService } from '../../agents/memoryManager/services/WorkspaceService';
-import { EmbeddingService } from '../../database/services/core/EmbeddingService';
+// Note: EmbeddingService removed in simplify-search-architecture
 import { EventManager } from '../EventManager';
 
 // Import all the modular services
@@ -13,7 +13,7 @@ import {
 } from './interfaces/IFileEventServices';
 import { FileEventQueue } from './services/FileEventQueue';
 import { FileEventProcessor } from './services/FileEventProcessor';
-import { EmbeddingScheduler } from './services/EmbeddingScheduler';
+// Note: EmbeddingScheduler removed in simplify-search-architecture
 import { ActivityTracker } from './services/ActivityTracker';
 import { SessionTracker } from './services/SessionTracker';
 import { FileMonitor } from './services/FileMonitor';
@@ -38,14 +38,14 @@ export class FileEventManagerModular {
     // Lazy service getters (can be overridden for dependency injection)
     private getMemoryService: () => Promise<MemoryService | null>;
     private getWorkspaceService: () => Promise<WorkspaceService | null>;
-    private getEmbeddingService: () => Promise<EmbeddingService | null>;
+    // Note: EmbeddingService removed in simplify-search-architecture
 
     constructor(
         private app: App,
         private plugin: Plugin,
         private memoryService: MemoryService | null,
         private workspaceService: WorkspaceService | null,
-        private embeddingService: EmbeddingService | null,
+        // Note: embeddingService parameter removed in simplify-search-architecture
         private eventManager: EventManager,
         private embeddingStrategy: EmbeddingStrategy
     ) {
@@ -72,16 +72,7 @@ export class FileEventManagerModular {
             return this.workspaceService;
         };
         
-        this.getEmbeddingService = async () => {
-            if (!this.embeddingService) {
-                // Try to get from service manager
-                const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
-                if (plugin?.getService) {
-                    this.embeddingService = await plugin.getService('embeddingService');
-                }
-            }
-            return this.embeddingService;
-        };
+        // Note: getEmbeddingService removed in simplify-search-architecture
         
         this.initializeDependencies();
         this.coordinator = new FileEventCoordinator(

@@ -141,22 +141,17 @@ export class CommandManagerAgent extends BaseAgent {
                       `Command ID: ${commandId}\n`;
       
       // Record the activity using memory service
-      await this.memoryService.recordActivityTrace(
+      await this.memoryService.recordActivityTrace({
         workspaceId,
-        {
-          type: 'research', // Using supported activity type
-          content,
-          metadata: {
-            tool: 'ExecuteCommandMode',
-            params: {
-              commandId
-            },
-            result: {
-              success: true
-            },
-            relatedFiles: []
-          }
+        type: 'command',
+        content,
+        timestamp: Date.now(),
+        metadata: {
+          tool: 'ExecuteCommandMode',
+          params: { commandId },
+          result: { success: true }
         }
+      }
       );
     } catch (error) {
       // Log but don't fail the main operation

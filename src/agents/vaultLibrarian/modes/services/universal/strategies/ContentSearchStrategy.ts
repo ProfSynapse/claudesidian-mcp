@@ -4,7 +4,9 @@
  */
 
 import { TFile } from 'obsidian';
-import { HybridSearchService, HybridSearchOptions } from '../../../../../../database/services/search';
+// Search services removed in simplified architecture
+type HybridSearchService = any;
+type HybridSearchOptions = any;
 import { UniversalSearchParams, UniversalSearchResultItem } from '../../../../types';
 
 export interface ContentSearchResult {

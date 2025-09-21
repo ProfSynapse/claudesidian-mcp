@@ -197,16 +197,14 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
     const content = `Replaced content in ${params.filePath} (${resultData.replacements} replacements)\nOld: ${oldSnippet}\nNew: ${newSnippet}`;
     
     try {
-      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
-        type: 'completion',
+      await this.memoryService!.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'content',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'contentManager.replaceContent',
-          params: {
-            filePath: params.filePath,
-            replacements: resultData.replacements,
-            similarityThreshold: params.similarityThreshold
-          },
+          params: { filePath: params.filePath },
           result: resultData,
           relatedFiles: [params.filePath]
         },

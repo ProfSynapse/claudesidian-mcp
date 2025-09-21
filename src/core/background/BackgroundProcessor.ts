@@ -11,7 +11,6 @@ import { Notice } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import type { Settings } from '../../settings';
 import type { SettingsTab } from '../../components/SettingsTab';
-import type { IVectorStore } from '../../database/interfaces/IVectorStore';
 import { UpdateManager } from '../../utils/UpdateManager';
 
 export interface BackgroundProcessorConfig {
@@ -140,17 +139,12 @@ export class BackgroundProcessor {
      */
     async validateSearchFunctionality(): Promise<void> {
         try {
-            // Test 1: Validate vectorStore service is available (ChromaDB)
-            const vectorStore = await this.config.getService<IVectorStore>('vectorStore', 5000);
-            if (vectorStore) {
-                // Test basic collection operations
-                try {
-                    const collections = await vectorStore.listCollections();
-                } catch (collectionError) {
-                    console.warn('[VALIDATION] Collection access error (may be normal during startup):', collectionError);
-                }
+            // Test 1: Validate search services are available
+            const searchService = await this.config.getService('searchService', 5000);
+            if (searchService) {
+                console.log('[VALIDATION] ✅ Search service available');
             } else {
-                console.warn('[VALIDATION] ⚠️ VectorStore service not available');
+                console.warn('[VALIDATION] ⚠️ Search service not available');
             }
             
             // Test 2: Validate core services are available
@@ -159,7 +153,7 @@ export class BackgroundProcessor {
                 const metadata = serviceManager.getAllServiceStatus();
                 const serviceNames = Object.keys(metadata);
                 
-                const coreServices = ['vectorStore', 'embeddingService', 'workspaceService', 'memoryService'];
+                const coreServices = ['searchService', 'workspaceService', 'memoryService'];
                 const availableCore = coreServices.filter(service => serviceNames.includes(service));
             }
             

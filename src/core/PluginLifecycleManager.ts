@@ -19,7 +19,6 @@ import { MaintenanceCommandManager } from './commands/MaintenanceCommandManager'
 import { ChatUIManager } from './ui/ChatUIManager';
 import { BackgroundProcessor } from './background/BackgroundProcessor';
 import { SettingsTabManager } from './settings/SettingsTabManager';
-import type { IVectorStore } from '../database/interfaces/IVectorStore';
 import type { ServiceCreationContext } from './services/ServiceDefinitions';
 
 export interface PluginLifecycleConfig {

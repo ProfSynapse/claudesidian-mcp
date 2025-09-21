@@ -111,10 +111,16 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
             return this.prepareResult(false, undefined, 'No updates provided for state');
         }
 
-        // Update the snapshot
-        await memoryService.updateSnapshot(params.stateId, updates);
-        
-        // Fetch the updated state to return its properties
+        // Get current snapshot and apply updates
+        const currentSnapshot = await memoryService.getSnapshot(params.stateId);
+        if (!currentSnapshot) {
+            return this.prepareResult(false, undefined, `State ${params.stateId} not found`);
+        }
+
+        const updatedSnapshot = { ...currentSnapshot, ...updates };
+        await memoryService.updateSnapshot(updatedSnapshot);
+
+        // Use updated snapshot for result
         const updatedState = await memoryService.getSnapshot(params.stateId);
         if (!updatedState) {
             return this.prepareResult(false, undefined, 'Failed to retrieve updated state');

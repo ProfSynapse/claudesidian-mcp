@@ -188,16 +188,14 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
     const content = `Appended to file ${params.filePath} (${resultData.appendedLength} chars added, ${resultData.totalLength} total)\nContent: ${contentSnippet}`;
     
     try {
-      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
-        type: 'completion',
+      await this.memoryService!.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'content',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'contentManager.appendContent',
-          params: {
-            filePath: params.filePath,
-            appendedLength: resultData.appendedLength,
-            totalLength: resultData.totalLength
-          },
+          params: { filePath: params.filePath },
           result: resultData,
           relatedFiles: [params.filePath]
         },

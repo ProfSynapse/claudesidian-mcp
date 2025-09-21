@@ -1,670 +1,194 @@
-/**
- * MemoryService - Refactored using SOLID principles and service composition
- * Acts as a coordinator/facade for memory-related operations
- */
-
 import { Plugin } from 'obsidian';
-import { IVectorStore } from '../../../database/interfaces/IVectorStore';
-import { MemoryTraceCollection } from '../../../database/collections/MemoryTraceCollection';
-import { SessionCollection } from '../../../database/collections/SessionCollection';
-import { SnapshotCollection } from '../../../database/collections/SnapshotCollection';
 import { WorkspaceMemoryTrace, WorkspaceSession, WorkspaceStateSnapshot } from '../../../database/workspace-types';
-import { VectorStoreFactory } from '../../../database/factory/VectorStoreFactory';
-import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
-
-import { MemoryTraceService } from './MemoryTraceService';
-import { SessionService } from './SessionService';
-import { SnapshotService } from './SnapshotService';
-import { CollectionManager } from '../../../database/providers/chroma/services/CollectionManager';
-import { PersistenceManager } from '../../../database/providers/chroma/services/PersistenceManager';
-import { ObsidianPathManager } from '../../../core/ObsidianPathManager';
 
 /**
- * Refactored MemoryService using composition pattern.
- * Maintains the same public interface while delegating to specialized services.
- * 
- * @remarks
- * This service now follows SOLID principles:
- * - SRP: Each composed service has a single responsibility
- * - OCP: New memory storage types can be added by extending services
- * - DIP: Uses dependency injection and composition
+ * MemoryService using direct Obsidian data storage
  */
 export class MemoryService {
-  // Composed services following Dependency Injection principle
-  private memoryTraceService: MemoryTraceService;
-  private sessionService: SessionService;
-  private snapshotService: SnapshotService;
-  private collectionManager: CollectionManager | null = null;
-
-  /**
-   * Legacy collection references for backward compatibility
-   */
-  private memoryTraces: MemoryTraceCollection;
-  private sessions: SessionCollection;
-  private snapshots: SnapshotCollection;
-
-  /**
-   * Plugin instance
-   */
   private plugin: Plugin;
+  private readonly TRACES_KEY = 'memoryTraces';
+  private readonly SESSIONS_KEY = 'sessions';
+  private readonly SNAPSHOTS_KEY = 'snapshots';
 
-  /**
-   * Vector store instance used by this service
-   */
-  private readonly vectorStore: IVectorStore;
-
-  /**
-   * Embedding service for generating embeddings
-   */
-  private embeddingService: EmbeddingService;
-
-  /**
-   * Plugin settings
-   */
-  private settings: any;
-
-  /**
-   * Create a new memory service
-   * @param plugin Plugin instance
-   * @param vectorStore Vector store instance
-   * @param embeddingService Embedding service
-   * @param settings Plugin settings
-   */
-  constructor(plugin: Plugin, vectorStore: IVectorStore, embeddingService: EmbeddingService, settings: any) {
+  constructor(plugin: Plugin) {
     this.plugin = plugin;
-    this.vectorStore = vectorStore;
-    this.embeddingService = embeddingService;
-    this.settings = settings;
-
-    // Collection manager will be initialized lazily when first accessed
-    // This prevents ChromaClient access during construction
-
-    // Create specialized collections
-    this.memoryTraces = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
-    this.sessions = VectorStoreFactory.createSessionCollection(vectorStore, embeddingService);
-    this.snapshots = VectorStoreFactory.createSnapshotCollection(vectorStore, embeddingService);
-
-    // Initialize services with collections
-    this.memoryTraceService = new MemoryTraceService(
-      this.memoryTraces,
-      embeddingService
-    );
-
-    this.sessionService = new SessionService(
-      plugin,
-      this.sessions
-    );
-
-    this.snapshotService = new SnapshotService(
-      plugin,
-      this.snapshots
-    );
-
-    // Set up cross-service dependencies to avoid circular imports
-    this.memoryTraceService.setSessionService(this.sessionService);
-    this.sessionService.setMemoryTraceService(this.memoryTraceService);
-    this.sessionService.setSnapshotService(this.snapshotService);
-    this.snapshotService.setMemoryTraceService(this.memoryTraceService);
-
-    this.initializeServices();
   }
 
-  /**
-   * Lazily initialize the CollectionManager when first needed
-   */
-  private async ensureCollectionManager(): Promise<CollectionManager> {
-    if (this.collectionManager) {
-      return this.collectionManager;
-    }
-
-    try {
-      // Get ChromaClient using the new lazy access pattern
-      const chromaClient = await (this.vectorStore as any).getClient?.(10000);
-      if (!chromaClient) {
-        // Fallback to synchronous access for backward compatibility
-        const syncClient = (this.vectorStore as any).client;
-        if (!syncClient) {
-          throw new Error('ChromaClient not available in the provided vector store');
-        }
-
-        // Initialize with synchronous client
-        const persistenceManager = new PersistenceManager(this.plugin.app, 250, 5, this.plugin);
-        const persistentPath = (syncClient as any).persistentPath || null;
-        this.collectionManager = new CollectionManager(syncClient, persistenceManager, persistentPath);
-      } else {
-        // Initialize with async client
-        const persistenceManager = new PersistenceManager(this.plugin.app, 250, 5, this.plugin);
-        const persistentPath = (chromaClient as any).persistentPath || null;
-        this.collectionManager = new CollectionManager(chromaClient, persistenceManager, persistentPath);
-      }
-
-      // CRITICAL FIX: Inject ObsidianPathManager to prevent path duplication
-      const pathManager = new ObsidianPathManager(this.plugin.app.vault, this.plugin.manifest);
-      this.collectionManager.setPathManager(pathManager);
-
-      return this.collectionManager;
-    } catch (error) {
-      console.error('[MemoryService] Failed to initialize CollectionManager:', error);
-      throw new Error(`CollectionManager initialization failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-
-  /**
-   * Initialize services based on current settings
-   */
-  private async initializeServices(): Promise<void> {
-    try {
-      // Initialize the collection manager lazily
-      const collectionManager = await this.getCollectionManager();
-      await collectionManager.refreshCollections();
-
-      // Initialize each collection separately to better handle individual failures
-      await this.memoryTraces.initialize().catch(error => {
-        console.warn(`Failed to initialize memory traces collection: ${error.message}`);
-      });
-
-      await this.sessions.initialize().catch(error => {
-        console.warn(`Failed to initialize sessions collection: ${error.message}`);
-      });
-
-      await this.snapshots.initialize().catch(error => {
-        console.warn(`Failed to initialize snapshots collection: ${error.message}`);
-      });
-
-    } catch (error) {
-      console.error("Failed to initialize MemoryService collections:", error);
-      // Don't throw the error - let the plugin continue loading
-    }
-  }
-
-  /**
-   * Initialize the memory service
-   */
-  async initialize(): Promise<void> {
-    await this.initializeServices();
-  }
-
-
-  //#region ChromaDB Collection Management (delegated to CollectionManager)
-
-  /**
-   * Get the raw ChromaDB collection manager
-   * @returns CollectionManager instance
-   */
-  async getCollectionManager(): Promise<CollectionManager> {
-    return await this.ensureCollectionManager();
-  }
-
-  /**
-   * Get the vector store instance
-   * @returns The vector store used by this service
-   */
-  getVectorStore(): IVectorStore {
-    return this.vectorStore;
-  }
-
-  /**
-   * Create a new collection in ChromaDB
-   * @param name Collection name
-   * @param metadata Optional collection metadata
-   * @returns The created collection
-   */
-  async createCollection(name: string, metadata?: Record<string, any>): Promise<any> {
-    const collectionManager = await this.getCollectionManager();
-    await collectionManager.createCollection(name, metadata);
-    return await collectionManager.getOrCreateCollection(name);
-  }
-
-  /**
-   * Get a collection from ChromaDB
-   * @param name Collection name
-   * @returns The collection or null if not found
-   */
-  async getCollection(name: string): Promise<any> {
-    const collectionManager = await this.getCollectionManager();
-    const hasCollection = await collectionManager.hasCollection(name);
-    if (!hasCollection) {
-      return null;
-    }
-    return await collectionManager.getOrCreateCollection(name);
-  }
-
-  /**
-   * Get or create a collection in ChromaDB
-   * @param name Collection name
-   * @param metadata Optional collection metadata
-   * @returns The collection
-   */
-  async getOrCreateCollection(name: string, metadata?: Record<string, any>): Promise<any> {
-    const collectionManager = await this.getCollectionManager();
-    const hasCollection = await collectionManager.hasCollection(name);
-    if (!hasCollection && metadata) {
-      await collectionManager.createCollection(name, metadata);
-    }
-    return await collectionManager.getOrCreateCollection(name);
-  }
-
-  /**
-   * Check if a collection exists in ChromaDB
-   * @param name Collection name
-   * @returns Whether the collection exists
-   */
-  async hasCollection(name: string): Promise<boolean> {
-    const collectionManager = await this.getCollectionManager();
-    return collectionManager.hasCollection(name);
-  }
-
-  /**
-   * List all collections in ChromaDB
-   * @returns Array of collection names
-   */
-  async listCollections(): Promise<string[]> {
-    const collectionManager = await this.getCollectionManager();
-    return collectionManager.listCollections();
-  }
-
-  /**
-   * Get detailed information about all collections
-   * @returns Array of collection details
-   */
-  async getCollectionDetails(): Promise<Array<{ name: string; metadata?: Record<string, any> }>> {
-    const collectionManager = await this.getCollectionManager();
-    const collections = await collectionManager.listCollections();
-    const details = [];
-    for (const name of collections) {
-      try {
-        const collection = await collectionManager.getOrCreateCollection(name);
-        const metadata = collection.metadata || {};
-        details.push({ name, metadata });
-      } catch (error) {
-        console.warn(`Failed to get details for collection ${name}:`, error);
-        details.push({ name });
-      }
-    }
-    return details;
-  }
-
-  /**
-   * Delete a collection from ChromaDB
-   * @param name Collection name
-   */
-  async deleteCollection(name: string): Promise<void> {
-    const collectionManager = await this.getCollectionManager();
-    return collectionManager.deleteCollection(name);
-  }
-
-  /**
-   * Add items to a collection in ChromaDB
-   * @param name Collection name
-   * @param items Items to add
-   */
-  async addItems(name: string, items: {
-    ids: string[];
-    embeddings?: number[][];
-    metadatas?: Record<string, any>[];
-    documents?: string[];
-  }): Promise<void> {
-    const collectionManager = await this.getCollectionManager();
-    const collection = await collectionManager.getOrCreateCollection(name);
-    await collection.add(items);
-  }
-
-  /**
-   * Query a collection in ChromaDB
-   * @param name Collection name
-   * @param queryEmbedding Query embedding
-   * @param options Query options
-   */
-  async query(name: string, queryEmbedding: number[], options?: {
-    nResults?: number;
-    where?: Record<string, any>;
-    include?: string[];
-  }) {
-    const collectionManager = await this.getCollectionManager();
-    const collection = await collectionManager.getOrCreateCollection(name);
-    return await collection.query({
-      queryEmbeddings: [queryEmbedding],
-      nResults: options?.nResults || 10,
-      where: options?.where,
-      include: (options?.include as any) || ['embeddings', 'metadatas', 'documents', 'distances']
-    });
-  }
-
-  /**
-   * Get items from a collection in ChromaDB
-   * @param name Collection name
-   * @param ids IDs of items to get
-   * @param include What to include in the response
-   */
-  async getItems(name: string, ids: string[], include?: string[]): Promise<any> {
-    const collectionManager = await this.getCollectionManager();
-    const collection = await collectionManager.getOrCreateCollection(name);
-    return await collection.get({
-      ids,
-      include: (include as any) || ['embeddings', 'metadatas', 'documents']
-    });
-  }
-
-  /**
-   * Update items in a collection in ChromaDB
-   * @param name Collection name
-   * @param items Items to update
-   */
-  async updateItems(name: string, items: {
-    ids: string[];
-    embeddings?: number[][];
-    metadatas?: Record<string, any>[];
-    documents?: string[];
-  }): Promise<void> {
-    const collectionManager = await this.getCollectionManager();
-    const collection = await collectionManager.getOrCreateCollection(name);
-    await collection.update(items);
-  }
-
-  /**
-   * Delete items from a collection in ChromaDB
-   * @param name Collection name
-   * @param ids IDs of items to delete
-   */
-  async deleteItems(name: string, ids: string[]): Promise<void> {
-    const collectionManager = await this.getCollectionManager();
-    const collection = await collectionManager.getOrCreateCollection(name);
-    await collection.delete({ ids });
-  }
-
-  /**
-   * Get the number of items in a collection
-   * @param name Collection name
-   * @returns Number of items
-   */
-  async countItems(name: string): Promise<number> {
-    const collectionManager = await this.getCollectionManager();
-    const collection = await collectionManager.getOrCreateCollection(name);
-    return await collection.count();
-  }
-
-  //#endregion
-
-  //#region Memory Traces (delegated to MemoryTraceService)
-
-  /**
-   * Store a memory trace
-   * @param trace Memory trace data
-   */
-  async storeMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id' | 'embedding'>): Promise<string> {
-    return this.memoryTraceService.storeMemoryTrace(trace);
-  }
-
-  /**
-   * Get memory traces for a workspace
-   * @param workspaceId Workspace ID
-   * @param limit Maximum number of traces to return
-   */
-  async getMemoryTraces(workspaceId: string, limit?: number): Promise<WorkspaceMemoryTrace[]> {
-    return this.memoryTraceService.getMemoryTraces(workspaceId, limit);
-  }
-
-  /**
-   * Search memory traces by similarity
-   * @param query Query text
-   * @param options Search options
-   */
-  async searchMemoryTraces(query: string, options?: {
-    workspaceId?: string;
-    workspacePath?: string[];
-    limit?: number;
-    sessionId?: string;
-  }) {
-    return this.memoryTraceService.searchMemoryTraces(query, options);
-  }
-
-  /**
-   * Search memory traces by embedding
-   * @param embedding Query embedding
-   * @param options Search options
-   */
-  async searchMemoryTracesByEmbedding(embedding: number[], options?: {
-    workspaceId?: string;
-    workspacePath?: string[];
-    limit?: number;
-    sessionId?: string;
-  }) {
-    return this.memoryTraceService.searchMemoryTracesByEmbedding(embedding, options);
-  }
-
-  /**
-   * Get memory traces for a specific session
-   * @param sessionId Session ID
-   * @param limit Maximum number of traces to return
-   */
-  async getSessionTraces(sessionId: string, limit?: number): Promise<WorkspaceMemoryTrace[]> {
-    return this.memoryTraceService.getSessionTraces(sessionId, limit);
-  }
-
-  /**
-   * Delete memory traces by session ID
-   * @param sessionId Session ID
-   * @returns Number of traces deleted
-   */
-  async deleteMemoryTracesBySession(sessionId: string): Promise<number> {
-    return this.memoryTraceService.deleteMemoryTracesBySession(sessionId);
-  }
-
-  /**
-   * Record activity trace - activity recording method
-   * @param workspaceId Workspace ID
-   * @param traceData Trace data
-   */
-  async recordActivityTrace(workspaceId: string, traceData: {
-    type: 'project_plan' | 'question' | 'checkpoint' | 'completion' | 'research';
-    content: string;
-    metadata: {
-      tool: string;
-      params: any;
-      result: any;
-      relatedFiles: string[];
+  // Memory Traces
+  async createMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id'>): Promise<WorkspaceMemoryTrace> {
+    const traces = await this.getAllTraces();
+    const newTrace = {
+      ...trace,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9)
     };
-    sessionId?: string;
-  }): Promise<string> {
-    return this.memoryTraceService.recordActivityTrace(workspaceId, traceData);
+
+    traces.push(newTrace);
+    await this.saveTraces(traces);
+    return newTrace;
   }
 
-  //#endregion
+  async getMemoryTraces(workspaceId: string): Promise<WorkspaceMemoryTrace[]> {
+    const traces = await this.getAllTraces();
+    return traces.filter(t => t.workspaceId === workspaceId);
+  }
 
-  //#region Sessions (delegated to SessionService)
+  async recordActivityTrace(trace: Omit<WorkspaceMemoryTrace, 'id'>): Promise<string> {
+    const newTrace = await this.createMemoryTrace(trace);
+    return newTrace.id;
+  }
 
-  /**
-   * Create a new session
-   * @param session Session data
-   */
+  async storeMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id'>): Promise<WorkspaceMemoryTrace> {
+    return await this.createMemoryTrace(trace);
+  }
+
+  // Sessions
   async createSession(session: Omit<WorkspaceSession, 'id'>): Promise<WorkspaceSession> {
-    return this.sessionService.createSession(session);
+    const sessions = await this.getAllSessions();
+    const newSession = {
+      ...session,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9)
+    };
+
+    sessions.push(newSession);
+    await this.saveSessions(sessions);
+    return newSession;
   }
 
-  /**
-   * Update an existing session
-   * @param id Session ID
-   * @param updates Partial session data to update
-   * @returns Updated session
-   */
-  async updateSession(id: string, updates: Partial<WorkspaceSession>): Promise<WorkspaceSession> {
-    await this.sessionService.updateSession(id, updates);
-    const updatedSession = await this.sessionService.getSession(id);
-    if (!updatedSession) {
-      throw new Error(`Session ${id} not found after update`);
+  async getSession(id: string): Promise<WorkspaceSession | undefined> {
+    const sessions = await this.getAllSessions();
+    return sessions.find(s => s.id === id);
+  }
+
+  async updateSession(session: WorkspaceSession): Promise<void> {
+    const sessions = await this.getAllSessions();
+    const index = sessions.findIndex(s => s.id === session.id);
+
+    if (index === -1) {
+      throw new Error(`Session ${session.id} not found`);
     }
-    return updatedSession;
+
+    sessions[index] = session;
+    await this.saveSessions(sessions);
   }
 
-  /**
-   * Get a session by ID, auto-creating it if it doesn't exist
-   * @param id Session ID
-   * @param autoCreate Whether to auto-create the session if it doesn't exist
-   * @returns The session, either existing or newly created
-   */
-  async getSession(id: string, autoCreate = true): Promise<WorkspaceSession | undefined> {
-    return this.sessionService.getSession(id, autoCreate);
+  async getSessions(workspaceId?: string): Promise<WorkspaceSession[]> {
+    const sessions = await this.getAllSessions();
+    if (workspaceId) {
+      return sessions.filter(s => s.workspaceId === workspaceId);
+    }
+    return sessions;
   }
 
-  /**
-   * Get sessions for a workspace
-   * @param workspaceId Workspace ID
-   */
-  async getSessions(workspaceId: string): Promise<WorkspaceSession[]> {
-    return this.sessionService.getSessions(workspaceId);
+  async getSessionTraces(sessionId: string): Promise<WorkspaceMemoryTrace[]> {
+    const traces = await this.getAllTraces();
+    return traces.filter(t => t.sessionId === sessionId);
   }
 
-  /**
-   * Get all sessions
-   * @returns Array of sessions
-   */
-  async getAllSessions(): Promise<WorkspaceSession[]> {
-    return this.sessionService.getAllSessions();
-  }
-
-  /**
-   * Delete a session and optionally its associated data
-   * @param sessionId Session ID
-   * @param options Deletion options
-   * @returns Number of items deleted
-   */
-  async deleteSession(sessionId: string, options?: {
-    deleteMemoryTraces?: boolean;
-    deleteSnapshots?: boolean;
-  }) {
-    return this.sessionService.deleteSession(sessionId, options);
-  }
-
-  //#endregion
-
-  //#region Snapshots (delegated to SnapshotService)
-
-  /**
-   * Create a workspace state snapshot
-   * @param snapshot Snapshot data
-   */
+  // Snapshots
   async createSnapshot(snapshot: Omit<WorkspaceStateSnapshot, 'id'>): Promise<WorkspaceStateSnapshot> {
-    return this.snapshotService.createSnapshot(snapshot);
+    const snapshots = await this.getAllSnapshots();
+    const newSnapshot = {
+      ...snapshot,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9)
+    };
+
+    snapshots.push(newSnapshot);
+    await this.saveSnapshots(snapshots);
+    return newSnapshot;
   }
 
-  /**
-   * Get a snapshot by ID
-   * @param id Snapshot ID
-   */
   async getSnapshot(id: string): Promise<WorkspaceStateSnapshot | undefined> {
-    return this.snapshotService.getSnapshot(id);
+    const snapshots = await this.getAllSnapshots();
+    return snapshots.find(s => s.id === id);
   }
 
-  /**
-   * Get snapshots for a workspace or session
-   * @param workspaceId Optional workspace ID filter
-   * @param sessionId Optional session ID filter
-   * @returns Array of workspace state snapshots
-   */
-  async getSnapshots(workspaceId?: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
-    return this.snapshotService.getSnapshots(workspaceId, sessionId);
-  }
+  async updateSnapshot(snapshot: WorkspaceStateSnapshot): Promise<void> {
+    const snapshots = await this.getAllSnapshots();
+    const index = snapshots.findIndex(s => s.id === snapshot.id);
 
-  /**
-   * Get snapshots for a specific session
-   * @param sessionId Session ID
-   * @returns Array of workspace state snapshots
-   */
-  async getSnapshotsBySession(sessionId: string): Promise<WorkspaceStateSnapshot[]> {
-    return this.snapshotService.getSnapshotsBySession(sessionId);
-  }
-
-  /**
-   * Delete a snapshot
-   * @param id Snapshot ID
-   */
-  async deleteSnapshot(id: string): Promise<void> {
-    return this.snapshotService.deleteSnapshot(id);
-  }
-
-  /**
-   * Update an existing snapshot
-   * @param id Snapshot ID
-   * @param updates Updates to apply
-   */
-  async updateSnapshot(id: string, updates: Partial<WorkspaceStateSnapshot>): Promise<void> {
-    return this.snapshotService.updateSnapshot(id, updates);
-  }
-
-  /**
-   * Create a context state snapshot
-   * @param workspaceId Workspace ID
-   * @param sessionId Session ID
-   * @param name Snapshot name
-   * @param description Optional snapshot description
-   * @param context Optional context data
-   */
-  async createContextSnapshot(
-    workspaceId: string,
-    sessionId: string,
-    name: string,
-    description?: string,
-    context?: {
-      workspace?: any;
-      recentTraces?: string[];
-      contextFiles?: string[];
-      metadata?: Record<string, any>;
+    if (index === -1) {
+      throw new Error(`Snapshot ${snapshot.id} not found`);
     }
-  ): Promise<string> {
-    return this.snapshotService.createContextSnapshot(workspaceId, sessionId, name, description, context);
+
+    snapshots[index] = snapshot;
+    await this.saveSnapshots(snapshots);
   }
 
-  /**
-   * Restore a state snapshot to the current context
-   * @param stateId ID of the state to restore
-   * @returns Information about the restored state
-   */
-  async restoreStateSnapshot(stateId: string) {
-    return this.snapshotService.restoreStateSnapshot(stateId);
-  }
-
-  //#region Memory Trace Methods (Additional API)
-  
-  /**
-   * Create a memory trace
-   * @param trace Memory trace data
-   * @returns Promise resolving to trace ID
-   */
-  async createMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id' | 'embedding'>): Promise<string> {
-    return this.memoryTraceService.storeMemoryTrace(trace);
-  }
-
-  /**
-   * Delete memory traces by session
-   * @param sessionId Session ID
-   * @returns Number of traces deleted
-   */
-  async deleteSessionTraces(sessionId: string): Promise<number> {
-    return this.deleteMemoryTracesBySession(sessionId);
-  }
-
-  /**
-   * Get states by session
-   * @param sessionId Session ID
-   * @returns Array of state snapshots
-   */
-  async getStatesBySession(sessionId: string): Promise<WorkspaceStateSnapshot[]> {
-    return this.getSnapshotsBySession(sessionId);
-  }
-
-  /**
-   * Get all states with mandatory workspace context for security
-   * @param workspaceId Required workspace ID for security isolation
-   * @returns Array of state snapshots filtered by workspace
-   */
   async getStates(workspaceId?: string): Promise<WorkspaceStateSnapshot[]> {
-    if (!workspaceId) {
-      console.warn('[MemoryService] getStates called without workspace context');
-      return [];
+    const snapshots = await this.getAllSnapshots();
+    if (workspaceId) {
+      return snapshots.filter(s => s.workspaceId === workspaceId);
     }
-    return this.getSnapshots(workspaceId);
+    return snapshots;
   }
 
-  //#endregion
+  async deleteSnapshot(id: string): Promise<void> {
+    const snapshots = await this.getAllSnapshots();
+    const filtered = snapshots.filter(s => s.id !== id);
+    await this.saveSnapshots(filtered);
+  }
+
+  async getSnapshots(workspaceId?: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
+    const snapshots = await this.getAllSnapshots();
+    let filtered = snapshots;
+
+    if (workspaceId) {
+      filtered = filtered.filter(s => s.workspaceId === workspaceId);
+    }
+
+    if (sessionId) {
+      filtered = filtered.filter(s => s.sessionId === sessionId);
+    }
+
+    return filtered;
+  }
+
+  // Memory search methods
+  async searchMemoryTraces(workspaceId: string, query?: string, limit?: number): Promise<WorkspaceMemoryTrace[]> {
+    const traces = await this.getMemoryTraces(workspaceId);
+    if (!query) {
+      return limit ? traces.slice(0, limit) : traces;
+    }
+
+    const filtered = traces.filter(trace =>
+      trace.content.toLowerCase().includes(query.toLowerCase()) ||
+      trace.type.toLowerCase().includes(query.toLowerCase())
+    );
+
+    return limit ? filtered.slice(0, limit) : filtered;
+  }
+
+  // Private helpers
+  private async getAllTraces(): Promise<WorkspaceMemoryTrace[]> {
+    const data = await this.plugin.loadData();
+    return data?.[this.TRACES_KEY] || [];
+  }
+
+  private async saveTraces(traces: WorkspaceMemoryTrace[]): Promise<void> {
+    const data = await this.plugin.loadData() || {};
+    data[this.TRACES_KEY] = traces;
+    await this.plugin.saveData(data);
+  }
+
+  private async getAllSessions(): Promise<WorkspaceSession[]> {
+    const data = await this.plugin.loadData();
+    return data?.[this.SESSIONS_KEY] || [];
+  }
+
+  private async saveSessions(sessions: WorkspaceSession[]): Promise<void> {
+    const data = await this.plugin.loadData() || {};
+    data[this.SESSIONS_KEY] = sessions;
+    await this.plugin.saveData(data);
+  }
+
+  private async getAllSnapshots(): Promise<WorkspaceStateSnapshot[]> {
+    const data = await this.plugin.loadData();
+    return data?.[this.SNAPSHOTS_KEY] || [];
+  }
+
+  private async saveSnapshots(snapshots: WorkspaceStateSnapshot[]): Promise<void> {
+    const data = await this.plugin.loadData() || {};
+    data[this.SNAPSHOTS_KEY] = snapshots;
+    await this.plugin.saveData(data);
+  }
 }

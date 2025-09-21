@@ -266,14 +266,9 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             await memoryService.createMemoryTrace({
                 sessionId: sessionData.id,
                 workspaceId: workspaceData.workspaceId,
-                workspacePath: [workspaceData.workspaceId],
-                contextLevel: 'workspace' as const,
                 content: traceContent,
                 type: 'session_creation',
-                activityType: 'checkpoint',
-                importance: 0.8,
                 timestamp: Date.now(),
-                tags: [],
                 metadata: {
                     tool: 'createSession',
                     params: { sessionName: params.name },

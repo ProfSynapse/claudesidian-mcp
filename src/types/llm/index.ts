@@ -14,11 +14,5 @@ export {
   DEFAULT_LLM_PROVIDER_SETTINGS
 } from './ProviderTypes';
 
-export type {
-  MemorySettings,
-  EmbeddingProvider
-} from './EmbeddingTypes';
-
-export {
-  DEFAULT_MEMORY_SETTINGS
-} from './EmbeddingTypes';
+// Note: EmbeddingTypes removed in simplify-search-architecture
+// Memory settings now handled by simplified JSON-based memory system

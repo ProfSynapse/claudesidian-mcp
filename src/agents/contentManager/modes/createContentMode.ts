@@ -200,18 +200,15 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
     const content = `Created file ${params.filePath}\nContent: ${contentSnippet}`;
     
     try {
-      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
-        type: 'completion',
+      await this.memoryService!.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'content',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'contentManager.createContent',
-          params: {
-            filePath: params.filePath,
-            contentLength: params.content.length
-          },
-          result: {
-            created: resultData.created
-          },
+          params: { filePath: params.filePath },
+          result: { created: resultData.created },
           relatedFiles: [params.filePath]
         },
         sessionId: params.context.sessionId

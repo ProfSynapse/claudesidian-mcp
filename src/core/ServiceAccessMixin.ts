@@ -10,20 +10,10 @@
 
 import type { ServiceManager } from './ServiceManager';
 
-// Type imports for service interfaces
-import type { EmbeddingService } from '../database/services/core/EmbeddingService';
-import type { FileEmbeddingAccessService } from '../database/services/indexing/FileEmbeddingAccessService';
-import type { CollectionService } from "../database/services/core/CollectionService";
-import type { IVectorStore } from '../database/interfaces/IVectorStore';
+// Type imports for service interfaces (embedding services removed)
 import type { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
 import type { MemoryService } from "../agents/memoryManager/services/MemoryService";
 import type { EventManager } from '../services/EventManager';
-import type { FileEventManagerModular } from '../services/file-events/FileEventManagerModular';
-import type { UsageStatsService } from '../database/services/usage/UsageStatsService';
-import type { CacheManager } from '../database/services/cache/CacheManager';
-import type { ProcessedFilesStateManager } from '../database/services/indexing/state/ProcessedFilesStateManager';
-import type { MemoryTraceService } from '../agents/memoryManager/services/MemoryTraceService';
-import type { ToolCallCaptureService } from '../services/toolcall-capture/ToolCallCaptureService';
 
 /**
  * Service Access Mixin - provides typed service getters
@@ -36,21 +26,9 @@ export class ServiceAccessMixin {
     }
 
     // Core service getters - proxied through ServiceContainer for singleton management
-    public get vectorStore(): IVectorStore | null {
-        return this.serviceManager?.getServiceIfReady<IVectorStore>('vectorStore') || null;
-    }
 
-    public get embeddingService(): EmbeddingService | null {
-        return this.serviceManager?.getServiceIfReady<EmbeddingService>('embeddingService') || null;
-    }
 
-    public get fileEmbeddingAccessService(): FileEmbeddingAccessService | null {
-        return this.serviceManager?.getServiceIfReady<FileEmbeddingAccessService>('fileEmbeddingAccessService') || null;
-    }
 
-    public get directCollectionService(): CollectionService | null {
-        return this.serviceManager?.getServiceIfReady<CollectionService>('directCollectionService') || null;
-    }
 
     public get workspaceService(): WorkspaceService | null {
         return this.serviceManager?.getServiceIfReady<WorkspaceService>('workspaceService') || null;
@@ -60,33 +38,15 @@ export class ServiceAccessMixin {
         return this.serviceManager?.getServiceIfReady<MemoryService>('memoryService') || null;
     }
 
-    public get fileEventManager(): FileEventManagerModular | null {
-        return this.serviceManager?.getServiceIfReady<FileEventManagerModular>('fileEventManager') || null;
-    }
 
     public get eventManager(): EventManager | null {
         return this.serviceManager?.getServiceIfReady<EventManager>('eventManager') || null;
     }
 
-    public get usageStatsService(): UsageStatsService | null {
-        return this.serviceManager?.getServiceIfReady<UsageStatsService>('usageStatsService') || null;
-    }
 
-    public get cacheManager(): CacheManager | null {
-        return this.serviceManager?.getServiceIfReady<CacheManager>('cacheManager') || null;
-    }
 
-    public get stateManager(): ProcessedFilesStateManager | null {
-        return this.serviceManager?.getServiceIfReady<ProcessedFilesStateManager>('stateManager') || null;
-    }
 
-    public get memoryTraceService(): MemoryTraceService | null {
-        return this.serviceManager?.getServiceIfReady<MemoryTraceService>('memoryTraceService') || null;
-    }
 
-    public get toolCallCaptureService(): ToolCallCaptureService | null {
-        return this.serviceManager?.getServiceIfReady<ToolCallCaptureService>('toolCallCaptureService') || null;
-    }
 
     /**
      * Get a service asynchronously, waiting for it to be ready if needed

@@ -2,7 +2,6 @@ import { Plugin, TFile, prepareFuzzySearch } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
-import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
 
 /**
@@ -84,13 +83,11 @@ interface WorkspaceContext {
  */
 export class SearchWorkspaceMode extends BaseMode<SearchWorkspaceParams, SearchWorkspaceResult> {
   private plugin: Plugin;
-  private embeddingService?: EmbeddingService;
   private workspaceService?: WorkspaceService;
   private hybridSearchService?: any; // HybridSearchService
 
   constructor(
     plugin: Plugin,
-    embeddingService?: EmbeddingService,
     workspaceService?: WorkspaceService,
     hybridSearchService?: any
   ) {
@@ -102,7 +99,6 @@ export class SearchWorkspaceMode extends BaseMode<SearchWorkspaceParams, SearchW
     );
 
     this.plugin = plugin;
-    this.embeddingService = embeddingService;
     this.workspaceService = workspaceService;
     this.hybridSearchService = hybridSearchService;
   }
@@ -321,14 +317,9 @@ export class SearchWorkspaceMode extends BaseMode<SearchWorkspaceParams, SearchW
     workspaceFiles: TFile[],
     workspaceContext?: WorkspaceContext
   ): Promise<WorkspaceSearchItem[]> {
-    if (!this.embeddingService) {
-      return this.executeBasicSearch(params, workspaceFiles, workspaceContext);
-    }
-
     try {
-      // This would integrate with the embedding service for semantic search
-      // For now, fallback to basic search
-      console.warn('Semantic search not fully implemented, using basic search');
+      // Semantic search not available in simplified architecture, fallback to basic search
+      console.warn('Semantic search not available in simplified architecture, using basic search');
       return this.executeBasicSearch(params, workspaceFiles, workspaceContext);
     } catch (error) {
       console.warn('Semantic search failed, falling back to basic search:', error);
@@ -491,7 +482,7 @@ export class SearchWorkspaceMode extends BaseMode<SearchWorkspaceParams, SearchW
 
   private getCapabilities(): SearchModeCapabilities {
     return {
-      semanticSearch: !!this.embeddingService,
+      semanticSearch: false, // Not available in simplified architecture
       workspaceFiltering: !!this.workspaceService,
       memorySearch: false,
       hybridSearch: !!this.hybridSearchService

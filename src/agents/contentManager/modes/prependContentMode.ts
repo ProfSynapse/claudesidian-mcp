@@ -188,16 +188,14 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
     const content = `Prepended to file ${params.filePath} (${resultData.prependedLength} chars added, ${resultData.totalLength} total)\nContent: ${contentSnippet}`;
     
     try {
-      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
-        type: 'completion',
+      await this.memoryService!.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'content',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'contentManager.prependContent',
-          params: {
-            filePath: params.filePath,
-            prependedLength: resultData.prependedLength,
-            totalLength: resultData.totalLength
-          },
+          params: { filePath: params.filePath },
           result: resultData,
           relatedFiles: [params.filePath]
         },

@@ -146,11 +146,11 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
       const content = `${result.existed ? 'Found existing' : 'Created new'} folder: ${params.path}`;
       
       // Record the activity using memory service
-      await this.memoryService.recordActivityTrace(
-        parsedContext.workspaceId,
-        {
-          type: 'research', // Using supported activity type
-          content,
+      await this.memoryService.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'research', // Using supported activity type
+        content,
+        timestamp: Date.now(),
           metadata: {
             tool: 'CreateFolderMode',
             params: {

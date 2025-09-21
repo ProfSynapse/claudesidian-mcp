@@ -1,6 +1,5 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { EmbeddingService } from '../../../database/services/core/EmbeddingService';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
 import { 
@@ -25,16 +24,14 @@ export class SearchMode extends BaseMode<UniversalSearchParams, UniversalSearchR
 
   constructor(
     plugin: Plugin,
-    embeddingService?: EmbeddingService,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService
   ) {
     super('search', 'Universal Search', 'Search across ALL content types in one unified operation. Searches: FILE NAMES (fuzzy), FOLDER NAMES (fuzzy), FILE CONTENT (semantic/text), workspaces, sessions, snapshots, memory traces, tags, and properties. Replaces old separate search modes. Only requires a query parameter.', '2.0.0');
-    
+
     this.plugin = plugin;
     this.universalSearchService = new UniversalSearchService(
       plugin,
-      embeddingService, 
       memoryService,
       workspaceService
     );

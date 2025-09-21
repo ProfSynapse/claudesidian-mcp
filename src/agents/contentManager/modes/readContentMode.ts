@@ -181,9 +181,9 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       // Record activity using MemoryService - we've already checked it's not null
       await this.memoryService!.storeMemoryTrace({
         workspaceId: parsedContext.workspaceId,
-        workspacePath: parsedContext.workspacePath || [parsedContext.workspaceId],
-        activityType: 'research', // Most appropriate type for content reading
+        type: 'content_read',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'ReadContentMode',
           params: {
@@ -199,11 +199,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
           },
           relatedFiles: [params.filePath]
         },
-        sessionId: params.context.sessionId || '',
-        timestamp: Date.now(),
-        importance: 0.5,
-        contextLevel: 'workspace',
-        tags: ['read', 'content']
+        sessionId: params.context.sessionId || ''
       });
       
       // Auto-track external files as associated notes

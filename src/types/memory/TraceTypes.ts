@@ -23,7 +23,7 @@ export interface MemoryTraceSearchOptions {
  * Activity trace data structure for tool interactions and user activities
  */
 export interface ActivityTraceData {
-  type: 'project_plan' | 'question' | 'checkpoint' | 'completion' | 'research';
+  type: string;
   content: string;
   metadata: {
     tool: string;

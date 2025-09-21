@@ -3,10 +3,21 @@
  * Extracted from types.ts for better organization
  */
 
-import { MemorySettings } from '../llm/EmbeddingTypes';
 import { CustomPromptsSettings } from '../mcp/CustomPromptTypes';
 import { LLMProviderSettings } from '../llm/ProviderTypes';
-import { ProcessedFileState } from '../../database/services/indexing/state/ProcessedFilesStateManager';
+
+// Note: MemorySettings and ProcessedFileState removed in simplify-search-architecture
+// Simple memory management now uses JSON-based storage
+interface MemorySettings {
+  enabled: boolean;
+}
+
+interface ProcessedFileState {
+  filePath: string;
+  lastModified: number;
+  contentHash: string;
+  processed: boolean;
+}
 
 /**
  * ChatView settings for experimental AI chat interface

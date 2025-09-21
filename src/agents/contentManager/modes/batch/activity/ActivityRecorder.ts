@@ -43,15 +43,11 @@ export class ActivityRecorder {
       // Record activity using MemoryService
       await this.memoryService.storeMemoryTrace({
         workspaceId: parsedContext.workspaceId,
-        workspacePath: parsedContext.workspacePath || [parsedContext.workspaceId],
-        activityType: 'research', // Using valid activity type
+        type: 'batch_operation',
         content: activityContent,
-        metadata: this.createActivityMetadata(successfulOps, relatedFiles),
-        sessionId: params.context.sessionId || '',
         timestamp: Date.now(),
-        importance: 0.7,
-        contextLevel: 'workspace', // Using valid context level
-        tags: ['batch', 'edit', 'content']
+        metadata: this.createActivityMetadata(successfulOps, relatedFiles),
+        sessionId: params.context.sessionId || ''
       });
     } catch (error) {
       console.error('Error recording batch activity with ChromaDB:', error);

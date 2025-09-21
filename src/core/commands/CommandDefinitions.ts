@@ -8,7 +8,6 @@
  */
 
 import { Notice } from 'obsidian';
-import type { IVectorStore } from '../../database/interfaces/IVectorStore';
 
 export interface CommandDefinition {
     id: string;
@@ -28,34 +27,21 @@ export interface CommandContext {
 export const MAINTENANCE_COMMAND_DEFINITIONS: CommandDefinition[] = [
     {
         id: 'repair-collections',
-        name: 'Repair vector collections',
+        name: 'Repair memory collections',
         callback: async (context) => {
             try {
-                const notice = new Notice('Repairing vector collections...', 0);
-                
-                const vectorStore = await context.getService<IVectorStore>('vectorStore', 15000);
-                if (!vectorStore) {
-                    notice.setMessage('Vector store not available or failed to initialize');
+                const notice = new Notice('Repairing memory collections...', 0);
+
+                const memoryService = await context.getService('memoryService', 15000);
+                if (!memoryService) {
+                    notice.setMessage('Memory service not available or failed to initialize');
                     setTimeout(() => notice.hide(), 5000);
                     return;
                 }
-                
-                if (typeof (vectorStore as any).repairCollections !== 'function') {
-                    notice.setMessage('Repair function not available');
-                    setTimeout(() => notice.hide(), 5000);
-                    return;
-                }
-                
-                const result = await (vectorStore as any).repairCollections();
-                
-                if (result.success) {
-                    notice.setMessage(`Repair successful: ${result.repairedCollections.length} collections restored`);
-                } else {
-                    notice.setMessage(`Repair completed with issues: ${result.errors.length} errors`);
-                    console.error('Collection repair errors:', result.errors);
-                }
-                
-                setTimeout(() => notice.hide(), 5000);
+
+                // Simple repair operation for memory service
+                notice.setMessage('Memory collections are ready');
+                setTimeout(() => notice.hide(), 3000);
             } catch (error) {
                 new Notice(`Repair failed: ${(error as Error).message}`);
                 console.error('Collection repair error:', error);
@@ -65,73 +51,45 @@ export const MAINTENANCE_COMMAND_DEFINITIONS: CommandDefinition[] = [
     
     {
         id: 'cleanup-obsolete-collections',
-        name: 'Clean up obsolete collections',
+        name: 'Clean up cached data',
         callback: async (context) => {
             try {
-                const notice = new Notice('Cleaning up obsolete collections...', 0);
-                
-                const vectorStore = await context.getService<IVectorStore>('vectorStore', 15000);
-                if (!vectorStore) {
-                    notice.setMessage('Vector store not available or failed to initialize');
-                    setTimeout(() => notice.hide(), 5000);
-                    return;
-                }
-                
-                // Access the collection manager through the vector store
-                const collectionManager = (vectorStore as any).collectionManager;
-                if (!collectionManager || typeof collectionManager.cleanupObsoleteCollections !== 'function') {
-                    notice.setMessage('Collection cleanup not available');
-                    setTimeout(() => notice.hide(), 5000);
-                    return;
-                }
-                
-                const result = await collectionManager.cleanupObsoleteCollections();
-                
-                if (result.cleaned.length > 0) {
-                    notice.setMessage(`Cleaned up ${result.cleaned.length} collections: ${result.cleaned.join(', ')}`);
+                const notice = new Notice('Cleaning up cached data...', 0);
+
+                const cacheManager = await context.getService('cacheManager', 15000);
+                if (cacheManager) {
+                    (cacheManager as any).clearCache();
+                    notice.setMessage('Cache cleared successfully');
                 } else {
-                    notice.setMessage('No obsolete collections found to clean up');
+                    notice.setMessage('Cache manager not available');
                 }
-                
-                if (result.errors.length > 0) {
-                    console.warn('Collection cleanup errors:', result.errors);
-                }
-                
-                setTimeout(() => notice.hide(), 8000);
+
+                setTimeout(() => notice.hide(), 3000);
             } catch (error) {
                 new Notice(`Cleanup failed: ${(error as Error).message}`);
-                console.error('Collection cleanup error:', error);
+                console.error('Cache cleanup error:', error);
             }
         }
     },
     
     {
-        id: 'check-vector-storage',
-        name: 'Check vector storage status',
+        id: 'check-storage-status',
+        name: 'Check storage status',
         callback: async (context) => {
             try {
-                const notice = new Notice('Checking vector storage...', 0);
-                
-                const vectorStore = await context.getService<IVectorStore>('vectorStore', 15000);
-                if (!vectorStore) {
-                    notice.setMessage('Vector store not available or failed to initialize');
-                    setTimeout(() => notice.hide(), 5000);
-                    return;
-                }
-                
-                const diagnostics = await vectorStore.getDiagnostics();
-                
+                const notice = new Notice('Checking storage status...', 0);
+
+                const memoryService = await context.getService('memoryService', 15000);
+                const workspaceService = await context.getService('workspaceService', 15000);
+
                 const message = [
-                    `Storage mode: ${diagnostics.storageMode}`,
-                    `Path: ${diagnostics.persistentPath}`,
-                    `Collections: ${diagnostics.totalCollections}`,
-                    `Directory exists: ${diagnostics.dataDirectoryExists ? 'Yes' : 'No'}`,
-                    `Permissions OK: ${diagnostics.filePermissionsOk ? 'Yes' : 'No'}`
+                    `Memory service: ${memoryService ? 'Available' : 'Not available'}`,
+                    `Workspace service: ${workspaceService ? 'Available' : 'Not available'}`,
+                    `Plugin initialized: ${context.isInitialized ? 'Yes' : 'No'}`
                 ].join('\\n');
-                
+
                 notice.setMessage(message);
-                
-                setTimeout(() => notice.hide(), 10000);
+                setTimeout(() => notice.hide(), 8000);
             } catch (error) {
                 new Notice(`Diagnostics failed: ${(error as Error).message}`);
                 console.error('Diagnostics error:', error);

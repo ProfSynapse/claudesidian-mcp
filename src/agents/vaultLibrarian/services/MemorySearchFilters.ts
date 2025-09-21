@@ -184,14 +184,14 @@ export class MemorySearchFilters implements MemorySearchFiltersInterface {
   }
 
   /**
-   * Apply activity type filter
+   * Apply metadata type filter
    */
-  applyActivityTypeFilter(results: MemorySearchResult[], activityTypes: string[]): MemorySearchResult[] {
-    if (!activityTypes || activityTypes.length === 0) return results;
+  applyMetadataTypeFilter(results: MemorySearchResult[], types: string[]): MemorySearchResult[] {
+    if (!types || types.length === 0) return results;
 
     return results.filter(result => {
-      const activityType = result.metadata.activityType;
-      return activityType && activityTypes.includes(activityType);
+      const type = result.metadata.type;
+      return type && types.includes(type);
     });
   }
 
@@ -241,7 +241,7 @@ export class MemorySearchFilters implements MemorySearchFiltersInterface {
       sessionIds?: string[];
       workspaceIds?: string[];
       types?: MemoryType[];
-      activityTypes?: string[];
+      metadataTypes?: string[];
       scoreThreshold?: number;
       successStatus?: boolean;
       minExecutionTime?: number;
@@ -269,8 +269,8 @@ export class MemorySearchFilters implements MemorySearchFiltersInterface {
       filtered = this.applyTypeFilter(filtered, filters.types);
     }
 
-    if (filters.activityTypes) {
-      filtered = this.applyActivityTypeFilter(filtered, filters.activityTypes);
+    if (filters.metadataTypes) {
+      filtered = this.applyMetadataTypeFilter(filtered, filters.metadataTypes);
     }
 
     if (filters.scoreThreshold !== undefined) {

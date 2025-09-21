@@ -9,12 +9,10 @@ import {
   BatchMode
 } from './modes';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
-import { VectorStoreFactory } from '../../database/factory/VectorStoreFactory';
-import { EmbeddingService } from '../../database/services/core/EmbeddingService';
+// Vector and embedding services removed for simplified JSON-based search
 import { MemoryService } from "../memoryManager/services/MemoryService";
-import { MemoryTraceService } from '../memoryManager/services/MemoryTraceService';
 import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
-import { HybridSearchService } from '../../database/services/search/HybridSearchService';
+// HybridSearchService removed in simplified architecture
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
@@ -23,12 +21,9 @@ import { getErrorMessage } from '../../utils/errorUtils';
  */
 export class VaultLibrarianAgent extends BaseAgent {
   public app: App;
-  private embeddingProvider: any | null = null;
-  private embeddingService: EmbeddingService | null = null;
   private memoryService: MemoryService | null = null;
-  private memoryTraceService: MemoryTraceService | null = null;
   private workspaceService: WorkspaceService | null = null;
-  private hybridSearchService: HybridSearchService | null = null;
+  // hybridSearchService removed in simplified architecture
   private settings: MemorySettings;
   
   /**
@@ -73,12 +68,9 @@ export class VaultLibrarianAgent extends BaseAgent {
           try {
             // Use ServiceContainer getIfReady to avoid waiting for initialization
             if (pluginAny.serviceContainer) {
-              this.embeddingService = pluginAny.serviceContainer.getIfReady('embeddingService');
               this.memoryService = pluginAny.serviceContainer.getIfReady('memoryService');
               this.workspaceService = pluginAny.serviceContainer.getIfReady('workspaceService');
-              this.memoryTraceService = pluginAny.serviceContainer.getIfReady('memoryTraceService');
-              this.hybridSearchService = pluginAny.serviceContainer.getIfReady('hybridSearchService');
-              
+              // hybridSearchService removed in simplified architecture
             }
           } catch (error) {
             console.warn('[VaultLibrarian] Failed to access services:', error);
@@ -86,13 +78,12 @@ export class VaultLibrarianAgent extends BaseAgent {
         }
       }
     } catch (error) {
-      this.embeddingProvider = null;
+      console.warn('[VaultLibrarian] Failed to access plugin services:', error);
     }
     
     // Always register SearchMode (universal search with intelligent fallbacks)
     this.registerMode(new SearchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.embeddingService || undefined, 
       this.memoryService || undefined,
       this.workspaceService || undefined
     ));
@@ -105,9 +96,8 @@ export class VaultLibrarianAgent extends BaseAgent {
     
     this.registerMode(new SearchWorkspaceMode(
       plugin || ({ app } as any),
-      this.embeddingService || undefined,
       this.workspaceService || undefined,
-      this.hybridSearchService || undefined
+      undefined // hybridSearchService removed
     ));
     
     this.registerMode(new SearchMemoryMode(
@@ -119,7 +109,6 @@ export class VaultLibrarianAgent extends BaseAgent {
     // Always register BatchMode (supports both semantic and non-semantic users)
     this.registerMode(new BatchMode(
       plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
-      this.embeddingService || undefined,
       this.memoryService || undefined,
       this.workspaceService || undefined
     ));
@@ -134,7 +123,8 @@ export class VaultLibrarianAgent extends BaseAgent {
    * @returns The current embedding provider or null if embeddings are disabled
    */
   getProvider(): any | null {
-    return this.embeddingProvider;
+    // Embedding provider not available in simplified architecture
+    return null;
   }
   
   /**
@@ -143,23 +133,7 @@ export class VaultLibrarianAgent extends BaseAgent {
    */
   async updateSettings(settings: MemorySettings): Promise<void> {
     this.settings = settings;
-    
-    // Clean up existing provider reference (don't create our own)
-    this.embeddingProvider = null;
-    
-    // Get the shared provider from EmbeddingService instead of creating our own
-    const currentProvider = settings.providerSettings?.[settings.apiProvider];
-    if (settings.embeddingsEnabled && currentProvider?.apiKey) {
-      try {
-        // Get the shared provider from the embedding service
-        if (this.embeddingService) {
-          this.embeddingProvider = this.embeddingService.getProvider();
-        } else {
-        }
-      } catch (error) {
-        this.embeddingProvider = null;
-      }
-    }
+    // Embedding provider management not needed in simplified architecture
   }
   
   /**
@@ -186,12 +160,6 @@ export class VaultLibrarianAgent extends BaseAgent {
    */
   onunload(): void {
     try {
-      // Clean up embedding provider
-      if (this.embeddingProvider && typeof (this.embeddingProvider as any).close === 'function') {
-        (this.embeddingProvider as any).close();
-        this.embeddingProvider = null;
-      }
-      
       // Call parent class onunload if it exists
       super.onunload?.();
     } catch (error) {

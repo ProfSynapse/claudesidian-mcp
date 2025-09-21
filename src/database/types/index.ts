@@ -34,7 +34,6 @@ export type {
 
 // Memory types
 export type {
-  FileEmbedding,
   WorkspaceMemoryTrace
 } from './memory/MemoryTypes';
 

@@ -126,8 +126,14 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
             return this.prepareResult(false, undefined, 'No updates provided for session');
         }
 
-        // Phase 5: Update session
-        const updatedSession = await memoryService.updateSession(targetSessionId, updates);
+        // Phase 5: Get current session and apply updates
+        const currentSession = await memoryService.getSession(targetSessionId);
+        if (!currentSession) {
+            return this.prepareResult(false, undefined, `Session ${targetSessionId} not found`);
+        }
+
+        const updatedSession = { ...currentSession, ...updates };
+        await memoryService.updateSession(updatedSession);
 
         // Phase 6: Prepare result
         return this.prepareResult(

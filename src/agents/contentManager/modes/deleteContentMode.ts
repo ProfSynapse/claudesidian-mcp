@@ -196,16 +196,14 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
     const content = `Deleted content from ${params.filePath} (${resultData.deletions} deletions)\nDeleted: ${contentSnippet}`;
     
     try {
-      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
-        type: 'completion',
+      await this.memoryService!.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'content',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'contentManager.deleteContent',
-          params: {
-            filePath: params.filePath,
-            deletions: resultData.deletions,
-            similarityThreshold: params.similarityThreshold
-          },
+          params: { filePath: params.filePath },
           result: resultData,
           relatedFiles: [params.filePath]
         },

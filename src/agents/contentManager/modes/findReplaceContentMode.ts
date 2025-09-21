@@ -227,18 +227,14 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
     const content = `Find and replace in ${params.filePath} (${resultData.replacements} replacements)\nFind: "${findSnippet}"\nReplace: "${replaceSnippet}"`;
     
     try {
-      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
-        type: 'completion',
+      await this.memoryService!.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'content',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'contentManager.findReplaceContent',
-          params: {
-            filePath: params.filePath,
-            replacements: resultData.replacements,
-            replaceAll: params.replaceAll,
-            caseSensitive: params.caseSensitive,
-            wholeWord: params.wholeWord
-          },
+          params: { filePath: params.filePath },
           result: resultData,
           relatedFiles: [params.filePath]
         },

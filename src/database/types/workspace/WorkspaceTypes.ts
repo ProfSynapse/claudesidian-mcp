@@ -81,6 +81,9 @@ export interface Workspace {
  * Extends the simple Workspace with optional legacy fields
  */
 export interface ProjectWorkspace extends Workspace {
+  // Core functionality
+  isActive?: boolean;
+
   // Legacy fields for backward compatibility
   description?: string;
   relatedFolders?: string[];

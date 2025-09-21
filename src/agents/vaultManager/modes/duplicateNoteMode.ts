@@ -137,11 +137,11 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
       const content = `${action} note from ${result.sourcePath} to ${result.targetPath}`;
       
       // Record the activity using memory service
-      await this.memoryService.recordActivityTrace(
-        parsedContext.workspaceId,
-        {
-          type: 'research', // Using supported activity type
-          content,
+      await this.memoryService.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'research', // Using supported activity type
+        content,
+        timestamp: Date.now(),
           metadata: {
             tool: 'DuplicateNoteMode',
             params: {

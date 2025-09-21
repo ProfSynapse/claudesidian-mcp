@@ -6,7 +6,7 @@ import type { ServiceManager } from './core/ServiceManager';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from "./agents/agentManager/services/CustomPromptStorageService";
-import { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
+// ToolCallCaptureService removed in simplified architecture
 
 // Extracted services
 import { MCPConnectionManager, MCPConnectionManagerInterface } from './services/mcp/MCPConnectionManager';
@@ -34,7 +34,7 @@ export class MCPConnector {
     private sessionContextManager: SessionContextManager;
     private customPromptStorage?: CustomPromptStorageService;
     private serviceManager?: ServiceManager;
-    private toolCallCaptureService?: ToolCallCaptureService;
+    private toolCallCaptureService: any = null;
     private pendingToolCalls = new Map<string, any>();
     
     constructor(
@@ -422,31 +422,19 @@ export class MCPConnector {
         if (this.toolCallCaptureService) {
             return; // Already initialized
         }
-        
+
         try {
-            const plugin = this.plugin as any;
-            
-            // Use Direct Property Access pattern (fastest, no async needed)
-            const service = plugin.toolCallCaptureService;
-            if (service) {
-                this.toolCallCaptureService = service;
-                return;
-            }
-            
-            // Fallback: Try async service access if direct access fails
-            if (plugin.getService) {
-                const asyncService = await plugin.getService('toolCallCaptureService');
-                if (asyncService) {
-                    this.toolCallCaptureService = asyncService;
-                    return;
+            if (this.serviceManager) {
+                this.toolCallCaptureService = await this.serviceManager.getService('toolCallCaptureService');
+                if (this.toolCallCaptureService) {
+                    console.debug('[MCPConnector] Tool call capture service initialized');
+                } else {
+                    console.debug('[MCPConnector] Tool call capture service not available');
                 }
             }
-            
-            console.warn('[MCPConnector] ToolCallCaptureService not available - capture will be disabled');
-            
         } catch (error) {
             console.warn('[MCPConnector] Failed to initialize tool call capture service:', error);
-            // Don't throw - capture is optional
+            this.toolCallCaptureService = null;
         }
     }
     

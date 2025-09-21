@@ -357,14 +357,9 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             await memoryService.createMemoryTrace({
                 sessionId: continuationSessionId,
                 workspaceId: stateSnapshot.workspaceId,
-                workspacePath: [stateSnapshot.workspaceId],
-                contextLevel: 'workspace' as const,
-                activityType: 'checkpoint',
                 content: traceContent,
                 type: 'state_restoration',
-                importance: 0.9,
                 timestamp: Date.now(),
-                tags: ['restoration', 'state-loaded'],
                 metadata: {
                     tool: 'LoadStateMode',
                     params: { stateId: stateData.stateSnapshot.stateId },
