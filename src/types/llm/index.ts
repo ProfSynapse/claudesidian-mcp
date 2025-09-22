@@ -1,6 +1,6 @@
 /**
  * LLM-related types export barrel
- * Centralizes all LLM provider and embedding type exports
+ * Centralizes all LLM provider type exports
  */
 
 export type {
@@ -14,5 +14,4 @@ export {
   DEFAULT_LLM_PROVIDER_SETTINGS
 } from './ProviderTypes';
 
-// Note: EmbeddingTypes removed in simplify-search-architecture
 // Memory settings now handled by simplified JSON-based memory system

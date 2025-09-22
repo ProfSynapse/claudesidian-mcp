@@ -291,7 +291,7 @@ export class MemoryManagementAccordion extends Accordion {
                     text: 'Service Status:'
                 });
                 
-                const services = ['embeddingService', 'fileEmbeddingAccessService', 'memoryService'];
+                const services = ['memoryService'];
                 const statusList = statusEl.createEl('ul');
                 
                 services.forEach(serviceName => {

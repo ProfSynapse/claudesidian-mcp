@@ -63,7 +63,7 @@ export class PrefetchManager extends EventEmitter {
 
         try {
             // Get the session to find its workspace
-            const session = await this.memoryService.getSession(sessionId, false);
+            const session = await this.memoryService.getSession(sessionId);
             
             if (session && session.workspaceId) {
                 // Prefetch the parent workspace if not already cached
@@ -71,7 +71,7 @@ export class PrefetchManager extends EventEmitter {
             }
 
             // Get recent memory traces
-            const traces = await this.memoryService.getMemoryTraces(sessionId, 10);
+            const traces = await this.memoryService.getMemoryTraces(sessionId);
             const relatedFiles = new Set<string>();
 
             for (const trace of traces) {

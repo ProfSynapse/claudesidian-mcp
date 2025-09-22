@@ -5,7 +5,8 @@
  * instead of conversation-level branching.
  */
 
-import { ConversationRepository } from '../../../database/services/chat/ConversationRepository';
+// import { ConversationRepository } from '../../../database/services/chat/ConversationRepository';
+type ConversationRepository = any;
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 
 export interface BranchManagerEvents {

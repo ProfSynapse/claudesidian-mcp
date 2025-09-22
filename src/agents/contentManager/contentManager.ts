@@ -20,13 +20,11 @@ import { MemoryService } from '../memoryManager/services/MemoryService';
 /**
  * Agent for content operations in the vault
  * Consolidates functionality from noteEditor and noteReader
- * Embedding updates are handled automatically by FileEventManager
  */
 export class ContentManagerAgent extends BaseAgent {
   protected app: App;
   protected plugin: ClaudesidianPlugin | null = null;
   
-  // ChromaDB services
   private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
 
@@ -48,7 +46,7 @@ export class ContentManagerAgent extends BaseAgent {
     if (plugin) {
       this.plugin = plugin;
       
-      // Get ChromaDB services if available
+      // Get memory services if available
       if (plugin.services) {
         
         if (plugin.services.workspaceService) {
@@ -61,7 +59,7 @@ export class ContentManagerAgent extends BaseAgent {
       }
     }
     
-    // Register modes with access to ChromaDB services
+    // Register modes with access to memory services
     this.registerMode(new ReadContentMode(app, this.memoryService));
     this.registerMode(new CreateContentMode(app));
     this.registerMode(new AppendContentMode(app));
@@ -75,7 +73,7 @@ export class ContentManagerAgent extends BaseAgent {
   
   
   /**
-   * Gets the ChromaDB workspace service
+   * Gets the workspace service
    * @returns WorkspaceService instance or null
    */
   public getWorkspaceService(): WorkspaceService | null {
@@ -83,7 +81,7 @@ export class ContentManagerAgent extends BaseAgent {
   }
   
   /**
-   * Gets the ChromaDB memory service
+   * Gets the memory service
    * @returns MemoryService instance or null
    */
   public getMemoryService(): MemoryService | null {

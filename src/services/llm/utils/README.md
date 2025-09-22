@@ -94,7 +94,7 @@ const summary = config.getConfigSummary();
 console.log({
   providers: summary.providers.configured,     // ['openai', 'anthropic']
   database: summary.database.configured,      // true/false
-  embeddings: summary.embeddings.configured,  // ['openai', 'voyage']
+    // ['openai', 'voyage']
   readyForTesting: summary.providers.configured.length > 0
 });
 
@@ -476,7 +476,7 @@ console.log(report);
 ## Configuration Summary
 **LLM Providers:** openai, anthropic, google
 **Database:** Configured
-**Embedding Providers:** openai, voyage
+** voyage
 **Log Level:** info
 
 ## Readiness Status

@@ -1,17 +1,7 @@
 /**
- * Search Services Barrel Export
+ * Search Services
  * Location: src/services/search/index.ts
- * Purpose: Provides centralized exports for all search-related services
+ *
+ * This plugin uses Obsidian's native search functionality for all search operations.
+ * No additional search services are required.
  */
-
-// Search metrics service
-export { SearchMetrics, type SearchMetricsInterface } from './SearchMetrics';
-
-// Hybrid search cache service
-export { HybridSearchCache, type HybridSearchCacheInterface } from './HybridSearchCache';
-
-// Result fusion service
-export { ResultFusion, type ResultFusionInterface } from './ResultFusion';
-
-// Query coordination service
-export { QueryCoordinator, type QueryCoordinatorInterface, type SearchProvider, type SearchCapabilities, type SearchStrategy } from './QueryCoordinator';

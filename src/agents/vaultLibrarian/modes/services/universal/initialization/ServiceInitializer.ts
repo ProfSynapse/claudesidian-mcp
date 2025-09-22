@@ -65,8 +65,8 @@ export class ServiceInitializer {
       // Try to get services from plugin if not provided
       await this.tryGetServicesFromPlugin();
 
-      // Initialize hybrid search service with ChromaDB integration
-      await this.initializeHybridSearchService();
+      // Initialize search service
+      await this.initializeSearchService();
 
       const availability = this.getServiceAvailability();
 
@@ -154,37 +154,14 @@ export class ServiceInitializer {
   }
 
   /**
-   * Initialize hybrid search service with ChromaDB integration
+   * Initialize search service
    */
-  private async initializeHybridSearchService(): Promise<void> {
+  private async initializeSearchService(): Promise<void> {
     try {
       if (!this.services.hybridSearchService) {
         
-        // Try to get vectorStore from plugin
-        let vectorStore: any = undefined;
-
-        try {
-          const plugin = this.plugin as any;
-          if (plugin.services) {
-            vectorStore = plugin.services.vectorStore;
-          }
-        } catch (error) {
-        }
-
-        // Get collectionService from vectorStore if available
-        let collectionService: any = undefined;
-        if (vectorStore && typeof vectorStore.getCollectionService === 'function') {
-          try {
-            collectionService = vectorStore.getCollectionService();
-          } catch (error) {
-            console.warn('[ServiceInitializer] Could not get collectionService from vectorStore:', error);
-          }
-        }
-
-        // Initialize with direct ChromaDB access including collectionService
-        this.services.hybridSearchService = null; // HybridSearchService removed in simplified architecture
-        
-        const semanticAvailable = this.services.hybridSearchService.isSemanticSearchAvailable();
+        // Initialize with simplified JSON-based storage
+        this.services.hybridSearchService = null; // Search service removed in simplified architecture
       } else {
       }
     } catch (error) {
@@ -254,9 +231,7 @@ export class ServiceInitializer {
     try {
       const indexesPopulated: string[] = [];
 
-      // ChromaDB indexes are automatically populated through the vector store - no explicit action needed
-
-      // Populate hybrid search indexes if available
+      // Populate search indexes if available
       if (this.services.hybridSearchService) {
         try {
           // Hybrid search doesn't need explicit population - it uses underlying services
@@ -293,9 +268,7 @@ export class ServiceInitializer {
     };
 
     try {
-      // ChromaDB semantic search status now handled through hybrid search service
-
-      // Get hybrid status
+      // Get search status
       if (this.services.hybridSearchService) {
         try {
           const hybridStats = this.services.hybridSearchService.getStats();

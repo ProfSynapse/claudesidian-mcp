@@ -1,7 +1,7 @@
 /**
  * Memory Types
  * Extracted from workspace-types.ts for better organization
- * Embedding functionality removed for simplified JSON-based storage
+ * Uses simplified JSON-based storage
  */
 
 /**

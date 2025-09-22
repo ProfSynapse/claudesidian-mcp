@@ -2,7 +2,7 @@
  * FileUtils - Utility functions for file operations and validation
  * 
  * This utility module provides common file validation and checking patterns
- * used across the hash comparison and embedding services. Consolidates
+ * used across the hash comparison and search services. Consolidates
  * repeated file existence checking logic into reusable methods.
  */
 

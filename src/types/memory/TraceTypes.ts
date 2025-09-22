@@ -7,7 +7,8 @@
  */
 
 import { WorkspaceMemoryTrace } from '../../database/workspace-types';
-import type { PendingToolCallCapture } from '../../services/toolcall-capture/ToolCallCaptureService';
+// import type { PendingToolCallCapture } from '../../services/toolcall-capture/ToolCallCaptureService';
+type PendingToolCallCapture = any;
 
 /**
  * Search options for memory trace queries
@@ -114,7 +115,7 @@ export interface ToolCallMemoryTrace extends WorkspaceMemoryTrace {
   
   // Search optimization
   searchOptimization: {
-    embeddingContent: {
+    searchContent: {
       primary: string;
       keywords: string[];
       entities: string[];
@@ -134,8 +135,8 @@ export interface ToolCallMemoryTrace extends WorkspaceMemoryTrace {
       userEngagementScore: number;
     };
     indexingHints: {
-      shouldEmbed: boolean;
-      embeddingPriority: 'high' | 'medium' | 'low';
+      shouldIndex: boolean;
+      indexPriority: 'high' | 'medium' | 'low';
       cacheStrategy: 'session' | 'workspace' | 'global';
       searchFrequency: 'frequent' | 'occasional' | 'rare';
     };
@@ -165,7 +166,7 @@ export interface ToolCallRelationships {
  * Search optimization data structure
  */
 export interface ToolCallSearchOptimization {
-  embeddingContent: {
+  searchContent: {
     primary: string;
     keywords: string[];
     entities: string[];
@@ -185,8 +186,8 @@ export interface ToolCallSearchOptimization {
     userEngagementScore: number;
   };
   indexingHints: {
-    shouldEmbed: boolean;
-    embeddingPriority: 'high' | 'medium' | 'low';
+    shouldIndex: boolean;
+    indexPriority: 'high' | 'medium' | 'low';
     cacheStrategy: 'session' | 'workspace' | 'global';
     searchFrequency: 'frequent' | 'occasional' | 'rare';
   };
@@ -207,8 +208,8 @@ export interface ToolCallProcessingContext {
   request: any;
   response: any;
   sessionContext: any;
-  shouldEmbed: boolean;
-  embeddingContent: string;
+  shouldIndex: boolean;
+  searchContent: string;
   relationships: ToolCallRelationships;
   performanceMetrics: ToolCallPerformanceMetrics;
   searchOptimization: ToolCallSearchOptimization;

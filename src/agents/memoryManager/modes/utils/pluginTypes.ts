@@ -4,7 +4,6 @@ import { MemoryService } from "../../services/MemoryService";
 
 /**
  * Custom interface for the Claudesidian plugin with services
- * Embedding services removed for simplified JSON-based architecture
  */
 export interface ClaudesidianPlugin extends Plugin {
   services: {

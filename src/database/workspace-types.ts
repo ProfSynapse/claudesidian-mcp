@@ -6,7 +6,7 @@
  * 
  * - src/database/types/workspace/: Core workspace types and parameter definitions
  * - src/database/types/session/: Session tracking and state snapshot types
- * - src/database/types/memory/: Memory traces and file embedding types
+ * - src/database/types/memory/: Memory traces and file search types
  * - src/database/types/cache/: Cache management types
  * 
  * This approach follows SOLID principles:

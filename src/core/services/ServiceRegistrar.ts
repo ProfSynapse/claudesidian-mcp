@@ -39,7 +39,7 @@ export class ServiceRegistrar {
         
         for (const serviceFactory of ADDITIONAL_SERVICE_FACTORIES) {
             serviceManager.registerFactory(
-                serviceFactory.name,
+                (serviceFactory as any).name,
                 async (deps) => {
                     // Create enhanced dependency context
                     const enhancedDeps = {
@@ -48,43 +48,27 @@ export class ServiceRegistrar {
                         app,
                         memorySettings: settings.settings.memory || {}
                     };
-                    return serviceFactory.factory(enhancedDeps);
+                    return (serviceFactory as any).factory(enhancedDeps);
                 },
-                { dependencies: serviceFactory.dependencies }
+                { dependencies: (serviceFactory as any).dependencies }
             );
         }
     }
 
     /**
-     * Get default memory settings - extracted from original PluginLifecycleManager
+     * Get default memory settings
      */
-    static getDefaultMemorySettings(chromaDbDir: string) {
+    static getDefaultMemorySettings(dataDir: string) {
         return {
-            dbStoragePath: chromaDbDir,
             enabled: true,
-            embeddingsEnabled: true,
-            apiProvider: 'openai',
-            providerSettings: {
-                openai: {
-                    apiKey: '',
-                    model: 'text-embedding-3-small',
-                    dimensions: 1536
-                }
-            },
-            maxTokensPerMonth: 1000000,
-            apiRateLimitPerMinute: 500,
-            chunkStrategy: 'paragraph' as 'paragraph',
-            chunkSize: 512,
-            chunkOverlap: 50,
+            dbStoragePath: dataDir,
             includeFrontmatter: true,
             excludePaths: ['.obsidian/**/*'],
             minContentLength: 50,
-            embeddingStrategy: 'idle' as 'idle',
             idleTimeThreshold: 60000,
             autoCleanOrphaned: true,
             maxDbSize: 500,
-            pruningStrategy: 'least-used' as 'least-used',
-            vectorStoreType: 'file-based' as 'file-based'
+            pruningStrategy: 'least-used' as 'least-used'
         };
     }
 
@@ -98,20 +82,18 @@ export class ServiceRegistrar {
             // Use vault-relative paths for Obsidian adapter
             const pluginDir = `.obsidian/plugins/${manifest.id}`;
             const dataDir = `${pluginDir}/data`;
-            const chromaDbDir = `${dataDir}/chroma-db`;
-            const collectionsDir = `${chromaDbDir}/collections`;
-            
+            const storageDir = `${dataDir}/storage`;
+
             // Create directories using Obsidian's vault adapter
             const { normalizePath } = require('obsidian');
             await app.vault.adapter.mkdir(normalizePath(dataDir));
-            await app.vault.adapter.mkdir(normalizePath(chromaDbDir));
-            await app.vault.adapter.mkdir(normalizePath(collectionsDir));
-            
+            await app.vault.adapter.mkdir(normalizePath(storageDir));
+
             // Update settings with correct path
             if (!settings.settings.memory) {
-                settings.settings.memory = ServiceRegistrar.getDefaultMemorySettings(chromaDbDir);
+                settings.settings.memory = ServiceRegistrar.getDefaultMemorySettings(storageDir);
             } else {
-                settings.settings.memory.dbStoragePath = chromaDbDir;
+                settings.settings.memory.dbStoragePath = storageDir;
             }
             
             // Save settings in background
@@ -145,11 +127,9 @@ export class ServiceRegistrar {
      */
     async initializeBusinessServices(): Promise<void> {
         try {
-            // Initialize in dependency order to prevent multiple VectorStore instances
-            const vectorStore = await this.context.serviceManager.getService('vectorStore');
+            // Initialize services in dependency order
             
             // Initialize dependent services sequentially to avoid circular dependency issues
-            await this.context.serviceManager.getService('embeddingService');
             await this.context.serviceManager.getService('memoryService');
             await this.context.serviceManager.getService('workspaceService');
             await this.context.serviceManager.getService('memoryTraceService');
@@ -180,7 +160,6 @@ export class ServiceRegistrar {
         try {
             // Initialize services that Memory Management accordion depends on
             const uiCriticalServices = [
-                'fileEmbeddingAccessService',
                 'usageStatsService',
                 'cacheManager'
             ];

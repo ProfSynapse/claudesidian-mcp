@@ -49,25 +49,6 @@ export interface LabKitConfig {
     };
   };
 
-  // Embedding providers
-  embeddings: {
-    openai: {
-      apiKey?: string;
-      model?: string;
-    };
-    voyage: {
-      apiKey?: string;
-    };
-    cohere: {
-      apiKey?: string;
-    };
-    google: {
-      apiKey?: string;
-    };
-    mistral: {
-      apiKey?: string;
-    };
-  };
 
   // Default test settings
   defaults: {
@@ -91,14 +72,6 @@ export interface LabKitConfig {
       type: 'memory' | 'file';
       maxSize: number;
       defaultTTL: number; // in milliseconds
-      persistToDisk: boolean;
-      cacheDir: string;
-    };
-    embeddings: {
-      enabled: boolean;
-      type: 'memory' | 'file';
-      maxSize: number;
-      defaultTTL: number;
       persistToDisk: boolean;
       cacheDir: string;
     };
@@ -153,12 +126,6 @@ export class ConfigManager {
     return this.config.database;
   }
 
-  /**
-   * Get embedding provider configuration
-   */
-  getEmbeddingProvider(name: keyof LabKitConfig['embeddings']): any {
-    return this.config.embeddings[name];
-  }
 
   /**
    * Update configuration
@@ -202,13 +169,6 @@ export class ConfigManager {
     return !!(db.url && (db.anonKey || db.serviceRoleKey));
   }
 
-  /**
-   * Get configuration for specific embedding provider
-   */
-  isEmbeddingProviderConfigured(name: keyof LabKitConfig['embeddings']): boolean {
-    const provider = this.config.embeddings[name];
-    return !!(provider.apiKey);
-  }
 
   /**
    * Get cache configuration
@@ -224,12 +184,6 @@ export class ConfigManager {
     return this.config.cache.llm;
   }
 
-  /**
-   * Get embeddings cache configuration
-   */
-  getEmbeddingsCacheConfig() {
-    return this.config.cache.embeddings;
-  }
 
   /**
    * Get questions cache configuration
@@ -245,12 +199,6 @@ export class ConfigManager {
     return this.config.cache.llm.enabled;
   }
 
-  /**
-   * Check if embeddings caching is enabled
-   */
-  isEmbeddingsCacheEnabled(): boolean {
-    return this.config.cache.embeddings.enabled;
-  }
 
   /**
    * Check if questions caching is enabled
@@ -282,15 +230,6 @@ export class ConfigManager {
       database: {
         supabase: {}
       },
-      embeddings: {
-        openai: {
-          model: 'text-embedding-3-small'
-        },
-        voyage: {},
-        cohere: {},
-        google: {},
-        mistral: {}
-      },
       defaults: {
         timeout: 30000,
         retries: 3,
@@ -310,14 +249,6 @@ export class ConfigManager {
           defaultTTL: 3600000, // 1 hour
           persistToDisk: false,
           cacheDir: '.cache/llm'
-        },
-        embeddings: {
-          enabled: true,
-          type: 'memory',
-          maxSize: 10000,
-          defaultTTL: 604800000, // 7 days
-          persistToDisk: false,
-          cacheDir: '.cache/embeddings'
         },
         questions: {
           enabled: true,
@@ -353,12 +284,6 @@ export class ConfigManager {
     this.setIfExists('database.supabase.anonKey', process.env.SUPABASE_ANON_KEY);
     this.setIfExists('database.supabase.serviceRoleKey', process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    // Embedding providers
-    this.setIfExists('embeddings.openai.apiKey', process.env.OPENAI_API_KEY);
-    this.setIfExists('embeddings.voyage.apiKey', process.env.VOYAGE_API_KEY);
-    this.setIfExists('embeddings.cohere.apiKey', process.env.COHERE_API_KEY);
-    this.setIfExists('embeddings.google.apiKey', process.env.GOOGLE_API_KEY);
-    this.setIfExists('embeddings.mistral.apiKey', process.env.MISTRAL_API_KEY);
 
     // Defaults
     if (process.env.LAB_KIT_TIMEOUT) {
@@ -399,24 +324,6 @@ export class ConfigManager {
       this.config.cache.llm.cacheDir = process.env.LAB_KIT_CACHE_LLM_DIR;
     }
 
-    if (process.env.LAB_KIT_CACHE_EMBEDDINGS_ENABLED) {
-      this.config.cache.embeddings.enabled = process.env.LAB_KIT_CACHE_EMBEDDINGS_ENABLED === 'true';
-    }
-    if (process.env.LAB_KIT_CACHE_EMBEDDINGS_TYPE) {
-      this.config.cache.embeddings.type = process.env.LAB_KIT_CACHE_EMBEDDINGS_TYPE as 'memory' | 'file';
-    }
-    if (process.env.LAB_KIT_CACHE_EMBEDDINGS_MAX_SIZE) {
-      this.config.cache.embeddings.maxSize = parseInt(process.env.LAB_KIT_CACHE_EMBEDDINGS_MAX_SIZE);
-    }
-    if (process.env.LAB_KIT_CACHE_EMBEDDINGS_TTL) {
-      this.config.cache.embeddings.defaultTTL = parseInt(process.env.LAB_KIT_CACHE_EMBEDDINGS_TTL);
-    }
-    if (process.env.LAB_KIT_CACHE_EMBEDDINGS_PERSIST) {
-      this.config.cache.embeddings.persistToDisk = process.env.LAB_KIT_CACHE_EMBEDDINGS_PERSIST === 'true';
-    }
-    if (process.env.LAB_KIT_CACHE_EMBEDDINGS_DIR) {
-      this.config.cache.embeddings.cacheDir = process.env.LAB_KIT_CACHE_EMBEDDINGS_DIR;
-    }
 
     if (process.env.LAB_KIT_CACHE_QUESTIONS_ENABLED) {
       this.config.cache.questions.enabled = process.env.LAB_KIT_CACHE_QUESTIONS_ENABLED === 'true';
@@ -537,11 +444,6 @@ export class ConfigManager {
       },
       database: {
         configured: this.isDatabaseConfigured()
-      },
-      embeddings: {
-        configured: Object.keys(this.config.embeddings).filter(name => 
-          this.isEmbeddingProviderConfigured(name as keyof LabKitConfig['embeddings'])
-        )
       },
       defaults: this.config.defaults,
       logging: this.config.logging

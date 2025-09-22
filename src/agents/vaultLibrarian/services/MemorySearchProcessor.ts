@@ -40,8 +40,8 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     this.configuration = {
       defaultLimit: 20,
       maxLimit: 100,
-      defaultSearchMethod: SearchMethod.MIXED,
-      enableSemanticSearch: true,
+      defaultSearchMethod: SearchMethod.EXACT,
+      enableSemanticSearch: false,
       enableExactSearch: true,
       timeoutMs: 30000,
       ...config

@@ -6,7 +6,7 @@
  * This module defines all services in a data-driven way, making it easy to add
  * new services without modifying the core PluginLifecycleManager.
  *
- * Simplified architecture - removed embedding and vector store dependencies
+ * Simplified architecture for JSON-based storage
  */
 
 import type { Plugin } from 'obsidian';
@@ -74,8 +74,8 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
 
             const cacheManager = new CacheManager(
                 context.plugin.app,
-                workspaceService,
-                memoryService,
+                workspaceService as any,
+                memoryService as any,
                 {
                     enableEntityCache: true,
                     enableFileIndex: true,
@@ -97,12 +97,7 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
             const workspaceService = await context.serviceManager.getService('workspaceService');
             const memoryService = await context.serviceManager.getService('memoryService');
 
-            return new SessionContextManager(
-                context.plugin,
-                workspaceService,
-                memoryService,
-                context.settings
-            );
+            return new SessionContextManager();
         }
     },
 
@@ -110,12 +105,12 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
     {
         name: 'llmService',
         create: async (context) => {
-            const { LLMAdapterManager } = await import('../../services/llm/LLMAdapterManager');
-            return new LLMAdapterManager(
-                context.plugin.app,
-                context.settings.settings.llmProviders || {},
-                { enableWebSearch: false }
-            );
+            const { LLMService } = await import('../../services/llm/core/LLMService');
+            const llmProviders = context.settings.settings.llmProviders;
+            if (!llmProviders || typeof llmProviders !== 'object' || !('providers' in llmProviders)) {
+                throw new Error('Invalid LLM provider settings');
+            }
+            return new LLMService(llmProviders);
         }
     },
 
@@ -129,9 +124,9 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
             const llmService = await context.serviceManager.getService('llmService');
 
             return new AgentManager(
-                context.plugin,
+                context.plugin.app,
                 llmService,
-                context.settings
+                {} as any // Placeholder for EventManager
             );
         }
     }

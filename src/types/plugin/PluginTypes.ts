@@ -10,6 +10,8 @@ import { LLMProviderSettings } from '../llm/ProviderTypes';
 // Simple memory management now uses JSON-based storage
 interface MemorySettings {
   enabled: boolean;
+  providerSettings?: Record<string, any>;
+  dbStoragePath?: string;
 }
 
 interface ProcessedFileState {
@@ -28,7 +30,7 @@ export interface ChatViewSettings {
 }
 
 /**
- * Processed files data structure for embedding state management
+ * Processed files data structure for file state management
  * Stores file processing state to prevent re-processing on startup
  */
 export interface ProcessedFilesData {

@@ -1,6 +1,5 @@
 import { Plugin } from 'obsidian';
 import { MCPSettings, DEFAULT_SETTINGS } from './types';
-import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 
 /**
  * Settings manager
@@ -83,8 +82,7 @@ export class Settings {
      * Save settings to plugin data
      */
     async saveSettings() {
-        // Clear embedding provider cache when settings change
-        VectorStoreFactory.clearEmbeddingProviderCache();
+        // Simple JSON-based storage
         await this.plugin.saveData(this.settings);
     }
 }

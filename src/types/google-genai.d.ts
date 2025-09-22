@@ -10,7 +10,6 @@ declare module '@google/genai' {
   }
 
   export interface ModelsAPI {
-    embedContent(options: any): Promise<any>;
     generateContent(request: any): Promise<any>;
     generateContentStream(request: any): AsyncIterable<any>;
   }

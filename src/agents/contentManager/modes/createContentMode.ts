@@ -11,7 +11,7 @@ import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 /**
  * Mode for creating a new file with content
  * Follows Single Responsibility Principle - only handles content creation
- * File change detection and embedding updates are handled automatically by FileEventManager
+ * File change detection is handled automatically by FileEventManager
  */
 export class CreateContentMode extends BaseMode<CreateContentParams, CreateContentResult> {
   private app: App;
@@ -53,7 +53,6 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
       // Create file
       const file = await ContentOperations.createContent(this.app, filePath, content);
       
-      // File change detection and embedding updates are handled automatically by FileEventManager
       
       const resultData = {
         filePath,

@@ -256,7 +256,6 @@ export enum MemoryType {
 
 // Search method enum
 export enum SearchMethod {
-  SEMANTIC = 'semantic',
   EXACT = 'exact',
   MIXED = 'mixed'
 }

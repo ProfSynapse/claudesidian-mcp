@@ -39,7 +39,7 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
       
       const result = await ContentOperations.appendContent(this.app, filePath, content);
       
-      // File change detection and embedding updates are handled automatically by FileEventManager
+      // File change detection are handled automatically by FileEventManager
       
       const resultData = {
         filePath,

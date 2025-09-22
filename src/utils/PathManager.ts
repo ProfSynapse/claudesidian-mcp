@@ -7,8 +7,7 @@
  * 
  * Usage:
  * - By DirectoryService for consistent path operations
- * - By ChromaClientFactory for storage path generation  
- * - By CollectionManager for collection path construction
+ * - By storage services for data path construction
  * - By any service that needs reliable path handling
  */
 
@@ -86,11 +85,11 @@ export class PathManager {
   }
 
   /**
-   * Create collection path - always returns relative path
+   * Create data storage path - always returns relative path
    */
-  createCollectionPath(collectionName: string): string {
-    const sanitizedName = this.sanitizePath(collectionName);
-    return this.createDataPath(`chroma-db/collections/${sanitizedName}`);
+  createDataStoragePath(subPath: string): string {
+    const sanitizedPath = this.sanitizePath(subPath);
+    return this.createDataPath(`storage/${sanitizedPath}`);
   }
 
   /**
@@ -118,11 +117,11 @@ export class PathManager {
 
       // Strategy 3: Fallback to safe plugin path
       console.warn(`[PathManager] All conversion strategies failed for: ${absolutePath}`);
-      return this.createDataPath('chroma-db');
+      return this.createDataPath('storage');
 
     } catch (error) {
       console.error('[PathManager] Path conversion error:', error);
-      return this.createDataPath('chroma-db');
+      return this.createDataPath('storage');
     }
   }
 
@@ -194,7 +193,7 @@ export class PathManager {
     }
 
     // Ultimate fallback - return safe default
-    return this.createDataPath('chroma-db');
+    return this.createDataPath('storage');
   }
 
   /**

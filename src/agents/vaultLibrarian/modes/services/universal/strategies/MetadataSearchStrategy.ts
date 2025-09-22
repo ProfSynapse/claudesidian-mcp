@@ -98,7 +98,7 @@ export class MetadataSearchStrategy {
       const allPropertyKeys = await this.metadataSearchService.getAllPropertyKeys();
       
       const matchingProperties = allPropertyKeys
-        .filter(key => key.toLowerCase().includes(normalizedQuery))
+        .filter((key: string) => key.toLowerCase().includes(normalizedQuery))
         .slice(0, limit);
 
       const results = matchingProperties.map((key: any) => ({

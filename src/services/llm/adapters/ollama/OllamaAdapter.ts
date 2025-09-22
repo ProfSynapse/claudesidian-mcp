@@ -1,7 +1,7 @@
 /**
  * Ollama LLM Adapter
  * Provides local, privacy-focused LLM models via Ollama
- * Similar to the embedding provider but for text generation
+ * Local LLM provider for text generation
  */
 
 import { BaseAdapter } from '../BaseAdapter';

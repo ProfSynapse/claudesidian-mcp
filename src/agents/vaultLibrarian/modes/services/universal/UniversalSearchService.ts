@@ -7,7 +7,6 @@ import { Plugin, TFile } from 'obsidian';
 import { MemoryService } from "../../../../memoryManager/services/MemoryService";
 import { WorkspaceService } from "../../../../memoryManager/services/WorkspaceService";
 import { GraphOperations } from '../../../../../database/utils/graph/GraphOperations';
-// MetadataSearchService removed in simplified architecture
 type MetadataSearchCriteria = any;
 import { 
   UniversalSearchParams, 
@@ -85,10 +84,8 @@ export class UniversalSearchService {
       if (result.success && result.services) {
         this.metadataSearchService = result.services.metadataSearchService;
         
-        // Update search strategies with initialized services
-        this.contentSearchStrategy.updateServices(
-          result.services.hybridSearchService
-        );
+        // Update search strategies (no services needed for keyword-only search)
+        this.contentSearchStrategy.updateServices();
         
         this.metadataSearchStrategy = new MetadataSearchStrategy(
           this.plugin,
@@ -259,7 +256,6 @@ export class UniversalSearchService {
         services: {
           metadataSearch: false,
           hybridSearch: false,
-          embedding: false,
           memory: false,
           workspace: false
         },
@@ -322,10 +318,7 @@ export class UniversalSearchService {
       this.serviceInitializer.updateService('workspaceService', services.workspaceService);
     }
 
-    // Update search strategies
-    const initializedServices = this.serviceInitializer.getServices();
-    this.contentSearchStrategy.updateServices(
-      initializedServices.hybridSearchService
-    );
+    // Update search strategies (no services needed for keyword-only search)
+    this.contentSearchStrategy.updateServices();
   }
 }

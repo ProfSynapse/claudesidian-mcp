@@ -17,7 +17,6 @@ import { CustomPromptStorageService } from "../../agents/agentManager/services/C
 import { LLMProviderManager } from '../llm/providers/ProviderManager';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { LLMValidationService } from '../llm/validation/ValidationService';
-import { EmbeddingProviderManager } from '../../database/services/indexing/embedding/EmbeddingProviderManager';
 
 /**
  * Location: src/services/agent/AgentRegistrationService.ts
@@ -120,19 +119,18 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
         try {
             // Get memory settings to determine what to enable
             const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
-            const isMemoryEnabled = memorySettings?.enabled && memorySettings?.embeddingsEnabled;
+            const isMemoryEnabled = memorySettings?.enabled;
             
             // Validate API keys
-            const hasValidEmbeddingKeys = await this.validateEmbeddingApiKeys();
             const hasValidLLMKeys = await this.validateLLMApiKeys();
-            
-            // Enable vector modes only if memory is enabled AND valid embedding API keys exist
-            const enableVectorModes = isMemoryEnabled && hasValidEmbeddingKeys;
+
+            // Search modes disabled
+            const enableSearchModes = false;
             
             // Enable LLM-dependent modes only if valid LLM API keys exist
             const enableLLMModes = hasValidLLMKeys;
             
-            logger.systemLog(`Agent initialization started - Vector modes: ${enableVectorModes}, LLM modes: ${enableLLMModes}`);
+            logger.systemLog(`Agent initialization started - Search modes: ${enableSearchModes}, LLM modes: ${enableLLMModes}`);
             
             // Log additional debugging info for AgentManager
             if (!hasValidLLMKeys) {
@@ -146,7 +144,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
             await this.initializeCommandManager();
             await this.initializeVaultManager();
             await this.initializeAgentManager(enableLLMModes);
-            await this.initializeVaultLibrarian(enableVectorModes, memorySettings);
+            await this.initializeVaultLibrarian(enableSearchModes, memorySettings);
             await this.initializeMemoryManager();
             // ChatAgent removed - native chatbot UI handles chat functionality
             logger.systemLog('Using native chatbot UI instead of ChatAgent');
@@ -163,11 +161,11 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
             };
 
             // Log conditional mode availability status
-            if (!enableVectorModes && !enableLLMModes) {
+            if (!enableSearchModes && !enableLLMModes) {
                 logger.systemLog("No valid API keys found - modes requiring API keys will be disabled");
             } else {
-                if (!enableVectorModes) {
-                    logger.systemLog("Vector modes disabled - no valid embedding API keys or memory disabled");
+                if (!enableSearchModes) {
+                    logger.systemLog("Search modes disabled");
                 }
                 if (!enableLLMModes) {
                     logger.systemLog("LLM modes disabled - no valid LLM API keys configured");
@@ -381,37 +379,16 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
      * Initialize VaultLibrarian agent
      * @private
      */
-    private async initializeVaultLibrarian(enableVectorModes: boolean, memorySettings: any): Promise<void> {
+    private async initializeVaultLibrarian(enableSearchModes: boolean, memorySettings: any): Promise<void> {
         try {
             const vaultLibrarianAgent = new VaultLibrarianAgent(
                 this.app,
-                enableVectorModes  // Pass vector modes enabled status
+                enableSearchModes  // Pass search modes enabled status
             );
             
-            // If vector modes are enabled, set up lazy initialization of search service
-            if (enableVectorModes && this.serviceManager) {
-                // Wait for service manager to complete initialization, then initialize search service
-                setTimeout(async () => {
-                    try {
-                        // Check if vector store is ready (don't trigger initialization here)
-                        const vectorStore = this.serviceManager?.getServiceIfReady('vectorStore');
-                        if (vectorStore && vaultLibrarianAgent) {
-                            // Initialize search service in background to avoid blocking
-                            vaultLibrarianAgent.initializeSearchService().catch((error: any) => 
-                                logger.systemError(error, 'VaultLibrarian Search Service Initialization')
-                            );
-                            
-                            // Update VaultLibrarian with memory settings
-                            if (memorySettings) {
-                                vaultLibrarianAgent.updateSettings(memorySettings);
-                            }
-                        } else {
-                            logger.systemLog('Vector store not ready, deferring VaultLibrarian initialization');
-                        }
-                    } catch (error) {
-                        logger.systemError(error as Error, 'VaultLibrarian Search Service Setup');
-                    }
-                }, 5000); // Wait 5 seconds for service manager to complete (reduced from 15s to prevent timeout)
+            // Update VaultLibrarian with memory settings
+            if (memorySettings) {
+                vaultLibrarianAgent.updateSettings(memorySettings);
             }
             
             this.agentManager.registerAgent(vaultLibrarianAgent);
@@ -441,27 +418,6 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
         }
     }
 
-    /**
-     * Validate embedding provider configuration
-     * @private
-     */
-    private async validateEmbeddingApiKeys(): Promise<boolean> {
-        try {
-            const memorySettings = this.plugin && (this.plugin as any).settings?.settings?.memory;
-            if (!memorySettings?.embeddingsEnabled) {
-                return false;
-            }
-
-            // Use EmbeddingProviderManager to validate settings (handles Ollama and other providers correctly)
-            const embeddingManager = new EmbeddingProviderManager();
-            const isValid = embeddingManager['validateProviderSettings'](memorySettings);
-            
-            return isValid;
-        } catch (error) {
-            logger.systemError(error as Error, 'Embedding API Key Validation');
-            return false;
-        }
-    }
 
     /**
      * Validate API keys for LLM providers used in agent modes

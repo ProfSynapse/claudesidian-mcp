@@ -4,36 +4,8 @@
  */
 
 /**
- * Embeddings and memory storage types
+ * Memory storage types (JSON-based storage)
  */
-export interface EmbeddingRecord {
-  id: string;              
-  filePath: string;        
-  lineStart: number;       
-  lineEnd: number;         
-  content: string;         
-  embedding: number[];     
-  createdAt: number;
-  updatedAt: number;
-  metadata: {              
-    frontmatter: Record<string, any>;
-    tags: string[];
-    createdDate?: string;
-    modifiedDate?: string;
-    links: {
-      outgoing: Array<{
-        displayText: string;
-        targetPath: string;
-        position: { line: number; col: number; }
-      }>;
-      incoming: Array<{
-        sourcePath: string;
-        displayText: string;
-        position: { line: number; col: number; }
-      }>;
-    }
-  }
-}
 
 export interface MemoryQueryParams {
   query: string;         
@@ -59,7 +31,6 @@ export interface MemoryQueryParams {
 
 export interface MemoryQueryResult {
   matches: Array<{
-    similarity: number;
     content: string;
     filePath: string;
     lineStart: number;
@@ -81,15 +52,3 @@ export interface MemoryQueryResult {
   }>
 }
 
-export interface MemoryUsageStats {
-  tokensThisMonth: number;
-  totalEmbeddings: number;
-  dbSizeMB: number;
-  lastIndexedDate: string;
-  indexingInProgress: boolean;
-  estimatedCost?: number;
-  modelUsage?: {
-    'text-embedding-3-small': number;
-    'text-embedding-3-large': number;
-  };
-}

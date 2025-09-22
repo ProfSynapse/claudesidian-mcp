@@ -2,7 +2,7 @@
  * Location: src/database/services/cache/ContentCache.ts
  * 
  * Summary: Consolidated content caching service that provides high-level content
- * caching operations including file content, metadata, embeddings, and search results.
+ * caching operations including file content, metadata, searchs, and search results.
  * Consolidates caching functionality from multiple specialized cache services into
  * a unified interface with TTL, memory management, and cache invalidation.
  * 
@@ -17,7 +17,7 @@ import { getErrorMessage } from '../../../utils/errorUtils';
 export interface ContentCacheOptions {
   enableFileContentCache?: boolean;
   enableMetadataCache?: boolean;
-  enableEmbeddingCache?: boolean;
+  enablesearchDataCache?: boolean;
   enableSearchCache?: boolean;
   defaultTTL?: number;
   maxCacheSize?: number;
@@ -40,9 +40,9 @@ export interface FileContent extends CachedContent {
   hash?: string;
 }
 
-export interface EmbeddingContent extends CachedContent {
+export interface searchContent extends CachedContent {
   filePath: string;
-  embedding: number[];
+  search: number[];
   model: string;
   chunkIndex?: number;
 }
@@ -71,7 +71,7 @@ export interface CacheStats {
  * 
  * Provides unified caching for:
  * - File content and metadata
- * - Embedding vectors and results
+ * - search data and results
  * - Search results and queries
  * - Computed values and transformations
  */
@@ -79,8 +79,8 @@ export class ContentCache extends EventEmitter {
   // Cache storage maps by type
   private fileContentCache = new Map<string, FileContent>();
   private metadataCache = new Map<string, CachedContent>();
-  private embeddingCache = new Map<string, EmbeddingContent>();
-  private searchCache = new Map<string, SearchResult>();
+  private searchDataCache = new Map<string, searchContent>();
+  private searchResultsCache = new Map<string, SearchResult>();
   private computedCache = new Map<string, CachedContent>();
 
   // Cache statistics
@@ -189,32 +189,32 @@ export class ContentCache extends EventEmitter {
   }
 
   // =============================================================================
-  // EMBEDDING CACHING
+  // search CACHING
   // =============================================================================
 
   /**
-   * Cache embedding vector
+   * Cache search data
    */
-  cacheEmbedding(
+  cachesearch(
     filePath: string,
-    embedding: number[],
+    search: number[],
     model: string,
     chunkIndex?: number,
     ttl?: number
   ): void {
-    if (!this.options.enableEmbeddingCache) {
+    if (!this.options.enablesearchDataCache) {
       return;
     }
 
-    const cacheKey = this.getEmbeddingCacheKey(filePath, model, chunkIndex);
-    const size = this.estimateSize(embedding);
+    const cacheKey = this.getsearchDataCacheKey(filePath, model, chunkIndex);
+    const size = this.estimateSize(search);
 
-    const cacheEntry: EmbeddingContent = {
+    const cacheEntry: searchContent = {
       filePath,
-      embedding,
+      search,
       model,
       chunkIndex,
-      data: embedding,
+      data: search,
       timestamp: Date.now(),
       size,
       ttl: ttl || this.defaultTTL,
@@ -222,23 +222,23 @@ export class ContentCache extends EventEmitter {
       lastAccess: Date.now()
     };
 
-    this.embeddingCache.set(cacheKey, cacheEntry);
+    this.searchDataCache.set(cacheKey, cacheEntry);
     this.currentMemoryMB += size / (1024 * 1024);
 
-    this.emit('cached', { type: 'embedding', filePath, model, size });
+    this.emit('cached', { type: 'search', filePath, model, size });
     this.enforceMemoryLimits();
   }
 
   /**
-   * Get cached embedding
+   * Get cached search
    */
-  getCachedEmbedding(
+  getCachedsearch(
     filePath: string,
     model: string,
     chunkIndex?: number
-  ): EmbeddingContent | null {
-    const cacheKey = this.getEmbeddingCacheKey(filePath, model, chunkIndex);
-    const cached = this.embeddingCache.get(cacheKey);
+  ): searchContent | null {
+    const cacheKey = this.getsearchDataCacheKey(filePath, model, chunkIndex);
+    const cached = this.searchDataCache.get(cacheKey);
 
     if (!cached) {
       this.misses++;
@@ -246,7 +246,7 @@ export class ContentCache extends EventEmitter {
     }
 
     if (this.isExpired(cached)) {
-      this.embeddingCache.delete(cacheKey);
+      this.searchDataCache.delete(cacheKey);
       this.misses++;
       return null;
     }
@@ -290,7 +290,7 @@ export class ContentCache extends EventEmitter {
       lastAccess: Date.now()
     };
 
-    this.searchCache.set(cacheKey, cacheEntry);
+    this.searchResultsCache.set(cacheKey, cacheEntry);
     this.currentMemoryMB += size / (1024 * 1024);
 
     this.emit('cached', { type: 'search', query, searchType, size });
@@ -302,7 +302,7 @@ export class ContentCache extends EventEmitter {
    */
   getCachedSearchResults(query: string, searchType: string): SearchResult | null {
     const cacheKey = this.getSearchCacheKey(query, searchType);
-    const cached = this.searchCache.get(cacheKey);
+    const cached = this.searchResultsCache.get(cacheKey);
 
     if (!cached) {
       this.misses++;
@@ -310,7 +310,7 @@ export class ContentCache extends EventEmitter {
     }
 
     if (this.isExpired(cached)) {
-      this.searchCache.delete(cacheKey);
+      this.searchResultsCache.delete(cacheKey);
       this.misses++;
       return null;
     }
@@ -383,12 +383,12 @@ export class ContentCache extends EventEmitter {
     // Remove file content cache
     this.fileContentCache.delete(filePath);
 
-    // Remove embedding caches for this file
-    const embeddingKeys = Array.from(this.embeddingCache.keys())
+    // Remove search caches for this file
+    const searchKeys = Array.from(this.searchDataCache.keys())
       .filter(key => key.startsWith(`${filePath}:`));
     
-    for (const key of embeddingKeys) {
-      this.embeddingCache.delete(key);
+    for (const key of searchKeys) {
+      this.searchDataCache.delete(key);
     }
 
     // Remove metadata cache
@@ -403,8 +403,8 @@ export class ContentCache extends EventEmitter {
   clearAll(): void {
     this.fileContentCache.clear();
     this.metadataCache.clear();
-    this.embeddingCache.clear();
-    this.searchCache.clear();
+    this.searchDataCache.clear();
+    this.searchResultsCache.clear();
     this.computedCache.clear();
     
     this.currentMemoryMB = 0;
@@ -429,18 +429,18 @@ export class ContentCache extends EventEmitter {
       }
     }
 
-    // Clean embedding cache
-    for (const [key, entry] of this.embeddingCache.entries()) {
+    // Clean search data cache
+    for (const [key, entry] of this.searchDataCache.entries()) {
       if (this.isExpired(entry, now)) {
-        this.embeddingCache.delete(key);
+        this.searchDataCache.delete(key);
         cleanedCount++;
       }
     }
 
-    // Clean search cache
-    for (const [key, entry] of this.searchCache.entries()) {
+    // Clean search results cache
+    for (const [key, entry] of this.searchResultsCache.entries()) {
       if (this.isExpired(entry, now)) {
-        this.searchCache.delete(key);
+        this.searchResultsCache.delete(key);
         cleanedCount++;
       }
     }
@@ -472,8 +472,8 @@ export class ContentCache extends EventEmitter {
       memoryUsageMB: this.currentMemoryMB,
       cachesByType: {
         fileContent: this.getCacheTypeStats(this.fileContentCache),
-        embedding: this.getCacheTypeStats(this.embeddingCache),
-        search: this.getCacheTypeStats(this.searchCache),
+        searchData: this.getCacheTypeStats(this.searchDataCache),
+        searchResults: this.getCacheTypeStats(this.searchResultsCache),
         computed: this.getCacheTypeStats(this.computedCache)
       }
     };
@@ -519,10 +519,10 @@ export class ContentCache extends EventEmitter {
     // Collect all entries with their keys and types
     this.fileContentCache.forEach((entry, key) => 
       allEntries.push({ key, entry, type: 'file' }));
-    this.embeddingCache.forEach((entry, key) => 
-      allEntries.push({ key, entry, type: 'embedding' }));
-    this.searchCache.forEach((entry, key) => 
-      allEntries.push({ key, entry, type: 'search' }));
+    this.searchDataCache.forEach((entry, key) =>
+      allEntries.push({ key, entry, type: 'searchData' }));
+    this.searchResultsCache.forEach((entry, key) =>
+      allEntries.push({ key, entry, type: 'searchResults' }));
     this.computedCache.forEach((entry, key) => 
       allEntries.push({ key, entry, type: 'computed' }));
 
@@ -551,11 +551,11 @@ export class ContentCache extends EventEmitter {
       case 'file':
         this.fileContentCache.delete(key);
         break;
-      case 'embedding':
-        this.embeddingCache.delete(key);
+      case 'searchData':
+        this.searchDataCache.delete(key);
         break;
-      case 'search':
-        this.searchCache.delete(key);
+      case 'searchResults':
+        this.searchResultsCache.delete(key);
         break;
       case 'computed':
         this.computedCache.delete(key);
@@ -564,8 +564,8 @@ export class ContentCache extends EventEmitter {
   }
 
   private getTotalEntries(): number {
-    return this.fileContentCache.size + this.embeddingCache.size + 
-           this.searchCache.size + this.computedCache.size + this.metadataCache.size;
+    return this.fileContentCache.size + this.searchDataCache.size +
+           this.searchResultsCache.size + this.computedCache.size + this.metadataCache.size;
   }
 
   private getCacheTypeStats(cache: Map<string, any>): any {
@@ -608,7 +608,7 @@ export class ContentCache extends EventEmitter {
     return hash.toString(36);
   }
 
-  private getEmbeddingCacheKey(
+  private getsearchDataCacheKey(
     filePath: string, 
     model: string, 
     chunkIndex?: number

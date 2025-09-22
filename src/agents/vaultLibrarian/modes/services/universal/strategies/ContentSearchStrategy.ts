@@ -1,35 +1,30 @@
 /**
- * ContentSearchStrategy - Handles content/semantic search
+ * ContentSearchStrategy - Handles content search
  * Follows Single Responsibility Principle by focusing only on content search
  */
 
 import { TFile } from 'obsidian';
-// Search services removed in simplified architecture
-type HybridSearchService = any;
-type HybridSearchOptions = any;
 import { UniversalSearchParams, UniversalSearchResultItem } from '../../../../types';
 
 export interface ContentSearchResult {
   success: boolean;
   error?: string;
   results?: UniversalSearchResultItem[];
-  searchMethod?: 'semantic' | 'keyword' | 'fuzzy' | 'hybrid';
+  searchMethod?: 'keyword' | 'fuzzy';
 }
 
 /**
- * Service responsible for content and semantic search
+ * Service responsible for content search
  * Follows SRP by focusing only on content search operations
  */
 export class ContentSearchStrategy {
-  constructor(
-    private hybridSearchService?: HybridSearchService
-  ) {}
+  constructor() {}
 
   /**
-   * Update services for runtime service injection
+   * Update services for runtime service injection (deprecated)
    */
-  updateServices(hybridSearchService?: HybridSearchService): void {
-    this.hybridSearchService = hybridSearchService;
+  updateServices(): void {
+    // No services needed for keyword-only search
   }
 
   /**
@@ -51,15 +46,7 @@ export class ContentSearchStrategy {
         };
       }
 
-      // Try hybrid search first (best results)
-      if (this.hybridSearchService) {
-        const hybridResult = await this.performHybridSearch(query, filteredFiles, limit, params);
-        if (hybridResult.success) {
-          return hybridResult;
-        }
-      }
-
-      // Final fallback to keyword search
+      // Use keyword search (only available search method)
       const keywordResult = await this.performKeywordSearch(query, filteredFiles, limit);
       return keywordResult;
       
@@ -72,96 +59,6 @@ export class ContentSearchStrategy {
     }
   }
 
-  /**
-   * Perform hybrid search (semantic + keyword)
-   */
-  private async performHybridSearch(
-    query: string, 
-    filteredFiles?: TFile[], 
-    limit = 10, 
-    params?: UniversalSearchParams
-  ): Promise<ContentSearchResult> {
-    const hybridSearchStartTime = performance.now();
-    try {
-      if (!this.hybridSearchService) {
-        return {
-          success: false,
-          error: 'Hybrid search service not available'
-        };
-      }
-
-      const hybridOptions: HybridSearchOptions = {
-        limit,
-        includeContent: true,
-        forceSemanticSearch: false,
-        keywordThreshold: 0.3,
-        fuzzyThreshold: 0.6,
-        queryType: params?.queryType,
-        snippetLength: params?.snippetLength
-      };
-
-      const searchStart = performance.now();
-      
-      // Enhanced error handling with collection validation awareness
-      let hybridResults;
-      try {
-        hybridResults = await this.hybridSearchService.search(query, hybridOptions, filteredFiles);
-      } catch (error) {
-        const searchTime = performance.now() - searchStart;
-        // Hybrid search error - attempting fallback
-        // Check if this is a collection-related error that should trigger fallback
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes('Collection') || errorMessage.includes('collection')) {
-          // Collection error detected - hybrid search will be automatically recovered
-        }
-
-        // Re-throw to trigger fallback in calling method
-        throw error;
-      }
-      
-      const searchTime = performance.now() - searchStart;
-      
-      // Analyze content retrieval
-      const contentAnalysis = this.analyzeContentRetrieval(hybridResults);
-
-      // Apply content validation to ALL results for error prevention
-      const formattedResults = hybridResults.map((result: any, index: number) => {
-        return {
-          id: result.filePath,
-          title: result.title || result.filePath,
-          snippet: this.validateAndSanitizeContent(result.content, result.snippet, result.preview), // Type-safe content validation
-          score: result.score || 0,
-          searchMethod: 'hybrid' as const,
-          metadata: {
-            filePath: result.filePath,
-            type: 'content',
-            searchMethod: 'hybrid',
-            semanticScore: result.semanticScore,
-            keywordScore: result.keywordScore,
-            combinedScore: result.score,
-            // Enhanced metadata for full content mode
-            contentType: this.isValidStringContent(result.content) ? 'full' : 'snippet',
-            originalLength: this.isValidStringContent(result.content) ? result.content.length : 0,
-            snippetLength: this.isValidStringContent(result.snippet) ? result.snippet.length : 0
-          }
-        };
-      });
-
-      return {
-        success: true,
-        results: formattedResults,
-        searchMethod: 'hybrid'
-      };
-    } catch (error) {
-      const totalHybridSearchTime = performance.now() - hybridSearchStartTime;
-      return {
-        success: false,
-        error: `Hybrid search failed: ${error instanceof Error ? error.message : String(error)}`
-      };
-    }
-  }
-
-  // Semantic search is now handled via ChromaDB through hybrid search
 
   /**
    * Perform keyword search as fallback
@@ -193,31 +90,13 @@ export class ContentSearchStrategy {
   }
 
   /**
-   * Check if semantic search is available
-   */
-  isSemanticSearchAvailable(): boolean {
-    return !!this.hybridSearchService;
-  }
-
-  /**
-   * Check if hybrid search is available
-   */
-  isHybridSearchAvailable(): boolean {
-    return !!this.hybridSearchService;
-  }
-
-  /**
-   * Get search capabilities
+   * Get search capabilities (keyword search only)
    */
   getSearchCapabilities(): {
-    semantic: boolean;
-    hybrid: boolean;
     keyword: boolean;
   } {
     return {
-      semantic: this.isSemanticSearchAvailable(),
-      hybrid: this.isHybridSearchAvailable(),
-      keyword: true // Always available as fallback
+      keyword: true // Always available
     };
   }
 

@@ -39,7 +39,7 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
       
       const result = await ContentOperations.prependContent(this.app, filePath, content);
       
-      // File change detection and embedding updates are handled automatically by FileEventManager
+      // File change detection are handled automatically by FileEventManager
       
       const resultData = {
         filePath,

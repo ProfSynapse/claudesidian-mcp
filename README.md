@@ -2,7 +2,7 @@
 
 Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system. The plugin uses an Agent-Mode Architecture that organizes functionality into logical domains (agents) with specific operations (modes) within each domain.
 
-> 🧪 Note that this is an experimental Obsidian Plugin. The _Memory_ Functionality in particular is relatively untested, so be sure you know enough about embeddings and vector databases to understand what you are doing, and always watch those API costs!
+> 🧪 Note that this is an experimental Obsidian Plugin. Always monitor API costs when using LLM features!
 
 ## Features
 
@@ -17,19 +17,23 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
   - Manage file structure
   - Operate on frontmatter
 
-- 🧠 Memory & Vector Architecture
+- 🧠 Memory Architecture
   - Session and state management for workspaces
-  - Vector collections for embeddings storage
-  - Semantic search capabilities
-  - Multiple embedding strategies (manual, live, idle, startup)
+  - JSON-based storage for vault organization
+  - Efficient keyword-based search capabilities
   - Batch operations for efficiency
 
 - 🔍 Advanced Search System
-  - Hybrid search combining semantic, keyword, and fuzzy matching
-  - Reciprocal Rank Fusion (RRF) for intelligent result ranking
-  - Multi-method search with automatic query analysis
+  - Text search with keyword and fuzzy matching
+  - Intelligent query analysis for optimal results
   - Enhanced metadata search with tag and property filtering
   - Memory search across conversation history and workspaces
+
+- 🔄 Automatic Data Migration
+  - Seamlessly migrates from previous versions
+  - Converts ChromaDB data to optimized JSON storage
+  - No data loss during upgrade process
+  - Maintains all workspace, session, and conversation history
 
 - 🏗️ Agent-Mode Architecture
   - Domain-driven design with specialized agents
@@ -49,6 +53,19 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
 3. Enable the plugin in Obsidian's settings
 4. Configure your claude desktop config file (instructions in the plugin settings)
 5. Restart obsidian (if it's open) and fully restart claude (you might have to go to your task manager and end the task, as it runs in the background if you just `x` out).
+
+## Data Migration
+
+If you're upgrading from a previous version that used ChromaDB storage, the plugin will automatically migrate your data:
+
+- **Automatic Detection**: Plugin detects existing ChromaDB collections on startup
+- **Seamless Migration**: Converts all workspace, session, and conversation data to JSON format
+- **Data Preservation**: All your memory traces, conversation history, and workspace organization is maintained
+- **New Storage**: Data is stored in `.obsidian/plugins/claudesidian-mcp/.data/` as optimized JSON files
+- **Performance**: Faster startup and search with the new JSON-based architecture
+- **Migration Status**: Check the console logs (Ctrl+Shift+I) for detailed migration progress
+
+The migration happens automatically when you first load the updated plugin. Your original ChromaDB data is preserved for backup purposes.
 
 ## Multi-Vault Support
 
@@ -94,136 +111,12 @@ Claudesidian MCP supports running across multiple Obsidian vaults simultaneously
 - Each vault maintains isolated settings and configurations
 - Tools can only access files within their respective vault
 
-## Automatic Embedding Strategies
-
-Claudesidian MCP offers multiple strategies for embedding your notes, giving you control over when and how your content is indexed for semantic search. These strategies can be configured in the plugin settings under the "Memory" tab.
-
-### Available Embedding Strategies
-
-#### 1. Manual Only
-- **Description**: No automatic embedding; you control exactly when to index content
-- **Best for**: Users who want complete control over the indexing process
-- **How it works**: You need to manually trigger indexing through the "Reindex All Content" button in settings or via MCP tools
-
-#### 2. Idle Embedding
-- **Description**: Waits for a period of inactivity before processing changes
-- **Best for**: Balancing real-time updates with performance
-- **How it works**: 
-  - Files are queued when modified
-  - After a configurable idle period (default: 60 seconds), queued files are processed
-  - Changes are batched for efficiency
-- **Considerations**: Good balance between token usage and having up-to-date embeddings
-
-#### 3. Startup Embedding
-- **Description**: Indexes non-embedded files when Obsidian starts
-- **Best for**: New vaults or infrequently updated content
-- **How it works**: 
-  - On plugin initialization, it compares existing files with already-embedded content
-  - Only processes files that have no existing embedding
-- **Considerations**: Might cause initial slowdown when Obsidian starts, but doesn't interfere during regular use
-
-### Changing Embedding Strategy
-
-1. Open Obsidian Settings
-2. Navigate to the "Claudesidian MCP" plugin settings
-3. Go to the "Memory" tab
-4. In the "Embedding" section, find "Embedding Strategy" dropdown
-5. Select your preferred strategy
-6. If you select "Idle", you can also configure the idle time threshold
-
-### Additional Settings
-
-- **Idle Time Threshold**: For the Idle strategy, controls how long to wait (5-300 seconds) after the last change before processing
-- **Batch Size**: Controls how many files are processed together in a batch
-- **Processing Delay**: Controls the delay between processing batches (to reduce UI freezing)
-- **Concurrent Requests**: Controls how many API requests can run in parallel
-
-## Setting Up Ollama for Local Embeddings
-
-Ollama provides a way to run embedding models locally, offering complete privacy and eliminating API costs. Claudesidian MCP has built-in support for Ollama embedding models.
-
-### Installing Ollama on Windows
-
-1. **Download Ollama**:
-   - Visit https://ollama.com/download/windows
-   - Download the `OllamaSetup.exe` installer
-   - Run the installer and follow the setup wizard (no admin rights required)
-
-2. **Start Ollama Service**:
-   - Open Command Prompt or PowerShell
-   - Run: `ollama serve`
-   - Keep this terminal window open (Ollama runs in the background)
-
-3. **Download an Embedding Model**:
-   - Open a new terminal window
-   - Run: `ollama pull nomic-embed-text`
-   - Wait for the model to download (this may take a few minutes)
-
-4. **Verify Installation**:
-   - Test with: `ollama list`
-   - You should see `nomic-embed-text` in the list
-
-### Configuring Claudesidian for Ollama
-
-1. **Open Obsidian Settings**:
-   - Go to Settings → Claudesidian MCP → Memory tab
-
-2. **Select Ollama Provider**:
-   - Set "API Provider" to "Ollama (Local)"
-   - Set "Embedding Model" to "nomic-embed-text"
-   - Dimensions will automatically set to 768
-
-3. **Restart Obsidian** to apply the changes
-
-### Supported Ollama Models
-
-Claudesidian supports several Ollama embedding models:
-
-| Model | Dimensions | Description |
-|-------|------------|-------------|
-| `nomic-embed-text` | 768 | High-quality general-purpose embeddings |
-| `nomic-embed-text:latest` | 768 | Latest version of Nomic Embed Text |
-| `mxbai-embed-large` | 1024 | MixedBread AI's large embedding model |
-| `all-minilm` | 384 | Lightweight, fast embeddings |
-| `snowflake-arctic-embed` | 768 | Snowflake's Arctic embedding model |
-
-### Benefits of Local Ollama Embeddings
-
-- **Privacy**: All data stays on your machine
-- **Cost**: No API fees or token limits
-- **Speed**: Fast local processing
-- **Offline**: Works without internet connection
-- **Control**: Full control over model versions and updates
-
-### System Requirements
-
-- **Windows**: Windows 10/11 (64-bit)
-- **RAM**: At least 4GB free for embedding models
-- **Storage**: Additional space for models (nomic-embed-text is ~274MB)
-- **CPU**: Modern multi-core processor recommended
 
 ## Advanced Search Capabilities
 
-Claudesidian MCP includes a sophisticated search system that combines multiple search methods to provide the most relevant results for your queries.
+Claudesidian MCP includes a sophisticated search system that uses efficient keyword-based indexing to provide fast and relevant results for your queries.
 
-### Hybrid Search System
 
-The plugin implements a **Hybrid Search** approach that combines three complementary search methods:
-
-1. **Semantic Search**: Uses vector embeddings to find conceptually related content
-2. **Keyword Search**: Employs BM25 algorithm for exact term matching
-3. **Fuzzy Search**: Handles typos and variations in search terms
-
-Results from all three methods are combined using **Reciprocal Rank Fusion (RRF)**, which intelligently weighs and merges results to provide the most relevant matches.
-
-### Intelligent Query Analysis
-
-The system automatically analyzes your search queries to determine the best search strategy:
-
-- **Exact Queries**: Prioritizes keyword matching for precise terms
-- **Conceptual Queries**: Emphasizes semantic understanding for abstract concepts  
-- **Exploratory Queries**: Focuses on broad discovery and related topics
-- **Mixed Queries**: Balances all search methods for comprehensive results
 
 ### Enhanced Metadata Search
 
@@ -255,7 +148,7 @@ Search across your conversation history and workspace memory:
 - The plugin runs an MCP server that only accepts local connections
 - All vault operations require explicit user permission
 - Memory storage is contained within your vault
-- No data is sent externally without consent, except for embedding and LLM API calls if you enable the Memory Manager feature
+- No data is sent externally without consent, except for LLM API calls when using AI features
 
 ## LLM Integration and Custom Agent Management
 
@@ -419,15 +312,15 @@ The VaultManager agent provides operations for managing files and folders in the
 | duplicateNote| Create a duplicate of a note    | sourcePath, targetPath, overwrite             |
 
 #### 4. VaultLibrarian Agent
-The VaultLibrarian agent provides advanced search operations across the vault using multiple search methods.
+The VaultLibrarian agent provides advanced search operations across the vault using efficient keyword-based methods.
 
-| Mode          | Description                            | Parameters                                     |
-|---------------|----------------------------------------|------------------------------------------------|
-| search        | Universal search with hybrid methods   | query, type, paths, limit, includeMetadata    |
-| searchFiles   | Search and discover files by name      | query, path, recursive, extension, limit      |
-| searchFolders | Search and discover folders by name    | query, path, recursive, limit                  |
-| vector        | Perform semantic vector search         | query, limit, filter, includeContent          |
-| batch         | Perform batch search operations        | operations[]                                   |
+| Mode            | Description                            | Parameters                                     |
+|-----------------|----------------------------------------|------------------------------------------------|
+| universalSearch | Universal search with keyword matching | query, type, paths, limit, includeMetadata    |
+| searchFiles     | Search and discover files by name      | query, path, recursive, extension, limit      |
+| searchFolders   | Search and discover folders by name    | query, path, recursive, limit                  |
+| searchMemory    | Search workspace and conversation data | query, limit, workspaceFilter, type           |
+| batch           | Perform batch search operations        | operations[]                                   |
 
 #### 5. MemoryManager Agent
 The MemoryManager agent provides operations for managing sessions, states, and workspaces.

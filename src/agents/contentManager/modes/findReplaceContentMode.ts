@@ -56,7 +56,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
         wholeWord
       );
       
-      // File change detection and embedding updates are handled automatically by FileEventManager
+      // File change detection are handled automatically by FileEventManager
       
       const resultData = {
         filePath,

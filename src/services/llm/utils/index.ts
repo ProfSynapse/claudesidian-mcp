@@ -80,9 +80,6 @@ export async function quickSetup(options: QuickSetupOptions = {}): Promise<{
       logger.warn('Database not configured - some features may not work');
     }
 
-    if (summary.embeddings.configured.length === 0) {
-      logger.warn('No embedding providers configured - vector operations will not work');
-    }
   }
 
   const isReady = config.getConfiguredProviders().length > 0;
@@ -150,17 +147,6 @@ export function validateEnvironment(): {
     result.recommendations.push('Add SUPABASE_URL and SUPABASE_ANON_KEY to enable database functionality');
   }
 
-  // Check embedding providers
-  const embeddingVars = [
-    'VOYAGE_API_KEY',
-    'COHERE_API_KEY'
-  ];
-  
-  const configuredEmbeddings = embeddingVars.filter(varName => process.env[varName]);
-  if (configuredEmbeddings.length === 0 && !process.env.OPENAI_API_KEY) {
-    result.warnings.push('No dedicated embedding providers configured');
-    result.recommendations.push('Consider adding VOYAGE_API_KEY or COHERE_API_KEY for optimal embedding performance');
-  }
 
   return result;
 }
@@ -208,7 +194,6 @@ export function createSetupReport(): string {
   report += '## Configuration Summary\n\n';
   report += `**LLM Providers:** ${summary.providers.configured.join(', ') || 'None'}\n`;
   report += `**Database:** ${summary.database.configured ? 'Configured' : 'Not configured'}\n`;
-  report += `**Embedding Providers:** ${summary.embeddings.configured.join(', ') || 'None'}\n`;
   report += `**Log Level:** ${summary.logging.level}\n\n`;
 
   // Readiness status

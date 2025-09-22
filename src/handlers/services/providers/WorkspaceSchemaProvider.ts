@@ -142,10 +142,7 @@ export class WorkspaceSchemaProvider implements ISchemaProvider {
 
     try {
       // Query all workspaces
-      const workspaces = await this.workspaceService.getWorkspaces({
-        sortBy: 'lastAccessed',
-        sortOrder: 'desc'
-      });
+      const workspaces = await this.workspaceService.getWorkspaces();
 
       logger.systemLog(`Fetched ${workspaces.length} workspaces for schema enhancement`, 'WorkspaceSchemaProvider');
 

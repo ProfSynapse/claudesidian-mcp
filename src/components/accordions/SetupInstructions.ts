@@ -63,21 +63,12 @@ export class SetupInstructionsAccordion {
             text: 'Go to the Memory Management accordion in Settings'
         });
         memorySteps.createEl('li', {
-            text: 'Configure your embedding provider (e.g., OpenAI API key)'
-        });
-        memorySteps.createEl('li', {
             text: 'Enable Memory Manager using the toggle switch if it does not automatically enable'
-        });
-        memorySteps.createEl('li', {
-            text: 'Adjust embedding model and chunking settings as needed'
-        });
-        memorySteps.createEl('li', {
-            text: 'Click "Start Initial Embedding" to create initial embeddings'
         });
         
         // Add a note about what the Memory Manager does
         const memoryNote = content.createEl('div', { cls: 'mcp-setup-instructions' });
-        memoryNote.createEl('p', { text: 'The Memory Manager enables semantic search across your vault, allowing Claude to find information based on meaning rather than just keywords. Once configured, Claude can use the queryMemory mode to search for relevant content.' });
+        memoryNote.createEl('p', { text: 'The Memory Manager enables workspace and session management across your vault, allowing Claude to organize content and maintain context. Once configured, Claude can use memory management modes to work with your content organization.' });
 
         // Configuration button
         new Setting(content)

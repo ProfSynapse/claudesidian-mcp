@@ -11,7 +11,7 @@ export interface WorkspaceCache {
    * Hot cache (in-memory, limited size, instant access)
    */
   hotCache: Map<string, {
-    embedding: number[];
+    search: number[];
     metadata: any;
     lastAccessed: number;
     accessCount: number;

@@ -128,14 +128,14 @@ export class EntityCache extends EventEmitter {
 
             // Load session data
             // First try to get the session directly
-            const sessionData = await this.memoryService.getSession(sessionId, false);
+            const sessionData = await this.memoryService.getSession(sessionId);
             if (!sessionData) {
                 return;
             }
             const session = sessionData;
 
             // Get memory traces for this session
-            const traces = await this.memoryService.getMemoryTraces(sessionId, 20);
+            const traces = await this.memoryService.getMemoryTraces(sessionId);
             const traceIds = traces.map(t => t.id);
             
             // Collect associated files
@@ -239,7 +239,7 @@ export class EntityCache extends EventEmitter {
         // Batch load uncached items
         if (uncached.length > 0) {
             // Load sessions individually
-            const sessionPromises = uncached.map(id => this.memoryService.getSession(id, false));
+            const sessionPromises = uncached.map(id => this.memoryService.getSession(id));
             const sessionResults = await Promise.all(sessionPromises);
             const sessions = sessionResults.filter((s): s is any => s !== undefined);
             

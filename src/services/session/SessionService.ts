@@ -1,4 +1,4 @@
-import { SimpleMemoryService } from '../memory/SimpleMemoryService';
+// import { SimpleMemoryService } from '../memory/SimpleMemoryService';
 
 export interface SessionData {
   id: string;
@@ -15,7 +15,7 @@ export interface SessionData {
 export class SessionService {
   private sessions = new Map<string, SessionData>();
   
-  constructor(private simpleMemoryService: SimpleMemoryService) {
+  constructor(private simpleMemoryService: any) { // SimpleMemoryService removed
   }
   
   /**

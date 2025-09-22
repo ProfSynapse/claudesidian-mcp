@@ -127,9 +127,11 @@ export class WorkspaceEditModal extends Modal {
       .setDesc('What is this workspace for?')
       .addText(text => text
         .setPlaceholder('e.g., Apply for marketing manager positions')
-        .setValue(this.formData.context.purpose || '')
+        .setValue(this.formData.context?.purpose || '')
         .onChange(value => {
-          this.formData.context!.purpose = value;
+          if (this.formData.context) {
+            this.formData.context.purpose = value;
+          }
         }));
 
     new Setting(section)
@@ -137,9 +139,11 @@ export class WorkspaceEditModal extends Modal {
       .setDesc('What are you trying to accomplish right now?')
       .addText(text => text
         .setPlaceholder('e.g., Submit 10 applications this week')
-        .setValue(this.formData.context.currentGoal || '')
+        .setValue(this.formData.context?.currentGoal || '')
         .onChange(value => {
-          this.formData.context!.currentGoal = value;
+          if (this.formData.context) {
+            this.formData.context.currentGoal = value;
+          }
         }));
 
     new Setting(section)
@@ -147,9 +151,11 @@ export class WorkspaceEditModal extends Modal {
       .setDesc("What's the current state of progress?")
       .addText(text => text
         .setPlaceholder('e.g., 5 sent, 2 pending responses, need 5 more')
-        .setValue(this.formData.context.status || '')
+        .setValue(this.formData.context?.status || '')
         .onChange(value => {
-          this.formData.context!.status = value;
+          if (this.formData.context) {
+            this.formData.context.status = value;
+          }
         }));
   }
 

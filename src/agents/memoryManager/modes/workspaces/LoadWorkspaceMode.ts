@@ -184,7 +184,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       }
       
       // CRITICAL: Force memory cleanup after workspace loading
-      // This is essential because memory traces can consume 10MB+ with embeddings
+      // This is essential because memory traces can consume significant memory
       this.forceMemoryCleanup(`LoadWorkspaceMode completed for workspace ${params.id}`);
       
       return result;
@@ -395,17 +395,13 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
 
   /**
    * Clean up memory trace data to prevent memory leaks
-   * This is critical because each trace contains large embedding arrays (~6KB each)
+   * This is critical because traces can contain large data arrays
    */
   private cleanupTraceMemory(traces: any[]): void {
     if (!traces || traces.length === 0) return;
     
-    // Clear embedding arrays (these are the largest memory consumers)
+    // Clear large data arrays
     traces.forEach(trace => {
-      if (trace.embedding) {
-        trace.embedding.length = 0;
-        trace.embedding = null;
-      }
       
       // Clear large document content after we've extracted what we need
       if (trace.content && trace.content.length > 1000) {

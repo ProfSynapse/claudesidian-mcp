@@ -70,7 +70,7 @@ export class WhatIsClaudesidianAccordion {
         this.createAgentDescription(
             agentsContainer,
             'Vault Librarian',
-            'Searches and navigates your vault with advanced content, tag, property, and semantic vector search capabilities. Includes batch operations for complex search patterns and semantic similarity matching.'
+            'Searches and navigates your vault with advanced content, tag, property, and text search capabilities. Includes batch operations for complex search patterns and content matching.'
         );
         
         this.createAgentDescription(

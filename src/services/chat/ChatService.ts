@@ -7,7 +7,7 @@
  * Flow: User message → LLM → Tool calls → MCP client → Our agents → Results → LLM → Response
  */
 
-import { ConversationRepository } from '../../database/services/chat/ConversationRepository';
+// import { ConversationRepository } from '../../database/services/chat/ConversationRepository';
 import { ConversationData, ConversationMessage, ToolCall, CreateConversationParams } from '../../types/chat/ChatTypes';
 import { documentToConversationData } from '../../types/chat/ChatTypes';
 import { getErrorMessage } from '../../utils/errorUtils';
@@ -23,12 +23,11 @@ export interface ChatServiceOptions {
 }
 
 export interface ChatServiceDependencies {
-  conversationRepo: ConversationRepository;
-  llmService: any; // LLM service with tool calling support
-  embeddingService: any; // For conversation summaries
-  vaultName: string; // Name of the vault for conversation context
-  mcpConnector?: any; // MCP connector for tool execution
-  mcpServerUrl?: string; // HTTP URL of MCP server
+  conversationService: any;
+  llmService: any;
+  vaultName: string;
+  mcpConnector?: any;
+  mcpServerUrl?: string;
 }
 
 export class ChatService {
@@ -132,7 +131,7 @@ export class ChatService {
       };
       
       // Create the base conversation with initial message if provided
-      await this.dependencies.conversationRepo.createConversation(createParams);
+      await this.dependencies.conversationService.createConversation(createParams);
 
       // If there's an initial message, get AI response
       if (initialMessage?.trim()) {
@@ -168,7 +167,7 @@ export class ChatService {
     toolCalls?: any[];
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const result = await this.dependencies.conversationRepo.addMessage({
+      const result = await this.dependencies.conversationService.addMessage({
         conversationId: params.conversationId,
         role: params.role,
         content: params.content,
@@ -207,13 +206,13 @@ export class ChatService {
   }> {
     try {
       // Get existing conversation
-      const conversation = await this.dependencies.conversationRepo.getConversation(conversationId);
+      const conversation = await this.dependencies.conversationService.getConversation(conversationId);
       if (!conversation) {
         return { success: false, error: 'Conversation not found' };
       }
 
       // Add user message to repository
-      const userMessage = await this.dependencies.conversationRepo.addMessage({
+      const userMessage = await this.dependencies.conversationService.addMessage({
         conversationId,
         role: 'user',
         content: message
@@ -343,7 +342,7 @@ export class ChatService {
           // Save separate tool and assistant messages
           if (toolCalls && toolCalls.length > 0) {
             // First: Save tool message with complete tool calls (including results)
-            await this.dependencies.conversationRepo.addMessage({
+            await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'tool',
               content: `Executed ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}: ${toolCalls.map(tc => tc.name || tc.function?.name).join(', ')}`,
@@ -352,7 +351,7 @@ export class ChatService {
           }
           
           // Second: Save assistant response message (clean text only)
-          await this.dependencies.conversationRepo.addMessage({
+          await this.dependencies.conversationService.addMessage({
             conversationId,
             role: 'assistant',
             content: accumulatedContent
@@ -579,7 +578,7 @@ export class ChatService {
    */
   async updateConversation(conversation: ConversationData): Promise<{ success: boolean; error?: string }> {
     try {
-      const result = await this.dependencies.conversationRepo.updateConversation(
+      const result = await this.dependencies.conversationService.updateConversation(
         conversation.id,
         { 
           title: conversation.title,
@@ -604,7 +603,7 @@ export class ChatService {
    * Get conversation by ID
    */
   async getConversation(id: string): Promise<ConversationData | null> {
-    const document = await this.dependencies.conversationRepo.getConversation(id);
+    const document = await this.dependencies.conversationService.getConversation(id);
     return document ? documentToConversationData(document) : null;
   }
 
@@ -612,13 +611,13 @@ export class ChatService {
    * List conversations
    */
   async listConversations(options?: { limit?: number; offset?: number }): Promise<ConversationData[]> {
-    const searchResults = await this.dependencies.conversationRepo.listConversations(
+    const searchResults = await this.dependencies.conversationService.listConversations(
       this.dependencies.vaultName,
       options?.limit || 50
     );
 
     // Convert ConversationDocument[] to ConversationData[]
-    return searchResults.map(document => ({
+    return searchResults.map((document: any) => ({
       id: document.id,
       title: document.metadata.title,
       created_at: document.metadata.created_at,
@@ -632,7 +631,7 @@ export class ChatService {
    */
   async deleteConversation(id: string): Promise<boolean> {
     try {
-      await this.dependencies.conversationRepo.deleteConversation(id);
+      await this.dependencies.conversationService.deleteConversation(id);
       this.toolCallHistory.delete(id);
       return true;
     } catch (error) {
@@ -670,8 +669,8 @@ export class ChatService {
   /**
    * Get conversation repository for branch management
    */
-  getConversationRepository(): ConversationRepository {
-    return this.dependencies.conversationRepo;
+  getConversationRepository(): any {
+    return this.dependencies.conversationService;
   }
 
   /**
