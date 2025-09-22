@@ -77,16 +77,7 @@ export type {
   ConversationSearchResult,
   CreateConversationParams,
   AddMessageParams,
-  UpdateConversationParams,
-  ConversationOperationResult,
-  MessageQueryOptions,
-  PaginatedMessages,
-  ChatCollectionConfig,
-  ChatCollectionStats,
-  ChatDatabaseHealth,
-  ChatPerformanceMetrics,
-  ConversationSummary,
-  ConversationExport
+  UpdateConversationParams
 } from './chat/ChatTypes';
 
 // Create default settings object

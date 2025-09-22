@@ -55,7 +55,8 @@ export class MessageManager {
         id: `msg_${Date.now()}_user`,
         role: 'user' as const,
         content: message,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        conversationId: conversation.id
       };
       
       // Add user message to conversation and display immediately (progressive updates only)
@@ -69,7 +70,7 @@ export class MessageManager {
         role: 'assistant' as const,
         content: '',
         timestamp: Date.now(),
-        isLoading: true
+        conversationId: conversation.id
       };
       
       // Add placeholder AI message and create bubble for streaming
@@ -164,8 +165,7 @@ export class MessageManager {
               conversation.messages[placeholderMessageIndex] = {
                 ...conversation.messages[placeholderMessageIndex],
                 content: streamedContent,
-                tool_calls: toolCalls,
-                isLoading: false
+                toolCalls: toolCalls
               };
             }
             
@@ -318,7 +318,8 @@ export class MessageManager {
         role: 'assistant',
         content: streamedContent,
         timestamp: Date.now(),
-        tool_calls: toolCalls
+        conversationId: conversation.id,
+        toolCalls: toolCalls
       };
 
       // Add alternative using BranchManager
@@ -377,7 +378,8 @@ export class MessageManager {
       id: `temp_${Date.now()}`,
       role: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      conversationId: conversation.id
     };
     
     conversation.messages.push(message);

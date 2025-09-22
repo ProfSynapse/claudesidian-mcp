@@ -64,11 +64,15 @@ export class MessageDisplay {
       id: `temp_${Date.now()}`,
       role: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      conversationId: this.conversation?.id || 'unknown'
     };
-    
+
     const bubble = this.createMessageBubble(message);
-    this.container.querySelector('.messages-container')?.appendChild(bubble);
+    const messagesContainer = this.container.querySelector('.messages-container');
+    if (messagesContainer) {
+      messagesContainer.appendChild(bubble);
+    }
     this.scrollToBottom();
   }
 
@@ -209,7 +213,7 @@ export class MessageDisplay {
         acc[msg.role] = (acc[msg.role] || 0) + 1;
         return acc;
       }, {} as Record<string, number>),
-      messagesWithToolCalls: this.conversation.messages.filter(msg => msg.tool_calls && msg.tool_calls.length > 0).length,
+      messagesWithToolCalls: this.conversation.messages.filter(msg => msg.toolCalls && msg.toolCalls.length > 0).length,
       toolMessages: this.conversation.messages.filter(msg => msg.role === 'tool').length
     });
 
@@ -217,8 +221,8 @@ export class MessageDisplay {
       console.log(`[MessageDisplay] Creating bubble for message ${index}:`, {
         id: message.id,
         role: message.role,
-        hasToolCalls: !!(message.tool_calls && message.tool_calls.length > 0),
-        toolCallCount: message.tool_calls?.length || 0,
+        hasToolCalls: !!(message.toolCalls && message.toolCalls.length > 0),
+        toolCallCount: message.toolCalls?.length || 0,
         contentPreview: message.content.substring(0, 50) + '...'
       });
 

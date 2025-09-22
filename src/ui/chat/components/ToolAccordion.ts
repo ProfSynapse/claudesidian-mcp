@@ -38,7 +38,7 @@ export class ToolAccordion {
     // Text
     const text = summary.createSpan('tool-text');
     if (totalCount === 1) {
-      text.textContent = this.toolCalls[0].name;
+      text.textContent = this.toolCalls[0].name || null;
     } else {
       const toolNames = this.toolCalls.map(tc => tc.name).slice(0, 2);
       const remaining = totalCount - 2;
@@ -84,7 +84,7 @@ export class ToolAccordion {
     
     // Tool name
     const name = header.createSpan('tool-name');
-    name.textContent = toolCall.name;
+    name.textContent = toolCall.name || null;
     
     // Execution time (if available) 
     if (toolCall.executionTime) {

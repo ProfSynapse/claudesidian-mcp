@@ -158,17 +158,17 @@ export class BranchManager {
     
     // Index 0 is the original message
     if (activeIndex === 0) {
-      return message.tool_calls;
+      return message.toolCalls;
     }
 
     // Alternative indices are 1-based, so subtract 1 to get array index
     const alternativeArrayIndex = activeIndex - 1;
     if (message.alternatives && alternativeArrayIndex < message.alternatives.length) {
-      return message.alternatives[alternativeArrayIndex].tool_calls;
+      return message.alternatives[alternativeArrayIndex].toolCalls;
     }
 
     // Fallback to original tool calls if alternative not found
-    return message.tool_calls;
+    return message.toolCalls;
   }
 
   /**

@@ -5,12 +5,15 @@
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: number;
   conversationId: string;
   toolCalls?: ToolCall[];
   tokens?: number;
+  alternatives?: ChatMessage[];
+  activeAlternativeIndex?: number;
+  isLoading?: boolean;
 }
 
 export interface ToolCall {
@@ -83,7 +86,7 @@ export interface CreateConversationParams {
 
 export interface AddMessageParams {
   conversationId: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   toolCalls?: ToolCall[];
 }

@@ -281,7 +281,7 @@ export class MistralAdapter extends BaseAdapter implements MCPCapableAdapter {
   }
 
   private extractToolCalls(message: any): any[] {
-    return message?.tool_calls || [];
+    return message?.toolCalls || [];
   }
 
   private extractMessageContent(content: any): string {

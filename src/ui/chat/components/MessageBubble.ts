@@ -176,30 +176,30 @@ export class MessageBubble extends Component {
    */
   private renderToolCalls(container: HTMLElement): void {
     // For tool role messages, always render the tool accordion
-    if (this.message.role === 'tool' && this.message.tool_calls && this.message.tool_calls.length > 0) {
+    if (this.message.role === 'tool' && this.message.toolCalls && this.message.toolCalls.length > 0) {
       console.log('[MessageBubble] Rendering tool accordion for tool message:', {
         messageId: this.message.id,
-        toolCallCount: this.message.tool_calls.length,
-        toolNames: this.message.tool_calls.map(tc => tc.name)
+        toolCallCount: this.message.toolCalls.length,
+        toolNames: this.message.toolCalls.map(tc => tc.name)
       });
 
       // Create accordion for tool execution message
-      const accordion = new ToolAccordion(this.message.tool_calls);
+      const accordion = new ToolAccordion(this.message.toolCalls);
       const accordionEl = accordion.createElement();
       container.appendChild(accordionEl);
       return;
     }
 
     // For assistant messages with tool_calls (historical data), also render tool accordions
-    if (this.message.role === 'assistant' && this.message.tool_calls && this.message.tool_calls.length > 0) {
-      console.log('[MessageBubble] Rendering tool accordion for assistant message with tool_calls:', {
+    if (this.message.role === 'assistant' && this.message.toolCalls && this.message.toolCalls.length > 0) {
+      console.log('[MessageBubble] Rendering tool accordion for assistant message with toolCalls:', {
         messageId: this.message.id,
-        toolCallCount: this.message.tool_calls.length,
-        toolNames: this.message.tool_calls.map(tc => tc.name)
+        toolCallCount: this.message.toolCalls.length,
+        toolNames: this.message.toolCalls.map(tc => tc.name)
       });
 
       // Create accordion for stored tool calls in assistant messages (legacy format)
-      const accordion = new ToolAccordion(this.message.tool_calls);
+      const accordion = new ToolAccordion(this.message.toolCalls);
       const accordionEl = accordion.createElement();
       container.appendChild(accordionEl);
       return;
@@ -354,7 +354,7 @@ export class MessageBubble extends Component {
 
     // PROBLEM: This method completely re-renders and puts tool calls at the end
     // We should avoid calling this if we already have progressive accordions
-    if (this.progressiveToolAccordions.size > 0 && newMessage.tool_calls) {
+    if (this.progressiveToolAccordions.size > 0 && newMessage.toolCalls) {
       // Skip update - preserving progressive accordions
       // Just update the stored message reference but don't re-render
       console.log('[MessageBubble] Preserving progressive accordions, only updating message reference');
@@ -389,7 +389,7 @@ export class MessageBubble extends Component {
     });
 
     // If there are tool calls, render them
-    if (newMessage.tool_calls && newMessage.tool_calls.length > 0) {
+    if (newMessage.toolCalls && newMessage.toolCalls.length > 0) {
       this.renderToolCalls(contentElement as HTMLElement);
     }
 

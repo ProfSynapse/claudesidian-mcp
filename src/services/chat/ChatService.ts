@@ -116,18 +116,14 @@ export class ChatService {
       const conversation: ConversationData = {
         id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         title,
-        created_at: Date.now(),
-        last_updated: Date.now(),
+        created: Date.now(),
+        updated: Date.now(),
         messages: []
       };
 
       const createParams: CreateConversationParams = {
         title: conversation.title,
-        vaultName: this.dependencies.vaultName,
-        initialMessage: initialMessage?.trim() ? {
-          content: initialMessage,
-          role: 'user'
-        } : undefined
+        initialMessage: initialMessage?.trim() || undefined
       };
       
       // Create the base conversation with initial message if provided
@@ -403,7 +399,12 @@ export class ChatService {
 
         results.push({
           id: toolCall.id,
+          type: 'function',
           name: toolCall.name,
+          function: {
+            name: toolCall.name,
+            arguments: JSON.stringify(toolCall.arguments || toolCall.parameters || {})
+          },
           parameters: toolCall.arguments || toolCall.parameters,
           result: result,
           success: !result.error,
@@ -414,7 +415,12 @@ export class ChatService {
         console.error(`[ChatService] Tool execution failed for ${toolCall.name}:`, error);
         results.push({
           id: toolCall.id,
+          type: 'function',
           name: toolCall.name,
+          function: {
+            name: toolCall.name,
+            arguments: JSON.stringify(toolCall.arguments || toolCall.parameters || {})
+          },
           parameters: toolCall.arguments || toolCall.parameters,
           success: false,
           error: getErrorMessage(error)
@@ -556,7 +562,7 @@ export class ChatService {
     
     // Count tool calls for debugging
     const totalToolCalls = conversation.messages.reduce((count, msg) => 
-      count + (msg.tool_calls?.length || 0), 0);
+      count + (msg.toolCalls?.length || 0), 0);
     console.log(`[ChatService] Total tool calls in conversation: ${totalToolCalls}`);
     
     return ConversationContextBuilder.buildContextForProvider(
@@ -620,8 +626,8 @@ export class ChatService {
     return searchResults.map((document: any) => ({
       id: document.id,
       title: document.metadata.title,
-      created_at: document.metadata.created_at,
-      last_updated: document.metadata.last_updated,
+      created: document.metadata.created,
+      updated: document.metadata.updated,
       messages: [] // Messages not loaded in list view for performance
     }));
   }
@@ -658,7 +664,7 @@ export class ChatService {
           title: conv.title,
           summary: conv.messages[0]?.content.substring(0, 100) + '...',
           relevanceScore: 0.8, // Mock score
-          lastUpdated: conv.last_updated
+          lastUpdated: conv.updated
         }));
     } catch (error) {
       console.error('[ChatService] Search failed:', error);

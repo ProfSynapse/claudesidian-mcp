@@ -175,7 +175,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         extractToolCalls: (parsed: any) => {
           // Extract tool calls from any choice that has them
           for (const choice of parsed.choices || []) {
-            const toolCalls = choice?.delta?.tool_calls;
+            const toolCalls = choice?.delta?.toolCalls;
             if (toolCalls) {
               return toolCalls;
             }
@@ -316,7 +316,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
             content: choice?.message?.content || '',
             usage: this.extractUsage(data),
             finishReason: choice?.finish_reason || 'stop',
-            toolCalls: choice?.message?.tool_calls,
+            toolCalls: choice?.message?.toolCalls,
             choice: choice
           };
         },
@@ -367,7 +367,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       messages.push({
         role: 'assistant' as const,
         content: '', // Empty content since this was a tool call
-        tool_calls: detectedToolCalls
+        toolCalls: detectedToolCalls
       });
 
       // Add tool result messages

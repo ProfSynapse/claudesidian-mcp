@@ -55,8 +55,8 @@ export class TokenCalculator {
       totalTokens += this.estimateTextTokens(message.content);
       
       // Add tokens for tool calls if present
-      if (message.tool_calls) {
-        message.tool_calls.forEach(toolCall => {
+      if (message.toolCalls) {
+        message.toolCalls.forEach(toolCall => {
           if (toolCall.parameters) {
             totalTokens += this.estimateTextTokens(JSON.stringify(toolCall.parameters));
           }

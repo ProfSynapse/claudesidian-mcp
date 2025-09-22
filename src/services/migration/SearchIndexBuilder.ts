@@ -120,7 +120,7 @@ export class SearchIndexBuilder {
       }
 
       // Add to date range bucket
-      this.addToDateRangeBucket(dateRanges, conversation.created_at, convId);
+      this.addToDateRangeBucket(dateRanges, conversation.created, convId);
     }
 
     index.byDateRange = dateRanges;

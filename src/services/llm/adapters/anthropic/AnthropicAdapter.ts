@@ -271,7 +271,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
             choice: {
               message: {
                 content: response.content,
-                tool_calls: toolCalls.length > 0 ? toolCalls : undefined
+                toolCalls: toolCalls.length > 0 ? toolCalls : undefined
               }
             }
           };

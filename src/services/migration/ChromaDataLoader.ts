@@ -102,7 +102,7 @@ export class ChromaDataLoader {
       for (const item of items) {
         const timestamp = item.metadata?.timestamp ||
                          item.metadata?.created ||
-                         item.metadata?.created_at;
+                         item.metadata?.created;
 
         if (timestamp) {
           if (!oldestTimestamp || timestamp < oldestTimestamp) {

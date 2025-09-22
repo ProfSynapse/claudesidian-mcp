@@ -49,8 +49,8 @@ export class DataTransformer {
         result.conversations[conv.id] = {
           id: conv.id,
           title: conv.metadata?.title || conversationData.title || 'Untitled Conversation',
-          created_at: conv.metadata?.created_at || conversationData.created_at || Date.now(),
-          last_updated: conv.metadata?.last_updated || conversationData.last_updated || Date.now(),
+          created: conv.metadata?.created || conversationData.created || Date.now(),
+          updated: conv.metadata?.updated || conversationData.updated || Date.now(),
           vault_name: conv.metadata?.vault_name || conversationData.vault_name || 'Unknown',
           message_count: conv.metadata?.message_count || conversationData.message_count || messages.length,
           messages: this.transformMessages(messages)

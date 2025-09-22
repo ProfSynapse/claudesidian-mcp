@@ -279,7 +279,7 @@ export class MCPToolExecution {
     let finishReason = responseData.finishReason || 'stop';
 
     // Tool execution loop
-    while (responseData.choice?.message?.tool_calls && responseData.choice.message.tool_calls.length > 0) {
+    while (responseData.choice?.message?.toolCalls && responseData.choice.message.toolCalls.length > 0) {
       totalToolIterations++;
       
       console.log(`[${provider} Tool Safety] Tool iteration ${totalToolIterations}/${TOOL_ITERATION_THRESHOLD}`);
@@ -310,7 +310,7 @@ export class MCPToolExecution {
 
       try {
         // Convert tool calls to MCP format
-        const mcpToolCalls: MCPToolCall[] = responseData.choice.message.tool_calls.map((tc: any) => ({
+        const mcpToolCalls: MCPToolCall[] = responseData.choice.message.toolCalls.map((tc: any) => ({
           id: tc.id,
           function: {
             name: tc.function?.name || tc.name,
@@ -347,7 +347,7 @@ export class MCPToolExecution {
 
       } catch (error) {
         console.error(`[${provider} Adapter] Tool execution failed:`, error);
-        const toolNames = (responseData.choice.message.tool_calls || []).map((tc: any) => tc.function?.name || tc.name).join(', ');
+        const toolNames = (responseData.choice.message.toolCalls || []).map((tc: any) => tc.function?.name || tc.name).join(', ');
         finalText = `I tried to use tools (${toolNames}) but encountered an error: ${error instanceof Error ? error.message : String(error)}`;
         break;
       }

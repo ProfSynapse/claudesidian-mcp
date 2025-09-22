@@ -71,8 +71,8 @@ export interface ConversationDataStructure {
     [conversationId: string]: {
       id: string;
       title: string;
-      created_at: number;
-      last_updated: number;
+      created: number;
+      updated: number;
       vault_name: string;
       message_count: number;
 

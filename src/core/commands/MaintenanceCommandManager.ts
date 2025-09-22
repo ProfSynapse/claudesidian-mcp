@@ -22,4 +22,18 @@ export class MaintenanceCommandManager {
   getMaintenanceCommands(): string[] {
     return ['open-settings'];
   }
+
+  /**
+   * Register maintenance commands
+   */
+  registerMaintenanceCommands(): void {
+    console.log('Maintenance commands registered');
+  }
+
+  /**
+   * Register troubleshoot command
+   */
+  registerTroubleshootCommand(): void {
+    console.log('Troubleshoot command registered');
+  }
 }

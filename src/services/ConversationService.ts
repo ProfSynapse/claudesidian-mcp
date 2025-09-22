@@ -37,8 +37,8 @@ export class ConversationService {
     data.conversations[convId] = {
       ...conversation,
       id: convId,
-      created_at: Date.now(),
-      last_updated: Date.now()
+      created: Date.now(),
+      updated: Date.now()
     };
 
     await this.saveConversationData(data);
@@ -55,7 +55,7 @@ export class ConversationService {
     data.conversations[id] = {
       ...data.conversations[id],
       ...updates,
-      last_updated: Date.now()
+      updated: Date.now()
     };
 
     await this.saveConversationData(data);
@@ -93,7 +93,7 @@ export class ConversationService {
 
     conversation.messages.push(messageWithId);
     conversation.message_count = conversation.messages.length;
-    conversation.last_updated = Date.now();
+    conversation.updated = Date.now();
 
     await this.saveConversationData(data);
   }
@@ -124,7 +124,7 @@ export class ConversationService {
     const conversations = await this.getAllConversations();
 
     return conversations.filter(conv =>
-      conv.created_at >= startDate && conv.created_at <= endDate
+      conv.created >= startDate && conv.created <= endDate
     );
   }
 
@@ -132,7 +132,7 @@ export class ConversationService {
     const conversations = await this.getAllConversations();
 
     return conversations
-      .sort((a, b) => b.last_updated - a.last_updated)
+      .sort((a, b) => b.updated - a.updated)
       .slice(0, limit);
   }
 
@@ -147,7 +147,7 @@ export class ConversationService {
     }
 
     // Sort by last updated (most recent first)
-    filtered.sort((a, b) => (b.last_updated || 0) - (a.last_updated || 0));
+    filtered.sort((a, b) => (b.updated || 0) - (a.updated || 0));
 
     // Apply limit if specified
     if (limit) {
@@ -189,8 +189,8 @@ export class ConversationService {
       stats.vaultCounts[vault] = (stats.vaultCounts[vault] || 0) + 1;
 
       // Track date range
-      if (conv.created_at < oldest) oldest = conv.created_at;
-      if (conv.created_at > newest) newest = conv.created_at;
+      if (conv.created < oldest) oldest = conv.created;
+      if (conv.created > newest) newest = conv.created;
     }
 
     stats.oldestConversation = oldest === Infinity ? undefined : oldest;

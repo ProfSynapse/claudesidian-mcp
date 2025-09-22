@@ -6,6 +6,8 @@
 export interface CommandContext {
   plugin: any;
   serviceManager: any;
+  getService?: (name: any, timeoutMs?: any) => any;
+  isInitialized?: () => boolean;
 }
 
 export const BASIC_COMMAND_DEFINITIONS = [

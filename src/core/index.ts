@@ -71,7 +71,7 @@ export async function createCoreServices(plugin: any) {
   const pathManager = new ObsidianPathManager(plugin.app.vault, plugin.manifest);
   
   // Create data manager with defaults
-  const dataManager = new PluginDataManager(plugin, {}, {});
+  const dataManager = new PluginDataManager(plugin);
   await dataManager.load();
   
   // Create vault operations
@@ -205,7 +205,7 @@ export class ArchitectureMigrationHelper {
   async migrateDataManagement(defaults: any): Promise<void> {
     if (!this.plugin.dataManager) {
       const { PluginDataManager } = await import('./PluginDataManager');
-      this.plugin.dataManager = new PluginDataManager(this.plugin, defaults);
+      this.plugin.dataManager = new PluginDataManager(this.plugin);
       await this.plugin.dataManager.load();
       // PluginDataManager initialized
     }

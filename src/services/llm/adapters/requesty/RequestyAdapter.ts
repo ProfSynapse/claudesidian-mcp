@@ -264,7 +264,7 @@ export class RequestyAdapter extends BaseAdapter implements MCPCapableAdapter {
             content: choice?.message?.content || '',
             usage: this.extractUsage(data),
             finishReason: choice?.finish_reason || 'stop',
-            toolCalls: choice?.message?.tool_calls,
+            toolCalls: choice?.message?.toolCalls,
             choice: choice
           };
         },
@@ -333,8 +333,8 @@ export class RequestyAdapter extends BaseAdapter implements MCPCapableAdapter {
 
     // If tools were provided and we got tool calls, we need to handle them
     // For now, just return the response as-is since tool execution is complex
-    if (options?.tools && choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
-      console.log(`[Requesty Adapter] Received ${choice.message.tool_calls.length} tool calls, but tool execution not implemented in basic mode`);
+    if (options?.tools && choice.message?.toolCalls && choice.message.toolCalls.length > 0) {
+      console.log(`[Requesty Adapter] Received ${choice.message.toolCalls.length} tool calls, but tool execution not implemented in basic mode`);
       text = text || '[AI requested tool calls but tool execution not available]';
     }
 
@@ -349,7 +349,7 @@ export class RequestyAdapter extends BaseAdapter implements MCPCapableAdapter {
 
   // Private methods
   private extractToolCalls(message: any): any[] {
-    return message?.tool_calls || [];
+    return message?.toolCalls || [];
   }
 
   private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {

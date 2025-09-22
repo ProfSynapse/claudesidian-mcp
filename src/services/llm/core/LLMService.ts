@@ -864,15 +864,16 @@ export class LLMService {
     const conversationData: ConversationData = {
       id: 'temp',
       title: 'Tool Execution',
-      created_at: Date.now(),
-      last_updated: Date.now(),
+      created: Date.now(),
+      updated: Date.now(),
       messages: [
         // User message
         {
           id: 'user-1',
           role: 'user' as const,
           content: originalPrompt,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          conversationId: 'temp'
         },
         // Assistant message with tool calls
         {
@@ -880,9 +881,15 @@ export class LLMService {
           role: 'assistant' as const,
           content: '',
           timestamp: Date.now(),
-          tool_calls: toolCalls.map((tc, index) => ({
+          conversationId: 'temp',
+          toolCalls: toolCalls.map((tc, index) => ({
             id: tc.id,
+            type: tc.type || 'function',
             name: tc.function?.name || tc.name,
+            function: tc.function || {
+              name: tc.function?.name || tc.name || '',
+              arguments: tc.function?.arguments || JSON.stringify(tc.parameters || {})
+            },
             parameters: tc.function?.arguments ? JSON.parse(tc.function.arguments) : (tc.parameters || {}),
             result: toolResults[index]?.result,
             success: toolResults[index]?.success || false,

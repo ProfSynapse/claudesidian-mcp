@@ -58,7 +58,7 @@ export class ConversationContextBuilder {
         messages.push({ role: 'user', content: msg.content });
       }
       else if (msg.role === 'assistant') {
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
 
           // 1. Assistant message with original tool calls format
           const assistantMessage: any = {
@@ -67,7 +67,7 @@ export class ConversationContextBuilder {
           };
 
           // Convert our stored tool calls to OpenAI format
-          assistantMessage.tool_calls = msg.tool_calls.map(tc => ({
+          assistantMessage.toolCalls = msg.toolCalls.map(tc => ({
             id: tc.id,
             type: 'function',
             function: {
@@ -79,7 +79,7 @@ export class ConversationContextBuilder {
           messages.push(assistantMessage);
 
           // 2. Tool result messages for each tool call
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach(toolCall => {
             const toolMessage = {
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -105,8 +105,8 @@ export class ConversationContextBuilder {
       }
       else if (msg.role === 'tool') {
         // Handle stored tool messages - convert tool_calls to individual tool result messages
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
-          msg.tool_calls.forEach(toolCall => {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          msg.toolCalls.forEach(toolCall => {
             const toolMessage = {
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -134,7 +134,7 @@ export class ConversationContextBuilder {
         messages.push({ role: 'user', content: msg.content });
       }
       else if (msg.role === 'assistant') {
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
           // For Anthropic, assistant message contains both text AND tool_use blocks
           const content: any[] = [];
 
@@ -147,7 +147,7 @@ export class ConversationContextBuilder {
           }
 
           // Add tool_use blocks
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach(toolCall => {
             content.push({
               type: 'tool_use',
               id: toolCall.id,
@@ -163,7 +163,7 @@ export class ConversationContextBuilder {
 
           // Add tool results as user message with tool_result blocks
           const toolResultContent: any[] = [];
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach(toolCall => {
             toolResultContent.push({
               type: 'tool_result',
               tool_use_id: toolCall.id,
@@ -186,9 +186,9 @@ export class ConversationContextBuilder {
       }
       else if (msg.role === 'tool') {
         // Handle stored tool messages - convert to tool_result blocks in user messages
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
           const toolResultContent: any[] = [];
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach(toolCall => {
             toolResultContent.push({
               type: 'tool_result',
               tool_use_id: toolCall.id,
