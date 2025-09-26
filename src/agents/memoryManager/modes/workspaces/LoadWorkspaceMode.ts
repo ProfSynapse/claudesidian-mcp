@@ -280,15 +280,28 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    */
   private extractKeyFiles(workspace: ProjectWorkspace): Record<string, string> {
     const keyFiles: Record<string, string> = {};
-    
+
     if (workspace.context?.keyFiles) {
-      workspace.context.keyFiles.forEach(category => {
-        Object.entries(category.files).forEach(([name, path]) => {
-          keyFiles[name] = path;
+      // New format: simple array of file paths
+      if (Array.isArray(workspace.context.keyFiles)) {
+        workspace.context.keyFiles.forEach((filePath, index) => {
+          // Extract filename without extension as key
+          const fileName = filePath.split('/').pop()?.replace(/\.[^/.]+$/, '') || `file_${index}`;
+          keyFiles[fileName] = filePath;
         });
-      });
+      }
+      // Legacy format: array of categorized files (for backward compatibility)
+      else if (typeof workspace.context.keyFiles === 'object' && 'length' in workspace.context.keyFiles) {
+        (workspace.context.keyFiles as any).forEach((category: any) => {
+          if (category.files) {
+            Object.entries(category.files).forEach(([name, path]) => {
+              keyFiles[name] = path as string;
+            });
+          }
+        });
+      }
     }
-    
+
     return keyFiles;
   }
   
@@ -590,31 +603,55 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     systemPrompt: string;
   } | null> {
     try {
-      // Check if workspace has associated agents
-      if (!workspace.context?.agents || workspace.context.agents.length === 0) {
+      // Check if workspace has a dedicated agent
+      if (!workspace.context?.dedicatedAgent) {
+        // Fall back to legacy agents array for backward compatibility
+        const legacyAgents = (workspace.context as any)?.agents;
+        if (legacyAgents && Array.isArray(legacyAgents) && legacyAgents.length > 0) {
+          const legacyAgentRef = legacyAgents[0];
+          if (legacyAgentRef && legacyAgentRef.name) {
+            return await this.fetchAgentByName(legacyAgentRef.name);
+          }
+        }
         return null;
       }
 
-      // Get the first agent (primary workspace agent)
-      const agentRef = workspace.context.agents[0];
-      
+      // Use the new dedicated agent structure
+      const { agentId, agentName } = workspace.context.dedicatedAgent;
+      return await this.fetchAgentById(agentId, agentName);
+
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Failed to fetch workspace agent:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch agent by ID (preferred method)
+   */
+  private async fetchAgentById(agentId: string, agentName: string): Promise<{
+    id: string;
+    name: string;
+    systemPrompt: string;
+  } | null> {
+    try {
       // Get CustomPromptStorageService through plugin's agentManager
       const plugin = this.agent.getApp().plugins.getPlugin('claudesidian-mcp') as any;
       if (!plugin || !plugin.agentManager) {
         console.warn('[LoadWorkspaceMode] AgentManager not available');
         return null;
       }
-      
+
       const agentManagerAgent = plugin.agentManager.getAgent('agentManager');
       if (!agentManagerAgent || !agentManagerAgent.storageService) {
         console.warn('[LoadWorkspaceMode] AgentManagerAgent or storage service not available');
         return null;
       }
 
-      // Fetch agent by name
-      const agent = agentManagerAgent.storageService.getPromptByName(agentRef.name);
+      // Fetch agent by ID (more reliable)
+      const agent = agentManagerAgent.storageService.getPromptById(agentId);
       if (!agent) {
-        console.warn(`[LoadWorkspaceMode] Agent '${agentRef.name}' not found in storage`);
+        console.warn(`[LoadWorkspaceMode] Agent with ID '${agentId}' not found in storage`);
         return null;
       }
 
@@ -625,7 +662,48 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       };
 
     } catch (error) {
-      console.warn('[LoadWorkspaceMode] Failed to fetch workspace agent:', error);
+      console.warn(`[LoadWorkspaceMode] Failed to fetch agent by ID '${agentId}':`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch agent by name (legacy fallback)
+   */
+  private async fetchAgentByName(agentName: string): Promise<{
+    id: string;
+    name: string;
+    systemPrompt: string;
+  } | null> {
+    try {
+      // Get CustomPromptStorageService through plugin's agentManager
+      const plugin = this.agent.getApp().plugins.getPlugin('claudesidian-mcp') as any;
+      if (!plugin || !plugin.agentManager) {
+        console.warn('[LoadWorkspaceMode] AgentManager not available');
+        return null;
+      }
+
+      const agentManagerAgent = plugin.agentManager.getAgent('agentManager');
+      if (!agentManagerAgent || !agentManagerAgent.storageService) {
+        console.warn('[LoadWorkspaceMode] AgentManagerAgent or storage service not available');
+        return null;
+      }
+
+      // Fetch agent by name (legacy method)
+      const agent = agentManagerAgent.storageService.getPromptByName(agentName);
+      if (!agent) {
+        console.warn(`[LoadWorkspaceMode] Agent '${agentName}' not found in storage`);
+        return null;
+      }
+
+      return {
+        id: agent.id,
+        name: agent.name,
+        systemPrompt: agent.prompt
+      };
+
+    } catch (error) {
+      console.warn(`[LoadWorkspaceMode] Failed to fetch agent by name '${agentName}':`, error);
       return null;
     }
   }

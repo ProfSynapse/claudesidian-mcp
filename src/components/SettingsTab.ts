@@ -27,6 +27,7 @@ export class SettingsTab extends PluginSettingTab {
 
     // Simplified Services
     private memoryService: MemoryService | undefined;
+    private workspaceService: WorkspaceService | undefined;
     
     // Agent references
     private vaultLibrarian: VaultLibrarianAgent | undefined;
@@ -72,6 +73,7 @@ export class SettingsTab extends PluginSettingTab {
         // Setup services
         if (services) {
             this.memoryService = services.memoryService;
+            this.workspaceService = services.workspaceService;
         }
         
         // Store agent references
@@ -95,6 +97,7 @@ export class SettingsTab extends PluginSettingTab {
     }): void {
         // Update service references
         this.memoryService = services.memoryService;
+        this.workspaceService = services.workspaceService;
 
         // Update the memory management accordion if it exists
         if (this.memoryManagementAccordion) {
@@ -243,6 +246,7 @@ export class SettingsTab extends PluginSettingTab {
             containerEl,
             this.settingsManager,
             this.memoryService,
+            this.workspaceService,
             this.vaultLibrarian,
             this.serviceManager
         );

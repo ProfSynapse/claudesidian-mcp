@@ -563,6 +563,10 @@ export class MCPConnector {
      */
     async start(): Promise<void> {
         try {
+            // Initialize agents and connection manager first
+            await this.initializeAgents();
+
+            // Then start the server
             await this.connectionManager.start();
         } catch (error) {
             if (error instanceof McpError) {

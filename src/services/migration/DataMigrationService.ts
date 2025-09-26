@@ -53,7 +53,22 @@ export class DataMigrationService {
     const hasNewStructure = await this.fileSystem.fileExists('workspace-data.json');
 
     if (hasNewStructure) {
-      console.log('[Claudesidian] New structure already exists - migration complete');
+      console.log('[Claudesidian] New structure already exists - checking if settings cleanup needed');
+
+      // Check if settings cleanup is needed
+      const needsSettingsCleanup = await this.needsSettingsCleanup();
+      if (needsSettingsCleanup) {
+        console.log('[Claudesidian] Settings cleanup needed - running cleanup...');
+        const cleanupResult = await this.cleanupObsoleteSettings();
+        if (cleanupResult.success) {
+          console.log(`[Claudesidian] Settings cleanup completed - removed ${cleanupResult.removedSettings.length} obsolete settings`);
+        } else {
+          console.warn('[Claudesidian] Settings cleanup failed:', cleanupResult.error);
+        }
+      } else {
+        console.log('[Claudesidian] Settings already clean - no cleanup needed');
+      }
+
       return {
         isRequired: false,
         hasLegacyData: false,
@@ -149,6 +164,15 @@ export class DataMigrationService {
         this.fileSystem.writeJSON('conversations-index.json', conversationIndex)
       ]);
 
+      // Step 8: Clean up obsolete settings
+      console.log('[Claudesidian] Cleaning up obsolete embedding/vector settings...');
+      const settingsCleanupResult = await this.cleanupObsoleteSettings();
+      if (settingsCleanupResult.success) {
+        console.log(`[Claudesidian] Settings cleanup completed - removed ${settingsCleanupResult.removedSettings.length} obsolete settings`);
+      } else {
+        console.warn('[Claudesidian] Settings cleanup failed:', settingsCleanupResult.error);
+      }
+
       result.success = true;
       result.migrationTime = Date.now() - startTime;
 
@@ -237,6 +261,149 @@ export class DataMigrationService {
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
+  }
+
+  /**
+   * Check if settings cleanup is needed
+   */
+  async needsSettingsCleanup(): Promise<boolean> {
+    try {
+      const currentData = await this.plugin.loadData() || {};
+
+      // Check if any obsolete settings exist
+      const obsoleteChecks = [
+        currentData.memory?.enabled !== undefined,
+        currentData.memory?.embeddingsEnabled !== undefined,
+        currentData.memory?.apiProvider !== undefined,
+        currentData.memory?.providerSettings !== undefined,
+        currentData.incompleteFiles !== undefined,
+        currentData.fileEventQueue !== undefined,
+        currentData.memory?.openaiApiKey !== undefined,
+        currentData.memory?.embeddingModel !== undefined
+      ];
+
+      return obsoleteChecks.some(check => check);
+    } catch (error) {
+      console.error('[Claudesidian] Error checking if settings cleanup needed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Clean up obsolete embedding and vector-related settings from plugin data
+   */
+  async cleanupObsoleteSettings(): Promise<{
+    success: boolean;
+    removedSettings: string[];
+    error?: string;
+  }> {
+    const result = {
+      success: false,
+      removedSettings: [] as string[],
+      error: undefined as string | undefined
+    };
+
+    try {
+      // Load current plugin data
+      const currentData = await this.plugin.loadData() || {};
+      console.log('[Claudesidian] Loaded current plugin settings for cleanup');
+
+      // Define obsolete settings to remove
+      const obsoleteSettings = [
+        'memory.enabled',
+        // Embedding provider settings
+        'memory.embeddingsEnabled',
+        'memory.apiProvider',
+        'memory.providerSettings',
+        'memory.maxTokensPerMonth',
+        'memory.apiRateLimitPerMinute',
+        'memory.chunkStrategy',
+        'memory.chunkSize',
+        'memory.chunkOverlap',
+        'memory.maxTokensPerChunk',
+        'memory.embeddingStrategy',
+        'memory.dbStoragePath',
+        'memory.vectorStoreType',
+        'memory.costPerThousandTokens',
+        'memory.contextualEmbedding',
+        'memory.autoCleanOrphaned',
+        'memory.maxDbSize',
+        'memory.pruningStrategy',
+        'memory.defaultResultLimit',
+        'memory.includeNeighbors',
+        'memory.graphBoostFactor',
+        'memory.backlinksEnabled',
+        'memory.useFilters',
+        'memory.defaultThreshold',
+        'memory.semanticThreshold',
+        'memory.batchSize',
+        'memory.concurrentRequests',
+        'memory.processingDelay',
+        'memory.openaiApiKey',
+        'memory.embeddingModel',
+        'memory.dimensions',
+        'memory.indexingSchedule',
+        'memory.backlinksWeight',
+        'memory.hasEverConfiguredEmbeddings',
+        'memory.lastIndexedDate',
+        'memory.monthlyBudget',
+        // File processing state (old vector-based)
+        'incompleteFiles',
+        'fileEventQueue'
+      ];
+
+      // Remove obsolete settings
+      const updatedData = { ...currentData };
+
+      for (const settingPath of obsoleteSettings) {
+        if (this.removeSetting(updatedData, settingPath)) {
+          result.removedSettings.push(settingPath);
+        }
+      }
+
+      // If memory object is now empty, remove it entirely
+      if (updatedData.memory && Object.keys(updatedData.memory).length === 0) {
+        delete updatedData.memory;
+        result.removedSettings.push('memory (entire section)');
+      }
+
+      // Save the cleaned-up settings
+      await this.plugin.saveData(updatedData);
+      console.log('[Claudesidian] Saved cleaned plugin settings');
+
+      result.success = true;
+
+    } catch (error) {
+      result.error = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[Claudesidian] Error during settings cleanup:', error);
+    }
+
+    return result;
+  }
+
+  /**
+   * Helper method to remove a nested setting by dot notation path
+   */
+  private removeSetting(obj: any, path: string): boolean {
+    const parts = path.split('.');
+    let current = obj;
+
+    // Navigate to the parent object
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (current[parts[i]] === undefined) {
+        return false; // Path doesn't exist
+      }
+      current = current[parts[i]];
+    }
+
+    // Remove the final property
+    const finalKey = parts[parts.length - 1];
+    if (current[finalKey] !== undefined) {
+      delete current[finalKey];
+      return true;
+    }
+
+    return false;
   }
 
   /**

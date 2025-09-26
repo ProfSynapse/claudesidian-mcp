@@ -12,7 +12,7 @@ export class FileSystemService {
 
   constructor(plugin: Plugin) {
     this.plugin = plugin;
-    this.dataPath = normalizePath(`${plugin.app.vault.configDir}/plugins/claudesidian-mcp/.data`);
+    this.dataPath = normalizePath(`${plugin.manifest.dir}/.data`);
   }
 
   async ensureDataDirectory(): Promise<void> {
@@ -48,15 +48,15 @@ export class FileSystemService {
   async fileExists(filename: string): Promise<boolean> {
     const filePath = normalizePath(`${this.dataPath}/${filename}`);
     try {
-      await this.plugin.app.vault.adapter.stat(filePath);
-      return true;
+      return await this.plugin.app.vault.adapter.exists(filePath);
     } catch (error) {
+      console.error(`[Claudesidian] Error checking file existence: ${filePath}`, error);
       return false;
     }
   }
 
   async readChromaCollection(collectionName: string): Promise<any> {
-    const chromaPath = normalizePath(`${this.plugin.app.vault.configDir}/plugins/claudesidian-mcp/data/chroma-db/collections/${collectionName}/items.json`);
+    const chromaPath = normalizePath(`${this.plugin.manifest.dir}/data/chroma-db/collections/${collectionName}/items.json`);
     try {
       const content = await this.plugin.app.vault.adapter.read(chromaPath);
       const data = JSON.parse(content);
@@ -74,6 +74,6 @@ export class FileSystemService {
   }
 
   getChromaPath(): string {
-    return normalizePath(`${this.plugin.app.vault.configDir}/plugins/claudesidian-mcp/data/chroma-db`);
+    return normalizePath(`${this.plugin.manifest.dir}/data/chroma-db`);
   }
 }

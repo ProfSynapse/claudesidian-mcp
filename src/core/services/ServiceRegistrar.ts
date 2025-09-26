@@ -59,17 +59,7 @@ export class ServiceRegistrar {
      * Get default memory settings
      */
     static getDefaultMemorySettings(dataDir: string) {
-        return {
-            enabled: true,
-            dbStoragePath: dataDir,
-            includeFrontmatter: true,
-            excludePaths: ['.obsidian/**/*'],
-            minContentLength: 50,
-            idleTimeThreshold: 60000,
-            autoCleanOrphaned: true,
-            maxDbSize: 500,
-            pruningStrategy: 'least-used' as 'least-used'
-        };
+        return {};
     }
 
     /**
@@ -92,9 +82,8 @@ export class ServiceRegistrar {
             // Update settings with correct path
             if (!settings.settings.memory) {
                 settings.settings.memory = ServiceRegistrar.getDefaultMemorySettings(storageDir);
-            } else {
-                settings.settings.memory.dbStoragePath = storageDir;
             }
+            // dbStoragePath is no longer needed - using .data directory
             
             // Save settings in background
             settings.saveSettings().catch(error => {

@@ -45,17 +45,7 @@ export class ServerLifecycleManager {
 
             this.status = 'running';
             this.eventManager.emit('server:started', null);
-            logger.systemLog('Server started successfully');
-            
-            // Test if HTTP server is actually running
-            try {
-                const httpStatus = this.httpTransportManager.getTransportStatus();
-                if (httpStatus.isRunning) {
-                    logger.systemLog(`✅ MCP HTTP server confirmed running on: ${httpStatus.endpoint}`);
-                }
-            } catch (error) {
-                // Silently continue if status check fails
-            }
+            logger.systemLog('Server started successfully with IPC transport');
         } catch (error) {
             this.status = 'error';
             logger.systemError(error as Error, 'Server Start');
@@ -116,13 +106,10 @@ export class ServerLifecycleManager {
      */
     private async startTransports(): Promise<void> {
         try {
-            // Start HTTP transport first (critical for MCP functionality)
-            const httpResult = await this.httpTransportManager.startTransport();
-            
-            // Start IPC transport second
+            // Only start IPC transport for Obsidian plugin (no HTTP needed)
             const ipcResult = await this.ipcTransportManager.startTransport();
 
-            logger.systemLog('Both transports started successfully');
+            logger.systemLog('IPC transport started successfully');
         } catch (error) {
             logger.systemError(error as Error, 'Transport Start');
             throw error;
@@ -134,12 +121,10 @@ export class ServerLifecycleManager {
      */
     private async stopTransports(): Promise<void> {
         try {
-            await Promise.all([
-                this.httpTransportManager.stopTransport(),
-                this.ipcTransportManager.stopTransport()
-            ]);
+            // Only stop IPC transport (no HTTP to stop)
+            await this.ipcTransportManager.stopTransport();
 
-            logger.systemLog('Both transports stopped successfully');
+            logger.systemLog('IPC transport stopped successfully');
         } catch (error) {
             logger.systemError(error as Error, 'Transport Stop');
             throw error;

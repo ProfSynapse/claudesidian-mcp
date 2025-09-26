@@ -48,17 +48,8 @@ export class Settings {
             const { memory, llmProviders, ...otherSettings } = loadedData;
             Object.assign(this.settings, otherSettings);
             
-            // Basic memory settings merge
-            if (memory && DEFAULT_SETTINGS.memory) {
-                this.settings.memory = {
-                    ...DEFAULT_SETTINGS.memory,
-                    ...memory,
-                    providerSettings: {
-                        ...DEFAULT_SETTINGS.memory.providerSettings,
-                        ...(memory.providerSettings || {})
-                    }
-                };
-            }
+            // Ensure memory settings exist
+            this.settings.memory = DEFAULT_SETTINGS.memory;
 
             // Basic LLM provider settings merge
             if (llmProviders && DEFAULT_SETTINGS.llmProviders) {

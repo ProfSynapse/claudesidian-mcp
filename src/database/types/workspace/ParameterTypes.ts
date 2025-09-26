@@ -34,12 +34,6 @@ export interface CreateWorkspaceParameters extends CommonParameters {
   currentGoal: string;
   
   /**
-   * What's the current state of progress? (required)
-   * Example: "5 sent, 2 pending responses (Google, Meta), need 5 more"
-   */
-  status: string;
-  
-  /**
    * Workflows for different situations (required)
    * Provide an array of workflows with name, when to use, and steps
    * Example: [{"name": "New Application", "when": "When applying to new position", "steps": ["Research company", "Customize cover letter", "Apply", "Track"]}]
@@ -49,34 +43,27 @@ export interface CreateWorkspaceParameters extends CommonParameters {
     when: string;
     steps: string[];
   }>;
-  
+
   /**
-   * Key files organized by category (required)
-   * Provide files organized into logical groups
-   * Example: [{"category": "Core Documents", "files": {"resume": "path/to/resume.pdf", "portfolio": "path/to/portfolio.md"}}]
+   * Simple key files list for quick reference (optional)
+   * Provide array of file paths for key files in this workspace
+   * Example: ["path/to/resume.md", "path/to/portfolio.md"]
    */
-  keyFiles: Array<{
-    category: string;
-    files: Record<string, string>;
-  }>;
-  
+  keyFiles?: string[];
+
   /**
-   * User preferences as actionable guidelines (required)
+   * User preferences as actionable guidelines (optional)
    * Provide specific preferences about how to work
    * Example: ["Use professional tone", "Focus on tech companies", "Keep cover letters under 300 words"]
    */
-  preferences: string[];
-  
+  preferences?: string[];
+
   /**
-   * Agents to associate with this workspace (optional)
-   * Specify which agents should be recommended and when
-   * Example: [{"name": "CoverLetterAgent", "when": "When customizing cover letters", "purpose": "Adapts letters to job requirements"}]
+   * ID of dedicated agent for this workspace (optional)
+   * This agent's systemPrompt will be included when loading the workspace
+   * Example: "agent_12345"
    */
-  agents?: Array<{
-    name: string;
-    when: string;
-    purpose: string;
-  }>;
+  dedicatedAgentId?: string;
   
   
   // Optional legacy fields for backward compatibility

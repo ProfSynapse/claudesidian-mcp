@@ -4,6 +4,8 @@ import { WorkspaceService } from './agents/memoryManager/services/WorkspaceServi
 import { MemoryService } from './agents/memoryManager/services/MemoryService';
 import { ConversationService } from './services/ConversationService';
 import { DataMigrationService } from './services/migration/DataMigrationService';
+import { SettingsTab } from './components/SettingsTab';
+import { Settings } from './settings';
 
 export default class ClaudesidianPlugin extends Plugin {
     private connector!: MCPConnector;
@@ -11,94 +13,74 @@ export default class ClaudesidianPlugin extends Plugin {
     private memoryService!: MemoryService;
     private conversationService!: ConversationService;
     private migrationService!: DataMigrationService;
+    public settingsManager!: Settings;
+    public settings: any;
 
     async onload() {
-        console.log('Loading Claudesidian MCP Plugin');
+        try {
+            // Load plugin settings first before creating any services
+            this.settings = await this.loadData();
+            this.settingsManager = new Settings(this);
+            await this.settingsManager.loadSettings();
 
-        // Initialize simplified services
-        this.workspaceService = new WorkspaceService(this);
-        this.memoryService = new MemoryService(this);
-        this.conversationService = new ConversationService(this);
-        this.migrationService = new DataMigrationService(this);
+            // Initialize simplified services
+            this.workspaceService = new WorkspaceService(this);
+            this.memoryService = new MemoryService(this);
+            this.conversationService = new ConversationService(this);
+            this.migrationService = new DataMigrationService(this);
 
-        // Check and perform migration if needed
-        await this.checkAndPerformMigration();
+            // Check and perform migration if needed
+            await this.checkAndPerformMigration();
 
-        // Initialize MCP connector
-        this.connector = new MCPConnector(this.app, this);
-        await this.connector.start();
+            // Initialize MCP connector
+            this.connector = new MCPConnector(this.app, this);
+            await this.connector.start();
 
-        console.log('Claudesidian MCP Plugin loaded successfully');
+            // Add settings tab
+            this.addSettingTab(new SettingsTab(
+                this.app,
+                this,
+                this.settingsManager,
+                {
+                    workspaceService: this.workspaceService,
+                    memoryService: this.memoryService
+                }
+            ));
+
+        } catch (error) {
+            console.error('Plugin loading failed:', error);
+            throw error;
+        }
     }
 
     async onunload() {
-        console.log('Unloading Claudesidian MCP Plugin');
-
         if (this.connector) {
             await this.connector.stop();
         }
-
-        console.log('Claudesidian MCP Plugin unloaded');
     }
 
     /**
      * Check and perform data migration if needed
      */
     private async checkAndPerformMigration(): Promise<void> {
-        console.log('[Claudesidian] ========== MIGRATION CHECK START ==========');
-
         try {
-            console.log('[Claudesidian] Checking migration status...');
             const migrationStatus = await this.migrationService.checkMigrationStatus();
 
-            console.log('[Claudesidian] Migration status result:', {
-                isRequired: migrationStatus.isRequired,
-                hasLegacyData: migrationStatus.hasLegacyData,
-                migrationComplete: migrationStatus.migrationComplete,
-                migrationError: migrationStatus.migrationError
-            });
-
             if (migrationStatus.isRequired) {
-                console.log('[Claudesidian] ========== STARTING MIGRATION ==========');
-                console.log('[Claudesidian] Legacy ChromaDB data detected, starting migration...');
                 new Notice('Claudesidian: Migrating data to new format...', 5000);
-
                 const migrationResult = await this.migrationService.performMigration();
 
-                console.log('[Claudesidian] ========== MIGRATION RESULT ==========');
-                console.log('[Claudesidian] Migration result:', {
-                    success: migrationResult.success,
-                    workspaces: migrationResult.workspacesMigrated,
-                    sessions: migrationResult.sessionsMigrated,
-                    conversations: migrationResult.conversationsMigrated,
-                    memoryTraces: migrationResult.memoryTracesMigrated,
-                    snapshots: migrationResult.snapshotsMigrated,
-                    migrationTime: migrationResult.migrationTime + 'ms',
-                    errors: migrationResult.errors
-                });
-
                 if (migrationResult.success) {
-                    const message = `Migration completed successfully! Workspaces: ${migrationResult.workspacesMigrated}, Sessions: ${migrationResult.sessionsMigrated}, Conversations: ${migrationResult.conversationsMigrated}, Memory traces: ${migrationResult.memoryTracesMigrated}, Snapshots: ${migrationResult.snapshotsMigrated}`;
-
-                    console.log('[Claudesidian] ✅ SUCCESS:', message);
                     new Notice('Claudesidian: Data migration completed successfully!', 8000);
                 } else {
-                    console.error('[Claudesidian] ❌ MIGRATION FAILED');
-                    console.error('[Claudesidian] Errors:', migrationResult.errors);
+                    console.error('[Claudesidian] Migration failed:', migrationResult.errors);
                     new Notice(`Claudesidian: Migration failed. Check console for details.`, 10000);
                 }
-            } else if (migrationStatus.migrationComplete) {
-                console.log('[Claudesidian] ✅ Migration already completed - skipping');
-            } else {
-                console.log('[Claudesidian] ℹ️ No legacy data found - no migration needed');
             }
         } catch (error) {
-            console.error('[Claudesidian] ❌ MIGRATION CHECK ERROR:', error);
-            console.error('[Claudesidian] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+            console.error('[Claudesidian] Migration check error:', error);
             new Notice('Claudesidian: Error checking migration status', 5000);
         }
-
-        console.log('[Claudesidian] ========== MIGRATION CHECK END ==========');
     }
 
     // Service accessors
@@ -109,5 +91,22 @@ export default class ClaudesidianPlugin extends Plugin {
             conversationService: this.conversationService,
             migrationService: this.migrationService
         };
+    }
+
+    // Service getter method for compatibility
+    public getService(serviceName: string) {
+        const services = this.services;
+        switch (serviceName) {
+            case 'workspaceService':
+                return services.workspaceService;
+            case 'memoryService':
+                return services.memoryService;
+            case 'conversationService':
+                return services.conversationService;
+            case 'migrationService':
+                return services.migrationService;
+            default:
+                return undefined;
+        }
     }
 }

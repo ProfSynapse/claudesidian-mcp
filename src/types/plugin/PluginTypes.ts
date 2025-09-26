@@ -6,12 +6,9 @@
 import { CustomPromptsSettings } from '../mcp/CustomPromptTypes';
 import { LLMProviderSettings } from '../llm/ProviderTypes';
 
-// Note: MemorySettings and ProcessedFileState removed in simplify-search-architecture
-// Simple memory management now uses JSON-based storage
+// Memory management settings
 interface MemorySettings {
-  enabled: boolean;
-  providerSettings?: Record<string, any>;
-  dbStoragePath?: string;
+  // Workspace management interface
 }
 
 interface ProcessedFileState {

@@ -3,6 +3,7 @@ import { Settings } from '../../settings';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { WorkspaceService } from "../../agents/memoryManager/services/WorkspaceService";
 import type { ServiceManager } from '../../core/ServiceManager';
 
 /**
@@ -12,9 +13,10 @@ import type { ServiceManager } from '../../core/ServiceManager';
 export class MemoryManagementAccordion extends Accordion {
     private settings: Settings;
     private memorySettingsContainer: HTMLElement;
-    
+
     // Simplified Services
     private memoryService: MemoryService | undefined;
+    private workspaceService: WorkspaceService | undefined;
     
     // Agent (for backward compatibility)
     private vaultLibrarian: VaultLibrarianAgent | undefined;
@@ -29,6 +31,7 @@ export class MemoryManagementAccordion extends Accordion {
      * @param containerEl Parent container element
      * @param settings Plugin settings
      * @param memoryService MemoryService for memory traces and sessions
+     * @param workspaceService WorkspaceService for workspace management
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
      * @param serviceManager ServiceManager instance for checking service readiness (optional)
      */
@@ -36,12 +39,14 @@ export class MemoryManagementAccordion extends Accordion {
         containerEl: HTMLElement,
         settings: Settings,
         memoryService?: MemoryService,
+        workspaceService?: WorkspaceService,
         vaultLibrarian?: VaultLibrarianAgent,
         serviceManager?: ServiceManager
     ) {
         super(containerEl, 'Memory Management', false);
         this.settings = settings;
         this.memoryService = memoryService;
+        this.workspaceService = workspaceService;
         this.vaultLibrarian = vaultLibrarian;
         this.serviceManager = serviceManager;
         
@@ -49,7 +54,7 @@ export class MemoryManagementAccordion extends Accordion {
         
         // Add simple description
         contentEl.createEl('p', {
-            text: 'Configure settings for the Memory Manager feature.'
+            text: 'Manage workspaces: view, create, edit, and delete workspace configurations.'
         });
         
         // Container for memory settings
@@ -61,11 +66,9 @@ export class MemoryManagementAccordion extends Accordion {
         
         // Initialize UI based on current service state
         this.initializeUI();
-        
-        // Start monitoring service readiness if enabled
-        if (this.settings.settings.memory?.enabled) {
-            this.startServiceReadinessMonitoring();
-        }
+
+        // Start monitoring service readiness
+        this.startServiceReadinessMonitoring();
     }
     
     /**
@@ -74,10 +77,8 @@ export class MemoryManagementAccordion extends Accordion {
     private initializeUI(): void {
         if (this.areServicesReady()) {
             this.initializeMemorySettingsTab();
-        } else if (this.settings.settings.memory?.enabled) {
-            this.showServiceLoadingStatus();
         } else {
-            this.showMemoryDisabledMessage();
+            this.showServiceLoadingStatus();
         }
     }
     
@@ -312,8 +313,9 @@ export class MemoryManagementAccordion extends Accordion {
             this.memorySettingsTab = new MemorySettingsTab(
                 this.memorySettingsContainer,
                 (window as any).app,
-                null as any, // workspaceService placeholder
-                this.memoryService
+                this.workspaceService!,
+                this.memoryService,
+                this.settings
             );
         }
         

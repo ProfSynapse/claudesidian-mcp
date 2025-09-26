@@ -32,15 +32,12 @@ export {
   DEFAULT_LLM_PROVIDER_SETTINGS
 } from './types/llm';
 
-// Simple memory management now uses JSON-based storage
+// Memory management settings
 export interface MemorySettings {
-  enabled: boolean;
-  providerSettings?: Record<string, any>;
+  // Workspace management interface
 }
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
-  enabled: true,
-  providerSettings: {}
 };
 
 // MCP protocol types

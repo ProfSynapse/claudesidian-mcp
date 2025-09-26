@@ -117,6 +117,8 @@ export class DataTransformer {
         let context;
         if (wsMetadata?.metadata?.context) {
           context = this.parseJSONString(wsMetadata.metadata.context);
+          // Apply workspace context migration to new structure
+          context = this.migrateWorkspaceContext(context);
         }
 
         result.workspaces[workspaceId] = {
@@ -233,5 +235,63 @@ export class DataTransformer {
     } catch {
       return str;
     }
+  }
+
+  /**
+   * Migrate workspace context from old structure to new structure
+   * - Convert agents array to single dedicatedAgent
+   * - Convert complex keyFiles structure to simple array
+   * - Remove status field (replaced by active toggle)
+   */
+  private migrateWorkspaceContext(context: any): any {
+    if (!context || typeof context !== 'object') {
+      return context;
+    }
+
+    const migratedContext = { ...context };
+
+    // Migrate agents array to dedicatedAgent
+    if (context.agents && Array.isArray(context.agents) && context.agents.length > 0) {
+      const firstAgent = context.agents[0];
+      if (firstAgent && firstAgent.name) {
+        // For migration, we'll use the agent name as both ID and name
+        // This will be resolved properly when loading the workspace
+        migratedContext.dedicatedAgent = {
+          agentId: firstAgent.id || firstAgent.name, // Use ID if available, fallback to name
+          agentName: firstAgent.name
+        };
+
+        console.log(`[DataTransformer] Migrated agent '${firstAgent.name}' to dedicatedAgent structure`);
+      }
+
+      // Remove the old agents array
+      delete migratedContext.agents;
+    }
+
+    // Migrate keyFiles from complex categorized structure to simple array
+    if (context.keyFiles && Array.isArray(context.keyFiles)) {
+      const simpleKeyFiles: string[] = [];
+
+      context.keyFiles.forEach((category: any) => {
+        if (category.files && typeof category.files === 'object') {
+          Object.values(category.files).forEach((filePath: any) => {
+            if (typeof filePath === 'string') {
+              simpleKeyFiles.push(filePath);
+            }
+          });
+        }
+      });
+
+      migratedContext.keyFiles = simpleKeyFiles;
+      console.log(`[DataTransformer] Migrated ${simpleKeyFiles.length} key files to simple array format`);
+    }
+
+    // Remove status field (replaced by workspace active toggle)
+    if (context.status) {
+      console.log(`[DataTransformer] Removed status field: '${context.status}' (replaced by active toggle)`);
+      delete migratedContext.status;
+    }
+
+    return migratedContext;
   }
 }

@@ -2,6 +2,7 @@ import { CardManager, CardItem } from '../CardManager';
 import { WorkspaceService } from '../../agents/memoryManager/services/WorkspaceService';
 import { ProjectWorkspace } from '../../database/workspace-types';
 import { WorkspaceEditModal } from './WorkspaceEditModal';
+import { Settings } from '../../settings';
 
 /**
  * Workspace-specific card item interface
@@ -33,14 +34,17 @@ export interface WorkspaceCardItem extends CardItem {
 export class WorkspaceCardManager {
   private cardManager: CardManager<WorkspaceCardItem>;
   private workspaceService: WorkspaceService;
+  private settings: Settings;
   private containerEl: HTMLElement;
 
   constructor(
     containerEl: HTMLElement,
-    workspaceService: WorkspaceService
+    workspaceService: WorkspaceService,
+    settings: Settings
   ) {
     this.containerEl = containerEl;
     this.workspaceService = workspaceService;
+    this.settings = settings;
 
     this.cardManager = new CardManager<WorkspaceCardItem>({
       containerEl: containerEl,
@@ -62,7 +66,11 @@ export class WorkspaceCardManager {
    */
   async refreshWorkspaces(): Promise<void> {
     try {
-      const workspaces = await this.workspaceService.getAllWorkspaces();
+      let workspaces = await this.workspaceService.getAllWorkspaces();
+
+      // Consolidate multiple root workspaces into one
+      workspaces = this.consolidateRootWorkspaces(workspaces);
+
       const cardItems = workspaces.map(workspace => this.workspaceToCardItem(workspace));
       this.cardManager.updateItems(cardItems);
     } catch (error) {
@@ -71,12 +79,52 @@ export class WorkspaceCardManager {
   }
 
   /**
+   * Consolidate multiple root workspaces into a single default workspace
+   */
+  private consolidateRootWorkspaces(workspaces: ProjectWorkspace[]): ProjectWorkspace[] {
+    const rootWorkspaces = workspaces.filter(w =>
+      !w.rootFolder || w.rootFolder === '/' || w.rootFolder === ''
+    );
+    const nonRootWorkspaces = workspaces.filter(w =>
+      w.rootFolder && w.rootFolder !== '/' && w.rootFolder !== ''
+    );
+
+    if (rootWorkspaces.length <= 1) {
+      return workspaces; // No consolidation needed
+    }
+
+    // Find the most recent or preferred root workspace
+    let primaryRoot = rootWorkspaces.find(w =>
+      w.name === 'Plugin Testing Workspace' ||
+      w.name === 'Comprehensive Tool Testing Workspace' ||
+      !w.name.startsWith('Workspace ')
+    );
+
+    if (!primaryRoot) {
+      // Use the most recently accessed one
+      primaryRoot = rootWorkspaces.reduce((latest, current) =>
+        current.lastAccessed > latest.lastAccessed ? current : latest
+      );
+    }
+
+    // Mark the primary root as the default
+    const consolidatedRoot: ProjectWorkspace = {
+      ...primaryRoot,
+      name: primaryRoot.name.startsWith('Workspace ') ? 'Default Workspace' : primaryRoot.name,
+      description: primaryRoot.description || 'Default workspace for vault root',
+      rootFolder: '/'
+    };
+
+    return [consolidatedRoot, ...nonRootWorkspaces];
+  }
+
+  /**
    * Convert ProjectWorkspace to WorkspaceCardItem
    */
   private workspaceToCardItem(workspace: ProjectWorkspace): WorkspaceCardItem {
     return {
       id: workspace.id,
-      name: workspace.name,
+      name: this.generateWorkspaceName(workspace),
       description: this.generateCardDescription(workspace),
       isEnabled: workspace.isActive ?? true,
       rootFolder: workspace.rootFolder,
@@ -84,9 +132,31 @@ export class WorkspaceCardManager {
       lastAccessed: workspace.lastAccessed,
       purpose: workspace.context?.purpose,
       currentGoal: workspace.context?.currentGoal,
-      status: workspace.context?.status,
+      status: (workspace.context as any)?.status, // Legacy field for backward compatibility
       workspace: workspace
     };
+  }
+
+  /**
+   * Generate a user-friendly workspace name based on folder
+   */
+  private generateWorkspaceName(workspace: ProjectWorkspace): string {
+    // If there's a custom name that's not the generic pattern, use it
+    if (workspace.name &&
+        !workspace.name.startsWith('Workspace ') &&
+        workspace.name !== 'workspace' &&
+        workspace.name !== 'default-workspace') {
+      return workspace.name;
+    }
+
+    // Use folder-based naming
+    if (!workspace.rootFolder || workspace.rootFolder === '/' || workspace.rootFolder === '') {
+      return 'Default (Root)';
+    }
+
+    // Extract the folder name from the path
+    const folderName = workspace.rootFolder.split('/').filter(part => part).pop() || 'Root';
+    return folderName;
   }
 
   /**
@@ -102,8 +172,8 @@ export class WorkspaceCardManager {
       if (workspace.context.currentGoal) {
         parts.push(`Goal: ${workspace.context.currentGoal}`);
       }
-      if (workspace.context.status) {
-        parts.push(`Status: ${workspace.context.status}`);
+      if ((workspace.context as any).status) {
+        parts.push(`Status: ${(workspace.context as any).status}`);
       }
       return parts.join(' • ');
     }
@@ -118,6 +188,7 @@ export class WorkspaceCardManager {
     const modal = new WorkspaceEditModal(
       this.containerEl.ownerDocument.defaultView!.app,
       this.workspaceService,
+      this.settings,
       'create',
       undefined,
       () => this.refreshWorkspaces()
@@ -144,6 +215,7 @@ export class WorkspaceCardManager {
     const modal = new WorkspaceEditModal(
       this.containerEl.ownerDocument.defaultView!.app,
       this.workspaceService,
+      this.settings,
       'edit',
       item.workspace,
       () => this.refreshWorkspaces()
