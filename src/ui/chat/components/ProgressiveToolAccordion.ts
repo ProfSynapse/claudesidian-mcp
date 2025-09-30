@@ -1,11 +1,13 @@
 /**
  * ProgressiveToolAccordion - Real-time tool execution display
- * 
+ *
  * Shows tool execution progress in real-time with visual feedback:
  * - Shows tools as they start executing (glow effect)
  * - Updates with results as they complete
  * - Provides rich visual feedback during execution
  */
+
+import { setIcon } from 'obsidian';
 
 export interface ProgressiveToolCall {
   id: string;
@@ -48,7 +50,7 @@ export class ProgressiveToolAccordion {
     
     // Expand indicator
     const expandIcon = header.createDiv('tool-expand-icon');
-    expandIcon.textContent = '▶';
+    setIcon(expandIcon, 'chevron-right');
 
     // Content (initially hidden)
     const content = accordion.createDiv('progressive-tool-content');
@@ -121,15 +123,18 @@ export class ProgressiveToolAccordion {
 
     // Update icon based on status
     if (executing.length > 0) {
-      icon.innerHTML = '🔄'; // Executing
+      icon.empty();
+      setIcon(icon, 'loader'); // Executing
       icon.addClass('tool-executing');
       header.addClass('tool-executing');
     } else if (failed.length > 0) {
-      icon.innerHTML = '⚠️'; // Some failed
+      icon.empty();
+      setIcon(icon, 'alert-triangle'); // Some failed
       icon.removeClass('tool-executing');
       header.removeClass('tool-executing');
     } else {
-      icon.innerHTML = '✅'; // All completed
+      icon.empty();
+      setIcon(icon, 'check-circle'); // All completed
       icon.removeClass('tool-executing');
       header.removeClass('tool-executing');
     }
@@ -267,20 +272,21 @@ export class ProgressiveToolAccordion {
    * Update status icon based on tool status
    */
   private updateStatusIcon(iconElement: HTMLElement, status: string): void {
+    iconElement.empty();
     switch (status) {
       case 'pending':
-        iconElement.textContent = '⏳';
+        setIcon(iconElement, 'clock');
         break;
       case 'executing':
-        iconElement.innerHTML = '🔄';
+        setIcon(iconElement, 'loader');
         iconElement.addClass('spinning');
         break;
       case 'completed':
-        iconElement.textContent = '✅';
+        setIcon(iconElement, 'check-circle');
         iconElement.removeClass('spinning');
         break;
       case 'failed':
-        iconElement.textContent = '❌';
+        setIcon(iconElement, 'x-circle');
         iconElement.removeClass('spinning');
         break;
     }
@@ -319,11 +325,13 @@ export class ProgressiveToolAccordion {
     
     if (this.isExpanded) {
       content.style.display = 'block';
-      expandIcon.textContent = '▼';
+      expandIcon.empty();
+      setIcon(expandIcon, 'chevron-down');
       this.element.addClass('expanded');
     } else {
       content.style.display = 'none';
-      expandIcon.textContent = '▶';
+      expandIcon.empty();
+      setIcon(expandIcon, 'chevron-right');
       this.element.removeClass('expanded');
     }
   }

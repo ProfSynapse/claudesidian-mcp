@@ -1,10 +1,11 @@
 /**
  * ToolAccordion - Expandable display for tool executions
- * 
+ *
  * Shows tool calls and results in an accordion format
  */
 
 import { ToolCall } from '../../../types/chat/ChatTypes';
+import { setIcon } from 'obsidian';
 
 export class ToolAccordion {
   private element: HTMLElement | null = null;
@@ -30,10 +31,10 @@ export class ToolAccordion {
     
     const status = successCount === totalCount ? 'success' : 'partial';
     summary.addClass(`tool-status-${status}`);
-    
+
     // Icon
     const icon = summary.createSpan('tool-icon');
-    icon.textContent = status === 'success' ? '✅' : '⚠️';
+    setIcon(icon, status === 'success' ? 'check-circle' : 'alert-triangle');
     
     // Text
     const text = summary.createSpan('tool-text');
@@ -51,7 +52,7 @@ export class ToolAccordion {
     
     // Expand indicator
     const expandIcon = header.createDiv('tool-expand-icon');
-    expandIcon.textContent = '▶';
+    setIcon(expandIcon, 'chevron-right');
 
     // Content (initially hidden)
     const content = accordion.createDiv('tool-accordion-content');
@@ -80,7 +81,7 @@ export class ToolAccordion {
     
     // Status indicator
     const statusIcon = header.createSpan('tool-status-icon');
-    statusIcon.textContent = toolCall.success ? '✅' : '❌';
+    setIcon(statusIcon, toolCall.success ? 'check-circle' : 'x-circle');
     
     // Tool name
     const name = header.createSpan('tool-name');
@@ -144,11 +145,13 @@ export class ToolAccordion {
     
     if (this.isExpanded) {
       content.style.display = 'block';
-      expandIcon.textContent = '▼';
+      expandIcon.empty();
+      setIcon(expandIcon, 'chevron-down');
       this.element.addClass('expanded');
     } else {
       content.style.display = 'none';
-      expandIcon.textContent = '▶';
+      expandIcon.empty();
+      setIcon(expandIcon, 'chevron-right');
       this.element.removeClass('expanded');
     }
   }

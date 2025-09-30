@@ -1,13 +1,17 @@
 /**
  * Location: /src/core/services/ServiceRegistrar.ts
- * 
+ *
  * Service Registrar - Handles service registration and additional service factories
- * 
+ *
  * This service extracts the complex service registration logic from PluginLifecycleManager,
  * making it data-driven and easily extensible for new services.
  */
 
 import type { ServiceManager } from '../ServiceManager';
+import { FileSystemService } from '../../services/storage/FileSystemService';
+import { IndexManager } from '../../services/storage/IndexManager';
+import { DataMigrationService } from '../../services/migration/DataMigrationService';
+import { normalizePath } from 'obsidian';
 import { CORE_SERVICE_DEFINITIONS, ADDITIONAL_SERVICE_FACTORIES } from './ServiceDefinitions';
 import type { ServiceCreationContext } from './ServiceDefinitions';
 
@@ -68,21 +72,16 @@ export class ServiceRegistrar {
     async initializeDataDirectories(): Promise<void> {
         try {
             const { app, plugin, settings, manifest } = this.context;
-            const { FileSystemService } = require('../services/storage/FileSystemService');
-            const { IndexManager } = require('../services/storage/IndexManager');
-            const { DataMigrationService } = require('../services/migration/DataMigrationService');
 
             // Initialize storage services
             const fileSystem = new FileSystemService(plugin);
             const indexManager = new IndexManager(fileSystem);
 
-            // Create conversations/ and workspaces/ directories
-            await fileSystem.ensureConversationsDirectory();
-            await fileSystem.ensureWorkspacesDirectory();
-
-            // Check and run migration if needed
+            // Check migration status BEFORE creating directories
+            console.log('[ServiceRegistrar] Checking migration status...');
             const migrationService = new DataMigrationService(plugin, fileSystem, indexManager);
             const status = await migrationService.checkMigrationStatus();
+            console.log('[ServiceRegistrar] Migration status:', status);
 
             if (status.isRequired) {
                 console.log('[ServiceRegistrar] Migration required - starting data migration...');
@@ -103,7 +102,6 @@ export class ServiceRegistrar {
             }
 
             // Legacy data directory handling (can be removed after migration)
-            const { normalizePath } = require('obsidian');
             const pluginDir = `.obsidian/plugins/${manifest.id}`;
             const dataDir = `${pluginDir}/data`;
             const storageDir = `${dataDir}/storage`;

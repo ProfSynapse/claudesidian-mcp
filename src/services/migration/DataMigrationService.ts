@@ -43,14 +43,19 @@ export class DataMigrationService {
    * Check if migration is needed
    */
   async checkMigrationStatus(): Promise<MigrationStatus> {
+    console.log('[DataMigrationService] ========== MIGRATION STATUS CHECK START ==========');
     console.log('[DataMigrationService] Checking migration status...');
 
     // Check if new structure already exists
+    console.log('[DataMigrationService] Checking if split-file structure exists...');
     const conversationsExist = await this.fileSystem.conversationsDirectoryExists();
     const workspacesExist = await this.fileSystem.workspacesDirectoryExists();
 
+    console.log(`[DataMigrationService] Directory check results: conversations=${conversationsExist}, workspaces=${workspacesExist}`);
+
     if (conversationsExist && workspacesExist) {
       console.log('[DataMigrationService] Split-file structure already exists - migration complete');
+      console.log('[DataMigrationService] ========== MIGRATION STATUS CHECK END (NOT REQUIRED) ==========');
       return {
         isRequired: false,
         hasLegacyData: false,
@@ -59,9 +64,11 @@ export class DataMigrationService {
     }
 
     // Check for legacy ChromaDB data
+    console.log('[DataMigrationService] Checking for legacy ChromaDB data...');
     const hasLegacyData = await this.chromaLoader.detectLegacyData();
 
     console.log(`[DataMigrationService] Migration status: required=${hasLegacyData}, hasLegacy=${hasLegacyData}`);
+    console.log('[DataMigrationService] ========== MIGRATION STATUS CHECK END ==========');
 
     return {
       isRequired: hasLegacyData,

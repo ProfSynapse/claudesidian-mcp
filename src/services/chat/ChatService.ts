@@ -131,9 +131,9 @@ export class ChatService {
       // If there's an initial message, get AI response
       if (initialMessage?.trim()) {
         // Get AI response with potential tool calls
-        // Use streaming method and collect complete response  
+        // Use streaming method and collect complete response
         let completeResponse = '';
-        for await (const chunk of this.generateResponseStreaming(conversation.id, initialMessage, undefined, options)) {
+        for await (const chunk of this.generateResponseStreaming(conversation.id, initialMessage, options)) {
           completeResponse += chunk.chunk;
         }
         // Note: AI response is automatically saved by the streaming method
@@ -214,10 +214,9 @@ export class ChatService {
       });
 
       // Generate AI response with tool execution
-      // Use streaming method and collect complete response  
+      // Use streaming method and collect complete response
       let completeResponse = '';
-      const conversationData = documentToConversationData(conversation);
-      for await (const chunk of this.generateResponseStreaming(conversationId, message, conversationData, options)) {
+      for await (const chunk of this.generateResponseStreaming(conversationId, message, options)) {
         completeResponse += chunk.chunk;
       }
       // Note: AI response is automatically saved by the streaming method
@@ -238,11 +237,12 @@ export class ChatService {
   /**
    * Generate AI response with streaming support
    * Yields chunks of the response as they're generated
+   *
+   * Always loads conversation from storage to ensure fresh data with tool calls
    */
   async* generateResponseStreaming(
     conversationId: string,
     userMessage: string,
-    conversation?: ConversationData,
     options?: {
       provider?: string;
       model?: string;
@@ -256,24 +256,32 @@ export class ChatService {
 
       // Get defaults from LLMService if user didn't select provider/model
       const defaultModel = this.dependencies.llmService.getDefaultModel();
-      
+
       // Get provider for context building
       const provider = options?.provider || defaultModel.provider;
       this.currentProvider = provider; // Store for context building
-      
+
       console.log(`[ChatService] Using provider: ${provider} for conversation context`);
 
+      // ALWAYS load conversation from storage to get complete history including tool calls
+      const conversation = await this.dependencies.conversationService.getConversation(conversationId);
+      console.log(`[ChatService] Loaded conversation from storage:`, {
+        conversationId,
+        found: !!conversation,
+        messageCount: conversation?.messages?.length || 0
+      });
+
       // Build conversation context for LLM with provider-specific formatting
-      const messages = conversation ? 
+      const messages = conversation ?
         this.buildLLMMessages(conversation, provider, options?.systemPrompt) : [];
-      
+
       // Add system prompt if provided and not already added by buildLLMMessages
       if (options?.systemPrompt && !messages.some(m => m.role === 'system')) {
         messages.unshift({ role: 'system', content: options.systemPrompt });
       }
-      
+
       messages.push({ role: 'user', content: userMessage });
-      
+
       console.log(`[ChatService] Final message context has ${messages.length} messages for LLM`);
 
       // Convert MCP tools to OpenAI format before passing to LLM

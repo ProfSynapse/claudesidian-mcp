@@ -1,13 +1,13 @@
 /**
  * MessageDisplay - Main chat message display area
- * 
+ *
  * Shows conversation messages with user/AI bubbles and tool execution displays
  */
 
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { MessageBubble } from './MessageBubble';
 import { BranchManager } from '../services/BranchManager';
-import { App } from 'obsidian';
+import { App, setIcon } from 'obsidian';
 
 export class MessageDisplay {
   private conversation: ConversationData | null = null;
@@ -29,28 +29,16 @@ export class MessageDisplay {
    * Set conversation to display
    */
   setConversation(conversation: ConversationData): void {
-    // Set conversation data
-    
-    // Check if we're just updating an existing conversation
-    if (this.conversation && this.conversation.id === conversation.id) {
-      // Same conversation - check if we can avoid full re-render
-      
-      // Check if any message bubbles have progressive accordions
-      const hasProgressiveAccordions = this.messageBubbles.some(bubble => 
-        bubble.getProgressiveToolAccordions().size > 0
-      );
-      
-      // For message alternatives, we can preserve progressive accordions since alternatives don't affect structure
-      if (hasProgressiveAccordions) {
-        // Skip re-render to preserve progressive accordions
-        // Just update the conversation data without re-rendering
-        this.conversation = conversation;
-        this.scrollToBottom();
-        return;
-      }
-    }
-    
-    // Proceeding with full re-render
+    console.log('[TOOL-UI-DEBUG] MessageDisplay.setConversation called:', {
+      conversationId: conversation.id,
+      messageCount: conversation.messages.length,
+      isNewConversation: !this.conversation || this.conversation.id !== conversation.id
+    });
+
+    // Always re-render from the stored conversation data (single source of truth)
+    // Progressive tool accordions are temporary UI during streaming
+    // After streaming completes, we re-render with static ToolAccordion components from stored toolCalls
+    console.log('[TOOL-UI-DEBUG] Re-rendering from stored conversation data (single source of truth)');
     this.conversation = conversation;
     this.render();
     this.scrollToBottom();
@@ -169,28 +157,34 @@ export class MessageDisplay {
     this.container.addClass('message-display');
 
     const welcome = this.container.createDiv('chat-welcome');
-    welcome.innerHTML = `
-      <div class="chat-welcome-content">
-        <div class="chat-welcome-icon">💬</div>
-        <h2>Welcome to AI Chat</h2>
-        <p>Start a conversation with your AI assistant. You can:</p>
-        <ul>
-          <li>Ask questions about your notes</li>
-          <li>Create and edit content</li>
-          <li>Search and organize your vault</li>
-          <li>Get help with any task</li>
-        </ul>
-        <p>Type a message below to get started!</p>
-      </div>
-    `;
+    const welcomeContent = welcome.createDiv('chat-welcome-content');
+
+    const welcomeIcon = welcomeContent.createDiv('chat-welcome-icon');
+    setIcon(welcomeIcon, 'message-circle');
+
+    welcomeContent.createEl('h2', { text: 'Welcome to AI Chat' });
+    welcomeContent.createEl('p', { text: 'Start a conversation with your AI assistant. You can:' });
+
+    const list = welcomeContent.createEl('ul');
+    list.createEl('li', { text: 'Ask questions about your notes' });
+    list.createEl('li', { text: 'Create and edit content' });
+    list.createEl('li', { text: 'Search and organize your vault' });
+    list.createEl('li', { text: 'Get help with any task' });
+
+    welcomeContent.createEl('p', { text: 'Type a message below to get started!' });
   }
 
   /**
    * Render the message display
    */
   private render(): void {
+    console.log('[TOOL-UI-DEBUG] MessageDisplay.render called - FULL RE-RENDER starts');
+    console.log('[TOOL-UI-DEBUG] Existing message bubbles before cleanup:', {
+      count: this.messageBubbles.length,
+      withProgressiveAccordions: this.messageBubbles.filter(b => b.getProgressiveToolAccordions().size > 0).length
+    });
+
     // Full render - clears existing progressive accordions
-    
     this.container.empty();
     this.container.addClass('message-display');
 
@@ -201,9 +195,10 @@ export class MessageDisplay {
 
     // Create scrollable messages container
     const messagesContainer = this.container.createDiv('messages-container');
-    
+
     // Clear previous message bubbles
     this.messageBubbles = [];
+    console.log('[TOOL-UI-DEBUG] Message bubbles array cleared, creating new bubbles');
 
     // Render all messages (no branch filtering needed for message-level alternatives)
     console.log('[MessageDisplay] Rendering conversation messages:', {

@@ -45,6 +45,16 @@ export class ConversationService {
   async getConversation(id: string): Promise<IndividualConversation | null> {
     const conversation = await this.fileSystem.readConversation(id);
 
+    console.log(`[ConversationService] getConversation(${id}):`, {
+      found: !!conversation,
+      messageCount: conversation?.messages?.length || 0,
+      messages: conversation?.messages?.map(m => ({
+        role: m.role,
+        hasToolCalls: !!(m.toolCalls && m.toolCalls.length > 0),
+        contentPreview: m.content?.substring(0, 30)
+      })) || []
+    });
+
     if (!conversation) {
       console.warn(`[ConversationService] Conversation not found: ${id}`);
       return null;

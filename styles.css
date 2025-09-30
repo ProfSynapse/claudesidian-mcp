@@ -672,8 +672,12 @@
 }
 
 .tool-error-content {
-    color: var(--text-error);
+    color: var(--text-normal);
     font-size: 0.8rem;
+    font-family: var(--font-monospace);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.4;
 }
 
 /* Progressive Tool Accordion - Real-time execution display */

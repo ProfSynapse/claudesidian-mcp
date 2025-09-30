@@ -59,20 +59,31 @@ export class ChromaDataLoader {
   }
 
   async detectLegacyData(): Promise<boolean> {
-    console.log('[Claudesidian] Detecting legacy ChromaDB data...');
+    console.log('[ChromaDataLoader] ========== LEGACY DATA DETECTION START ==========');
+    console.log('[ChromaDataLoader] Detecting legacy ChromaDB data...');
 
     try {
       const collections = await this.loadAllCollections();
 
       // Check if any collection has data
+      console.log('[ChromaDataLoader] Checking collection data counts...');
       const hasData = Object.values(collections).some(collection =>
         Array.isArray(collection) && collection.length > 0
       );
 
-      console.log(`[Claudesidian] Legacy data detection result: ${hasData}`);
+      console.log(`[ChromaDataLoader] Legacy data detection result: ${hasData}`);
+      console.log(`[ChromaDataLoader] Collection summary:`, {
+        memoryTraces: collections.memoryTraces.length,
+        sessions: collections.sessions.length,
+        conversations: collections.conversations.length,
+        workspaces: collections.workspaces.length,
+        snapshots: collections.snapshots.length
+      });
+      console.log('[ChromaDataLoader] ========== LEGACY DATA DETECTION END ==========');
       return hasData;
     } catch (error) {
-      console.warn('[Claudesidian] Error detecting legacy data:', error);
+      console.error('[ChromaDataLoader] Error detecting legacy data:', error);
+      console.log('[ChromaDataLoader] ========== LEGACY DATA DETECTION END (ERROR) ==========');
       return false;
     }
   }

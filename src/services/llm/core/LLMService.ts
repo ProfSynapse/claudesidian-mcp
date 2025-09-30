@@ -478,16 +478,37 @@ export class LLMService {
         console.log(`[LLMService] ${provider} adapter will handle ${options.tools.length} tools`);
       }
 
-      // Convert message array to single prompt
-      const userPrompt = messages
-        .filter(msg => msg.role === 'user')
-        .map(msg => msg.content)
-        .join('\n');
-      
-      const systemPrompt = messages
-        .filter(msg => msg.role === 'system')
-        .map(msg => msg.content)
-        .join('\n');
+      // Get only the latest user message as the actual prompt
+      const latestUserMessage = messages[messages.length - 1];
+      const userPrompt = latestUserMessage?.role === 'user' ? latestUserMessage.content : '';
+
+      // Build conversation history from all previous messages
+      let conversationHistory = '';
+      if (messages.length > 1) {
+        conversationHistory = messages.slice(0, -1).map((msg: any) => {
+          if (msg.role === 'user') return `User: ${msg.content}`;
+          if (msg.role === 'assistant') {
+            if (msg.tool_calls) return `Assistant: [Calling tools: ${msg.tool_calls.map((tc: any) => tc.function.name).join(', ')}]`;
+            return `Assistant: ${msg.content}`;
+          }
+          if (msg.role === 'tool') return `Tool Result: ${msg.content}`;
+          if (msg.role === 'system') return `System: ${msg.content}`;
+          return '';
+        }).filter(Boolean).join('\n');
+      }
+
+      // Combine system prompt + conversation history
+      const systemPrompt = [
+        options?.systemPrompt || '',
+        conversationHistory ? '\n=== Conversation History ===\n' + conversationHistory : ''
+      ].filter(Boolean).join('\n');
+
+      console.log('[LLM-ACTUAL] ========== WHAT LLM ACTUALLY RECEIVES ==========');
+      console.log('[LLM-ACTUAL] userPrompt:', userPrompt);
+      console.log('[LLM-ACTUAL] systemPrompt (with history):', systemPrompt);
+      console.log('[LLM-ACTUAL] Conversation history included:', conversationHistory ? 'YES' : 'NO');
+      console.log('[LLM-ACTUAL] History length:', conversationHistory.length, 'chars');
+      console.log('[LLM-ACTUAL] ========== END WHAT LLM RECEIVES ==========');
 
       // Build generate options with tools
       const generateOptions = {
@@ -496,7 +517,7 @@ export class LLMService {
         tools: options?.tools,
         onToolEvent: options?.onToolEvent // Pass through tool event callback for live UI updates
       };
-      
+
       console.log('[LLMService Debug] generateOptions built with onToolEvent:', !!generateOptions.onToolEvent);
 
       // Remove verbose logging - only show model when using tools
@@ -805,14 +826,8 @@ export class LLMService {
 
               } catch (recursiveError) {
                 console.error('[LLMService] Recursive tool execution failed:', recursiveError);
-                const errorMessage = `\n\nRecursive tool execution failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`;
-                fullContent += errorMessage;
-                yield {
-                  chunk: errorMessage,
-                  complete: false,
-                  content: fullContent,
-                  toolCalls: undefined
-                };
+                // Don't append error to content - these are expected failures during streaming (incomplete JSON)
+                // Tool results will be shown in tool accordions from the toolCalls array
               }
             }
             
@@ -824,15 +839,8 @@ export class LLMService {
           
         } catch (toolError) {
           console.error('[LLMService] Tool execution failed:', toolError);
-          // Add error message to the response
-          const errorMessage = `\n\nTool execution failed: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
-          fullContent += errorMessage;
-          yield {
-            chunk: errorMessage,
-            complete: false,
-            content: fullContent,
-            toolCalls: undefined
-          };
+          // Don't append error to content - these are expected failures during streaming (incomplete JSON)
+          // Tool results will be shown in tool accordions from the toolCalls array
         }
       }
       

@@ -125,11 +125,10 @@ export class MessageManager {
         let streamedContent = '';
         let toolCalls: any[] | undefined = undefined;
 
-        // Stream the AI response
+        // Stream the AI response (conversation will be loaded from storage inside the method)
         for await (const chunk of this.chatService.generateResponseStreaming(
           conversation.id,
           message,
-          conversation,
           {
             provider: options?.provider,
             model: options?.model,
@@ -168,13 +167,28 @@ export class MessageManager {
                 toolCalls: toolCalls
               };
             }
-            
+
             // Send final complete content for any final processing
             this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false); // isComplete = true, isIncremental = false
             // Streaming complete - conversation updated without re-render
             break;
           }
         }
+
+        // After streaming completes, reload conversation from storage to sync with saved messages
+        const freshConversation = await this.chatService.getConversation(conversation.id);
+        if (freshConversation) {
+          // Update the conversation object with fresh data
+          Object.assign(conversation, freshConversation);
+          console.log('[MessageManager] Reloaded conversation from storage:', {
+            conversationId: conversation.id,
+            messageCount: conversation.messages.length
+          });
+        }
+
+        // Notify that conversation has been updated
+        console.log('[MessageManager] Streaming complete, firing onConversationUpdated');
+        this.events.onConversationUpdated(conversation);
 
       } catch (sendError) {
         this.events.onError('Failed to send message');
@@ -283,14 +297,13 @@ export class MessageManager {
       // Reset the existing AI message to loading state by clearing its content
       this.events.onStreamingUpdate(aiMessageId, '', false, false);
 
-      // Generate new AI response with streaming
+      // Generate new AI response with streaming (conversation loaded from storage inside the method)
       let streamedContent = '';
       let toolCalls: any[] | undefined = undefined;
 
       for await (const chunk of this.chatService.generateResponseStreaming(
         conversation.id,
         userMessage.content,
-        conversation,
         {
           provider: options?.provider,
           model: options?.model,

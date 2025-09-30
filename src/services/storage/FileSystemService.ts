@@ -220,9 +220,12 @@ export class FileSystemService {
    */
   async conversationsDirectoryExists(): Promise<boolean> {
     try {
+      console.log(`[FileSystemService] Checking if conversations directory exists: ${this.conversationsPath}`);
       const exists = await this.plugin.app.vault.adapter.exists(this.conversationsPath);
+      console.log(`[FileSystemService] Conversations directory exists: ${exists}`);
       return exists;
     } catch (error) {
+      console.error(`[FileSystemService] Error checking conversations directory:`, error);
       return false;
     }
   }
@@ -232,9 +235,12 @@ export class FileSystemService {
    */
   async workspacesDirectoryExists(): Promise<boolean> {
     try {
+      console.log(`[FileSystemService] Checking if workspaces directory exists: ${this.workspacesPath}`);
       const exists = await this.plugin.app.vault.adapter.exists(this.workspacesPath);
+      console.log(`[FileSystemService] Workspaces directory exists: ${exists}`);
       return exists;
     } catch (error) {
+      console.error(`[FileSystemService] Error checking workspaces directory:`, error);
       return false;
     }
   }
@@ -244,14 +250,25 @@ export class FileSystemService {
    */
   async readChromaCollection(collectionName: string): Promise<any[]> {
     const chromaPath = normalizePath(`${this.plugin.manifest.dir}/data/chroma-db/collections/${collectionName}/items.json`);
+    console.log(`[FileSystemService] Attempting to read ChromaDB collection from: ${chromaPath}`);
     try {
+      const exists = await this.plugin.app.vault.adapter.exists(chromaPath);
+      console.log(`[FileSystemService] ChromaDB collection file exists: ${exists}`);
+
+      if (!exists) {
+        console.log(`[FileSystemService] ChromaDB collection not found: ${collectionName}`);
+        return [];
+      }
+
       const content = await this.plugin.app.vault.adapter.read(chromaPath);
+      console.log(`[FileSystemService] Read ${content.length} bytes from ${collectionName}`);
+
       const data = JSON.parse(content);
       const items = data.items || [];
-      console.log(`[FileSystemService] Read ChromaDB collection: ${collectionName} (${items.length} items)`);
+      console.log(`[FileSystemService] Parsed ChromaDB collection: ${collectionName} (${items.length} items)`);
       return items;
     } catch (error) {
-      console.warn(`[FileSystemService] Could not read ChromaDB collection: ${collectionName}`);
+      console.error(`[FileSystemService] Error reading ChromaDB collection: ${collectionName}`, error);
       return [];
     }
   }

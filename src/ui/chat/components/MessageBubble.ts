@@ -518,12 +518,13 @@ export class MessageBubble extends Component {
    * Handle tool events from MessageManager
    */
   handleToolEvent(event: 'detected' | 'started' | 'completed', data: any): void {
-    console.log('[MessageBubble] handleToolEvent received:', {
+    console.log('[TOOL-UI-DEBUG] MessageBubble.handleToolEvent received:', {
       event,
       messageId: this.message.id,
-      dataId: data.id,
+      dataId: data.id || data.toolId,
       dataName: data.name,
-      hasAccordion: this.progressiveToolAccordions.has(data.id || data.toolId)
+      hasAccordion: this.progressiveToolAccordions.has(data.id || data.toolId),
+      totalAccordions: this.progressiveToolAccordions.size
     });
 
     switch(event) {
@@ -532,17 +533,18 @@ export class MessageBubble extends Component {
 
         // Check if this tool accordion already exists (avoid duplicates)
         if (this.progressiveToolAccordions.has(data.id)) {
-          console.log('[MessageBubble] Accordion already exists for tool:', data.id);
+          console.log('[TOOL-UI-DEBUG] Accordion already exists for tool:', data.id);
           break;
         }
 
         if (this.message.role === 'assistant') {
-          console.log('[MessageBubble] Creating accordion for detected tool:', data.id);
+          console.log('[TOOL-UI-DEBUG] Creating accordion for detected tool:', data.id);
           this.createIndividualToolAccordion({
             id: data.id,
             name: data.name,
             parameters: data.parameters
           });
+          console.log('[TOOL-UI-DEBUG] Accordion created, totalAccordions now:', this.progressiveToolAccordions.size);
         }
         break;
       case 'started':
@@ -550,22 +552,27 @@ export class MessageBubble extends Component {
         // If not, create it now (fallback for edge cases)
 
         if (this.progressiveToolAccordions.has(data.id)) {
-          console.log('[MessageBubble] Tool started - accordion already exists:', data.id);
+          console.log('[TOOL-UI-DEBUG] Tool started - accordion already exists:', data.id);
           break;
         }
 
-        console.log('[MessageBubble] Tool started but no accordion - creating fallback:', data.id);
+        console.log('[TOOL-UI-DEBUG] Tool started but no accordion - creating fallback:', data.id);
         if (this.message.role === 'assistant') {
           this.createIndividualToolAccordion({
             id: data.id,
             name: data.name,
             parameters: data.parameters
           });
+          console.log('[TOOL-UI-DEBUG] Fallback accordion created, totalAccordions now:', this.progressiveToolAccordions.size);
         }
         break;
       case 'completed':
         // Individual tool completed
-        console.log('[MessageBubble] Tool completed:', data.toolId);
+        console.log('[TOOL-UI-DEBUG] Tool completed:', {
+          toolId: data.toolId,
+          success: data.success,
+          hasError: !!data.error
+        });
         this.completeIndividualTool(data.toolId, data.result, data.success, data.error);
         break;
     }
@@ -603,18 +610,22 @@ export class MessageBubble extends Component {
    * Cleanup resources
    */
   cleanup(): void {
+    console.log('[TOOL-UI-DEBUG] MessageBubble.cleanup called:', {
+      messageId: this.message.id,
+      accordionCount: this.progressiveToolAccordions.size
+    });
     this.stopLoadingAnimation();
     this.progressiveToolAccordions.forEach(accordion => {
       accordion.cleanup();
     });
     this.progressiveToolAccordions.clear();
-    
+
     // Cleanup branch navigator
     if (this.messageBranchNavigator) {
       this.messageBranchNavigator.destroy();
       this.messageBranchNavigator = null;
     }
-    
+
     this.element = null;
   }
 }
