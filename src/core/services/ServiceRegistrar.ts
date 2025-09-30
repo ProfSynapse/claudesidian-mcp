@@ -101,6 +101,21 @@ export class ServiceRegistrar {
                 console.log('[ServiceRegistrar] No migration needed - split-file structure already exists');
             }
 
+            // Ensure all conversations have metadata field (idempotent)
+            console.log('[ServiceRegistrar] Ensuring conversation metadata fields...');
+            try {
+                const metadataResult = await migrationService.ensureConversationMetadata();
+                console.log('[ServiceRegistrar] Metadata migration complete:', {
+                    updated: metadataResult.updated,
+                    errors: metadataResult.errors.length
+                });
+                if (metadataResult.errors.length > 0) {
+                    console.error('[ServiceRegistrar] Metadata migration errors:', metadataResult.errors);
+                }
+            } catch (error) {
+                console.error('[ServiceRegistrar] Metadata migration failed:', error);
+            }
+
             // Legacy data directory handling (can be removed after migration)
             const pluginDir = `.obsidian/plugins/${manifest.id}`;
             const dataDir = `${pluginDir}/data`;

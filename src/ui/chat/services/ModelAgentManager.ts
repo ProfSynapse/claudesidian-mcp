@@ -22,10 +22,88 @@ export class ModelAgentManager {
 
   constructor(
     private app: any, // Obsidian App
-    private events: ModelAgentManagerEvents
+    private events: ModelAgentManagerEvents,
+    private conversationService?: any // Optional ConversationService for persistence
   ) {
-    // Initialize with default model from settings
-    this.initializeDefaultModel();
+    // Don't auto-initialize - will be called from ChatView after conversation loads
+  }
+
+  /**
+   * Initialize from conversation metadata (if available), otherwise use plugin default
+   */
+  async initializeFromConversation(conversationId: string): Promise<void> {
+    console.log('[ModelAgentManager] initializeFromConversation called:', conversationId);
+
+    try {
+      // Try to load from conversation metadata first
+      if (this.conversationService) {
+        const conversation = await this.conversationService.getConversation(conversationId);
+
+        console.log('[ModelAgentManager] Loaded conversation:', {
+          conversationId,
+          hasMetadata: !!conversation?.metadata,
+          hasChatSettings: !!conversation?.metadata?.chatSettings,
+          chatSettings: conversation?.metadata?.chatSettings
+        });
+
+        if (conversation?.metadata?.chatSettings) {
+          const settings = conversation.metadata.chatSettings;
+          const availableModels = await this.getAvailableModels();
+          const availableAgents = await this.getAvailableAgents();
+
+          // Restore model
+          if (settings.providerId && settings.modelId) {
+            console.log('[ModelAgentManager] Looking for saved model:', {
+              providerId: settings.providerId,
+              modelId: settings.modelId,
+              availableModelsCount: availableModels.length,
+              availableModelIds: availableModels.map(m => `${m.providerId}:${m.modelId}`)
+            });
+
+            const model = availableModels.find(
+              m => m.providerId === settings.providerId && m.modelId === settings.modelId
+            );
+
+            if (model) {
+              this.selectedModel = model;
+              this.events.onModelChanged(model);
+              console.log('[ModelAgentManager] ✅ Restored model from conversation metadata:', model.modelName);
+            } else {
+              console.error('[ModelAgentManager] ❌ Saved model not found, falling back to default. Searched for:', {
+                providerId: settings.providerId,
+                modelId: settings.modelId
+              });
+              await this.initializeDefaultModel();
+            }
+          }
+
+          // Restore agent
+          if (settings.agentId) {
+            const agent = availableAgents.find(a => a.id === settings.agentId);
+            if (agent) {
+              this.selectedAgent = agent;
+              this.currentSystemPrompt = agent.systemPrompt || null;
+              this.events.onAgentChanged(agent);
+              console.log('[ModelAgentManager] Restored agent from conversation metadata:', agent.name);
+            }
+          }
+
+          // Restore workspace
+          if (settings.workspaceId) {
+            this.selectedWorkspaceId = settings.workspaceId;
+            // Note: Workspace context will be loaded by ChatView when needed
+          }
+
+          return; // Successfully loaded from metadata
+        }
+      }
+
+      // Fall back to plugin default if no metadata
+      await this.initializeDefaultModel();
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to initialize from conversation:', error);
+      await this.initializeDefaultModel();
+    }
   }
 
   /**
@@ -45,9 +123,36 @@ export class ModelAgentManager {
       if (defaultModel) {
         this.selectedModel = defaultModel;
         this.events.onModelChanged(defaultModel);
+        console.log('[ModelAgentManager] Initialized with plugin default model:', defaultModel.modelName);
       }
     } catch (error) {
       console.warn('[ModelAgentManager] Failed to initialize default model:', error);
+    }
+  }
+
+  /**
+   * Save current selections to conversation metadata
+   */
+  async saveToConversation(conversationId: string): Promise<void> {
+    if (!this.conversationService) {
+      console.warn('[ModelAgentManager] Cannot save - ConversationService not available');
+      return;
+    }
+
+    try {
+      const metadata = {
+        chatSettings: {
+          providerId: this.selectedModel?.providerId,
+          modelId: this.selectedModel?.modelId,
+          agentId: this.selectedAgent?.id,
+          workspaceId: this.selectedWorkspaceId
+        }
+      };
+
+      await this.conversationService.updateConversationMetadata(conversationId, metadata);
+      console.log('[ModelAgentManager] Saved chat settings to conversation:', conversationId);
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to save to conversation:', error);
     }
   }
 
@@ -181,17 +286,28 @@ export class ModelAgentManager {
         // Special handling for Ollama - single user-configured model
         if (providerId === 'ollama') {
           const ollamaModel = config.ollamaModel;
+          console.log('[ModelAgentManager] Ollama config check:', {
+            hasOllamaModel: !!ollamaModel,
+            ollamaModel,
+            configEnabled: config.enabled,
+            configApiKey: config.apiKey
+          });
+
           if (!ollamaModel || !ollamaModel.trim()) {
+            console.warn('[ModelAgentManager] Ollama enabled but no model configured - skipping');
             return; // Skip if no model configured
           }
 
-          models.push({
+          const ollamaModelOption = {
             providerId: 'ollama',
             providerName,
             modelId: ollamaModel,
             modelName: ollamaModel,
             contextWindow: 128000 // Fixed reasonable default
-          });
+          };
+
+          console.log('[ModelAgentManager] Adding Ollama model to available models:', ollamaModelOption);
+          models.push(ollamaModelOption);
           return;
         }
 
@@ -259,6 +375,12 @@ export class ModelAgentManager {
     model?: string;
     systemPrompt?: string;
   } {
+    console.log('[ModelAgentManager] getMessageOptions called:', {
+      selectedModel: this.selectedModel,
+      providerId: this.selectedModel?.providerId,
+      modelId: this.selectedModel?.modelId
+    });
+
     return {
       provider: this.selectedModel?.providerId,
       model: this.selectedModel?.modelId,

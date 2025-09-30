@@ -618,6 +618,13 @@ export class ChatService {
   }
 
   /**
+   * Get conversation service (alias for getConversationRepository)
+   */
+  getConversationService(): any {
+    return this.dependencies.conversationService;
+  }
+
+  /**
    * Cleanup resources
    */
   async dispose(): Promise<void> {

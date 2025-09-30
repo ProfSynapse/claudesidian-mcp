@@ -151,6 +151,14 @@ export class ConversationService {
   }
 
   /**
+   * Update conversation metadata only (for chat settings persistence)
+   */
+  async updateConversationMetadata(id: string, metadata: any): Promise<void> {
+    await this.updateConversation(id, { metadata });
+    console.log(`[ConversationService] Updated metadata for conversation: ${id}`);
+  }
+
+  /**
    * Add message to conversation (loads file, appends, saves, updates index)
    */
   async addMessage(params: {

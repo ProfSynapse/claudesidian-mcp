@@ -224,7 +224,11 @@ export class ChatView extends ItemView {
       onAgentChanged: (agent) => this.handleAgentChanged(agent),
       onSystemPromptChanged: () => this.updateContextProgress()
     };
-    this.modelAgentManager = new ModelAgentManager(this.app, modelAgentEvents);
+    this.modelAgentManager = new ModelAgentManager(
+      this.app,
+      modelAgentEvents,
+      this.chatService.getConversationService()
+    );
   }
 
   /**
@@ -318,8 +322,10 @@ export class ChatView extends ItemView {
       return;
     }
 
+    const currentConversation = this.conversationManager.getCurrentConversation();
     const modal = new ChatSettingsModal(
       this.app,
+      currentConversation?.id || null,
       workspaceService,
       this.modelAgentManager
     );
@@ -342,11 +348,14 @@ export class ChatView extends ItemView {
 
   // Event Handlers
 
-  private handleConversationSelected(conversation: ConversationData): void {
+  private async handleConversationSelected(conversation: ConversationData): Promise<void> {
     console.log('[TOOL-UI-DEBUG] handleConversationSelected called:', {
       conversationId: conversation.id,
       messageCount: conversation.messages.length
     });
+
+    // Initialize ModelAgentManager from conversation metadata
+    await this.modelAgentManager.initializeFromConversation(conversation.id);
 
     // Re-render from stored conversation data (single source of truth)
     console.log('[TOOL-UI-DEBUG] Calling setConversation from handleConversationSelected');

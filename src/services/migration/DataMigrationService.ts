@@ -177,6 +177,48 @@ export class DataMigrationService {
   }
 
   /**
+   * Ensure all conversations have metadata field (idempotent)
+   * Can be run multiple times safely - only updates conversations without metadata
+   */
+  async ensureConversationMetadata(): Promise<{ updated: number; errors: string[] }> {
+    console.log('[DataMigrationService] Ensuring all conversations have metadata field...');
+
+    const result = {
+      updated: 0,
+      errors: [] as string[]
+    };
+
+    try {
+      const conversationIds = await this.fileSystem.listConversationIds();
+      console.log(`[DataMigrationService] Checking ${conversationIds.length} conversations for metadata`);
+
+      for (const id of conversationIds) {
+        try {
+          const conversation = await this.fileSystem.readConversation(id);
+
+          if (conversation && !conversation.metadata) {
+            conversation.metadata = {};
+            await this.fileSystem.writeConversation(id, conversation);
+            result.updated++;
+          }
+        } catch (error) {
+          const errorMsg = `Failed to update conversation ${id}: ${error instanceof Error ? error.message : String(error)}`;
+          console.error('[DataMigrationService]', errorMsg);
+          result.errors.push(errorMsg);
+        }
+      }
+
+      console.log(`[DataMigrationService] Metadata migration complete - updated ${result.updated} conversations`);
+    } catch (error) {
+      const errorMsg = `Failed to list conversations: ${error instanceof Error ? error.message : String(error)}`;
+      console.error('[DataMigrationService]', errorMsg);
+      result.errors.push(errorMsg);
+    }
+
+    return result;
+  }
+
+  /**
    * Get detailed information about the migration for debugging
    */
   async getMigrationInfo(): Promise<{

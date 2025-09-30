@@ -17,6 +17,14 @@ export interface IndividualConversation {
   vault_name: string;
   message_count: number;
   messages: ConversationMessage[];
+  metadata?: {
+    chatSettings?: {
+      providerId?: string;
+      modelId?: string;
+      agentId?: string;
+      workspaceId?: string;
+    };
+  };
 }
 
 /**

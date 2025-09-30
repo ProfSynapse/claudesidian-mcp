@@ -13,8 +13,9 @@ export class FileSystemService {
 
   constructor(plugin: Plugin) {
     this.plugin = plugin;
-    this.conversationsPath = normalizePath(`${plugin.manifest.dir}/conversations`);
-    this.workspacesPath = normalizePath(`${plugin.manifest.dir}/workspaces`);
+    // Store in vault root for Obsidian Sync compatibility
+    this.conversationsPath = normalizePath('.conversations');
+    this.workspacesPath = normalizePath('.workspaces');
   }
 
   /**

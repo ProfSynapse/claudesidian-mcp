@@ -16,6 +16,7 @@ import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTyp
 export class ChatSettingsModal extends Modal {
   private workspaceService: WorkspaceService;
   private modelAgentManager: ModelAgentManager;
+  private conversationId: string | null;
 
   // Current selections
   private selectedWorkspaceId: string | null = null;
@@ -35,10 +36,12 @@ export class ChatSettingsModal extends Modal {
 
   constructor(
     app: App,
+    conversationId: string | null,
     workspaceService: WorkspaceService,
     modelAgentManager: ModelAgentManager
   ) {
     super(app);
+    this.conversationId = conversationId;
     this.workspaceService = workspaceService;
     this.modelAgentManager = modelAgentManager;
 
@@ -343,13 +346,27 @@ export class ChatSettingsModal extends Modal {
       return;
     }
 
-    const [providerId, modelId] = value.split(':');
+    // Split on first colon only to handle model IDs that contain colons (e.g., "ollama:mistral:latest")
+    const colonIndex = value.indexOf(':');
+    if (colonIndex === -1) {
+      console.error('[ChatSettingsModal] Invalid model value format:', value);
+      return;
+    }
+
+    const providerId = value.substring(0, colonIndex);
+    const modelId = value.substring(colonIndex + 1);
+
+    console.log('[ChatSettingsModal] Parsed model selection:', { providerId, modelId, originalValue: value });
+
     const model = this.availableModels.find(
       m => m.providerId === providerId && m.modelId === modelId
     );
 
     if (model) {
       this.selectedModel = model;
+      console.log('[ChatSettingsModal] Found matching model:', model);
+    } else {
+      console.error('[ChatSettingsModal] Model not found in available models:', { providerId, modelId });
     }
   }
 
@@ -373,8 +390,16 @@ export class ChatSettingsModal extends Modal {
    */
   private async handleSave(): Promise<void> {
     try {
+      console.log('[ChatSettingsModal] handleSave called:', {
+        conversationId: this.conversationId,
+        selectedModel: this.selectedModel,
+        selectedAgent: this.selectedAgent,
+        selectedWorkspaceId: this.selectedWorkspaceId
+      });
+
       // Update model selection
       if (this.selectedModel) {
+        console.log('[ChatSettingsModal] Updating model to:', this.selectedModel);
         this.modelAgentManager.handleModelChange(this.selectedModel);
       }
 
@@ -391,6 +416,14 @@ export class ChatSettingsModal extends Modal {
         }
       } else {
         this.modelAgentManager.clearWorkspaceContext();
+      }
+
+      // Persist to conversation metadata
+      if (this.conversationId) {
+        console.log('[ChatSettingsModal] Saving to conversation:', this.conversationId);
+        await this.modelAgentManager.saveToConversation(this.conversationId);
+      } else {
+        console.warn('[ChatSettingsModal] No conversationId - cannot persist settings');
       }
 
       this.close();
