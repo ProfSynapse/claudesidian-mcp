@@ -13,7 +13,7 @@
 
 import { App } from 'obsidian';
 import { MemoryService } from "./MemoryService";
-import { WorkspaceService } from "./WorkspaceService";
+import { WorkspaceService } from "../../../services/WorkspaceService";
 import { getErrorMessage } from '../../../utils/errorUtils';
 
 /**

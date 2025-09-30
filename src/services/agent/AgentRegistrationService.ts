@@ -3,6 +3,7 @@ import ClaudesidianPlugin from '../../main';
 import { AgentManager } from '../AgentManager';
 import { EventManager } from '../EventManager';
 import type { ServiceManager } from '../../core/ServiceManager';
+import { AgentFactoryRegistry } from '../../core/ServiceFactory';
 import {
     ContentManagerAgent,
     CommandManagerAgent,
@@ -89,6 +90,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
     private agentManager: AgentManager;
     private registrationStatus: AgentRegistrationStatus;
     private initializationErrors: Record<string, Error> = {};
+    private factoryRegistry: AgentFactoryRegistry;
 
     constructor(
         private app: App,
@@ -98,6 +100,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
         private customPromptStorage?: CustomPromptStorageService
     ) {
         this.agentManager = new AgentManager(app, plugin, eventManager);
+        this.factoryRegistry = new AgentFactoryRegistry();
         this.registrationStatus = {
             totalAgents: 0,
             initializedAgents: 0,
@@ -109,7 +112,92 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
     }
 
     /**
-     * Initializes all configured agents
+     * Initializes all configured agents using ServiceManager and constructor injection
+     */
+    async initializeAllAgentsWithServiceManager(): Promise<Map<string, any>> {
+        if (!this.serviceManager) {
+            throw new Error('ServiceManager is required for dependency injection');
+        }
+
+        const startTime = Date.now();
+        this.registrationStatus.registrationTime = new Date();
+        this.initializationErrors = {};
+
+        try {
+            logger.systemLog('Initializing agents with ServiceManager dependency injection...');
+
+            const agentNames = ['contentManager', 'commandManager', 'vaultManager', 'vaultLibrarian', 'memoryManager', 'agentManager'];
+            const initializedAgents = new Map<string, any>();
+
+            for (const agentName of agentNames) {
+                try {
+                    await this.initializeAgentWithFactory(agentName);
+                    const agent = this.agentManager.getAgent(agentName);
+                    if (agent) {
+                        initializedAgents.set(agentName, agent);
+                    }
+                } catch (error) {
+                    this.initializationErrors[agentName] = error as Error;
+                    logger.systemError(error as Error, `${agentName} Agent Initialization`);
+                }
+            }
+
+            // Calculate final statistics
+            this.registrationStatus = {
+                totalAgents: agentNames.length,
+                initializedAgents: initializedAgents.size,
+                failedAgents: Object.keys(this.initializationErrors).length,
+                initializationErrors: this.initializationErrors,
+                registrationTime: this.registrationStatus.registrationTime,
+                registrationDuration: Date.now() - startTime
+            };
+
+            logger.systemLog(`ServiceManager-based agent initialization completed - ${this.registrationStatus.initializedAgents}/${this.registrationStatus.totalAgents} agents initialized`);
+
+            return initializedAgents;
+
+        } catch (error) {
+            this.registrationStatus.registrationDuration = Date.now() - startTime;
+            logger.systemError(error as Error, 'Agent Registration with ServiceManager');
+            throw new McpError(
+                ErrorCode.InternalError,
+                'Failed to initialize agents with ServiceManager',
+                error
+            );
+        }
+    }
+
+    /**
+     * Initialize single agent using factory pattern with dependency injection
+     */
+    private async initializeAgentWithFactory(agentName: string): Promise<void> {
+        const factory = this.factoryRegistry.getFactory(agentName);
+        if (!factory) {
+            throw new Error(`No factory found for agent: ${agentName}`);
+        }
+
+        // Resolve dependencies using ServiceManager
+        const dependencies = new Map<string, any>();
+        for (const depName of factory.dependencies) {
+            try {
+                const dependency = await this.serviceManager!.getService(depName);
+                dependencies.set(depName, dependency);
+            } catch (error) {
+                logger.systemWarn(`Optional dependency '${depName}' not available for agent '${agentName}': ${error}`);
+                // For optional dependencies, continue without them
+                dependencies.set(depName, null);
+            }
+        }
+
+        // Create agent with injected dependencies
+        const agent = await factory.create(dependencies, this.app, this.plugin);
+        this.agentManager.registerAgent(agent);
+
+        logger.systemLog(`${agentName} agent initialized successfully with dependency injection`);
+    }
+
+    /**
+     * Initializes all configured agents (legacy method - maintain backward compatibility)
      */
     async initializeAllAgents(): Promise<Map<string, any>> {
         const startTime = Date.now();
@@ -243,7 +331,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
     private async initializeContentManager(): Promise<void> {
         try {
             const contentManagerAgent = new ContentManagerAgent(
-                this.app, 
+                this.app,
                 this.plugin as ClaudesidianPlugin
             );
             
@@ -266,7 +354,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
                 this.serviceManager.getServiceIfReady('memoryService') : null;
             
             const commandManagerAgent = new CommandManagerAgent(
-                this.app, 
+                this.app,
                 memoryService as any
             );
             
@@ -318,35 +406,26 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
                 }
             }
 
-            const agentManagerAgent = new AgentManagerAgent((this.plugin as any).settings);
-            logger.systemLog(`AgentManager agent created - LLM modes enabled: ${enableLLMModes}`);
-
             // Initialize LLM Provider Manager if LLM modes are enabled
+            let llmProviderManager: LLMProviderManager | null = null;
+            let usageTracker: any = null;
+
             if (enableLLMModes) {
                 try {
                     // Get LLM provider settings from plugin settings or use defaults
                     const pluginSettings = (this.plugin as any)?.settings?.settings;
                     const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
-                    
+
                     // Create LLM Provider Manager
-                    const llmProviderManager = new LLMProviderManager(llmProviderSettings);
-                    
-                    // Set up the provider manager on the agent
-                    agentManagerAgent.setProviderManager(llmProviderManager);
-                    
+                    llmProviderManager = new LLMProviderManager(llmProviderSettings);
+
                     // Set the vault adapter for file reading
                     llmProviderManager.setVaultAdapter(this.app.vault.adapter);
-                    
-                    agentManagerAgent.setParentAgentManager(this.agentManager);
-                    
-                    // Create and inject LLM usage tracker (non-blocking)
-                    import('../UsageTracker').then(({ UsageTracker }) => {
-                        const llmUsageTracker = new UsageTracker('llm', pluginSettings);
-                        agentManagerAgent.setUsageTracker(llmUsageTracker);
-                    }).catch(error => {
-                        logger.systemError(error as Error, 'LLM Usage Tracker Initialization');
-                    });
-                    
+
+                    // Create usage tracker
+                    const { UsageTracker } = await import('../UsageTracker');
+                    usageTracker = new UsageTracker('llm', pluginSettings);
+
                 } catch (error) {
                     logger.systemError(error as Error, 'LLM Provider Manager Initialization');
                     // Continue without LLM modes - basic prompt management will still work
@@ -354,21 +433,45 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
             } else {
                 logger.systemLog('LLM modes disabled - AgentManager will function with prompt management only');
             }
-            
-            // Always set the parent agent manager for basic functionality
-            agentManagerAgent.setParentAgentManager(this.agentManager);
-            
-            // Set the vault for image generation functionality
-            agentManagerAgent.setVault(this.app.vault);
-            
-            // Set LLM settings for image generation
-            const pluginSettings = (this.plugin as any)?.settings?.settings;
-            if (pluginSettings) {
-                agentManagerAgent.setLLMSettings(pluginSettings);
+
+            // Create AgentManagerAgent with constructor injection
+            if (llmProviderManager && usageTracker) {
+                const agentManagerAgent = new AgentManagerAgent(
+                    (this.plugin as any).settings,
+                    llmProviderManager,
+                    this.agentManager,
+                    usageTracker,
+                    this.app.vault
+                );
+
+                this.agentManager.registerAgent(agentManagerAgent);
+                logger.systemLog(`AgentManager agent created with full LLM support - LLM modes enabled: ${enableLLMModes}`);
+            } else {
+                // Create basic AgentManager with minimal dependencies for prompt management
+                try {
+                    // Create minimal LLM provider manager and usage tracker for basic functionality
+                    const pluginSettings = (this.plugin as any)?.settings?.settings;
+                    const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
+
+                    const minimalProviderManager = new LLMProviderManager(llmProviderSettings);
+                    const { UsageTracker } = await import('../UsageTracker');
+                    const minimalUsageTracker = new UsageTracker('llm', pluginSettings);
+
+                    const agentManagerAgent = new AgentManagerAgent(
+                        (this.plugin as any).settings,
+                        minimalProviderManager,
+                        this.agentManager,
+                        minimalUsageTracker,
+                        this.app.vault
+                    );
+
+                    this.agentManager.registerAgent(agentManagerAgent);
+                    logger.systemLog('AgentManager agent created with basic support - LLM features may be limited');
+                } catch (basicError) {
+                    logger.systemError(basicError as Error, 'Basic AgentManager Creation');
+                    logger.systemLog('AgentManager agent creation failed - prompt management features unavailable');
+                }
             }
-            
-            this.agentManager.registerAgent(agentManagerAgent);
-            logger.systemLog('AgentManager agent initialized successfully');
         } catch (error) {
             this.initializationErrors['agentManager'] = error as Error;
             logger.systemError(error as Error, 'AgentManager Agent Initialization');
@@ -405,11 +508,34 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
      */
     private async initializeMemoryManager(): Promise<void> {
         try {
+            // Get required services - try ServiceManager first, then plugin direct access
+            let memoryService: any = null;
+            let workspaceService: any = null;
+
+            if (this.serviceManager) {
+                memoryService = this.serviceManager.getServiceIfReady('memoryService');
+                workspaceService = this.serviceManager.getServiceIfReady('workspaceService');
+            } else {
+                // Fallback to plugin's direct service access
+                const pluginServices = (this.plugin as any).services;
+                if (pluginServices) {
+                    memoryService = pluginServices.memoryService;
+                    workspaceService = pluginServices.workspaceService;
+                }
+            }
+
+            if (!memoryService || !workspaceService) {
+                logger.systemError(new Error(`Required services not available - memoryService: ${!!memoryService}, workspaceService: ${!!workspaceService}`), 'MemoryManager Agent Initialization');
+                return;
+            }
+
             const memoryManagerAgent = new MemoryManagerAgent(
                 this.app,
-                this.plugin
+                this.plugin,
+                memoryService,
+                workspaceService
             );
-            
+
             this.agentManager.registerAgent(memoryManagerAgent);
             logger.systemLog('MemoryManager agent initialized successfully');
         } catch (error) {

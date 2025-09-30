@@ -1,3 +1,3 @@
 export { MemoryService } from './MemoryService';
-export { WorkspaceService } from './WorkspaceService';
+export { WorkspaceService } from '../../../services/WorkspaceService';
 export { ValidationService } from './ValidationService';

@@ -9,7 +9,7 @@ import { ListSessionsParams, SessionResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 
 /**
  * Mode for listing sessions with filtering and sorting

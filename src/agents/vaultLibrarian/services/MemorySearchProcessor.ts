@@ -20,7 +20,7 @@ import {
   MemoryType
 } from '../../../types/memory/MemorySearchTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../services/WorkspaceService';
 
 export interface MemorySearchProcessorInterface {
   process(params: MemorySearchParameters): Promise<MemorySearchResult[]>;
@@ -236,13 +236,23 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const results = await memoryService.searchMemoryTraces(
+      // Get all traces from workspace
+      const allTraces = await memoryService.getMemoryTraces(
         options.workspaceId || 'default',
-        query,
-        options.limit
+        options.sessionId
       );
 
-      return results.map(result => ({
+      // Filter by query
+      const queryLower = query.toLowerCase();
+      const filtered = allTraces.filter(trace =>
+        trace.content?.toLowerCase().includes(queryLower) ||
+        trace.type?.toLowerCase().includes(queryLower)
+      );
+
+      // Apply limit if specified
+      const limited = options.limit ? filtered.slice(0, options.limit) : filtered;
+
+      return limited.map(result => ({
         trace: result,
         similarity: 1.0 // Default similarity since we don't have semantic search
       }));
@@ -263,7 +273,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const sessions = await memoryService.getSessions(options.workspaceId);
+      const sessions = await memoryService.getSessions(options.workspaceId || 'default-workspace');
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
@@ -300,7 +310,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const states = await memoryService.getSnapshots(options.workspaceId, options.sessionId);
+      const states = await memoryService.getStateSnapshots(options.workspaceId || 'default-workspace', options.sessionId);
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
@@ -313,7 +323,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
         }
         
         // Check description match
-        if (state.description?.toLowerCase().includes(queryLower)) {
+        if ((state as any).description?.toLowerCase().includes(queryLower)) {
           score += 0.8;
         }
 
@@ -337,7 +347,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!workspaceService) return [];
 
     try {
-      const workspaces = await workspaceService.getWorkspaces();
+      const workspaces = await workspaceService.listWorkspaces();
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 

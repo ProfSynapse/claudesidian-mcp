@@ -18,7 +18,7 @@ import { EditStateParams, StateResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { createServiceIntegration } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
@@ -75,7 +75,14 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
         if (!memoryService) {
             return this.prepareResult(false, undefined, 'Memory service not available');
         }
-        const existingState = await memoryService.getSnapshot(params.stateId);
+
+        // Extract workspaceId and sessionId from params
+        const parsedContext = params.workspaceContext ?
+            (typeof params.workspaceContext === 'string' ? JSON.parse(params.workspaceContext) : params.workspaceContext) : null;
+        const workspaceId = parsedContext?.workspaceId || 'default-workspace';
+        const sessionId = params.context?.sessionId || 'current';
+
+        const existingState = await memoryService.getStateSnapshot(workspaceId, sessionId, params.stateId);
         if (!existingState) {
             return this.prepareResult(false, undefined, `State not found: ${params.stateId}`);
         }
@@ -112,16 +119,16 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
         }
 
         // Get current snapshot and apply updates
-        const currentSnapshot = await memoryService.getSnapshot(params.stateId);
+        const currentSnapshot = await memoryService.getStateSnapshot(workspaceId, sessionId, params.stateId);
         if (!currentSnapshot) {
             return this.prepareResult(false, undefined, `State ${params.stateId} not found`);
         }
 
         const updatedSnapshot = { ...currentSnapshot, ...updates };
-        await memoryService.updateSnapshot(updatedSnapshot);
+        await memoryService.updateSnapshot(workspaceId, sessionId, params.stateId, updatedSnapshot);
 
         // Use updated snapshot for result
-        const updatedState = await memoryService.getSnapshot(params.stateId);
+        const updatedState = await memoryService.getStateSnapshot(workspaceId, sessionId, params.stateId);
         if (!updatedState) {
             return this.prepareResult(false, undefined, 'Failed to retrieve updated state');
         }

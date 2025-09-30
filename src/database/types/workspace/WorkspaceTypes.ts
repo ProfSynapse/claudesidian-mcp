@@ -42,7 +42,7 @@ export interface WorkspaceContext {
   /**
    * User preferences as actionable guidelines
    */
-  preferences: string[];    // ["Use professional tone", "Focus on tech companies"]
+  preferences: string;      // "Use professional tone. Focus on tech companies."
 
   /**
    * Single dedicated agent for this workspace

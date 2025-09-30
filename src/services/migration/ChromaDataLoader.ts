@@ -3,7 +3,7 @@
 // Used by: DataMigrationService to read legacy ChromaDB collection data
 // Dependencies: FileSystemService for ChromaDB collection file reading
 
-import { FileSystemService } from './FileSystemService';
+import { FileSystemService } from '../storage/FileSystemService';
 
 export interface ChromaCollectionData {
   memoryTraces: any[];

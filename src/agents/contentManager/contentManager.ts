@@ -14,7 +14,7 @@ import {
 } from './modes';
 // import { AgentManager } from '../../services/AgentManager';
 import ClaudesidianPlugin from '../../main';
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../services/WorkspaceService';
 import { MemoryService } from '../memoryManager/services/MemoryService';
 
 /**
@@ -32,31 +32,35 @@ export class ContentManagerAgent extends BaseAgent {
    * Create a new ContentManagerAgent
    * @param app Obsidian app instance
    * @param plugin Claudesidian plugin instance
+   * @param memoryService Optional injected memory service
+   * @param workspaceService Optional injected workspace service
    */
-  constructor(app: App, plugin?: ClaudesidianPlugin) {
+  constructor(
+    app: App,
+    plugin?: ClaudesidianPlugin,
+    memoryService?: MemoryService | null,
+    workspaceService?: WorkspaceService | null
+  ) {
     super(
       ContentManagerConfig.name,
       ContentManagerConfig.description,
       ContentManagerConfig.version
     );
-    
+
     this.app = app;
-    
-    // Store plugin reference if provided
-    if (plugin) {
-      this.plugin = plugin;
-      
-      // Get memory services if available
-      if (plugin.services) {
-        
-        if (plugin.services.workspaceService) {
-          this.workspaceService = plugin.services.workspaceService;
-        }
-        
-        if (plugin.services.memoryService) {
-          this.memoryService = plugin.services.memoryService;
-        }
-      }
+    this.plugin = plugin || null;
+
+    // Use injected services if provided, otherwise fall back to plugin services
+    if (memoryService) {
+      this.memoryService = memoryService;
+    } else if (plugin?.services?.memoryService) {
+      this.memoryService = plugin.services.memoryService;
+    }
+
+    if (workspaceService) {
+      this.workspaceService = workspaceService;
+    } else if (plugin?.services?.workspaceService) {
+      this.workspaceService = plugin.services.workspaceService;
     }
     
     // Register modes with access to memory services

@@ -147,7 +147,9 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorBody = await response.text();
+        console.error('[OpenRouter-DEBUG-ERROR] Streaming response body:', errorBody);
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorBody}`);
       }
 
       // Use centralized SSE streaming with OpenRouter-specific extraction
@@ -175,7 +177,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         extractToolCalls: (parsed: any) => {
           // Extract tool calls from any choice that has them
           for (const choice of parsed.choices || []) {
-            const toolCalls = choice?.delta?.toolCalls;
+            const toolCalls = choice?.delta?.tool_calls || choice?.delta?.toolCalls;
             if (toolCalls) {
               return toolCalls;
             }

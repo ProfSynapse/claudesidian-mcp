@@ -3,7 +3,7 @@ import { BaseAgent } from '../baseAgent';
 import { MemoryManagerConfig } from '../../config/agents';
 import { parseWorkspaceContext } from '../../utils/contextUtils';
 import { MemoryService } from "./services/MemoryService";
-import { WorkspaceService } from "./services/WorkspaceService";
+import { WorkspaceService } from "../../services/WorkspaceService";
 import { getErrorMessage } from '../../utils/errorUtils';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
 
@@ -35,12 +35,12 @@ export class MemoryManagerAgent extends BaseAgent {
   /**
    * Memory service instance
    */
-  private memoryService!: MemoryService;
+  private readonly memoryService: MemoryService;
 
   /**
    * Workspace service instance
    */
-  private workspaceService!: WorkspaceService;
+  private readonly workspaceService: WorkspaceService;
   
   /**
    * App instance
@@ -61,18 +61,27 @@ export class MemoryManagerAgent extends BaseAgent {
    * Create a new MemoryManagerAgent with consolidated modes
    * @param app Obsidian app instance
    * @param plugin Plugin instance for accessing shared services
+   * @param memoryService Injected memory service
+   * @param workspaceService Injected workspace service
    */
-  constructor(app: App, public plugin?: any) {
+  constructor(
+    app: App,
+    public plugin: any,
+    memoryService: MemoryService,
+    workspaceService: WorkspaceService
+  ) {
     super(
       MemoryManagerConfig.name,
       MemoryManagerConfig.description,
       MemoryManagerConfig.version
     );
-    
+
     this.app = app;
     this.vaultName = sanitizeVaultName(app.vault.getName());
-    
-    // Services will be accessed dynamically when needed
+
+    // Store injected services
+    this.memoryService = memoryService;
+    this.workspaceService = workspaceService;
     
     // Register session modes (4 modes: create, list, load, update - following workspace pattern)
     this.registerMode(new CreateSessionMode(this));
@@ -122,74 +131,31 @@ export class MemoryManagerAgent extends BaseAgent {
   }
   
   /**
-   * Get the memory service instance synchronously - uses ServiceContainer
+   * Get the memory service instance - now uses injected service
    */
   getMemoryService(): MemoryService | null {
-    console.log(`[MemoryManagerAgent] 🔍 DEBUG: getMemoryService called`);
-    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
-    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Plugin found: ${!!plugin}`);
-    
-    if (!plugin) {
-      console.log(`[MemoryManagerAgent] 🔍 DEBUG: No plugin found`);
-      return null;
-    }
-    
-    // FIX: Use direct property access instead of serviceContainer
-    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Accessing memoryService directly from plugin`);
-    const memoryService = plugin.memoryService;
-    console.log(`[MemoryManagerAgent] 🔍 DEBUG: Memory service from plugin: ${!!memoryService}`);
-    
-    if (!memoryService) {
-      console.log(`[MemoryManagerAgent] 🔍 DEBUG: Plugin properties:`, Object.keys(plugin));
-    }
-    
-    return memoryService || null;
+    return this.memoryService;
   }
   
   /**
-   * Get the workspace service instance synchronously - uses ServiceContainer
+   * Get the workspace service instance - now uses injected service
    */
   getWorkspaceService(): WorkspaceService | null {
-    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
-    if (!plugin) {
-      return null;
-    }
-    // FIX: Use direct property access instead of serviceContainer
-    return plugin.workspaceService || null;
+    return this.workspaceService;
   }
   
   /**
-   * Get the memory service instance asynchronously - waits for service initialization
+   * Get the memory service instance asynchronously - now uses injected service
    */
   async getMemoryServiceAsync(): Promise<MemoryService | null> {
-    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
-    if (!plugin) {
-      return null;
-    }
-    
-    try {
-      return await (plugin as any).getService('memoryService') as MemoryService;
-    } catch (error) {
-      console.warn('[MemoryManagerAgent] Failed to get memory service:', error);
-      return null;
-    }
+    return this.memoryService;
   }
   
   /**
-   * Get the workspace service instance asynchronously - waits for service initialization
+   * Get the workspace service instance asynchronously - now uses injected service
    */
   async getWorkspaceServiceAsync(): Promise<WorkspaceService | null> {
-    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
-    if (!plugin) {
-      return null;
-    }
-    
-    try {
-      return await (plugin as any).getService('workspaceService') as WorkspaceService;
-    } catch (error) {
-      console.warn('[MemoryManagerAgent] Failed to get workspace service:', error);
-      return null;
-    }
+    return this.workspaceService;
   }
   
   /**

@@ -5,7 +5,7 @@
 
 import { Plugin, TFile } from 'obsidian';
 import { MemoryService } from "../../../../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../../../services/WorkspaceService';
 import { GraphOperations } from '../../../../../database/utils/graph/GraphOperations';
 type MetadataSearchCriteria = any;
 import { 

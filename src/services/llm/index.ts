@@ -21,10 +21,10 @@ export * from './adapters/modelTypes';
 // Model registry and specifications
 export { ModelRegistry } from './adapters/ModelRegistry';
 export { OPENAI_MODELS } from './adapters/openai/OpenAIModels';
-export { ANTHROPIC_MODELS } from './adapters/anthropic/AnthropicModels';
+export { ANTHROPIC_MODELS } from './adapters/anthropic/anthropicModels';
 export { GOOGLE_MODELS } from './adapters/google/GoogleModels';
 export { MISTRAL_MODELS } from './adapters/mistral/MistralModels';
-export { OPENROUTER_MODELS } from './adapters/openrouter/OpenRouterModels';
+export { OPENROUTER_MODELS } from './adapters/openrouter/openRouterModels';
 export { REQUESTY_MODELS } from './adapters/requesty/RequestyModels';
 
 // Cost calculation

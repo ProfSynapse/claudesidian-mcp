@@ -18,7 +18,7 @@ import {
     CreateWorkspaceResult
 } from '../../../../database/types/workspace/ParameterTypes';
 import { ProjectWorkspace, WorkspaceContext } from '../../../../database/types/workspace/WorkspaceTypes';
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
@@ -107,7 +107,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                 currentGoal: params.currentGoal,
                 workflows: params.workflows,
                 keyFiles: allKeyFiles,
-                preferences: params.preferences || [],
+                preferences: params.preferences || '',
                 ...(dedicatedAgent && { dedicatedAgent })
             };
             
@@ -130,7 +130,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                     toolName: 'CreateWorkspaceMode',
                     context: `Created workspace: ${params.purpose}`
                 }],
-                preferences: params.preferences ? { userPreferences: params.preferences } : undefined,
+                preferences: undefined, // Legacy field - preferences now stored in context
                 projectPlan: undefined,
                 checkpoints: [],
                 completionStatus: {}
@@ -245,9 +245,8 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                     description: 'Simple list of key file paths for this workspace'
                 },
                 preferences: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'User preferences for this workspace'
+                    type: 'string',
+                    description: 'User preferences as a single text field'
                 },
                 dedicatedAgentId: {
                     type: 'string',

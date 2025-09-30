@@ -1,64 +1,58 @@
 // Location: src/services/migration/DataTransformer.ts
-// Transforms ChromaDB collection data into the new nested JSON structure
-// Used by: DataMigrationService to convert legacy data to simplified architecture
-// Dependencies: ChromaDataLoader for source data, MigrationTypes for target structure
+// Transforms ChromaDB collection data into individual conversation and workspace files
+// Used by: DataMigrationService to convert legacy data to split-file architecture
+// Dependencies: ChromaDataLoader for source data, StorageTypes for target structure
 
-import { WorkspaceDataStructure, ConversationDataStructure } from '../../types/migration/MigrationTypes';
+import { IndividualConversation, IndividualWorkspace } from '../../types/storage/StorageTypes';
 import { ChromaCollectionData } from './ChromaDataLoader';
 
 export class DataTransformer {
 
   transformToNewStructure(chromaData: ChromaCollectionData): {
-    workspaceData: WorkspaceDataStructure;
-    conversationData: ConversationDataStructure;
+    conversations: IndividualConversation[];
+    workspaces: IndividualWorkspace[];
   } {
-    console.log('[Claudesidian] Starting transformation to new structure...');
+    console.log('[DataTransformer] Starting transformation to split-file structure...');
 
-    // Step 1: Transform conversations (simpler structure)
-    const conversationData = this.transformConversations(chromaData.conversations);
+    // Transform conversations to individual file format
+    const conversations = this.transformConversations(chromaData.conversations);
 
-    // Step 2: Transform workspace hierarchy (complex nested structure)
-    const workspaceData = this.transformWorkspaceHierarchy(
+    // Transform workspaces to individual file format
+    const workspaces = this.transformWorkspaceHierarchy(
       chromaData.workspaces,
       chromaData.sessions,
       chromaData.memoryTraces,
       chromaData.snapshots
     );
 
-    console.log('[Claudesidian] Transformation completed');
-    return { workspaceData, conversationData };
+    console.log('[DataTransformer] Transformation completed');
+    return { conversations, workspaces };
   }
 
-  private transformConversations(conversations: any[]): ConversationDataStructure {
-    console.log(`[Claudesidian] Transforming ${conversations.length} conversations...`);
+  private transformConversations(conversations: any[]): IndividualConversation[] {
+    console.log(`[DataTransformer] Transforming ${conversations.length} conversations...`);
 
-    const result: ConversationDataStructure = {
-      conversations: {},
-      metadata: {
-        version: '2.0.0',
-        lastUpdated: Date.now(),
-        totalConversations: conversations.length
-      }
-    };
+    const result: IndividualConversation[] = [];
 
     for (const conv of conversations) {
       try {
         const conversationData = conv.metadata?.conversation || {};
         const messages = conversationData.messages || [];
 
-        result.conversations[conv.id] = {
+        const transformed: IndividualConversation = {
           id: conv.id,
           title: conv.metadata?.title || conversationData.title || 'Untitled Conversation',
           created: conv.metadata?.created || conversationData.created || Date.now(),
           updated: conv.metadata?.updated || conversationData.updated || Date.now(),
           vault_name: conv.metadata?.vault_name || conversationData.vault_name || 'Unknown',
-          message_count: conv.metadata?.message_count || conversationData.message_count || messages.length,
+          message_count: messages.length,
           messages: this.transformMessages(messages)
         };
 
-        console.log(`[Claudesidian] Transformed conversation: ${conv.id}`);
+        result.push(transformed);
+        console.log(`[DataTransformer] Transformed conversation: ${conv.id}`);
       } catch (error) {
-        console.error(`[Claudesidian] Error transforming conversation ${conv.id}:`, error);
+        console.error(`[DataTransformer] Error transforming conversation ${conv.id}:`, error);
       }
     }
 
@@ -73,6 +67,7 @@ export class DataTransformer {
       role: msg.role || 'user',
       content: msg.content || '',
       timestamp: msg.timestamp || Date.now(),
+      toolCalls: msg.toolCalls,
       toolName: msg.toolName,
       toolParams: msg.toolParams,
       toolResult: msg.toolResult
@@ -84,8 +79,8 @@ export class DataTransformer {
     sessions: any[],
     memoryTraces: any[],
     snapshots: any[]
-  ): WorkspaceDataStructure {
-    console.log(`[Claudesidian] Transforming workspace hierarchy...`);
+  ): IndividualWorkspace[] {
+    console.log(`[DataTransformer] Transforming workspace hierarchy...`);
     console.log(`  - ${workspaces.length} workspaces`);
     console.log(`  - ${sessions.length} sessions`);
     console.log(`  - ${memoryTraces.length} memory traces`);
@@ -96,14 +91,7 @@ export class DataTransformer {
     const tracesBySession = this.groupBy(memoryTraces, t => t.metadata?.sessionId || 'orphan');
     const statesBySession = this.groupBy(snapshots, s => s.metadata?.sessionId || 'orphan');
 
-    const result: WorkspaceDataStructure = {
-      workspaces: {},
-      metadata: {
-        version: '2.0.0',
-        lastUpdated: Date.now(),
-        migrationCompleted: Date.now()
-      }
-    };
+    const result: IndividualWorkspace[] = [];
 
     // Build workspace metadata lookup
     const workspaceMetadata = this.keyBy(workspaces, 'id');
@@ -121,7 +109,7 @@ export class DataTransformer {
           context = this.migrateWorkspaceContext(context);
         }
 
-        result.workspaces[workspaceId] = {
+        const workspace: IndividualWorkspace = {
           id: workspaceId,
           name: wsMetadata?.metadata?.name || `Workspace ${workspaceId}`,
           description: wsMetadata?.metadata?.description || '',
@@ -138,7 +126,7 @@ export class DataTransformer {
           const sessionTraces = tracesBySession[session.id] || [];
           const sessionStates = statesBySession[session.id] || [];
 
-          result.workspaces[workspaceId].sessions[session.id] = {
+          workspace.sessions[session.id] = {
             id: session.id,
             name: session.metadata?.name,
             description: session.metadata?.description,
@@ -149,12 +137,13 @@ export class DataTransformer {
             states: this.transformStates(sessionStates)
           };
 
-          console.log(`[Claudesidian] Processed session ${session.id}: ${sessionTraces.length} traces, ${sessionStates.length} states`);
+          console.log(`[DataTransformer] Processed session ${session.id}: ${sessionTraces.length} traces, ${sessionStates.length} states`);
         }
 
-        console.log(`[Claudesidian] Processed workspace ${workspaceId}: ${workspaceSessions.length} sessions`);
+        result.push(workspace);
+        console.log(`[DataTransformer] Processed workspace ${workspaceId}: ${workspaceSessions.length} sessions`);
       } catch (error) {
-        console.error(`[Claudesidian] Error processing workspace ${workspaceId}:`, error);
+        console.error(`[DataTransformer] Error processing workspace ${workspaceId}:`, error);
       }
     }
 
@@ -182,7 +171,7 @@ export class DataTransformer {
           }
         };
       } catch (error) {
-        console.error(`[Claudesidian] Error transforming trace ${trace.id}:`, error);
+        console.error(`[DataTransformer] Error transforming trace ${trace.id}:`, error);
       }
     }
 
@@ -201,7 +190,7 @@ export class DataTransformer {
           snapshot: state.metadata?.snapshot || state.snapshot || {}
         };
       } catch (error) {
-        console.error(`[Claudesidian] Error transforming state ${state.id}:`, error);
+        console.error(`[DataTransformer] Error transforming state ${state.id}:`, error);
       }
     }
 
@@ -239,9 +228,6 @@ export class DataTransformer {
 
   /**
    * Migrate workspace context from old structure to new structure
-   * - Convert agents array to single dedicatedAgent
-   * - Convert complex keyFiles structure to simple array
-   * - Remove status field (replaced by active toggle)
    */
   private migrateWorkspaceContext(context: any): any {
     if (!context || typeof context !== 'object') {
@@ -254,24 +240,18 @@ export class DataTransformer {
     if (context.agents && Array.isArray(context.agents) && context.agents.length > 0) {
       const firstAgent = context.agents[0];
       if (firstAgent && firstAgent.name) {
-        // For migration, we'll use the agent name as both ID and name
-        // This will be resolved properly when loading the workspace
         migratedContext.dedicatedAgent = {
-          agentId: firstAgent.id || firstAgent.name, // Use ID if available, fallback to name
+          agentId: firstAgent.id || firstAgent.name,
           agentName: firstAgent.name
         };
-
         console.log(`[DataTransformer] Migrated agent '${firstAgent.name}' to dedicatedAgent structure`);
       }
-
-      // Remove the old agents array
       delete migratedContext.agents;
     }
 
     // Migrate keyFiles from complex categorized structure to simple array
     if (context.keyFiles && Array.isArray(context.keyFiles)) {
       const simpleKeyFiles: string[] = [];
-
       context.keyFiles.forEach((category: any) => {
         if (category.files && typeof category.files === 'object') {
           Object.values(category.files).forEach((filePath: any) => {
@@ -281,12 +261,20 @@ export class DataTransformer {
           });
         }
       });
-
       migratedContext.keyFiles = simpleKeyFiles;
       console.log(`[DataTransformer] Migrated ${simpleKeyFiles.length} key files to simple array format`);
     }
 
-    // Remove status field (replaced by workspace active toggle)
+    // Migrate preferences from array to string
+    if (context.preferences && Array.isArray(context.preferences)) {
+      const preferencesString = context.preferences
+        .filter((pref: any) => typeof pref === 'string' && pref.trim())
+        .join('. ') + (context.preferences.length > 0 ? '.' : '');
+      migratedContext.preferences = preferencesString;
+      console.log(`[DataTransformer] Migrated ${context.preferences.length} preferences to string format`);
+    }
+
+    // Remove status field
     if (context.status) {
       console.log(`[DataTransformer] Removed status field: '${context.status}' (replaced by active toggle)`);
       delete migratedContext.status;

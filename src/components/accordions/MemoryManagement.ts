@@ -3,7 +3,7 @@ import { Settings } from '../../settings';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { MemorySettingsTab } from '../MemorySettingsTab';
 import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../agents/memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../services/WorkspaceService';
 import type { ServiceManager } from '../../core/ServiceManager';
 
 /**

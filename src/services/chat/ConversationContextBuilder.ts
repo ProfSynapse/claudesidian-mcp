@@ -66,8 +66,8 @@ export class ConversationContextBuilder {
             content: msg.content || null // OpenAI allows null content when tool calls are present
           };
 
-          // Convert our stored tool calls to OpenAI format
-          assistantMessage.toolCalls = msg.toolCalls.map(tc => ({
+          // Convert our stored tool calls to OpenAI format (use snake_case tool_calls)
+          assistantMessage.tool_calls = msg.toolCalls.map(tc => ({
             id: tc.id,
             type: 'function',
             function: {

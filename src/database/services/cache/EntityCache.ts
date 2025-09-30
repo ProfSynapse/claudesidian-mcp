@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Vault, TFile } from 'obsidian';
-import { WorkspaceService } from '../../../agents/memoryManager/services/WorkspaceService';
+import { WorkspaceService } from '../../../services/WorkspaceService';
 import { MemoryService } from '../../../agents/memoryManager/services/MemoryService';
 
 interface CachedWorkspace {
@@ -85,7 +85,7 @@ export class EntityCache extends EventEmitter {
             sessionIds.push(...sessions.map(s => s.id));
 
             // Get states for this workspace
-            const snapshots = await this.memoryService.getSnapshots(workspaceId);
+            const snapshots = await this.memoryService.getStateSnapshots(workspaceId);
             stateIds.push(...snapshots.map(s => s.id));
 
             // Collect associated files
@@ -128,7 +128,7 @@ export class EntityCache extends EventEmitter {
 
             // Load session data
             // First try to get the session directly
-            const sessionData = await this.memoryService.getSession(sessionId);
+            const sessionData = await this.memoryService.getSession('default-workspace', sessionId);
             if (!sessionData) {
                 return;
             }
@@ -172,8 +172,8 @@ export class EntityCache extends EventEmitter {
                 return;
             }
 
-            // Load state data  
-            const snapshots = await this.memoryService.getSnapshots();
+            // Load state data
+            const snapshots = await this.memoryService.getStateSnapshots('default-workspace');
             const state = snapshots.find(s => s.id === stateId);
             
             if (!state) {
@@ -239,7 +239,7 @@ export class EntityCache extends EventEmitter {
         // Batch load uncached items
         if (uncached.length > 0) {
             // Load sessions individually
-            const sessionPromises = uncached.map(id => this.memoryService.getSession(id));
+            const sessionPromises = uncached.map(id => this.memoryService.getSession('default-workspace', id));
             const sessionResults = await Promise.all(sessionPromises);
             const sessions = sessionResults.filter((s): s is any => s !== undefined);
             
@@ -277,7 +277,7 @@ export class EntityCache extends EventEmitter {
         // Batch load uncached items
         if (uncached.length > 0) {
             // Load all snapshots and filter
-            const allSnapshots = await this.memoryService.getSnapshots();
+            const allSnapshots = await this.memoryService.getStateSnapshots('default-workspace');
             const states = allSnapshots.filter(s => uncached.includes(s.id));
             
             // Cache the loaded states

@@ -14,7 +14,7 @@ import {
   ProviderCapabilities,
   ModelPricing
 } from '../types';
-import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './AnthropicModels';
+import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './anthropicModels';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 
 export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {

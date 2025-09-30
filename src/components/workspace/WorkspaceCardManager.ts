@@ -1,6 +1,6 @@
 import { CardManager, CardItem } from '../CardManager';
-import { WorkspaceService } from '../../agents/memoryManager/services/WorkspaceService';
-import { ProjectWorkspace } from '../../database/workspace-types';
+import { WorkspaceService } from '../../services/WorkspaceService';
+import { IndividualWorkspace } from '../../types/storage/StorageTypes';
 import { WorkspaceEditModal } from './WorkspaceEditModal';
 import { Settings } from '../../settings';
 
@@ -25,7 +25,7 @@ export interface WorkspaceCardItem extends CardItem {
   status?: string;
 
   // Full workspace reference for editing
-  workspace: ProjectWorkspace;
+  workspace: IndividualWorkspace;
 }
 
 /**
@@ -81,7 +81,7 @@ export class WorkspaceCardManager {
   /**
    * Consolidate multiple root workspaces into a single default workspace
    */
-  private consolidateRootWorkspaces(workspaces: ProjectWorkspace[]): ProjectWorkspace[] {
+  private consolidateRootWorkspaces(workspaces: IndividualWorkspace[]): IndividualWorkspace[] {
     const rootWorkspaces = workspaces.filter(w =>
       !w.rootFolder || w.rootFolder === '/' || w.rootFolder === ''
     );
@@ -108,7 +108,7 @@ export class WorkspaceCardManager {
     }
 
     // Mark the primary root as the default
-    const consolidatedRoot: ProjectWorkspace = {
+    const consolidatedRoot: IndividualWorkspace = {
       ...primaryRoot,
       name: primaryRoot.name.startsWith('Workspace ') ? 'Default Workspace' : primaryRoot.name,
       description: primaryRoot.description || 'Default workspace for vault root',
@@ -121,7 +121,7 @@ export class WorkspaceCardManager {
   /**
    * Convert ProjectWorkspace to WorkspaceCardItem
    */
-  private workspaceToCardItem(workspace: ProjectWorkspace): WorkspaceCardItem {
+  private workspaceToCardItem(workspace: IndividualWorkspace): WorkspaceCardItem {
     return {
       id: workspace.id,
       name: this.generateWorkspaceName(workspace),
@@ -140,7 +140,7 @@ export class WorkspaceCardManager {
   /**
    * Generate a user-friendly workspace name based on folder
    */
-  private generateWorkspaceName(workspace: ProjectWorkspace): string {
+  private generateWorkspaceName(workspace: IndividualWorkspace): string {
     // If there's a custom name that's not the generic pattern, use it
     if (workspace.name &&
         !workspace.name.startsWith('Workspace ') &&
@@ -155,14 +155,14 @@ export class WorkspaceCardManager {
     }
 
     // Extract the folder name from the path
-    const folderName = workspace.rootFolder.split('/').filter(part => part).pop() || 'Root';
+    const folderName = workspace.rootFolder.split('/').filter((part: string) => part).pop() || 'Root';
     return folderName;
   }
 
   /**
    * Generate a meaningful description for the card
    */
-  private generateCardDescription(workspace: ProjectWorkspace): string {
+  private generateCardDescription(workspace: IndividualWorkspace): string {
     if (workspace.description) {
       return workspace.description;
     }

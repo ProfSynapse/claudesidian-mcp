@@ -629,14 +629,14 @@ export class LLMService {
           );
           
           console.log('[LLMService] Starting NEW stream for AI response to tool results...');
-          
+
           // Step 3: Start NEW stream with conversation history (pingpong)
           // Reset fullContent since this is a new conversation response
           fullContent = '';
-          
+
           for await (const chunk of adapter.generateStreamAsync('', {
             ...generateOptions,
-            // Keep tools available for continued tool calling
+            // Keep tools available for continued tool calling after seeing results
             // Pass conversation history for pingpong
             conversationHistory: conversationHistory
           })) {

@@ -42,39 +42,53 @@ export class AgentManagerAgent extends BaseAgent {
   /**
    * LLM Provider Manager for model operations
    */
-  private providerManager: LLMProviderManager | null = null;
+  private readonly providerManager: LLMProviderManager;
 
   /**
    * Agent Manager for inter-agent communication
    */
-  private parentAgentManager: AgentManager | null = null;
-  
+  private readonly parentAgentManager: AgentManager;
+
   /**
    * Usage Tracker for LLM cost tracking
    */
-  private usageTracker: UsageTracker | null = null;
-  
+  private readonly usageTracker: UsageTracker;
+
   /**
-   * Create a new AgentManagerAgent
-   * @param settings Settings instance for prompt storage
+   * Vault instance for image generation
    */
-  constructor(settings: Settings) {
+  private readonly vault: Vault;
+
+  /**
+   * Create a new AgentManagerAgent with dependency injection
+   * @param settings Settings instance for prompt storage
+   * @param providerManager LLM Provider Manager for model operations
+   * @param parentAgentManager Agent Manager for inter-agent communication
+   * @param usageTracker Usage Tracker for LLM cost tracking
+   * @param vault Vault instance for image generation
+   */
+  constructor(
+    settings: Settings,
+    providerManager: LLMProviderManager,
+    parentAgentManager: AgentManager,
+    usageTracker: UsageTracker,
+    vault: Vault
+  ) {
     super(
       AgentManagerConfig.name,
       AgentManagerConfig.description,
       AgentManagerConfig.version
     );
-    
+
+    // Store injected dependencies
+    this.providerManager = providerManager;
+    this.parentAgentManager = parentAgentManager;
+    this.usageTracker = usageTracker;
+    this.vault = vault;
+
     this.storageService = new CustomPromptStorageService(settings);
-    
-    // Get vault name from settings (which has access to plugin.app)
-    const plugin = (settings as any).plugin;
-    if (plugin && plugin.app) {
-      this.vaultName = sanitizeVaultName(plugin.app.vault.getName());
-    } else {
-      this.vaultName = 'unknown-vault';
-    }
-    
+    this.vaultName = sanitizeVaultName(vault.getName());
+
     // Register prompt management modes
     this.registerMode(new ListAgentsMode(this.storageService));
     this.registerMode(new GetAgentMode(this.storageService));
@@ -83,13 +97,28 @@ export class AgentManagerAgent extends BaseAgent {
     this.registerMode(new DeleteAgentMode(this.storageService));
     this.registerMode(new ToggleAgentMode(this.storageService));
 
-    // Register LLM modes (will be initialized when provider manager is set)
-    this.registerMode(new ListModelsMode());
-    this.registerMode(new ExecutePromptMode());
-    this.registerMode(new BatchExecutePromptMode());
-    
-    // Register image generation mode
-    this.registerMode(new GenerateImageMode());
+    // Register LLM modes with dependencies already available
+    this.registerMode(new ListModelsMode(this.providerManager));
+    this.registerMode(new ExecutePromptMode({
+      providerManager: this.providerManager,
+      promptStorage: this.storageService,
+      agentManager: this.parentAgentManager,
+      usageTracker: this.usageTracker
+    }));
+    this.registerMode(new BatchExecutePromptMode(
+      undefined, // plugin - not needed in constructor injection pattern
+      undefined, // llmService - will be resolved internally
+      this.providerManager,
+      this.parentAgentManager,
+      this.storageService
+    ));
+
+    // Register image generation mode with vault and settings
+    const pluginSettings = (settings as any)?.settings;
+    this.registerMode(new GenerateImageMode({
+      vault: this.vault,
+      llmSettings: pluginSettings?.llmProviders
+    }));
   }
 
   /**
@@ -121,98 +150,35 @@ export class AgentManagerAgent extends BaseAgent {
   }
 
   /**
-   * Set the LLM Provider Manager for model operations
+   * Get the LLM Provider Manager
+   * @returns LLM Provider Manager instance
    */
-  setProviderManager(providerManager: LLMProviderManager): void {
-    this.providerManager = providerManager;
-    
-    // Update the LLM modes with the provider manager
-    const listModelsMode = this.getMode('listModels') as ListModelsMode;
-    if (listModelsMode) {
-      listModelsMode.setProviderManager(providerManager);
-    }
-
-    const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;
-    if (executePromptMode) {
-      executePromptMode.setProviderManager(providerManager);
-      executePromptMode.setPromptStorage(this.storageService);
-      if (this.parentAgentManager) {
-        executePromptMode.setAgentManager(this.parentAgentManager);
-      }
-      if (this.usageTracker) {
-        executePromptMode.setUsageTracker(this.usageTracker);
-      }
-    }
-
-    const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
-    if (batchExecutePromptMode) {
-      batchExecutePromptMode.setProviderManager(providerManager);
-      batchExecutePromptMode.setPromptStorage(this.storageService);
-      if (this.parentAgentManager) {
-        batchExecutePromptMode.setAgentManager(this.parentAgentManager);
-      }
-      if (this.usageTracker) {
-        batchExecutePromptMode.setUsageTracker(this.usageTracker);
-      }
-    }
+  getProviderManager(): LLMProviderManager {
+    return this.providerManager;
   }
 
   /**
-   * Set the Usage Tracker for LLM cost tracking
+   * Get the Usage Tracker
+   * @returns Usage Tracker instance
    */
-  setUsageTracker(usageTracker: UsageTracker): void {
-    this.usageTracker = usageTracker;
-    
-    // Update the execute modes with the usage tracker
-    const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;
-    if (executePromptMode) {
-      executePromptMode.setUsageTracker(usageTracker);
-    }
-
-    const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
-    if (batchExecutePromptMode) {
-      batchExecutePromptMode.setUsageTracker(usageTracker);
-    }
+  getUsageTracker(): UsageTracker {
+    return this.usageTracker;
   }
 
   /**
-   * Set the Agent Manager for inter-agent communication
+   * Get the parent Agent Manager
+   * @returns Agent Manager instance
    */
-  setParentAgentManager(agentManager: AgentManager): void {
-    this.parentAgentManager = agentManager;
-    
-    // Update execute prompt mode if it exists
-    const executePromptMode = this.getMode('executePrompt') as ExecutePromptMode;
-    if (executePromptMode) {
-      executePromptMode.setAgentManager(agentManager);
-    }
-
-    // Update batch execute prompt mode if it exists
-    const batchExecutePromptMode = this.getMode('batchExecutePrompt') as BatchExecutePromptMode;
-    if (batchExecutePromptMode) {
-      batchExecutePromptMode.setAgentManager(agentManager);
-    }
+  getParentAgentManager(): AgentManager {
+    return this.parentAgentManager;
   }
 
   /**
-   * Set the Vault instance for image generation
+   * Get the Vault instance
+   * @returns Vault instance
    */
-  setVault(vault: Vault): void {
-    // Update image generation mode if it exists
-    const generateImageMode = this.getMode('generateImage') as GenerateImageMode;
-    if (generateImageMode) {
-      generateImageMode.setVault(vault);
-    }
-  }
-
-  /**
-   * Set LLM provider settings for image generation
-   */
-  setLLMSettings(settings: any): void {
-    const generateImageMode = this.getMode('generateImage') as GenerateImageMode;
-    if (generateImageMode) {
-      generateImageMode.setLLMSettings(settings?.llmProviders);
-    }
+  getVault(): Vault {
+    return this.vault;
   }
 
   /**

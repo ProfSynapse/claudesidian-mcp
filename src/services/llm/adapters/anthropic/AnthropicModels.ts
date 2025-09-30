@@ -72,6 +72,22 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
       supportsStreaming: true,
       supportsThinking: false
     }
+  },
+  {
+    provider: 'anthropic',
+    name: 'Claude 4.5 Sonnet',
+    apiName: 'claude-sonnet-4-5-20250929',
+    contextWindow: 200000,
+    maxTokens: 64000,
+    inputCostPerMillion: 3.00,
+    outputCostPerMillion: 15.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: false
+    }
   }
 ];
 

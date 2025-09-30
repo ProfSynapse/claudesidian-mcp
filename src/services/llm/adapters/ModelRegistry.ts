@@ -10,9 +10,9 @@
 import { ModelSpec } from './modelTypes';
 import { OPENAI_MODELS, OPENAI_DEFAULT_MODEL } from './openai/OpenAIModels';
 import { GOOGLE_MODELS, GOOGLE_DEFAULT_MODEL } from './google/GoogleModels';
-import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './anthropic/AnthropicModels';
+import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './anthropic/anthropicModels';
 import { MISTRAL_MODELS, MISTRAL_DEFAULT_MODEL } from './mistral/MistralModels';
-import { OPENROUTER_MODELS, OPENROUTER_DEFAULT_MODEL } from './openrouter/OpenRouterModels';
+import { OPENROUTER_MODELS, OPENROUTER_DEFAULT_MODEL } from './openrouter/openRouterModels';
 import { REQUESTY_MODELS, REQUESTY_DEFAULT_MODEL } from './requesty/RequestyModels';
 import { GROQ_MODELS, GROQ_DEFAULT_MODEL } from './groq/GroqModels';
 import { OLLAMA_MODELS } from './ollama/OllamaModels';

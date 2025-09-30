@@ -44,21 +44,29 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
     // Note: ProcessedFilesStateManager and SimpleMemoryService removed in simplify-search-architecture
     // State management is now handled by simplified JSON-based storage
 
-    // Memory service with simplified dependencies
-    {
-        name: 'memoryService',
-        create: async (context) => {
-            const { MemoryService } = await import('../../agents/memoryManager/services/MemoryService');
-            return new MemoryService(context.plugin);
-        }
-    },
-
-    // Workspace service with simplified dependencies
+    // Workspace service (centralized storage service)
     {
         name: 'workspaceService',
         create: async (context) => {
-            const { WorkspaceService } = await import('../../agents/memoryManager/services/WorkspaceService');
-            return new WorkspaceService(context.plugin);
+            const { WorkspaceService } = await import('../../services/WorkspaceService');
+            const { FileSystemService } = await import('../../services/storage/FileSystemService');
+            const { IndexManager } = await import('../../services/storage/IndexManager');
+
+            const fileSystem = new FileSystemService(context.plugin);
+            const indexManager = new IndexManager(fileSystem);
+            return new WorkspaceService(context.plugin, fileSystem, indexManager);
+        }
+    },
+
+    // Memory service (agent-specific, delegates to WorkspaceService)
+    {
+        name: 'memoryService',
+        dependencies: ['workspaceService'],
+        create: async (context) => {
+            const { MemoryService } = await import('../../agents/memoryManager/services/MemoryService');
+            const WorkspaceService = (await import('../../services/WorkspaceService')).WorkspaceService;
+            const workspaceService = await context.serviceManager.getService('workspaceService') as InstanceType<typeof WorkspaceService>;
+            return new MemoryService(context.plugin, workspaceService);
         }
     },
 
@@ -110,7 +118,7 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
             if (!llmProviders || typeof llmProviders !== 'object' || !('providers' in llmProviders)) {
                 throw new Error('Invalid LLM provider settings');
             }
-            return new LLMService(llmProviders);
+            return new LLMService(llmProviders, context.connector); // Pass mcpConnector for tool execution
         }
     },
 
@@ -129,6 +137,46 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
                 {} as any // Placeholder for EventManager
             );
         }
+    },
+
+    // Conversation service for chat storage
+    {
+        name: 'conversationService',
+        create: async (context) => {
+            const { ConversationService } = await import('../../services/ConversationService');
+            const { FileSystemService } = await import('../../services/storage/FileSystemService');
+            const { IndexManager } = await import('../../services/storage/IndexManager');
+
+            const fileSystem = new FileSystemService(context.plugin);
+            const indexManager = new IndexManager(fileSystem);
+            return new ConversationService(context.plugin, fileSystem, indexManager);
+        }
+    },
+
+    // Chat service with direct agent integration via MCPConnector
+    {
+        name: 'chatService',
+        dependencies: ['conversationService', 'llmService'],
+        create: async (context) => {
+            const { ChatService } = await import('../../services/chat/ChatService');
+
+            const conversationService = await context.serviceManager.getService('conversationService');
+            const llmService = await context.serviceManager.getService('llmService');
+
+            return new ChatService(
+                {
+                    conversationService,
+                    llmService,
+                    vaultName: context.app.vault.getName(),
+                    mcpConnector: context.connector
+                },
+                {
+                    maxToolIterations: 10,
+                    toolTimeout: 30000,
+                    enableToolChaining: true
+                }
+            );
+        }
     }
 ];
 
@@ -145,5 +193,6 @@ export const ADDITIONAL_SERVICE_FACTORIES = [
  */
 export const SPECIALIZED_SERVICES = [
     'cacheManager',           // Requires dependency injection
-    'sessionContextManager'   // Requires settings configuration
+    'sessionContextManager',  // Requires settings configuration
+    'chatService'             // Requires MCP client initialization
 ];

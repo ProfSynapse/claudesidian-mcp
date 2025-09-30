@@ -1,7 +1,7 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../services/WorkspaceService';
 import { 
   BatchUniversalSearchParams, 
   BatchUniversalSearchResult,

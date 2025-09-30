@@ -102,13 +102,12 @@ export class ServerLifecycleManager {
     }
 
     /**
-     * Start both transports
+     * Start transports
      */
     private async startTransports(): Promise<void> {
         try {
-            // Only start IPC transport for Obsidian plugin (no HTTP needed)
+            // Start IPC transport only (used by both external clients and internal chatbot)
             const ipcResult = await this.ipcTransportManager.startTransport();
-
             logger.systemLog('IPC transport started successfully');
         } catch (error) {
             logger.systemError(error as Error, 'Transport Start');

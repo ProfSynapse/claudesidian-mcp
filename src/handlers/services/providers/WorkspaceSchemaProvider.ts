@@ -10,7 +10,7 @@
  */
 
 import { ISchemaProvider } from '../../interfaces/ISchemaProvider';
-import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../agents/memoryManager/services/WorkspaceService';
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
 import { logger } from '../../../utils/logger';
 
 /**
@@ -142,7 +142,7 @@ export class WorkspaceSchemaProvider implements ISchemaProvider {
 
     try {
       // Query all workspaces
-      const workspaces = await this.workspaceService.getWorkspaces();
+      const workspaces = await this.workspaceService.listWorkspaces();
 
       logger.systemLog(`Fetched ${workspaces.length} workspaces for schema enhancement`, 'WorkspaceSchemaProvider');
 

@@ -131,10 +131,7 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
                 context: `Updated ${params.fieldPath}: ${this.formatValueForLog(oldValue)} → ${this.formatValueForLog(params.newValue)}`
             };
 
-            workspaceCopy.activityHistory = [
-                ...(existingWorkspace.activityHistory || []),
-                activityEntry
-            ];
+            // Activity history not supported in split-file storage architecture
             workspaceCopy.lastAccessed = now;
 
             // Perform the update

@@ -49,25 +49,7 @@ export class BackgroundProcessor {
                 }
                 
                 this.hasRunBackgroundStartup = true;
-                
-                // STEP 1: Perform deferred migration first (after file system is ready)
-                try {
-                    const fileEventManager = await this.config.waitForService('fileEventManager', 5000);
-                    if (fileEventManager && typeof (fileEventManager as any).getCoordinator === 'function') {
-                        const coordinator = (fileEventManager as any).getCoordinator();
-                        if (coordinator && typeof coordinator.getIncompleteFilesManager === 'function') {
-                            const incompleteFilesManager = coordinator.getIncompleteFilesManager();
-                            await incompleteFilesManager.performDeferredMigration();
-                        } else {
-                            console.warn('[BackgroundProcessor] ⚠️ FileEventCoordinator or IncompleteFilesStateManager not available');
-                        }
-                    } else {
-                        console.warn('[BackgroundProcessor] ⚠️ Could not access FileEventManager for deferred migration');
-                    }
-                } catch (error) {
-                    console.error('[BackgroundProcessor] ❌ Deferred migration failed:', error);
-                }
-                
+
                 // Background startup processing completed
             } catch (error) {
                 console.error('[BackgroundProcessor] Error in background startup processing:', error);
@@ -120,28 +102,19 @@ export class BackgroundProcessor {
     }
 
     /**
-     * Validate search functionality - ensure core services are available
+     * Validate core services are available
      */
     async validateSearchFunctionality(): Promise<void> {
         try {
-            // Test 1: Validate search services are available
-            const searchService = await this.config.getService('searchService', 5000);
-            if (searchService) {
-                console.log('[VALIDATION] ✅ Search service available');
-            } else {
-                console.warn('[VALIDATION] ⚠️ Search service not available');
-            }
-            
-            // Test 2: Validate core services are available
             const serviceManager = this.config.serviceManager;
             if (serviceManager) {
                 const metadata = serviceManager.getAllServiceStatus();
                 const serviceNames = Object.keys(metadata);
-                
-                const coreServices = ['searchService', 'workspaceService', 'memoryService'];
+
+                const coreServices = ['workspaceService', 'memoryService', 'chatService'];
                 const availableCore = coreServices.filter(service => serviceNames.includes(service));
+                console.log('[VALIDATION] ✅ Core services available:', availableCore);
             }
-            
         } catch (error) {
             console.warn('[VALIDATION] Service validation error:', error);
         }

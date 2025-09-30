@@ -80,7 +80,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
     private actionExecutor: ActionExecutor;
     private budgetManager: BudgetManager;
 
-    constructor() {
+    constructor(dependencies?: ServiceDependencies) {
         super(
             'executePrompt',
             'Execute Prompt',
@@ -88,18 +88,18 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             '1.0.0'
         );
 
-        // Initialize services with null dependencies - will be updated via setters
-        const dependencies: ServiceDependencies = {
+        // Use provided dependencies or initialize with nulls for backward compatibility
+        const deps: ServiceDependencies = dependencies || {
             providerManager: null,
             promptStorage: null,
             agentManager: null,
             usageTracker: null
         };
 
-        this.dependencyValidator = new DependencyValidator(dependencies);
-        this.promptExecutor = new PromptExecutor(null!, null!);
-        this.actionExecutor = new ActionExecutor(null);
-        this.budgetManager = new BudgetManager(null);
+        this.dependencyValidator = new DependencyValidator(deps);
+        this.promptExecutor = new PromptExecutor(deps.providerManager!, deps.promptStorage!);
+        this.actionExecutor = new ActionExecutor(deps.agentManager);
+        this.budgetManager = new BudgetManager(deps.usageTracker);
     }
 
     /**

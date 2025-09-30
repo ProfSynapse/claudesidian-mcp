@@ -1,5 +1,5 @@
 import { Plugin } from 'obsidian';
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { MemoryService } from "../../services/MemoryService";
 
 /**

@@ -54,9 +54,9 @@ export interface CreateWorkspaceParameters extends CommonParameters {
   /**
    * User preferences as actionable guidelines (optional)
    * Provide specific preferences about how to work
-   * Example: ["Use professional tone", "Focus on tech companies", "Keep cover letters under 300 words"]
+   * Example: "Use professional tone. Focus on tech companies. Keep cover letters under 300 words."
    */
-  preferences?: string[];
+  preferences?: string;
 
   /**
    * ID of dedicated agent for this workspace (optional)

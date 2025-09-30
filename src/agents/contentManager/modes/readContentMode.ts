@@ -179,7 +179,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     
     try {
       // Record activity using MemoryService - we've already checked it's not null
-      await this.memoryService!.storeMemoryTrace({
+      await this.memoryService!.recordActivityTrace({
         workspaceId: parsedContext.workspaceId,
         type: 'content_read',
         content: content,
@@ -230,25 +230,14 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
           }
         }
         
-        // Also use the FileEventManager to record the activity across all relevant workspaces
-        const fileEventManager = plugin?.services?.fileEventManager;
-        
-        if (fileEventManager && typeof fileEventManager.updateFileActivity === 'function') {
-          // This will automatically update all workspaces that contain this file
-          await fileEventManager.updateFileActivity(
-            params.filePath,
-            'view'
-          );
-        } else {
-          // Fallback to direct workspace service if file event manager is not available          
-          if (workspaceService && parsedContext.workspaceId) {
-            await workspaceService.recordActivity(parsedContext.workspaceId, {
-              action: 'view',
-              timestamp: Date.now(),
-              hierarchyPath: [params.filePath],
-              toolName: 'readContent'
-            });
-          }
+        // Record activity in workspace
+        if (workspaceService && parsedContext.workspaceId) {
+          await workspaceService.recordActivity(parsedContext.workspaceId, {
+            action: 'view',
+            timestamp: Date.now(),
+            hierarchyPath: [params.filePath],
+            toolName: 'readContent'
+          });
         }
       } catch (error) {
         console.warn('Error recording file activity:', getErrorMessage(error));

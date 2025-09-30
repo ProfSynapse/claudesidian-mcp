@@ -1,74 +1,56 @@
 // Location: src/services/migration/DataMigrationService.ts
-// Complete rewrite for the new simplified JSON-based architecture
-// Used by: main.ts during plugin initialization to migrate from ChromaDB to JSON files
-// Dependencies: FileSystemService, ChromaDataLoader, DataTransformer, SearchIndexBuilder
+// Migration service for converting ChromaDB to split-file architecture
+// Used by: main.ts during plugin initialization to migrate from ChromaDB to conversations/ and workspaces/
+// Dependencies: FileSystemService, IndexManager, ChromaDataLoader, DataTransformer
 
 import { Plugin } from 'obsidian';
-import { FileSystemService } from './FileSystemService';
+import { FileSystemService } from '../storage/FileSystemService';
+import { IndexManager } from '../storage/IndexManager';
 import { ChromaDataLoader } from './ChromaDataLoader';
 import { DataTransformer } from './DataTransformer';
-import { SearchIndexBuilder } from './SearchIndexBuilder';
 
 export interface MigrationStatus {
   isRequired: boolean;
   hasLegacyData: boolean;
   migrationComplete: boolean;
-  migrationError?: string;
-  lastMigrationAttempt?: number;
 }
 
 export interface MigrationResult {
   success: boolean;
+  conversationsMigrated: number;
   workspacesMigrated: number;
   sessionsMigrated: number;
-  conversationsMigrated: number;
-  memoryTracesMigrated: number;
-  snapshotsMigrated: number;
+  tracesMigrated: number;
   errors: string[];
-  backupCreated: boolean;
   migrationTime: number;
 }
 
 export class DataMigrationService {
-  private plugin: Plugin;
-  private fileSystem: FileSystemService;
   private chromaLoader: ChromaDataLoader;
   private transformer: DataTransformer;
-  private indexBuilder: SearchIndexBuilder;
 
-  constructor(plugin: Plugin) {
-    this.plugin = plugin;
-    this.fileSystem = new FileSystemService(plugin);
-    this.chromaLoader = new ChromaDataLoader(this.fileSystem);
+  constructor(
+    private plugin: Plugin,
+    private fileSystem: FileSystemService,
+    private indexManager: IndexManager
+  ) {
+    this.chromaLoader = new ChromaDataLoader(fileSystem);
     this.transformer = new DataTransformer();
-    this.indexBuilder = new SearchIndexBuilder();
-
-    console.log('[Claudesidian] DataMigrationService initialized with new architecture');
+    console.log('[DataMigrationService] Initialized with split-file architecture');
   }
 
+  /**
+   * Check if migration is needed
+   */
   async checkMigrationStatus(): Promise<MigrationStatus> {
-    console.log('[Claudesidian] Checking migration status...');
+    console.log('[DataMigrationService] Checking migration status...');
 
     // Check if new structure already exists
-    const hasNewStructure = await this.fileSystem.fileExists('workspace-data.json');
+    const conversationsExist = await this.fileSystem.conversationsDirectoryExists();
+    const workspacesExist = await this.fileSystem.workspacesDirectoryExists();
 
-    if (hasNewStructure) {
-      console.log('[Claudesidian] New structure already exists - checking if settings cleanup needed');
-
-      // Check if settings cleanup is needed
-      const needsSettingsCleanup = await this.needsSettingsCleanup();
-      if (needsSettingsCleanup) {
-        console.log('[Claudesidian] Settings cleanup needed - running cleanup...');
-        const cleanupResult = await this.cleanupObsoleteSettings();
-        if (cleanupResult.success) {
-          console.log(`[Claudesidian] Settings cleanup completed - removed ${cleanupResult.removedSettings.length} obsolete settings`);
-        } else {
-          console.warn('[Claudesidian] Settings cleanup failed:', cleanupResult.error);
-        }
-      } else {
-        console.log('[Claudesidian] Settings already clean - no cleanup needed');
-      }
-
+    if (conversationsExist && workspacesExist) {
+      console.log('[DataMigrationService] Split-file structure already exists - migration complete');
       return {
         isRequired: false,
         hasLegacyData: false,
@@ -79,7 +61,7 @@ export class DataMigrationService {
     // Check for legacy ChromaDB data
     const hasLegacyData = await this.chromaLoader.detectLegacyData();
 
-    console.log(`[Claudesidian] Migration status: required=${hasLegacyData}, hasLegacy=${hasLegacyData}`);
+    console.log(`[DataMigrationService] Migration status: required=${hasLegacyData}, hasLegacy=${hasLegacyData}`);
 
     return {
       isRequired: hasLegacyData,
@@ -88,99 +70,98 @@ export class DataMigrationService {
     };
   }
 
+  /**
+   * Perform migration from ChromaDB to split-file structure
+   */
   async performMigration(): Promise<MigrationResult> {
     const startTime = Date.now();
     const result: MigrationResult = {
       success: false,
+      conversationsMigrated: 0,
       workspacesMigrated: 0,
       sessionsMigrated: 0,
-      conversationsMigrated: 0,
-      memoryTracesMigrated: 0,
-      snapshotsMigrated: 0,
+      tracesMigrated: 0,
       errors: [],
-      backupCreated: false,
       migrationTime: 0
     };
 
     try {
-      console.log('[Claudesidian] Starting migration to new JSON architecture...');
+      console.log('[DataMigrationService] Starting migration to split-file architecture...');
 
-      // Step 1: Ensure data directory exists
-      await this.fileSystem.ensureDataDirectory();
-      console.log('[Claudesidian] Data directory ensured');
+      // Step 1: Create conversations/ and workspaces/ directories
+      await this.fileSystem.ensureConversationsDirectory();
+      await this.fileSystem.ensureWorkspacesDirectory();
+      console.log('[DataMigrationService] Directories created');
 
       // Step 2: Get data summary for reporting
       const dataSummary = await this.chromaLoader.getDataSummary();
-      console.log('[Claudesidian] Data summary:', dataSummary);
+      console.log('[DataMigrationService] Data summary:', dataSummary);
 
       // Step 3: Load all ChromaDB collections
       const chromaData = await this.chromaLoader.loadAllCollections();
-      console.log('[Claudesidian] ChromaDB collections loaded');
+      console.log('[DataMigrationService] ChromaDB collections loaded');
 
-      // Step 4: Transform to new structure
-      const { workspaceData, conversationData } = this.transformer.transformToNewStructure(chromaData);
-      console.log('[Claudesidian] Data transformation completed');
+      // Step 4: Transform to split-file structure
+      const { conversations, workspaces } = this.transformer.transformToNewStructure(chromaData);
+      console.log('[DataMigrationService] Data transformation completed');
 
-      // Step 5: Count migrated items for reporting
-      result.conversationsMigrated = Object.keys(conversationData.conversations).length;
-      result.workspacesMigrated = Object.keys(workspaceData.workspaces).length;
-
-      let totalSessions = 0;
-      let totalTraces = 0;
-      let totalSnapshots = 0;
-
-      for (const workspace of Object.values(workspaceData.workspaces)) {
-        totalSessions += Object.keys(workspace.sessions).length;
-        for (const session of Object.values(workspace.sessions)) {
-          totalTraces += Object.keys(session.memoryTraces).length;
-          totalSnapshots += Object.keys(session.states).length;
+      // Step 5: Write conversation files
+      console.log('[DataMigrationService] Writing conversation files...');
+      for (const conversation of conversations) {
+        try {
+          await this.fileSystem.writeConversation(conversation.id, conversation);
+          result.conversationsMigrated++;
+        } catch (error) {
+          console.error(`[DataMigrationService] Failed to write conversation ${conversation.id}:`, error);
+          result.errors.push(`Failed to write conversation ${conversation.id}`);
         }
       }
 
-      result.sessionsMigrated = totalSessions;
-      result.memoryTracesMigrated = totalTraces;
-      result.snapshotsMigrated = totalSnapshots;
+      // Step 6: Build and write conversation index
+      console.log('[DataMigrationService] Building conversation index...');
+      const conversationIndex = this.indexManager.buildConversationSearchIndices(conversations);
+      await this.fileSystem.writeConversationIndex(conversationIndex);
 
-      console.log('[Claudesidian] Migration counts:', {
-        workspaces: result.workspacesMigrated,
-        sessions: result.sessionsMigrated,
-        conversations: result.conversationsMigrated,
-        traces: result.memoryTracesMigrated,
-        snapshots: result.snapshotsMigrated
-      });
+      // Step 7: Write workspace files
+      console.log('[DataMigrationService] Writing workspace files...');
+      for (const workspace of workspaces) {
+        try {
+          await this.fileSystem.writeWorkspace(workspace.id, workspace);
+          result.workspacesMigrated++;
 
-      // Step 6: Build search indexes
-      console.log('[Claudesidian] Building search indexes...');
-      const workspaceIndex = this.indexBuilder.buildWorkspaceIndex(workspaceData);
-      const conversationIndex = this.indexBuilder.buildConversationIndex(conversationData);
-      console.log('[Claudesidian] Search indexes built');
-
-      // Step 7: Write all files atomically
-      console.log('[Claudesidian] Writing JSON files...');
-      await Promise.all([
-        this.fileSystem.writeJSON('workspace-data.json', workspaceData),
-        this.fileSystem.writeJSON('conversations.json', conversationData),
-        this.fileSystem.writeJSON('workspace-index.json', workspaceIndex),
-        this.fileSystem.writeJSON('conversations-index.json', conversationIndex)
-      ]);
-
-      // Step 8: Clean up obsolete settings
-      console.log('[Claudesidian] Cleaning up obsolete embedding/vector settings...');
-      const settingsCleanupResult = await this.cleanupObsoleteSettings();
-      if (settingsCleanupResult.success) {
-        console.log(`[Claudesidian] Settings cleanup completed - removed ${settingsCleanupResult.removedSettings.length} obsolete settings`);
-      } else {
-        console.warn('[Claudesidian] Settings cleanup failed:', settingsCleanupResult.error);
+          // Count sessions and traces
+          result.sessionsMigrated += Object.keys(workspace.sessions).length;
+          for (const session of Object.values(workspace.sessions)) {
+            result.tracesMigrated += Object.keys(session.memoryTraces).length;
+          }
+        } catch (error) {
+          console.error(`[DataMigrationService] Failed to write workspace ${workspace.id}:`, error);
+          result.errors.push(`Failed to write workspace ${workspace.id}`);
+        }
       }
+
+      // Step 8: Build and write workspace index
+      console.log('[DataMigrationService] Building workspace index...');
+      const workspaceIndex = this.indexManager.buildWorkspaceSearchIndices(workspaces);
+      await this.fileSystem.writeWorkspaceIndex(workspaceIndex);
+
+      // Step 9: Clean up legacy data folder (optional - can be done manually)
+      console.log('[DataMigrationService] Migration complete - legacy data/ folder can be manually removed');
 
       result.success = true;
       result.migrationTime = Date.now() - startTime;
 
-      console.log('[Claudesidian] Migration completed successfully in', result.migrationTime, 'ms');
-      console.log('[Claudesidian] Final result:', result);
+      console.log('[DataMigrationService] Migration completed successfully in', result.migrationTime, 'ms');
+      console.log('[DataMigrationService] Results:', {
+        conversations: result.conversationsMigrated,
+        workspaces: result.workspacesMigrated,
+        sessions: result.sessionsMigrated,
+        traces: result.tracesMigrated,
+        errors: result.errors.length
+      });
 
     } catch (error) {
-      console.error('[Claudesidian] Migration failed:', error);
+      console.error('[DataMigrationService] Migration failed:', error);
       result.errors.push(`Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
@@ -193,23 +174,27 @@ export class DataMigrationService {
    */
   async getMigrationInfo(): Promise<{
     chromaDataSummary?: any;
-    newDataExists: boolean;
+    conversationsExist: boolean;
+    workspacesExist: boolean;
     accessTest?: any;
     errors: string[];
   }> {
     const info: {
       chromaDataSummary?: any;
-      newDataExists: boolean;
+      conversationsExist: boolean;
+      workspacesExist: boolean;
       accessTest?: any;
       errors: string[];
     } = {
-      newDataExists: false,
+      conversationsExist: false,
+      workspacesExist: false,
       errors: []
     };
 
     try {
       // Check if new structure exists
-      info.newDataExists = await this.fileSystem.fileExists('workspace-data.json');
+      info.conversationsExist = await this.fileSystem.conversationsDirectoryExists();
+      info.workspacesExist = await this.fileSystem.workspacesDirectoryExists();
 
       // Test ChromaDB access
       info.accessTest = await this.chromaLoader.testCollectionAccess();
@@ -226,203 +211,26 @@ export class DataMigrationService {
   }
 
   /**
-   * Rebuild search indexes for existing data
+   * Rebuild indexes from existing split-file structure
    */
   async rebuildIndexes(): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('[Claudesidian] Rebuilding search indexes...');
+      console.log('[DataMigrationService] Rebuilding search indexes...');
 
-      // Load existing data
-      const workspaceData = await this.fileSystem.readJSON('workspace-data.json');
-      const conversationData = await this.fileSystem.readJSON('conversations.json');
+      // Rebuild conversation index
+      await this.indexManager.rebuildConversationIndex();
 
-      if (!workspaceData || !conversationData) {
-        throw new Error('No existing data found to rebuild indexes');
-      }
+      // Rebuild workspace index
+      await this.indexManager.rebuildWorkspaceIndex();
 
-      // Rebuild indexes
-      const { workspaceIndex, conversationIndex } = await this.indexBuilder.rebuildIndexes(
-        workspaceData,
-        conversationData
-      );
-
-      // Write updated indexes
-      await Promise.all([
-        this.fileSystem.writeJSON('workspace-index.json', workspaceIndex),
-        this.fileSystem.writeJSON('conversations-index.json', conversationIndex)
-      ]);
-
-      console.log('[Claudesidian] Search indexes rebuilt successfully');
+      console.log('[DataMigrationService] Search indexes rebuilt successfully');
       return { success: true };
     } catch (error) {
-      console.error('[Claudesidian] Failed to rebuild indexes:', error);
+      console.error('[DataMigrationService] Failed to rebuild indexes:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
       };
-    }
-  }
-
-  /**
-   * Check if settings cleanup is needed
-   */
-  async needsSettingsCleanup(): Promise<boolean> {
-    try {
-      const currentData = await this.plugin.loadData() || {};
-
-      // Check if any obsolete settings exist
-      const obsoleteChecks = [
-        currentData.memory?.enabled !== undefined,
-        currentData.memory?.embeddingsEnabled !== undefined,
-        currentData.memory?.apiProvider !== undefined,
-        currentData.memory?.providerSettings !== undefined,
-        currentData.incompleteFiles !== undefined,
-        currentData.fileEventQueue !== undefined,
-        currentData.memory?.openaiApiKey !== undefined,
-        currentData.memory?.embeddingModel !== undefined
-      ];
-
-      return obsoleteChecks.some(check => check);
-    } catch (error) {
-      console.error('[Claudesidian] Error checking if settings cleanup needed:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Clean up obsolete embedding and vector-related settings from plugin data
-   */
-  async cleanupObsoleteSettings(): Promise<{
-    success: boolean;
-    removedSettings: string[];
-    error?: string;
-  }> {
-    const result = {
-      success: false,
-      removedSettings: [] as string[],
-      error: undefined as string | undefined
-    };
-
-    try {
-      // Load current plugin data
-      const currentData = await this.plugin.loadData() || {};
-      console.log('[Claudesidian] Loaded current plugin settings for cleanup');
-
-      // Define obsolete settings to remove
-      const obsoleteSettings = [
-        'memory.enabled',
-        // Embedding provider settings
-        'memory.embeddingsEnabled',
-        'memory.apiProvider',
-        'memory.providerSettings',
-        'memory.maxTokensPerMonth',
-        'memory.apiRateLimitPerMinute',
-        'memory.chunkStrategy',
-        'memory.chunkSize',
-        'memory.chunkOverlap',
-        'memory.maxTokensPerChunk',
-        'memory.embeddingStrategy',
-        'memory.dbStoragePath',
-        'memory.vectorStoreType',
-        'memory.costPerThousandTokens',
-        'memory.contextualEmbedding',
-        'memory.autoCleanOrphaned',
-        'memory.maxDbSize',
-        'memory.pruningStrategy',
-        'memory.defaultResultLimit',
-        'memory.includeNeighbors',
-        'memory.graphBoostFactor',
-        'memory.backlinksEnabled',
-        'memory.useFilters',
-        'memory.defaultThreshold',
-        'memory.semanticThreshold',
-        'memory.batchSize',
-        'memory.concurrentRequests',
-        'memory.processingDelay',
-        'memory.openaiApiKey',
-        'memory.embeddingModel',
-        'memory.dimensions',
-        'memory.indexingSchedule',
-        'memory.backlinksWeight',
-        'memory.hasEverConfiguredEmbeddings',
-        'memory.lastIndexedDate',
-        'memory.monthlyBudget',
-        // File processing state (old vector-based)
-        'incompleteFiles',
-        'fileEventQueue'
-      ];
-
-      // Remove obsolete settings
-      const updatedData = { ...currentData };
-
-      for (const settingPath of obsoleteSettings) {
-        if (this.removeSetting(updatedData, settingPath)) {
-          result.removedSettings.push(settingPath);
-        }
-      }
-
-      // If memory object is now empty, remove it entirely
-      if (updatedData.memory && Object.keys(updatedData.memory).length === 0) {
-        delete updatedData.memory;
-        result.removedSettings.push('memory (entire section)');
-      }
-
-      // Save the cleaned-up settings
-      await this.plugin.saveData(updatedData);
-      console.log('[Claudesidian] Saved cleaned plugin settings');
-
-      result.success = true;
-
-    } catch (error) {
-      result.error = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[Claudesidian] Error during settings cleanup:', error);
-    }
-
-    return result;
-  }
-
-  /**
-   * Helper method to remove a nested setting by dot notation path
-   */
-  private removeSetting(obj: any, path: string): boolean {
-    const parts = path.split('.');
-    let current = obj;
-
-    // Navigate to the parent object
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (current[parts[i]] === undefined) {
-        return false; // Path doesn't exist
-      }
-      current = current[parts[i]];
-    }
-
-    // Remove the final property
-    const finalKey = parts[parts.length - 1];
-    if (current[finalKey] !== undefined) {
-      delete current[finalKey];
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Clear migration data for testing (development only)
-   */
-  async clearMigrationData(): Promise<void> {
-    console.warn('[Claudesidian] DEVELOPMENT: Clearing migration data...');
-
-    const files = ['workspace-data.json', 'conversations.json', 'workspace-index.json', 'conversations-index.json'];
-
-    for (const filename of files) {
-      try {
-        const filePath = `${this.fileSystem.getDataPath()}/${filename}`;
-        await this.plugin.app.vault.adapter.remove(filePath);
-        console.log(`[Claudesidian] Removed: ${filename}`);
-      } catch (error) {
-        // File might not exist, which is fine
-        console.log(`[Claudesidian] Could not remove ${filename} (probably doesn't exist)`);
-      }
     }
   }
 }

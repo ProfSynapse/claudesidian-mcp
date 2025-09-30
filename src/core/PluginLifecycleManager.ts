@@ -146,37 +146,44 @@ export class PluginLifecycleManager {
             
             // Initialize data directories
             await this.serviceRegistrar.initializeDataDirectories();
-            
-            // PRIORITY: Initialize MCP server FIRST to prevent timeout
-            // This allows Claude Desktop to connect while heavy services initialize in background
-            try {
-                await this.config.connector.initializeAgents();
-                await this.config.connector.start();
-                console.log('[PluginLifecycleManager] MCP server started - connection available');
-            } catch (error) {
-                console.warn('[PluginLifecycleManager] MCP initialization failed:', error);
-            }
-            
+
             // Now initialize heavy services in background (non-blocking)
             setTimeout(async () => {
                 try {
                     // Initialize core services in proper dependency order
                     await this.serviceRegistrar.initializeBusinessServices();
-                    
+
                     // Pre-initialize UI-critical services to avoid long loading times
                     await this.serviceRegistrar.preInitializeUICriticalServices();
-                    
+
                     // Validate search functionality
                     await this.backgroundProcessor.validateSearchFunctionality();
-                    
+
                     console.log('[PluginLifecycleManager] Heavy services initialization complete');
+
+                    // Start MCP server AFTER services are ready (registers agents)
+                    try {
+                        await this.config.connector.start();
+                        console.log('[PluginLifecycleManager] MCP server started and agents registered');
+                    } catch (error) {
+                        console.warn('[PluginLifecycleManager] MCP initialization failed:', error);
+                    }
+
+                    // Initialize ChatService AFTER agents are registered (so tools are available)
+                    try {
+                        await this.serviceRegistrar.initializeChatService();
+                        console.log('[PluginLifecycleManager] ChatService initialized with available tools');
+                    } catch (error) {
+                        console.warn('[PluginLifecycleManager] ChatService initialization failed:', error);
+                    }
+
+                    // Register chat UI components AFTER ChatService is initialized
+                    await this.chatUIManager.registerChatUI();
+                    console.log('[PluginLifecycleManager] Chat UI registered');
                 } catch (error) {
                     console.error('[PluginLifecycleManager] Background service initialization failed:', error);
                 }
-            }, 100); // Small delay to ensure MCP connection is fully established
-            
-            // Register chat UI components
-            await this.chatUIManager.registerChatUI();
+            }, 100);
             
             // Create settings tab
             await this.settingsTabManager.initializeSettingsTab();
@@ -257,14 +264,7 @@ export class PluginLifecycleManager {
      * Reload configuration for all services after settings change
      */
     reloadConfiguration(): void {
-        try {
-            const fileEventManager = this.config.serviceManager?.getServiceIfReady('fileEventManager');
-            if (fileEventManager && typeof (fileEventManager as any).reloadConfiguration === 'function') {
-                (fileEventManager as any).reloadConfiguration();
-            }
-        } catch (error) {
-            console.warn('Error reloading file event manager configuration:', error);
-        }
+        // Configuration reloading handled by individual services
     }
 
     /**

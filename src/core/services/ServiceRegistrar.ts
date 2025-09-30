@@ -63,33 +63,68 @@ export class ServiceRegistrar {
     }
 
     /**
-     * Initialize data directories asynchronously
+     * Initialize data directories and run migration if needed
      */
     async initializeDataDirectories(): Promise<void> {
         try {
             const { app, plugin, settings, manifest } = this.context;
-            
-            // Use vault-relative paths for Obsidian adapter
+            const { FileSystemService } = require('../services/storage/FileSystemService');
+            const { IndexManager } = require('../services/storage/IndexManager');
+            const { DataMigrationService } = require('../services/migration/DataMigrationService');
+
+            // Initialize storage services
+            const fileSystem = new FileSystemService(plugin);
+            const indexManager = new IndexManager(fileSystem);
+
+            // Create conversations/ and workspaces/ directories
+            await fileSystem.ensureConversationsDirectory();
+            await fileSystem.ensureWorkspacesDirectory();
+
+            // Check and run migration if needed
+            const migrationService = new DataMigrationService(plugin, fileSystem, indexManager);
+            const status = await migrationService.checkMigrationStatus();
+
+            if (status.isRequired) {
+                console.log('[ServiceRegistrar] Migration required - starting data migration...');
+                const result = await migrationService.performMigration();
+
+                if (result.success) {
+                    console.log('[ServiceRegistrar] Migration completed successfully:', {
+                        conversations: result.conversationsMigrated,
+                        workspaces: result.workspacesMigrated,
+                        sessions: result.sessionsMigrated,
+                        traces: result.tracesMigrated
+                    });
+                } else {
+                    console.error('[ServiceRegistrar] Migration failed:', result.errors);
+                }
+            } else {
+                console.log('[ServiceRegistrar] No migration needed - split-file structure already exists');
+            }
+
+            // Legacy data directory handling (can be removed after migration)
+            const { normalizePath } = require('obsidian');
             const pluginDir = `.obsidian/plugins/${manifest.id}`;
             const dataDir = `${pluginDir}/data`;
             const storageDir = `${dataDir}/storage`;
 
-            // Create directories using Obsidian's vault adapter
-            const { normalizePath } = require('obsidian');
-            await app.vault.adapter.mkdir(normalizePath(dataDir));
-            await app.vault.adapter.mkdir(normalizePath(storageDir));
+            try {
+                await app.vault.adapter.mkdir(normalizePath(dataDir));
+                await app.vault.adapter.mkdir(normalizePath(storageDir));
+            } catch (error) {
+                // Directories may already exist
+            }
 
             // Update settings with correct path
             if (!settings.settings.memory) {
                 settings.settings.memory = ServiceRegistrar.getDefaultMemorySettings(storageDir);
             }
-            // dbStoragePath is no longer needed - using .data directory
-            
+
             // Save settings in background
             settings.saveSettings().catch(error => {
                 console.warn('[ServiceRegistrar] Failed to save settings after directory init:', error);
             });
-            
+
         } catch (error) {
             console.error('[ServiceRegistrar] Failed to initialize data directories:', error);
             // Don't throw - plugin should function without directories for now
@@ -101,10 +136,7 @@ export class ServiceRegistrar {
      */
     async initializeEssentialServices(): Promise<void> {
         try {
-            // Initialize only the most critical services synchronously
             await this.context.serviceManager.getService('eventManager');
-            await this.context.serviceManager.getService('stateManager');
-            await this.context.serviceManager.getService('simpleMemoryService');
         } catch (error) {
             console.error('[ServiceRegistrar] Essential service initialization failed:', error);
             throw error;
@@ -113,27 +145,39 @@ export class ServiceRegistrar {
 
     /**
      * Initialize business services with proper dependency resolution
+     * Note: ChatService initialization is deferred to initializeChatService()
      */
     async initializeBusinessServices(): Promise<void> {
         try {
-            // Initialize services in dependency order
-            
-            // Initialize dependent services sequentially to avoid circular dependency issues
             await this.context.serviceManager.getService('memoryService');
             await this.context.serviceManager.getService('workspaceService');
-            await this.context.serviceManager.getService('memoryTraceService');
-            await this.context.serviceManager.getService('fileEventManager');
-            
-            // Initialize supporting services for chat
             await this.context.serviceManager.getService('agentManager');
             await this.context.serviceManager.getService('llmService');
             await this.context.serviceManager.getService('sessionContextManager');
-            
-            // Initialize chat services
-            await this.context.serviceManager.getService('conversationRepository');
-            await this.context.serviceManager.getService('chatService');
+            await this.context.serviceManager.getService('conversationService');
+
+            // ChatService initialization deferred - will be called after agents are registered
         } catch (error) {
             console.error('[ServiceRegistrar] Business service initialization failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize ChatService AFTER agents are registered in connector
+     * This ensures tools are available when ChatService initializes
+     */
+    async initializeChatService(): Promise<void> {
+        try {
+            console.log('[ServiceRegistrar] Initializing ChatService after agent registration...');
+            const chatService = await this.context.serviceManager.getService('chatService') as any;
+
+            if (chatService && typeof chatService.initialize === 'function') {
+                await chatService.initialize();
+                console.log('[ServiceRegistrar] ChatService initialized successfully');
+            }
+        } catch (error) {
+            console.error('[ServiceRegistrar] ChatService initialization failed:', error);
             throw error;
         }
     }
@@ -147,43 +191,11 @@ export class ServiceRegistrar {
         const startTime = Date.now();
         
         try {
-            // Initialize services that Memory Management accordion depends on
-            const uiCriticalServices = [
-                'usageStatsService',
-                'cacheManager'
-            ];
-            
             // Register additional services if not already registered
             this.registerAdditionalServices();
-            
-            // Initialize in parallel where possible
-            await Promise.allSettled(
-                uiCriticalServices.map(async (serviceName) => {
-                    try {
-                        const serviceStart = Date.now();
-                        await this.context.serviceManager.getService(serviceName);
-                        const serviceTime = Date.now() - serviceStart;
-                    } catch (error) {
-                        console.warn(`[ServiceRegistrar] Failed to pre-initialize ${serviceName}:`, error);
-                    }
-                })
-            );
-            
+
             const totalTime = Date.now() - startTime;
-            
-            // Inject vector store into SimpleMemoryService for persistence
-            try {
-                const vectorStore = await this.context.serviceManager.getService('vectorStore');
-                const simpleMemoryService = await this.context.serviceManager.getService<any>('simpleMemoryService');
-                
-                if (vectorStore && simpleMemoryService && typeof simpleMemoryService.setVectorStore === 'function') {
-                    simpleMemoryService.setVectorStore(vectorStore);
-                } else {
-                    console.warn('[ServiceRegistrar] ❌ Vector store or SimpleMemoryService not available for injection');
-                }
-            } catch (error) {
-                console.error('[ServiceRegistrar] Failed to inject vector store:', error);
-            }
+            console.log(`[ServiceRegistrar] UI-critical services pre-initialization complete in ${totalTime}ms`);
             
         } catch (error) {
             console.error('[ServiceRegistrar] UI-critical services pre-initialization failed:', error);

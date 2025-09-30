@@ -9,7 +9,7 @@ import { ListStatesParams, StateResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 
 /**
  * Mode for listing state snapshots with filtering and sorting
@@ -44,19 +44,19 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         workspaceId = inheritedContext.workspaceId;
       }
 
-      // Get states
-      const states = await memoryService.getStates(workspaceId);
+      // Get states (pass sessionId to filter by session, or undefined to get all)
+      const states = await memoryService.getStateSnapshots(
+        workspaceId || 'default-workspace',
+        params.context.sessionId
+      );
 
-      // Filter by session ID if provided
+      // Note: getStateSnapshots already filters by sessionId if provided
       let filteredStates = states;
-      if (params.context.sessionId) {
-        filteredStates = states.filter(state => state.sessionId === params.context.sessionId);
-      }
 
       // Filter by tags if provided
       if (params.tags && params.tags.length > 0) {
         filteredStates = filteredStates.filter(state => {
-          const stateTags = state.state?.metadata?.tags || [];
+          const stateTags = (state.snapshot as any)?.metadata?.tags || [];
           return params.tags!.some(tag => stateTags.includes(tag));
         });
       }

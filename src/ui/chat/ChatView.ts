@@ -76,13 +76,9 @@ export class ChatView extends ItemView {
     try {
       await this.chatService.initialize();
 
-      // Set up tool event callback for live UI updates
+      // Set up tool event callback for live UI updates (including 'detected', 'started', 'completed')
       this.chatService.setToolEventCallback((messageId, event, data) => {
-        if (event === 'started') {
-          this.handleToolExecutionStarted(messageId, data);
-        } else if (event === 'completed') {
-          this.handleToolExecutionCompleted(messageId, data.toolId, data.result, data.success, data.error);
-        }
+        this.handleToolEvent(messageId, event, data);
       });
 
     } catch (error) {
@@ -332,6 +328,11 @@ export class ChatView extends ItemView {
     // Branch navigation is now at message level
     this.uiStateController.setInputPlaceholder('Type your message...');
     this.updateContextProgress();
+
+    // Close the sidebar menu after selecting a conversation
+    if (this.uiStateController.getSidebarVisible()) {
+      this.uiStateController.toggleConversationList();
+    }
   }
 
   private handleConversationsChanged(): void {

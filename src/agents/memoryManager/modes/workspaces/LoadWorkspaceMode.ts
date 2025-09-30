@@ -309,17 +309,17 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
    * Build preferences summary
    */
   private buildPreferences(workspace: ProjectWorkspace): string {
-    const prefs: string[] = [];
-    
-    if (workspace.context?.preferences && workspace.context.preferences.length > 0) {
-      prefs.push(...workspace.context.preferences);
+    // Preferences is now a string, not an array
+    if (workspace.context?.preferences && workspace.context.preferences.trim()) {
+      return workspace.context.preferences;
     }
-    
-    if (workspace.preferences?.userPreferences) {
-      prefs.push(...workspace.preferences.userPreferences);
+
+    // Legacy support for userPreferences (if still exists)
+    if (workspace.preferences?.userPreferences && Array.isArray(workspace.preferences.userPreferences)) {
+      return workspace.preferences.userPreferences.join('. ') + '.';
     }
-    
-    return prefs.length > 0 ? prefs.join('\n- ') : 'No preferences set';
+
+    return 'No preferences set';
   }
   
   
@@ -569,7 +569,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         return [];
       }
       
-      const states = await memoryService.getStates(workspaceId);
+      const states = await memoryService.getStateSnapshots(workspaceId);
       
       // Defensive validation: ensure all states belong to workspace
       const validStates = states.filter((state: any) => state.workspaceId === workspaceId);

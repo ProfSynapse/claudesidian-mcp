@@ -19,7 +19,7 @@ import { LoadStateParams, StateResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { createServiceIntegration } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
@@ -61,11 +61,18 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
 
             const { memoryService, workspaceService } = servicesResult;
 
-            // Phase 2: Load state data (consolidated from StateRetriever logic)
+            // Phase 2: Extract workspaceId and sessionId, then load state data
             if (!memoryService) {
                 return this.prepareResult(false, undefined, 'Memory service not available', extractContextFromParams(params));
             }
-            const stateResult = await this.loadStateData(params.stateId, memoryService);
+
+            // Extract workspaceId and sessionId from params
+            const parsedContext = params.workspaceContext ?
+                (typeof params.workspaceContext === 'string' ? JSON.parse(params.workspaceContext) : params.workspaceContext) : null;
+            const workspaceId = parsedContext?.workspaceId || 'default-workspace';
+            const sessionId = params.context?.sessionId || 'current';
+
+            const stateResult = await this.loadStateData(workspaceId, sessionId, params.stateId, memoryService);
             if (!stateResult.success) {
                 return this.prepareResult(false, undefined, stateResult.error, extractContextFromParams(params));
             }
@@ -153,10 +160,10 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
     /**
      * Load state data (consolidated from StateRetriever logic)
      */
-    private async loadStateData(stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
+    private async loadStateData(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
         try {
             // Get state snapshot from memory service
-            const stateSnapshot = await memoryService.getSnapshot(stateId);
+            const stateSnapshot = await memoryService.getStateSnapshot(workspaceId, sessionId, stateId);
             if (!stateSnapshot) {
                 return { success: false, error: `State not found: ${stateId}` };
             }
@@ -164,8 +171,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             // Get related traces if available
             let relatedTraces: any[] = [];
             try {
-                if (stateSnapshot.sessionId && stateSnapshot.sessionId !== 'current') {
-                    relatedTraces = await memoryService.getSessionTraces(stateSnapshot.sessionId);
+                if (sessionId && sessionId !== 'current') {
+                    relatedTraces = await memoryService.getMemoryTraces(workspaceId, sessionId);
                 }
             } catch {
                 // Ignore errors getting traces - not critical for state loading

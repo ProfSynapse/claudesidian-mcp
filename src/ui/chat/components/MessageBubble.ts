@@ -518,18 +518,43 @@ export class MessageBubble extends Component {
    * Handle tool events from MessageManager
    */
   handleToolEvent(event: 'detected' | 'started' | 'completed', data: any): void {
+    console.log('[MessageBubble] handleToolEvent received:', {
+      event,
+      messageId: this.message.id,
+      dataId: data.id,
+      dataName: data.name,
+      hasAccordion: this.progressiveToolAccordions.has(data.id || data.toolId)
+    });
+
     switch(event) {
       case 'detected':
-        // Tool calls detected - but don't show accordions yet (they come individually via 'started' events)
-        break;
-      case 'started':
-        // Individual tool started - create separate accordion for this specific tool
-        
+        // Tool call detected during streaming - create accordion immediately
+
         // Check if this tool accordion already exists (avoid duplicates)
         if (this.progressiveToolAccordions.has(data.id)) {
+          console.log('[MessageBubble] Accordion already exists for tool:', data.id);
           break;
         }
-        
+
+        if (this.message.role === 'assistant') {
+          console.log('[MessageBubble] Creating accordion for detected tool:', data.id);
+          this.createIndividualToolAccordion({
+            id: data.id,
+            name: data.name,
+            parameters: data.parameters
+          });
+        }
+        break;
+      case 'started':
+        // Tool execution started - accordion should already exist from 'detected' event
+        // If not, create it now (fallback for edge cases)
+
+        if (this.progressiveToolAccordions.has(data.id)) {
+          console.log('[MessageBubble] Tool started - accordion already exists:', data.id);
+          break;
+        }
+
+        console.log('[MessageBubble] Tool started but no accordion - creating fallback:', data.id);
         if (this.message.role === 'assistant') {
           this.createIndividualToolAccordion({
             id: data.id,
@@ -539,7 +564,8 @@ export class MessageBubble extends Component {
         }
         break;
       case 'completed':
-        // Individual tool completed  
+        // Individual tool completed
+        console.log('[MessageBubble] Tool completed:', data.toolId);
         this.completeIndividualTool(data.toolId, data.result, data.success, data.error);
         break;
     }

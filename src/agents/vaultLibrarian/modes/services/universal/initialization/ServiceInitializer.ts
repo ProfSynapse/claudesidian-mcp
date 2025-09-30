@@ -8,7 +8,7 @@ import { Plugin } from 'obsidian';
 type MetadataSearchService = any;
 type HybridSearchService = any;
 import { MemoryService } from "../../../../../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../../../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../../../../services/WorkspaceService';
 
 export interface ServiceInitializationResult {
   success: boolean;

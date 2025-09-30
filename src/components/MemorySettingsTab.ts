@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
+import { WorkspaceService } from '../services/WorkspaceService';
 import { MemoryService } from '../agents/memoryManager/services/MemoryService';
 import { WorkspaceCardManager } from './workspace/WorkspaceCardManager';
 import { Settings } from '../settings';

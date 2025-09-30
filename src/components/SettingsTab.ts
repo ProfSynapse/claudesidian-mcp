@@ -12,7 +12,7 @@ import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 
 // Import services
-import { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
+import { WorkspaceService } from '../services/WorkspaceService';
 import { MemoryService } from "../agents/memoryManager/services/MemoryService";
 import { CustomPromptStorageService } from "../agents/agentManager/services/CustomPromptStorageService";
 import type { ServiceManager } from '../core/ServiceManager';

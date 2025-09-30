@@ -41,7 +41,7 @@ export class ActivityRecorder {
       const activityContent = this.createActivityContent(successfulOps, relatedFiles);
 
       // Record activity using MemoryService
-      await this.memoryService.storeMemoryTrace({
+      await this.memoryService.recordActivityTrace({
         workspaceId: parsedContext.workspaceId,
         type: 'batch_operation',
         content: activityContent,

@@ -18,7 +18,7 @@ import { EditSessionParams, SessionResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { createServiceIntegration } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
@@ -91,14 +91,19 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
             return this.prepareResult(false, undefined, 'Memory service not available');
         }
 
-        // Phase 2: Get target session ID
+        // Phase 2: Get target session ID and workspaceId
         const targetSessionId = params.targetSessionId || params.sessionId;
         if (!targetSessionId) {
             return this.prepareResult(false, undefined, 'No session ID provided for editing');
         }
 
+        // Extract workspaceId from params
+        const parsedContext = params.workspaceContext ?
+            (typeof params.workspaceContext === 'string' ? JSON.parse(params.workspaceContext) : params.workspaceContext) : null;
+        const workspaceId = parsedContext?.workspaceId || 'default-workspace';
+
         // Phase 3: Load existing session
-        const existingSession = await memoryService.getSession(targetSessionId);
+        const existingSession = await memoryService.getSession(workspaceId, targetSessionId);
         if (!existingSession) {
             return this.prepareResult(false, undefined, `Session not found: ${targetSessionId}`, extractContextFromParams(params));
         }
@@ -127,13 +132,13 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
         }
 
         // Phase 5: Get current session and apply updates
-        const currentSession = await memoryService.getSession(targetSessionId);
+        const currentSession = await memoryService.getSession(workspaceId, targetSessionId);
         if (!currentSession) {
             return this.prepareResult(false, undefined, `Session ${targetSessionId} not found`);
         }
 
         const updatedSession = { ...currentSession, ...updates };
-        await memoryService.updateSession(updatedSession);
+        await memoryService.updateSession(workspaceId, targetSessionId, updatedSession);
 
         // Phase 6: Prepare result
         return this.prepareResult(

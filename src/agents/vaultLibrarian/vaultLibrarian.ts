@@ -9,7 +9,7 @@ import {
 } from './modes';
 import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { MemoryService } from "../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
@@ -26,71 +26,89 @@ export class VaultLibrarianAgent extends BaseAgent {
    * Create a new VaultLibrarianAgent
    * @param app Obsidian app instance
    * @param enableVectorModes Whether to enable vector-based modes (legacy parameter)
+   * @param memoryService Optional injected memory service
+   * @param workspaceService Optional injected workspace service
    */
-  constructor(app: App, enableVectorModes = false) {
+  constructor(
+    app: App,
+    enableVectorModes = false,
+    memoryService?: MemoryService | null,
+    workspaceService?: WorkspaceService | null
+  ) {
     super(
       VaultLibrarianConfig.name,
       VaultLibrarianConfig.description,
       VaultLibrarianConfig.version
     );
-    
+
     this.app = app;
-    
+
     // Initialize with default settings
     this.settings = { ...DEFAULT_MEMORY_SETTINGS };
-    
-    
-    // Define plugin using safe type check
-    let plugin: any = null;
-    try {
-      if (app.plugins) {
-        plugin = app.plugins.getPlugin('claudesidian-mcp');
-        if (plugin) {
-          // Plugin instance found
-          // Safely access settings
-          const pluginAny = plugin as any;
-          const memorySettings = pluginAny.settings?.settings?.memory;
-          if (memorySettings) {
-            this.settings = memorySettings;
-          }
-          
-          // Access services from ServiceContainer (new pattern)
-          try {
-            // Use ServiceContainer getIfReady to avoid waiting for initialization
+
+    // Use injected services if provided
+    this.memoryService = memoryService || null;
+    this.workspaceService = workspaceService || null;
+
+    // If services not injected, try to get them from plugin (backward compatibility)
+    if (!this.memoryService || !this.workspaceService) {
+      let plugin: any = null;
+      try {
+        if (app.plugins) {
+          plugin = app.plugins.getPlugin('claudesidian-mcp');
+          if (plugin) {
+            const pluginAny = plugin as any;
+            const memorySettings = pluginAny.settings?.settings?.memory;
+            if (memorySettings) {
+              this.settings = memorySettings;
+            }
+
             if (pluginAny.serviceContainer) {
-              this.memoryService = pluginAny.serviceContainer.getIfReady('memoryService');
-              this.workspaceService = pluginAny.serviceContainer.getIfReady('workspaceService');
-                        }
-          } catch (error) {
-            console.warn('[VaultLibrarian] Failed to access services:', error);
+              if (!this.memoryService) {
+                this.memoryService = pluginAny.serviceContainer.getIfReady('memoryService');
+              }
+              if (!this.workspaceService) {
+                this.workspaceService = pluginAny.serviceContainer.getIfReady('workspaceService');
+              }
+            }
           }
         }
+      } catch (error) {
+        console.warn('[VaultLibrarian] Failed to access plugin services:', error);
       }
-    } catch (error) {
-      console.warn('[VaultLibrarian] Failed to access plugin services:', error);
     }
     
+    // Get plugin reference for modes that need it
+    let pluginRef: any = null;
+    try {
+      if (app.plugins) {
+        pluginRef = app.plugins.getPlugin('claudesidian-mcp');
+      }
+    } catch (error) {
+      console.warn('[VaultLibrarian] Failed to get plugin reference:', error);
+    }
+
     // Register ContentSearchMode (fuzzy + keyword search using native Obsidian APIs)
     this.registerMode(new SearchContentMode(
-      plugin || ({ app } as any) // Fallback to minimal plugin interface if not found
+      pluginRef || ({ app } as any) // Fallback to minimal plugin interface if not found
     ));
-    
+
     // Register focused search modes with enhanced validation and service integration
     this.registerMode(new SearchDirectoryMode(
-      plugin || ({ app } as any),
+      pluginRef || ({ app } as any),
       this.workspaceService || undefined
     ));
-    
-    
+
+
     this.registerMode(new SearchMemoryMode(
-      plugin || ({ app } as any),
+      pluginRef || ({ app } as any),
       this.memoryService || undefined,
       this.workspaceService || undefined
     ));
     
     // Always register BatchMode (supports both semantic and non-semantic users)
     this.registerMode(new BatchMode(
-      plugin || ({ app } as any), // Fallback to minimal plugin interface if not found
+      pluginRef || ({ app } as any), // Fallback to minimal plugin interface if not found
       this.memoryService || undefined,
       this.workspaceService || undefined
     ));

@@ -62,65 +62,24 @@ export interface ListModelsResult extends CommonResult {
 }
 
 export class ListModelsMode extends BaseMode<ListModelsParams, ListModelsResult> {
-  private providerManager: LLMProviderManager | null = null;
+  private readonly providerManager: LLMProviderManager;
 
-  constructor() {
+  constructor(providerManager: LLMProviderManager) {
     super(
       'listModels',
       'List Available Models',
       'List all available LLM models from enabled providers with capabilities, pricing, and statistics',
       '1.0.0'
     );
-  }
-
-  /**
-   * Set the provider manager instance
-   */
-  setProviderManager(providerManager: LLMProviderManager): void {
     this.providerManager = providerManager;
   }
 
-  /**
-   * Wait for the provider manager to be initialized
-   * @param timeoutMs Maximum time to wait in milliseconds
-   * @private
-   */
-  private async waitForProviderManager(timeoutMs: number): Promise<void> {
-    const startTime = Date.now();
-    const checkInterval = 100; // Check every 100ms
-    
-    while (Date.now() - startTime < timeoutMs) {
-      if (this.providerManager) {
-        return;
-      }
-      
-      // Wait for the next check
-      await new Promise(resolve => setTimeout(resolve, checkInterval));
-    }
-  }
 
   /**
    * Execute the list models mode
    */
   async execute(params: ListModelsParams): Promise<ListModelsResult> {
     try {
-      // If provider manager is not set, try to wait for it or get it lazily
-      if (!this.providerManager) {
-        // Try to wait briefly for initialization to complete
-        await this.waitForProviderManager(3000); // Wait up to 3 seconds
-        
-        if (!this.providerManager) {
-          return createResult<ListModelsResult>(
-            false,
-            undefined,
-            'LLM Provider Manager not initialized. Please ensure you have configured at least one LLM provider with valid API keys.',
-            undefined,
-            undefined,
-            params.context.sessionId,
-            params.context
-          );
-        }
-      }
 
       // Get all available models
       const models = await this.providerManager.getAvailableModels();

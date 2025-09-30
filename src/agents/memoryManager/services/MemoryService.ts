@@ -1,382 +1,298 @@
+// Location: src/agents/memoryManager/services/MemoryService.ts
+// Agent-specific memory management service that delegates to WorkspaceService
+// Used by: MemoryManager agent modes for memory operations
+// Dependencies: WorkspaceService for all data access
+
 import { Plugin } from 'obsidian';
+import { WorkspaceService } from '../../../services/WorkspaceService';
 import { WorkspaceMemoryTrace, WorkspaceSession, WorkspaceStateSnapshot } from '../../../database/workspace-types';
-import { FileSystemService } from '../../../services/migration/FileSystemService';
-import { WorkspaceDataStructure, ConversationDataStructure } from '../../../types/migration/MigrationTypes';
 
 /**
- * Location: src/agents/memoryManager/services/MemoryService.ts
- *
- * MemoryService using the new FileSystemService and nested JSON structure.
- * Manages memory traces, sessions, and snapshots stored within the hierarchical
- * workspace data structure: workspaces → sessions → traces/states.
- *
- * Used by: MemoryManager agent modes for memory operations
- * Integrates with: FileSystemService for data persistence, WorkspaceService for workspace context
+ * MemoryService provides agent-specific logic for memory management
+ * All data access is delegated to the centralized WorkspaceService
  */
 export class MemoryService {
-  private plugin: Plugin;
-  private fileSystem: FileSystemService;
+  constructor(
+    private plugin: Plugin,
+    private workspaceService: WorkspaceService
+  ) {}
 
-  constructor(plugin: Plugin) {
-    this.plugin = plugin;
-    this.fileSystem = new FileSystemService(plugin);
-  }
-
-  // Memory Traces
+  /**
+   * Get memory traces from a workspace/session
+   */
   async getMemoryTraces(workspaceId: string, sessionId?: string): Promise<WorkspaceMemoryTrace[]> {
-    const data = await this.loadWorkspaceData();
-    const workspace = data.workspaces[workspaceId];
-
-    if (!workspace) return [];
-
     if (sessionId) {
-      const session = workspace.sessions[sessionId];
-      return session ? Object.values(session.memoryTraces).map(trace => ({
+      // Get traces from specific session
+      const traces = await this.workspaceService.getMemoryTraces(workspaceId, sessionId);
+      return traces.map(trace => ({
         ...trace,
-        workspaceId: workspaceId,
-        sessionId: sessionId
-      })) : [];
+        workspaceId,
+        sessionId
+      }));
     }
 
-    // Return all traces from all sessions in workspace
-    return Object.values(workspace.sessions)
-      .flatMap(session => Object.values(session.memoryTraces).map(trace => ({
+    // Get all traces from all sessions in workspace
+    const workspace = await this.workspaceService.getWorkspace(workspaceId);
+
+    if (!workspace) {
+      return [];
+    }
+
+    const allTraces: WorkspaceMemoryTrace[] = [];
+
+    for (const [sid, session] of Object.entries(workspace.sessions)) {
+      const sessionTraces = Object.values(session.memoryTraces).map(trace => ({
         ...trace,
-        workspaceId: workspaceId,
-        sessionId: session.id
-      })));
+        workspaceId,
+        sessionId: sid
+      }));
+      allTraces.push(...sessionTraces);
+    }
+
+    return allTraces;
   }
 
+  /**
+   * Record activity trace in a session
+   */
   async recordActivityTrace(trace: Omit<WorkspaceMemoryTrace, 'id'>): Promise<string> {
-    const data = await this.loadWorkspaceData();
+    const workspaceId = trace.workspaceId;
+    let sessionId = trace.sessionId || 'default-session';
 
     // Ensure workspace exists
-    if (!data.workspaces[trace.workspaceId]) {
-      throw new Error(`Workspace ${trace.workspaceId} not found`);
+    const workspace = await this.workspaceService.getWorkspace(workspaceId);
+
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
     }
 
-    // Ensure session exists (create default if needed)
-    const sessionId = trace.sessionId || 'default-session';
-    const workspace = data.workspaces[trace.workspaceId];
-
+    // Create session if it doesn't exist
     if (!workspace.sessions[sessionId]) {
-      workspace.sessions[sessionId] = {
+      await this.workspaceService.addSession(workspaceId, {
         id: sessionId,
         name: 'Default Session',
         startTime: Date.now(),
         isActive: true,
         memoryTraces: {},
         states: {}
-      };
+      });
     }
 
-    // Add trace
-    const traceId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    const newTrace = { ...trace, id: traceId };
+    // Add trace to session
+    const createdTrace = await this.workspaceService.addMemoryTrace(workspaceId, sessionId, {
+      timestamp: trace.timestamp || Date.now(),
+      type: trace.type || 'generic',
+      content: trace.content || '',
+      metadata: trace.metadata
+    });
 
-    workspace.sessions[sessionId].memoryTraces[traceId] = newTrace;
-
-    await this.saveWorkspaceData(data);
-    return traceId;
+    return createdTrace.id;
   }
 
-  // Backward compatibility methods
+  /**
+   * Create memory trace
+   */
   async createMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id'>): Promise<WorkspaceMemoryTrace> {
     const traceId = await this.recordActivityTrace(trace);
-    const data = await this.loadWorkspaceData();
-
-    // Find and return the created trace
-    const workspace = data.workspaces[trace.workspaceId];
+    const workspaceId = trace.workspaceId;
     const sessionId = trace.sessionId || 'default-session';
-    const session = workspace?.sessions[sessionId];
 
-    if (!session || !session.memoryTraces[traceId]) {
-      throw new Error('Failed to create memory trace');
+    // Retrieve the created trace
+    const traces = await this.workspaceService.getMemoryTraces(workspaceId, sessionId);
+    const createdTrace = traces.find(t => t.id === traceId);
+
+    if (!createdTrace) {
+      throw new Error('Failed to retrieve created memory trace');
     }
 
     return {
-      ...session.memoryTraces[traceId],
-      workspaceId: trace.workspaceId,
-      sessionId: sessionId
+      ...createdTrace,
+      workspaceId,
+      sessionId
     };
   }
 
-  async storeMemoryTrace(trace: Omit<WorkspaceMemoryTrace, 'id'>): Promise<WorkspaceMemoryTrace> {
-    return await this.createMemoryTrace(trace);
-  }
+  /**
+   * Get sessions for a workspace
+   */
+  async getSessions(workspaceId: string): Promise<WorkspaceSession[]> {
+    const workspace = await this.workspaceService.getWorkspace(workspaceId);
 
-  // Sessions
-  async createSession(session: Omit<WorkspaceSession, 'id'>): Promise<WorkspaceSession> {
-    const data = await this.loadWorkspaceData();
-
-    // Ensure workspace exists
-    if (!data.workspaces[session.workspaceId]) {
-      throw new Error(`Workspace ${session.workspaceId} not found`);
+    if (!workspace) {
+      return [];
     }
 
-    const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    const newSession = { ...session, id: sessionId };
+    return Object.values(workspace.sessions).map(session => ({
+      ...session,
+      workspaceId
+    }));
+  }
 
-    // Add to nested structure
-    data.workspaces[session.workspaceId].sessions[sessionId] = {
-      ...newSession,
-      startTime: Date.now(),
-      isActive: true,
+  /**
+   * Create session in workspace
+   */
+  async createSession(session: Omit<WorkspaceSession, 'id'>): Promise<WorkspaceSession> {
+    const workspaceId = (session as any).workspaceId;
+
+    const createdSession = await this.workspaceService.addSession(workspaceId, {
+      name: session.name,
+      description: session.description,
+      startTime: (session as any).startTime || Date.now(),
+      endTime: (session as any).endTime,
+      isActive: (session as any).isActive ?? true,
       memoryTraces: {},
       states: {}
-    };
+    });
 
-    await this.saveWorkspaceData(data);
     return {
-      ...newSession,
-      workspaceId: session.workspaceId
+      ...createdSession,
+      workspaceId
     };
   }
 
-  async getSession(id: string): Promise<WorkspaceSession | undefined> {
-    const data = await this.loadWorkspaceData();
-
-    // Search through all workspaces for the session
-    for (const [workspaceId, workspace] of Object.entries(data.workspaces)) {
-      if (workspace.sessions[id]) {
-        return {
-          ...workspace.sessions[id],
-          workspaceId: workspaceId
-        };
-      }
-    }
-
-    return undefined;
+  /**
+   * Update session
+   */
+  async updateSession(workspaceId: string, sessionId: string, updates: Partial<WorkspaceSession>): Promise<void> {
+    await this.workspaceService.updateSession(workspaceId, sessionId, updates);
   }
 
-  async updateSession(session: WorkspaceSession): Promise<void> {
-    const data = await this.loadWorkspaceData();
+  /**
+   * Get session by ID
+   */
+  async getSession(workspaceId: string, sessionId: string): Promise<WorkspaceSession | null> {
+    const session = await this.workspaceService.getSession(workspaceId, sessionId);
 
-    // Find the session and update it
-    for (const workspace of Object.values(data.workspaces)) {
-      if (workspace.sessions[session.id]) {
-        // Preserve the nested structure while updating session properties
-        Object.assign(workspace.sessions[session.id], {
-          name: session.name,
-          description: session.description
-        });
-        await this.saveWorkspaceData(data);
-        return;
-      }
+    if (!session) {
+      return null;
     }
 
-    throw new Error(`Session ${session.id} not found`);
+    return {
+      ...session,
+      workspaceId
+    };
   }
 
-  async getSessions(workspaceId?: string): Promise<WorkspaceSession[]> {
-    const data = await this.loadWorkspaceData();
+  /**
+   * Save state snapshot to session
+   */
+  async saveStateSnapshot(
+    workspaceId: string,
+    sessionId: string,
+    snapshot: WorkspaceStateSnapshot,
+    name?: string
+  ): Promise<string> {
+    const state = await this.workspaceService.addState(workspaceId, sessionId, {
+      name: name || 'Unnamed State',
+      created: Date.now(),
+      snapshot
+    });
 
-    if (workspaceId) {
-      const workspace = data.workspaces[workspaceId];
-      return workspace ? Object.values(workspace.sessions).map(session => ({
-        ...session,
-        workspaceId: workspaceId
-      })) : [];
+    return state.id;
+  }
+
+  /**
+   * Get state snapshot from session
+   */
+  async getStateSnapshot(
+    workspaceId: string,
+    sessionId: string,
+    stateId: string
+  ): Promise<WorkspaceStateSnapshot | null> {
+    const state = await this.workspaceService.getState(workspaceId, sessionId, stateId);
+
+    if (!state) {
+      return null;
     }
 
-    // Return all sessions from all workspaces
-    return Object.entries(data.workspaces)
-      .flatMap(([wId, workspace]) => Object.values(workspace.sessions).map(session => ({
-        ...session,
-        workspaceId: wId
-      })));
+    return state.snapshot;
   }
 
-  async getSessionTraces(sessionId: string): Promise<WorkspaceMemoryTrace[]> {
-    const data = await this.loadWorkspaceData();
+  /**
+   * Get all state snapshots for a session (or all sessions in workspace if sessionId not provided)
+   */
+  async getStateSnapshots(workspaceId: string, sessionId?: string): Promise<Array<{
+    id: string;
+    name: string;
+    created: number;
+    snapshot: WorkspaceStateSnapshot;
+  }>> {
+    const workspace = await this.workspaceService.getWorkspace(workspaceId);
 
-    // Search through all workspaces for the session
-    for (const [workspaceId, workspace] of Object.entries(data.workspaces)) {
-      if (workspace.sessions[sessionId]) {
-        return Object.values(workspace.sessions[sessionId].memoryTraces).map(trace => ({
-          ...trace,
-          workspaceId: workspaceId,
-          sessionId: sessionId
-        }));
-      }
-    }
-
-    return [];
-  }
-
-  // Snapshots/States
-  async saveSnapshot(snapshot: Omit<WorkspaceStateSnapshot, 'id'>): Promise<WorkspaceStateSnapshot> {
-    const data = await this.loadWorkspaceData();
-
-    // Find session or default
-    const workspace = data.workspaces[snapshot.workspaceId];
     if (!workspace) {
-      throw new Error(`Workspace ${snapshot.workspaceId} not found`);
+      return [];
     }
 
-    const sessionId = snapshot.sessionId || 'default-session';
-    if (!workspace.sessions[sessionId]) {
-      throw new Error(`Session ${sessionId} not found`);
+    // If sessionId provided, get states for that session only
+    if (sessionId) {
+      if (!workspace.sessions[sessionId]) {
+        return [];
+      }
+      return Object.values(workspace.sessions[sessionId].states);
     }
 
-    const stateId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    const newSnapshot = { ...snapshot, id: stateId };
+    // Get all states from all sessions in workspace
+    const allStates: Array<{
+      id: string;
+      name: string;
+      created: number;
+      snapshot: WorkspaceStateSnapshot;
+    }> = [];
 
+    for (const session of Object.values(workspace.sessions)) {
+      allStates.push(...Object.values(session.states));
+    }
+
+    return allStates;
+  }
+
+  /**
+   * Update state snapshot
+   */
+  async updateSnapshot(
+    workspaceId: string,
+    sessionId: string,
+    stateId: string,
+    updates: Partial<{
+      name: string;
+      snapshot: WorkspaceStateSnapshot;
+    }>
+  ): Promise<void> {
+    const workspace = await this.workspaceService.getWorkspace(workspaceId);
+
+    if (!workspace || !workspace.sessions[sessionId] || !workspace.sessions[sessionId].states[stateId]) {
+      throw new Error('State not found');
+    }
+
+    // Update the state
+    const state = workspace.sessions[sessionId].states[stateId];
     workspace.sessions[sessionId].states[stateId] = {
-      id: stateId,
-      name: newSnapshot.name,
-      created: newSnapshot.created || Date.now(),
-      snapshot: newSnapshot
+      ...state,
+      ...updates
     };
 
-    await this.saveWorkspaceData(data);
-    return {
-      ...newSnapshot,
-      id: stateId,
-      workspaceId: snapshot.workspaceId,
-      sessionId: sessionId
-    };
+    // Save workspace
+    await this.workspaceService.updateWorkspace(workspaceId, workspace);
   }
 
-  async createSnapshot(snapshot: Omit<WorkspaceStateSnapshot, 'id'>): Promise<WorkspaceStateSnapshot> {
-    return await this.saveSnapshot(snapshot);
-  }
+  /**
+   * Delete state snapshot
+   */
+  async deleteSnapshot(
+    workspaceId: string,
+    sessionId: string,
+    stateId: string
+  ): Promise<void> {
+    const workspace = await this.workspaceService.getWorkspace(workspaceId);
 
-  async getSnapshot(id: string): Promise<WorkspaceStateSnapshot | undefined> {
-    const data = await this.loadWorkspaceData();
-
-    // Search through all workspaces and sessions for the snapshot
-    for (const [workspaceId, workspace] of Object.entries(data.workspaces)) {
-      for (const [sessionId, session] of Object.entries(workspace.sessions)) {
-        if (session.states[id]) {
-          const state = session.states[id];
-          return {
-            ...state.snapshot,
-            id: state.id,
-            workspaceId: workspaceId,
-            sessionId: sessionId
-          };
-        }
-      }
+    if (!workspace || !workspace.sessions[sessionId]) {
+      throw new Error('Session not found');
     }
 
-    return undefined;
-  }
+    // Delete the state
+    delete workspace.sessions[sessionId].states[stateId];
 
-  async updateSnapshot(snapshot: WorkspaceStateSnapshot): Promise<void> {
-    const data = await this.loadWorkspaceData();
-
-    // Find the snapshot and update it
-    for (const workspace of Object.values(data.workspaces)) {
-      for (const session of Object.values(workspace.sessions)) {
-        if (session.states[snapshot.id]) {
-          session.states[snapshot.id] = {
-            id: snapshot.id,
-            name: snapshot.name,
-            created: snapshot.created,
-            snapshot: snapshot
-          };
-          await this.saveWorkspaceData(data);
-          return;
-        }
-      }
-    }
-
-    throw new Error(`Snapshot ${snapshot.id} not found`);
-  }
-
-  async deleteSnapshot(id: string): Promise<void> {
-    const data = await this.loadWorkspaceData();
-
-    // Find and delete the snapshot
-    for (const workspace of Object.values(data.workspaces)) {
-      for (const session of Object.values(workspace.sessions)) {
-        if (session.states[id]) {
-          delete session.states[id];
-          await this.saveWorkspaceData(data);
-          return;
-        }
-      }
-    }
-
-    throw new Error(`Snapshot ${id} not found`);
-  }
-
-  async getStates(workspaceId?: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
-    const data = await this.loadWorkspaceData();
-
-    if (workspaceId && sessionId) {
-      const session = data.workspaces[workspaceId]?.sessions[sessionId];
-      return session ? Object.values(session.states).map(state => ({
-        ...state.snapshot,
-        id: state.id,
-        workspaceId: workspaceId,
-        sessionId: sessionId
-      })) : [];
-    }
-
-    if (workspaceId) {
-      const workspace = data.workspaces[workspaceId];
-      return workspace ?
-        Object.entries(workspace.sessions).flatMap(([sId, session]) =>
-          Object.values(session.states).map(state => ({
-            ...state.snapshot,
-            id: state.id,
-            workspaceId: workspaceId,
-            sessionId: sId
-          }))
-        ) : [];
-    }
-
-    // Return all states from all workspaces
-    return Object.entries(data.workspaces)
-      .flatMap(([wId, workspace]) =>
-        Object.entries(workspace.sessions).flatMap(([sId, session]) =>
-          Object.values(session.states).map(state => ({
-            ...state.snapshot,
-            id: state.id,
-            workspaceId: wId,
-            sessionId: sId
-          }))
-        )
-      );
-  }
-
-  async getSnapshots(workspaceId?: string, sessionId?: string): Promise<WorkspaceStateSnapshot[]> {
-    return await this.getStates(workspaceId, sessionId);
-  }
-
-  // Memory search
-  async searchMemoryTraces(workspaceId: string, query?: string, limit?: number): Promise<WorkspaceMemoryTrace[]> {
-    const traces = await this.getMemoryTraces(workspaceId);
-
-    if (!query) {
-      return limit ? traces.slice(0, limit) : traces;
-    }
-
-    const filtered = traces.filter(trace =>
-      trace.content.toLowerCase().includes(query.toLowerCase()) ||
-      trace.type.toLowerCase().includes(query.toLowerCase())
-    );
-
-    return limit ? filtered.slice(0, limit) : filtered;
-  }
-
-  private async loadWorkspaceData(): Promise<WorkspaceDataStructure> {
-    const data = await this.fileSystem.readJSON('workspace-data.json');
-
-    if (!data) {
-      return {
-        workspaces: {},
-        metadata: { version: '2.0.0', lastUpdated: Date.now() }
-      };
-    }
-
-    return data;
-  }
-
-  private async saveWorkspaceData(data: WorkspaceDataStructure): Promise<void> {
-    data.metadata.lastUpdated = Date.now();
-    await this.fileSystem.writeJSON('workspace-data.json', data);
+    // Save workspace
+    await this.workspaceService.updateWorkspace(workspaceId, workspace);
   }
 }
