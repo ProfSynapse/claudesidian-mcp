@@ -421,6 +421,12 @@
     stroke: currentColor;
 }
 
+/* Tool section (separate from bubble, contains tool accordions) */
+.message-tool-section {
+    margin-top: 0.5rem;
+    width: 100%;
+}
+
 /* External message actions (positioned outside and below the bubble) */
 .message-actions-external {
     position: absolute;
