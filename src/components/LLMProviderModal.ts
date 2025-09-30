@@ -41,10 +41,13 @@ export class LLMProviderModal extends Modal {
     
     // Initialize Ollama model if editing existing config
     if (this.config.providerId === 'ollama') {
-      // Try to get the current model from settings if Ollama is default
-      const settings = this.providerManager.getSettings();
-      if (settings.defaultModel.provider === 'ollama') {
-        this.ollamaModel = settings.defaultModel.model || '';
+      // Get from config first, fallback to default model settings
+      this.ollamaModel = this.config.config.ollamaModel || '';
+      if (!this.ollamaModel) {
+        const settings = this.providerManager.getSettings();
+        if (settings.defaultModel.provider === 'ollama') {
+          this.ollamaModel = settings.defaultModel.model || '';
+        }
       }
     }
   }
@@ -223,6 +226,7 @@ export class LLMProviderModal extends Modal {
           .onChange(value => {
             // Store the model selection and auto-save
             this.ollamaModel = value;
+            this.config.config.ollamaModel = value;
             if (value.trim()) {
               this.autoSave();
             }
@@ -466,9 +470,7 @@ export class LLMProviderModal extends Modal {
         // Auto-save the validated Ollama configuration
         this.config.config.apiKey = serverUrl;
         this.config.config.enabled = true;
-        if (this.ollamaModel) {
-          (this.config.config as any).__ollamaModel = this.ollamaModel;
-        }
+        this.config.config.ollamaModel = this.ollamaModel;
         this.autoSave();
       } else {
         throw new Error('Model test returned invalid response');
@@ -512,7 +514,7 @@ export class LLMProviderModal extends Modal {
 
       // For Ollama, include model if available
       if (this.config.providerId === 'ollama' && this.ollamaModel) {
-        (this.config.config as any).__ollamaModel = this.ollamaModel;
+        this.config.config.ollamaModel = this.ollamaModel;
       }
 
       // Call the save callback

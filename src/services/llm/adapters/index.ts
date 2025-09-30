@@ -60,7 +60,10 @@ export function createAdapter(provider: SupportedProvider, model?: string): Base
     case 'perplexity':
       return new PerplexityAdapter(process.env.PERPLEXITY_API_KEY || '', model);
     case 'ollama':
-      return new OllamaAdapter(process.env.OLLAMA_URL || 'http://127.0.0.1:11434', model);
+      return new OllamaAdapter(
+        process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
+        model || 'llama3.1' // Factory function requires a model parameter
+      );
     default:
       throw new LLMProviderError(
         `Unsupported provider: ${provider}`,

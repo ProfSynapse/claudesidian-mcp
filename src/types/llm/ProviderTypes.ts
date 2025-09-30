@@ -19,6 +19,7 @@ export interface LLMProviderConfig {
   userDescription?: string;
   enabled: boolean;
   models?: { [modelId: string]: ModelConfig }; // Model-specific configurations
+  ollamaModel?: string; // For Ollama: user-configured model name
 }
 
 /**
@@ -79,7 +80,8 @@ export const DEFAULT_LLM_PROVIDER_SETTINGS: LLMProviderSettings = {
     },
     ollama: {
       apiKey: 'http://127.0.0.1:11434',
-      enabled: false
+      enabled: false,
+      ollamaModel: '' // User must configure their installed model
     }
   },
   defaultModel: {

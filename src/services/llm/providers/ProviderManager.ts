@@ -75,20 +75,18 @@ export class LLMProviderManager {
     // Get enabled providers
     const enabledProviders = this.getEnabledProviders();
     
-    // For each enabled provider, get their static models
+    // For each enabled provider, get their models
     for (const provider of enabledProviders) {
       if (provider.id === 'ollama') {
-        // Special handling for Ollama - only return the configured model
-        const ollamaModel = this.settings.defaultModel.provider === 'ollama' 
-          ? this.settings.defaultModel.model 
-          : '';
-        
-        if (ollamaModel) {
+        // Special handling for Ollama - only return the user-configured model
+        const ollamaModel = this.settings.providers.ollama?.ollamaModel;
+
+        if (ollamaModel && ollamaModel.trim()) {
           allModels.push({
             provider: 'ollama',
             id: ollamaModel,
             name: ollamaModel,
-            contextWindow: this.estimateOllamaContextWindow(ollamaModel),
+            contextWindow: 128000, // Fixed reasonable default
             maxOutputTokens: 4096,
             supportsJSON: false,
             supportsImages: ollamaModel.includes('vision') || ollamaModel.includes('llava'),
@@ -108,7 +106,7 @@ export class LLMProviderManager {
       } else {
         // For other providers, use static models
         const providerModels = staticModelsService.getModelsForProvider(provider.id);
-        
+
         const modelsWithProviderInfo = providerModels
           .filter(model => {
             // Filter by model-level enabled status (default to true for backwards compatibility)
@@ -137,7 +135,7 @@ export class LLMProviderManager {
             // Keep deprecated field for backwards compatibility
             modelDescription: this.settings.providers[model.provider]?.models?.[model.id]?.description
           }));
-        
+
         allModels.push(...modelsWithProviderInfo);
       }
     }
@@ -145,23 +143,6 @@ export class LLMProviderManager {
     return allModels;
   }
 
-  /**
-   * Estimate context window for Ollama models
-   */
-  private estimateOllamaContextWindow(modelName: string): number {
-    // Rough estimates based on common Ollama models
-    if (modelName.includes('llama3.1')) return 128000;
-    if (modelName.includes('llama3')) return 8192;
-    if (modelName.includes('llama2')) return 4096;
-    if (modelName.includes('mistral')) return 32768;
-    if (modelName.includes('codellama')) return 16384;
-    if (modelName.includes('gemma')) return 8192;
-    if (modelName.includes('qwen')) return 32768;
-    if (modelName.includes('phi')) return 4096;
-    
-    // Default reasonable estimate
-    return 8192;
-  }
 
   /**
    * Get provider information for all supported providers

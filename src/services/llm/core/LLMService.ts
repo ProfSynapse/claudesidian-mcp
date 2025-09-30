@@ -144,11 +144,15 @@ export class LLMService {
 
     if (providers.ollama?.enabled && providers.ollama.apiKey) {
       try {
-        // For Ollama, apiKey is actually the server URL, and we need the configured model
-        const defaultModel = this.settings.defaultModel.provider === 'ollama' 
-          ? this.settings.defaultModel.model 
-          : ''; // No fallback - user must configure model
-        this.adapters.set('ollama', new OllamaAdapter(providers.ollama.apiKey, defaultModel));
+        // For Ollama, apiKey is the server URL, ollamaModel is the user-configured model
+        const ollamaModel = providers.ollama.ollamaModel;
+
+        if (!ollamaModel || !ollamaModel.trim()) {
+          console.warn('Ollama enabled but no model configured');
+          return;
+        }
+
+        this.adapters.set('ollama', new OllamaAdapter(providers.ollama.apiKey, ollamaModel));
       } catch (error) {
         console.warn('Failed to initialize Ollama adapter:', error);
       }

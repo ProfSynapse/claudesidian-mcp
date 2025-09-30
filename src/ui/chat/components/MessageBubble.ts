@@ -352,7 +352,6 @@ export class MessageBubble extends Component {
     if (this.progressiveToolAccordions.size > 0 && newMessage.toolCalls) {
       // Skip update - preserving progressive accordions
       // Just update the stored message reference but don't re-render
-      console.log('[MessageBubble] Preserving progressive accordions, only updating message reference');
       this.message = newMessage;
       
       // Update branch navigator if it exists
@@ -438,14 +437,6 @@ export class MessageBubble extends Component {
    * Tool execution is shown via separate 'tool' role message bubbles, not inline accordions.
    */
   handleToolEvent(event: 'detected' | 'started' | 'completed', data: any): void {
-    console.log('[TOOL-UI-DEBUG] MessageBubble.handleToolEvent received (progressive accordions disabled):', {
-      event,
-      messageId: this.message.id,
-      dataId: data.id || data.toolId,
-      dataName: data.name,
-      note: 'Tool execution shown in separate tool message bubbles'
-    });
-
     // Progressive tool accordions disabled - we use dedicated tool message bubbles instead
     // Tool execution details are displayed as separate messages with role: 'tool'
     // This prevents duplicate tool displays in the UI

@@ -22,13 +22,14 @@ export class OllamaAdapter extends BaseAdapter {
   
   private ollamaUrl: string;
 
-  constructor(ollamaUrl = 'http://127.0.0.1:11434', defaultModel = 'llama3.1') {
+  constructor(ollamaUrl: string, userModel: string) {
     // Ollama doesn't need an API key - set requiresApiKey to false
-    super('', defaultModel, ollamaUrl, false);
-    
+    // Use user-configured model instead of hardcoded default
+    super('', userModel, ollamaUrl, false);
+
     this.ollamaUrl = ollamaUrl;
     this.baseUrl = ollamaUrl;
-    
+
     this.initializeCache();
   }
 
@@ -271,12 +272,12 @@ export class OllamaAdapter extends BaseAdapter {
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    // Only return the configured model, not all available models
+    // Only return the user-configured model
     // This ensures the UI only shows the model the user specifically configured
     return [{
       id: this.currentModel,
       name: this.currentModel,
-      contextWindow: this.estimateContextWindow(this.currentModel),
+      contextWindow: 128000, // Use a reasonable default, not model-specific
       supportsStreaming: true,
       supportsJSON: false, // Ollama doesn't have built-in JSON mode
       supportsImages: this.currentModel.includes('vision') || this.currentModel.includes('llava'),
@@ -334,21 +335,6 @@ export class OllamaAdapter extends BaseAdapter {
     if (bytes === 0) return '0 B';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-  }
-
-  private estimateContextWindow(modelName: string): number {
-    // Rough estimates based on common Ollama models
-    if (modelName.includes('llama3.1')) return 128000;
-    if (modelName.includes('llama3')) return 8192;
-    if (modelName.includes('llama2')) return 4096;
-    if (modelName.includes('mistral')) return 32768;
-    if (modelName.includes('codellama')) return 16384;
-    if (modelName.includes('gemma')) return 8192;
-    if (modelName.includes('qwen')) return 32768;
-    if (modelName.includes('phi')) return 4096;
-    
-    // Default reasonable estimate
-    return 8192;
   }
 
   protected buildMessages(prompt: string, systemPrompt?: string): any[] {

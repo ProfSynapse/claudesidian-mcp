@@ -555,8 +555,6 @@ export class ChatView extends ItemView {
    * Handle message alternative creation
    */
   private handleMessageAlternativeCreated(messageId: string, alternativeIndex: number): void {
-    console.log('[ChatView] Message alternative created:', { messageId, alternativeIndex });
-    
     // Update the message display to reflect new alternatives
     const currentConversation = this.conversationManager.getCurrentConversation();
     if (currentConversation) {
@@ -568,8 +566,6 @@ export class ChatView extends ItemView {
    * Handle message alternative switching
    */
   private async handleMessageAlternativeSwitched(messageId: string, alternativeIndex: number): Promise<void> {
-    console.log('[ChatView] Message alternative switched:', { messageId, alternativeIndex });
-    
     // Use BranchManager to switch to the alternative (this updates the conversation)
     const currentConversation = this.conversationManager.getCurrentConversation();
     if (currentConversation) {

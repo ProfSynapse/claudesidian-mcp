@@ -23,7 +23,33 @@ export class ModelAgentManager {
   constructor(
     private app: any, // Obsidian App
     private events: ModelAgentManagerEvents
-  ) {}
+  ) {
+    // Initialize with default model from settings
+    this.initializeDefaultModel();
+  }
+
+  /**
+   * Initialize the selected model from plugin settings default
+   */
+  private async initializeDefaultModel(): Promise<void> {
+    try {
+      const defaultModelConfig = await this.getDefaultModel();
+      const availableModels = await this.getAvailableModels();
+
+      // Find the default model in available models
+      const defaultModel = availableModels.find(
+        m => m.providerId === defaultModelConfig.provider &&
+             m.modelId === defaultModelConfig.model
+      );
+
+      if (defaultModel) {
+        this.selectedModel = defaultModel;
+        this.events.onModelChanged(defaultModel);
+      }
+    } catch (error) {
+      console.warn('[ModelAgentManager] Failed to initialize default model:', error);
+    }
+  }
 
   /**
    * Get current selected model
@@ -142,19 +168,36 @@ export class ModelAgentManager {
       
       // Import ModelRegistry to get actual model specs
       const { ModelRegistry } = await import('../../../services/llm/adapters/ModelRegistry');
-      
+
       // Iterate through enabled providers with valid API keys
       Object.entries(providers).forEach(([providerId, config]: [string, any]) => {
         // Only include providers that are enabled and have API keys
         if (!config.enabled || !config.apiKey || !config.apiKey.trim()) {
           return;
         }
-        
+
         const providerName = this.getProviderDisplayName(providerId);
-        
-        // Get all available models for this provider from ModelRegistry
-        const providerModels = ModelRegistry.getProviderModels(providerId);
-        
+
+        // Special handling for Ollama - single user-configured model
+        if (providerId === 'ollama') {
+          const ollamaModel = config.ollamaModel;
+          if (!ollamaModel || !ollamaModel.trim()) {
+            return; // Skip if no model configured
+          }
+
+          models.push({
+            providerId: 'ollama',
+            providerName,
+            modelId: ollamaModel,
+            modelName: ollamaModel,
+            contextWindow: 128000 // Fixed reasonable default
+          });
+          return;
+        }
+
+        // Standard provider handling - get models from ModelRegistry
+        const providerModels = ModelRegistry.getProviderModels(providerId, pluginData.llmProviders);
+
         providerModels.forEach(modelSpec => {
           models.push({
             providerId,

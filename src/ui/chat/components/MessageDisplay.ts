@@ -178,12 +178,6 @@ export class MessageDisplay {
    * Render the message display
    */
   private render(): void {
-    console.log('[TOOL-UI-DEBUG] MessageDisplay.render called - FULL RE-RENDER starts');
-    console.log('[TOOL-UI-DEBUG] Existing message bubbles before cleanup:', {
-      count: this.messageBubbles.length,
-      withProgressiveAccordions: this.messageBubbles.filter(b => b.getProgressiveToolAccordions().size > 0).length
-    });
-
     // Full render - clears existing progressive accordions
     this.container.empty();
     this.container.addClass('message-display');
@@ -323,18 +317,14 @@ export class MessageDisplay {
     });
 
     if (messageBubble) {
-      console.log('[MessageDisplay] Updating MessageBubble ID:', { from: oldId, to: newId });
-      
       // Update the MessageBubble's message reference and DOM attribute
       messageBubble.updateWithNewMessage(updatedMessage);
-      
+
       // Update the DOM attribute to reflect the new ID
       const element = messageBubble.getElement();
       if (element) {
         element.setAttribute('data-message-id', newId);
       }
-    } else {
-      console.log('[MessageDisplay] Could not find MessageBubble with old ID:', oldId);
     }
   }
 
