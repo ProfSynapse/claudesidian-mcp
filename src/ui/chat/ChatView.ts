@@ -5,13 +5,12 @@
  * This class is responsible for initialization, delegation, and high-level event coordination only.
  */
 
-import { ItemView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
 import { ConversationList } from './components/ConversationList';
 import { MessageDisplay } from './components/MessageDisplay';
 import { ChatInput } from './components/ChatInput';
-import { ModelSelector, ModelOption } from './components/ModelSelector';
-import { AgentSelector, AgentOption } from './components/AgentSelector';
 import { ContextProgressBar } from './components/ContextProgressBar';
+import { ChatSettingsModal } from './components/ChatSettingsModal';
 // BranchNavigator removed - using message-level navigation
 import { ChatService } from '../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../types/chat/ChatTypes';
@@ -37,8 +36,6 @@ export class ChatView extends ItemView {
   private conversationList!: ConversationList;
   private messageDisplay!: MessageDisplay;
   private chatInput!: ChatInput;
-  private modelSelector!: ModelSelector;
-  private agentSelector!: AgentSelector;
   private contextProgressBar!: ContextProgressBar;
   // Branch navigation is now handled at message level
   
@@ -136,20 +133,25 @@ export class ChatView extends ItemView {
     
     // Header
     const chatHeader = mainContainer.createDiv('chat-header');
+
+    // Left: Hamburger button
     const hamburgerButton = chatHeader.createEl('button', { cls: 'chat-hamburger-button' });
     hamburgerButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg>';
     hamburgerButton.setAttribute('aria-label', 'Toggle conversations');
-    
+
+    // Center: Title
     const chatTitle = chatHeader.createDiv('chat-title');
     chatTitle.textContent = 'AI Chat';
+
+    // Right: Settings gear icon
+    const settingsButton = chatHeader.createEl('button', { cls: 'chat-settings-button' });
+    setIcon(settingsButton, 'settings');
+    settingsButton.setAttribute('aria-label', 'Chat settings');
     
     // Branch navigation is now at message level - no global navigator needed
     
     // Main content areas
     const messageContainer = mainContainer.createDiv('message-display-container');
-    const selectorsContainer = mainContainer.createDiv('chat-selectors-container');
-    const modelSelectorContainer = selectorsContainer.createDiv('selector-item');
-    const agentSelectorContainer = selectorsContainer.createDiv('selector-item');
     const inputContainer = mainContainer.createDiv('chat-input-container');
     const contextContainer = mainContainer.createDiv('chat-context-container');
     
@@ -170,13 +172,12 @@ export class ChatView extends ItemView {
     // Store references for services/controllers
     this.storeElementReferences({
       messageContainer,
-      modelSelectorContainer,
-      agentSelectorContainer,
       inputContainer,
       contextContainer,
       conversationListContainer,
       // branchNavigatorContainer removed - using message-level navigation
-      newChatButton
+      newChatButton,
+      settingsButton
     });
   }
 
@@ -265,19 +266,6 @@ export class ChatView extends ItemView {
       () => this.messageManager.getIsLoading()
     );
 
-    this.modelSelector = new ModelSelector(
-      refs.modelSelectorContainer,
-      (model) => this.modelAgentManager.handleModelChange(model),
-      () => this.modelAgentManager.getAvailableModels(),
-      () => this.modelAgentManager.getDefaultModel()
-    );
-
-    this.agentSelector = new AgentSelector(
-      refs.agentSelectorContainer,
-      (agent) => this.modelAgentManager.handleAgentChange(agent),
-      () => this.modelAgentManager.getAvailableAgents()
-    );
-
     this.contextProgressBar = new ContextProgressBar(
       refs.contextContainer,
       () => this.getContextUsage()
@@ -299,12 +287,43 @@ export class ChatView extends ItemView {
     const refs = this.getElementReferences();
     
     // New chat button
-    refs.newChatButton.addEventListener('click', () => 
+    refs.newChatButton.addEventListener('click', () =>
       this.conversationManager.createNewConversation()
+    );
+
+    // Settings button
+    refs.settingsButton.addEventListener('click', () =>
+      this.openChatSettingsModal()
     );
 
     // UI state controller events
     this.uiStateController.initializeEventListeners();
+  }
+
+  /**
+   * Open chat settings modal
+   */
+  private async openChatSettingsModal(): Promise<void> {
+    // Get WorkspaceService from plugin
+    const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+    if (!plugin) {
+      console.error('[ChatView] Plugin not found');
+      return;
+    }
+
+    // Get WorkspaceService using the plugin's async service getter
+    const workspaceService = await plugin.getService('workspaceService');
+    if (!workspaceService) {
+      console.error('[ChatView] WorkspaceService not available');
+      return;
+    }
+
+    const modal = new ChatSettingsModal(
+      this.app,
+      workspaceService,
+      this.modelAgentManager
+    );
+    modal.open();
   }
 
   /**
@@ -428,11 +447,11 @@ export class ChatView extends ItemView {
     }
   }
 
-  private handleModelChanged(model: ModelOption | null): void {
+  private handleModelChanged(model: any | null): void {
     this.updateContextProgress();
   }
 
-  private handleAgentChanged(agent: AgentOption | null): void {
+  private handleAgentChanged(agent: any | null): void {
     // Agent changed
   }
 
@@ -575,8 +594,6 @@ export class ChatView extends ItemView {
     this.conversationList?.cleanup();
     this.messageDisplay?.cleanup();
     this.chatInput?.cleanup();
-    this.modelSelector?.cleanup();
-    this.agentSelector?.cleanup();
     this.contextProgressBar?.cleanup();
     // Branch navigator cleanup no longer needed
     this.uiStateController?.cleanup();

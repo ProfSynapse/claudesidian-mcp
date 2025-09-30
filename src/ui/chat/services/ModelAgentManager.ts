@@ -5,6 +5,7 @@
 import { ModelOption } from '../components/ModelSelector';
 import { AgentOption } from '../components/AgentSelector';
 import { ProviderUtils } from '../utils/ProviderUtils';
+import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -16,6 +17,8 @@ export class ModelAgentManager {
   private selectedModel: ModelOption | null = null;
   private selectedAgent: AgentOption | null = null;
   private currentSystemPrompt: string | null = null;
+  private selectedWorkspaceId: string | null = null;
+  private workspaceContext: WorkspaceContext | null = null;
 
   constructor(
     private app: any, // Obsidian App
@@ -37,10 +40,24 @@ export class ModelAgentManager {
   }
 
   /**
-   * Get current system prompt
+   * Get current system prompt (includes workspace context if set)
    */
   getCurrentSystemPrompt(): string | null {
-    return this.currentSystemPrompt;
+    return this.buildSystemPromptWithWorkspace();
+  }
+
+  /**
+   * Get selected workspace ID
+   */
+  getSelectedWorkspaceId(): string | null {
+    return this.selectedWorkspaceId;
+  }
+
+  /**
+   * Get workspace context
+   */
+  getWorkspaceContext(): WorkspaceContext | null {
+    return this.workspaceContext;
   }
 
   /**
@@ -57,9 +74,27 @@ export class ModelAgentManager {
   handleAgentChange(agent: AgentOption | null): void {
     this.selectedAgent = agent;
     this.currentSystemPrompt = agent?.systemPrompt || null;
-    
+
     this.events.onAgentChanged(agent);
-    this.events.onSystemPromptChanged(this.currentSystemPrompt);
+    this.events.onSystemPromptChanged(this.buildSystemPromptWithWorkspace());
+  }
+
+  /**
+   * Set workspace context
+   */
+  setWorkspaceContext(workspaceId: string, context: WorkspaceContext): void {
+    this.selectedWorkspaceId = workspaceId;
+    this.workspaceContext = context;
+    this.events.onSystemPromptChanged(this.buildSystemPromptWithWorkspace());
+  }
+
+  /**
+   * Clear workspace context
+   */
+  clearWorkspaceContext(): void {
+    this.selectedWorkspaceId = null;
+    this.workspaceContext = null;
+    this.events.onSystemPromptChanged(this.buildSystemPromptWithWorkspace());
   }
 
   /**
@@ -174,7 +209,7 @@ export class ModelAgentManager {
   }
 
   /**
-   * Get message options for current selection
+   * Get message options for current selection (includes workspace context)
    */
   getMessageOptions(): {
     provider?: string;
@@ -184,8 +219,65 @@ export class ModelAgentManager {
     return {
       provider: this.selectedModel?.providerId,
       model: this.selectedModel?.modelId,
-      systemPrompt: this.currentSystemPrompt || undefined
+      systemPrompt: this.buildSystemPromptWithWorkspace() || undefined
     };
+  }
+
+  /**
+   * Build system prompt with workspace context
+   */
+  private buildSystemPromptWithWorkspace(): string | null {
+    let prompt = '';
+
+    // Base agent prompt (if selected)
+    if (this.currentSystemPrompt) {
+      prompt += this.currentSystemPrompt;
+    }
+
+    // Workspace context (if selected)
+    if (this.workspaceContext) {
+      if (prompt) {
+        prompt += '\n\n';
+      }
+
+      prompt += '# Workspace Context\n\n';
+
+      if (this.workspaceContext.purpose) {
+        prompt += `**Purpose:** ${this.workspaceContext.purpose}\n\n`;
+      }
+
+      if (this.workspaceContext.currentGoal) {
+        prompt += `**Current Goal:** ${this.workspaceContext.currentGoal}\n\n`;
+      }
+
+      if (this.workspaceContext.preferences) {
+        prompt += `**Preferences:**\n${this.workspaceContext.preferences}\n\n`;
+      }
+
+      if (this.workspaceContext.workflows && this.workspaceContext.workflows.length > 0) {
+        prompt += `**Available Workflows:**\n`;
+        this.workspaceContext.workflows.forEach((workflow: { name: string; when: string; steps: string[] }, index: number) => {
+          prompt += `${index + 1}. **${workflow.name}** - ${workflow.when}\n`;
+          if (workflow.steps && workflow.steps.length > 0) {
+            prompt += `   Steps:\n`;
+            workflow.steps.forEach((step: string, stepIndex: number) => {
+              prompt += `   ${stepIndex + 1}. ${step}\n`;
+            });
+          }
+          prompt += '\n';
+        });
+      }
+
+      if (this.workspaceContext.keyFiles && this.workspaceContext.keyFiles.length > 0) {
+        prompt += `**Key Reference Files:**\n`;
+        this.workspaceContext.keyFiles.forEach((file: string) => {
+          prompt += `- ${file}\n`;
+        });
+        prompt += '\n';
+      }
+    }
+
+    return prompt || null;
   }
 
   /**

@@ -177,14 +177,15 @@
 .chat-header {
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: space-between;
     padding: 12px 16px;
     border-bottom: 1px solid var(--background-modifier-border);
     background: var(--background-primary);
     flex-shrink: 0;
 }
 
-.chat-hamburger-button {
+.chat-hamburger-button,
+.chat-settings-button {
     background: none;
     border: none;
     color: var(--text-muted);
@@ -197,7 +198,8 @@
     transition: all 0.2s;
 }
 
-.chat-hamburger-button:hover {
+.chat-hamburger-button:hover,
+.chat-settings-button:hover {
     background: var(--background-modifier-hover);
     color: var(--text-normal);
 }
@@ -206,22 +208,11 @@
     font-weight: 600;
     color: var(--text-normal);
     font-size: 16px;
-}
-
-/* Chat Selectors Container - Side by side above input */
-.chat-selectors-container {
-    display: flex;
-    gap: 8px;
-    padding: 8px 12px;
-    background: var(--background-primary);
-    border-bottom: 1px solid var(--background-modifier-border);
-    flex-shrink: 0;
-}
-
-.selector-item {
     flex: 1;
-    min-width: 0; /* Allow shrinking */
+    text-align: center;
 }
+
+/* Chat Selectors Container - REMOVED (now in modal) */
 
 /* Context Container */
 .chat-context-container {
@@ -3096,4 +3087,55 @@ a:hover {
     font-size: 10px;
     min-width: 20px;
   }
+}
+/* =========================== */
+/* CHAT SETTINGS MODAL STYLES */
+/* =========================== */
+
+.chat-settings-modal {
+    padding: 20px;
+    min-width: 500px;
+}
+
+.chat-settings-modal h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: var(--text-normal);
+}
+
+.workspace-info-section {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.workspace-context-summary {
+    margin-top: 10px;
+}
+
+.workspace-context-summary h4 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: var(--text-normal);
+    font-size: 14px;
+}
+
+.context-item {
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.context-item strong {
+    color: var(--text-normal);
+}
+
+.workspace-info-section p {
+    margin-top: 10px;
+    margin-bottom: 0;
+    font-size: 12px;
+    color: var(--text-faint);
+    font-style: italic;
 }
