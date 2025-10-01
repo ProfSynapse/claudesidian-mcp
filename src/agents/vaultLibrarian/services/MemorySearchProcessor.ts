@@ -20,8 +20,7 @@ import {
   MemoryType
 } from '../../../types/memory/MemorySearchTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
-import { MemoryTraceService } from '../../memoryManager/services/MemoryTraceService';
-import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../services/WorkspaceService';
 
 export interface MemorySearchProcessorInterface {
   process(params: MemorySearchParameters): Promise<MemorySearchResult[]>;
@@ -41,8 +40,8 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     this.configuration = {
       defaultLimit: 20,
       maxLimit: 100,
-      defaultSearchMethod: SearchMethod.MIXED,
-      enableSemanticSearch: true,
+      defaultSearchMethod: SearchMethod.EXACT,
+      enableSemanticSearch: false,
       enableExactSearch: true,
       timeoutMs: 30000,
       ...config
@@ -237,15 +236,25 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const results = await memoryService.searchMemoryTraces(query, {
-        workspaceId: options.workspaceId,
-        limit: options.limit,
-        sessionId: options.sessionId
-      });
+      // Get all traces from workspace
+      const allTraces = await memoryService.getMemoryTraces(
+        options.workspaceId || 'default',
+        options.sessionId
+      );
 
-      return results.map(result => ({
-        trace: result.trace,
-        similarity: result.similarity
+      // Filter by query
+      const queryLower = query.toLowerCase();
+      const filtered = allTraces.filter(trace =>
+        trace.content?.toLowerCase().includes(queryLower) ||
+        trace.type?.toLowerCase().includes(queryLower)
+      );
+
+      // Apply limit if specified
+      const limited = options.limit ? filtered.slice(0, options.limit) : filtered;
+
+      return limited.map(result => ({
+        trace: result,
+        similarity: 1.0 // Default similarity since we don't have semantic search
       }));
     } catch (error) {
       console.error('[MemorySearchProcessor] Error searching legacy traces:', error);
@@ -254,41 +263,9 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   }
 
   private async searchToolCallTraces(query: string, options: MemorySearchExecutionOptions): Promise<RawMemoryResult[]> {
-    const memoryTraceService = await this.getMemoryTraceService();
-    if (!memoryTraceService) return [];
-
-    try {
-      const results: RawMemoryResult[] = [];
-      const searchMethod = this.configuration.defaultSearchMethod;
-
-      // Semantic search
-      if (this.configuration.enableSemanticSearch && 
-          (searchMethod === SearchMethod.SEMANTIC || searchMethod === SearchMethod.MIXED)) {
-        const semanticResults = await memoryTraceService.searchMemoryTraces(query, {
-          workspaceId: options.workspaceId,
-          limit: options.limit,
-          sessionId: options.sessionId
-        });
-        
-        results.push(...semanticResults.map(result => ({
-          trace: result.trace,
-          similarity: result.similarity
-        })));
-      }
-
-      // Exact search
-      if (this.configuration.enableExactSearch && 
-          (searchMethod === SearchMethod.EXACT || searchMethod === SearchMethod.MIXED)) {
-        const exactResults = await this.searchToolCallsExact(query, options);
-        results.push(...exactResults);
-      }
-
-      // Deduplicate results
-      return this.deduplicateResults(results);
-    } catch (error) {
-      console.error('[MemorySearchProcessor] Error searching tool call traces:', error);
-      return [];
-    }
+    // MemoryTraceService not available in simplified architecture
+    console.warn('[MemorySearchProcessor] Tool call trace search not available in simplified architecture');
+    return [];
   }
 
   private async searchSessions(query: string, options: MemorySearchExecutionOptions): Promise<RawMemoryResult[]> {
@@ -296,7 +273,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const sessions = await memoryService.getAllSessions();
+      const sessions = await memoryService.getSessions(options.workspaceId || 'default-workspace');
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
@@ -333,7 +310,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const states = await memoryService.getSnapshots();
+      const states = await memoryService.getStateSnapshots(options.workspaceId || 'default-workspace', options.sessionId);
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
@@ -346,7 +323,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
         }
         
         // Check description match
-        if (state.description?.toLowerCase().includes(queryLower)) {
+        if ((state as any).description?.toLowerCase().includes(queryLower)) {
           score += 0.8;
         }
 
@@ -370,7 +347,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!workspaceService) return [];
 
     try {
-      const workspaces = await workspaceService.getWorkspaces();
+      const workspaces = await workspaceService.listWorkspaces();
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
@@ -403,60 +380,9 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   }
 
   private async searchToolCallsExact(query: string, options: MemorySearchExecutionOptions): Promise<RawMemoryResult[]> {
-    const memoryTraceService = await this.getMemoryTraceService();
-    if (!memoryTraceService) return [];
-
-    try {
-      // Get traces for exact matching
-      let traces: any[] = [];
-      if (options.workspaceId) {
-        traces = await memoryTraceService.getMemoryTraces(options.workspaceId, options.limit);
-      } else if (options.sessionId) {
-        traces = await memoryTraceService.getSessionTraces(options.sessionId, options.limit);
-      }
-
-      const queryLower = query.toLowerCase();
-      const results: RawMemoryResult[] = [];
-
-      for (const trace of traces) {
-        // Only process tool call traces
-        if (!(trace as any).toolCallId) continue;
-
-        let score = 0;
-        const toolCallTrace = trace as any;
-
-        // Content matching
-        if (trace.content.toLowerCase().includes(queryLower)) {
-          score += 0.8;
-        }
-
-        // Metadata matching
-        const metadataText = JSON.stringify(trace.metadata).toLowerCase();
-        if (metadataText.includes(queryLower)) {
-          score += 0.6;
-        }
-
-        // Tool call specific field matching
-        if (toolCallTrace.agent?.toLowerCase().includes(queryLower)) score += 0.9;
-        if (toolCallTrace.mode?.toLowerCase().includes(queryLower)) score += 0.9;
-        if (toolCallTrace.toolName?.toLowerCase().includes(queryLower)) score += 0.9;
-
-        if (score > 0) {
-          results.push({
-            trace: trace,
-            similarity: score
-          });
-        }
-      }
-
-      // Sort by score and limit
-      results.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
-      return results.slice(0, options.limit || this.configuration.defaultLimit);
-
-    } catch (error) {
-      console.error('[MemorySearchProcessor] Error in exact tool call search:', error);
-      return [];
-    }
+    // MemoryTraceService not available in simplified architecture
+    console.warn('[MemorySearchProcessor] Exact tool call search not available in simplified architecture');
+    return [];
   }
 
   private async enrichSingleResult(result: RawMemoryResult, context: MemorySearchContext): Promise<MemorySearchResult | null> {
@@ -529,7 +455,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
       workspaceId: trace.workspaceId,
       primaryGoal: '',
       filesReferenced: trace.metadata?.relatedFiles || trace.relationships?.relatedFiles || [],
-      activityType: trace.activityType
+      type: trace.type
     };
 
     if (resultType === MemoryType.TOOL_CALL) {
@@ -632,24 +558,6 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     }
   }
 
-  private async getMemoryTraceService(): Promise<MemoryTraceService | undefined> {
-    try {
-      const plugin = (this.plugin as any)?.app?.plugins?.getPlugin('claudesidian-mcp');
-      
-      if (plugin?.getService) {
-        return await plugin.getService('memoryTraceService', 5000);
-      }
-      
-      if (plugin?.serviceContainer) {
-        return plugin.serviceContainer.getIfReady('memoryTraceService');
-      }
-      
-      return undefined;
-    } catch (error) {
-      console.warn('[MemorySearchProcessor] Failed to get MemoryTraceService:', error);
-      return undefined;
-    }
-  }
 
   private getWorkspaceService(): WorkspaceService | undefined {
     try {

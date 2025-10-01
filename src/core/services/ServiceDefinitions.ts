@@ -1,10 +1,12 @@
 /**
  * Location: /src/core/services/ServiceDefinitions.ts
- * 
+ *
  * Service Definitions - Centralized service registration configuration
- * 
+ *
  * This module defines all services in a data-driven way, making it easy to add
  * new services without modifying the core PluginLifecycleManager.
+ *
+ * Simplified architecture for JSON-based storage
  */
 
 import type { Plugin } from 'obsidian';
@@ -38,269 +40,142 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
             return new EventManager();
         }
     },
-    
-    {
-        name: 'stateManager',
-        create: async (context) => {
-            const { ProcessedFilesStateManager } = await import('../../database/services/indexing/state/ProcessedFilesStateManager');
-            return new ProcessedFilesStateManager(context.plugin);
-        }
-    },
-    
-    {
-        name: 'simpleMemoryService',
-        create: async () => {
-            const { SimpleMemoryService } = await import('../../services/memory/SimpleMemoryService');
-            return new SimpleMemoryService();
-        }
-    },
-    
-    // Vector store - critical foundation service
-    {
-        name: 'vectorStore',
-        create: async (context) => {
-            const { ChromaVectorStoreModular } = await import('../../database/providers/chroma/ChromaVectorStoreModular');
-            
-            // Get embedding configuration from settings
-            const memorySettings = context.settings.settings.memory;
-            if (!memorySettings?.apiProvider || !memorySettings?.providerSettings) {
-                throw new Error('Memory settings not configured - cannot determine embedding dimensions');
-            }
-            
-            const activeProvider = memorySettings.apiProvider;
-            const providerSettings = memorySettings.providerSettings[activeProvider];
-            
-            if (!providerSettings?.dimensions) {
-                throw new Error(`Embedding dimensions not configured for provider '${activeProvider}'`);
-            }
-            
-            const embeddingConfig = {
-                dimension: providerSettings.dimensions,
-                model: providerSettings.model
-            };
-            
-            const vectorStore = new ChromaVectorStoreModular(context.plugin, {
-                embedding: embeddingConfig,
-                persistentPath: memorySettings.dbStoragePath,
-                inMemory: false,
-                cache: {
-                    enabled: true,
-                    maxItems: 1000,
-                    ttl: 3600000
-                }
-            });
-            
-            // Initialize vector store in background to prevent MCP timeout
-            // The vector store will auto-initialize when first accessed
-            setTimeout(async () => {
-                try {
-                    await vectorStore.initialize();
-                    console.log('[ServiceDefinitions] Vector store background initialization complete');
-                } catch (error) {
-                    console.error('[ServiceDefinitions] Vector store background initialization failed:', error);
-                }
-            }, 200);
-            
-            return vectorStore;
-        }
-    },
-    
-    // Business services with dependencies
-    {
-        name: 'embeddingService',
-        dependencies: ['stateManager'],
-        create: async (context) => {
-            const { EmbeddingService } = await import('../../database/services/core/EmbeddingService');
-            const stateManager = await context.serviceManager.getService<any>('stateManager');
-            return new EmbeddingService(context.plugin, stateManager);
-        }
-    },
-    
-    {
-        name: 'sessionService',
-        dependencies: ['vectorStore', 'embeddingService'],
-        create: async (context) => {
-            const { SessionService } = await import('../../agents/memoryManager/services/SessionService');
-            const { VectorStoreFactory } = await import('../../database/factory/VectorStoreFactory');
-            const vectorStore = await context.serviceManager.getService<any>('vectorStore');
-            const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-            
-            const sessionCollection = VectorStoreFactory.createSessionCollection(vectorStore, embeddingService);
-            return new SessionService(context.plugin, sessionCollection);
-        }
-    },
-    
-    {
-        name: 'memoryTraceService',
-        dependencies: ['vectorStore', 'embeddingService'],
-        create: async (context) => {
-            const { MemoryTraceService } = await import('../../agents/memoryManager/services/MemoryTraceService');
-            const { VectorStoreFactory } = await import('../../database/factory/VectorStoreFactory');
-            
-            const vectorStore = await context.serviceManager.getService<any>('vectorStore');
-            const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-            const memoryTraceCollection = VectorStoreFactory.createMemoryTraceCollection(vectorStore);
-            
-            return new MemoryTraceService(memoryTraceCollection, embeddingService);
-        }
-    },
-    
-    {
-        name: 'toolCallCaptureService',
-        dependencies: ['simpleMemoryService', 'sessionService', 'memoryTraceService', 'embeddingService'],
-        create: async (context) => {
-            const { ToolCallCaptureService } = await import('../../services/toolcall-capture/ToolCallCaptureService');
-            const memoryService = await context.serviceManager.getService<any>('simpleMemoryService');
-            const sessionService = await context.serviceManager.getService<any>('sessionService');
-            
-            const service = new ToolCallCaptureService(memoryService, sessionService);
-            
-            // Enable full functionality with embeddings if services are available
-            try {
-                const memoryTraceService = await context.serviceManager.getService<any>('memoryTraceService');
-                const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-                
-                if (memoryTraceService && embeddingService) {
-                    await service.upgrade(memoryTraceService, embeddingService);
-                }
-            } catch (error) {
-                console.warn('[ToolCallCapture] Failed to enable full functionality:', error);
-            }
-            
-            return service;
-        }
-    },
-    
-    {
-        name: 'memoryService',
-        dependencies: ['vectorStore', 'embeddingService'],
-        create: async (context) => {
-            const { MemoryService } = await import('../../agents/memoryManager/services/MemoryService');
-            const vectorStore = await context.serviceManager.getService<any>('vectorStore');
-            const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-            return new MemoryService(context.plugin, vectorStore, embeddingService, context.settings.settings.memory || {});
-        }
-    },
-    
+
+    // Note: ProcessedFilesStateManager and SimpleMemoryService removed in simplify-search-architecture
+    // State management is now handled by simplified JSON-based storage
+
+    // Workspace service (centralized storage service)
     {
         name: 'workspaceService',
-        dependencies: ['vectorStore', 'embeddingService'],
         create: async (context) => {
-            const { WorkspaceService } = await import('../../agents/memoryManager/services/WorkspaceService');
-            const vectorStore = await context.serviceManager.getService<any>('vectorStore');
-            const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-            return new WorkspaceService(context.plugin, vectorStore, embeddingService);
+            const { WorkspaceService } = await import('../../services/WorkspaceService');
+            const { FileSystemService } = await import('../../services/storage/FileSystemService');
+            const { IndexManager } = await import('../../services/storage/IndexManager');
+
+            const fileSystem = new FileSystemService(context.plugin);
+            const indexManager = new IndexManager(fileSystem);
+            return new WorkspaceService(context.plugin, fileSystem, indexManager);
         }
     },
-    
+
+    // Memory service (agent-specific, delegates to WorkspaceService)
     {
-        name: 'fileEventManager',
-        dependencies: ['memoryService', 'workspaceService', 'embeddingService', 'eventManager'],
+        name: 'memoryService',
+        dependencies: ['workspaceService'],
         create: async (context) => {
-            const { FileEventManagerModular } = await import('../../services/file-events/FileEventManagerModular');
-            
-            const memoryService = await context.serviceManager.getService<any>('memoryService');
-            const workspaceService = await context.serviceManager.getService<any>('workspaceService');
-            const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-            const eventManager = await context.serviceManager.getService<any>('eventManager');
-            
-            const embeddingStrategy = {
-                type: context.settings.settings.memory?.embeddingStrategy || 'idle',
-                idleTimeThreshold: context.settings.settings.memory?.idleTimeThreshold || 60000,
-                batchSize: 10,
-                processingDelay: 1000
-            };
-            
-            const fileEventManager = new FileEventManagerModular(
-                context.app,
-                context.plugin,
-                memoryService,
-                workspaceService,
-                embeddingService,
-                eventManager,
-                embeddingStrategy
+            const { MemoryService } = await import('../../agents/memoryManager/services/MemoryService');
+            const WorkspaceService = (await import('../../services/WorkspaceService')).WorkspaceService;
+            const workspaceService = await context.serviceManager.getService('workspaceService') as InstanceType<typeof WorkspaceService>;
+            return new MemoryService(context.plugin, workspaceService);
+        }
+    },
+
+    // Cache manager for performance
+    {
+        name: 'cacheManager',
+        dependencies: ['workspaceService', 'memoryService'],
+        create: async (context) => {
+            const { CacheManager } = await import('../../database/services/cache/CacheManager');
+
+            const workspaceService = await context.serviceManager.getService('workspaceService');
+            const memoryService = await context.serviceManager.getService('memoryService');
+
+            const cacheManager = new CacheManager(
+                context.plugin.app,
+                workspaceService as any,
+                memoryService as any,
+                {
+                    enableEntityCache: true,
+                    enableFileIndex: true,
+                    enablePrefetch: true
+                }
             );
-            
-            await fileEventManager.initialize();
-            return fileEventManager;
+
+            return cacheManager;
         }
     },
-    
+
+    // Session context manager
     {
-        name: 'agentManager',
-        dependencies: ['eventManager'],
+        name: 'sessionContextManager',
+        dependencies: ['workspaceService', 'memoryService'],
         create: async (context) => {
-            const { AgentManager } = await import('../../services/AgentManager');
-            const eventManager = await context.serviceManager.getService<any>('eventManager');
-            return new AgentManager(context.app, context.plugin, eventManager);
+            const { SessionContextManager } = await import('../../services/SessionContextManager');
+
+            const workspaceService = await context.serviceManager.getService('workspaceService');
+            const memoryService = await context.serviceManager.getService('memoryService');
+
+            return new SessionContextManager();
         }
     },
-    
+
+    // LLM services for chat functionality
     {
         name: 'llmService',
         create: async (context) => {
             const { LLMService } = await import('../../services/llm/core/LLMService');
-            const llmProviderSettings = context.settings.settings.llmProviders || {
-                providers: {},
-                defaultModel: {
-                    provider: 'openai',
-                    model: 'gpt-3.5-turbo'
-                }
-            };
-            const mcpConnector = (context.plugin as any).getConnector();
-            return new LLMService(llmProviderSettings, mcpConnector);
+            const llmProviders = context.settings.settings.llmProviders;
+            if (!llmProviders || typeof llmProviders !== 'object' || !('providers' in llmProviders)) {
+                throw new Error('Invalid LLM provider settings');
+            }
+            return new LLMService(llmProviders, context.connector); // Pass mcpConnector for tool execution
         }
     },
-    
+
+    // Agent manager for custom AI agents
     {
-        name: 'sessionContextManager',
-        dependencies: ['eventManager'],
+        name: 'agentManager',
+        dependencies: ['llmService'],
         create: async (context) => {
-            const { SessionContextManager } = await import('../../services/SessionContextManager');
-            return new SessionContextManager();
+            const { AgentManager } = await import('../../services/AgentManager');
+
+            const llmService = await context.serviceManager.getService('llmService');
+
+            return new AgentManager(
+                context.plugin.app,
+                llmService,
+                {} as any // Placeholder for EventManager
+            );
         }
     },
-    
+
+    // Conversation service for chat storage
     {
-        name: 'conversationRepository',
-        dependencies: ['vectorStore', 'embeddingService'],
+        name: 'conversationService',
         create: async (context) => {
-            const { ConversationRepository } = await import('../../database/services/chat/ConversationRepository');
-            const { ConversationCollection } = await import('../../database/collections/ConversationCollection');
-            const vectorStore = await context.serviceManager.getService<any>('vectorStore');
-            const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-            const conversationCollection = new ConversationCollection(vectorStore);
-            return new ConversationRepository(conversationCollection, embeddingService);
+            const { ConversationService } = await import('../../services/ConversationService');
+            const { FileSystemService } = await import('../../services/storage/FileSystemService');
+            const { IndexManager } = await import('../../services/storage/IndexManager');
+
+            const fileSystem = new FileSystemService(context.plugin);
+            const indexManager = new IndexManager(fileSystem);
+            return new ConversationService(context.plugin, fileSystem, indexManager);
         }
     },
-    
+
+    // Chat service with direct agent integration via MCPConnector
     {
         name: 'chatService',
-        dependencies: ['conversationRepository', 'llmService', 'embeddingService'],
+        dependencies: ['conversationService', 'llmService'],
         create: async (context) => {
             const { ChatService } = await import('../../services/chat/ChatService');
-            const conversationRepo = await context.serviceManager.getService<any>('conversationRepository');
-            const llmService = await context.serviceManager.getService<any>('llmService');
-            const embeddingService = await context.serviceManager.getService<any>('embeddingService');
-            
-            // Get MCP server URL from connector
-            let mcpServerUrl: string | undefined;
-            try {
-                const mcpServer = context.connector?.getServer?.();
-                mcpServerUrl = mcpServer?.getServerUrl?.() || 'http://localhost:3000/sse';
-            } catch (error) {
-                console.warn('[ServiceDefinitions] Failed to get MCP server URL:', error);
-                mcpServerUrl = 'http://localhost:3000/sse';
-            }
-            
-            return new ChatService({
-                conversationRepo,
-                llmService,
-                embeddingService,
-                vaultName: context.app.vault.getName(),
-                mcpConnector: context.connector,
-                mcpServerUrl
-            });
+
+            const conversationService = await context.serviceManager.getService('conversationService');
+            const llmService = await context.serviceManager.getService('llmService');
+
+            return new ChatService(
+                {
+                    conversationService,
+                    llmService,
+                    vaultName: context.app.vault.getName(),
+                    mcpConnector: context.connector
+                },
+                {
+                    maxToolIterations: 10,
+                    toolTimeout: 30000,
+                    enableToolChaining: true
+                }
+            );
         }
     }
 ];
@@ -309,30 +184,15 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
  * Additional services for UI and maintenance functionality
  */
 export const ADDITIONAL_SERVICE_FACTORIES = [
-    {
-        name: 'fileEmbeddingAccessService',
-        dependencies: ['vectorStore'],
-        factory: async (deps: any) => {
-            const { FileEmbeddingAccessService } = await import('../../database/services/indexing/FileEmbeddingAccessService');
-            return new FileEmbeddingAccessService(deps.plugin, deps.vectorStore);
-        }
-    },
-    
-    {
-        name: 'usageStatsService',
-        dependencies: ['embeddingService', 'vectorStore'],
-        factory: async (deps: any) => {
-            const { UsageStatsService } = await import('../../database/services/usage/UsageStatsService');
-            return new UsageStatsService(deps.embeddingService, deps.vectorStore, deps.memorySettings);
-        }
-    },
-    
-    {
-        name: 'cacheManager',
-        dependencies: ['workspaceService', 'memoryService'],
-        factory: async (deps: any) => {
-            const { CacheManager } = await import('../../database/services/cache/CacheManager');
-            return new CacheManager(deps.app, deps.workspaceService, deps.memoryService);
-        }
-    }
+    // Note: ChatDatabaseService removed in simplify-search-architecture
+    // Chat data now stored in simplified JSON format
+];
+
+/**
+ * Services that require special initialization
+ */
+export const SPECIALIZED_SERVICES = [
+    'cacheManager',           // Requires dependency injection
+    'sessionContextManager',  // Requires settings configuration
+    'chatService'             // Requires MCP client initialization
 ];

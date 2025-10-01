@@ -45,7 +45,6 @@ export const AGENT_REGISTRY = {
     ] as const,
     capabilities: ['create', 'read', 'update', 'delete', 'batch'] as string[],
     requiresVault: true,
-    requiresEmbeddings: false
   },
 
   /**
@@ -70,16 +69,15 @@ export const AGENT_REGISTRY = {
     ] as const,
     capabilities: ['create', 'read', 'update', 'delete', 'move', 'duplicate'] as string[],
     requiresVault: true,
-    requiresEmbeddings: false
   },
 
   /**
-   * Vault Librarian - Search and embeddings operations for Obsidian vault
+   * Vault Librarian - Search operations for Obsidian vault
    */
   vaultLibrarian: {
     name: 'vaultLibrarian',
     displayName: 'Vault Librarian',
-    description: 'Search and embeddings operations for Obsidian vault',
+    description: 'Search operations for Obsidian vault',
     version: '1.0.0', 
     category: AGENT_CATEGORIES.SEARCH_RETRIEVAL,
     modes: [
@@ -89,9 +87,8 @@ export const AGENT_REGISTRY = {
       'searchMemory',
       'batch'
     ] as const,
-    capabilities: ['search', 'semantic-search', 'hybrid-search', 'batch'] as string[],
+    capabilities: ['search', 'text-search', 'batch'] as string[],
     requiresVault: true,
-    requiresEmbeddings: true
   },
 
   /**
@@ -127,7 +124,6 @@ export const AGENT_REGISTRY = {
     ] as const,
     capabilities: ['session-management', 'state-management', 'workspace-management', 'contextual-recall'] as string[],
     requiresVault: true,
-    requiresEmbeddings: true
   },
 
   /**
@@ -154,7 +150,6 @@ export const AGENT_REGISTRY = {
     ] as const,
     capabilities: ['prompt-management', 'llm-execution', 'model-selection', 'batch-execution'] as string[],
     requiresVault: false,
-    requiresEmbeddings: false
   },
 
   /**
@@ -172,7 +167,6 @@ export const AGENT_REGISTRY = {
     ] as const,
     capabilities: ['command-execution', 'system-integration'] as string[],
     requiresVault: true,
-    requiresEmbeddings: false
   }
 } as const;
 
@@ -229,12 +223,6 @@ export class AgentRegistryUtils {
     );
   }
 
-  /**
-   * Get agents that require embeddings
-   */
-  static getEmbeddingDependentAgents(): AgentConfig[] {
-    return Object.values(AGENT_REGISTRY).filter(agent => agent.requiresEmbeddings);
-  }
 
   /**
    * Validate agent and mode combination

@@ -17,10 +17,13 @@ export interface MessageManagerEvents {
   onToolExecutionStarted: (messageId: string, toolCall: { id: string; name: string; parameters?: any }) => void;
   onToolExecutionCompleted: (messageId: string, toolId: string, result: any, success: boolean, error?: string) => void;
   onMessageIdUpdated: (oldId: string, newId: string, updatedMessage: ConversationMessage) => void;
+  onGenerationAborted: (messageId: string, partialContent: string) => void;
 }
 
 export class MessageManager {
   private isLoading = false;
+  private currentAbortController: AbortController | null = null;
+  private currentStreamingMessageId: string | null = null;
 
   constructor(
     private chatService: ChatService,
@@ -47,6 +50,9 @@ export class MessageManager {
       systemPrompt?: string;
     }
   ): Promise<void> {
+    // Declare aiMessageId in function scope so catch block can access it
+    let aiMessageId: string | null = null;
+
     try {
       this.setLoading(true);
 
@@ -55,20 +61,22 @@ export class MessageManager {
         id: `msg_${Date.now()}_user`,
         role: 'user' as const,
         content: message,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        conversationId: conversation.id
       };
-      
+
       // Add user message to conversation and display immediately (progressive updates only)
       conversation.messages.push(userMessage);
       this.events.onMessageAdded(userMessage);
-      
+
       // 2. Create placeholder AI message with loading animation
-      const aiMessageId = `msg_${Date.now()}_ai`;
+      aiMessageId = `msg_${Date.now()}_ai`;
       const placeholderAiMessage: ConversationMessage = {
         id: aiMessageId,
         role: 'assistant' as const,
         content: '',
         timestamp: Date.now(),
+        conversationId: conversation.id,
         isLoading: true
       };
       
@@ -78,6 +86,10 @@ export class MessageManager {
 
       // 3. Stream AI response
       try {
+        // Create abort controller for this request
+        this.currentAbortController = new AbortController();
+        this.currentStreamingMessageId = aiMessageId;
+
         // First add the user message to repository
         const userMessageResult = await this.chatService.addMessage({
           conversationId: conversation.id,
@@ -124,16 +136,16 @@ export class MessageManager {
         let streamedContent = '';
         let toolCalls: any[] | undefined = undefined;
 
-        // Stream the AI response
+        // Stream the AI response (conversation will be loaded from storage inside the method)
         for await (const chunk of this.chatService.generateResponseStreaming(
           conversation.id,
           message,
-          conversation,
           {
             provider: options?.provider,
             model: options?.model,
             systemPrompt: options?.systemPrompt,
-            messageId: aiMessageId // Pass the placeholder messageId for UI consistency
+            messageId: aiMessageId, // Pass the placeholder messageId for UI consistency
+            abortSignal: this.currentAbortController.signal
           }
         )) {
           
@@ -164,11 +176,10 @@ export class MessageManager {
               conversation.messages[placeholderMessageIndex] = {
                 ...conversation.messages[placeholderMessageIndex],
                 content: streamedContent,
-                tool_calls: toolCalls,
-                isLoading: false
+                toolCalls: toolCalls
               };
             }
-            
+
             // Send final complete content for any final processing
             this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false); // isComplete = true, isIncremental = false
             // Streaming complete - conversation updated without re-render
@@ -176,14 +187,57 @@ export class MessageManager {
           }
         }
 
+        // After streaming completes, reload conversation from storage to sync with saved messages
+        const freshConversation = await this.chatService.getConversation(conversation.id);
+        if (freshConversation) {
+          // Update the conversation object with fresh data
+          Object.assign(conversation, freshConversation);
+          console.log('[MessageManager] Reloaded conversation from storage:', {
+            conversationId: conversation.id,
+            messageCount: conversation.messages.length
+          });
+        }
+
+        // Notify that conversation has been updated
+        console.log('[MessageManager] Streaming complete, firing onConversationUpdated');
+        this.events.onConversationUpdated(conversation);
+
       } catch (sendError) {
         this.events.onError('Failed to send message');
         this.removeLoadingMessage(conversation, aiMessageId);
         throw sendError;
       }
     } catch (error) {
-      this.events.onError('Failed to send message');
+      // Check if this was an abort (user clicked stop)
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[MessageManager] ⛔ Generation stopped by user - saving partial message');
+
+        if (aiMessageId) {
+          // Save the partial AI message to conversation history
+          const aiMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+          if (aiMessageIndex >= 0) {
+            const partialContent = conversation.messages[aiMessageIndex].content;
+
+            // Mark as not loading anymore
+            conversation.messages[aiMessageIndex].isLoading = false;
+
+            // Save conversation with partial message
+            await this.chatService.updateConversation(conversation);
+
+            // Finalize streaming with partial content (stops animation, renders final content)
+            this.events.onStreamingUpdate(aiMessageId, partialContent, true, false);
+
+            // Update UI to show final partial message
+            this.events.onConversationUpdated(conversation);
+
+            console.log('[MessageManager] ✅ Partial message saved and persisted');
+          }
+        }
+      } else {
+        this.events.onError('Failed to send message');
+      }
     } finally {
+      this.currentAbortController = null;
       this.setLoading(false);
     }
   }
@@ -283,14 +337,13 @@ export class MessageManager {
       // Reset the existing AI message to loading state by clearing its content
       this.events.onStreamingUpdate(aiMessageId, '', false, false);
 
-      // Generate new AI response with streaming
+      // Generate new AI response with streaming (conversation loaded from storage inside the method)
       let streamedContent = '';
       let toolCalls: any[] | undefined = undefined;
 
       for await (const chunk of this.chatService.generateResponseStreaming(
         conversation.id,
         userMessage.content,
-        conversation,
         {
           provider: options?.provider,
           model: options?.model,
@@ -318,7 +371,8 @@ export class MessageManager {
         role: 'assistant',
         content: streamedContent,
         timestamp: Date.now(),
-        tool_calls: toolCalls
+        conversationId: conversation.id,
+        toolCalls: toolCalls
       };
 
       // Add alternative using BranchManager
@@ -377,7 +431,8 @@ export class MessageManager {
       id: `temp_${Date.now()}`,
       role: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      conversationId: conversation.id
     };
     
     conversation.messages.push(message);
@@ -392,6 +447,30 @@ export class MessageManager {
     if (messageIndex >= 0) {
       conversation.messages.splice(messageIndex, 1);
       this.events.onConversationUpdated(conversation);
+    }
+  }
+
+  /**
+   * Cancel current generation (abort streaming) - immediate kill switch
+   */
+  cancelCurrentGeneration(): void {
+    if (this.currentAbortController && this.currentStreamingMessageId) {
+      console.log('[MessageManager] ⛔ KILL SWITCH - Aborting current generation');
+
+      const messageId = this.currentStreamingMessageId;
+
+      // Immediately abort the stream
+      this.currentAbortController.abort();
+      this.currentAbortController = null;
+      this.currentStreamingMessageId = null;
+
+      // Immediately reset loading state so UI updates instantly
+      this.setLoading(false);
+
+      // Fire immediate abort event to stop UI animations NOW
+      this.events.onGenerationAborted(messageId, '');
+
+      console.log('[MessageManager] ✅ Generation stopped - UI ready for next message');
     }
   }
 

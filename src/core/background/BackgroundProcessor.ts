@@ -11,7 +11,6 @@ import { Notice } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import type { Settings } from '../../settings';
 import type { SettingsTab } from '../../components/SettingsTab';
-import type { IVectorStore } from '../../database/interfaces/IVectorStore';
 import { UpdateManager } from '../../utils/UpdateManager';
 
 export interface BackgroundProcessorConfig {
@@ -50,41 +49,8 @@ export class BackgroundProcessor {
                 }
                 
                 this.hasRunBackgroundStartup = true;
-                
-                // STEP 1: Perform deferred migration first (after file system is ready)
-                try {
-                    const fileEventManager = await this.config.waitForService('fileEventManager', 5000);
-                    if (fileEventManager && typeof (fileEventManager as any).getCoordinator === 'function') {
-                        const coordinator = (fileEventManager as any).getCoordinator();
-                        if (coordinator && typeof coordinator.getIncompleteFilesManager === 'function') {
-                            const incompleteFilesManager = coordinator.getIncompleteFilesManager();
-                            await incompleteFilesManager.performDeferredMigration();
-                        } else {
-                            console.warn('[BackgroundProcessor] ⚠️ FileEventCoordinator or IncompleteFilesStateManager not available');
-                        }
-                    } else {
-                        console.warn('[BackgroundProcessor] ⚠️ Could not access FileEventManager for deferred migration');
-                    }
-                } catch (error) {
-                    console.error('[BackgroundProcessor] ❌ Deferred migration failed:', error);
-                }
-                
-                const memorySettings = this.config.settings.settings.memory;
-                const embeddingStrategy = memorySettings?.embeddingStrategy || 'idle';
-                
-                if (embeddingStrategy === 'startup') {
-                    
-                    // Wait for FileEventManager to be ready (with retry logic)
-                    const fileEventManager = await this.config.waitForService('fileEventManager', 30000);
-                    if (fileEventManager && typeof (fileEventManager as any).processStartupQueue === 'function') {
-                        await (fileEventManager as any).processStartupQueue();
-                    } else {
-                        console.warn('[BackgroundProcessor] FileEventManager not available for background startup processing');
-                        // Reset flag so it can be retried if needed
-                        this.hasRunBackgroundStartup = false;
-                    }
-                } else {
-                }
+
+                // Background startup processing completed
             } catch (error) {
                 console.error('[BackgroundProcessor] Error in background startup processing:', error);
                 // Reset flag on error so it can be retried
@@ -136,33 +102,19 @@ export class BackgroundProcessor {
     }
 
     /**
-     * Validate search functionality - ensure core services are available
+     * Validate core services are available
      */
     async validateSearchFunctionality(): Promise<void> {
         try {
-            // Test 1: Validate vectorStore service is available (ChromaDB)
-            const vectorStore = await this.config.getService<IVectorStore>('vectorStore', 5000);
-            if (vectorStore) {
-                // Test basic collection operations
-                try {
-                    const collections = await vectorStore.listCollections();
-                } catch (collectionError) {
-                    console.warn('[VALIDATION] Collection access error (may be normal during startup):', collectionError);
-                }
-            } else {
-                console.warn('[VALIDATION] ⚠️ VectorStore service not available');
-            }
-            
-            // Test 2: Validate core services are available
             const serviceManager = this.config.serviceManager;
             if (serviceManager) {
                 const metadata = serviceManager.getAllServiceStatus();
                 const serviceNames = Object.keys(metadata);
-                
-                const coreServices = ['vectorStore', 'embeddingService', 'workspaceService', 'memoryService'];
+
+                const coreServices = ['workspaceService', 'memoryService', 'chatService'];
                 const availableCore = coreServices.filter(service => serviceNames.includes(service));
+                console.log('[VALIDATION] ✅ Core services available:', availableCore);
             }
-            
         } catch (error) {
             console.warn('[VALIDATION] Service validation error:', error);
         }

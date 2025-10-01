@@ -14,7 +14,7 @@
 
 import { App } from 'obsidian';
 import { MemoryService } from "../services/MemoryService";
-import { WorkspaceService } from "../services/WorkspaceService";
+import { WorkspaceService } from '../../../services/WorkspaceService';
 import { getErrorMessage } from '../../../utils/errorUtils';
 
 /**

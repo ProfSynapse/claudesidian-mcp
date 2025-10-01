@@ -4,7 +4,8 @@
  */
 
 import { Plugin, getAllTags } from 'obsidian';
-import { MetadataSearchService } from '../../../../../../database/services/search/MetadataSearchService';
+// MetadataSearchService removed in simplified architecture
+type MetadataSearchService = any;
 import { UniversalSearchResultItem } from '../../../../types';
 
 export interface MetadataSearchResult {
@@ -97,10 +98,10 @@ export class MetadataSearchStrategy {
       const allPropertyKeys = await this.metadataSearchService.getAllPropertyKeys();
       
       const matchingProperties = allPropertyKeys
-        .filter(key => key.toLowerCase().includes(normalizedQuery))
+        .filter((key: string) => key.toLowerCase().includes(normalizedQuery))
         .slice(0, limit);
 
-      const results = matchingProperties.map((key: string) => ({
+      const results = matchingProperties.map((key: any) => ({
         id: `property:${key}`,
         title: key,
         snippet: `Property: ${key}`,

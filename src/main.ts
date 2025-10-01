@@ -2,123 +2,59 @@ import { Plugin, Notice } from 'obsidian';
 import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { ServiceManager } from './core/ServiceManager';
-import { ServiceAccessMixin } from './core/ServiceAccessMixin';
 import { PluginLifecycleManager, type PluginLifecycleConfig } from './core/PluginLifecycleManager';
-import { logger } from './utils/logger';
-import { memoryMonitor } from './services/memory';
-
-// Type imports for service interfaces
-import type { EmbeddingService } from './database/services/core/EmbeddingService';
-import type { FileEmbeddingAccessService } from './database/services/indexing/FileEmbeddingAccessService';
-import type { CollectionService } from "./database/services/core/CollectionService";
-import type { IVectorStore } from './database/interfaces/IVectorStore';
-import type { WorkspaceService } from './agents/memoryManager/services/WorkspaceService';
-import type { MemoryService } from './agents/memoryManager/services/MemoryService';
-import type { EventManager } from './services/EventManager';
-import type { FileEventManagerModular } from './services/file-events/FileEventManagerModular';
-import type { UsageStatsService } from './database/services/usage/UsageStatsService';
-import type { CacheManager } from './database/services/cache/CacheManager';
-import type { ProcessedFilesStateManager } from './database/services/indexing/state/ProcessedFilesStateManager';
-import type { MemoryTraceService } from './agents/memoryManager/services/MemoryTraceService';
-import type { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
-import { DefaultWorkspaceManager } from './services/workspace/DefaultWorkspaceManager';
 
 export default class ClaudesidianPlugin extends Plugin {
     public settings!: Settings;
     private connector!: MCPConnector;
     private serviceManager!: ServiceManager;
-    private serviceAccessMixin!: ServiceAccessMixin;
     private lifecycleManager!: PluginLifecycleManager;
-    private defaultWorkspaceManager!: DefaultWorkspaceManager;
-    
-    // Service properties - delegated to ServiceAccessMixin for consistent access
-    public get vectorStore(): IVectorStore | null { 
-        return this.serviceAccessMixin?.vectorStore || null; 
-    }
-    public get embeddingService(): EmbeddingService | null { 
-        return this.serviceAccessMixin?.embeddingService || null; 
-    }
-    public get fileEmbeddingAccessService(): FileEmbeddingAccessService | null { 
-        return this.serviceAccessMixin?.fileEmbeddingAccessService || null; 
-    }
-    public get directCollectionService(): CollectionService | null { 
-        return this.serviceAccessMixin?.directCollectionService || null; 
-    }
-    public get workspaceService(): WorkspaceService | null { 
-        return this.serviceAccessMixin?.workspaceService || null; 
-    }
-    public get memoryService(): MemoryService | null { 
-        return this.serviceAccessMixin?.memoryService || null; 
-    }
-    public get fileEventManager(): FileEventManagerModular | null { 
-        return this.serviceAccessMixin?.fileEventManager || null; 
-    }
-    public get eventManager(): EventManager | null { 
-        return this.serviceAccessMixin?.eventManager || null; 
-    }
-    public get usageStatsService(): UsageStatsService | null { 
-        return this.serviceAccessMixin?.usageStatsService || null; 
-    }
-    public get cacheManager(): CacheManager | null { 
-        return this.serviceAccessMixin?.cacheManager || null; 
-    }
-    public get stateManager(): ProcessedFilesStateManager | null { 
-        return this.serviceAccessMixin?.stateManager || null; 
-    }
-    public get memoryTraceService(): MemoryTraceService | null { 
-        return this.serviceAccessMixin?.memoryTraceService || null; 
-    }
-    public get toolCallCaptureService(): ToolCallCaptureService | null { 
-        return this.serviceAccessMixin?.toolCallCaptureService || null; 
-    }
-    
-    public getDefaultWorkspaceManager(): DefaultWorkspaceManager | null {
-        return this.defaultWorkspaceManager || null;
-    }
-    
+
     /**
-     * Get a service asynchronously, waiting for it to be ready if needed
+     * Get a service asynchronously
      */
-    public async getService<T>(name: string, timeoutMs: number = 10000): Promise<T | null> {
-        return this.serviceAccessMixin?.getService<T>(name, timeoutMs) || null;
-    }
-    
-    // Service registry - returns initialized services from container
-    public get services(): Record<string, any> {
-        return this.serviceAccessMixin?.services || {};
-    }
-    
-    async onload() {
-        const startTime = performance.now();
-        const initialMemory = this.getMemoryUsage();
-        
-        // Starting plugin initialization
-        
-        // Start memory monitoring with balanced settings
-        memoryMonitor.startMonitoring();
-        
+    public async getService<T>(name: string, timeoutMs?: number): Promise<T | null> {
+        if (!this.serviceManager) {
+            return null;
+        }
         try {
-            // PHASE 1: Foundation - Create service manager and settings
-            const phase1Start = performance.now();
+            return await this.serviceManager.getService<T>(name);
+        } catch (error) {
+            console.error(`[Claudesidian] Failed to get service ${name}:`, error);
+            return null;
+        }
+    }
+
+    // Get service if already initialized (non-blocking)
+    public getServiceIfReady<T>(name: string): T | null {
+        if (!this.serviceManager) {
+            return null;
+        }
+        return this.serviceManager.getServiceIfReady<T>(name);
+    }
+
+    // Service registry - for backward compatibility
+    public get services(): Record<string, any> {
+        const services: Record<string, any> = {};
+        if (!this.serviceManager) {
+            return services;
+        }
+        // Return only ready services for immediate access
+        return services;
+    }
+
+    async onload() {
+        try {
+            console.log('[Claudesidian] Starting plugin initialization...');
+
+            // Create service manager and settings
             this.settings = new Settings(this);
             this.serviceManager = new ServiceManager(this.app, this);
-            const phase1End = performance.now();
-            const phase1Memory = this.getMemoryUsage();
-            
-            // Phase 1 (Foundation) complete
-            
-            // PHASE 2: Create service access mixin for typed service access
-            this.serviceAccessMixin = new ServiceAccessMixin(this.serviceManager);
-            
-            // Initialize default workspace manager
-            this.defaultWorkspaceManager = new DefaultWorkspaceManager(this.app);
-            await this.defaultWorkspaceManager.initialize();
-            
-            // PHASE 3: Initialize connector skeleton (no agents yet)
+
+            // Initialize connector skeleton (no agents yet)
             this.connector = new MCPConnector(this.app, this);
-            
-            // PHASE 4: Create and initialize lifecycle manager
-            const phase4Start = performance.now();
+
+            // Create and initialize lifecycle manager
             const lifecycleConfig: PluginLifecycleConfig = {
                 plugin: this,
                 app: this.app,
@@ -127,162 +63,41 @@ export default class ClaudesidianPlugin extends Plugin {
                 connector: this.connector,
                 manifest: this.manifest
             };
-            
+
             this.lifecycleManager = new PluginLifecycleManager(lifecycleConfig);
             await this.lifecycleManager.initialize();
-            
-            const phase4End = performance.now();
-            const finalMemory = this.getMemoryUsage();
-            
-            // Phase 4 (Lifecycle) complete
 
-            const totalTime = performance.now() - startTime;
-            const totalMemoryDelta = finalMemory - initialMemory;
+            console.log('[Claudesidian] Plugin initialization complete');
 
-            // Initialization complete
-
-            // Warn about high memory usage during initialization
-            if (totalMemoryDelta > 100 * 1024 * 1024) { // > 100MB
-                console.warn(`HIGH MEMORY USAGE: Plugin initialization used ${Math.round(totalMemoryDelta / 1024 / 1024)}MB`);
-            }
-            
         } catch (error) {
-            const errorTime = performance.now();
-            const errorMemory = this.getMemoryUsage();
-            
-            console.error('Critical initialization failure:', {
-                error: error instanceof Error ? error.message : String(error),
-                errorTimeMs: Math.round(errorTime - startTime),
-                memoryDeltaMB: Math.round((errorMemory - initialMemory) / 1024 / 1024 * 100) / 100
-            });
-            // Fallback mode is handled by PluginLifecycleManager
+            console.error('[Claudesidian] Plugin loading failed:', error);
+            new Notice('Claudesidian: Plugin failed to load. Check console for details.');
+            throw error;
         }
     }
-    
-    /**
-     * Reload configuration for all services after settings change
-     */
-    reloadConfiguration(): void {
-        this.lifecycleManager?.reloadConfiguration();
-    }
-    
-    /**
-     * Get the connector instance
-     */
-    getConnector(): MCPConnector {
-        return this.connector;
-    }
 
-    /**
-     * Get the settings instance
-     */
-    getSettings(): Settings {
-        return this.settings;
-    }
-    
-    /**
-     * Get the memory manager agent
-     */
-    getMemoryManager(): any {
-        return this.connector?.getMemoryManager();
-    }
-    
-    /**
-     * Get service manager instance
-     */
-    getServiceManager(): ServiceManager {
-        return this.serviceManager;
-    }
-    
-    /**
-     * Get service container for backward compatibility
-     */
-    getServiceContainer(): ServiceManager {
-        return this.serviceManager;
-    }
-
-    /**
-     * Get current memory usage in bytes (browser API)
-     */
-    private getMemoryUsage(): number {
-        if (typeof performance !== 'undefined' && 'memory' in performance) {
-            return (performance as any).memory?.usedJSHeapSize || 0;
-        }
-        return 0;
-    }
-
-    /**
-     * Get detailed memory information for diagnostics
-     */
-    getMemoryInfo(): {
-        pluginMemoryMB: number;
-        totalMemoryMB: number;
-        availableMemoryMB: number;
-        memoryUsagePercent: number;
-        pluginContributionPercent: number;
-    } {
-        const currentMemory = this.getMemoryUsage();
-        const initialMemory = 0; // We don't store initial memory, so we can't calculate plugin contribution precisely
-        
-        if (typeof performance !== 'undefined' && 'memory' in performance) {
-            const memory = (performance as any).memory;
-            const totalMemoryMB = (memory.totalJSHeapSize || 0) / (1024 * 1024);
-            const usedMemoryMB = (memory.usedJSHeapSize || 0) / (1024 * 1024);
-            const limitMemoryMB = (memory.jsHeapSizeLimit || 0) / (1024 * 1024);
-            const availableMemoryMB = limitMemoryMB - usedMemoryMB;
-            const memoryUsagePercent = limitMemoryMB > 0 ? (usedMemoryMB / limitMemoryMB) * 100 : 0;
-            
-            return {
-                pluginMemoryMB: usedMemoryMB, // Approximation - total heap at time of check
-                totalMemoryMB: limitMemoryMB,
-                availableMemoryMB,
-                memoryUsagePercent,
-                pluginContributionPercent: 0 // Can't calculate without baseline
-            };
-        }
-        
-        return {
-            pluginMemoryMB: 0,
-            totalMemoryMB: 0,
-            availableMemoryMB: 0,
-            memoryUsagePercent: 0,
-            pluginContributionPercent: 0
-        };
-    }
-
-    /**
-     * Get memory pressure level for diagnostics
-     */
-    private getMemoryPressureLevel(): string {
-        if (typeof performance !== 'undefined' && 'memory' in performance) {
-            const memory = (performance as any).memory;
-            if (!memory) return 'unknown';
-            
-            const used = memory.usedJSHeapSize || 0;
-            const limit = memory.jsHeapSizeLimit || 0;
-            
-            if (limit === 0) return 'unknown';
-            
-            const percentage = (used / limit) * 100;
-            if (percentage > 90) return 'critical';
-            if (percentage > 75) return 'high';
-            if (percentage > 50) return 'moderate';
-            return 'low';
-        }
-        return 'unknown';
-    }
-    
     async onunload() {
-        try {
-            // Stop memory monitoring
-            memoryMonitor.stopMonitoring();
-            
-            // Delegate cleanup to lifecycle manager
-            if (this.lifecycleManager) {
-                await this.lifecycleManager.shutdown();
-            }
-        } catch (error) {
-            console.error('Error during cleanup:', error);
+        console.log('[Claudesidian] Unloading plugin...');
+
+        // Shutdown lifecycle manager first (handles UI cleanup)
+        if (this.lifecycleManager) {
+            await this.lifecycleManager.shutdown();
         }
+
+        // Stop connector
+        if (this.connector) {
+            await this.connector.stop();
+        }
+
+        // Service manager cleanup handled by lifecycle manager
+
+        console.log('[Claudesidian] Plugin unloaded');
+    }
+
+    /**
+     * Get service manager for direct access if needed
+     */
+    public getServiceContainer(): ServiceManager {
+        return this.serviceManager;
     }
 }

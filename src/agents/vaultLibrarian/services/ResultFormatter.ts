@@ -386,8 +386,8 @@ export class ResultFormatter implements ResultFormatterInterface {
     const metadata = result.metadata;
     const parts: string[] = [];
 
-    if (metadata.activityType) {
-      parts.push(metadata.activityType);
+    if (metadata.type) {
+      parts.push(metadata.type);
     }
 
     if (result.type === MemoryType.TOOL_CALL) {

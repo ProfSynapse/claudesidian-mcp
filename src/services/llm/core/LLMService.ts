@@ -144,11 +144,15 @@ export class LLMService {
 
     if (providers.ollama?.enabled && providers.ollama.apiKey) {
       try {
-        // For Ollama, apiKey is actually the server URL, and we need the configured model
-        const defaultModel = this.settings.defaultModel.provider === 'ollama' 
-          ? this.settings.defaultModel.model 
-          : ''; // No fallback - user must configure model
-        this.adapters.set('ollama', new OllamaAdapter(providers.ollama.apiKey, defaultModel));
+        // For Ollama, apiKey is the server URL, ollamaModel is the user-configured model
+        const ollamaModel = providers.ollama.ollamaModel;
+
+        if (!ollamaModel || !ollamaModel.trim()) {
+          console.warn('Ollama enabled but no model configured');
+          return;
+        }
+
+        this.adapters.set('ollama', new OllamaAdapter(providers.ollama.apiKey, ollamaModel));
       } catch (error) {
         console.warn('Failed to initialize Ollama adapter:', error);
       }
@@ -478,16 +482,37 @@ export class LLMService {
         console.log(`[LLMService] ${provider} adapter will handle ${options.tools.length} tools`);
       }
 
-      // Convert message array to single prompt
-      const userPrompt = messages
-        .filter(msg => msg.role === 'user')
-        .map(msg => msg.content)
-        .join('\n');
-      
-      const systemPrompt = messages
-        .filter(msg => msg.role === 'system')
-        .map(msg => msg.content)
-        .join('\n');
+      // Get only the latest user message as the actual prompt
+      const latestUserMessage = messages[messages.length - 1];
+      const userPrompt = latestUserMessage?.role === 'user' ? latestUserMessage.content : '';
+
+      // Build conversation history from all previous messages
+      let conversationHistory = '';
+      if (messages.length > 1) {
+        conversationHistory = messages.slice(0, -1).map((msg: any) => {
+          if (msg.role === 'user') return `User: ${msg.content}`;
+          if (msg.role === 'assistant') {
+            if (msg.tool_calls) return `Assistant: [Calling tools: ${msg.tool_calls.map((tc: any) => tc.function.name).join(', ')}]`;
+            return `Assistant: ${msg.content}`;
+          }
+          if (msg.role === 'tool') return `Tool Result: ${msg.content}`;
+          if (msg.role === 'system') return `System: ${msg.content}`;
+          return '';
+        }).filter(Boolean).join('\n');
+      }
+
+      // Combine system prompt + conversation history
+      const systemPrompt = [
+        options?.systemPrompt || '',
+        conversationHistory ? '\n=== Conversation History ===\n' + conversationHistory : ''
+      ].filter(Boolean).join('\n');
+
+      console.log('[LLM-ACTUAL] ========== WHAT LLM ACTUALLY RECEIVES ==========');
+      console.log('[LLM-ACTUAL] userPrompt:', userPrompt);
+      console.log('[LLM-ACTUAL] systemPrompt (with history):', systemPrompt);
+      console.log('[LLM-ACTUAL] Conversation history included:', conversationHistory ? 'YES' : 'NO');
+      console.log('[LLM-ACTUAL] History length:', conversationHistory.length, 'chars');
+      console.log('[LLM-ACTUAL] ========== END WHAT LLM RECEIVES ==========');
 
       // Build generate options with tools
       const generateOptions = {
@@ -496,7 +521,7 @@ export class LLMService {
         tools: options?.tools,
         onToolEvent: options?.onToolEvent // Pass through tool event callback for live UI updates
       };
-      
+
       console.log('[LLMService Debug] generateOptions built with onToolEvent:', !!generateOptions.onToolEvent);
 
       // Remove verbose logging - only show model when using tools
@@ -629,14 +654,14 @@ export class LLMService {
           );
           
           console.log('[LLMService] Starting NEW stream for AI response to tool results...');
-          
+
           // Step 3: Start NEW stream with conversation history (pingpong)
           // Reset fullContent since this is a new conversation response
           fullContent = '';
-          
+
           for await (const chunk of adapter.generateStreamAsync('', {
             ...generateOptions,
-            // Keep tools available for continued tool calling
+            // Keep tools available for continued tool calling after seeing results
             // Pass conversation history for pingpong
             conversationHistory: conversationHistory
           })) {
@@ -805,14 +830,8 @@ export class LLMService {
 
               } catch (recursiveError) {
                 console.error('[LLMService] Recursive tool execution failed:', recursiveError);
-                const errorMessage = `\n\nRecursive tool execution failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`;
-                fullContent += errorMessage;
-                yield {
-                  chunk: errorMessage,
-                  complete: false,
-                  content: fullContent,
-                  toolCalls: undefined
-                };
+                // Don't append error to content - these are expected failures during streaming (incomplete JSON)
+                // Tool results will be shown in tool accordions from the toolCalls array
               }
             }
             
@@ -824,15 +843,8 @@ export class LLMService {
           
         } catch (toolError) {
           console.error('[LLMService] Tool execution failed:', toolError);
-          // Add error message to the response
-          const errorMessage = `\n\nTool execution failed: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
-          fullContent += errorMessage;
-          yield {
-            chunk: errorMessage,
-            complete: false,
-            content: fullContent,
-            toolCalls: undefined
-          };
+          // Don't append error to content - these are expected failures during streaming (incomplete JSON)
+          // Tool results will be shown in tool accordions from the toolCalls array
         }
       }
       
@@ -864,15 +876,16 @@ export class LLMService {
     const conversationData: ConversationData = {
       id: 'temp',
       title: 'Tool Execution',
-      created_at: Date.now(),
-      last_updated: Date.now(),
+      created: Date.now(),
+      updated: Date.now(),
       messages: [
         // User message
         {
           id: 'user-1',
           role: 'user' as const,
           content: originalPrompt,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          conversationId: 'temp'
         },
         // Assistant message with tool calls
         {
@@ -880,9 +893,15 @@ export class LLMService {
           role: 'assistant' as const,
           content: '',
           timestamp: Date.now(),
-          tool_calls: toolCalls.map((tc, index) => ({
+          conversationId: 'temp',
+          toolCalls: toolCalls.map((tc, index) => ({
             id: tc.id,
+            type: tc.type || 'function',
             name: tc.function?.name || tc.name,
+            function: tc.function || {
+              name: tc.function?.name || tc.name || '',
+              arguments: tc.function?.arguments || JSON.stringify(tc.parameters || {})
+            },
             parameters: tc.function?.arguments ? JSON.parse(tc.function.arguments) : (tc.parameters || {}),
             result: toolResults[index]?.result,
             success: toolResults[index]?.success || false,

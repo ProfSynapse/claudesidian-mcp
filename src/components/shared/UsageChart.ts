@@ -228,7 +228,6 @@ export class UsageChart {
             'ollama': '#8b5cf6',        // Purple for local
             'perplexity': '#20a4f7',    // Perplexity blue
             'xai': '#000000',           // xAI black
-            'embeddings': '#059669',    // Emerald green for embeddings
             'mistral': '#ff6b35',       // Mistral orange
             'cohere': '#39b5f1',        // Cohere blue
             'openrouter': '#6366f1'     // Indigo for OpenRouter

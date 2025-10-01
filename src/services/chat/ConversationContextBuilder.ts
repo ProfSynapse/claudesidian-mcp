@@ -53,12 +53,26 @@ export class ConversationContextBuilder {
    * 3. Final assistant message with response content
    */
   private static buildOpenAIContext(conversation: ConversationData, messages: any[]): any[] {
+    console.log('[CONTEXT-BUILDER] Starting to build OpenAI context from stored conversation');
+    console.log('[CONTEXT-BUILDER] Stored conversation has', conversation.messages.length, 'messages');
+
     conversation.messages.forEach((msg, index) => {
+      console.log(`[CONTEXT-BUILDER] Processing stored message ${index}:`, {
+        role: msg.role,
+        hasToolCalls: !!(msg.toolCalls && msg.toolCalls.length > 0),
+        toolCallCount: msg.toolCalls?.length || 0,
+        contentPreview: msg.content?.substring(0, 50)
+      });
+
       if (msg.role === 'user') {
-        messages.push({ role: 'user', content: msg.content });
+        const userMsg = { role: 'user', content: msg.content };
+        messages.push(userMsg);
+        console.log('[CONTEXT-BUILDER] → Added user message to LLM context');
       }
       else if (msg.role === 'assistant') {
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+
+          console.log('[CONTEXT-BUILDER] → Assistant message has tool calls, creating 3 LLM messages');
 
           // 1. Assistant message with original tool calls format
           const assistantMessage: any = {
@@ -66,8 +80,8 @@ export class ConversationContextBuilder {
             content: msg.content || null // OpenAI allows null content when tool calls are present
           };
 
-          // Convert our stored tool calls to OpenAI format
-          assistantMessage.tool_calls = msg.tool_calls.map(tc => ({
+          // Convert our stored tool calls to OpenAI format (use snake_case tool_calls)
+          assistantMessage.tool_calls = msg.toolCalls.map(tc => ({
             id: tc.id,
             type: 'function',
             function: {
@@ -77,9 +91,13 @@ export class ConversationContextBuilder {
           }));
 
           messages.push(assistantMessage);
+          console.log('[CONTEXT-BUILDER] → → Added assistant message WITH tool_calls:', {
+            toolCount: assistantMessage.tool_calls.length,
+            toolNames: assistantMessage.tool_calls.map((tc: any) => tc.function.name)
+          });
 
           // 2. Tool result messages for each tool call
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach((toolCall, tcIndex) => {
             const toolMessage = {
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -89,6 +107,11 @@ export class ConversationContextBuilder {
             };
 
             messages.push(toolMessage);
+            console.log(`[CONTEXT-BUILDER] → → Added tool result ${tcIndex + 1}:`, {
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              success: toolCall.success
+            });
           });
 
           // 3. If there's final content after tool execution, add another assistant message
@@ -97,16 +120,19 @@ export class ConversationContextBuilder {
               role: 'assistant',
               content: msg.content
             });
+            console.log('[CONTEXT-BUILDER] → → Added ANOTHER assistant message with content');
           }
         } else {
           // Regular assistant message without tools
           messages.push({ role: 'assistant', content: msg.content });
+          console.log('[CONTEXT-BUILDER] → Added regular assistant message (no tools)');
         }
       }
       else if (msg.role === 'tool') {
+        console.log('[CONTEXT-BUILDER] → Processing stored TOOL message, creating tool result messages');
         // Handle stored tool messages - convert tool_calls to individual tool result messages
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
-          msg.tool_calls.forEach(toolCall => {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          msg.toolCalls.forEach((toolCall, tcIndex) => {
             const toolMessage = {
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -116,11 +142,28 @@ export class ConversationContextBuilder {
             };
 
             messages.push(toolMessage);
+            console.log(`[CONTEXT-BUILDER] → → Added tool result ${tcIndex + 1} (from stored tool message):`, {
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              success: toolCall.success
+            });
           });
         }
       }
     });
-    
+
+    console.log('[CONTEXT-BUILDER] ===== FINAL CONTEXT BEING SENT TO LLM =====');
+    console.log('[CONTEXT-BUILDER] Total messages in LLM context:', messages.length);
+
+    // Log EXACT messages being sent to LLM
+    console.log('[LLM-MESSAGE] ========== EXACT MESSAGES ARRAY SENT TO LLM ==========');
+    messages.forEach((msg, idx) => {
+      console.log(`[LLM-MESSAGE] Message ${idx}:`, JSON.stringify(msg, null, 2));
+    });
+    console.log('[LLM-MESSAGE] ========== END EXACT MESSAGES ==========');
+
+    console.log('[CONTEXT-BUILDER] ===== END OF CONTEXT =====');
+
     return messages;
   }
   
@@ -134,7 +177,7 @@ export class ConversationContextBuilder {
         messages.push({ role: 'user', content: msg.content });
       }
       else if (msg.role === 'assistant') {
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
           // For Anthropic, assistant message contains both text AND tool_use blocks
           const content: any[] = [];
 
@@ -147,7 +190,7 @@ export class ConversationContextBuilder {
           }
 
           // Add tool_use blocks
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach(toolCall => {
             content.push({
               type: 'tool_use',
               id: toolCall.id,
@@ -163,7 +206,7 @@ export class ConversationContextBuilder {
 
           // Add tool results as user message with tool_result blocks
           const toolResultContent: any[] = [];
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach(toolCall => {
             toolResultContent.push({
               type: 'tool_result',
               tool_use_id: toolCall.id,
@@ -186,9 +229,9 @@ export class ConversationContextBuilder {
       }
       else if (msg.role === 'tool') {
         // Handle stored tool messages - convert to tool_result blocks in user messages
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
           const toolResultContent: any[] = [];
-          msg.tool_calls.forEach(toolCall => {
+          msg.toolCalls.forEach(toolCall => {
             toolResultContent.push({
               type: 'tool_result',
               tool_use_id: toolCall.id,

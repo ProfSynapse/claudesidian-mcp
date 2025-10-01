@@ -1,13 +1,13 @@
 /**
  * MessageDisplay - Main chat message display area
- * 
+ *
  * Shows conversation messages with user/AI bubbles and tool execution displays
  */
 
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { MessageBubble } from './MessageBubble';
 import { BranchManager } from '../services/BranchManager';
-import { App } from 'obsidian';
+import { App, setIcon } from 'obsidian';
 
 export class MessageDisplay {
   private conversation: ConversationData | null = null;
@@ -29,28 +29,16 @@ export class MessageDisplay {
    * Set conversation to display
    */
   setConversation(conversation: ConversationData): void {
-    // Set conversation data
-    
-    // Check if we're just updating an existing conversation
-    if (this.conversation && this.conversation.id === conversation.id) {
-      // Same conversation - check if we can avoid full re-render
-      
-      // Check if any message bubbles have progressive accordions
-      const hasProgressiveAccordions = this.messageBubbles.some(bubble => 
-        bubble.getProgressiveToolAccordions().size > 0
-      );
-      
-      // For message alternatives, we can preserve progressive accordions since alternatives don't affect structure
-      if (hasProgressiveAccordions) {
-        // Skip re-render to preserve progressive accordions
-        // Just update the conversation data without re-rendering
-        this.conversation = conversation;
-        this.scrollToBottom();
-        return;
-      }
-    }
-    
-    // Proceeding with full re-render
+    console.log('[TOOL-UI-DEBUG] MessageDisplay.setConversation called:', {
+      conversationId: conversation.id,
+      messageCount: conversation.messages.length,
+      isNewConversation: !this.conversation || this.conversation.id !== conversation.id
+    });
+
+    // Always re-render from the stored conversation data (single source of truth)
+    // Progressive tool accordions are temporary UI during streaming
+    // After streaming completes, we re-render with static ToolAccordion components from stored toolCalls
+    console.log('[TOOL-UI-DEBUG] Re-rendering from stored conversation data (single source of truth)');
     this.conversation = conversation;
     this.render();
     this.scrollToBottom();
@@ -64,11 +52,15 @@ export class MessageDisplay {
       id: `temp_${Date.now()}`,
       role: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      conversationId: this.conversation?.id || 'unknown'
     };
-    
+
     const bubble = this.createMessageBubble(message);
-    this.container.querySelector('.messages-container')?.appendChild(bubble);
+    const messagesContainer = this.container.querySelector('.messages-container');
+    if (messagesContainer) {
+      messagesContainer.appendChild(bubble);
+    }
     this.scrollToBottom();
   }
 
@@ -165,20 +157,21 @@ export class MessageDisplay {
     this.container.addClass('message-display');
 
     const welcome = this.container.createDiv('chat-welcome');
-    welcome.innerHTML = `
-      <div class="chat-welcome-content">
-        <div class="chat-welcome-icon">💬</div>
-        <h2>Welcome to AI Chat</h2>
-        <p>Start a conversation with your AI assistant. You can:</p>
-        <ul>
-          <li>Ask questions about your notes</li>
-          <li>Create and edit content</li>
-          <li>Search and organize your vault</li>
-          <li>Get help with any task</li>
-        </ul>
-        <p>Type a message below to get started!</p>
-      </div>
-    `;
+    const welcomeContent = welcome.createDiv('chat-welcome-content');
+
+    const welcomeIcon = welcomeContent.createDiv('chat-welcome-icon');
+    setIcon(welcomeIcon, 'message-circle');
+
+    welcomeContent.createEl('h2', { text: 'Welcome to AI Chat' });
+    welcomeContent.createEl('p', { text: 'Start a conversation with your AI assistant. You can:' });
+
+    const list = welcomeContent.createEl('ul');
+    list.createEl('li', { text: 'Ask questions about your notes' });
+    list.createEl('li', { text: 'Create and edit content' });
+    list.createEl('li', { text: 'Search and organize your vault' });
+    list.createEl('li', { text: 'Get help with any task' });
+
+    welcomeContent.createEl('p', { text: 'Type a message below to get started!' });
   }
 
   /**
@@ -186,7 +179,6 @@ export class MessageDisplay {
    */
   private render(): void {
     // Full render - clears existing progressive accordions
-    
     this.container.empty();
     this.container.addClass('message-display');
 
@@ -197,9 +189,10 @@ export class MessageDisplay {
 
     // Create scrollable messages container
     const messagesContainer = this.container.createDiv('messages-container');
-    
+
     // Clear previous message bubbles
     this.messageBubbles = [];
+    console.log('[TOOL-UI-DEBUG] Message bubbles array cleared, creating new bubbles');
 
     // Render all messages (no branch filtering needed for message-level alternatives)
     console.log('[MessageDisplay] Rendering conversation messages:', {
@@ -209,7 +202,7 @@ export class MessageDisplay {
         acc[msg.role] = (acc[msg.role] || 0) + 1;
         return acc;
       }, {} as Record<string, number>),
-      messagesWithToolCalls: this.conversation.messages.filter(msg => msg.tool_calls && msg.tool_calls.length > 0).length,
+      messagesWithToolCalls: this.conversation.messages.filter(msg => msg.toolCalls && msg.toolCalls.length > 0).length,
       toolMessages: this.conversation.messages.filter(msg => msg.role === 'tool').length
     });
 
@@ -217,8 +210,8 @@ export class MessageDisplay {
       console.log(`[MessageDisplay] Creating bubble for message ${index}:`, {
         id: message.id,
         role: message.role,
-        hasToolCalls: !!(message.tool_calls && message.tool_calls.length > 0),
-        toolCallCount: message.tool_calls?.length || 0,
+        hasToolCalls: !!(message.toolCalls && message.toolCalls.length > 0),
+        toolCallCount: message.toolCalls?.length || 0,
         contentPreview: message.content.substring(0, 50) + '...'
       });
 
@@ -324,18 +317,14 @@ export class MessageDisplay {
     });
 
     if (messageBubble) {
-      console.log('[MessageDisplay] Updating MessageBubble ID:', { from: oldId, to: newId });
-      
       // Update the MessageBubble's message reference and DOM attribute
       messageBubble.updateWithNewMessage(updatedMessage);
-      
+
       // Update the DOM attribute to reflect the new ID
       const element = messageBubble.getElement();
       if (element) {
         element.setAttribute('data-message-id', newId);
       }
-    } else {
-      console.log('[MessageDisplay] Could not find MessageBubble with old ID:', oldId);
     }
   }
 

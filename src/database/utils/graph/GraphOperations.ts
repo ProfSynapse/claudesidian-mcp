@@ -2,7 +2,7 @@ import { DEFAULT_GRAPH_BOOST_FACTOR, DEFAULT_GRAPH_MAX_DISTANCE } from './consta
 import { LinkUtils } from './LinkUtils';
 
 // Types needed for graph operations
-interface EmbeddingRecord {
+interface searchRecord {
     id: string;
     filePath: string;
     content: string;
@@ -47,9 +47,9 @@ export class GraphOperations {
      * @param graphOptions Graph boosting options
      */
     applyGraphBoost(
-        records: Array<{ record: EmbeddingRecord; similarity: number }>,
+        records: Array<{ record: searchRecord; similarity: number }>,
         graphOptions: GraphOptions
-    ): Array<{ record: EmbeddingRecord; similarity: number }> {
+    ): Array<{ record: searchRecord; similarity: number }> {
         const boostFactor = graphOptions.boostFactor || DEFAULT_GRAPH_BOOST_FACTOR;
         const maxDistance = graphOptions.maxDistance || DEFAULT_GRAPH_MAX_DISTANCE;
         const seedNotes = graphOptions.seedNotes || [];
@@ -68,15 +68,15 @@ export class GraphOperations {
         const graph = this.buildConnectionGraph(records);
         
         // Apply boost to seed notes if specified
-        let resultEmbeddings = records;
+        let resultsearchs = records;
         if (seedNotes.length > 0) {
-            resultEmbeddings = this.applySeedBoost(resultEmbeddings, seedNotes);
+            resultsearchs = this.applySeedBoost(resultsearchs, seedNotes);
         }
         
         // Apply multi-level graph boosting
         // Start with initial scores
         const currentScores = new Map<string, number>();
-        resultEmbeddings.forEach(item => {
+        resultsearchs.forEach(item => {
             currentScores.set(item.record.filePath, item.similarity);
         });
         
@@ -116,7 +116,7 @@ export class GraphOperations {
         }
         
         // Apply final boosted scores
-        return resultEmbeddings.map(item => {
+        return resultsearchs.map(item => {
             const filePath = item.record.filePath;
             const boostedScore = currentScores.get(filePath) || item.similarity;
             return {
@@ -132,9 +132,9 @@ export class GraphOperations {
      * @param seedNotes Array of seed note paths
      */
     applySeedBoost(
-        records: Array<{ record: EmbeddingRecord; similarity: number }>,
+        records: Array<{ record: searchRecord; similarity: number }>,
         seedNotes: string[]
-    ): Array<{ record: EmbeddingRecord; similarity: number }> {
+    ): Array<{ record: searchRecord; similarity: number }> {
         // If no seed notes, return as-is
         if (!seedNotes.length) {
             return records;
@@ -183,7 +183,7 @@ export class GraphOperations {
      * @returns Map of file paths to sets of connected file paths
      */
     private buildConnectionGraph(
-        records: Array<{ record: EmbeddingRecord; similarity: number }>
+        records: Array<{ record: searchRecord; similarity: number }>
     ): Map<string, Set<string>> {
         // Create a graph of connections
         const graph = new Map<string, Set<string>>();

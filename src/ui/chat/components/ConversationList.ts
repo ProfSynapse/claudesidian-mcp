@@ -22,7 +22,7 @@ export class ConversationList {
    * Set conversations to display
    */
   setConversations(conversations: ConversationData[]): void {
-    this.conversations = conversations.sort((a, b) => b.last_updated - a.last_updated);
+    this.conversations = conversations.sort((a, b) => b.updated - a.updated);
     this.render();
   }
 
@@ -76,7 +76,7 @@ export class ConversationList {
 
       // Timestamp
       const timestamp = content.createDiv('conversation-timestamp');
-      timestamp.textContent = this.formatTimestamp(conversation.last_updated);
+      timestamp.textContent = this.formatTimestamp(conversation.updated);
 
       // Delete button
       const deleteBtn = item.createDiv('conversation-delete');

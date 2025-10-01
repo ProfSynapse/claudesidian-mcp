@@ -73,9 +73,9 @@ export interface MemoryResultMetadata {
   workspaceId?: string;
   primaryGoal?: string;
   filesReferenced?: string[];
-  activityType?: string;
   toolUsed?: string;
   modeUsed?: string;
+  type?: string;
   // Tool call specific metadata
   toolCallId?: string;
   agent?: string;
@@ -256,18 +256,10 @@ export enum MemoryType {
 
 // Search method enum
 export enum SearchMethod {
-  SEMANTIC = 'semantic',
   EXACT = 'exact',
   MIXED = 'mixed'
 }
 
-// Activity types
-export enum ActivityType {
-  USER_ACTION = 'user_action',
-  SYSTEM_EVENT = 'system_event',
-  TOOL_EXECUTION = 'tool_execution',
-  STATE_CHANGE = 'state_change'
-}
 
 // Memory configuration
 export interface MemoryProcessorConfiguration {

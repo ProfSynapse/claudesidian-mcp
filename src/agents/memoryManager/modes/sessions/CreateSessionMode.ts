@@ -20,7 +20,7 @@ import { CreateSessionParams, SessionResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams, WorkspaceContext } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService, GLOBAL_WORKSPACE_ID } from "../../services/WorkspaceService";
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../../services/WorkspaceService';
 import { createServiceIntegration } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
@@ -266,14 +266,9 @@ export class CreateSessionMode extends BaseMode<CreateSessionParams, SessionResu
             await memoryService.createMemoryTrace({
                 sessionId: sessionData.id,
                 workspaceId: workspaceData.workspaceId,
-                workspacePath: [workspaceData.workspaceId],
-                contextLevel: 'workspace' as const,
                 content: traceContent,
                 type: 'session_creation',
-                activityType: 'checkpoint',
-                importance: 0.8,
                 timestamp: Date.now(),
-                tags: [],
                 metadata: {
                     tool: 'createSession',
                     params: { sessionName: params.name },

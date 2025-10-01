@@ -4,11 +4,11 @@
  */
 
 import { Plugin } from 'obsidian';
-import { MetadataSearchService } from '../../../../../../database/services/search/MetadataSearchService';
-import { HybridSearchService } from '../../../../../../database/services/search';
-import { EmbeddingService } from '../../../../../../database/services/core/EmbeddingService';
+// Search services removed in simplified architecture
+type MetadataSearchService = any;
+type HybridSearchService = any;
 import { MemoryService } from "../../../../../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../../../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../../../../services/WorkspaceService';
 
 export interface ServiceInitializationResult {
   success: boolean;
@@ -16,7 +16,6 @@ export interface ServiceInitializationResult {
   services?: {
     metadataSearchService: MetadataSearchService;
     hybridSearchService?: HybridSearchService;
-    embeddingService?: EmbeddingService;
     memoryService?: MemoryService;
     workspaceService?: WorkspaceService;
   };
@@ -25,7 +24,6 @@ export interface ServiceInitializationResult {
 export interface ServiceAvailability {
   metadataSearch: boolean;
   hybridSearch: boolean;
-  embedding: boolean;
   memory: boolean;
   workspace: boolean;
 }
@@ -38,7 +36,6 @@ export class ServiceInitializer {
   private services: {
     metadataSearchService?: MetadataSearchService;
     hybridSearchService?: HybridSearchService;
-    embeddingService?: EmbeddingService;
     memoryService?: MemoryService;
     workspaceService?: WorkspaceService;
   } = {};
@@ -50,19 +47,17 @@ export class ServiceInitializer {
    */
   async initializeServices(
     providedServices?: {
-      embeddingService?: EmbeddingService;
       memoryService?: MemoryService;
       workspaceService?: WorkspaceService;
     }
   ): Promise<ServiceInitializationResult> {
     try {
       
-      // Initialize metadata search service (always available)
-      this.services.metadataSearchService = new MetadataSearchService(this.plugin.app);
+      // MetadataSearchService removed in simplified architecture
+      this.services.metadataSearchService = null;
 
       // Initialize provided services
       if (providedServices) {
-        this.services.embeddingService = providedServices.embeddingService;
         this.services.memoryService = providedServices.memoryService;
         this.services.workspaceService = providedServices.workspaceService;
       }
@@ -70,8 +65,8 @@ export class ServiceInitializer {
       // Try to get services from plugin if not provided
       await this.tryGetServicesFromPlugin();
 
-      // Initialize hybrid search service with ChromaDB integration
-      await this.initializeHybridSearchService();
+      // Initialize search service
+      await this.initializeSearchService();
 
       const availability = this.getServiceAvailability();
 
@@ -80,7 +75,6 @@ export class ServiceInitializer {
         services: {
           metadataSearchService: this.services.metadataSearchService!,
           hybridSearchService: this.services.hybridSearchService,
-          embeddingService: this.services.embeddingService,
           memoryService: this.services.memoryService,
           workspaceService: this.services.workspaceService
         }
@@ -119,13 +113,6 @@ export class ServiceInitializer {
   private async tryGetServicesFromServiceManager(serviceManager: any): Promise<void> {
     try {
 
-      // Get embedding service
-      if (!this.services.embeddingService) {
-        try {
-          this.services.embeddingService = await serviceManager.get('embeddingService');
-        } catch (error) {
-        }
-      }
 
       // Get memory service
       if (!this.services.memoryService) {
@@ -152,10 +139,6 @@ export class ServiceInitializer {
   private async tryGetServicesFromDirectAccess(services: any): Promise<void> {
     try {
 
-      // Get embedding service
-      if (!this.services.embeddingService && services.embeddingService) {
-        this.services.embeddingService = services.embeddingService;
-      }
 
       // Get memory service
       if (!this.services.memoryService && services.memoryService) {
@@ -171,40 +154,14 @@ export class ServiceInitializer {
   }
 
   /**
-   * Initialize hybrid search service with ChromaDB integration
+   * Initialize search service
    */
-  private async initializeHybridSearchService(): Promise<void> {
+  private async initializeSearchService(): Promise<void> {
     try {
       if (!this.services.hybridSearchService) {
         
-        // Try to get vectorStore and embeddingService from plugin
-        let vectorStore: any = undefined;
-        let embeddingService: any = undefined;
-        
-        try {
-          const plugin = this.plugin as any;
-          if (plugin.services) {
-            vectorStore = plugin.services.vectorStore;
-            embeddingService = this.services.embeddingService || plugin.services.embeddingService;
-          } else {
-          }
-        } catch (error) {
-        }
-
-        // Get collectionService from vectorStore if available
-        let collectionService: any = undefined;
-        if (vectorStore && typeof vectorStore.getCollectionService === 'function') {
-          try {
-            collectionService = vectorStore.getCollectionService();
-          } catch (error) {
-            console.warn('[ServiceInitializer] Could not get collectionService from vectorStore:', error);
-          }
-        }
-
-        // Initialize with direct ChromaDB access including collectionService
-        this.services.hybridSearchService = new HybridSearchService(vectorStore, embeddingService, collectionService);
-        
-        const semanticAvailable = this.services.hybridSearchService.isSemanticSearchAvailable();
+        // Initialize with simplified JSON-based storage
+        this.services.hybridSearchService = null; // Search service removed in simplified architecture
       } else {
       }
     } catch (error) {
@@ -218,7 +175,6 @@ export class ServiceInitializer {
     return {
       metadataSearch: !!this.services.metadataSearchService,
       hybridSearch: !!this.services.hybridSearchService,
-      embedding: !!this.services.embeddingService,
       memory: !!this.services.memoryService,
       workspace: !!this.services.workspaceService
     };
@@ -230,7 +186,6 @@ export class ServiceInitializer {
   getServices(): {
     metadataSearchService?: MetadataSearchService;
     hybridSearchService?: HybridSearchService;
-    embeddingService?: EmbeddingService;
     memoryService?: MemoryService;
     workspaceService?: WorkspaceService;
   } {
@@ -242,9 +197,6 @@ export class ServiceInitializer {
    */
   updateService(serviceName: string, service: any): void {
     switch (serviceName) {
-      case 'embeddingService':
-        this.services.embeddingService = service;
-        break;
       case 'memoryService':
         this.services.memoryService = service;
         break;
@@ -279,9 +231,7 @@ export class ServiceInitializer {
     try {
       const indexesPopulated: string[] = [];
 
-      // ChromaDB indexes are automatically populated through the vector store - no explicit action needed
-
-      // Populate hybrid search indexes if available
+      // Populate search indexes if available
       if (this.services.hybridSearchService) {
         try {
           // Hybrid search doesn't need explicit population - it uses underlying services
@@ -318,9 +268,7 @@ export class ServiceInitializer {
     };
 
     try {
-      // ChromaDB semantic search status now handled through hybrid search service
-
-      // Get hybrid status
+      // Get search status
       if (this.services.hybridSearchService) {
         try {
           const hybridStats = this.services.hybridSearchService.getStats();

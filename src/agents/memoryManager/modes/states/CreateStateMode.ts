@@ -18,7 +18,7 @@ import { CreateStateParams, StateResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService, GLOBAL_WORKSPACE_ID } from "../../services/WorkspaceService";
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../../services/WorkspaceService';
 import { createServiceIntegration, ValidationError } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 import { CommonParameters } from '../../../../types/mcp/AgentTypes';
@@ -101,11 +101,15 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
                 return this.prepareResult(false, undefined, 'State creation failed - no state ID returned', extractContextFromParams(params));
             }
 
+            // Extract workspaceId and sessionId for verification
+            const workspaceId = workspaceResult.data.workspaceId;
+            const sessionId = params.targetSessionId || params.context.sessionId || 'current';
+
             // Phase 6: Verify persistence (data integrity check)
-            const verificationResult = await this.verifyStatePersistence(persistResult.stateId, memoryService);
+            const verificationResult = await this.verifyStatePersistence(workspaceId, sessionId, persistResult.stateId, memoryService);
             if (!verificationResult.success) {
                 // Rollback if verification fails
-                await this.rollbackState(persistResult.stateId, memoryService);
+                await this.rollbackState(workspaceId, sessionId, persistResult.stateId, memoryService);
                 return this.prepareResult(false, undefined, `State verification failed: ${verificationResult.error}`, extractContextFromParams(params));
             }
 
@@ -258,13 +262,13 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
 
             // Build WorkspaceStateSnapshot for storage following the architecture design
             const snapshotData = {
+                name: params.name,
                 workspaceId: workspaceId,
+                created: now,
+                snapshot: snapshot,
                 sessionId: params.targetSessionId || params.context.sessionId || 'current',
                 timestamp: now,
-                name: params.name,
-                created: now,
                 description: `${params.activeTask} - ${params.reasoning}`,
-                snapshot: snapshot,
                 state: {
                     workspace,
                     recentTraces: [], // Could be populated from current session
@@ -284,9 +288,15 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             };
 
             // Persist to MemoryService
-            const savedSnapshot = await memoryService.createSnapshot(snapshotData);
-            
-            return { success: true, stateId: savedSnapshot.id, savedSnapshot };
+            const sessionId = params.targetSessionId || params.context.sessionId || 'current';
+            const stateId = await memoryService.saveStateSnapshot(
+                workspaceId,
+                sessionId,
+                snapshotData.snapshot,
+                snapshotData.name
+            );
+
+            return { success: true, stateId, savedSnapshot: { id: stateId, ...snapshotData } };
 
         } catch (error) {
             return { success: false, error: createErrorMessage('Error persisting state: ', error) };
@@ -296,9 +306,9 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
     /**
      * Verify that a state was properly persisted
      */
-    private async verifyStatePersistence(stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string}> {
+    private async verifyStatePersistence(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string}> {
         try {
-            const retrieved = await memoryService.getSnapshot(stateId);
+            const retrieved = await memoryService.getStateSnapshot(workspaceId, sessionId, stateId);
             if (!retrieved) {
                 return { success: false, error: 'State not found after creation' };
             }
@@ -320,9 +330,9 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
     /**
      * Rollback a state creation if verification fails
      */
-    private async rollbackState(stateId: string, memoryService: MemoryService): Promise<void> {
+    private async rollbackState(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<void> {
         try {
-            await memoryService.deleteSnapshot(stateId);
+            await memoryService.deleteSnapshot(workspaceId, sessionId, stateId);
             console.warn(`[CreateStateMode] Rolled back state ${stateId} due to verification failure`);
         } catch (error) {
             console.error(`[CreateStateMode] Failed to rollback state ${stateId}:`, error);

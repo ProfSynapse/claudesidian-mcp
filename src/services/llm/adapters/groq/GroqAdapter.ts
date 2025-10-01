@@ -210,7 +210,7 @@ export class GroqAdapter extends BaseAdapter implements MCPCapableAdapter {
             content: choice?.message?.content || '',
             usage: this.extractUsage(response),
             finishReason: choice?.finish_reason || 'stop',
-            toolCalls: choice?.message?.tool_calls,
+            toolCalls: choice?.message?.toolCalls,
             choice: choice
           };
         },
@@ -295,7 +295,7 @@ export class GroqAdapter extends BaseAdapter implements MCPCapableAdapter {
   }
 
   private extractToolCalls(message: any): any[] {
-    return message?.tool_calls || [];
+    return message?.toolCalls || [];
   }
 
   private mapFinishReason(reason: string | null): 'stop' | 'length' | 'tool_calls' | 'content_filter' {

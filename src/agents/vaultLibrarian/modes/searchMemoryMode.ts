@@ -14,7 +14,7 @@ import { MemorySearchFilters, MemorySearchFiltersInterface } from '../services/M
 import { ResultFormatter, ResultFormatterInterface } from '../services/ResultFormatter';
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../services/WorkspaceService';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
 import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 

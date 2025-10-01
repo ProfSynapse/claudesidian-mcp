@@ -19,7 +19,7 @@ import { LoadSessionParams, SessionResult } from '../../types';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { createServiceIntegration } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
@@ -66,14 +66,19 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
                 return this.prepareResult(false, undefined, 'Services not available after successful retrieval');
             }
 
-            // Phase 2: Get target session ID (consolidated from parameter handling)
+            // Phase 2: Get target session ID and workspaceId (consolidated from parameter handling)
             const targetSessionId = params.targetSessionId || params.sessionId;
             if (!targetSessionId) {
                 return this.prepareResult(false, undefined, 'No session ID provided to load');
             }
 
+            // Extract workspaceId from params
+            const parsedContext = params.workspaceContext ?
+                (typeof params.workspaceContext === 'string' ? JSON.parse(params.workspaceContext) : params.workspaceContext) : null;
+            const workspaceId = parsedContext?.workspaceId || 'default-workspace';
+
             // Phase 3: Load session data (consolidated from StateRetriever logic)
-            const sessionResult = await this.loadSessionData(targetSessionId, memoryService);
+            const sessionResult = await this.loadSessionData(workspaceId, targetSessionId, memoryService);
             if (!sessionResult.success) {
                 return this.prepareResult(false, undefined, sessionResult.error, extractContextFromParams(params));
             }
@@ -152,16 +157,16 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
     /**
      * Load session data (consolidated from StateRetriever logic)
      */
-    private async loadSessionData(sessionId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
+    private async loadSessionData(workspaceId: string, sessionId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
         try {
             // Get session from memory service
-            const session = await memoryService.getSession(sessionId);
+            const session = await memoryService.getSession(workspaceId, sessionId);
             if (!session) {
                 return { success: false, error: `Session not found: ${sessionId}` };
             }
 
             // Get session traces for context
-            const traces = await memoryService.getSessionTraces(sessionId);
+            const traces = await memoryService.getMemoryTraces(workspaceId, sessionId);
 
             return { 
                 success: true, 
@@ -304,14 +309,9 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
             await memoryService.createMemoryTrace({
                 sessionId: continuationSessionId,
                 workspaceId: originalSession.workspaceId,
-                workspacePath: [originalSession.workspaceId],
-                contextLevel: 'workspace' as const,
                 content: traceContent,
                 type: 'session_restoration',
-                activityType: 'checkpoint',
-                importance: 0.9,
                 timestamp: Date.now(),
-                tags: ['restoration', 'continuation', ...(originalSession.tags || [])],
                 metadata: {
                     tool: 'loadSession',
                     params: { originalSessionId: originalSession.id },

@@ -1,6 +1,5 @@
 import { Plugin } from 'obsidian';
 import { MCPSettings, DEFAULT_SETTINGS } from './types';
-import { VectorStoreFactory } from './database/factory/VectorStoreFactory';
 
 /**
  * Settings manager
@@ -49,17 +48,8 @@ export class Settings {
             const { memory, llmProviders, ...otherSettings } = loadedData;
             Object.assign(this.settings, otherSettings);
             
-            // Basic memory settings merge
-            if (memory && DEFAULT_SETTINGS.memory) {
-                this.settings.memory = {
-                    ...DEFAULT_SETTINGS.memory,
-                    ...memory,
-                    providerSettings: {
-                        ...DEFAULT_SETTINGS.memory.providerSettings,
-                        ...(memory.providerSettings || {})
-                    }
-                };
-            }
+            // Ensure memory settings exist
+            this.settings.memory = DEFAULT_SETTINGS.memory;
 
             // Basic LLM provider settings merge
             if (llmProviders && DEFAULT_SETTINGS.llmProviders) {
@@ -83,8 +73,7 @@ export class Settings {
      * Save settings to plugin data
      */
     async saveSettings() {
-        // Clear embedding provider cache when settings change
-        VectorStoreFactory.clearEmbeddingProviderCache();
+        // Simple JSON-based storage
         await this.plugin.saveData(this.settings);
     }
 }

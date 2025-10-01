@@ -41,15 +41,6 @@ export type {
   SchemaBlockOptions
 } from './SchemaBlocks';
 
-export {
-  ServiceAccessMixin
-} from './ServiceAccessMixin';
-
-export type {
-  ServiceRequirements,
-  ServiceAccessOptions,
-  ServiceAccessResult
-} from './ServiceAccessMixin';
 
 // Re-export commonly used patterns for convenience
 // Note: Individual imports are preferred to avoid circular dependencies

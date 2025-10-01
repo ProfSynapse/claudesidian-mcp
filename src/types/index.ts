@@ -9,15 +9,23 @@ export type {
   ModelConfig,
   LLMProviderConfig,
   DefaultModelSettings,
-  LLMProviderSettings,
-  MemorySettings,
-  EmbeddingProvider
+  LLMProviderSettings
 } from './llm';
 
 export {
-  DEFAULT_LLM_PROVIDER_SETTINGS,
-  DEFAULT_MEMORY_SETTINGS
+  DEFAULT_LLM_PROVIDER_SETTINGS
 } from './llm';
+
+// Simple memory management now uses JSON-based storage
+export interface MemorySettings {
+  enabled: boolean;
+  dataPath?: string;
+}
+
+export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
+  enabled: true,
+  dataPath: '.data'
+};
 
 // MCP protocol types
 export type {
@@ -37,12 +45,10 @@ export {
   DEFAULT_CUSTOM_PROMPTS_SETTINGS
 } from './mcp';
 
-// Search and memory types
+// Search and memory types - simplified for JSON-based storage
 export type {
-  EmbeddingRecord,
   MemoryQueryParams,
-  MemoryQueryResult,
-  MemoryUsageStats
+  MemoryQueryResult
 } from './search';
 
 // Plugin configuration types
@@ -71,23 +77,14 @@ export type {
   ConversationSearchResult,
   CreateConversationParams,
   AddMessageParams,
-  UpdateConversationParams,
-  ConversationOperationResult,
-  MessageQueryOptions,
-  PaginatedMessages,
-  ChatCollectionConfig,
-  ChatCollectionStats,
-  ChatDatabaseHealth,
-  ChatPerformanceMetrics,
-  ConversationSummary,
-  ConversationExport
+  UpdateConversationParams
 } from './chat/ChatTypes';
 
 // Create default settings object
-import { DEFAULT_MEMORY_SETTINGS } from './llm';
 import { DEFAULT_CUSTOM_PROMPTS_SETTINGS } from './mcp';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from './llm';
 import { MCPSettings } from './plugin';
+// DEFAULT_MEMORY_SETTINGS defined above in this file
 
 /**
  * Default plugin settings

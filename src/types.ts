@@ -4,7 +4,7 @@
  * This file now re-exports all types from the organized modular structure.
  * The original types.ts file has been broken down into domain-specific modules:
  * 
- * - src/types/llm/: LLM provider and embedding types
+ * - src/types/llm/: LLM provider types
  * - src/types/mcp/: MCP protocol and agent types
  * - src/types/search/: Search and memory query types
  * - src/types/plugin/: Plugin configuration types
@@ -25,15 +25,20 @@ export type {
   ModelConfig,
   LLMProviderConfig,
   DefaultModelSettings,
-  LLMProviderSettings,
-  MemorySettings,
-  EmbeddingProvider
+  LLMProviderSettings
 } from './types/llm';
 
 export {
-  DEFAULT_LLM_PROVIDER_SETTINGS,
-  DEFAULT_MEMORY_SETTINGS
+  DEFAULT_LLM_PROVIDER_SETTINGS
 } from './types/llm';
+
+// Memory management settings
+export interface MemorySettings {
+  // Workspace management interface
+}
+
+export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
+};
 
 // MCP protocol types
 export type {
@@ -53,12 +58,10 @@ export {
   DEFAULT_CUSTOM_PROMPTS_SETTINGS
 } from './types/mcp';
 
-// Search and memory types
+// Search and memory types - simplified for JSON-based storage
 export type {
-  EmbeddingRecord,
   MemoryQueryParams,
-  MemoryQueryResult,
-  MemoryUsageStats
+  MemoryQueryResult
 } from './types/search';
 
 // Plugin configuration types
@@ -79,10 +82,10 @@ export type {
 } from './types/common';
 
 // Create default settings object
-import { DEFAULT_MEMORY_SETTINGS } from './types/llm';
 import { DEFAULT_CUSTOM_PROMPTS_SETTINGS } from './types/mcp';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from './types/llm';
 import { MCPSettings } from './types/plugin';
+// DEFAULT_MEMORY_SETTINGS defined above in this file
 
 /**
  * Default plugin settings

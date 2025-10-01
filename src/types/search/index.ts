@@ -1,18 +1,11 @@
 /**
- * Search-related types export barrel
- * Centralizes all search and memory query type exports
+ * Search Types
+ * Provides type definitions for search operations using Obsidian's native search
  */
 
-// Original search types
 export type {
-  EmbeddingRecord,
   MemoryQueryParams,
-  MemoryQueryResult,
-  MemoryUsageStats
+  MemoryQueryResult
 } from './SearchTypes';
 
-// New search result types
 export * from './SearchResults';
-
-// New search metadata and performance types
-export * from './SearchMetadata';

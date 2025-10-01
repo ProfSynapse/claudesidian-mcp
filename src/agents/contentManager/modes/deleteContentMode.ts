@@ -9,7 +9,7 @@ import { MemoryService } from '../../memoryManager/services/MemoryService';
 /**
  * Mode for deleting content from a file
  * Follows Single Responsibility Principle - only handles content deletion
- * File change detection and embedding updates are handled automatically by FileEventManager
+ * File change detection are handled automatically by FileEventManager
  */
 export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteContentResult> {
   private app: App;
@@ -46,7 +46,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
         similarityThreshold
       );
       
-      // File change detection and embedding updates are handled automatically by FileEventManager
+      // File change detection are handled automatically by FileEventManager
       
       const resultData = {
         filePath,
@@ -196,16 +196,14 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
     const content = `Deleted content from ${params.filePath} (${resultData.deletions} deletions)\nDeleted: ${contentSnippet}`;
     
     try {
-      await this.memoryService!.recordActivityTrace(parsedContext.workspaceId, {
-        type: 'completion',
+      await this.memoryService!.recordActivityTrace({
+        workspaceId: parsedContext.workspaceId,
+        type: 'content',
         content: content,
+        timestamp: Date.now(),
         metadata: {
           tool: 'contentManager.deleteContent',
-          params: {
-            filePath: params.filePath,
-            deletions: resultData.deletions,
-            similarityThreshold: params.similarityThreshold
-          },
+          params: { filePath: params.filePath },
           result: resultData,
           relatedFiles: [params.filePath]
         },

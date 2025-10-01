@@ -3,10 +3,20 @@
  * Extracted from types.ts for better organization
  */
 
-import { MemorySettings } from '../llm/EmbeddingTypes';
 import { CustomPromptsSettings } from '../mcp/CustomPromptTypes';
 import { LLMProviderSettings } from '../llm/ProviderTypes';
-import { ProcessedFileState } from '../../database/services/indexing/state/ProcessedFilesStateManager';
+
+// Memory management settings
+interface MemorySettings {
+  // Workspace management interface
+}
+
+interface ProcessedFileState {
+  filePath: string;
+  lastModified: number;
+  contentHash: string;
+  processed: boolean;
+}
 
 /**
  * ChatView settings for experimental AI chat interface
@@ -17,7 +27,7 @@ export interface ChatViewSettings {
 }
 
 /**
- * Processed files data structure for embedding state management
+ * Processed files data structure for file state management
  * Stores file processing state to prevent re-processing on startup
  */
 export interface ProcessedFilesData {

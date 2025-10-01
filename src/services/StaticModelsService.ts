@@ -5,11 +5,11 @@
 
 import { ModelSpec } from './llm/adapters/modelTypes';
 import { OPENAI_MODELS } from './llm/adapters/openai/OpenAIModels';
-import { ANTHROPIC_MODELS } from './llm/adapters/anthropic/AnthropicModels';
+import { ANTHROPIC_MODELS } from './llm/adapters/anthropic/anthropicModels';
 import { GOOGLE_MODELS } from './llm/adapters/google/GoogleModels';
 import { MISTRAL_MODELS } from './llm/adapters/mistral/MistralModels';
 import { GROQ_MODELS } from './llm/adapters/groq/GroqModels';
-import { OPENROUTER_MODELS } from './llm/adapters/openrouter/OpenRouterModels';
+import { OPENROUTER_MODELS } from './llm/adapters/openrouter/openRouterModels';
 import { REQUESTY_MODELS } from './llm/adapters/requesty/RequestyModels';
 import { PERPLEXITY_MODELS } from './llm/adapters/perplexity/PerplexityModels';
 

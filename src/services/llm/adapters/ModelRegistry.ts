@@ -10,12 +10,12 @@
 import { ModelSpec } from './modelTypes';
 import { OPENAI_MODELS, OPENAI_DEFAULT_MODEL } from './openai/OpenAIModels';
 import { GOOGLE_MODELS, GOOGLE_DEFAULT_MODEL } from './google/GoogleModels';
-import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './anthropic/AnthropicModels';
+import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './anthropic/anthropicModels';
 import { MISTRAL_MODELS, MISTRAL_DEFAULT_MODEL } from './mistral/MistralModels';
-import { OPENROUTER_MODELS, OPENROUTER_DEFAULT_MODEL } from './openrouter/OpenRouterModels';
+import { OPENROUTER_MODELS, OPENROUTER_DEFAULT_MODEL } from './openrouter/openRouterModels';
 import { REQUESTY_MODELS, REQUESTY_DEFAULT_MODEL } from './requesty/RequestyModels';
 import { GROQ_MODELS, GROQ_DEFAULT_MODEL } from './groq/GroqModels';
-import { OLLAMA_MODELS } from './ollama/OllamaModels';
+import type { LLMProviderSettings } from '../../../types';
 
 // Re-export ModelSpec for convenience
 export type { ModelSpec };
@@ -23,6 +23,7 @@ export type { ModelSpec };
 /**
  * Complete model registry organized by provider
  * Reconstructed from individual provider model definitions
+ * Note: Ollama models are dynamically generated based on user configuration
  */
 export const AI_MODELS: Record<string, ModelSpec[]> = {
   openai: OPENAI_MODELS,
@@ -31,8 +32,7 @@ export const AI_MODELS: Record<string, ModelSpec[]> = {
   mistral: MISTRAL_MODELS,
   openrouter: OPENROUTER_MODELS,
   requesty: REQUESTY_MODELS,
-  groq: GROQ_MODELS,
-  ollama: OLLAMA_MODELS
+  groq: GROQ_MODELS
 };
 
 /**
@@ -41,8 +41,37 @@ export const AI_MODELS: Record<string, ModelSpec[]> = {
 export class ModelRegistry {
   /**
    * Get all models for a specific provider
+   * For Ollama, returns user-configured model dynamically
    */
-  static getProviderModels(provider: string): ModelSpec[] {
+  static getProviderModels(provider: string, settings?: LLMProviderSettings): ModelSpec[] {
+    // Special handling for Ollama - user-configured models only
+    if (provider === 'ollama') {
+      const ollamaModel = settings?.providers?.ollama?.ollamaModel;
+
+      if (!ollamaModel || !ollamaModel.trim()) {
+        return []; // No models if not configured
+      }
+
+      // Create dynamic ModelSpec for user's configured model
+      return [{
+        provider: 'ollama',
+        name: ollamaModel,
+        apiName: ollamaModel,
+        contextWindow: 128000, // Fixed reasonable default
+        maxTokens: 4096,
+        inputCostPerMillion: 0,
+        outputCostPerMillion: 0,
+        capabilities: {
+          supportsJSON: false,
+          supportsImages: ollamaModel.includes('vision') || ollamaModel.includes('llava'),
+          supportsFunctions: false,
+          supportsStreaming: true,
+          supportsThinking: false
+        }
+      }];
+    }
+
+    // Standard behavior for other providers
     return AI_MODELS[provider] || [];
   }
 

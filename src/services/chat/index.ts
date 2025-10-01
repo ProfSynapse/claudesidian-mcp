@@ -9,9 +9,8 @@
  */
 
 // Database layer services (from database/services/chat/)
-export * from '../../database/services/chat/ConversationRepository';
-export * from '../../database/services/chat/ChatCollectionService';
-export * from '../../database/services/chat/ChatDatabaseService';
+// Note: Chat database services removed in simplify-search-architecture
+// Chat data now stored in simplified JSON format
 
 // Business logic services (from services/chat/)
 export * from './ChatService';

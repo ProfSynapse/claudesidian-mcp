@@ -86,8 +86,8 @@ export class ConversationManager {
           id: m.id,
           role: m.role,
           contentLength: m.content.length,
-          hasToolCalls: !!(m.tool_calls && m.tool_calls.length > 0),
-          toolCallCount: m.tool_calls?.length || 0
+          hasToolCalls: !!(m.toolCalls && m.toolCalls.length > 0),
+          toolCallCount: m.toolCalls?.length || 0
         })) || []
       });
       

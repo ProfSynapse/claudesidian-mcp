@@ -40,17 +40,8 @@ export class CommandManagerAgent extends BaseAgent {
     this.registerMode(new ListCommandsMode(app));
     this.registerMode(new ExecuteCommandMode(app, this));
     
-    // Try to get memory service from plugin if not provided in constructor
-    if (!this.memoryService) {
-      try {
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-        if (plugin?.services?.memoryService) {
-          this.memoryService = plugin.services.memoryService;
-        }
-      } catch (error) {
-        console.error('Error accessing memory service for command manager:', error);
-      }
-    }
+    // Memory service is now injected via constructor or remains null
+    // Backward compatibility: if no service injected, it will remain null
   }
   
   /**
@@ -141,40 +132,24 @@ export class CommandManagerAgent extends BaseAgent {
                       `Command ID: ${commandId}\n`;
       
       // Record the activity using memory service
-      await this.memoryService.recordActivityTrace(
+      await this.memoryService.recordActivityTrace({
         workspaceId,
-        {
-          type: 'research', // Using supported activity type
-          content,
-          metadata: {
-            tool: 'ExecuteCommandMode',
-            params: {
-              commandId
-            },
-            result: {
-              success: true
-            },
-            relatedFiles: []
-          }
+        type: 'command',
+        content,
+        timestamp: Date.now(),
+        metadata: {
+          tool: 'ExecuteCommandMode',
+          params: { commandId },
+          result: { success: true }
         }
+      }
       );
     } catch (error) {
       // Log but don't fail the main operation
       console.error('Failed to record command activity:', error);
       
-      // Try to get memory service from plugin if not available
-      if (!this.memoryService) {
-        try {
-          const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-          if (plugin?.services?.memoryService) {
-            this.memoryService = plugin.services.memoryService;
-            // Try again with the newly found service
-            await this.recordCommandActivity(commandId, commandName, workspaceId, workspacePath);
-          }
-        } catch (retryError) {
-          console.error('Error accessing memory service for retry:', retryError);
-        }
-      }
+      // Memory service not available - activity recording skipped
+      // Note: In constructor injection pattern, service should be provided at initialization
     }
   }
   

@@ -18,7 +18,7 @@ import {
     CreateWorkspaceResult
 } from '../../../../database/types/workspace/ParameterTypes';
 import { ProjectWorkspace, WorkspaceContext } from '../../../../database/types/workspace/WorkspaceTypes';
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { createErrorMessage } from '../../../../utils/errorUtils';
 
 /**
@@ -73,18 +73,42 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                 console.warn(`Could not create root folder: ${folderError}`);
             }
             
-            // Auto-detect key files
-            const autoDetectedKeyFiles = await this.detectKeyFiles(params.rootFolder);
-            
+            // Handle dedicated agent setup
+            let dedicatedAgent: { agentId: string; agentName: string } | undefined = undefined;
+            if (params.dedicatedAgentId) {
+                try {
+                    // Get the agent name from CustomPromptStorageService
+                    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+                    if (plugin?.agentManager) {
+                        const agentManagerAgent = plugin.agentManager.getAgent('agentManager');
+                        if (agentManagerAgent?.storageService) {
+                            const agent = agentManagerAgent.storageService.getPromptById(params.dedicatedAgentId);
+                            if (agent) {
+                                dedicatedAgent = {
+                                    agentId: agent.id,
+                                    agentName: agent.name
+                                };
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`Could not retrieve agent name for ID ${params.dedicatedAgentId}:`, error);
+                }
+            }
+
+            // Combine provided key files with auto-detected ones
+            const providedKeyFiles = params.keyFiles || [];
+            const autoDetectedKeyFiles = await this.detectSimpleKeyFiles(params.rootFolder);
+            const allKeyFiles = [...new Set([...providedKeyFiles, ...autoDetectedKeyFiles])]; // Remove duplicates
+
             // Build workspace context
             const context: WorkspaceContext = {
                 purpose: params.purpose,
                 currentGoal: params.currentGoal,
-                status: params.status || 'Starting workspace setup',
                 workflows: params.workflows,
-                keyFiles: autoDetectedKeyFiles,
-                preferences: params.preferences || [],
-                agents: params.agents || [],
+                keyFiles: allKeyFiles,
+                preferences: params.preferences || '',
+                ...(dedicatedAgent && { dedicatedAgent })
             };
             
             // Create workspace data
@@ -106,7 +130,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                     toolName: 'CreateWorkspaceMode',
                     context: `Created workspace: ${params.purpose}`
                 }],
-                preferences: params.preferences ? { userPreferences: params.preferences } : undefined,
+                preferences: undefined, // Legacy field - preferences now stored in context
                 projectPlan: undefined,
                 checkpoints: [],
                 completionStatus: {}
@@ -116,7 +140,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             const newWorkspace = await workspaceService.createWorkspace(workspaceData);
             
             // Generate validation prompt
-            const validationPrompt = this.generatePostCreationPrompt(params, autoDetectedKeyFiles);
+            const validationPrompt = this.generatePostCreationPrompt(params, allKeyFiles);
             
             return this.prepareResult(true, {
                 workspaceId: newWorkspace.id,
@@ -130,25 +154,27 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
     }
     
     /**
-     * Auto-detect key files in workspace folder
+     * Auto-detect key files in workspace folder (simple array format)
      */
-    private async detectKeyFiles(rootFolder: string): Promise<Array<{category: string; files: Record<string, string>}>> {
+    private async detectSimpleKeyFiles(rootFolder: string): Promise<string[]> {
         try {
-            const detectedFiles: Record<string, string> = {};
-            
+            const detectedFiles: string[] = [];
+
             const folder = this.app.vault.getAbstractFileByPath(rootFolder);
             if (folder && 'children' in folder && Array.isArray(folder.children)) {
                 for (const child of folder.children as any[]) {
                     if (child.path.endsWith('.md')) {
                         const fileName = child.name.toLowerCase();
-                        
+
+                        // Auto-detect common key files
                         if (['index.md', 'readme.md', 'summary.md', 'moc.md', 'overview.md'].includes(fileName)) {
-                            detectedFiles[fileName.replace('.md', '')] = child.path;
+                            detectedFiles.push(child.path);
                         }
-                        
+
                         try {
+                            // Check for frontmatter key: true
                             if ('cachedData' in child && child.cachedData?.frontmatter?.key === true) {
-                                detectedFiles[child.name.replace('.md', '')] = child.path;
+                                detectedFiles.push(child.path);
                             }
                         } catch (error) {
                             // Ignore frontmatter parsing errors
@@ -156,41 +182,37 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                     }
                 }
             }
-            
-            return [{
-                category: 'Key Files',
-                files: detectedFiles
-            }];
-            
+
+            return detectedFiles;
+
         } catch (error) {
             console.warn('Error detecting key files:', error);
-            return [{ category: 'Key Files', files: {} }];
+            return [];
         }
     }
 
-    private generatePostCreationPrompt(params: CreateWorkspaceParameters, autoDetectedKeyFiles: Array<{category: string; files: Record<string, string>}>): string {
+    private generatePostCreationPrompt(params: CreateWorkspaceParameters, allKeyFiles: string[]): string {
         const prompts: string[] = [];
-        
-        const keyFileCount = autoDetectedKeyFiles.find(category => category.category === 'Key Files');
-        const keyFiles = keyFileCount ? Object.keys(keyFileCount.files).length : 0;
-        
-        if (keyFiles > 0) {
-            prompts.push(`Auto-detected ${keyFiles} key files in the workspace.`);
+
+        if (allKeyFiles.length > 0) {
+            prompts.push(`Setup complete with ${allKeyFiles.length} key files identified.`);
         } else {
             prompts.push('No key files detected. Create index.md, readme.md, or add "key: true" to file frontmatter to designate key files.');
         }
-        
+
         if (!params.preferences || params.preferences.length === 0) {
             prompts.push('Consider adding user preferences as you work in this workspace.');
         }
-        
-        if (!params.agents || params.agents.length === 0) {
-            prompts.push('You can associate AI agents with this workspace for specific tasks.');
+
+        if (!params.dedicatedAgentId) {
+            prompts.push('You can assign a dedicated AI agent to this workspace for specialized assistance.');
+        } else {
+            prompts.push('Dedicated agent configured for this workspace.');
         }
-        
+
         prompts.push('Load the workspace to see the current directory structure and validate the setup.');
-        
-        return prompts.length > 0 
+
+        return prompts.length > 0
             ? `Workspace created successfully! ${prompts.join(' ')}`
             : 'Workspace created successfully! Load it to see the current directory structure.';
     }
@@ -203,7 +225,6 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                 rootFolder: { type: 'string', description: 'Root folder path for this workspace (REQUIRED)' },
                 purpose: { type: 'string', description: 'What is this workspace for? (REQUIRED)' },
                 currentGoal: { type: 'string', description: 'What are you trying to accomplish right now? (REQUIRED)' },
-                status: { type: 'string', description: 'Current state of progress' },
                 workflows: {
                     type: 'array',
                     description: 'Workflows for different situations (REQUIRED)',
@@ -218,18 +239,18 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
                     },
                     minItems: 1
                 },
-                preferences: { type: 'array', items: { type: 'string' }, description: 'User preferences' },
-                agents: {
+                keyFiles: {
                     type: 'array',
-                    items: {
-                        type: 'object',
-                        properties: {
-                            name: { type: 'string' },
-                            when: { type: 'string' },
-                            purpose: { type: 'string' }
-                        },
-                        required: ['name', 'when', 'purpose']
-                    }
+                    items: { type: 'string' },
+                    description: 'Simple list of key file paths for this workspace'
+                },
+                preferences: {
+                    type: 'string',
+                    description: 'User preferences as a single text field'
+                },
+                dedicatedAgentId: {
+                    type: 'string',
+                    description: 'ID of dedicated agent for this workspace (systemPrompt included when loading)'
                 },
                 description: { type: 'string' },
                 relatedFolders: { type: 'array', items: { type: 'string' } },

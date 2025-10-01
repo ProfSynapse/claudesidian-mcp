@@ -44,7 +44,7 @@ export class MessageBubble extends Component {
 
     // Message header with role icon only
     const header = bubble.createDiv('message-header');
-    
+
     // Role icon
     const roleIcon = header.createDiv('message-role-icon');
     if (this.message.role === 'user') {
@@ -53,6 +53,13 @@ export class MessageBubble extends Component {
       setIcon(roleIcon, 'wrench');
     } else {
       setIcon(roleIcon, 'bot');
+    }
+
+    // Add loading state in header if AI message is loading with empty content
+    if (this.message.role === 'assistant' && this.message.isLoading && !this.message.content.trim()) {
+      const loadingSpan = header.createEl('span', { cls: 'ai-loading-header' });
+      loadingSpan.innerHTML = 'Thinking<span class="dots">...</span>';
+      this.startLoadingAnimation(loadingSpan);
     }
 
     // Message content
@@ -149,10 +156,8 @@ export class MessageBubble extends Component {
    * Render message content using enhanced markdown renderer
    */
   private async renderContent(container: HTMLElement, content: string): Promise<void> {
-    // Handle loading state for AI messages
+    // Skip rendering if loading with empty content (loading is shown in header)
     if (this.message.isLoading && this.message.role === 'assistant' && !content.trim()) {
-      container.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
-      this.startLoadingAnimation(container);
       return;
     }
 
@@ -167,45 +172,40 @@ export class MessageBubble extends Component {
       pre.textContent = content;
     }
 
-    // Add tool accordion if there are tool calls
-    this.renderToolCalls(container);
+    // Add tool accordion if there are tool calls (after content is rendered)
+    this.renderToolCalls();
   }
 
   /**
-   * Render tool calls accordion within the message content
+   * Render tool calls accordion - only for tool role messages
    */
-  private renderToolCalls(container: HTMLElement): void {
-    // For tool role messages, always render the tool accordion
-    if (this.message.role === 'tool' && this.message.tool_calls && this.message.tool_calls.length > 0) {
+  private renderToolCalls(): void {
+    if (!this.element) return;
+
+    // Only render for messages with tool calls
+    if (!this.message.toolCalls || this.message.toolCalls.length === 0) {
+      return;
+    }
+
+    // ONLY render for tool role messages (these ARE the tool execution results)
+    // Assistant messages should NOT render static tool accordions since we have separate tool message bubbles
+    if (this.message.role === 'tool') {
       console.log('[MessageBubble] Rendering tool accordion for tool message:', {
         messageId: this.message.id,
-        toolCallCount: this.message.tool_calls.length,
-        toolNames: this.message.tool_calls.map(tc => tc.name)
+        toolCallCount: this.message.toolCalls.length,
+        toolNames: this.message.toolCalls.map(tc => tc.name)
       });
 
-      // Create accordion for tool execution message
-      const accordion = new ToolAccordion(this.message.tool_calls);
-      const accordionEl = accordion.createElement();
-      container.appendChild(accordionEl);
+      const contentElement = this.element.querySelector('.message-content');
+      if (contentElement) {
+        const accordion = new ToolAccordion(this.message.toolCalls);
+        const accordionEl = accordion.createElement();
+        contentElement.appendChild(accordionEl);
+      }
       return;
     }
 
-    // For assistant messages with tool_calls (historical data), also render tool accordions
-    if (this.message.role === 'assistant' && this.message.tool_calls && this.message.tool_calls.length > 0) {
-      console.log('[MessageBubble] Rendering tool accordion for assistant message with tool_calls:', {
-        messageId: this.message.id,
-        toolCallCount: this.message.tool_calls.length,
-        toolNames: this.message.tool_calls.map(tc => tc.name)
-      });
-
-      // Create accordion for stored tool calls in assistant messages (legacy format)
-      const accordion = new ToolAccordion(this.message.tool_calls);
-      const accordionEl = accordion.createElement();
-      container.appendChild(accordionEl);
-      return;
-    }
-
-    // No tool calls to render
+    // Don't render tool accordions for assistant messages - we have dedicated tool message bubbles instead
   }
 
 
@@ -303,12 +303,20 @@ export class MessageBubble extends Component {
   }
 
   /**
-   * Stop loading animation
+   * Stop loading animation and remove loading UI
    */
-  private stopLoadingAnimation(): void {
+  stopLoadingAnimation(): void {
     if (this.loadingInterval) {
       clearInterval(this.loadingInterval);
       this.loadingInterval = null;
+    }
+
+    // Remove the "Thinking..." element from the header
+    if (this.element) {
+      const loadingElement = this.element.querySelector('.ai-loading-header');
+      if (loadingElement) {
+        loadingElement.remove();
+      }
     }
   }
 
@@ -354,10 +362,9 @@ export class MessageBubble extends Component {
 
     // PROBLEM: This method completely re-renders and puts tool calls at the end
     // We should avoid calling this if we already have progressive accordions
-    if (this.progressiveToolAccordions.size > 0 && newMessage.tool_calls) {
+    if (this.progressiveToolAccordions.size > 0 && newMessage.toolCalls) {
       // Skip update - preserving progressive accordions
       // Just update the stored message reference but don't re-render
-      console.log('[MessageBubble] Preserving progressive accordions, only updating message reference');
       this.message = newMessage;
       
       // Update branch navigator if it exists
@@ -388,10 +395,8 @@ export class MessageBubble extends Component {
       console.error('[MessageBubble] Error re-rendering content:', error);
     });
 
-    // If there are tool calls, render them
-    if (newMessage.tool_calls && newMessage.tool_calls.length > 0) {
-      this.renderToolCalls(contentElement as HTMLElement);
-    }
+    // Tool calls are now rendered by renderContent -> renderToolCalls()
+    // No need to call separately here
 
     // If still loading, show appropriate loading state
     if (newMessage.isLoading && newMessage.role === 'assistant') {
@@ -435,114 +440,19 @@ export class MessageBubble extends Component {
     return div.innerHTML;
   }
 
-  /**
-   * Create individual accordion for a specific tool
-   */
-  createIndividualToolAccordion(toolCall: { id: string; name: string; parameters?: any }): void {
-    
-    if (!this.element) return;
-    const contentElement = this.element.querySelector('.message-content');
-    if (!contentElement) return;
-    
-    // On first tool call, move "Thinking..." to the bottom
-    if (this.progressiveToolAccordions.size === 0) {
-      // Find existing loading element
-      const existingLoading = contentElement.querySelector('.ai-loading');
-      if (existingLoading) {
-        existingLoading.remove(); // Remove from current position
-      }
-      
-      // Stop any existing loading animation
-      this.stopLoadingAnimation();
-    }
-    
-    // Create a new ProgressiveToolAccordion for this specific tool
-    const toolAccordion = new ProgressiveToolAccordion();
-    const accordionElement = toolAccordion.createElement();
-    
-    // Add it to the content (chronological order - accordions appear in order)
-    contentElement.appendChild(accordionElement);
-    
-    // Store the accordion instance mapped to tool ID
-    this.progressiveToolAccordions.set(toolCall.id, toolAccordion);
-    
-    // Start the tool execution in this accordion
-    toolAccordion.startTool(toolCall);
-    
-    // Add "Thinking..." below all accordions for next potential tool calls
-    this.addContinuationThinking(contentElement);
-  }
-
-  /**
-   * Add "Thinking..." below accordions for continuation
-   */
-  private addContinuationThinking(contentElement: Element): void {
-    // Remove any existing continuation thinking
-    const existingContinuation = contentElement.querySelector('.ai-loading-continuation');
-    if (existingContinuation) {
-      existingContinuation.remove();
-    }
-    
-    // Add new thinking state at the bottom
-    const continuationLoading = contentElement.createDiv('ai-loading-continuation');
-    continuationLoading.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
-    this.startLoadingAnimation(continuationLoading);
-  }
-
-  /**
-   * Complete individual tool execution
-   */
-  completeIndividualTool(toolId: string, result: any, success: boolean, error?: string): void {
-    const toolAccordion = this.progressiveToolAccordions.get(toolId);
-    if (toolAccordion) {
-      toolAccordion.completeTool(toolId, result, success, error);
-    }
-  }
-
-  /**
-   * Remove continuation thinking when all tools are done (called when final response comes)
-   */
-  private removeContinuationThinking(): void {
-    if (!this.element) return;
-    const contentElement = this.element.querySelector('.message-content');
-    if (!contentElement) return;
-    
-    const continuationLoading = contentElement.querySelector('.ai-loading-continuation');
-    if (continuationLoading) {
-      this.stopLoadingAnimation();
-      continuationLoading.remove();
-    }
-  }
+  // Progressive tool accordion methods removed - we use dedicated tool message bubbles instead
+  // Tool execution details are shown as separate messages with role: 'tool'
 
   /**
    * Handle tool events from MessageManager
+   *
+   * NOTE: Progressive tool accordions are disabled because we have dedicated tool message bubbles.
+   * Tool execution is shown via separate 'tool' role message bubbles, not inline accordions.
    */
   handleToolEvent(event: 'detected' | 'started' | 'completed', data: any): void {
-    switch(event) {
-      case 'detected':
-        // Tool calls detected - but don't show accordions yet (they come individually via 'started' events)
-        break;
-      case 'started':
-        // Individual tool started - create separate accordion for this specific tool
-        
-        // Check if this tool accordion already exists (avoid duplicates)
-        if (this.progressiveToolAccordions.has(data.id)) {
-          break;
-        }
-        
-        if (this.message.role === 'assistant') {
-          this.createIndividualToolAccordion({
-            id: data.id,
-            name: data.name,
-            parameters: data.parameters
-          });
-        }
-        break;
-      case 'completed':
-        // Individual tool completed  
-        this.completeIndividualTool(data.toolId, data.result, data.success, data.error);
-        break;
-    }
+    // Progressive tool accordions disabled - we use dedicated tool message bubbles instead
+    // Tool execution details are displayed as separate messages with role: 'tool'
+    // This prevents duplicate tool displays in the UI
   }
 
 
@@ -577,18 +487,22 @@ export class MessageBubble extends Component {
    * Cleanup resources
    */
   cleanup(): void {
+    console.log('[TOOL-UI-DEBUG] MessageBubble.cleanup called:', {
+      messageId: this.message.id,
+      accordionCount: this.progressiveToolAccordions.size
+    });
     this.stopLoadingAnimation();
     this.progressiveToolAccordions.forEach(accordion => {
       accordion.cleanup();
     });
     this.progressiveToolAccordions.clear();
-    
+
     // Cleanup branch navigator
     if (this.messageBranchNavigator) {
       this.messageBranchNavigator.destroy();
       this.messageBranchNavigator = null;
     }
-    
+
     this.element = null;
   }
 }

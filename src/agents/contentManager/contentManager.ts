@@ -14,19 +14,17 @@ import {
 } from './modes';
 // import { AgentManager } from '../../services/AgentManager';
 import ClaudesidianPlugin from '../../main';
-import { WorkspaceService } from "../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../services/WorkspaceService';
 import { MemoryService } from '../memoryManager/services/MemoryService';
 
 /**
  * Agent for content operations in the vault
  * Consolidates functionality from noteEditor and noteReader
- * Embedding updates are handled automatically by FileEventManager
  */
 export class ContentManagerAgent extends BaseAgent {
   protected app: App;
   protected plugin: ClaudesidianPlugin | null = null;
   
-  // ChromaDB services
   private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
 
@@ -34,34 +32,38 @@ export class ContentManagerAgent extends BaseAgent {
    * Create a new ContentManagerAgent
    * @param app Obsidian app instance
    * @param plugin Claudesidian plugin instance
+   * @param memoryService Optional injected memory service
+   * @param workspaceService Optional injected workspace service
    */
-  constructor(app: App, plugin?: ClaudesidianPlugin) {
+  constructor(
+    app: App,
+    plugin?: ClaudesidianPlugin,
+    memoryService?: MemoryService | null,
+    workspaceService?: WorkspaceService | null
+  ) {
     super(
       ContentManagerConfig.name,
       ContentManagerConfig.description,
       ContentManagerConfig.version
     );
-    
+
     this.app = app;
-    
-    // Store plugin reference if provided
-    if (plugin) {
-      this.plugin = plugin;
-      
-      // Get ChromaDB services if available
-      if (plugin.services) {
-        
-        if (plugin.services.workspaceService) {
-          this.workspaceService = plugin.services.workspaceService;
-        }
-        
-        if (plugin.services.memoryService) {
-          this.memoryService = plugin.services.memoryService;
-        }
-      }
+    this.plugin = plugin || null;
+
+    // Use injected services if provided, otherwise fall back to plugin services
+    if (memoryService) {
+      this.memoryService = memoryService;
+    } else if (plugin?.services?.memoryService) {
+      this.memoryService = plugin.services.memoryService;
+    }
+
+    if (workspaceService) {
+      this.workspaceService = workspaceService;
+    } else if (plugin?.services?.workspaceService) {
+      this.workspaceService = plugin.services.workspaceService;
     }
     
-    // Register modes with access to ChromaDB services
+    // Register modes with access to memory services
     this.registerMode(new ReadContentMode(app, this.memoryService));
     this.registerMode(new CreateContentMode(app));
     this.registerMode(new AppendContentMode(app));
@@ -75,7 +77,7 @@ export class ContentManagerAgent extends BaseAgent {
   
   
   /**
-   * Gets the ChromaDB workspace service
+   * Gets the workspace service
    * @returns WorkspaceService instance or null
    */
   public getWorkspaceService(): WorkspaceService | null {
@@ -83,7 +85,7 @@ export class ContentManagerAgent extends BaseAgent {
   }
   
   /**
-   * Gets the ChromaDB memory service
+   * Gets the memory service
    * @returns MemoryService instance or null
    */
   public getMemoryService(): MemoryService | null {

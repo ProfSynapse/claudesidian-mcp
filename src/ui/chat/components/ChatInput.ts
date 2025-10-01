@@ -1,8 +1,10 @@
 /**
  * ChatInput - Message input component with send functionality
- * 
+ *
  * Provides text input, send button, and model selection
  */
+
+import { setIcon } from 'obsidian';
 
 export class ChatInput {
   private element: HTMLElement | null = null;
@@ -13,7 +15,8 @@ export class ChatInput {
   constructor(
     private container: HTMLElement,
     private onSendMessage: (message: string) => void,
-    private getLoadingState: () => boolean
+    private getLoadingState: () => boolean,
+    private onStopGeneration?: () => void
   ) {
     this.render();
   }
@@ -73,13 +76,13 @@ export class ChatInput {
     this.sendButton = buttonContainer.createEl('button', {
       cls: 'chat-send-button'
     });
-    
-    // Add send icon (Lucide 'send' icon)
-    this.sendButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+
+    // Add send icon using setIcon
+    setIcon(this.sendButton, 'send');
     this.sendButton.setAttribute('aria-label', 'Send message');
 
     this.sendButton.addEventListener('click', () => {
-      this.handleSendMessage();
+      this.handleSendOrStop();
     });
 
     // Model selector removed - now handled by separate ModelSelector component
@@ -89,10 +92,27 @@ export class ChatInput {
   }
 
   /**
+   * Handle send or stop based on current state
+   */
+  private handleSendOrStop(): void {
+    const actuallyLoading = this.isLoading || this.getLoadingState();
+
+    if (actuallyLoading) {
+      // Stop generation
+      if (this.onStopGeneration) {
+        this.onStopGeneration();
+      }
+    } else {
+      // Send message
+      this.handleSendMessage();
+    }
+  }
+
+  /**
    * Handle sending a message
    */
   private handleSendMessage(): void {
-    if (!this.textArea || this.isLoading) return;
+    if (!this.textArea) return;
 
     const message = this.textArea.value.trim();
     if (!message) return;
@@ -133,12 +153,20 @@ export class ChatInput {
     const actuallyLoading = this.isLoading || this.getLoadingState();
 
     if (actuallyLoading) {
-      this.sendButton.disabled = true;
-      this.sendButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chat-loading-spinner"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>';
+      // Show red stop button (keep enabled so user can click to stop)
+      this.sendButton.disabled = false;
+      this.sendButton.classList.add('stop-mode');
+      this.sendButton.empty();
+      setIcon(this.sendButton, 'square');
+      this.sendButton.setAttribute('aria-label', 'Stop generation');
       this.textArea.disabled = true;
     } else {
+      // Show normal send button
       this.sendButton.disabled = false;
-      this.sendButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+      this.sendButton.classList.remove('stop-mode');
+      this.sendButton.empty();
+      setIcon(this.sendButton, 'send');
+      this.sendButton.setAttribute('aria-label', 'Send message');
       this.textArea.disabled = false;
     }
   }

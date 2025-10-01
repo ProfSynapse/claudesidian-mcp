@@ -1,7 +1,7 @@
 import { Vault, App } from 'obsidian';
 import { EntityCache } from './EntityCache';
 import { VaultFileIndex } from './VaultFileIndex';
-import { WorkspaceService } from '../../../agents/memoryManager/services/WorkspaceService';
+import { WorkspaceService } from '../../../services/WorkspaceService';
 import { MemoryService } from '../../../agents/memoryManager/services/MemoryService';
 import { PrefetchManager } from './PrefetchManager';
 

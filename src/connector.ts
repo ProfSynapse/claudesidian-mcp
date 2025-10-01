@@ -6,7 +6,7 @@ import type { ServiceManager } from './core/ServiceManager';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from "./agents/agentManager/services/CustomPromptStorageService";
-import { ToolCallCaptureService } from './services/toolcall-capture/ToolCallCaptureService';
+// ToolCallCaptureService removed in simplified architecture
 
 // Extracted services
 import { MCPConnectionManager, MCPConnectionManagerInterface } from './services/mcp/MCPConnectionManager';
@@ -34,7 +34,7 @@ export class MCPConnector {
     private sessionContextManager: SessionContextManager;
     private customPromptStorage?: CustomPromptStorageService;
     private serviceManager?: ServiceManager;
-    private toolCallCaptureService?: ToolCallCaptureService;
+    private toolCallCaptureService: any = null;
     private pendingToolCalls = new Map<string, any>();
     
     constructor(
@@ -255,21 +255,7 @@ export class MCPConnector {
             
             // Reinitialize request router with registered agents
             this.connectionManager.reinitializeRequestRouter();
-            
-            // Inject session service into SessionContextManager for database validation
-            if (this.serviceManager) {
-                try {
-                    const sessionService = await this.serviceManager.getService<any>('sessionService');
-                    if (sessionService) {
-                        this.sessionContextManager.setSessionService(sessionService);
-                    } else {
-                        logger.systemWarn('SessionService not found in service manager');
-                    }
-                } catch (error) {
-                    logger.systemWarn(`Failed to inject SessionService: ${error instanceof Error ? error.message : String(error)}`);
-                }
-            }
-            
+
             logger.systemLog('Agent initialization completed successfully');
         } catch (error) {
             if (error instanceof McpError) {
@@ -312,13 +298,13 @@ export class MCPConnector {
                         const paramSchema = modeInstance.getParameterSchema();
                         const modeName = modeInstance.slug || modeInstance.name || 'unknown';
                         tools.push({
-                            name: `${agentName}.${modeName}`,
+                            name: `${agentName}_${modeName}`,
                             description: modeInstance.description || `Execute ${modeName} on ${agentName}`,
                             inputSchema: paramSchema
                         });
                     } catch (error) {
                         const modeName = modeInstance.slug || modeInstance.name || 'unknown';
-                        console.warn(`[MCPConnector] Failed to get schema for ${agentName}.${modeName}:`, error);
+                        console.warn(`[MCPConnector] Failed to get schema for ${agentName}_${modeName}:`, error);
                     }
                 }
             }
@@ -422,31 +408,17 @@ export class MCPConnector {
         if (this.toolCallCaptureService) {
             return; // Already initialized
         }
-        
+
         try {
-            const plugin = this.plugin as any;
-            
-            // Use Direct Property Access pattern (fastest, no async needed)
-            const service = plugin.toolCallCaptureService;
-            if (service) {
-                this.toolCallCaptureService = service;
-                return;
-            }
-            
-            // Fallback: Try async service access if direct access fails
-            if (plugin.getService) {
-                const asyncService = await plugin.getService('toolCallCaptureService');
-                if (asyncService) {
-                    this.toolCallCaptureService = asyncService;
-                    return;
+            if (this.serviceManager) {
+                this.toolCallCaptureService = await this.serviceManager.getService('toolCallCaptureService');
+                if (this.toolCallCaptureService) {
+                    console.debug('[MCPConnector] Tool call capture service initialized');
                 }
             }
-            
-            console.warn('[MCPConnector] ToolCallCaptureService not available - capture will be disabled');
-            
         } catch (error) {
-            console.warn('[MCPConnector] Failed to initialize tool call capture service:', error);
-            // Don't throw - capture is optional
+            // Tool call capture service is optional - silently continue without it
+            this.toolCallCaptureService = null;
         }
     }
     
@@ -575,6 +547,10 @@ export class MCPConnector {
      */
     async start(): Promise<void> {
         try {
+            // Initialize agents and connection manager first
+            await this.initializeAgents();
+
+            // Then start the server
             await this.connectionManager.start();
         } catch (error) {
             if (error instanceof McpError) {

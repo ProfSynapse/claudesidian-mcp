@@ -12,12 +12,8 @@ import { VaultLibrarianAgent } from '../agents/vaultLibrarian/vaultLibrarian';
 import { MemoryManagerAgent } from '../agents/memoryManager/memoryManager';
 
 // Import services
-import { EmbeddingService } from '../database/services/core/EmbeddingService';
-import { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
+import { WorkspaceService } from '../services/WorkspaceService';
 import { MemoryService } from "../agents/memoryManager/services/MemoryService";
-import { FileEmbeddingAccessService } from '../database/services/indexing/FileEmbeddingAccessService';
-import { EmbeddingManager } from '../database/services/indexing/embeddingManager';
-import { IVectorStore } from '../database/interfaces/IVectorStore';
 import { CustomPromptStorageService } from "../agents/agentManager/services/CustomPromptStorageService";
 import type { ServiceManager } from '../core/ServiceManager';
 
@@ -29,11 +25,9 @@ export class SettingsTab extends PluginSettingTab {
     private settings: Settings;
     private plugin: Plugin;
 
-    // ChromaDB Services
-    private embeddingService: EmbeddingService | undefined;
+    // Simplified Services
     private memoryService: MemoryService | undefined;
-    private fileEmbeddingAccessService: FileEmbeddingAccessService | undefined;
-    private embeddingManager: EmbeddingManager | undefined;
+    private workspaceService: WorkspaceService | undefined;
     
     // Agent references
     private vaultLibrarian: VaultLibrarianAgent | undefined;
@@ -64,11 +58,8 @@ export class SettingsTab extends PluginSettingTab {
         plugin: Plugin, 
         private settingsManager: Settings,
         services?: {
-            embeddingService?: EmbeddingService,
             workspaceService?: WorkspaceService,
             memoryService?: MemoryService,
-            vectorStore?: IVectorStore,
-            fileEmbeddingAccessService?: FileEmbeddingAccessService,
         },
         vaultLibrarian?: VaultLibrarianAgent,
         memoryManager?: MemoryManagerAgent,
@@ -81,16 +72,8 @@ export class SettingsTab extends PluginSettingTab {
         
         // Setup services
         if (services) {
-            this.embeddingService = services.embeddingService;
-            // Removed assignment to unused property: this.workspaceService = services.workspaceService;
             this.memoryService = services.memoryService;
-            // Removed assignment to unused property: this.vectorStore = services.vectorStore;
-            this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
-            
-            // Create embedding manager instance if we have app access
-            if (window.app && !this.embeddingManager && services.embeddingService) {
-                this.embeddingManager = new EmbeddingManager(window.app);
-            }
+            this.workspaceService = services.workspaceService;
         }
         
         // Store agent references
@@ -109,30 +92,18 @@ export class SettingsTab extends PluginSettingTab {
      * @param services Updated service references
      */
     updateServices(services: {
-        embeddingService?: EmbeddingService,
         workspaceService?: WorkspaceService,
         memoryService?: MemoryService,
-        vectorStore?: IVectorStore,
-        fileEmbeddingAccessService?: FileEmbeddingAccessService,
     }): void {
         // Update service references
-        this.embeddingService = services.embeddingService;
         this.memoryService = services.memoryService;
-        this.fileEmbeddingAccessService = services.fileEmbeddingAccessService;
-        
-        // Create embedding manager if we have the service
-        if (window.app && !this.embeddingManager && services.embeddingService) {
-            this.embeddingManager = new EmbeddingManager(window.app);
-        }
-        
+        this.workspaceService = services.workspaceService;
+
         // Update the memory management accordion if it exists
         if (this.memoryManagementAccordion) {
             this.memoryManagementAccordion.updateServices(
-                this.embeddingService,
-                this.fileEmbeddingAccessService,
                 this.memoryService,
-                this.vaultLibrarian,
-                this.embeddingManager
+                this.vaultLibrarian
             );
         }
         
@@ -270,22 +241,13 @@ export class SettingsTab extends PluginSettingTab {
         // Update section first
         this.createUpdateSection(containerEl);
 
-        // Memory Management accordion with services and agents
-        // Create EmbeddingManager instance if we have memory manager but no embedding manager
-        const embeddingManager = this.embeddingManager;
-        if (this.memoryManager && !embeddingManager && window.app) {
-            // The MemoryManagerAgent is not directly compatible with EmbeddingManager
-            // We're not creating a real EmbeddingManager since it may require complex initialization
-        }
-        
+        // Memory Management accordion with simplified services
         this.memoryManagementAccordion = new MemoryManagementAccordion(
-            containerEl, 
+            containerEl,
             this.settingsManager,
-            this.embeddingService,
-            this.fileEmbeddingAccessService, // Now properly injected from services
             this.memoryService,
+            this.workspaceService,
             this.vaultLibrarian,
-            embeddingManager,
             this.serviceManager
         );
 

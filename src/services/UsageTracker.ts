@@ -1,9 +1,9 @@
 /**
  * Shared Usage Tracking Service
- * Handles cost tracking for both embeddings and LLM usage with provider-level breakdown
+ * Handles cost tracking for LLM usage with provider-level breakdown
  */
 
-export type UsageType = 'embeddings' | 'llm';
+export type UsageType = 'llm';
 
 export interface ProviderUsage {
     [provider: string]: number; // Cost in USD
@@ -34,7 +34,7 @@ export interface UsageResponse {
 
 /**
  * Shared service for tracking usage costs by provider
- * Supports separate tracking for embeddings and LLM usage
+ * Supports tracking for LLM usage
  */
 export class UsageTracker {
     private readonly storageKeyPrefix: string;

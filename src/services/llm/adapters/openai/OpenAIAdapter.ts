@@ -217,7 +217,7 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
             content: choice?.message?.content || '',
             usage: this.extractUsage({ usage: response.usage }),
             finishReason: choice?.finish_reason || 'stop',
-            toolCalls: choice?.message?.tool_calls,
+            toolCalls: choice?.message?.toolCalls,
             choice: choice
           };
         },
@@ -307,7 +307,7 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
       }
 
       // Check for tool calls with web search results
-      const toolCalls = response.choices?.[0]?.message?.tool_calls || [];
+      const toolCalls = response.choices?.[0]?.message?.toolCalls || [];
       for (const toolCall of toolCalls) {
         if (toolCall.function?.name === 'web_search' && toolCall.result) {
           try {

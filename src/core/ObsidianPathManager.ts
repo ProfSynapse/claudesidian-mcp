@@ -13,7 +13,6 @@
  * 
  * Used by:
  * - VaultOperations for all path operations
- * - ChromaDB persistence path construction
  * - Plugin data directory management
  * - Configuration file path handling
  */
@@ -113,12 +112,11 @@ export class ObsidianPathManager {
   }
 
   /**
-   * Get collection path for ChromaDB - use correct vault-relative path
+   * Get storage path for data files
    */
-  getCollectionPath(collectionName: string): string {
-    const safeName = this.sanitizePath(collectionName);
-    // Use vault-relative path that matches where Obsidian actually stores plugin data
-    return this.normalizePath(`.obsidian/plugins/${this.manifest.id}/data/chroma-db/collections/${safeName}`);
+  getStoragePath(fileName: string): string {
+    const safeName = this.sanitizePath(fileName);
+    return this.normalizePath(`.obsidian/plugins/${this.manifest.id}/data/storage/${safeName}`);
   }
 
   /**
@@ -143,10 +141,10 @@ export class ObsidianPathManager {
   }
 
   /**
-   * Get ChromaDB storage path
+   * Get JSON storage path
    */
-  getChromaDbPath(): string {
-    return this.normalizePath(`${this.getPluginDataPath()}/chroma-db`);
+  getDataStoragePath(): string {
+    return this.normalizePath(`${this.getPluginDataPath()}/storage`);
   }
 
   /**

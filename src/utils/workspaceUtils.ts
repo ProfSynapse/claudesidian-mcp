@@ -1,5 +1,5 @@
 import { normalizePath } from "obsidian";
-import { WorkspaceService } from '../agents/memoryManager/services/WorkspaceService';
+import { WorkspaceService } from '../services/WorkspaceService';
 import { ProjectWorkspace } from "../database/workspace-types";
 
 /**
@@ -55,7 +55,7 @@ export async function getWorkspacesForFile(
   workspaceService: WorkspaceService
 ): Promise<string[]> {
   // Get all workspaces
-  const workspaces = await workspaceService.getWorkspaces();
+  const workspaces = await workspaceService.listWorkspaces();
   const matchingWorkspaceIds: string[] = [];
   
   // Normalize the file path
@@ -130,32 +130,15 @@ export async function getBestWorkspaceForFile(
  * @param filePath Path of the file that was modified
  * @param action The action performed ('create', 'edit', 'delete' - will be mapped to valid activity types)
  * @param workspaceService WorkspaceService instance
- * @remarks 'delete' actions will be recorded as 'view' in the workspace activity history
+ * @remarks Activity tracking not supported in split-file storage architecture
+ * @deprecated Activity tracking removed - this function is a no-op
  */
 export async function updateWorkspaceActivityForFile(
   filePath: string,
   action: 'create' | 'edit' | 'delete',
   workspaceService: WorkspaceService
 ): Promise<void> {
-  // Get all workspaces that contain this file
-  const workspaceIds = await getWorkspacesForFile(filePath, workspaceService);
-  
-  // Map our action types to the ones expected by workspace activity
-  // For 'delete' actions, use 'view' as it's a valid action type
-  const activityAction = action === 'delete' ? 'view' : 
-                     action === 'create' ? 'create' : 'edit';
-  
-  // Record the activity for each workspace
-  for (const workspaceId of workspaceIds) {
-    try {
-      await workspaceService.addActivity(workspaceId, {
-        timestamp: Date.now(),
-        action: activityAction,
-        duration: 0, // Instant action
-        context: filePath
-      });
-    } catch (error) {
-      console.error(`Error updating activity for workspace ${workspaceId}:`, error);
-    }
-  }
+  // Activity tracking not supported in new storage architecture
+  // IndividualWorkspace does not have activityHistory property
+  // This function is kept for backward compatibility but does nothing
 }

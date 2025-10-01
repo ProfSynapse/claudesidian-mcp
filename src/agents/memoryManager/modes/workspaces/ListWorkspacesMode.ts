@@ -13,7 +13,7 @@ import {
   ListWorkspacesParameters, 
   ListWorkspacesResult
 } from '../../../../database/workspace-types';
-import { WorkspaceService } from "../../services/WorkspaceService";
+import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 
 /**

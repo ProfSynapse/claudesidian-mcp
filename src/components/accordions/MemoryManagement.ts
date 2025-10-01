@@ -2,10 +2,8 @@ import { Accordion } from '../Accordion';
 import { Settings } from '../../settings';
 import { VaultLibrarianAgent } from '../../agents/vaultLibrarian/vaultLibrarian';
 import { MemorySettingsTab } from '../MemorySettingsTab';
-import { EmbeddingService } from '../../database/services/core/EmbeddingService';
-import { FileEmbeddingAccessService } from '../../database/services/indexing/FileEmbeddingAccessService';
 import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
-import { EmbeddingManager } from '../../database/services/indexing/embeddingManager';
+import { WorkspaceService } from '../../services/WorkspaceService';
 import type { ServiceManager } from '../../core/ServiceManager';
 
 /**
@@ -15,12 +13,10 @@ import type { ServiceManager } from '../../core/ServiceManager';
 export class MemoryManagementAccordion extends Accordion {
     private settings: Settings;
     private memorySettingsContainer: HTMLElement;
-    
-    // ChromaDB Services
-    private embeddingService: EmbeddingService | undefined;
-    private fileEmbeddingAccessService: FileEmbeddingAccessService | undefined;
+
+    // Simplified Services
     private memoryService: MemoryService | undefined;
-    private embeddingManager: EmbeddingManager | undefined;
+    private workspaceService: WorkspaceService | undefined;
     
     // Agent (for backward compatibility)
     private vaultLibrarian: VaultLibrarianAgent | undefined;
@@ -34,37 +30,31 @@ export class MemoryManagementAccordion extends Accordion {
      * Create a new Memory Management accordion
      * @param containerEl Parent container element
      * @param settings Plugin settings
-     * @param embeddingService EmbeddingService for generating and managing embeddings
-     * @param fileEmbeddingAccessService FileEmbeddingAccessService for file embedding access
      * @param memoryService MemoryService for memory traces and sessions
+     * @param workspaceService WorkspaceService for workspace management
      * @param vaultLibrarian VaultLibrarian agent instance (optional, for backward compatibility)
-     * @param embeddingManager EmbeddingManager for managing embedding providers (optional)
      * @param serviceManager ServiceManager instance for checking service readiness (optional)
      */
     constructor(
-        containerEl: HTMLElement, 
+        containerEl: HTMLElement,
         settings: Settings,
-        embeddingService?: EmbeddingService,
-        fileEmbeddingAccessService?: FileEmbeddingAccessService,
         memoryService?: MemoryService,
+        workspaceService?: WorkspaceService,
         vaultLibrarian?: VaultLibrarianAgent,
-        embeddingManager?: EmbeddingManager,
         serviceManager?: ServiceManager
     ) {
         super(containerEl, 'Memory Management', false);
         this.settings = settings;
-        this.embeddingService = embeddingService;
-        this.fileEmbeddingAccessService = fileEmbeddingAccessService;
         this.memoryService = memoryService;
+        this.workspaceService = workspaceService;
         this.vaultLibrarian = vaultLibrarian;
-        this.embeddingManager = embeddingManager;
         this.serviceManager = serviceManager;
         
         const contentEl = this.getContentEl();
         
         // Add simple description
         contentEl.createEl('p', {
-            text: 'Configure settings for the Memory Manager feature.'
+            text: 'Manage workspaces: view, create, edit, and delete workspace configurations.'
         });
         
         // Container for memory settings
@@ -76,11 +66,9 @@ export class MemoryManagementAccordion extends Accordion {
         
         // Initialize UI based on current service state
         this.initializeUI();
-        
-        // Start monitoring service readiness if enabled
-        if (this.settings.settings.memory?.enabled) {
-            this.startServiceReadinessMonitoring();
-        }
+
+        // Start monitoring service readiness
+        this.startServiceReadinessMonitoring();
     }
     
     /**
@@ -89,10 +77,8 @@ export class MemoryManagementAccordion extends Accordion {
     private initializeUI(): void {
         if (this.areServicesReady()) {
             this.initializeMemorySettingsTab();
-        } else if (this.settings.settings.memory?.enabled) {
-            this.showServiceLoadingStatus();
         } else {
-            this.showMemoryDisabledMessage();
+            this.showServiceLoadingStatus();
         }
     }
     
@@ -102,16 +88,12 @@ export class MemoryManagementAccordion extends Accordion {
     private areServicesReady(): boolean {
         // If we have a service manager, use it to check readiness
         if (this.serviceManager) {
-            const embeddingReady = this.serviceManager.isServiceReady('embeddingService');
-            const fileAccessReady = this.serviceManager.isServiceReady('fileEmbeddingAccessService');
             const memoryReady = this.serviceManager.isServiceReady('memoryService');
-            
-            return embeddingReady && fileAccessReady && memoryReady;
+            return memoryReady;
         }
         
         // Fallback to direct service checks
-        const hasServices = this.embeddingService && this.fileEmbeddingAccessService && 
-                          this.memoryService;
+        const hasServices = this.memoryService;
         const hasAgent = this.vaultLibrarian;
         
         return !!(hasServices || hasAgent);
@@ -164,8 +146,6 @@ export class MemoryManagementAccordion extends Accordion {
         const serviceList = serviceStatus.createEl('ul');
         
         const services = [
-            { name: 'Embedding Service', key: 'embeddingService', instance: this.embeddingService },
-            { name: 'File Access Service', key: 'fileEmbeddingAccessService', instance: this.fileEmbeddingAccessService, dependency: 'vectorStore' },
             { name: 'Memory Service', key: 'memoryService', instance: this.memoryService }
         ];
         
@@ -176,14 +156,8 @@ export class MemoryManagementAccordion extends Accordion {
             
             const listItem = serviceList.createEl('li');
             
-            // Check dependency status for services that have dependencies
-            if (service.dependency && this.serviceManager) {
-                const depReady = this.serviceManager.isServiceReady(service.dependency);
-                const depStatus = depReady ? '✅' : '⏳';
-                listItem.innerHTML = `${service.name}: ${isReady ? '✅ Ready' : `⏳ Loading... (${service.dependency}: ${depStatus})`}`;
-            } else {
-                listItem.innerHTML = `${service.name}: ${isReady ? '✅ Ready' : '⏳ Loading...'}`;
-            }
+            // Simple service status display
+            listItem.innerHTML = `${service.name}: ${isReady ? '✅ Ready' : '⏳ Loading...'}`;
         });
     }
     
@@ -272,17 +246,11 @@ export class MemoryManagementAccordion extends Accordion {
      * Update services (called externally when services become available)
      */
     public updateServices(
-        embeddingService?: EmbeddingService,
-        fileEmbeddingAccessService?: FileEmbeddingAccessService,
         memoryService?: MemoryService,
-        vaultLibrarian?: VaultLibrarianAgent,
-        embeddingManager?: EmbeddingManager
+        vaultLibrarian?: VaultLibrarianAgent
     ): void {
-        this.embeddingService = embeddingService;
-        this.fileEmbeddingAccessService = fileEmbeddingAccessService;
         this.memoryService = memoryService;
         this.vaultLibrarian = vaultLibrarian;
-        this.embeddingManager = embeddingManager;
         
         // Refresh UI
         this.initializeUI();
@@ -324,7 +292,7 @@ export class MemoryManagementAccordion extends Accordion {
                     text: 'Service Status:'
                 });
                 
-                const services = ['embeddingService', 'fileEmbeddingAccessService', 'memoryService'];
+                const services = ['memoryService'];
                 const statusList = statusEl.createEl('ul');
                 
                 services.forEach(serviceName => {
@@ -340,20 +308,20 @@ export class MemoryManagementAccordion extends Accordion {
             return;
         }
         
-        // Get services from ServiceContainer if available, otherwise use direct references
-        const embeddingService = this.serviceManager?.getServiceIfReady<EmbeddingService>('embeddingService') || this.embeddingService;
-        
-        // Initialize the MemorySettingsTab with our services and agent
-        this.memorySettingsTab = new MemorySettingsTab(
-            this.memorySettingsContainer,
-            this.settings,
-            (window as any).app,
-            this.embeddingManager,
-            this.vaultLibrarian,
-            embeddingService
-        );
+        // Initialize the MemorySettingsTab with simplified services
+        if (this.memoryService) {
+            this.memorySettingsTab = new MemorySettingsTab(
+                this.memorySettingsContainer,
+                (window as any).app,
+                this.workspaceService!,
+                this.memoryService,
+                this.settings
+            );
+        }
         
         // Display settings
-        this.memorySettingsTab.display();
+        if (this.memorySettingsTab) {
+            this.memorySettingsTab.display();
+        }
     }
 }

@@ -61,7 +61,7 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
   private vault: Vault | null = null;
   private llmSettings: LLMProviderSettings | null = null;
 
-  constructor() {
+  constructor(dependencies?: { vault?: Vault; llmSettings?: LLMProviderSettings }) {
     super(
       'generateImage',
       'Generate Image',
@@ -70,6 +70,21 @@ export class GenerateImageMode extends BaseMode<GenerateImageParams, GenerateIma
     );
 
     this.schemaBuilder = new SchemaBuilder(null);
+
+    // Use injected dependencies if provided
+    if (dependencies) {
+      if (dependencies.vault) {
+        this.vault = dependencies.vault;
+      }
+      if (dependencies.llmSettings) {
+        this.llmSettings = dependencies.llmSettings;
+      }
+
+      // Initialize service if both dependencies are available
+      if (this.vault && this.llmSettings) {
+        this.initializeImageService();
+      }
+    }
   }
 
   /**

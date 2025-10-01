@@ -32,7 +32,7 @@ const context = await esbuild.context({
     "onnxruntime-node",
     "sharp",
     "@xenova/transformers",
-    "chromadb-default-embed",
+    "chromadb-default-embed"
   ],
   loader: {
     ".node": "file",

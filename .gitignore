@@ -23,13 +23,17 @@ Example Files/
 refactoring/
 
 data.json
-data.json
+
+conversations/
+workspaces/
 
 connector.js
 
 data/
 
 chats.db
+
+.data/
 
 
 # Claude Flow generated files

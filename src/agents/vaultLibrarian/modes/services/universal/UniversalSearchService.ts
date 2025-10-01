@@ -4,11 +4,10 @@
  */
 
 import { Plugin, TFile } from 'obsidian';
-import { EmbeddingService } from '../../../../../database/services/core/EmbeddingService';
 import { MemoryService } from "../../../../memoryManager/services/MemoryService";
-import { WorkspaceService } from "../../../../memoryManager/services/WorkspaceService";
+import { WorkspaceService } from '../../../../../services/WorkspaceService';
 import { GraphOperations } from '../../../../../database/utils/graph/GraphOperations';
-import { MetadataSearchService, MetadataSearchCriteria } from '../../../../../database/services/search/MetadataSearchService';
+type MetadataSearchCriteria = any;
 import { 
   UniversalSearchParams, 
   UniversalSearchResult, 
@@ -43,14 +42,12 @@ export class UniversalSearchService {
   private resultFormatter: ResultFormatter;
   
   // Service references
-  private metadataSearchService?: MetadataSearchService;
-  private embeddingService?: EmbeddingService;
+  private metadataSearchService?: any;
   private memoryService?: MemoryService;
   private workspaceService?: WorkspaceService;
 
   constructor(
     plugin: Plugin,
-    embeddingService?: EmbeddingService,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService
   ) {
@@ -62,12 +59,11 @@ export class UniversalSearchService {
     this.queryParser = new QueryParser();
     this.contentSearchStrategy = new ContentSearchStrategy();
     this.fileSearchStrategy = new FileSearchStrategy(plugin);
-    this.metadataSearchStrategy = new MetadataSearchStrategy(plugin, new MetadataSearchService(plugin.app));
+    this.metadataSearchStrategy = new MetadataSearchStrategy(plugin, null);
     this.resultConsolidator = new ResultConsolidator();
     this.resultFormatter = new ResultFormatter();
     
     // Store provided services
-    this.embeddingService = embeddingService;
     this.memoryService = memoryService;
     this.workspaceService = workspaceService;
     
@@ -81,7 +77,6 @@ export class UniversalSearchService {
   private async initializeServices(): Promise<void> {
     try {
       const result = await this.serviceInitializer.initializeServices({
-        embeddingService: this.embeddingService,
         memoryService: this.memoryService,
         workspaceService: this.workspaceService
       });
@@ -89,10 +84,8 @@ export class UniversalSearchService {
       if (result.success && result.services) {
         this.metadataSearchService = result.services.metadataSearchService;
         
-        // Update search strategies with initialized services
-        this.contentSearchStrategy.updateServices(
-          result.services.hybridSearchService
-        );
+        // Update search strategies (no services needed for keyword-only search)
+        this.contentSearchStrategy.updateServices();
         
         this.metadataSearchStrategy = new MetadataSearchStrategy(
           this.plugin,
@@ -263,7 +256,6 @@ export class UniversalSearchService {
         services: {
           metadataSearch: false,
           hybridSearch: false,
-          embedding: false,
           memory: false,
           workspace: false
         },
@@ -311,31 +303,22 @@ export class UniversalSearchService {
    * Update services (for hot-reloading)
    */
   updateServices(services: {
-    embeddingService?: EmbeddingService;
     memoryService?: MemoryService;
     workspaceService?: WorkspaceService;
   }): void {
     // Update service references
-    
-    if (services.embeddingService) {
-      this.embeddingService = services.embeddingService;
-      this.serviceInitializer.updateService('embeddingService', services.embeddingService);
-    }
-    
+
     if (services.memoryService) {
       this.memoryService = services.memoryService;
       this.serviceInitializer.updateService('memoryService', services.memoryService);
     }
-    
+
     if (services.workspaceService) {
       this.workspaceService = services.workspaceService;
       this.serviceInitializer.updateService('workspaceService', services.workspaceService);
     }
 
-    // Update search strategies
-    const initializedServices = this.serviceInitializer.getServices();
-    this.contentSearchStrategy.updateServices(
-      initializedServices.hybridSearchService
-    );
+    // Update search strategies (no services needed for keyword-only search)
+    this.contentSearchStrategy.updateServices();
   }
 }

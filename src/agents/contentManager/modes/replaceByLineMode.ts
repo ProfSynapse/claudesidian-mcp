@@ -42,7 +42,7 @@ export class ReplaceByLineMode extends BaseMode<ReplaceByLineParams, ReplaceByLi
         newContent
       );
       
-      // File change detection and embedding updates are handled automatically by FileEventManager
+      // File change detection are handled automatically by FileEventManager
       
       const response = this.prepareResult(true, {
           filePath,
