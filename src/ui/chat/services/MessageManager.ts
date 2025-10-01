@@ -17,10 +17,13 @@ export interface MessageManagerEvents {
   onToolExecutionStarted: (messageId: string, toolCall: { id: string; name: string; parameters?: any }) => void;
   onToolExecutionCompleted: (messageId: string, toolId: string, result: any, success: boolean, error?: string) => void;
   onMessageIdUpdated: (oldId: string, newId: string, updatedMessage: ConversationMessage) => void;
+  onGenerationAborted: (messageId: string, partialContent: string) => void;
 }
 
 export class MessageManager {
   private isLoading = false;
+  private currentAbortController: AbortController | null = null;
+  private currentStreamingMessageId: string | null = null;
 
   constructor(
     private chatService: ChatService,
@@ -47,6 +50,9 @@ export class MessageManager {
       systemPrompt?: string;
     }
   ): Promise<void> {
+    // Declare aiMessageId in function scope so catch block can access it
+    let aiMessageId: string | null = null;
+
     try {
       this.setLoading(true);
 
@@ -58,19 +64,20 @@ export class MessageManager {
         timestamp: Date.now(),
         conversationId: conversation.id
       };
-      
+
       // Add user message to conversation and display immediately (progressive updates only)
       conversation.messages.push(userMessage);
       this.events.onMessageAdded(userMessage);
-      
+
       // 2. Create placeholder AI message with loading animation
-      const aiMessageId = `msg_${Date.now()}_ai`;
+      aiMessageId = `msg_${Date.now()}_ai`;
       const placeholderAiMessage: ConversationMessage = {
         id: aiMessageId,
         role: 'assistant' as const,
         content: '',
         timestamp: Date.now(),
-        conversationId: conversation.id
+        conversationId: conversation.id,
+        isLoading: true
       };
       
       // Add placeholder AI message and create bubble for streaming
@@ -79,6 +86,10 @@ export class MessageManager {
 
       // 3. Stream AI response
       try {
+        // Create abort controller for this request
+        this.currentAbortController = new AbortController();
+        this.currentStreamingMessageId = aiMessageId;
+
         // First add the user message to repository
         const userMessageResult = await this.chatService.addMessage({
           conversationId: conversation.id,
@@ -133,7 +144,8 @@ export class MessageManager {
             provider: options?.provider,
             model: options?.model,
             systemPrompt: options?.systemPrompt,
-            messageId: aiMessageId // Pass the placeholder messageId for UI consistency
+            messageId: aiMessageId, // Pass the placeholder messageId for UI consistency
+            abortSignal: this.currentAbortController.signal
           }
         )) {
           
@@ -196,8 +208,36 @@ export class MessageManager {
         throw sendError;
       }
     } catch (error) {
-      this.events.onError('Failed to send message');
+      // Check if this was an abort (user clicked stop)
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[MessageManager] ⛔ Generation stopped by user - saving partial message');
+
+        if (aiMessageId) {
+          // Save the partial AI message to conversation history
+          const aiMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+          if (aiMessageIndex >= 0) {
+            const partialContent = conversation.messages[aiMessageIndex].content;
+
+            // Mark as not loading anymore
+            conversation.messages[aiMessageIndex].isLoading = false;
+
+            // Save conversation with partial message
+            await this.chatService.updateConversation(conversation);
+
+            // Finalize streaming with partial content (stops animation, renders final content)
+            this.events.onStreamingUpdate(aiMessageId, partialContent, true, false);
+
+            // Update UI to show final partial message
+            this.events.onConversationUpdated(conversation);
+
+            console.log('[MessageManager] ✅ Partial message saved and persisted');
+          }
+        }
+      } else {
+        this.events.onError('Failed to send message');
+      }
     } finally {
+      this.currentAbortController = null;
       this.setLoading(false);
     }
   }
@@ -407,6 +447,30 @@ export class MessageManager {
     if (messageIndex >= 0) {
       conversation.messages.splice(messageIndex, 1);
       this.events.onConversationUpdated(conversation);
+    }
+  }
+
+  /**
+   * Cancel current generation (abort streaming) - immediate kill switch
+   */
+  cancelCurrentGeneration(): void {
+    if (this.currentAbortController && this.currentStreamingMessageId) {
+      console.log('[MessageManager] ⛔ KILL SWITCH - Aborting current generation');
+
+      const messageId = this.currentStreamingMessageId;
+
+      // Immediately abort the stream
+      this.currentAbortController.abort();
+      this.currentAbortController = null;
+      this.currentStreamingMessageId = null;
+
+      // Immediately reset loading state so UI updates instantly
+      this.setLoading(false);
+
+      // Fire immediate abort event to stop UI animations NOW
+      this.events.onGenerationAborted(messageId, '');
+
+      console.log('[MessageManager] ✅ Generation stopped - UI ready for next message');
     }
   }
 

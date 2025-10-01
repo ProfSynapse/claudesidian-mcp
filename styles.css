@@ -905,6 +905,17 @@
     transition: all 0.2s ease;
 }
 
+/* Stop button mode - red color when showing stop icon */
+.chat-send-button.stop-mode {
+    background: var(--text-error);
+    color: white;
+}
+
+.chat-send-button.stop-mode:hover {
+    background: var(--text-error);
+    opacity: 0.9;
+}
+
 .chat-loading-spinner {
     animation: spin 1s linear infinite;
 }
@@ -2773,7 +2784,18 @@ a:hover {
   padding: 8px 0;
 }
 
-.ai-loading .dots {
+/* AI loading in header (inline with icon) */
+.ai-loading-header {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-left: 8px;
+  font-size: 0.95em;
+}
+
+.ai-loading .dots,
+.ai-loading-header .dots {
   display: inline-block;
   width: 20px;
   text-align: left;

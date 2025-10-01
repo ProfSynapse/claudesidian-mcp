@@ -44,7 +44,7 @@ export class MessageBubble extends Component {
 
     // Message header with role icon only
     const header = bubble.createDiv('message-header');
-    
+
     // Role icon
     const roleIcon = header.createDiv('message-role-icon');
     if (this.message.role === 'user') {
@@ -53,6 +53,13 @@ export class MessageBubble extends Component {
       setIcon(roleIcon, 'wrench');
     } else {
       setIcon(roleIcon, 'bot');
+    }
+
+    // Add loading state in header if AI message is loading with empty content
+    if (this.message.role === 'assistant' && this.message.isLoading && !this.message.content.trim()) {
+      const loadingSpan = header.createEl('span', { cls: 'ai-loading-header' });
+      loadingSpan.innerHTML = 'Thinking<span class="dots">...</span>';
+      this.startLoadingAnimation(loadingSpan);
     }
 
     // Message content
@@ -149,10 +156,8 @@ export class MessageBubble extends Component {
    * Render message content using enhanced markdown renderer
    */
   private async renderContent(container: HTMLElement, content: string): Promise<void> {
-    // Handle loading state for AI messages
+    // Skip rendering if loading with empty content (loading is shown in header)
     if (this.message.isLoading && this.message.role === 'assistant' && !content.trim()) {
-      container.innerHTML = '<span class="ai-loading">Thinking<span class="dots">...</span></span>';
-      this.startLoadingAnimation(container);
       return;
     }
 
@@ -298,12 +303,20 @@ export class MessageBubble extends Component {
   }
 
   /**
-   * Stop loading animation
+   * Stop loading animation and remove loading UI
    */
-  private stopLoadingAnimation(): void {
+  stopLoadingAnimation(): void {
     if (this.loadingInterval) {
       clearInterval(this.loadingInterval);
       this.loadingInterval = null;
+    }
+
+    // Remove the "Thinking..." element from the header
+    if (this.element) {
+      const loadingElement = this.element.querySelector('.ai-loading-header');
+      if (loadingElement) {
+        loadingElement.remove();
+      }
     }
   }
 

@@ -248,6 +248,7 @@ export class ChatService {
       model?: string;
       systemPrompt?: string;
       messageId?: string; // Allow passing existing messageId for UI consistency
+      abortSignal?: AbortSignal; // Allow aborting the stream
     }
   ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string; toolCalls?: any[] }, void, unknown> {
     try {
@@ -293,7 +294,8 @@ export class ChatService {
         model: options?.model || defaultModel.model,
         systemPrompt: options?.systemPrompt,
         tools: openAITools,
-        toolChoice: openAITools.length > 0 ? 'auto' : undefined
+        toolChoice: openAITools.length > 0 ? 'auto' : undefined,
+        abortSignal: options?.abortSignal
       };
 
       console.log('[ChatService] Passing tools to LLM:', {
@@ -313,8 +315,14 @@ export class ChatService {
 
       // Stream the response from LLM service with MCP tools
       let toolCalls: any[] | undefined = undefined;
-      
+
       for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
+        // Check if aborted FIRST before processing chunk
+        if (options?.abortSignal?.aborted) {
+          console.log('[ChatService] ⛔ Stream aborted by user - stopping immediately');
+          throw new DOMException('Generation aborted by user', 'AbortError');
+        }
+
         accumulatedContent += chunk.chunk;
 
         // Extract tool calls when available (typically on completion)

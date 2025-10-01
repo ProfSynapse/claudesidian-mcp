@@ -98,24 +98,12 @@ export class UIStateController {
 
   /**
    * Set loading state on chat input
+   * Note: ChatInput component now manages its own loading state and stop button
+   * This method is kept for backward compatibility but does nothing
    */
   setInputLoading(loading: boolean): void {
-    const chatInput = this.containerEl.querySelector('.chat-input-container');
-    if (chatInput) {
-      const textarea = chatInput.querySelector('.chat-textarea') as HTMLTextAreaElement;
-      const sendButton = chatInput.querySelector('.chat-send-button') as HTMLButtonElement;
-      
-      if (textarea && sendButton) {
-        textarea.disabled = loading;
-        sendButton.disabled = loading;
-        
-        if (loading) {
-          sendButton.innerHTML = '<svg class="chat-loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m12 6-4 4 4 4"/></svg>';
-        } else {
-          sendButton.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
-        }
-      }
-    }
+    // ChatInput component handles its own state now
+    // No-op to avoid conflicts with ChatInput's updateUI()
   }
 
   /**

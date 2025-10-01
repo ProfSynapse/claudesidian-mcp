@@ -205,16 +205,17 @@ export class ChatView extends ItemView {
     const messageEvents: MessageManagerEvents = {
       onMessageAdded: (message) => this.messageDisplay.addMessage(message),
       onAIMessageStarted: (message) => this.handleAIMessageStarted(message),
-      onStreamingUpdate: (messageId, content, isComplete, isIncremental) => 
+      onStreamingUpdate: (messageId, content, isComplete, isIncremental) =>
         this.handleStreamingUpdate(messageId, content, isComplete, isIncremental),
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
-      onLoadingStateChanged: (loading) => this.uiStateController.setInputLoading(loading),
+      onLoadingStateChanged: (loading) => this.handleLoadingStateChanged(loading),
       onError: (message) => this.uiStateController.showError(message),
       onToolCallsDetected: (messageId, toolCalls) => this.handleToolCallsDetected(messageId, toolCalls),
       onToolExecutionStarted: (messageId, toolCall) => this.handleToolExecutionStarted(messageId, toolCall),
-      onToolExecutionCompleted: (messageId, toolId, result, success, error) => 
+      onToolExecutionCompleted: (messageId, toolId, result, success, error) =>
         this.handleToolExecutionCompleted(messageId, toolId, result, success, error),
-      onMessageIdUpdated: (oldId, newId, updatedMessage) => this.handleMessageIdUpdated(oldId, newId, updatedMessage)
+      onMessageIdUpdated: (oldId, newId, updatedMessage) => this.handleMessageIdUpdated(oldId, newId, updatedMessage),
+      onGenerationAborted: (messageId, partialContent) => this.handleGenerationAborted(messageId, partialContent)
     };
     this.messageManager = new MessageManager(this.chatService, this.branchManager, messageEvents);
 
@@ -267,7 +268,8 @@ export class ChatView extends ItemView {
     this.chatInput = new ChatInput(
       refs.inputContainer,
       (message) => this.handleSendMessage(message),
-      () => this.messageManager.getIsLoading()
+      () => this.messageManager.getIsLoading(),
+      () => this.handleStopGeneration()
     );
 
     this.contextProgressBar = new ContextProgressBar(
@@ -453,6 +455,40 @@ export class ChatView extends ItemView {
         newContent,
         this.modelAgentManager.getMessageOptions()
       );
+    }
+  }
+
+  private handleStopGeneration(): void {
+    console.log('[ChatView] Stop generation requested');
+    this.messageManager.cancelCurrentGeneration();
+  }
+
+  private handleGenerationAborted(messageId: string, partialContent: string): void {
+    console.log('[ChatView] ⛔ Generation aborted - stopping animations immediately:', messageId);
+
+    // Stop the MessageBubble's "Thinking..." animation
+    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
+    if (messageBubble) {
+      messageBubble.stopLoadingAnimation();
+      console.log('[ChatView] ✅ Stopped MessageBubble loading animation');
+    }
+
+    // Also stop any StreamingController animations
+    const messageElement = this.containerEl.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageElement) {
+      const contentElement = messageElement.querySelector('.message-bubble .message-content');
+      if (contentElement) {
+        this.streamingController.stopLoadingAnimation(contentElement);
+      }
+    }
+
+    // Finalize any streaming state
+    this.streamingController.finalizeStreaming(messageId, partialContent);
+  }
+
+  private handleLoadingStateChanged(loading: boolean): void {
+    if (this.chatInput) {
+      this.chatInput.setLoading(loading);
     }
   }
 
