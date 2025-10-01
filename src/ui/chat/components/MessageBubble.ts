@@ -487,10 +487,6 @@ export class MessageBubble extends Component {
    * Cleanup resources
    */
   cleanup(): void {
-    console.log('[TOOL-UI-DEBUG] MessageBubble.cleanup called:', {
-      messageId: this.message.id,
-      accordionCount: this.progressiveToolAccordions.size
-    });
     this.stopLoadingAnimation();
     this.progressiveToolAccordions.forEach(accordion => {
       accordion.cleanup();

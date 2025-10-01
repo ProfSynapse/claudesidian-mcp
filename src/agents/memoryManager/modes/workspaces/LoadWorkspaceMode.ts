@@ -62,13 +62,15 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               rootFolder: '',
               recentActivity: ['WorkspaceService not available']
             },
-            workflow: '',
+            workflows: [],
+            workspaceStructure: [],
+            recentFiles: [],
             keyFiles: {},
             preferences: '',
             sessions: [],
             states: [],
           },
-          workspaceContext: typeof params.workspaceContext === 'string' 
+          workspaceContext: typeof params.workspaceContext === 'string'
             ? parseWorkspaceContext(params.workspaceContext) || undefined
             : params.workspaceContext
         };
@@ -89,18 +91,20 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               rootFolder: '',
               recentActivity: ['Failed to load workspace']
             },
-            workflow: '',
+            workflows: [],
+            workspaceStructure: [],
+            recentFiles: [],
             keyFiles: {},
             preferences: '',
             sessions: [],
             states: [],
           },
-          workspaceContext: typeof params.workspaceContext === 'string' 
+          workspaceContext: typeof params.workspaceContext === 'string'
             ? parseWorkspaceContext(params.workspaceContext) || undefined
             : params.workspaceContext
         };
       }
-      
+
       if (!workspace) {
         console.error('[LoadWorkspaceMode] Workspace not found:', params.id);
         return {
@@ -112,13 +116,15 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               rootFolder: '',
               recentActivity: ['Workspace not found']
             },
-            workflow: '',
+            workflows: [],
+            workspaceStructure: [],
+            recentFiles: [],
             keyFiles: {},
             preferences: '',
             sessions: [],
             states: [],
           },
-          workspaceContext: typeof params.workspaceContext === 'string' 
+          workspaceContext: typeof params.workspaceContext === 'string'
             ? parseWorkspaceContext(params.workspaceContext) || undefined
             : params.workspaceContext
         };
@@ -136,8 +142,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       // Build actionable context briefing
       const context = await this.buildContextBriefing(workspace);
       
-      // Build workflow summary
-      const workflow = this.buildWorkflowSummary(workspace);
+      // Build workflows array
+      const workflows = this.buildWorkflows(workspace);
       
       // Extract key files
       const keyFiles = this.extractKeyFiles(workspace);
@@ -156,19 +162,25 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       
       // Fetch agent data if workspace has associated agents
       const agent = await this.fetchWorkspaceAgent(workspace);
-      
+
+      // Get recent files in workspace
+      const recentFiles = await this.getRecentFilesInWorkspace(workspace);
+
       // Update workspace context
       const workspacePathResult = await this.buildWorkspacePath(workspace.rootFolder);
+      const workspaceStructure = workspacePathResult.path?.files || [];
       const workspaceContext = {
         workspaceId: workspace.id,
         workspacePath: workspacePathResult.path
       };
-      
+
       const result = {
         success: true,
         data: {
           context: context,
-          workflow: workflow,
+          workflows: workflows,
+          workspaceStructure: workspaceStructure,
+          recentFiles: recentFiles,
           keyFiles: keyFiles,
           preferences: preferences,
           sessions: sessions,
@@ -208,13 +220,15 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
             rootFolder: '',
             recentActivity: ['Unexpected error loading workspace']
           },
-          workflow: '',
+          workflows: [],
+          workspaceStructure: [],
+          recentFiles: [],
           keyFiles: {},
           preferences: '',
           sessions: [],
           states: [],
         },
-        workspaceContext: typeof params.workspaceContext === 'string' 
+        workspaceContext: typeof params.workspaceContext === 'string'
           ? parseWorkspaceContext(params.workspaceContext) || undefined
           : params.workspaceContext
       };
@@ -260,19 +274,17 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   }
   
   /**
-   * Build a workflow summary
+   * Build workflows array - one string per workflow
    */
-  private buildWorkflowSummary(workspace: ProjectWorkspace): string {
+  private buildWorkflows(workspace: ProjectWorkspace): string[] {
     if (!workspace.context?.workflows || workspace.context.workflows.length === 0) {
-      return 'No workflows defined';
+      return [];
     }
-    
-    const workflows = workspace.context.workflows.map(workflow => {
+
+    return workspace.context.workflows.map(workflow => {
       const steps = workflow.steps.map(step => `  - ${step}`).join('\n');
       return `**${workflow.name}** (${workflow.when}):\n${steps}`;
-    }).join('\n\n');
-    
-    return workflows;
+    });
   }
   
   /**
@@ -377,6 +389,36 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     }
     
     return files.sort();
+  }
+
+  /**
+   * Get recently modified files in workspace folder
+   */
+  private async getRecentFilesInWorkspace(workspace: any): Promise<Array<{path: string; modified: number}>> {
+    try {
+      const cacheManager = this.agent.getCacheManager();
+
+      if (!cacheManager) {
+        console.warn('[LoadWorkspaceMode] CacheManager not available for recent files');
+        return [];
+      }
+
+      const recentFiles = cacheManager.getRecentFiles(5, workspace.rootFolder);
+
+      if (!recentFiles || recentFiles.length === 0) {
+        return [];
+      }
+
+      // Map IndexedFile[] to simple {path, modified} objects
+      return recentFiles.map((file: any) => ({
+        path: file.path,
+        modified: file.modified
+      }));
+
+    } catch (error) {
+      console.warn('[LoadWorkspaceMode] Failed to get recent files:', error);
+      return [];
+    }
   }
 
   /**
@@ -749,9 +791,33 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               type: 'string',
               description: 'Formatted contextual briefing about the workspace'
             },
-            workflow: {
-              type: 'string',
-              description: 'Formatted workflow information'
+            workflows: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Array of workflow strings - one per workflow (e.g. "**Daily Review** (Every morning): - Check inbox - Review calendar - Plan day")'
+            },
+            workspaceStructure: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Complete file structure of workspace with folder paths (e.g. "folder/subfolder/file.md")'
+            },
+            recentFiles: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  path: {
+                    type: 'string',
+                    description: 'File path relative to workspace root'
+                  },
+                  modified: {
+                    type: 'number',
+                    description: 'Last modified timestamp'
+                  }
+                },
+                required: ['path', 'modified']
+              },
+              description: 'Most recently modified files in workspace (up to 5)'
             },
             keyFiles: {
               type: 'object',

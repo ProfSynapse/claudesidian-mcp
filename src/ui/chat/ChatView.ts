@@ -351,16 +351,10 @@ export class ChatView extends ItemView {
   // Event Handlers
 
   private async handleConversationSelected(conversation: ConversationData): Promise<void> {
-    console.log('[TOOL-UI-DEBUG] handleConversationSelected called:', {
-      conversationId: conversation.id,
-      messageCount: conversation.messages.length
-    });
-
     // Initialize ModelAgentManager from conversation metadata
     await this.modelAgentManager.initializeFromConversation(conversation.id);
 
     // Re-render from stored conversation data (single source of truth)
-    console.log('[TOOL-UI-DEBUG] Calling setConversation from handleConversationSelected');
     this.messageDisplay.setConversation(conversation);
 
     // Branch navigation is now at message level
@@ -390,7 +384,6 @@ export class ChatView extends ItemView {
       // Streaming chunk - route to StreamingController
       this.streamingController.updateStreamingChunk(messageId, content);
     } else if (isComplete) {
-      console.log('[TOOL-UI-DEBUG] Streaming complete for message:', messageId);
       // Final content - finalize streaming and update MessageBubble
       this.streamingController.finalizeStreaming(messageId, content);
       this.messageDisplay.updateMessageContent(messageId, content);
@@ -402,15 +395,9 @@ export class ChatView extends ItemView {
   }
 
   private handleConversationUpdated(conversation: ConversationData): void {
-    console.log('[TOOL-UI-DEBUG] handleConversationUpdated called:', {
-      conversationId: conversation.id,
-      messageCount: conversation.messages.length
-    });
-
     this.conversationManager.updateCurrentConversation(conversation);
 
     // Always re-render from stored conversation data (single source of truth)
-    console.log('[TOOL-UI-DEBUG] Calling setConversation - will re-render from JSON');
     this.messageDisplay.setConversation(conversation);
 
     this.updateContextProgress();
@@ -418,19 +405,20 @@ export class ChatView extends ItemView {
 
   private async handleSendMessage(message: string): Promise<void> {
     const currentConversation = this.conversationManager.getCurrentConversation();
-    
+    const messageOptions = await this.modelAgentManager.getMessageOptions();
+
     if (!currentConversation) {
       // Create new conversation with message
       await this.conversationManager.createNewConversationWithMessage(
         message,
-        this.modelAgentManager.getMessageOptions()
+        messageOptions
       );
     } else {
       // Send message in current conversation
       await this.messageManager.sendMessage(
         currentConversation,
         message,
-        this.modelAgentManager.getMessageOptions()
+        messageOptions
       );
     }
   }
@@ -438,10 +426,11 @@ export class ChatView extends ItemView {
   private async handleRetryMessage(messageId: string): Promise<void> {
     const currentConversation = this.conversationManager.getCurrentConversation();
     if (currentConversation) {
+      const messageOptions = await this.modelAgentManager.getMessageOptions();
       await this.messageManager.handleRetryMessage(
         currentConversation,
         messageId,
-        this.modelAgentManager.getMessageOptions()
+        messageOptions
       );
     }
   }
@@ -449,11 +438,12 @@ export class ChatView extends ItemView {
   private async handleEditMessage(messageId: string, newContent: string): Promise<void> {
     const currentConversation = this.conversationManager.getCurrentConversation();
     if (currentConversation) {
+      const messageOptions = await this.modelAgentManager.getMessageOptions();
       await this.messageManager.handleEditMessage(
         currentConversation,
         messageId,
         newContent,
-        this.modelAgentManager.getMessageOptions()
+        messageOptions
       );
     }
   }
@@ -504,7 +494,7 @@ export class ChatView extends ItemView {
     return TokenCalculator.getContextUsage(
       this.modelAgentManager.getSelectedModel(),
       this.conversationManager.getCurrentConversation(),
-      this.modelAgentManager.getCurrentSystemPrompt()
+      await this.modelAgentManager.getCurrentSystemPrompt()
     );
   }
 
@@ -517,12 +507,6 @@ export class ChatView extends ItemView {
 
   // Tool event handlers
   private handleToolCallsDetected(messageId: string, toolCalls: any[]): void {
-    console.log('[TOOL-UI-DEBUG] handleToolCallsDetected called:', {
-      messageId,
-      toolCallCount: toolCalls?.length || 0,
-      toolCallIds: toolCalls?.map(tc => tc.id) || []
-    });
-
     // Fire individual 'detected' event for each tool call to create progressive accordions
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     if (messageBubble && toolCalls && toolCalls.length > 0) {
@@ -533,34 +517,17 @@ export class ChatView extends ItemView {
           name: toolCall.name || toolCall.function?.name,
           parameters: toolCall.parameters || toolCall.arguments
         };
-        console.log('[TOOL-UI-DEBUG] Firing detected event for tool:', {
-          id: toolData.id,
-          name: toolData.name
-        });
         messageBubble.handleToolEvent('detected', toolData);
       }
-    } else {
-      console.log('[TOOL-UI-DEBUG] No message bubble found or no tool calls');
     }
   }
 
   private handleToolExecutionStarted(messageId: string, toolCall: { id: string; name: string; parameters?: any }): void {
-    console.log('[TOOL-UI-DEBUG] handleToolExecutionStarted called:', {
-      messageId,
-      toolId: toolCall.id,
-      toolName: toolCall.name
-    });
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent('started', toolCall);
   }
 
   private handleToolExecutionCompleted(messageId: string, toolId: string, result: any, success: boolean, error?: string): void {
-    console.log('[TOOL-UI-DEBUG] handleToolExecutionCompleted called:', {
-      messageId,
-      toolId,
-      success,
-      hasError: !!error
-    });
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent('completed', { toolId, result, success, error });
   }

@@ -35,7 +35,6 @@ export class ConversationService {
       conversations = conversations.slice(0, limit);
     }
 
-    console.log(`[ConversationService] Listed ${conversations.length} conversations from index`);
     return conversations;
   }
 
@@ -45,22 +44,11 @@ export class ConversationService {
   async getConversation(id: string): Promise<IndividualConversation | null> {
     const conversation = await this.fileSystem.readConversation(id);
 
-    console.log(`[ConversationService] getConversation(${id}):`, {
-      found: !!conversation,
-      messageCount: conversation?.messages?.length || 0,
-      messages: conversation?.messages?.map(m => ({
-        role: m.role,
-        hasToolCalls: !!(m.toolCalls && m.toolCalls.length > 0),
-        contentPreview: m.content?.substring(0, 30)
-      })) || []
-    });
-
     if (!conversation) {
       console.warn(`[ConversationService] Conversation not found: ${id}`);
       return null;
     }
 
-    console.log(`[ConversationService] Loaded conversation: ${id} with ${conversation.messages.length} messages`);
     return conversation;
   }
 
@@ -78,7 +66,6 @@ export class ConversationService {
       }
     }
 
-    console.log(`[ConversationService] Loaded all ${conversations.length} conversations`);
     return conversations;
   }
 
@@ -104,7 +91,6 @@ export class ConversationService {
     // Update index
     await this.indexManager.updateConversationInIndex(conversation);
 
-    console.log(`[ConversationService] Created conversation: ${id}`);
     return conversation;
   }
 
@@ -133,8 +119,6 @@ export class ConversationService {
 
     // Update index
     await this.indexManager.updateConversationInIndex(updatedConversation);
-
-    console.log(`[ConversationService] Updated conversation: ${id}`);
   }
 
   /**
@@ -146,8 +130,6 @@ export class ConversationService {
 
     // Remove from index
     await this.indexManager.removeConversationFromIndex(id);
-
-    console.log(`[ConversationService] Deleted conversation: ${id}`);
   }
 
   /**
@@ -155,7 +137,6 @@ export class ConversationService {
    */
   async updateConversationMetadata(id: string, metadata: any): Promise<void> {
     await this.updateConversation(id, { metadata });
-    console.log(`[ConversationService] Updated metadata for conversation: ${id}`);
   }
 
   /**
@@ -198,8 +179,6 @@ export class ConversationService {
 
       // Update index metadata
       await this.indexManager.updateConversationInIndex(conversation);
-
-      console.log(`[ConversationService] Added message to conversation: ${params.conversationId}`);
 
       return {
         success: true,
@@ -248,7 +227,6 @@ export class ConversationService {
     // Apply limit
     const limited = limit ? results.slice(0, limit) : results;
 
-    console.log(`[ConversationService] Search "${query}" found ${limited.length} results`);
     return limited;
   }
 
@@ -280,7 +258,6 @@ export class ConversationService {
       .filter(conv => conv && conv.created >= startDate && conv.created <= endDate)
       .sort((a, b) => b.created - a.created);
 
-    console.log(`[ConversationService] Date range search found ${results.length} results`);
     return results;
   }
 
@@ -334,7 +311,6 @@ export class ConversationService {
     stats.oldestConversation = oldest === Infinity ? undefined : oldest;
     stats.newestConversation = newest === 0 ? undefined : newest;
 
-    console.log(`[ConversationService] Stats: ${stats.totalConversations} conversations, ${stats.totalMessages} messages`);
     return stats;
   }
 }

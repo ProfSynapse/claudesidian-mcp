@@ -24,10 +24,8 @@ export class FileSystemService {
   async ensureConversationsDirectory(): Promise<void> {
     try {
       await this.plugin.app.vault.adapter.mkdir(this.conversationsPath);
-      console.log(`[FileSystemService] Created conversations directory: ${this.conversationsPath}`);
     } catch (error) {
       // Directory might already exist
-      console.log(`[FileSystemService] Conversations directory exists: ${this.conversationsPath}`);
     }
   }
 
@@ -37,10 +35,8 @@ export class FileSystemService {
   async ensureWorkspacesDirectory(): Promise<void> {
     try {
       await this.plugin.app.vault.adapter.mkdir(this.workspacesPath);
-      console.log(`[FileSystemService] Created workspaces directory: ${this.workspacesPath}`);
     } catch (error) {
       // Directory might already exist
-      console.log(`[FileSystemService] Workspaces directory exists: ${this.workspacesPath}`);
     }
   }
 
@@ -51,7 +47,6 @@ export class FileSystemService {
     const filePath = normalizePath(`${this.conversationsPath}/${id}.json`);
     const jsonString = JSON.stringify(data, null, 2);
     await this.plugin.app.vault.adapter.write(filePath, jsonString);
-    console.log(`[FileSystemService] Wrote conversation: ${id} (${jsonString.length} chars)`);
   }
 
   /**
@@ -62,10 +57,8 @@ export class FileSystemService {
     try {
       const content = await this.plugin.app.vault.adapter.read(filePath);
       const data = JSON.parse(content);
-      console.log(`[FileSystemService] Read conversation: ${id}`);
       return data;
     } catch (error) {
-      console.log(`[FileSystemService] Conversation not found: ${id}`);
       return null;
     }
   }
@@ -77,7 +70,6 @@ export class FileSystemService {
     const filePath = normalizePath(`${this.conversationsPath}/${id}.json`);
     try {
       await this.plugin.app.vault.adapter.remove(filePath);
-      console.log(`[FileSystemService] Deleted conversation: ${id}`);
     } catch (error) {
       console.error(`[FileSystemService] Failed to delete conversation: ${id}`, error);
       throw error;
@@ -96,10 +88,8 @@ export class FileSystemService {
           const filename = file.split('/').pop() || '';
           return filename.replace('.json', '');
         });
-      console.log(`[FileSystemService] Found ${conversationIds.length} conversations`);
       return conversationIds;
     } catch (error) {
-      console.log(`[FileSystemService] No conversations found`);
       return [];
     }
   }
@@ -111,7 +101,6 @@ export class FileSystemService {
     const filePath = normalizePath(`${this.workspacesPath}/${id}.json`);
     const jsonString = JSON.stringify(data, null, 2);
     await this.plugin.app.vault.adapter.write(filePath, jsonString);
-    console.log(`[FileSystemService] Wrote workspace: ${id} (${jsonString.length} chars)`);
   }
 
   /**
@@ -122,10 +111,8 @@ export class FileSystemService {
     try {
       const content = await this.plugin.app.vault.adapter.read(filePath);
       const data = JSON.parse(content);
-      console.log(`[FileSystemService] Read workspace: ${id}`);
       return data;
     } catch (error) {
-      console.log(`[FileSystemService] Workspace not found: ${id}`);
       return null;
     }
   }
@@ -137,7 +124,6 @@ export class FileSystemService {
     const filePath = normalizePath(`${this.workspacesPath}/${id}.json`);
     try {
       await this.plugin.app.vault.adapter.remove(filePath);
-      console.log(`[FileSystemService] Deleted workspace: ${id}`);
     } catch (error) {
       console.error(`[FileSystemService] Failed to delete workspace: ${id}`, error);
       throw error;
@@ -156,10 +142,8 @@ export class FileSystemService {
           const filename = file.split('/').pop() || '';
           return filename.replace('.json', '');
         });
-      console.log(`[FileSystemService] Found ${workspaceIds.length} workspaces`);
       return workspaceIds;
     } catch (error) {
-      console.log(`[FileSystemService] No workspaces found`);
       return [];
     }
   }
@@ -172,10 +156,8 @@ export class FileSystemService {
     try {
       const content = await this.plugin.app.vault.adapter.read(filePath);
       const data = JSON.parse(content);
-      console.log(`[FileSystemService] Read conversation index (${Object.keys(data.conversations || {}).length} conversations)`);
       return data;
     } catch (error) {
-      console.log(`[FileSystemService] Conversation index not found`);
       return null;
     }
   }
@@ -187,7 +169,6 @@ export class FileSystemService {
     const filePath = normalizePath(`${this.conversationsPath}/index.json`);
     const jsonString = JSON.stringify(index, null, 2);
     await this.plugin.app.vault.adapter.write(filePath, jsonString);
-    console.log(`[FileSystemService] Wrote conversation index (${Object.keys(index.conversations).length} conversations)`);
   }
 
   /**
@@ -195,13 +176,20 @@ export class FileSystemService {
    */
   async readWorkspaceIndex(): Promise<WorkspaceIndex | null> {
     const filePath = normalizePath(`${this.workspacesPath}/index.json`);
+
     try {
+      const exists = await this.plugin.app.vault.adapter.exists(filePath);
+
+      if (!exists) {
+        return null;
+      }
+
       const content = await this.plugin.app.vault.adapter.read(filePath);
       const data = JSON.parse(content);
-      console.log(`[FileSystemService] Read workspace index (${Object.keys(data.workspaces || {}).length} workspaces)`);
+
       return data;
     } catch (error) {
-      console.log(`[FileSystemService] Workspace index not found`);
+      console.error('[FileSystemService] Error reading workspace index:', error);
       return null;
     }
   }
@@ -213,7 +201,6 @@ export class FileSystemService {
     const filePath = normalizePath(`${this.workspacesPath}/index.json`);
     const jsonString = JSON.stringify(index, null, 2);
     await this.plugin.app.vault.adapter.write(filePath, jsonString);
-    console.log(`[FileSystemService] Wrote workspace index (${Object.keys(index.workspaces).length} workspaces)`);
   }
 
   /**
@@ -221,9 +208,7 @@ export class FileSystemService {
    */
   async conversationsDirectoryExists(): Promise<boolean> {
     try {
-      console.log(`[FileSystemService] Checking if conversations directory exists: ${this.conversationsPath}`);
       const exists = await this.plugin.app.vault.adapter.exists(this.conversationsPath);
-      console.log(`[FileSystemService] Conversations directory exists: ${exists}`);
       return exists;
     } catch (error) {
       console.error(`[FileSystemService] Error checking conversations directory:`, error);
@@ -236,9 +221,7 @@ export class FileSystemService {
    */
   async workspacesDirectoryExists(): Promise<boolean> {
     try {
-      console.log(`[FileSystemService] Checking if workspaces directory exists: ${this.workspacesPath}`);
       const exists = await this.plugin.app.vault.adapter.exists(this.workspacesPath);
-      console.log(`[FileSystemService] Workspaces directory exists: ${exists}`);
       return exists;
     } catch (error) {
       console.error(`[FileSystemService] Error checking workspaces directory:`, error);
@@ -251,22 +234,17 @@ export class FileSystemService {
    */
   async readChromaCollection(collectionName: string): Promise<any[]> {
     const chromaPath = normalizePath(`${this.plugin.manifest.dir}/data/chroma-db/collections/${collectionName}/items.json`);
-    console.log(`[FileSystemService] Attempting to read ChromaDB collection from: ${chromaPath}`);
     try {
       const exists = await this.plugin.app.vault.adapter.exists(chromaPath);
-      console.log(`[FileSystemService] ChromaDB collection file exists: ${exists}`);
 
       if (!exists) {
-        console.log(`[FileSystemService] ChromaDB collection not found: ${collectionName}`);
         return [];
       }
 
       const content = await this.plugin.app.vault.adapter.read(chromaPath);
-      console.log(`[FileSystemService] Read ${content.length} bytes from ${collectionName}`);
 
       const data = JSON.parse(content);
       const items = data.items || [];
-      console.log(`[FileSystemService] Parsed ChromaDB collection: ${collectionName} (${items.length} items)`);
       return items;
     } catch (error) {
       console.error(`[FileSystemService] Error reading ChromaDB collection: ${collectionName}`, error);

@@ -75,6 +75,22 @@ export class MemoryManagementAccordion extends Accordion {
      * Initialize UI based on current service state
      */
     private initializeUI(): void {
+        // Try to get services from ServiceManager if not available
+        if (this.serviceManager && (!this.memoryService || !this.workspaceService)) {
+            if (!this.memoryService) {
+                const memSvc = this.serviceManager.getServiceIfReady('memoryService');
+                if (memSvc) {
+                    this.memoryService = memSvc as any;
+                }
+            }
+            if (!this.workspaceService) {
+                const wsSvc = this.serviceManager.getServiceIfReady('workspaceService');
+                if (wsSvc) {
+                    this.workspaceService = wsSvc as any;
+                }
+            }
+        }
+
         if (this.areServicesReady()) {
             this.initializeMemorySettingsTab();
         } else {
@@ -89,14 +105,16 @@ export class MemoryManagementAccordion extends Accordion {
         // If we have a service manager, use it to check readiness
         if (this.serviceManager) {
             const memoryReady = this.serviceManager.isServiceReady('memoryService');
-            return memoryReady;
+            const workspaceReady = this.serviceManager.isServiceReady('workspaceService');
+            return memoryReady && workspaceReady;
         }
-        
+
         // Fallback to direct service checks
-        const hasServices = this.memoryService;
-        const hasAgent = this.vaultLibrarian;
-        
-        return !!(hasServices || hasAgent);
+        const hasMemoryService = !!this.memoryService;
+        const hasWorkspaceService = !!this.workspaceService;
+
+        // Both memory and workspace services must be available
+        return hasMemoryService && hasWorkspaceService;
     }
     
     /**
@@ -146,16 +164,17 @@ export class MemoryManagementAccordion extends Accordion {
         const serviceList = serviceStatus.createEl('ul');
         
         const services = [
-            { name: 'Memory Service', key: 'memoryService', instance: this.memoryService }
+            { name: 'Memory Service', key: 'memoryService', instance: this.memoryService },
+            { name: 'Workspace Service', key: 'workspaceService', instance: this.workspaceService }
         ];
-        
+
         services.forEach(service => {
-            const isReady = this.serviceManager ? 
-                this.serviceManager.isServiceReady(service.key) : 
+            const isReady = this.serviceManager ?
+                this.serviceManager.isServiceReady(service.key) :
                 !!service.instance;
-            
+
             const listItem = serviceList.createEl('li');
-            
+
             // Simple service status display
             listItem.innerHTML = `${service.name}: ${isReady ? '✅ Ready' : '⏳ Loading...'}`;
         });
@@ -247,11 +266,13 @@ export class MemoryManagementAccordion extends Accordion {
      */
     public updateServices(
         memoryService?: MemoryService,
+        workspaceService?: WorkspaceService,
         vaultLibrarian?: VaultLibrarianAgent
     ): void {
         this.memoryService = memoryService;
+        this.workspaceService = workspaceService;
         this.vaultLibrarian = vaultLibrarian;
-        
+
         // Refresh UI
         this.initializeUI();
     }
@@ -269,11 +290,11 @@ export class MemoryManagementAccordion extends Accordion {
     private initializeMemorySettingsTab(): void {
         // Clear existing content
         this.memorySettingsContainer.empty();
-        
+
         // Check if we have services available (preferred) or need to fall back to agents
         const hasServices = this.areServicesReady();
         const hasAgent = this.vaultLibrarian;
-        
+
         if (!hasServices && !hasAgent) {
             // Show error message if neither services nor agents are available
             const errorEl = this.memorySettingsContainer.createEl('div', {
@@ -282,7 +303,7 @@ export class MemoryManagementAccordion extends Accordion {
             errorEl.createEl('p', {
                 text: 'Memory Manager services are not available.'
             });
-            
+
             // Show detailed service status for debugging
             if (this.serviceManager) {
                 const statusEl = errorEl.createEl('div', {
@@ -291,34 +312,34 @@ export class MemoryManagementAccordion extends Accordion {
                 statusEl.createEl('p', {
                     text: 'Service Status:'
                 });
-                
-                const services = ['memoryService'];
+
+                const services = ['memoryService', 'workspaceService'];
                 const statusList = statusEl.createEl('ul');
-                
+
                 services.forEach(serviceName => {
                     const isReady = this.serviceManager!.isServiceReady(serviceName);
                     const listItem = statusList.createEl('li');
                     listItem.innerHTML = `${serviceName}: ${isReady ? '✅ Ready' : '❌ Not Ready'}`;
                 });
             }
-            
+
             errorEl.createEl('p', {
                 text: 'Please restart Obsidian or check console for errors.'
             });
             return;
         }
-        
+
         // Initialize the MemorySettingsTab with simplified services
-        if (this.memoryService) {
+        if (this.memoryService && this.workspaceService) {
             this.memorySettingsTab = new MemorySettingsTab(
                 this.memorySettingsContainer,
                 (window as any).app,
-                this.workspaceService!,
+                this.workspaceService,
                 this.memoryService,
                 this.settings
             );
         }
-        
+
         // Display settings
         if (this.memorySettingsTab) {
             this.memorySettingsTab.display();

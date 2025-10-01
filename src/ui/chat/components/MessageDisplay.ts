@@ -29,16 +29,9 @@ export class MessageDisplay {
    * Set conversation to display
    */
   setConversation(conversation: ConversationData): void {
-    console.log('[TOOL-UI-DEBUG] MessageDisplay.setConversation called:', {
-      conversationId: conversation.id,
-      messageCount: conversation.messages.length,
-      isNewConversation: !this.conversation || this.conversation.id !== conversation.id
-    });
-
     // Always re-render from the stored conversation data (single source of truth)
     // Progressive tool accordions are temporary UI during streaming
     // After streaming completes, we re-render with static ToolAccordion components from stored toolCalls
-    console.log('[TOOL-UI-DEBUG] Re-rendering from stored conversation data (single source of truth)');
     this.conversation = conversation;
     this.render();
     this.scrollToBottom();
@@ -68,12 +61,6 @@ export class MessageDisplay {
    * Add a message immediately using the actual message object (prevents duplicate message creation)
    */
   addMessage(message: ConversationMessage): void {
-    console.log('[MessageDisplay] addMessage called with:', {
-      messageId: message.id,
-      messageRole: message.role,
-      messageContent: message.content.substring(0, 30) + '...'
-    });
-    
     const bubble = this.createMessageBubble(message);
     this.container.querySelector('.messages-container')?.appendChild(bubble);
     this.scrollToBottom();
@@ -192,29 +179,9 @@ export class MessageDisplay {
 
     // Clear previous message bubbles
     this.messageBubbles = [];
-    console.log('[TOOL-UI-DEBUG] Message bubbles array cleared, creating new bubbles');
 
     // Render all messages (no branch filtering needed for message-level alternatives)
-    console.log('[MessageDisplay] Rendering conversation messages:', {
-      conversationId: this.conversation.id,
-      messageCount: this.conversation.messages.length,
-      messageBreakdown: this.conversation.messages.reduce((acc, msg) => {
-        acc[msg.role] = (acc[msg.role] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      messagesWithToolCalls: this.conversation.messages.filter(msg => msg.toolCalls && msg.toolCalls.length > 0).length,
-      toolMessages: this.conversation.messages.filter(msg => msg.role === 'tool').length
-    });
-
     this.conversation.messages.forEach((message, index) => {
-      console.log(`[MessageDisplay] Creating bubble for message ${index}:`, {
-        id: message.id,
-        role: message.role,
-        hasToolCalls: !!(message.toolCalls && message.toolCalls.length > 0),
-        toolCallCount: message.toolCalls?.length || 0,
-        contentPreview: message.content.substring(0, 50) + '...'
-      });
-
       const messageEl = this.createMessageBubble(message);
       messagesContainer.appendChild(messageEl);
     });

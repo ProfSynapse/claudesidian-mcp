@@ -6,6 +6,7 @@ import { ModelOption } from '../components/ModelSelector';
 import { AgentOption } from '../components/AgentSelector';
 import { ProviderUtils } from '../utils/ProviderUtils';
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
+import { TFile } from 'obsidian';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -19,6 +20,7 @@ export class ModelAgentManager {
   private currentSystemPrompt: string | null = null;
   private selectedWorkspaceId: string | null = null;
   private workspaceContext: WorkspaceContext | null = null;
+  private contextNotes: string[] = [];
 
   constructor(
     private app: any, // Obsidian App
@@ -32,19 +34,10 @@ export class ModelAgentManager {
    * Initialize from conversation metadata (if available), otherwise use plugin default
    */
   async initializeFromConversation(conversationId: string): Promise<void> {
-    console.log('[ModelAgentManager] initializeFromConversation called:', conversationId);
-
     try {
       // Try to load from conversation metadata first
       if (this.conversationService) {
         const conversation = await this.conversationService.getConversation(conversationId);
-
-        console.log('[ModelAgentManager] Loaded conversation:', {
-          conversationId,
-          hasMetadata: !!conversation?.metadata,
-          hasChatSettings: !!conversation?.metadata?.chatSettings,
-          chatSettings: conversation?.metadata?.chatSettings
-        });
 
         if (conversation?.metadata?.chatSettings) {
           const settings = conversation.metadata.chatSettings;
@@ -53,13 +46,6 @@ export class ModelAgentManager {
 
           // Restore model
           if (settings.providerId && settings.modelId) {
-            console.log('[ModelAgentManager] Looking for saved model:', {
-              providerId: settings.providerId,
-              modelId: settings.modelId,
-              availableModelsCount: availableModels.length,
-              availableModelIds: availableModels.map(m => `${m.providerId}:${m.modelId}`)
-            });
-
             const model = availableModels.find(
               m => m.providerId === settings.providerId && m.modelId === settings.modelId
             );
@@ -67,7 +53,6 @@ export class ModelAgentManager {
             if (model) {
               this.selectedModel = model;
               this.events.onModelChanged(model);
-              console.log('[ModelAgentManager] ✅ Restored model from conversation metadata:', model.modelName);
             } else {
               console.error('[ModelAgentManager] ❌ Saved model not found, falling back to default. Searched for:', {
                 providerId: settings.providerId,
@@ -84,7 +69,6 @@ export class ModelAgentManager {
               this.selectedAgent = agent;
               this.currentSystemPrompt = agent.systemPrompt || null;
               this.events.onAgentChanged(agent);
-              console.log('[ModelAgentManager] Restored agent from conversation metadata:', agent.name);
             }
           }
 
@@ -92,6 +76,11 @@ export class ModelAgentManager {
           if (settings.workspaceId) {
             this.selectedWorkspaceId = settings.workspaceId;
             // Note: Workspace context will be loaded by ChatView when needed
+          }
+
+          // Restore context notes
+          if (settings.contextNotes && Array.isArray(settings.contextNotes)) {
+            this.contextNotes = settings.contextNotes;
           }
 
           return; // Successfully loaded from metadata
@@ -123,7 +112,6 @@ export class ModelAgentManager {
       if (defaultModel) {
         this.selectedModel = defaultModel;
         this.events.onModelChanged(defaultModel);
-        console.log('[ModelAgentManager] Initialized with plugin default model:', defaultModel.modelName);
       }
     } catch (error) {
       console.warn('[ModelAgentManager] Failed to initialize default model:', error);
@@ -145,12 +133,12 @@ export class ModelAgentManager {
           providerId: this.selectedModel?.providerId,
           modelId: this.selectedModel?.modelId,
           agentId: this.selectedAgent?.id,
-          workspaceId: this.selectedWorkspaceId
+          workspaceId: this.selectedWorkspaceId,
+          contextNotes: this.contextNotes
         }
       };
 
       await this.conversationService.updateConversationMetadata(conversationId, metadata);
-      console.log('[ModelAgentManager] Saved chat settings to conversation:', conversationId);
     } catch (error) {
       console.error('[ModelAgentManager] Failed to save to conversation:', error);
     }
@@ -173,8 +161,8 @@ export class ModelAgentManager {
   /**
    * Get current system prompt (includes workspace context if set)
    */
-  getCurrentSystemPrompt(): string | null {
-    return this.buildSystemPromptWithWorkspace();
+  async getCurrentSystemPrompt(): Promise<string | null> {
+    return await this.buildSystemPromptWithWorkspace();
   }
 
   /**
@@ -202,30 +190,65 @@ export class ModelAgentManager {
   /**
    * Handle agent selection change
    */
-  handleAgentChange(agent: AgentOption | null): void {
+  async handleAgentChange(agent: AgentOption | null): Promise<void> {
     this.selectedAgent = agent;
     this.currentSystemPrompt = agent?.systemPrompt || null;
 
     this.events.onAgentChanged(agent);
-    this.events.onSystemPromptChanged(this.buildSystemPromptWithWorkspace());
+    this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
   }
 
   /**
    * Set workspace context
    */
-  setWorkspaceContext(workspaceId: string, context: WorkspaceContext): void {
+  async setWorkspaceContext(workspaceId: string, context: WorkspaceContext): Promise<void> {
     this.selectedWorkspaceId = workspaceId;
     this.workspaceContext = context;
-    this.events.onSystemPromptChanged(this.buildSystemPromptWithWorkspace());
+    this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
   }
 
   /**
    * Clear workspace context
    */
-  clearWorkspaceContext(): void {
+  async clearWorkspaceContext(): Promise<void> {
     this.selectedWorkspaceId = null;
     this.workspaceContext = null;
-    this.events.onSystemPromptChanged(this.buildSystemPromptWithWorkspace());
+    this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
+  }
+
+  /**
+   * Get context notes
+   */
+  getContextNotes(): string[] {
+    return [...this.contextNotes];
+  }
+
+  /**
+   * Set context notes
+   */
+  async setContextNotes(notes: string[]): Promise<void> {
+    this.contextNotes = [...notes];
+    this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
+  }
+
+  /**
+   * Add context note
+   */
+  async addContextNote(notePath: string): Promise<void> {
+    if (!this.contextNotes.includes(notePath)) {
+      this.contextNotes.push(notePath);
+      this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
+    }
+  }
+
+  /**
+   * Remove context note by index
+   */
+  async removeContextNote(index: number): Promise<void> {
+    if (index >= 0 && index < this.contextNotes.length) {
+      this.contextNotes.splice(index, 1);
+      this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
+    }
   }
 
   /**
@@ -286,12 +309,6 @@ export class ModelAgentManager {
         // Special handling for Ollama - single user-configured model
         if (providerId === 'ollama') {
           const ollamaModel = config.ollamaModel;
-          console.log('[ModelAgentManager] Ollama config check:', {
-            hasOllamaModel: !!ollamaModel,
-            ollamaModel,
-            configEnabled: config.enabled,
-            configApiKey: config.apiKey
-          });
 
           if (!ollamaModel || !ollamaModel.trim()) {
             console.warn('[ModelAgentManager] Ollama enabled but no model configured - skipping');
@@ -306,7 +323,6 @@ export class ModelAgentManager {
             contextWindow: 128000 // Fixed reasonable default
           };
 
-          console.log('[ModelAgentManager] Adding Ollama model to available models:', ollamaModelOption);
           models.push(ollamaModelOption);
           return;
         }
@@ -370,79 +386,132 @@ export class ModelAgentManager {
   /**
    * Get message options for current selection (includes workspace context)
    */
-  getMessageOptions(): {
+  async getMessageOptions(): Promise<{
     provider?: string;
     model?: string;
     systemPrompt?: string;
-  } {
-    console.log('[ModelAgentManager] getMessageOptions called:', {
-      selectedModel: this.selectedModel,
-      providerId: this.selectedModel?.providerId,
-      modelId: this.selectedModel?.modelId
-    });
-
+  }> {
     return {
       provider: this.selectedModel?.providerId,
       model: this.selectedModel?.modelId,
-      systemPrompt: this.buildSystemPromptWithWorkspace() || undefined
+      systemPrompt: await this.buildSystemPromptWithWorkspace() || undefined
     };
   }
 
   /**
    * Build system prompt with workspace context
    */
-  private buildSystemPromptWithWorkspace(): string | null {
+  private async buildSystemPromptWithWorkspace(): Promise<string | null> {
     let prompt = '';
 
-    // Base agent prompt (if selected)
-    if (this.currentSystemPrompt) {
-      prompt += this.currentSystemPrompt;
+    // 1. Context files section (if any context notes selected)
+    if (this.contextNotes.length > 0) {
+      prompt += '<files>\n';
+
+      for (const notePath of this.contextNotes) {
+        const xmlTag = this.normalizePathToXmlTag(notePath);
+        const content = await this.readNoteContent(notePath);
+
+        prompt += `<${xmlTag}>\n`;
+        prompt += `${notePath}\n\n`;
+        prompt += content || '[File content unavailable]';
+        prompt += `\n</${xmlTag}>\n`;
+      }
+
+      prompt += '</files>\n\n';
     }
 
-    // Workspace context (if selected)
-    if (this.workspaceContext) {
-      if (prompt) {
-        prompt += '\n\n';
-      }
+    // 2. Agent section (if agent selected)
+    if (this.currentSystemPrompt) {
+      prompt += '<agent>\n';
+      prompt += this.currentSystemPrompt;
+      prompt += '\n</agent>\n\n';
+    }
 
-      prompt += '# Workspace Context\n\n';
+    // 3. Workspace section (if workspace selected)
+    if (this.selectedWorkspaceId) {
+      const workspaceData = await this.loadFullWorkspaceData(this.selectedWorkspaceId);
 
-      if (this.workspaceContext.purpose) {
-        prompt += `**Purpose:** ${this.workspaceContext.purpose}\n\n`;
-      }
-
-      if (this.workspaceContext.currentGoal) {
-        prompt += `**Current Goal:** ${this.workspaceContext.currentGoal}\n\n`;
-      }
-
-      if (this.workspaceContext.preferences) {
-        prompt += `**Preferences:**\n${this.workspaceContext.preferences}\n\n`;
-      }
-
-      if (this.workspaceContext.workflows && this.workspaceContext.workflows.length > 0) {
-        prompt += `**Available Workflows:**\n`;
-        this.workspaceContext.workflows.forEach((workflow: { name: string; when: string; steps: string[] }, index: number) => {
-          prompt += `${index + 1}. **${workflow.name}** - ${workflow.when}\n`;
-          if (workflow.steps && workflow.steps.length > 0) {
-            prompt += `   Steps:\n`;
-            workflow.steps.forEach((step: string, stepIndex: number) => {
-              prompt += `   ${stepIndex + 1}. ${step}\n`;
-            });
-          }
-          prompt += '\n';
-        });
-      }
-
-      if (this.workspaceContext.keyFiles && this.workspaceContext.keyFiles.length > 0) {
-        prompt += `**Key Reference Files:**\n`;
-        this.workspaceContext.keyFiles.forEach((file: string) => {
-          prompt += `- ${file}\n`;
-        });
-        prompt += '\n';
+      if (workspaceData) {
+        prompt += '<workspace>\n';
+        prompt += JSON.stringify(workspaceData, null, 2);
+        prompt += '\n</workspace>';
       }
     }
 
     return prompt || null;
+  }
+
+  /**
+   * Normalize file path to valid XML tag name
+   * Example: "Notes/Style Guide.md" -> "Notes_Style_Guide"
+   */
+  private normalizePathToXmlTag(path: string): string {
+    return path
+      .replace(/\.md$/i, '')  // Remove .md extension
+      .replace(/[^a-zA-Z0-9_]/g, '_')  // Replace non-alphanumeric with underscore
+      .replace(/_{2,}/g, '_')  // Replace multiple underscores with single
+      .replace(/^_|_$/g, '');  // Remove leading/trailing underscores
+  }
+
+  /**
+   * Read note content from vault
+   */
+  private async readNoteContent(notePath: string): Promise<string> {
+    try {
+      const file = this.app.vault.getAbstractFileByPath(notePath);
+
+      if (file instanceof TFile) {
+        const content = await this.app.vault.read(file);
+        return content;
+      }
+
+      console.warn('[ModelAgentManager] File not found:', notePath);
+      return '[File not found]';
+    } catch (error) {
+      console.error('[ModelAgentManager] Error reading note:', notePath, error);
+      return '[Error reading file]';
+    }
+  }
+
+  /**
+   * Load full workspace data via MCPConnector
+   */
+  private async loadFullWorkspaceData(workspaceId: string): Promise<any> {
+    try {
+      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      if (!plugin) {
+        console.error('[ModelAgentManager] Plugin not found');
+        return null;
+      }
+
+      // Get MCPConnector
+      const connector = plugin.connector;
+      if (!connector) {
+        console.error('[ModelAgentManager] MCPConnector not available');
+        return null;
+      }
+
+      // Call load-workspace mode
+      const result = await connector.handleToolCall({
+        name: 'load-workspace',
+        arguments: {
+          id: workspaceId
+        }
+      });
+
+      if (result.isError) {
+        console.error('[ModelAgentManager] Error loading workspace:', result.content);
+        return null;
+      }
+
+      // Parse the result content (it's a JSON string in text format)
+      const parsedResult = JSON.parse(result.content[0].text);
+      return parsedResult.data || null;
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to load workspace data:', error);
+      return null;
+    }
   }
 
   /**

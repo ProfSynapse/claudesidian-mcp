@@ -42,18 +42,9 @@ export class ConversationManager {
   async loadConversations(): Promise<void> {
     try {
       this.conversations = await this.chatService.listConversations({ limit: 50 });
-      console.log('[ConversationManager] Loaded conversations:', {
-        count: this.conversations.length,
-        conversationIds: this.conversations.map(c => c.id),
-        firstConversation: this.conversations[0] ? {
-          id: this.conversations[0].id,
-          title: this.conversations[0].title,
-          messageCount: this.conversations[0].messages.length
-        } : null
-      });
-      
+
       this.events.onConversationsChanged();
-      
+
       // Auto-select the most recent conversation
       if (this.conversations.length > 0 && !this.currentConversation) {
         await this.selectConversation(this.conversations[0]);
@@ -70,27 +61,10 @@ export class ConversationManager {
   async selectConversation(conversation: ConversationData): Promise<void> {
     try {
       this.currentConversation = conversation;
-      console.log('[ConversationManager] Selecting conversation:', {
-        conversationId: conversation.id,
-        title: conversation.title,
-        currentMessageCount: conversation.messages.length
-      });
-      
+
       // Load full conversation data
       const fullConversation = await this.chatService.getConversation(conversation.id);
-      console.log('[ConversationManager] Full conversation loaded:', {
-        conversationId: conversation.id,
-        found: !!fullConversation,
-        messageCount: fullConversation?.messages.length || 0,
-        messagesPreview: fullConversation?.messages.slice(0, 3).map(m => ({
-          id: m.id,
-          role: m.role,
-          contentLength: m.content.length,
-          hasToolCalls: !!(m.toolCalls && m.toolCalls.length > 0),
-          toolCallCount: m.toolCalls?.length || 0
-        })) || []
-      });
-      
+
       if (fullConversation) {
         this.currentConversation = fullConversation;
         this.events.onConversationSelected(fullConversation);

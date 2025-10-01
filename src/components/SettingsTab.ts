@@ -103,10 +103,11 @@ export class SettingsTab extends PluginSettingTab {
         if (this.memoryManagementAccordion) {
             this.memoryManagementAccordion.updateServices(
                 this.memoryService,
+                this.workspaceService,
                 this.vaultLibrarian
             );
         }
-        
+
         // Refresh the UI to show updated status
         this.display();
     }
@@ -241,12 +242,29 @@ export class SettingsTab extends PluginSettingTab {
         // Update section first
         this.createUpdateSection(containerEl);
 
+        // Get current service instances from ServiceManager if available
+        let memoryService: MemoryService | undefined = this.memoryService;
+        let workspaceService: WorkspaceService | undefined = this.workspaceService;
+
+        if (this.serviceManager) {
+            const memoryServiceFromManager = this.serviceManager.getServiceIfReady('memoryService') as MemoryService | undefined;
+            const workspaceServiceFromManager = this.serviceManager.getServiceIfReady('workspaceService') as WorkspaceService | undefined;
+
+            // Prefer ServiceManager instances over stored references
+            if (memoryServiceFromManager) {
+                memoryService = memoryServiceFromManager;
+            }
+            if (workspaceServiceFromManager) {
+                workspaceService = workspaceServiceFromManager;
+            }
+        }
+
         // Memory Management accordion with simplified services
         this.memoryManagementAccordion = new MemoryManagementAccordion(
             containerEl,
             this.settingsManager,
-            this.memoryService,
-            this.workspaceService,
+            memoryService,
+            workspaceService,
             this.vaultLibrarian,
             this.serviceManager
         );

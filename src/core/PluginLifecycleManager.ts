@@ -159,12 +159,9 @@ export class PluginLifecycleManager {
                     // Validate search functionality
                     await this.backgroundProcessor.validateSearchFunctionality();
 
-                    console.log('[PluginLifecycleManager] Heavy services initialization complete');
-
                     // Start MCP server AFTER services are ready (registers agents)
                     try {
                         await this.config.connector.start();
-                        console.log('[PluginLifecycleManager] MCP server started and agents registered');
                     } catch (error) {
                         console.warn('[PluginLifecycleManager] MCP initialization failed:', error);
                     }
@@ -172,14 +169,12 @@ export class PluginLifecycleManager {
                     // Initialize ChatService AFTER agents are registered (so tools are available)
                     try {
                         await this.serviceRegistrar.initializeChatService();
-                        console.log('[PluginLifecycleManager] ChatService initialized with available tools');
                     } catch (error) {
                         console.warn('[PluginLifecycleManager] ChatService initialization failed:', error);
                     }
 
                     // Register chat UI components AFTER ChatService is initialized
                     await this.chatUIManager.registerChatUI();
-                    console.log('[PluginLifecycleManager] Chat UI registered');
                 } catch (error) {
                     console.error('[PluginLifecycleManager] Background service initialization failed:', error);
                 }

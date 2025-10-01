@@ -95,7 +95,12 @@ export interface LoadWorkspaceResult extends CommonResult {
       rootFolder: string;
       recentActivity: string[];
     };
-    workflow: string;
+    workflows: string[];
+    workspaceStructure: string[];
+    recentFiles: Array<{
+      path: string;
+      modified: number;
+    }>;
     keyFiles: Record<string, string>;
     preferences: string;
     sessions: Array<{

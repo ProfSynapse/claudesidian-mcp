@@ -23,6 +23,7 @@ export class WorkspaceService {
    */
   async listWorkspaces(limit?: number): Promise<WorkspaceMetadata[]> {
     const index = await this.indexManager.loadWorkspaceIndex();
+
     let workspaces = Object.values(index.workspaces);
 
     // Sort by last accessed (most recent first)
@@ -33,7 +34,6 @@ export class WorkspaceService {
       workspaces = workspaces.slice(0, limit);
     }
 
-    console.log(`[WorkspaceService] Listed ${workspaces.length} workspaces from index`);
     return workspaces;
   }
 

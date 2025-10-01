@@ -164,7 +164,15 @@ export class MemoryManagerAgent extends BaseAgent {
   getApp() {
     return this.app;
   }
-  
+
+  /**
+   * Get the CacheManager service instance
+   */
+  getCacheManager() {
+    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+    return plugin?.getServiceIfReady('cacheManager') || null;
+  }
+
   /**
    * Execute a mode with automatic session context tracking
    * @param modeSlug The mode to execute

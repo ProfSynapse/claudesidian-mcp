@@ -1,6 +1,7 @@
+import { App } from 'obsidian';
 import { CardManager, CardItem } from '../CardManager';
 import { WorkspaceService } from '../../services/WorkspaceService';
-import { IndividualWorkspace } from '../../types/storage/StorageTypes';
+import { IndividualWorkspace, WorkspaceMetadata } from '../../types/storage/StorageTypes';
 import { WorkspaceEditModal } from './WorkspaceEditModal';
 import { Settings } from '../../settings';
 
@@ -24,8 +25,8 @@ export interface WorkspaceCardItem extends CardItem {
   currentGoal?: string;
   status?: string;
 
-  // Full workspace reference for editing
-  workspace: IndividualWorkspace;
+  // Workspace ID for loading full data when needed
+  workspaceId: string;
 }
 
 /**
@@ -36,15 +37,24 @@ export class WorkspaceCardManager {
   private workspaceService: WorkspaceService;
   private settings: Settings;
   private containerEl: HTMLElement;
+  private app: App;
+  private onEditCallback?: (workspace: any) => void;
+  private onCreateCallback?: () => void;
 
   constructor(
     containerEl: HTMLElement,
     workspaceService: WorkspaceService,
-    settings: Settings
+    settings: Settings,
+    app: App,
+    onEditCallback?: (workspace: any) => void,
+    onCreateCallback?: () => void
   ) {
     this.containerEl = containerEl;
     this.workspaceService = workspaceService;
     this.settings = settings;
+    this.app = app;
+    this.onEditCallback = onEditCallback;
+    this.onCreateCallback = onCreateCallback;
 
     this.cardManager = new CardManager<WorkspaceCardItem>({
       containerEl: containerEl,
@@ -65,23 +75,30 @@ export class WorkspaceCardManager {
    * Load and display workspaces
    */
   async refreshWorkspaces(): Promise<void> {
+    if (!this.workspaceService) {
+      console.error('[WorkspaceCardManager] Cannot refresh - workspaceService is undefined');
+      return;
+    }
+
     try {
-      let workspaces = await this.workspaceService.getAllWorkspaces();
+      // Use lightweight index-based listing instead of loading all workspace files
+      let workspaceMetadata = await this.workspaceService.listWorkspaces();
 
       // Consolidate multiple root workspaces into one
-      workspaces = this.consolidateRootWorkspaces(workspaces);
+      workspaceMetadata = this.consolidateRootWorkspacesMetadata(workspaceMetadata);
 
-      const cardItems = workspaces.map(workspace => this.workspaceToCardItem(workspace));
+      const cardItems = workspaceMetadata.map(metadata => this.metadataToCardItem(metadata));
+
       this.cardManager.updateItems(cardItems);
     } catch (error) {
-      console.error('Error loading workspaces:', error);
+      console.error('[WorkspaceCardManager] Error loading workspaces:', error);
     }
   }
 
   /**
-   * Consolidate multiple root workspaces into a single default workspace
+   * Consolidate multiple root workspaces into a single default workspace (metadata version)
    */
-  private consolidateRootWorkspaces(workspaces: IndividualWorkspace[]): IndividualWorkspace[] {
+  private consolidateRootWorkspacesMetadata(workspaces: WorkspaceMetadata[]): WorkspaceMetadata[] {
     const rootWorkspaces = workspaces.filter(w =>
       !w.rootFolder || w.rootFolder === '/' || w.rootFolder === ''
     );
@@ -108,7 +125,7 @@ export class WorkspaceCardManager {
     }
 
     // Mark the primary root as the default
-    const consolidatedRoot: IndividualWorkspace = {
+    const consolidatedRoot: WorkspaceMetadata = {
       ...primaryRoot,
       name: primaryRoot.name.startsWith('Workspace ') ? 'Default Workspace' : primaryRoot.name,
       description: primaryRoot.description || 'Default workspace for vault root',
@@ -119,81 +136,86 @@ export class WorkspaceCardManager {
   }
 
   /**
-   * Convert ProjectWorkspace to WorkspaceCardItem
+   * Convert WorkspaceMetadata to WorkspaceCardItem
    */
-  private workspaceToCardItem(workspace: IndividualWorkspace): WorkspaceCardItem {
+  private metadataToCardItem(metadata: WorkspaceMetadata): WorkspaceCardItem {
     return {
-      id: workspace.id,
-      name: this.generateWorkspaceName(workspace),
-      description: this.generateCardDescription(workspace),
-      isEnabled: workspace.isActive ?? true,
-      rootFolder: workspace.rootFolder,
-      created: workspace.created,
-      lastAccessed: workspace.lastAccessed,
-      purpose: workspace.context?.purpose,
-      currentGoal: workspace.context?.currentGoal,
-      status: (workspace.context as any)?.status, // Legacy field for backward compatibility
-      workspace: workspace
+      id: metadata.id,
+      name: this.generateWorkspaceNameFromMetadata(metadata),
+      description: this.generateCardDescriptionFromMetadata(metadata),
+      isEnabled: metadata.isActive ?? true,
+      rootFolder: metadata.rootFolder,
+      created: metadata.created,
+      lastAccessed: metadata.lastAccessed,
+      workspaceId: metadata.id
     };
   }
 
   /**
-   * Generate a user-friendly workspace name based on folder
+   * Generate a user-friendly workspace name from metadata
    */
-  private generateWorkspaceName(workspace: IndividualWorkspace): string {
+  private generateWorkspaceNameFromMetadata(metadata: WorkspaceMetadata): string {
     // If there's a custom name that's not the generic pattern, use it
-    if (workspace.name &&
-        !workspace.name.startsWith('Workspace ') &&
-        workspace.name !== 'workspace' &&
-        workspace.name !== 'default-workspace') {
-      return workspace.name;
+    if (metadata.name &&
+        !metadata.name.startsWith('Workspace ') &&
+        metadata.name !== 'workspace' &&
+        metadata.name !== 'default-workspace') {
+      return metadata.name;
     }
 
     // Use folder-based naming
-    if (!workspace.rootFolder || workspace.rootFolder === '/' || workspace.rootFolder === '') {
+    if (!metadata.rootFolder || metadata.rootFolder === '/' || metadata.rootFolder === '') {
       return 'Default (Root)';
     }
 
     // Extract the folder name from the path
-    const folderName = workspace.rootFolder.split('/').filter((part: string) => part).pop() || 'Root';
+    const folderName = metadata.rootFolder.split('/').filter((part: string) => part).pop() || 'Root';
     return folderName;
   }
 
   /**
-   * Generate a meaningful description for the card
+   * Generate a meaningful description from metadata
    */
-  private generateCardDescription(workspace: IndividualWorkspace): string {
-    if (workspace.description) {
-      return workspace.description;
+  private generateCardDescriptionFromMetadata(metadata: WorkspaceMetadata): string {
+    if (metadata.description) {
+      return metadata.description;
     }
 
-    if (workspace.context?.purpose) {
-      const parts = [workspace.context.purpose];
-      if (workspace.context.currentGoal) {
-        parts.push(`Goal: ${workspace.context.currentGoal}`);
-      }
-      if ((workspace.context as any).status) {
-        parts.push(`Status: ${(workspace.context as any).status}`);
-      }
+    const parts: string[] = [];
+
+    // Show session and trace counts if available
+    if (metadata.sessionCount !== undefined) {
+      parts.push(`${metadata.sessionCount} session${metadata.sessionCount !== 1 ? 's' : ''}`);
+    }
+    if (metadata.traceCount !== undefined && metadata.traceCount > 0) {
+      parts.push(`${metadata.traceCount} trace${metadata.traceCount !== 1 ? 's' : ''}`);
+    }
+
+    if (parts.length > 0) {
       return parts.join(' • ');
     }
 
-    return `Workspace in ${workspace.rootFolder}`;
+    return `Workspace in ${metadata.rootFolder}`;
   }
 
   /**
    * Handle add workspace button click
    */
   private async handleAddWorkspace(): Promise<void> {
-    const modal = new WorkspaceEditModal(
-      this.containerEl.ownerDocument.defaultView!.app,
-      this.workspaceService,
-      this.settings,
-      'create',
-      undefined,
-      () => this.refreshWorkspaces()
-    );
-    modal.open();
+    if (this.onCreateCallback) {
+      this.onCreateCallback();
+    } else {
+      // Fallback to modal for backward compatibility
+      const modal = new WorkspaceEditModal(
+        this.app,
+        this.workspaceService,
+        this.settings,
+        'create',
+        undefined,
+        () => this.refreshWorkspaces()
+      );
+      modal.open();
+    }
   }
 
   /**
@@ -212,15 +234,28 @@ export class WorkspaceCardManager {
    * Handle edit workspace button click
    */
   private async handleEditWorkspace(item: WorkspaceCardItem): Promise<void> {
-    const modal = new WorkspaceEditModal(
-      this.containerEl.ownerDocument.defaultView!.app,
-      this.workspaceService,
-      this.settings,
-      'edit',
-      item.workspace,
-      () => this.refreshWorkspaces()
-    );
-    modal.open();
+    // Load full workspace data for editing
+    const workspace = await this.workspaceService.getWorkspace(item.workspaceId);
+
+    if (!workspace) {
+      console.error(`Failed to load workspace: ${item.workspaceId}`);
+      return;
+    }
+
+    if (this.onEditCallback) {
+      this.onEditCallback(workspace);
+    } else {
+      // Fallback to modal for backward compatibility
+      const modal = new WorkspaceEditModal(
+        this.app,
+        this.workspaceService,
+        this.settings,
+        'edit',
+        workspace,
+        () => this.refreshWorkspaces()
+      );
+      modal.open();
+    }
   }
 
   /**

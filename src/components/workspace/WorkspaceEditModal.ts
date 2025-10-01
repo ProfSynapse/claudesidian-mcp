@@ -12,7 +12,8 @@ import { Settings } from '../../settings';
  */
 enum ModalView {
   MAIN_TABS = 'main',        // The current 3-tab interface
-  WORKFLOW_EDIT = 'workflow' // Full workflow editor view
+  WORKFLOW_EDIT = 'workflow', // Full workflow editor view
+  FILE_PICKER = 'file-picker' // File picker view
 }
 
 /**
@@ -36,6 +37,8 @@ export class WorkspaceEditModal extends Modal {
   // View management
   private currentView: ModalView = ModalView.MAIN_TABS;
   private editingWorkflowIndex?: number;
+  private editingKeyFileIndex?: number;
+  private selectedFilePath: string = '';
 
   constructor(
     app: App,
@@ -85,6 +88,8 @@ export class WorkspaceEditModal extends Modal {
       this.renderMainTabsView();
     } else if (this.currentView === ModalView.WORKFLOW_EDIT) {
       this.renderWorkflowEditView();
+    } else if (this.currentView === ModalView.FILE_PICKER) {
+      this.renderFilePickerView();
     }
   }
 
@@ -256,11 +261,187 @@ export class WorkspaceEditModal extends Modal {
   }
 
   /**
+   * Render the file picker view with fuzzy search
+   */
+  private renderFilePickerView(): void {
+    const { contentEl } = this;
+
+    // Header with back button and action buttons
+    const header = contentEl.createDiv('file-picker-header');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.marginBottom = '20px';
+
+    // Left side: Back button and title
+    const leftSection = header.createDiv('file-picker-header-left');
+    leftSection.style.display = 'flex';
+    leftSection.style.alignItems = 'center';
+    leftSection.style.gap = '12px';
+
+    const backButton = leftSection.createEl('button', {
+      text: '← Back',
+      cls: 'file-picker-back-button'
+    });
+    backButton.addEventListener('click', () => {
+      // If canceling on a newly added empty file, remove it
+      if (this.editingKeyFileIndex !== undefined &&
+          this.formData.context?.keyFiles?.[this.editingKeyFileIndex] === '') {
+        this.formData.context.keyFiles.splice(this.editingKeyFileIndex, 1);
+      }
+      this.selectedFilePath = '';
+      this.backToMainTabs();
+    });
+
+    leftSection.createEl('h2', {
+      text: 'Select Key File',
+      cls: 'file-picker-title'
+    });
+
+    // Right side: Action buttons
+    const actionsContainer = header.createDiv('file-picker-actions');
+    actionsContainer.style.display = 'flex';
+    actionsContainer.style.gap = '8px';
+
+    const cancelButton = actionsContainer.createEl('button', {
+      text: 'Cancel'
+    });
+    cancelButton.addEventListener('click', () => {
+      // If canceling on a newly added empty file, remove it
+      if (this.editingKeyFileIndex !== undefined &&
+          this.formData.context?.keyFiles?.[this.editingKeyFileIndex] === '') {
+        this.formData.context.keyFiles.splice(this.editingKeyFileIndex, 1);
+      }
+      this.selectedFilePath = '';
+      this.backToMainTabs();
+    });
+
+    const selectButton = actionsContainer.createEl('button', {
+      text: 'Select File',
+      cls: 'mod-cta'
+    });
+    selectButton.addEventListener('click', () => this.saveKeyFile());
+
+    // File picker form
+    const form = contentEl.createDiv('file-picker-form');
+    form.style.maxWidth = '600px';
+    form.style.margin = '0 auto';
+
+    // Get all files from vault
+    const allFiles = this.app.vault.getFiles();
+    let filteredFiles = [...allFiles];
+
+    // Search/Filter input with fuzzy matching
+    const searchContainer = form.createDiv('file-picker-search');
+    new Setting(searchContainer)
+      .setName('Search files')
+      .setDesc('Type to filter files (fuzzy search)')
+      .addText(text => text
+        .setPlaceholder('Start typing file name...')
+        .onChange(value => {
+          const searchTerm = value.toLowerCase();
+
+          if (!searchTerm) {
+            filteredFiles = [...allFiles];
+          } else {
+            // Fuzzy search: match if all chars appear in order
+            filteredFiles = allFiles.filter(file => {
+              const filePath = file.path.toLowerCase();
+              let searchIndex = 0;
+
+              for (let i = 0; i < filePath.length && searchIndex < searchTerm.length; i++) {
+                if (filePath[i] === searchTerm[searchIndex]) {
+                  searchIndex++;
+                }
+              }
+
+              return searchIndex === searchTerm.length;
+            });
+          }
+
+          renderFileList();
+        }));
+
+    // File list container
+    const fileListContainer = form.createDiv('file-picker-list');
+    fileListContainer.style.maxHeight = '400px';
+    fileListContainer.style.overflowY = 'auto';
+    fileListContainer.style.border = '1px solid var(--background-modifier-border)';
+    fileListContainer.style.borderRadius = '4px';
+    fileListContainer.style.marginTop = '12px';
+
+    const renderFileList = () => {
+      fileListContainer.empty();
+
+      if (filteredFiles.length === 0) {
+        const emptyState = fileListContainer.createDiv('file-picker-empty');
+        emptyState.style.padding = '20px';
+        emptyState.style.textAlign = 'center';
+        emptyState.style.color = 'var(--text-muted)';
+        emptyState.textContent = 'No files found';
+        return;
+      }
+
+      filteredFiles.forEach(file => {
+        const fileItem = fileListContainer.createDiv('file-picker-item');
+        fileItem.style.padding = '8px 12px';
+        fileItem.style.cursor = 'pointer';
+        fileItem.style.borderBottom = '1px solid var(--background-modifier-border)';
+
+        // Highlight selected file
+        if (file.path === this.selectedFilePath) {
+          fileItem.style.backgroundColor = 'var(--background-modifier-hover)';
+          fileItem.style.fontWeight = 'bold';
+        }
+
+        fileItem.textContent = file.path;
+
+        // Click to select
+        fileItem.addEventListener('click', () => {
+          this.selectedFilePath = file.path;
+          renderFileList();
+        });
+
+        // Hover effect
+        fileItem.addEventListener('mouseenter', () => {
+          if (file.path !== this.selectedFilePath) {
+            fileItem.style.backgroundColor = 'var(--background-modifier-hover)';
+          }
+        });
+        fileItem.addEventListener('mouseleave', () => {
+          if (file.path !== this.selectedFilePath) {
+            fileItem.style.backgroundColor = '';
+          }
+        });
+      });
+    };
+
+    renderFileList();
+  }
+
+  /**
    * Switch to workflow editor view
    */
   private switchToWorkflowEditor(workflowIndex?: number): void {
     this.currentView = ModalView.WORKFLOW_EDIT;
     this.editingWorkflowIndex = workflowIndex;
+    this.renderCurrentView();
+  }
+
+  /**
+   * Switch to file picker view
+   */
+  private switchToFilePicker(keyFileIndex: number): void {
+    this.currentView = ModalView.FILE_PICKER;
+    this.editingKeyFileIndex = keyFileIndex;
+
+    // Pre-select current file if one exists
+    if (this.formData.context?.keyFiles?.[keyFileIndex]) {
+      this.selectedFilePath = this.formData.context.keyFiles[keyFileIndex];
+    } else {
+      this.selectedFilePath = '';
+    }
+
     this.renderCurrentView();
   }
 
@@ -271,6 +452,33 @@ export class WorkspaceEditModal extends Modal {
     this.currentView = ModalView.MAIN_TABS;
     this.editingWorkflowIndex = undefined;
     this.renderCurrentView();
+  }
+
+  /**
+   * Save the selected key file and return to main tabs
+   */
+  private saveKeyFile(): void {
+    // Validate selection
+    if (!this.selectedFilePath.trim()) {
+      alert('Please select a file');
+      return;
+    }
+
+    // Validate file exists in vault
+    const file = this.app.vault.getAbstractFileByPath(this.selectedFilePath);
+    if (!file) {
+      alert('Selected file no longer exists in vault');
+      return;
+    }
+
+    // Save to form data
+    if (this.formData.context?.keyFiles && this.editingKeyFileIndex !== undefined) {
+      this.formData.context.keyFiles[this.editingKeyFileIndex] = this.selectedFilePath;
+    }
+
+    // Clear selection and return
+    this.selectedFilePath = '';
+    this.backToMainTabs();
   }
 
   /**
@@ -651,48 +859,8 @@ export class WorkspaceEditModal extends Modal {
             }))
           .addButton(button => button
             .setButtonText('Browse')
-            .onClick(async () => {
-              const files = this.app.vault.getFiles();
-              const fileOptions = files.map(file => ({
-                value: file.path,
-                text: file.path
-              }));
-
-              // Simple file selection using a dropdown in a mini modal
-              const fileSelectorModal = new Modal(this.app);
-              fileSelectorModal.titleEl.setText('Select File');
-
-              let selectedFile = '';
-              new Setting(fileSelectorModal.contentEl)
-                .setName('File')
-                .addDropdown(dropdown => {
-                  dropdown.addOption('', 'Select a file...');
-                  fileOptions.forEach(option => {
-                    dropdown.addOption(option.value, option.text);
-                  });
-                  dropdown.onChange(value => {
-                    selectedFile = value;
-                  });
-                });
-
-              new Setting(fileSelectorModal.contentEl)
-                .addButton(button => button
-                  .setButtonText('Select')
-                  .setClass('mod-cta')
-                  .onClick(() => {
-                    if (selectedFile && this.formData.context?.keyFiles) {
-                      this.formData.context.keyFiles[index] = selectedFile;
-                      updateKeyFilesList();
-                    }
-                    fileSelectorModal.close();
-                  }))
-                .addButton(button => button
-                  .setButtonText('Cancel')
-                  .onClick(() => {
-                    fileSelectorModal.close();
-                  }));
-
-              fileSelectorModal.open();
+            .onClick(() => {
+              this.switchToFilePicker(index);
             }))
           .addButton(button => button
             .setButtonText('Remove')
@@ -718,8 +886,10 @@ export class WorkspaceEditModal extends Modal {
               };
               this.formData.context.keyFiles = [];
             }
+            // Add empty entry and immediately open picker for it
+            const newIndex = this.formData.context.keyFiles.length;
             this.formData.context.keyFiles.push('');
-            updateKeyFilesList();
+            this.switchToFilePicker(newIndex);
           }));
     };
 

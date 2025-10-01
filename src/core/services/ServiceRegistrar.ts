@@ -78,37 +78,22 @@ export class ServiceRegistrar {
             const indexManager = new IndexManager(fileSystem);
 
             // Check migration status BEFORE creating directories
-            console.log('[ServiceRegistrar] Checking migration status...');
             const migrationService = new DataMigrationService(plugin, fileSystem, indexManager);
             const status = await migrationService.checkMigrationStatus();
-            console.log('[ServiceRegistrar] Migration status:', status);
 
             if (status.isRequired) {
-                console.log('[ServiceRegistrar] Migration required - starting data migration...');
                 const result = await migrationService.performMigration();
 
                 if (result.success) {
-                    console.log('[ServiceRegistrar] Migration completed successfully:', {
-                        conversations: result.conversationsMigrated,
-                        workspaces: result.workspacesMigrated,
-                        sessions: result.sessionsMigrated,
-                        traces: result.tracesMigrated
-                    });
+                    // Migration completed successfully
                 } else {
                     console.error('[ServiceRegistrar] Migration failed:', result.errors);
                 }
-            } else {
-                console.log('[ServiceRegistrar] No migration needed - split-file structure already exists');
             }
 
             // Ensure all conversations have metadata field (idempotent)
-            console.log('[ServiceRegistrar] Ensuring conversation metadata fields...');
             try {
                 const metadataResult = await migrationService.ensureConversationMetadata();
-                console.log('[ServiceRegistrar] Metadata migration complete:', {
-                    updated: metadataResult.updated,
-                    errors: metadataResult.errors.length
-                });
                 if (metadataResult.errors.length > 0) {
                     console.error('[ServiceRegistrar] Metadata migration errors:', metadataResult.errors);
                 }
@@ -182,12 +167,10 @@ export class ServiceRegistrar {
      */
     async initializeChatService(): Promise<void> {
         try {
-            console.log('[ServiceRegistrar] Initializing ChatService after agent registration...');
             const chatService = await this.context.serviceManager.getService('chatService') as any;
 
             if (chatService && typeof chatService.initialize === 'function') {
                 await chatService.initialize();
-                console.log('[ServiceRegistrar] ChatService initialized successfully');
             }
         } catch (error) {
             console.error('[ServiceRegistrar] ChatService initialization failed:', error);
@@ -200,16 +183,11 @@ export class ServiceRegistrar {
      */
     async preInitializeUICriticalServices(): Promise<void> {
         if (!this.context.serviceManager) return;
-        
-        const startTime = Date.now();
-        
+
         try {
             // Register additional services if not already registered
             this.registerAdditionalServices();
 
-            const totalTime = Date.now() - startTime;
-            console.log(`[ServiceRegistrar] UI-critical services pre-initialization complete in ${totalTime}ms`);
-            
         } catch (error) {
             console.error('[ServiceRegistrar] UI-critical services pre-initialization failed:', error);
         }
