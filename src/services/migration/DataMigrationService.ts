@@ -65,6 +65,36 @@ export class DataMigrationService {
   }
 
   /**
+   * Initialize fresh directories and empty index files for first-time users
+   */
+  async initializeFreshDirectories(): Promise<void> {
+    // Create conversations/ and workspaces/ directories
+    await this.fileSystem.ensureConversationsDirectory();
+    await this.fileSystem.ensureWorkspacesDirectory();
+
+    // Create empty index files with proper structure
+    const emptyConversationIndex = {
+      conversations: {},
+      byTitle: {},
+      byContent: {},
+      byVault: {},
+      byDateRange: [],
+      lastUpdated: Date.now()
+    };
+    await this.fileSystem.writeConversationIndex(emptyConversationIndex);
+
+    const emptyWorkspaceIndex = {
+      workspaces: {},
+      byName: {},
+      byDescription: {},
+      byFolder: {},
+      sessionsByWorkspace: {},
+      lastUpdated: Date.now()
+    };
+    await this.fileSystem.writeWorkspaceIndex(emptyWorkspaceIndex);
+  }
+
+  /**
    * Perform migration from ChromaDB to split-file structure
    */
   async performMigration(): Promise<MigrationResult> {

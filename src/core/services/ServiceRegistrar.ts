@@ -82,6 +82,7 @@ export class ServiceRegistrar {
             const status = await migrationService.checkMigrationStatus();
 
             if (status.isRequired) {
+                // Migrate from legacy ChromaDB data
                 const result = await migrationService.performMigration();
 
                 if (result.success) {
@@ -89,6 +90,9 @@ export class ServiceRegistrar {
                 } else {
                     console.error('[ServiceRegistrar] Migration failed:', result.errors);
                 }
+            } else if (!status.migrationComplete) {
+                // No legacy data and directories don't exist - initialize fresh structure
+                await migrationService.initializeFreshDirectories();
             }
 
             // Ensure all conversations have metadata field (idempotent)
