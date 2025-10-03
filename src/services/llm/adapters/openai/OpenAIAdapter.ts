@@ -86,11 +86,11 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
 
   /**
    * Generate streaming response using async generator
+   * Uses unified stream processing with automatic tool call accumulation
    */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
       const model = options?.model || this.currentModel;
-      
 
       // Deep research models cannot be used in streaming chat
       if (this.deepResearch.isDeepResearchModel(model)) {
@@ -115,50 +115,18 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
       if (options?.presencePenalty !== undefined) streamParams.presence_penalty = options.presencePenalty;
 
       console.log(`[OpenAIAdapter] Creating stream with params:`, { ...streamParams, messages: '[hidden]' });
-      
-      // Create OpenAI stream  
+
+      // Create OpenAI stream
       const stream = await this.client.chat.completions.create(streamParams) as any;
 
-      let tokenCount = 0;
-      let usage: any = undefined;
-      let finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' = 'stop';
-
-      // Stream tokens as they arrive
-      for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta?.content || '';
-        
-        if (delta) {
-          tokenCount++;
-          
-          // Yield each token immediately
-          yield { 
-            content: delta, 
-            complete: false
-          };
-        }
-        
-        // Capture usage info when available
-        if (chunk.usage) {
-          usage = chunk.usage;
-        }
-
-        // Capture finish reason
-        if (chunk.choices[0]?.finish_reason) {
-          const reason = chunk.choices[0].finish_reason;
-          if (reason === 'stop' || reason === 'length' || reason === 'tool_calls' || reason === 'content_filter') {
-            finishReason = reason;
-          }
-        }
-      }
-
-      
-      // Yield final completion with usage info
-      const extractedUsage = this.extractUsage({ usage });
-      yield { 
-        content: '', 
-        complete: true, 
-        usage: extractedUsage 
-      };
+      // Use unified stream processing with automatic tool call accumulation
+      yield* this.processStream(stream, {
+        debugLabel: 'OpenAI',
+        extractContent: (chunk) => chunk.choices[0]?.delta?.content || null,
+        extractToolCalls: (chunk) => chunk.choices[0]?.delta?.tool_calls || null,
+        extractFinishReason: (chunk) => chunk.choices[0]?.finish_reason || null,
+        extractUsage: (chunk) => chunk.usage || null
+      });
 
     } catch (error) {
       console.error('[OpenAIAdapter] Streaming error:', error);

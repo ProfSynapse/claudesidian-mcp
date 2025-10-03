@@ -206,13 +206,19 @@ export abstract class BaseAdapter {
 
           // Handle completion
           const finishReason = options.extractFinishReason(parsed);
-          if (finishReason === 'stop' || finishReason === 'length') {
-            
+          if (finishReason === 'stop' || finishReason === 'length' || finishReason === 'tool_calls') {
+
+            // Include accumulated tool calls in completion event (same pattern as [DONE])
+            const finalToolCalls = options.accumulateToolCalls && toolCallsAccumulator.size > 0
+              ? Array.from(toolCallsAccumulator.values())
+              : undefined;
+
             eventQueue.push({
               content: '',
-              complete: true
+              complete: true,
+              toolCalls: finalToolCalls
             });
-            
+
             isCompleted = true;
           }
 
@@ -281,6 +287,149 @@ export abstract class BaseAdapter {
 
     if (completionError) {
       throw completionError;
+    }
+  }
+
+  /**
+   * Process streaming responses with automatic tool call accumulation
+   * Supports both SDK streams (OpenAI, Groq, Mistral) and SSE streams (Requesty, Perplexity, OpenRouter)
+   *
+   * This unified method handles:
+   * - Text content streaming
+   * - Tool call accumulation (incremental delta.tool_calls)
+   * - Usage/metadata extraction
+   * - Finish reason detection
+   *
+   * Used by: OpenAI, Groq, Mistral, Requesty, Perplexity, OpenRouter
+   */
+  protected async* processStream(
+    stream: AsyncIterable<any> | Response,
+    options: {
+      extractContent: (chunk: any) => string | null;
+      extractToolCalls: (chunk: any) => any[] | null;
+      extractFinishReason: (chunk: any) => string | null;
+      extractUsage?: (chunk: any) => any;
+      debugLabel?: string;
+    }
+  ): AsyncGenerator<StreamChunk, void, unknown> {
+    const debugLabel = options.debugLabel || 'Stream';
+
+    // Determine if this is SDK stream or SSE Response
+    const isSdkStream = Symbol.iterator in Object(stream) || Symbol.asyncIterator in Object(stream);
+
+    if (isSdkStream) {
+      // Process SDK stream (OpenAI SDK, Groq, Mistral)
+      console.log(`[${debugLabel}] Processing SDK stream with tool call accumulation`);
+
+      const toolCallsAccumulator: Map<number, any> = new Map();
+      let usage: any = undefined;
+
+      for await (const chunk of stream as AsyncIterable<any>) {
+        yield* this.processStreamChunk(chunk, options, toolCallsAccumulator, usage);
+
+        // Update usage reference if extracted
+        if (options.extractUsage) {
+          const extractedUsage = options.extractUsage(chunk);
+          if (extractedUsage) {
+            usage = extractedUsage;
+          }
+        }
+      }
+
+      // Yield final completion with accumulated tool calls
+      const finalToolCalls = toolCallsAccumulator.size > 0
+        ? Array.from(toolCallsAccumulator.values())
+        : undefined;
+
+      const finalUsage = usage ? {
+        promptTokens: usage.prompt_tokens || usage.promptTokens || 0,
+        completionTokens: usage.completion_tokens || usage.completionTokens || 0,
+        totalTokens: usage.total_tokens || usage.totalTokens || 0
+      } : undefined;
+
+      yield {
+        content: '',
+        complete: true,
+        usage: finalUsage,
+        toolCalls: finalToolCalls
+      };
+    } else {
+      // Process SSE stream (Requesty, Perplexity, OpenRouter via Response object)
+      console.log(`[${debugLabel}] Processing SSE stream with tool call accumulation`);
+
+      yield* this.processSSEStream(stream as Response, {
+        ...options,
+        accumulateToolCalls: true,
+        toolCallThrottling: {
+          initialYield: true,
+          progressInterval: 50
+        }
+      });
+    }
+  }
+
+  /**
+   * Process individual stream chunk with tool call accumulation
+   * Handles delta.content and delta.tool_calls from any OpenAI-compatible provider
+   */
+  private* processStreamChunk(
+    chunk: any,
+    options: {
+      extractContent: (chunk: any) => string | null;
+      extractToolCalls: (chunk: any) => any[] | null;
+      extractFinishReason: (chunk: any) => string | null;
+      extractUsage?: (chunk: any) => any;
+    },
+    toolCallsAccumulator: Map<number, any>,
+    usageRef: any
+  ): Generator<StreamChunk, void, unknown> {
+
+    // Extract text content
+    const content = options.extractContent(chunk);
+    if (content) {
+      yield { content, complete: false };
+    }
+
+    // Extract and accumulate tool calls
+    const toolCalls = options.extractToolCalls(chunk);
+    if (toolCalls) {
+      for (const toolCall of toolCalls) {
+        const index = toolCall.index || 0;
+
+        if (!toolCallsAccumulator.has(index)) {
+          // Initialize new tool call
+          toolCallsAccumulator.set(index, {
+            id: toolCall.id || '',
+            type: toolCall.type || 'function',
+            function: {
+              name: toolCall.function?.name || '',
+              arguments: toolCall.function?.arguments || ''
+            }
+          });
+        } else {
+          // Accumulate existing tool call arguments
+          const existing = toolCallsAccumulator.get(index);
+          if (toolCall.id) existing.id = toolCall.id;
+          if (toolCall.function?.name) existing.function.name = toolCall.function.name;
+          if (toolCall.function?.arguments) {
+            existing.function.arguments += toolCall.function.arguments;
+          }
+        }
+      }
+
+      // Yield progress for UI (every 50 characters of arguments)
+      const currentToolCalls = Array.from(toolCallsAccumulator.values());
+      const totalArgLength = currentToolCalls.reduce((sum, tc) =>
+        sum + (tc.function?.arguments?.length || 0), 0
+      );
+
+      if (totalArgLength > 0 && totalArgLength % 50 === 0) {
+        yield {
+          content: '',
+          complete: false,
+          toolCalls: currentToolCalls
+        };
+      }
     }
   }
 

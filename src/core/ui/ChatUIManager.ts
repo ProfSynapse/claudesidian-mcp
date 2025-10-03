@@ -35,20 +35,17 @@ export class ChatUIManager {
             
             // Check if ChatView is enabled in settings
             if (!this.isChatViewEnabled()) {
-                console.log('[ChatUIManager] ChatView disabled in settings - skipping UI registration');
                 return;
             }
-            
+
             // Skip if already registered
             if (this.chatUIRegistered) {
-                console.log('[ChatUIManager] ChatView UI already registered');
                 return;
             }
             
             // Get ChatService
             const chatService = await this.config.getService<any>('chatService', 5000);
             if (!chatService) {
-                console.warn('[ChatUIManager] ChatService not available for UI registration');
                 return;
             }
             
@@ -74,13 +71,13 @@ export class ChatUIManager {
                     this.activateChatView();
                 }
             });
-            
+
+
             // Mark as registered
             this.chatUIRegistered = true;
-            console.log('[ChatUIManager] ChatView UI registered successfully');
-            
+
         } catch (error) {
-            console.error('[ChatUIManager] Failed to register chat UI:', error);
+            console.error('Failed to register chat UI:', error);
         }
     }
 
@@ -130,7 +127,6 @@ export class ChatUIManager {
     async enableChatViewUI(): Promise<void> {
         try {
             if (!this.isChatViewEnabled()) {
-                console.warn('[ChatUIManager] ChatView not enabled in settings');
                 return;
             }
             
@@ -139,9 +135,9 @@ export class ChatUIManager {
             
             // Auto-open ChatView in sidebar
             await this.activateChatView();
-            
+
         } catch (error) {
-            console.error('[ChatUIManager] Failed to enable ChatView UI:', error);
+            console.error('Failed to enable ChatView UI:', error);
         }
     }
 

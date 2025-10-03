@@ -92,8 +92,18 @@ export class ChatSettingsModal extends Modal {
   private renderMainSettings(): void {
     const { contentEl } = this;
 
+    // Header with title and action buttons
+    const header = contentEl.createDiv('chat-settings-header');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.marginBottom = '20px';
+
     // Title
-    contentEl.createEl('h2', { text: 'Chat Settings' });
+    header.createEl('h2', { text: 'Chat Settings' });
+
+    // Action buttons in header
+    this.renderActionButtons(header);
 
     // Render settings sections
     this.renderWorkspaceSection(contentEl);
@@ -101,9 +111,6 @@ export class ChatSettingsModal extends Modal {
     this.renderAgentSection(contentEl);
     this.renderContextNotesSection(contentEl);
     this.renderWorkspaceInfo(contentEl);
-
-    // Action buttons
-    this.renderActionButtons(contentEl);
   }
 
   onClose() {
@@ -325,17 +332,19 @@ export class ChatSettingsModal extends Modal {
    */
   private renderActionButtons(container: HTMLElement): void {
     const buttonContainer = container.createDiv('modal-button-container');
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.gap = '8px';
+
+    const cancelButton = buttonContainer.createEl('button', {
+      text: 'Cancel'
+    });
+    cancelButton.addEventListener('click', () => this.close());
 
     const saveButton = buttonContainer.createEl('button', {
       text: 'Save',
       cls: 'mod-cta'
     });
     saveButton.addEventListener('click', () => this.handleSave());
-
-    const cancelButton = buttonContainer.createEl('button', {
-      text: 'Cancel'
-    });
-    cancelButton.addEventListener('click', () => this.close());
   }
 
   /**

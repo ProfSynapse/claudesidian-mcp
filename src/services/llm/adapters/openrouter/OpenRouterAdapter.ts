@@ -107,7 +107,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
   }
 
   /**
-   * Generate streaming response using centralized SSE processing
+   * Generate streaming response using unified stream processing
+   * Uses processStream which automatically handles SSE parsing and tool call accumulation
    */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
@@ -120,7 +121,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       // Add :online suffix for web search
       const model = options?.webSearch ? `${baseModel}:online` : baseModel;
-      
+
       const requestBody = {
         model,
         messages: options?.conversationHistory || this.buildMessages(prompt, options?.systemPrompt),
@@ -152,14 +153,9 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorBody}`);
       }
 
-      // Use centralized SSE streaming with OpenRouter-specific extraction
-      yield* this.processSSEStream(response, {
+      // Use unified stream processing (automatically uses SSE parsing for Response objects)
+      yield* this.processStream(response, {
         debugLabel: 'OpenRouter',
-        accumulateToolCalls: true,
-        toolCallThrottling: {
-          initialYield: true,
-          progressInterval: 50
-        },
 
         extractContent: (parsed: any) => {
           // Process all available choices - reasoning models may use multiple choices
@@ -197,10 +193,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
         extractUsage: (parsed: any) => {
           return parsed.usage || null;
-        },
-
-        onParseError: (error: Error, rawData: string) => {
-          // Failed to parse SSE data
         }
       });
 

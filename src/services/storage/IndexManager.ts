@@ -63,7 +63,6 @@ export class IndexManager {
 
     // Save index
     await this.fileSystem.writeConversationIndex(index);
-    console.log(`[IndexManager] Updated conversation in index: ${conversation.id}`);
   }
 
   /**
@@ -83,15 +82,12 @@ export class IndexManager {
 
     // Save index
     await this.fileSystem.writeConversationIndex(index);
-    console.log(`[IndexManager] Removed conversation from index: ${id}`);
   }
 
   /**
    * Rebuild entire conversation index from all conversation files
    */
   async rebuildConversationIndex(): Promise<void> {
-    console.log('[IndexManager] Rebuilding conversation index from files...');
-
     const conversationIds = await this.fileSystem.listConversationIds();
     const conversations: IndividualConversation[] = [];
 
@@ -108,7 +104,6 @@ export class IndexManager {
 
     // Save index
     await this.fileSystem.writeConversationIndex(index);
-    console.log(`[IndexManager] Rebuilt conversation index with ${conversations.length} conversations`);
   }
 
   /**
@@ -168,7 +163,6 @@ export class IndexManager {
 
     // Save index
     await this.fileSystem.writeWorkspaceIndex(index);
-    console.log(`[IndexManager] Updated workspace in index: ${workspace.id}`);
   }
 
   /**
@@ -188,15 +182,12 @@ export class IndexManager {
 
     // Save index
     await this.fileSystem.writeWorkspaceIndex(index);
-    console.log(`[IndexManager] Removed workspace from index: ${id}`);
   }
 
   /**
    * Rebuild entire workspace index from all workspace files
    */
   async rebuildWorkspaceIndex(): Promise<void> {
-    console.log('[IndexManager] Rebuilding workspace index from files...');
-
     const workspaceIds = await this.fileSystem.listWorkspaceIds();
     const workspaces: IndividualWorkspace[] = [];
 
@@ -213,7 +204,6 @@ export class IndexManager {
 
     // Save index
     await this.fileSystem.writeWorkspaceIndex(index);
-    console.log(`[IndexManager] Rebuilt workspace index with ${workspaces.length} workspaces`);
   }
 
   /**

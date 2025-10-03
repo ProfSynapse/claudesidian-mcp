@@ -48,10 +48,14 @@ export class RequestyAdapter extends BaseAdapter implements MCPCapableAdapter {
     }
   }
 
+  /**
+   * Generate streaming response using async generator
+   * Uses unified stream processing with automatic tool call accumulation
+   */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
       console.log('[RequestyAdapter] Starting streaming response');
-      
+
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -78,66 +82,15 @@ export class RequestyAdapter extends BaseAdapter implements MCPCapableAdapter {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response body reader available');
-      }
+      // Use unified stream processing with automatic SSE parsing and tool call accumulation
+      yield* this.processStream(response, {
+        debugLabel: 'Requesty',
+        extractContent: (parsed) => parsed.choices[0]?.delta?.content || null,
+        extractToolCalls: (parsed) => parsed.choices[0]?.delta?.tool_calls || null,
+        extractFinishReason: (parsed) => parsed.choices[0]?.finish_reason || null,
+        extractUsage: (parsed) => parsed.usage || null
+      });
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let usage: any = undefined;
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          
-          // Process complete lines from buffer
-          while (true) {
-            const lineEnd = buffer.indexOf('\n');
-            if (lineEnd === -1) break;
-            
-            const line = buffer.slice(0, lineEnd).trim();
-            buffer = buffer.slice(lineEnd + 1);
-            
-            // Skip empty lines and comments
-            if (!line || line.startsWith(':')) continue;
-            
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') break;
-              
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices[0]?.delta?.content;
-                
-                if (content) {
-                  yield { content, complete: false };
-                }
-                
-                // Extract usage information
-                if (parsed.usage) {
-                  usage = parsed.usage;
-                }
-              } catch (error) {
-                console.warn('[RequestyAdapter] Failed to parse streaming chunk:', error);
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-
-      // Final chunk with usage information
-      yield { 
-        content: '', 
-        complete: true, 
-        usage: this.extractUsage({ usage }) 
-      };
-      
       console.log('[RequestyAdapter] Streaming completed');
     } catch (error) {
       console.error('[RequestyAdapter] Streaming error:', error);

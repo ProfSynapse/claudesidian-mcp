@@ -55,7 +55,6 @@ export class ChatService {
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
-      console.warn('[ChatService] Already initialized, skipping duplicate initialization');
       return;
     }
 
@@ -65,20 +64,9 @@ export class ChatService {
 
       this.isInitialized = true;
 
-      console.log(`[ChatService] ✅ Initialized with ${this.availableTools.length} tools via MCPConnector`);
-      console.log('[ChatService] 📋 Tool manifest loaded:', {
-        toolCount: this.availableTools.length,
-        firstFiveTools: this.availableTools.slice(0, 5).map(t => ({
-          name: t.name,
-          description: t.description?.substring(0, 50) + '...'
-        })),
-        sampleToolStructure: this.availableTools[0]
-      });
-
     } catch (error) {
-      console.error('[ChatService] ❌ Failed to initialize tools from MCPConnector:', error);
+      console.error('Failed to initialize tools from MCPConnector:', error);
       this.availableTools = [];
-      console.warn('[ChatService] ⚠️ No tools available - chatbot will work without tools');
     }
   }
 
@@ -144,7 +132,7 @@ export class ChatService {
         conversationId: conversation.id
       };
     } catch (error) {
-      console.error('[ChatService] Failed to create conversation:', error);
+      console.error('Failed to create conversation:', error);
       return {
         success: false,
         error: getErrorMessage(error)
@@ -175,7 +163,7 @@ export class ChatService {
         error: result.error
       };
     } catch (error) {
-      console.error('[ChatService] Failed to add message:', error);
+      console.error('Failed to add message:', error);
       return {
         success: false,
         error: getErrorMessage(error)
@@ -226,7 +214,7 @@ export class ChatService {
         messageId: userMessage.success ? userMessage.messageId : undefined
       };
     } catch (error) {
-      console.error('[ChatService] Failed to send message:', error);
+      console.error('Failed to send message:', error);
       return {
         success: false,
         error: getErrorMessage(error)
@@ -262,15 +250,8 @@ export class ChatService {
       const provider = options?.provider || defaultModel.provider;
       this.currentProvider = provider; // Store for context building
 
-      console.log(`[ChatService] Using provider: ${provider} for conversation context`);
-
       // ALWAYS load conversation from storage to get complete history including tool calls
       const conversation = await this.dependencies.conversationService.getConversation(conversationId);
-      console.log(`[ChatService] Loaded conversation from storage:`, {
-        conversationId,
-        found: !!conversation,
-        messageCount: conversation?.messages?.length || 0
-      });
 
       // Build conversation context for LLM with provider-specific formatting
       const messages = conversation ?
@@ -282,8 +263,6 @@ export class ChatService {
       }
 
       messages.push({ role: 'user', content: userMessage });
-
-      console.log(`[ChatService] Final message context has ${messages.length} messages for LLM`);
 
       // Convert MCP tools to OpenAI format before passing to LLM
       const openAITools = this.convertMCPToolsToOpenAIFormat(this.availableTools);
@@ -298,19 +277,11 @@ export class ChatService {
         abortSignal: options?.abortSignal
       };
 
-      console.log('[ChatService] Passing tools to LLM:', {
-        toolCount: openAITools.length,
-        toolNames: openAITools.slice(0, 5).map(t => t.function.name),
-        toolChoice: llmOptions.toolChoice,
-        sampleToolFormat: openAITools[0]
-      });
-
       // Add tool event callback for live UI updates
       if (this.toolEventCallback) {
         llmOptions.onToolEvent = (event: 'started' | 'completed', data: any) => {
           this.toolEventCallback!(messageId, event, data);
         };
-        console.log('[ChatService] Added tool event callback to llmOptions');
       }
 
       // Stream the response from LLM service with MCP tools
@@ -319,7 +290,6 @@ export class ChatService {
       for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
         // Check if aborted FIRST before processing chunk
         if (options?.abortSignal?.aborted) {
-          console.log('[ChatService] ⛔ Stream aborted by user - stopping immediately');
           throw new DOMException('Generation aborted by user', 'AbortError');
         }
 
@@ -328,35 +298,17 @@ export class ChatService {
         // Extract tool calls when available (typically on completion)
         if (chunk.toolCalls) {
           toolCalls = chunk.toolCalls;
-          console.log('[ChatService] Tool calls received in stream:', {
-            toolCallCount: toolCalls?.length || 0,
-            toolNames: toolCalls?.map(tc => tc.name || tc.function?.name).filter(Boolean) || [],
-            toolCallsStructure: toolCalls?.map(tc => ({
-              id: tc.id,
-              name: tc.name || tc.function?.name,
-              hasParameters: !!(tc.parameters || tc.arguments)
-            })) || []
-          });
 
           // Fire 'detected' event for each tool call to create UI accordions immediately
           if (this.toolEventCallback && toolCalls) {
-            console.log('[ChatService] FIRING detected event for tool calls:', {
-              toolCount: toolCalls.length,
-              toolNames: toolCalls.map(tc => tc.name || tc.function?.name),
-              messageId,
-              hasCallback: !!this.toolEventCallback
-            });
             for (const tc of toolCalls) {
               const toolData = {
                 id: tc.id,
                 name: tc.name || tc.function?.name,
                 parameters: tc.parameters || tc.arguments
               };
-              console.log('[ChatService] Calling toolEventCallback with detected event:', toolData);
               this.toolEventCallback(messageId, 'detected', toolData);
             }
-          } else if (!toolCalls) {
-            console.warn('[ChatService] No tool calls to fire detected event for');
           }
 
           // Immediately yield tool calls for UI update
@@ -367,21 +319,9 @@ export class ChatService {
             toolCalls: toolCalls
           };
         }
-        
+
         // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
-          console.log('[ChatService] Saving chronological messages to repository:', {
-            conversationId,
-            hasToolCalls: !!(toolCalls && toolCalls.length > 0),
-            toolCallCount: toolCalls?.length || 0,
-            assistantContentLength: accumulatedContent.length,
-            toolCallsPreview: toolCalls?.slice(0, 2).map(tc => ({
-              id: tc.id,
-              name: tc.name || tc.function?.name,
-              hasResult: !!tc.result
-            })) || []
-          });
-          
           // Save messages based on whether there were tool calls
           if (toolCalls && toolCalls.length > 0) {
             // Save tool message with tool call details
@@ -422,7 +362,7 @@ export class ChatService {
       }
 
     } catch (error) {
-      console.error('[ChatService] Error in generateResponseStreaming:', error);
+      console.error('Error in generateResponseStreaming:', error);
       throw error;
     }
   }
@@ -464,7 +404,7 @@ export class ChatService {
         });
 
       } catch (error) {
-        console.error(`[ChatService] Tool call failed for ${toolCall.name}:`, error);
+        console.error(`Tool call failed for ${toolCall.name}:`, error);
 
         results.push({
           id: toolCall.id,
@@ -493,18 +433,10 @@ export class ChatService {
    */
   private buildLLMMessages(conversation: ConversationData, provider?: string, systemPrompt?: string): any[] {
     const currentProvider = provider || this.getCurrentProvider();
-    
-    console.log(`[ChatService] Building LLM context for provider: ${currentProvider}`);
-    console.log(`[ChatService] Conversation has ${conversation.messages.length} messages`);
-    
-    // Count tool calls for debugging
-    const totalToolCalls = conversation.messages.reduce((count, msg) => 
-      count + (msg.toolCalls?.length || 0), 0);
-    console.log(`[ChatService] Total tool calls in conversation: ${totalToolCalls}`);
-    
+
     return ConversationContextBuilder.buildContextForProvider(
-      conversation, 
-      currentProvider, 
+      conversation,
+      currentProvider,
       systemPrompt
     );
   }
@@ -534,7 +466,7 @@ export class ChatService {
         error: result.error
       };
     } catch (error) {
-      console.error('[ChatService] Failed to update conversation:', error);
+      console.error('Failed to update conversation:', error);
       return {
         success: false,
         error: getErrorMessage(error)
@@ -587,7 +519,7 @@ export class ChatService {
       this.toolCallHistory.delete(id);
       return true;
     } catch (error) {
-      console.error('[ChatService] Failed to delete conversation:', error);
+      console.error('Failed to delete conversation:', error);
       return false;
     }
   }
@@ -613,7 +545,7 @@ export class ChatService {
           lastUpdated: conv.updated
         }));
     } catch (error) {
-      console.error('[ChatService] Search failed:', error);
+      console.error('Search failed:', error);
       return [];
     }
   }
@@ -637,6 +569,5 @@ export class ChatService {
    */
   async dispose(): Promise<void> {
     // Cleanup if needed
-    console.log('[ChatService] Disposed');
   }
 }

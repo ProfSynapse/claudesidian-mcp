@@ -52,7 +52,7 @@ export class BackgroundProcessor {
 
                 // Background startup processing completed
             } catch (error) {
-                console.error('[BackgroundProcessor] Error in background startup processing:', error);
+                console.error('Error in background startup processing:', error);
                 // Reset flag on error so it can be retried
                 this.hasRunBackgroundStartup = false;
             }
@@ -94,9 +94,9 @@ export class BackgroundProcessor {
                 }
                 
                 await settings.saveSettings();
-                
+
             } catch (error) {
-                console.error('[BackgroundProcessor] Failed to check for updates:', error);
+                console.error('Failed to check for updates:', error);
             }
         }, 2000); // 2 second delay
     }
@@ -113,10 +113,9 @@ export class BackgroundProcessor {
 
                 const coreServices = ['workspaceService', 'memoryService', 'chatService'];
                 const availableCore = coreServices.filter(service => serviceNames.includes(service));
-                console.log('[VALIDATION] ✅ Core services available:', availableCore);
             }
         } catch (error) {
-            console.warn('[VALIDATION] Service validation error:', error);
+            console.warn('Service validation error:', error);
         }
     }
 

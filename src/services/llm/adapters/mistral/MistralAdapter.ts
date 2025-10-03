@@ -52,10 +52,14 @@ export class MistralAdapter extends BaseAdapter implements MCPCapableAdapter {
     }
   }
 
+  /**
+   * Generate streaming response using async generator
+   * Uses unified stream processing with automatic tool call accumulation
+   */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
       console.log('[MistralAdapter] Starting streaming response');
-      
+
       const result = await this.client.chat.stream({
         model: options?.model || this.currentModel,
         messages: this.buildMessages(prompt, options?.systemPrompt),
@@ -66,28 +70,16 @@ export class MistralAdapter extends BaseAdapter implements MCPCapableAdapter {
         tools: options?.tools ? this.convertTools(options.tools) : undefined
       });
 
-      let usage: any = undefined;
+      // Use unified stream processing with automatic tool call accumulation
+      // Note: Mistral SDK wraps chunks in .data property
+      yield* this.processStream(result, {
+        debugLabel: 'Mistral',
+        extractContent: (chunk) => chunk.data?.choices[0]?.delta?.content || null,
+        extractToolCalls: (chunk) => chunk.data?.choices[0]?.delta?.tool_calls || null,
+        extractFinishReason: (chunk) => chunk.data?.choices[0]?.finish_reason || null,
+        extractUsage: (chunk) => chunk.data?.usage || null
+      });
 
-      for await (const chunk of result) {
-        const streamText = chunk.data.choices[0]?.delta?.content;
-        
-        if (typeof streamText === "string" && streamText) {
-          yield { content: streamText, complete: false };
-        }
-
-        // Extract usage information if available
-        if (chunk.data.usage) {
-          usage = chunk.data.usage;
-        }
-      }
-
-      // Final chunk with usage information
-      yield { 
-        content: '', 
-        complete: true, 
-        usage: this.extractUsage({ usage }) 
-      };
-      
       console.log('[MistralAdapter] Streaming completed');
     } catch (error) {
       console.error('[MistralAdapter] Streaming error:', error);

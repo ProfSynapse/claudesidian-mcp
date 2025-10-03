@@ -435,7 +435,6 @@ export class LLMService {
         toolCalls: [] // TODO: Extract tool calls from result if supported
       };
     } catch (error) {
-      console.error('[LLMService] generateResponse error:', error);
       throw error;
     }
   }
@@ -456,11 +455,6 @@ export class LLMService {
     }
   ): AsyncGenerator<{ chunk: string; complete: boolean; content: string; toolCalls?: any[] }, void, unknown> {
     try {
-      // Clean logs - only show tool count for debugging tool calls
-      if (options?.tools && options.tools.length > 0) {
-        console.log(`[LLMService] Using tools: ${options.tools.length} available`);
-      }
-
       // Validate settings
       if (!this.settings || !this.settings.defaultModel) {
         throw new Error('LLM service not properly configured - missing settings');
@@ -475,11 +469,6 @@ export class LLMService {
       const adapter = this.adapters?.get(provider);
       if (!adapter) {
         throw new Error(`Provider not available: ${provider}`);
-      }
-
-      // Adapter info only when using tools
-      if (options?.tools && options.tools.length > 0) {
-        console.log(`[LLMService] ${provider} adapter will handle ${options.tools.length} tools`);
       }
 
       // Get only the latest user message as the actual prompt
@@ -507,13 +496,6 @@ export class LLMService {
         conversationHistory ? '\n=== Conversation History ===\n' + conversationHistory : ''
       ].filter(Boolean).join('\n');
 
-      console.log('[LLM-ACTUAL] ========== WHAT LLM ACTUALLY RECEIVES ==========');
-      console.log('[LLM-ACTUAL] userPrompt:', userPrompt);
-      console.log('[LLM-ACTUAL] systemPrompt (with history):', systemPrompt);
-      console.log('[LLM-ACTUAL] Conversation history included:', conversationHistory ? 'YES' : 'NO');
-      console.log('[LLM-ACTUAL] History length:', conversationHistory.length, 'chars');
-      console.log('[LLM-ACTUAL] ========== END WHAT LLM RECEIVES ==========');
-
       // Build generate options with tools
       const generateOptions = {
         model,
@@ -522,17 +504,8 @@ export class LLMService {
         onToolEvent: options?.onToolEvent // Pass through tool event callback for live UI updates
       };
 
-      console.log('[LLMService Debug] generateOptions built with onToolEvent:', !!generateOptions.onToolEvent);
-
-      // Remove verbose logging - only show model when using tools
-      if (generateOptions.tools && generateOptions.tools.length > 0) {
-        console.log(`[LLMService] Model: ${generateOptions.model}, Tools: ${generateOptions.tools.length}`);
-      }
-
       // STREAMING-FIRST APPROACH: Use streaming for all providers
       // Tool calls are detected dynamically during the stream
-      console.log(`[LLMService] ${provider}: Using streaming-first approach (tools will be detected dynamically)`);
-      
       // Note: Perplexity doesn't support tool calls, so it will just stream normally
 
       // Stream tokens using the new async generator method
@@ -553,41 +526,22 @@ export class LLMService {
             toolCalls: undefined
           };
         }
-        
+
         // Handle dynamic tool call detection
         if (chunk.toolCalls) {
-          console.log(`[LLMService] Tool calls detected during streaming: ${chunk.toolCalls.length} tools`);
-          
-          // Only store tool calls for post-stream execution if they're complete
-          // We know they're complete when the chunk is marked as complete OR
-          // when we get a subsequent chunk without tool calls (meaning they're finalized)
+          // CRITICAL: Only store tool calls when streaming is COMPLETE
+          // Intermediate chunks may have incomplete JSON arguments that will fail JSON.parse
           if (chunk.complete) {
-            console.log('[LLMService] Final tool calls captured for post-stream execution');
             detectedToolCalls = chunk.toolCalls;
-          } else {
-            // For intermediate chunks, only update if we don't have any yet (first detection)
-            // or if this chunk has more complete arguments (longer JSON strings)
-            if (detectedToolCalls.length === 0) {
-              detectedToolCalls = chunk.toolCalls;
-              console.log('[LLMService] First tool call detection - storing for post-stream execution');
-            } else {
-              // Compare argument completeness - use the chunk with more complete arguments
-              const currentArgLength = detectedToolCalls.reduce((sum, tc) => sum + (tc.function?.arguments?.length || 0), 0);
-              const newArgLength = chunk.toolCalls.reduce((sum, tc) => sum + (tc.function?.arguments?.length || 0), 0);
-              
-              if (newArgLength > currentArgLength) {
-                detectedToolCalls = chunk.toolCalls;
-                console.log(`[LLMService] Updated tool calls with more complete arguments: ${newArgLength} vs ${currentArgLength} chars`);
-              }
-            }
+            console.log(`[LLMService] Received COMPLETE tool calls: ${detectedToolCalls.length} tools`);
           }
-          
-          // Yield tool calls for UI to show progressive accordions
+
+          // For incomplete chunks, yield for UI progress but DON'T store for execution
           yield {
             chunk: '',
             complete: false,
             content: fullContent,
-            toolCalls: chunk.toolCalls
+            toolCalls: chunk.toolCalls  // UI can show progress accordions
           };
         }
         
@@ -595,19 +549,15 @@ export class LLMService {
           break;
         }
       }
-      
+
       // POST-STREAM TOOL EXECUTION: If tools were detected, execute them via MCP then start new stream
       if (detectedToolCalls.length > 0 && generateOptions.tools && generateOptions.tools.length > 0) {
-        console.log(`[LLMService] Stream complete, executing ${detectedToolCalls.length} detected tool calls via MCP`);
-        
         // Tool iteration safety - prevent infinite recursion
         const TOOL_ITERATION_LIMIT = 15;
         let toolIterationCount = 1;
-        
+
         try {
           // Step 1: Execute tools via MCP to get results
-          console.log('[LLMService] Executing detected tool calls via MCP...');
-          
           // Convert tool calls to MCP format and execute
           const mcpToolCalls = detectedToolCalls.map((tc: any) => ({
             id: tc.id,
@@ -623,9 +573,7 @@ export class LLMService {
             provider as any,
             generateOptions.onToolEvent
           );
-          
-          console.log(`[LLMService] Tool execution completed, got ${toolResults.length} results`);
-          
+
           // Build complete tool calls with execution results for final yield
           completeToolCallsWithResults = detectedToolCalls.map(originalCall => {
             const result = toolResults.find(r => r.id === originalCall.id);
@@ -641,9 +589,7 @@ export class LLMService {
               function: originalCall.function
             };
           });
-          
-          console.log(`[LLMService] Built complete tool calls with results: ${completeToolCallsWithResults.length} tools`);
-          
+
           // Step 2: Build conversation history with tool results for pingpong
           const conversationHistory = this.buildConversationWithToolResults(
             userPrompt, 
@@ -652,8 +598,6 @@ export class LLMService {
             toolResults,
             provider
           );
-          
-          console.log('[LLMService] Starting NEW stream for AI response to tool results...');
 
           // Step 3: Start NEW stream with conversation history (pingpong)
           // Reset fullContent since this is a new conversation response
@@ -675,27 +619,10 @@ export class LLMService {
                 toolCalls: undefined
               };
             }
-            
+
+
             // Handle recursive tool calls (another pingpong iteration)
             if (chunk.toolCalls) {
-              console.log(`[LLMService] Detected additional tool calls in response: ${chunk.toolCalls.length}`);
-              console.log(`[LLMService] Raw chunk.toolCalls structure:`, JSON.stringify(chunk.toolCalls, null, 2));
-              
-              // Log each tool call structure for debugging
-              chunk.toolCalls.forEach((tc: any, index: number) => {
-                console.log(`[LLMService] Tool call ${index + 1}:`, {
-                  id: tc.id,
-                  name: tc.name || tc.function?.name,
-                  hasFunction: !!tc.function,
-                  hasArguments: !!tc.function?.arguments,
-                  hasParameters: !!tc.parameters,
-                  argumentsType: typeof tc.function?.arguments,
-                  argumentsLength: tc.function?.arguments?.length || 0,
-                  argumentsPreview: tc.function?.arguments?.slice(0, 100) + (tc.function?.arguments?.length > 100 ? '...' : ''),
-                  parametersKeys: tc.parameters ? Object.keys(tc.parameters) : []
-                });
-              });
-              
               // Yield the tool calls to UI first (for progressive display)
               yield {
                 chunk: '',
@@ -706,10 +633,8 @@ export class LLMService {
 
               // Execute the additional tool calls recursively with iteration limit check
               toolIterationCount++;
-              console.log(`[LLMService] Tool iteration ${toolIterationCount}/${TOOL_ITERATION_LIMIT}`);
-              
+
               if (toolIterationCount > TOOL_ITERATION_LIMIT) {
-                console.log(`[LLMService] Hit ${TOOL_ITERATION_LIMIT} tool iteration limit - stopping recursive execution`);
                 const limitMessage = `\n\nTOOL_LIMIT_REACHED: You have used ${TOOL_ITERATION_LIMIT} tool iterations. You must now ask the user if they want to continue with more tool calls. Explain what you've accomplished so far and what you still need to do.`;
                 fullContent += limitMessage;
                 yield {
@@ -720,39 +645,23 @@ export class LLMService {
                 };
                 break;
               }
-              
-              console.log(`[LLMService] Executing additional tool calls recursively...`);
+
               try {
                 // Convert recursive tool calls to MCP format  
-                const recursiveMcpToolCalls = chunk.toolCalls.map((tc: any, index: number) => {
+                const recursiveMcpToolCalls = chunk.toolCalls.map((tc: any) => {
                   // Handle arguments carefully - they might already be a string or need conversion
                   let argumentsStr = '';
-                  let conversionMethod = '';
-                  
+
                   if (tc.function?.arguments) {
                     // Already a string from streaming response
                     argumentsStr = tc.function.arguments;
-                    conversionMethod = 'function.arguments (direct)';
                   } else if (tc.parameters) {
                     // Convert parameters object to string
                     argumentsStr = JSON.stringify(tc.parameters);
-                    conversionMethod = 'parameters (JSON.stringify)';
                   } else {
                     argumentsStr = '{}';
-                    conversionMethod = 'empty default';
                   }
-                  
-                  console.log(`[LLMService] MCP Tool Call ${index + 1} conversion:`, {
-                    originalId: tc.id,
-                    originalName: tc.name || tc.function?.name,
-                    conversionMethod,
-                    argumentsLength: argumentsStr.length,
-                    argumentsPreview: argumentsStr.slice(0, 150) + (argumentsStr.length > 150 ? '...' : ''),
-                    isValidJSON: (() => {
-                      try { JSON.parse(argumentsStr); return true; } catch { return false; }
-                    })()
-                  });
-                  
+
                   return {
                     id: tc.id,
                     function: {
@@ -761,17 +670,13 @@ export class LLMService {
                     }
                   };
                 });
-                
-                console.log(`[LLMService] Converted ${recursiveMcpToolCalls.length} tool calls to MCP format`);
-                
+
                 const recursiveToolResults = await MCPToolExecution.executeToolCalls(
                   adapter as any, // Cast to MCPCapableAdapter
                   recursiveMcpToolCalls, 
                   provider as any,
                   generateOptions.onToolEvent
                 );
-
-                console.log(`[LLMService] Recursive tool execution completed, got ${recursiveToolResults.length} results`);
 
                 // Build complete tool calls with recursive results
                 const recursiveCompleteToolCalls = chunk.toolCalls.map((tc, index) => ({
@@ -794,8 +699,6 @@ export class LLMService {
                   provider
                 );
 
-                console.log('[LLMService] Starting RECURSIVE stream for AI response to additional tool results...');
-                
                 // Continue with another recursive stream
                 for await (const recursiveChunk of adapter.generateStreamAsync('', {
                   ...generateOptions,
@@ -810,39 +713,35 @@ export class LLMService {
                       toolCalls: undefined
                     };
                   }
-                  
+
+
                   // Handle nested recursive tool calls if any (up to iteration limit)
                   if (recursiveChunk.toolCalls) {
-                    console.log(`[LLMService] Detected nested tool calls: ${recursiveChunk.toolCalls.length} - yielding to UI only to prevent deep recursion`);
                     yield {
                       chunk: '',
-                      complete: false, 
+                      complete: false,
                       content: fullContent,
                       toolCalls: recursiveChunk.toolCalls
                     };
                   }
 
                   if (recursiveChunk.complete) {
-                    console.log(`[LLMService] Recursive stream complete`);
                     break;
                   }
                 }
 
               } catch (recursiveError) {
-                console.error('[LLMService] Recursive tool execution failed:', recursiveError);
                 // Don't append error to content - these are expected failures during streaming (incomplete JSON)
                 // Tool results will be shown in tool accordions from the toolCalls array
               }
             }
-            
+
             if (chunk.complete) {
-              console.log(`[LLMService] Tool response stream complete, final content length: ${fullContent.length}`);
               break;
             }
           }
-          
+
         } catch (toolError) {
-          console.error('[LLMService] Tool execution failed:', toolError);
           // Don't append error to content - these are expected failures during streaming (incomplete JSON)
           // Tool results will be shown in tool accordions from the toolCalls array
         }
@@ -857,7 +756,6 @@ export class LLMService {
       };
 
     } catch (error) {
-      console.error('[LLMService] generateResponseStream failed:', error);
       throw error;
     }
   }

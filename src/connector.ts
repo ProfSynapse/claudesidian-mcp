@@ -130,14 +130,10 @@ export class MCPConnector {
                     
                     // Remove from pending
                     this.pendingToolCalls.delete(toolCallId);
-                } else {
-                    console.warn('[MCPConnector] 🚨 ToolCallCaptureService not available for response capture:', toolName);
                 }
-            } else {
-                console.warn('[MCPConnector] 🚨 No matching pending tool call found for response:', toolName);
             }
         } catch (error) {
-            console.error('[MCPConnector] Error in onToolResponse capture:', error);
+            console.error('Error in onToolResponse capture:', error);
         }
     }
     
@@ -172,12 +168,9 @@ export class MCPConnector {
                 
                 // Store for response capture later
                 this.pendingToolCalls.set(toolCallId, { agent, mode, params, captureStartTime: Date.now() });
-                
-            } else {
-                console.warn('[MCPConnector] 🚨 ToolCallCaptureService not available for tool call:', toolName);
             }
         } catch (error) {
-            console.error('[MCPConnector] Error in onToolCall capture:', error);
+            console.error('Error in onToolCall capture:', error);
         }
     }
     
@@ -279,9 +272,8 @@ export class MCPConnector {
      */
     getAvailableTools(): any[] {
         const tools: any[] = [];
-        
+
         if (!this.agentRegistry) {
-            console.warn('[MCPConnector] No agent registration service available for tool manifest');
             return [];
         }
 
@@ -303,14 +295,12 @@ export class MCPConnector {
                             inputSchema: paramSchema
                         });
                     } catch (error) {
-                        const modeName = modeInstance.slug || modeInstance.name || 'unknown';
-                        console.warn(`[MCPConnector] Failed to get schema for ${agentName}_${modeName}:`, error);
+                        // Skip modes with invalid schemas
                     }
                 }
             }
         }
-        
-        console.log(`[MCPConnector] Generated ${tools.length} tools for ChatService`);
+
         return tools;
     }
 
@@ -340,7 +330,7 @@ export class MCPConnector {
                         workspaceContext: this.extractWorkspaceContext(modeParams)
                     });
                 } catch (captureError) {
-                    console.warn('[MCPConnector] Tool call request capture failed:', captureError);
+                    // Silently continue if capture fails
                 }
             }
             
@@ -361,7 +351,7 @@ export class MCPConnector {
                         affectedResources: this.extractAffectedResources(result, modeParams)
                     });
                 } catch (captureError) {
-                    console.warn('[MCPConnector] Tool call response capture failed:', captureError);
+                    // Silently continue if capture fails
                 }
             }
             
@@ -384,7 +374,7 @@ export class MCPConnector {
                         timestamp: Date.now()
                     });
                 } catch (captureError) {
-                    console.warn('[MCPConnector] Tool call error capture failed:', captureError);
+                    // Silently continue if capture fails
                 }
             }
             
@@ -412,9 +402,6 @@ export class MCPConnector {
         try {
             if (this.serviceManager) {
                 this.toolCallCaptureService = await this.serviceManager.getService('toolCallCaptureService');
-                if (this.toolCallCaptureService) {
-                    console.debug('[MCPConnector] Tool call capture service initialized');
-                }
             }
         } catch (error) {
             // Tool call capture service is optional - silently continue without it

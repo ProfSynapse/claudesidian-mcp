@@ -56,10 +56,14 @@ export class GroqAdapter extends BaseAdapter implements MCPCapableAdapter {
     }
   }
 
+  /**
+   * Generate streaming response using async generator
+   * Uses unified stream processing with automatic tool call accumulation
+   */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
       console.log('[GroqAdapter] Starting streaming response');
-      
+
       const stream = await this.client.chat.completions.create({
         model: options?.model || this.currentModel,
         messages: this.buildMessages(prompt, options?.systemPrompt),
@@ -72,31 +76,24 @@ export class GroqAdapter extends BaseAdapter implements MCPCapableAdapter {
         stream: true
       });
 
-      let usage: any = undefined;
-
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content;
-        
-        if (content) {
-          yield { content, complete: false };
+      // Use unified stream processing with automatic tool call accumulation
+      yield* this.processStream(stream, {
+        debugLabel: 'Groq',
+        extractContent: (chunk) => chunk.choices[0]?.delta?.content || null,
+        extractToolCalls: (chunk) => chunk.choices[0]?.delta?.tool_calls || null,
+        extractFinishReason: (chunk) => chunk.choices[0]?.finish_reason || null,
+        extractUsage: (chunk) => {
+          // Groq has both standard usage and x_groq metadata
+          if ((chunk as any).usage || (chunk as any).x_groq) {
+            return {
+              usage: (chunk as any).usage,
+              x_groq: (chunk as any).x_groq
+            };
+          }
+          return null;
         }
-        
-        // Extract usage information if available (typically in the last chunk)
-        if ((chunk as any).usage || (chunk as any).x_groq) {
-          usage = {
-            usage: (chunk as any).usage,
-            x_groq: (chunk as any).x_groq
-          };
-        }
-      }
+      });
 
-      // Final chunk with usage information
-      yield { 
-        content: '', 
-        complete: true, 
-        usage: this.extractUsage(usage) 
-      };
-      
       console.log('[GroqAdapter] Streaming completed');
     } catch (error) {
       console.error('[GroqAdapter] Streaming error:', error);

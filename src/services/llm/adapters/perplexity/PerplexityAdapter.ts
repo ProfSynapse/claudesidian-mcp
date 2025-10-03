@@ -61,10 +61,14 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
     }
   }
 
+  /**
+   * Generate streaming response using async generator
+   * Uses unified stream processing with automatic tool call accumulation
+   */
   async* generateStreamAsync(prompt: string, options?: PerplexityOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
       console.log('[PerplexityAdapter] Starting streaming response');
-      
+
       const requestBody = {
         model: options?.model || this.currentModel,
         messages: this.buildMessages(prompt, options?.systemPrompt),
@@ -98,81 +102,15 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response body reader available');
-      }
+      // Use unified stream processing with automatic SSE parsing and tool call accumulation
+      yield* this.processStream(response, {
+        debugLabel: 'Perplexity',
+        extractContent: (parsed) => parsed.choices?.[0]?.delta?.content || null,
+        extractToolCalls: (parsed) => parsed.choices?.[0]?.delta?.tool_calls || null,
+        extractFinishReason: (parsed) => parsed.choices?.[0]?.finish_reason || null,
+        extractUsage: (parsed) => parsed.usage || null
+      });
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let usage: any = undefined;
-      let searchResults: any[] = [];
-      let metadata: any = {};
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          
-          // Process complete lines from buffer
-          while (true) {
-            const lineEnd = buffer.indexOf('\n');
-            if (lineEnd === -1) break;
-            
-            const line = buffer.slice(0, lineEnd).trim();
-            buffer = buffer.slice(lineEnd + 1);
-            
-            // Skip empty lines
-            if (!line) continue;
-            
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') break;
-              
-              try {
-                const chunk = JSON.parse(data);
-                
-                // Process content chunks
-                const content = chunk.choices?.[0]?.delta?.content;
-                if (content) {
-                  yield { content, complete: false };
-                }
-                
-                // Collect metadata (arrives in final chunks)
-                if (chunk.search_results) {
-                  searchResults = chunk.search_results;
-                }
-                
-                if (chunk.usage) {
-                  usage = chunk.usage;
-                }
-                
-                // Collect other metadata
-                for (const key of ['reasoning_effort', 'search_mode']) {
-                  if (chunk[key]) {
-                    metadata[key] = chunk[key];
-                  }
-                }
-                
-              } catch (error) {
-                console.warn('[PerplexityAdapter] Failed to parse streaming chunk:', error);
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-
-      // Final chunk with usage information (search results stored in metadata)
-      yield { 
-        content: '', 
-        complete: true, 
-        usage: this.extractUsage({ usage })
-      };
-      
       console.log('[PerplexityAdapter] Streaming completed');
     } catch (error) {
       console.error('[PerplexityAdapter] Streaming error:', error);

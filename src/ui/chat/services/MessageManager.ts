@@ -96,41 +96,20 @@ export class MessageManager {
           role: 'user',
           content: message
         });
-        
+
         // Update the temporary user message with the real ID from repository
-        console.log('[MessageManager] addMessage result:', userMessageResult);
         if (userMessageResult.success && userMessageResult.messageId) {
           const tempMessageIndex = conversation.messages.findIndex(msg => msg.id === userMessage.id);
-          console.log('[MessageManager] Looking for temp message:', {
-            tempId: userMessage.id,
-            found: tempMessageIndex >= 0,
-            conversationMessageCount: conversation.messages.length
-          });
           if (tempMessageIndex >= 0) {
             const oldId = conversation.messages[tempMessageIndex].id;
             conversation.messages[tempMessageIndex].id = userMessageResult.messageId;
-            
+
             // Also update the original userMessage object that UI components reference
             userMessage.id = userMessageResult.messageId;
-            
-            console.log('[MessageManager] Updated temp message ID:', {
-              from: oldId,
-              to: userMessageResult.messageId,
-              messageIndex: tempMessageIndex,
-              userMessageIdAlsoUpdated: true
-            });
-            
+
             // Notify UI about message ID update so MessageBubble can update its reference
-            console.log('[MessageManager] EMITTING onMessageIdUpdated event:', {
-              oldId,
-              newId: userMessageResult.messageId,
-              updatedMessageId: userMessage.id,
-              eventExists: !!this.events.onMessageIdUpdated
-            });
             this.events.onMessageIdUpdated(oldId, userMessageResult.messageId, userMessage);
           }
-        } else {
-          console.log('[MessageManager] Failed to get real message ID from repository');
         }
 
         let streamedContent = '';
@@ -192,14 +171,9 @@ export class MessageManager {
         if (freshConversation) {
           // Update the conversation object with fresh data
           Object.assign(conversation, freshConversation);
-          console.log('[MessageManager] Reloaded conversation from storage:', {
-            conversationId: conversation.id,
-            messageCount: conversation.messages.length
-          });
         }
 
         // Notify that conversation has been updated
-        console.log('[MessageManager] Streaming complete, firing onConversationUpdated');
         this.events.onConversationUpdated(conversation);
 
       } catch (sendError) {
@@ -210,8 +184,6 @@ export class MessageManager {
     } catch (error) {
       // Check if this was an abort (user clicked stop)
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('[MessageManager] ⛔ Generation stopped by user - saving partial message');
-
         if (aiMessageId) {
           // Save the partial AI message to conversation history
           const aiMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
@@ -229,8 +201,6 @@ export class MessageManager {
 
             // Update UI to show final partial message
             this.events.onConversationUpdated(conversation);
-
-            console.log('[MessageManager] ✅ Partial message saved and persisted');
           }
         }
       } else {
@@ -256,10 +226,8 @@ export class MessageManager {
   ): Promise<void> {
     const message = conversation.messages.find(msg => msg.id === messageId);
     if (!message) return;
-    
-    try {
-      console.log('[MessageManager] Handling retry for message:', { messageId, role: message.role });
 
+    try {
       // For user messages, regenerate the AI response
       if (message.role === 'user') {
         await this.regenerateAIResponse(conversation, messageId, options);
@@ -271,9 +239,8 @@ export class MessageManager {
 
       // Notify that conversation was updated
       this.events.onConversationUpdated(conversation);
-      
+
     } catch (error) {
-      console.error('[MessageManager] Failed to handle retry:', error);
       this.events.onError('Failed to retry message');
     }
   }
@@ -382,10 +349,7 @@ export class MessageManager {
         alternativeResponse
       );
 
-      console.log('[MessageManager] Created alternative response:', { aiMessageId, alternativeIndex });
-
     } catch (error) {
-      console.error('[MessageManager] Failed to create alternative response:', error);
       this.events.onError('Failed to generate alternative response');
     } finally {
       this.setLoading(false);
@@ -455,8 +419,6 @@ export class MessageManager {
    */
   cancelCurrentGeneration(): void {
     if (this.currentAbortController && this.currentStreamingMessageId) {
-      console.log('[MessageManager] ⛔ KILL SWITCH - Aborting current generation');
-
       const messageId = this.currentStreamingMessageId;
 
       // Immediately abort the stream
@@ -469,8 +431,6 @@ export class MessageManager {
 
       // Fire immediate abort event to stop UI animations NOW
       this.events.onGenerationAborted(messageId, '');
-
-      console.log('[MessageManager] ✅ Generation stopped - UI ready for next message');
     }
   }
 

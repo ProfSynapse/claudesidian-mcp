@@ -114,10 +114,42 @@ export class MCPToolExecution {
         } catch (parseError) {
           console.error(`[MCPToolExecution] Failed to parse tool arguments:`, parseError);
           console.error(`[MCPToolExecution] Raw arguments (${argumentsStr.length} chars):`, argumentsStr);
-          console.error(`[MCPToolExecution] Character codes at failure point:`, 
-            argumentsStr.split('').slice(0, 50).map((c, i) => `${i}:'${c}'(${c.charCodeAt(0)})`));
-          
-          // Try to fix common JSON issues or use empty parameters
+          console.error(`[MCPToolExecution] Last 100 chars:`, argumentsStr.slice(-100));
+
+          // Detect if this is incomplete JSON (streaming not finished)
+          const openBraces = (argumentsStr.match(/\{/g)?.length || 0);
+          const closeBraces = (argumentsStr.match(/\}/g)?.length || 0);
+          const openBrackets = (argumentsStr.match(/\[/g)?.length || 0);
+          const closeBrackets = (argumentsStr.match(/\]/g)?.length || 0);
+          const hasUnterminatedString = argumentsStr.split('"').length % 2 === 0; // Odd number of quotes = unterminated
+          const endsProperlyForObject = argumentsStr.trim().endsWith('}');
+          const endsProperlyForArray = argumentsStr.trim().endsWith(']');
+
+          const isIncomplete = !endsProperlyForObject ||
+                               openBraces !== closeBraces ||
+                               openBrackets !== closeBrackets ||
+                               hasUnterminatedString;
+
+          if (isIncomplete) {
+            console.error(`[MCPToolExecution] Detected INCOMPLETE JSON:`, {
+              openBraces,
+              closeBraces,
+              openBrackets,
+              closeBrackets,
+              hasUnterminatedString,
+              endsWithBrace: endsProperlyForObject,
+              endsWithBracket: endsProperlyForArray
+            });
+
+            throw new Error(
+              `Tool arguments appear incomplete (streaming not finished). ` +
+              `This is a BUG - tool execution should only occur after stream completion. ` +
+              `Diagnostics: {${openBraces} }${closeBraces}, [${openBrackets} ]${closeBrackets}, ` +
+              `Length: ${argumentsStr.length}, Ends properly: ${endsProperlyForObject}`
+            );
+          }
+
+          // Not incomplete JSON, just malformed - re-throw original error
           throw new Error(`Invalid tool arguments: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
         }
 

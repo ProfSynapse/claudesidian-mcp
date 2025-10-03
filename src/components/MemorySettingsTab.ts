@@ -145,7 +145,7 @@ export class MemorySettingsTab {
         leftSection.style.gap = '12px';
 
         const backButton = leftSection.createEl('button', {
-            text: '← Back to Workspaces'
+            text: '← Back'
         });
         backButton.addEventListener('click', () => this.backToWorkspaceList());
 
