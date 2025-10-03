@@ -58,6 +58,21 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
         }
     },
 
+    // Default workspace manager (ensures default workspace exists)
+    {
+        name: 'defaultWorkspaceManager',
+        dependencies: ['workspaceService'],
+        create: async (context) => {
+            const { DefaultWorkspaceManager } = await import('../../services/workspace/DefaultWorkspaceManager');
+            const { WorkspaceService } = await import('../../services/WorkspaceService');
+            const workspaceService = await context.serviceManager.getService('workspaceService') as InstanceType<typeof WorkspaceService>;
+
+            const manager = new DefaultWorkspaceManager(context.app, workspaceService);
+            await manager.initialize();
+            return manager;
+        }
+    },
+
     // Memory service (agent-specific, delegates to WorkspaceService)
     {
         name: 'memoryService',
@@ -95,17 +110,64 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
         }
     },
 
+    // Session service for session persistence
+    {
+        name: 'sessionService',
+        dependencies: ['memoryService'],
+        create: async (context) => {
+            console.log('[ServiceInit] Creating SessionService...');
+            const { SessionService } = await import('../../services/session/SessionService');
+            const memoryService = await context.serviceManager.getService('memoryService');
+
+            const service = new SessionService(memoryService);
+            console.log('[ServiceInit] ✓ SessionService created successfully');
+            return service;
+        }
+    },
+
     // Session context manager
     {
         name: 'sessionContextManager',
-        dependencies: ['workspaceService', 'memoryService'],
+        dependencies: ['workspaceService', 'memoryService', 'sessionService'],
         create: async (context) => {
+            console.log('[ServiceInit] Creating SessionContextManager...');
             const { SessionContextManager } = await import('../../services/SessionContextManager');
 
             const workspaceService = await context.serviceManager.getService('workspaceService');
             const memoryService = await context.serviceManager.getService('memoryService');
+            const sessionService = await context.serviceManager.getService('sessionService');
 
-            return new SessionContextManager();
+            console.log('[ServiceInit] SessionService retrieved:', !!sessionService);
+            console.log('[ServiceInit] SessionService type:', typeof sessionService);
+            console.log('[ServiceInit] SessionService.getSession exists:', typeof (sessionService as any)?.getSession === 'function');
+
+            const manager = new SessionContextManager();
+            manager.setSessionService(sessionService);
+            console.log('[ServiceInit] ✓ SessionContextManager created and SessionService injected');
+            return manager;
+        }
+    },
+
+    // Tool call trace service for capturing tool executions
+    {
+        name: 'toolCallTraceService',
+        dependencies: ['memoryService', 'sessionContextManager', 'workspaceService'],
+        create: async (context) => {
+            const { ToolCallTraceService } = await import('../../services/trace/ToolCallTraceService');
+            const { MemoryService } = await import('../../agents/memoryManager/services/MemoryService');
+            const { SessionContextManager } = await import('../../services/SessionContextManager');
+            const { WorkspaceService } = await import('../../services/WorkspaceService');
+
+            const memoryService = await context.serviceManager.getService('memoryService') as InstanceType<typeof MemoryService>;
+            const sessionContextManager = await context.serviceManager.getService('sessionContextManager') as InstanceType<typeof SessionContextManager>;
+            const workspaceService = await context.serviceManager.getService('workspaceService') as InstanceType<typeof WorkspaceService>;
+
+            return new ToolCallTraceService(
+                memoryService,
+                sessionContextManager,
+                workspaceService,
+                context.plugin
+            );
         }
     },
 

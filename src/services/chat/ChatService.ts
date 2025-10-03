@@ -27,7 +27,7 @@ export interface ChatServiceDependencies {
 export class ChatService {
   private availableTools: any[] = [];
   private toolCallHistory = new Map<string, ToolCall[]>();
-  private toolEventCallback?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void;
+  private toolEventCallback?: (messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any) => void;
   private currentProvider?: string; // Track current provider for context building
   private isInitialized: boolean = false;
 
@@ -46,7 +46,7 @@ export class ChatService {
   /**
    * Set tool event callback for live UI updates
    */
-  setToolEventCallback(callback: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void): void {
+  setToolEventCallback(callback: (messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any) => void): void {
     this.toolEventCallback = callback;
   }
 
@@ -253,7 +253,21 @@ export class ChatService {
       // ALWAYS load conversation from storage to get complete history including tool calls
       const conversation = await this.dependencies.conversationService.getConversation(conversationId);
 
+      // LOG: Show what conversation was loaded from storage
+      console.log('[ChatService] Loaded conversation from storage:', {
+        id: conversationId,
+        messageCount: conversation?.messages?.length || 0,
+        messages: conversation?.messages?.map((m: any) => ({
+          role: m.role,
+          hasToolCalls: !!m.toolCalls,
+          toolCallCount: m.toolCalls?.length || 0,
+          contentPreview: m.content?.substring(0, 50)
+        })) || []
+      });
+
       // Build conversation context for LLM with provider-specific formatting
+      // NOTE: buildLLMMessages includes ALL messages from storage, including the user message
+      // that was just saved by sendMessage(), so we DON'T add it again here
       const messages = conversation ?
         this.buildLLMMessages(conversation, provider, options?.systemPrompt) : [];
 
@@ -262,7 +276,11 @@ export class ChatService {
         messages.unshift({ role: 'system', content: options.systemPrompt });
       }
 
-      messages.push({ role: 'user', content: userMessage });
+      // Only add user message if it's NOT already in the conversation
+      // (happens on first message when conversation is empty)
+      if (!conversation || !conversation.messages.some((m: any) => m.content === userMessage && m.role === 'user')) {
+        messages.push({ role: 'user', content: userMessage });
+      }
 
       // Convert MCP tools to OpenAI format before passing to LLM
       const openAITools = this.convertMCPToolsToOpenAIFormat(this.availableTools);
@@ -277,6 +295,8 @@ export class ChatService {
         abortSignal: options?.abortSignal
       };
 
+      // Removed verbose LLM request logging - enable if debugging needed
+
       // Add tool event callback for live UI updates
       if (this.toolEventCallback) {
         llmOptions.onToolEvent = (event: 'started' | 'completed', data: any) => {
@@ -286,6 +306,8 @@ export class ChatService {
 
       // Stream the response from LLM service with MCP tools
       let toolCalls: any[] | undefined = undefined;
+      let toolCallsSaved = false; // Track if we've saved the tool call message
+      const detectedToolIds = new Set<string>(); // Track which tools we've already fired 'detected' for
 
       for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
         // Check if aborted FIRST before processing chunk
@@ -295,45 +317,72 @@ export class ChatService {
 
         accumulatedContent += chunk.chunk;
 
-        // Extract tool calls when available (typically on completion)
+        // Extract tool calls when available and handle progressive display
         if (chunk.toolCalls) {
           toolCalls = chunk.toolCalls;
 
-          // Only fire 'detected' event and yield tool calls when stream is complete
-          // This prevents UI from trying to render tool accordions before text is done streaming
-          if (chunk.complete && this.toolEventCallback && toolCalls) {
+          // Save assistant message with tool calls immediately when detected (before pingpong)
+          // This happens ONCE when tool calls are first complete
+          if (chunk.toolCallsReady && !toolCallsSaved) {
+            console.log('[ChatService] Saving assistant message with tool calls (before execution)');
+            await this.dependencies.conversationService.addMessage({
+              conversationId,
+              role: 'assistant',
+              content: null, // OpenAI format: content is null when making tool calls
+              toolCalls: toolCalls
+            });
+            toolCallsSaved = true;
+          }
+
+          // Fire 'detected' event for NEW tool calls (only once per tool)
+          // This creates the accordion immediately for progressive display
+          if (this.toolEventCallback && toolCalls) {
             for (const tc of toolCalls) {
-              const toolData = {
-                id: tc.id,
-                name: tc.name || tc.function?.name,
-                parameters: tc.parameters || tc.arguments
-              };
-              this.toolEventCallback(messageId, 'detected', toolData);
+              const toolId = tc.id || `${tc.function?.name}_${Date.now()}`;
+
+              // Only fire 'detected' once per tool
+              if (!detectedToolIds.has(toolId)) {
+                detectedToolIds.add(toolId);
+
+                const toolData = {
+                  id: toolId,
+                  name: tc.name || tc.function?.name,
+                  parameters: tc.function?.arguments || tc.parameters, // May be incomplete
+                  isComplete: chunk.toolCallsReady || false // Flag if parameters are complete
+                };
+                this.toolEventCallback(messageId, 'detected', toolData);
+              } else if (chunk.toolCallsReady) {
+                // Tool already detected, but now parameters are complete - fire 'updated' event
+                const toolData = {
+                  id: toolId,
+                  name: tc.name || tc.function?.name,
+                  parameters: tc.function?.arguments || tc.parameters,
+                  isComplete: true
+                };
+                this.toolEventCallback(messageId, 'updated', toolData);
+              }
             }
           }
         }
 
         // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
-          // Save messages based on whether there were tool calls
+          // Save final response (pingpong result or direct response)
           if (toolCalls && toolCalls.length > 0) {
-            // Save tool message with tool call details
-            await this.dependencies.conversationService.addMessage({
-              conversationId,
-              role: 'tool',
-              content: `Executed ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}: ${toolCalls.map(tc => tc.name || tc.function?.name).join(', ')}`,
-              toolCalls: toolCalls
+            // Had tool calls - save pingpong response as separate assistant message
+            console.log('[ChatService] Saving pingpong response (after tool execution):', {
+              contentLength: accumulatedContent.length,
+              contentPreview: accumulatedContent.substring(0, 100)
             });
-
-            // Save assistant response WITH tool calls attached so UI can show them
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',
-              content: accumulatedContent,
-              toolCalls: toolCalls // Keep tool calls attached for UI rendering
+              content: accumulatedContent // Pingpong response text
+              // No toolCalls - this is the response AFTER seeing tool results
             });
           } else {
-            // No tool calls, just save assistant message
+            // No tool calls - save regular assistant response
+            console.log('[ChatService] Saving regular assistant response (no tools)');
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',

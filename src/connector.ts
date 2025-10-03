@@ -6,6 +6,7 @@ import type { ServiceManager } from './core/ServiceManager';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from "./agents/agentManager/services/CustomPromptStorageService";
+import { generateSessionId, formatSessionInstructions, isStandardSessionId } from './utils/sessionUtils';
 // ToolCallCaptureService removed in simplified architecture
 
 // Extracted services
@@ -31,20 +32,18 @@ export class MCPConnector {
     private toolRouter: ToolCallRouterInterface;
     private agentRegistry: AgentRegistrationServiceInterface;
     private eventManager: EventManager;
-    private sessionContextManager: SessionContextManager;
+    private sessionContextManager: SessionContextManager | null = null;
     private customPromptStorage?: CustomPromptStorageService;
     private serviceManager?: ServiceManager;
-    private toolCallCaptureService: any = null;
-    private pendingToolCalls = new Map<string, any>();
-    
+
     constructor(
         private app: App,
         private plugin: Plugin | ClaudesidianPlugin
     ) {
         // Initialize core components
         this.eventManager = new EventManager();
-        this.sessionContextManager = new SessionContextManager();
-        
+        // SessionContextManager will be retrieved from ServiceManager via lazy getter
+
         // Get service manager reference
         if (this.plugin && (this.plugin as any).getServiceContainer) {
             this.serviceManager = (this.plugin as any).getServiceContainer();
@@ -66,11 +65,12 @@ export class MCPConnector {
         }
         
         // Initialize extracted services
+        // Note: SessionContextManager will be retrieved lazily from ServiceManager when needed
         this.connectionManager = new MCPConnectionManager(
             this.app,
             this.plugin,
             this.eventManager,
-            this.sessionContextManager,
+            this.serviceManager,
             this.customPromptStorage,
             (toolName: string, params: any) => this.onToolCall(toolName, params),
             (toolName: string, params: any, response: any, success: boolean, executionTime: number) => this.onToolResponse(toolName, params, response, success, executionTime)
@@ -86,92 +86,42 @@ export class MCPConnector {
             this.customPromptStorage
         );
     }
-    
+
     /**
-     * Handle tool call responses - capture completed tool calls
+     * Lazy getter for SessionContextManager from ServiceManager
+     * Ensures we use the properly initialized instance with SessionService injected
+     */
+    private getSessionContextManagerFromService(): SessionContextManager {
+        if (!this.sessionContextManager) {
+            if (!this.serviceManager) {
+                throw new Error('[MCPConnector] ServiceManager not available - cannot get SessionContextManager');
+            }
+
+            this.sessionContextManager = this.serviceManager.getServiceIfReady('sessionContextManager');
+
+            if (!this.sessionContextManager) {
+                throw new Error('[MCPConnector] SessionContextManager not available from ServiceManager');
+            }
+
+            console.log('[MCPConnector] ✓ Retrieved SessionContextManager from ServiceManager');
+        }
+        return this.sessionContextManager;
+    }
+
+    /**
+     * Handle tool call responses - now handled by ToolCallTraceService via MCPConnectionManager
      */
     private async onToolResponse(toolName: string, params: any, response: any, success: boolean, executionTime: number): Promise<void> {
-        
-        try {
-            // Find the matching pending tool call
-            const pendingEntries = Array.from(this.pendingToolCalls.entries());
-            const matchingEntry = pendingEntries.find(([toolCallId, capture]) => {
-                return capture.agent === toolName.split('_')[0] && capture.mode === toolName.split('_')[1];
-            });
-            
-            if (matchingEntry) {
-                const [toolCallId, captureInfo] = matchingEntry;
-                
-                // Initialize tool call capture service if not already done
-                await this.initializeToolCallCaptureService();
-                
-                if (this.toolCallCaptureService) {
-                    // Create response object
-                    const toolResponse: any = {
-                        result: response,
-                        success: success,
-                        executionTime: executionTime,
-                        timestamp: Date.now(),
-                        resultType: this.inferResultType(response),
-                        resultSummary: this.generateResultSummary(response),
-                        affectedResources: this.extractAffectedResources(response, params)
-                    };
-                    
-                    // Add error information if unsuccessful
-                    if (!success && response?.error) {
-                        toolResponse.error = {
-                            type: 'ExecutionError',
-                            message: response.error,
-                            code: 'TOOL_EXECUTION_FAILED'
-                        };
-                    }
-                    
-                    await this.toolCallCaptureService.captureResponse(toolCallId, toolResponse);
-                    
-                    // Remove from pending
-                    this.pendingToolCalls.delete(toolCallId);
-                }
-            }
-        } catch (error) {
-            console.error('Error in onToolResponse capture:', error);
-        }
+        // Tool call tracing is now handled by ToolCallTraceService
+        // This callback is kept for backward compatibility
     }
-    
+
     /**
-     * Handle tool calls - services now load on demand automatically
+     * Handle tool calls - now handled by ToolCallTraceService via MCPConnectionManager
      */
     private async onToolCall(toolName: string, params: any): Promise<void> {
-        
-        try {
-            // Initialize tool call capture service if not already done
-            await this.initializeToolCallCaptureService();
-            
-            if (this.toolCallCaptureService) {
-                // Parse tool name to get agent and mode
-                const [agent, mode] = toolName.split('_');
-                
-                // Generate unique tool call ID
-                const toolCallId = this.generateToolCallId();
-                
-                // Create tool call request
-                const request = {
-                    toolCallId,
-                    agent,
-                    mode,
-                    params,
-                    timestamp: Date.now(),
-                    source: 'mcp-client' as const,
-                    workspaceContext: this.extractWorkspaceContext(params)
-                };
-                
-                await this.toolCallCaptureService.captureRequest(request);
-                
-                // Store for response capture later
-                this.pendingToolCalls.set(toolCallId, { agent, mode, params, captureStartTime: Date.now() });
-            }
-        } catch (error) {
-            console.error('Error in onToolCall capture:', error);
-        }
+        // Tool call tracing is now handled by ToolCallTraceService
+        // This callback is kept for backward compatibility
     }
     
     /**
@@ -305,79 +255,107 @@ export class MCPConnector {
     }
 
     async callTool(params: AgentModeParams): Promise<any> {
-        const captureStartTime = Date.now();
-        let toolCallId: string | undefined;
-        
         try {
             const { agent, mode, params: modeParams } = params;
-            
-            // Initialize tool call capture service if not already done
-            await this.initializeToolCallCaptureService();
-            
-            // Generate unique tool call ID for capture
-            toolCallId = this.generateToolCallId();
-            
-            // CAPTURE REQUEST (Non-blocking)
-            if (this.toolCallCaptureService) {
-                try {
-                    await this.toolCallCaptureService.captureRequest({
-                        toolCallId,
-                        agent,
-                        mode,
-                        params: modeParams,
-                        timestamp: captureStartTime,
-                        source: 'mcp-client',
-                        workspaceContext: this.extractWorkspaceContext(modeParams)
-                    });
-                } catch (captureError) {
-                    // Silently continue if capture fails
-                }
+
+            // ========================================
+            // SESSION VALIDATION & WORKSPACE FALLBACK
+            // ========================================
+
+            // 1. WORKSPACE ID FALLBACK: Default to 'default' if not provided
+            if (!modeParams.workspaceContext) {
+                modeParams.workspaceContext = { workspaceId: 'default' };
+            } else if (!modeParams.workspaceContext.workspaceId) {
+                modeParams.workspaceContext.workspaceId = 'default';
             }
-            
+
+            // Also ensure context.workspaceId if context exists
+            if (modeParams.context && !modeParams.context.workspaceId) {
+                modeParams.context.workspaceId = modeParams.workspaceContext.workspaceId;
+            }
+
+            // 2. SESSION ID VALIDATION: Generate/validate sessionId
+            const providedSessionId = modeParams.context?.sessionId || modeParams.sessionId;
+            let validatedSessionId: string;
+            let isNewSession = false;
+            let isNonStandardId = false;
+
+            if (!providedSessionId || !isStandardSessionId(providedSessionId)) {
+                // No sessionId or non-standard format - generate a new one
+                validatedSessionId = generateSessionId();
+                isNewSession = true;
+                isNonStandardId = !!providedSessionId; // True if they provided a friendly name
+
+                console.log(`[MCPConnector] Generated new session ID: ${validatedSessionId}${providedSessionId ? ` (from friendly name: ${providedSessionId})` : ''}`);
+            } else {
+                // Valid standard sessionId - use it
+                validatedSessionId = providedSessionId;
+            }
+
+            // 3. INJECT VALIDATED SESSION ID into all relevant locations
+            if (!modeParams.context) {
+                modeParams.context = {};
+            }
+            modeParams.context.sessionId = validatedSessionId;
+            modeParams.sessionId = validatedSessionId;
+
             // Delegate validation and execution to ToolCallRouter
             this.toolRouter.validateBatchOperations(modeParams);
+            const startTime = Date.now();
             const result = await this.toolRouter.executeAgentMode(agent, mode, modeParams);
-            
-            // CAPTURE SUCCESSFUL RESPONSE (Non-blocking)
-            if (this.toolCallCaptureService && toolCallId) {
-                try {
-                    await this.toolCallCaptureService.captureResponse(toolCallId, {
-                        result: result,
-                        success: true,
-                        executionTime: Date.now() - captureStartTime,
-                        timestamp: Date.now(),
-                        resultType: this.inferResultType(result),
-                        resultSummary: this.generateResultSummary(result),
-                        affectedResources: this.extractAffectedResources(result, modeParams)
+            const executionTime = Date.now() - startTime;
+
+            // ========================================
+            // CAPTURE TOOL CALL TRACE TO WORKSPACE
+            // ========================================
+            const traceService = this.serviceManager?.getServiceIfReady?.('toolCallTraceService') as any;
+            if (traceService && typeof traceService.captureToolCall === 'function') {
+                const toolName = `${agent}_${mode}`;
+                const success = !result?.error;
+
+                traceService.captureToolCall(
+                    toolName,
+                    modeParams,
+                    result,
+                    success,
+                    executionTime
+                ).catch((err: Error) => {
+                    console.warn('[MCPConnector] Failed to capture tool trace:', err);
+                });
+            }
+
+            // ========================================
+            // INJECT SESSION ID AND INSTRUCTIONS INTO RESULT
+            // ========================================
+
+            // Ensure result has the validated sessionId
+            if (result && typeof result === 'object') {
+                result.sessionId = validatedSessionId;
+                result.workspaceId = modeParams.workspaceContext.workspaceId;
+
+                // Add session instructions if this is a new session or non-standard ID
+                if (isNewSession || isNonStandardId) {
+                    const instructions = formatSessionInstructions(validatedSessionId);
+
+                    // Add to recommendations array (common pattern in results)
+                    if (!result.recommendations) {
+                        result.recommendations = [];
+                    }
+                    result.recommendations.unshift({
+                        type: 'session_management',
+                        message: instructions
                     });
-                } catch (captureError) {
-                    // Silently continue if capture fails
+
+                    // Also add as a top-level field for visibility
+                    result.sessionInstructions = instructions;
+
+                    console.log(`[MCPConnector] Added session instructions to result: ${instructions}`);
                 }
             }
-            
+
             return result;
             
         } catch (error) {
-            // CAPTURE ERROR RESPONSE (Non-blocking) 
-            if (this.toolCallCaptureService && toolCallId) {
-                try {
-                    await this.toolCallCaptureService.captureResponse(toolCallId, {
-                        result: null,
-                        success: false,
-                        error: {
-                            type: (error as Error).constructor.name,
-                            message: (error as Error).message,
-                            code: (error as any).code,
-                            stack: (error as Error).stack
-                        },
-                        executionTime: Date.now() - captureStartTime,
-                        timestamp: Date.now()
-                    });
-                } catch (captureError) {
-                    // Silently continue if capture fails
-                }
-            }
-            
             if (error instanceof McpError) {
                 throw error;
             }
@@ -388,147 +366,6 @@ export class MCPConnector {
             );
         }
     }
-    
-    
-    /**
-     * Initialize the tool call capture service using Direct Property Access pattern
-     * @private
-     */
-    private async initializeToolCallCaptureService(): Promise<void> {
-        if (this.toolCallCaptureService) {
-            return; // Already initialized
-        }
-
-        try {
-            if (this.serviceManager) {
-                this.toolCallCaptureService = await this.serviceManager.getService('toolCallCaptureService');
-            }
-        } catch (error) {
-            // Tool call capture service is optional - silently continue without it
-            this.toolCallCaptureService = null;
-        }
-    }
-    
-    /**
-     * Generate a unique tool call ID
-     * @private
-     */
-    private generateToolCallId(): string {
-        return `tool_call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    }
-    
-    /**
-     * Extract workspace context from parameters
-     * @private
-     */
-    private extractWorkspaceContext(params: any): any {
-        // Direct workspace context
-        if (params?.workspaceContext) {
-            return params.workspaceContext;
-        }
-        
-        // Try to extract from session context
-        if (params?.sessionId) {
-            return {
-                sessionId: params.sessionId,
-                workspaceId: 'unknown'
-            };
-        }
-        
-        // Extract from file paths
-        if (params?.filePath) {
-            return {
-                workspaceId: this.detectWorkspaceFromPath(params.filePath),
-                workspacePath: [params.filePath.split('/')[0]]
-            };
-        }
-        
-        // Extract from batch operations
-        if (params?.operations && Array.isArray(params.operations)) {
-            const firstOperation = params.operations[0];
-            if (firstOperation?.params?.filePath) {
-                return {
-                    workspaceId: this.detectWorkspaceFromPath(firstOperation.params.filePath),
-                    workspacePath: [firstOperation.params.filePath.split('/')[0]]
-                };
-            }
-        }
-        
-        return null;
-    }
-    
-    /**
-     * Detect workspace from file path (simple implementation)
-     * @private
-     */
-    private detectWorkspaceFromPath(filePath: string): string {
-        // Simple workspace detection - could be enhanced
-        return 'default-workspace';
-    }
-    
-    /**
-     * Infer the result type from the result object
-     * @private
-     */
-    private inferResultType(result: any): string {
-        if (result === null || result === undefined) return 'null';
-        if (Array.isArray(result)) return 'array';
-        return typeof result;
-    }
-    
-    /**
-     * Generate a summary of the result
-     * @private
-     */
-    private generateResultSummary(result: any): string {
-        if (!result) return 'no result';
-        if (typeof result === 'string') {
-            return result.length > 100 ? `${result.substring(0, 100)}...` : result;
-        }
-        if (typeof result === 'object') {
-            if (Array.isArray(result)) {
-                return `array with ${result.length} items`;
-            }
-            const keys = Object.keys(result);
-            return `object with ${keys.length} properties (${keys.slice(0, 3).join(', ')})${keys.length > 3 ? '...' : ''}`;
-        }
-        return String(result);
-    }
-    
-    /**
-     * Extract affected resources from result and parameters
-     * @private
-     */
-    private extractAffectedResources(result: any, params: any): string[] {
-        const resources: string[] = [];
-        
-        // From parameters
-        if (params?.filePath) resources.push(params.filePath);
-        if (params?.paths && Array.isArray(params.paths)) {
-            resources.push(...params.paths);
-        }
-        if (params?.operations && Array.isArray(params.operations)) {
-            for (const op of params.operations) {
-                if (op.params?.filePath) resources.push(op.params.filePath);
-                if (op.path) resources.push(op.path);
-            }
-        }
-        
-        // From result
-        if (result?.affectedFiles && Array.isArray(result.affectedFiles)) {
-            resources.push(...result.affectedFiles);
-        }
-        if (result?.createdFiles && Array.isArray(result.createdFiles)) {
-            resources.push(...result.createdFiles);
-        }
-        if (result?.modifiedFiles && Array.isArray(result.modifiedFiles)) {
-            resources.push(...result.modifiedFiles);
-        }
-        
-        // Remove duplicates
-        return Array.from(new Set(resources));
-    }
-    
     /**
      * Start the MCP server - delegates to MCPConnectionManager
      */
@@ -625,7 +462,7 @@ export class MCPConnector {
      * Get the session context manager instance
      */
     getSessionContextManager(): SessionContextManager {
-        return this.sessionContextManager;
+        return this.getSessionContextManagerFromService();
     }
     
     /**
@@ -648,15 +485,15 @@ export class MCPConnector {
             activeWorkspace: true
         };
         
-        this.sessionContextManager.setDefaultWorkspaceContext(context);
+        this.getSessionContextManagerFromService().setDefaultWorkspaceContext(context);
         return true;
     }
-    
+
     /**
      * Clear the default workspace context
      */
     clearDefaultWorkspaceContext(): void {
-        this.sessionContextManager.setDefaultWorkspaceContext(null);
+        this.getSessionContextManagerFromService().setDefaultWorkspaceContext(null);
     }
     
     /**
@@ -679,7 +516,7 @@ export class MCPConnector {
             activeWorkspace: true
         };
         
-        this.sessionContextManager.setWorkspaceContext(sessionId, context);
+        this.getSessionContextManagerFromService().setWorkspaceContext(sessionId, context);
         return true;
     }
 }

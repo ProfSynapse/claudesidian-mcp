@@ -36,6 +36,7 @@ export interface StreamChunk {
   complete: boolean;
   usage?: TokenUsage;
   toolCalls?: ToolCall[];
+  toolCallsReady?: boolean; // True when tool calls are complete and safe to execute
 }
 
 export interface SearchResult {

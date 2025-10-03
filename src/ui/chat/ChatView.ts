@@ -543,7 +543,7 @@ export class ChatView extends ItemView {
     this.messageDisplay.updateMessageId(oldId, newId, updatedMessage);
   }
 
-  private handleToolEvent(messageId: string, event: 'detected' | 'started' | 'completed', data: any): void {
+  private handleToolEvent(messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent(event, data);
   }

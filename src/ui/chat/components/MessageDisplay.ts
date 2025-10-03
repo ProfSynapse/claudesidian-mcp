@@ -19,7 +19,7 @@ export class MessageDisplay {
     private branchManager: BranchManager,
     private onRetryMessage?: (messageId: string) => void,
     private onEditMessage?: (messageId: string, newContent: string) => void,
-    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void,
+    private onToolEvent?: (messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any) => void,
     private onMessageAlternativeChanged?: (messageId: string, alternativeIndex: number) => void
   ) {
     this.render();

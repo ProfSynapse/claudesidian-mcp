@@ -135,10 +135,16 @@ export class ServiceRegistrar {
 
     /**
      * Initialize essential services that must be ready immediately
+     * Includes the full chain needed for tool call tracing:
+     * workspaceService -> memoryService -> sessionService -> sessionContextManager
      */
     async initializeEssentialServices(): Promise<void> {
         try {
             await this.context.serviceManager.getService('eventManager');
+            await this.context.serviceManager.getService('workspaceService');
+            await this.context.serviceManager.getService('memoryService');
+            await this.context.serviceManager.getService('sessionService');
+            await this.context.serviceManager.getService('sessionContextManager');
         } catch (error) {
             console.error('[ServiceRegistrar] Essential service initialization failed:', error);
             throw error;
@@ -151,11 +157,13 @@ export class ServiceRegistrar {
      */
     async initializeBusinessServices(): Promise<void> {
         try {
-            await this.context.serviceManager.getService('memoryService');
-            await this.context.serviceManager.getService('workspaceService');
+            // Core services already initialized in essential services:
+            // - eventManager, workspaceService, memoryService, sessionService, sessionContextManager
+
+            await this.context.serviceManager.getService('defaultWorkspaceManager'); // Initialize default workspace
             await this.context.serviceManager.getService('agentManager');
             await this.context.serviceManager.getService('llmService');
-            await this.context.serviceManager.getService('sessionContextManager');
+            await this.context.serviceManager.getService('toolCallTraceService'); // Initialize trace service
             await this.context.serviceManager.getService('conversationService');
 
             // ChatService initialization deferred - will be called after agents are registered

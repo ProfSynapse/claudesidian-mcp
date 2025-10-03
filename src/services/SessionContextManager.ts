@@ -37,7 +37,11 @@ export class SessionContextManager {
    * This is called during plugin initialization
    */
   setSessionService(sessionService: any): void {
+    console.log('[SessionContextManager] setSessionService called');
+    console.log('[SessionContextManager] SessionService provided:', !!sessionService);
+    console.log('[SessionContextManager] SessionService.getSession exists:', typeof sessionService?.getSession === 'function');
     this.sessionService = sessionService;
+    console.log('[SessionContextManager] ✓ SessionService stored successfully');
   }
   
   /**
@@ -200,24 +204,25 @@ export class SessionContextManager {
     }
     
     // Session ID is in standard format - check if it exists in database
-    console.log(`🚨 SessionService available: ${!!this.sessionService}`);
-    if (this.sessionService) {
-      try {
-        const existingSession = await this.sessionService.getSession(sessionId);
-        if (existingSession) {
-          return {id: sessionId, created: false};
-        } else {
-          await this.createAutoSession(sessionId, `Session ${sessionId}`, sessionDescription);
-          return {id: sessionId, created: true};
-        }
-      } catch (error) {
-        logger.systemWarn(`Error checking session existence: ${error instanceof Error ? error.message : String(error)}`);
-        // Fallback to returning the session ID without verification
+    if (!this.sessionService) {
+      console.error('[SessionContextManager] ❌ SessionService is NULL during validation!');
+      console.error('[SessionContextManager] SessionId being validated:', sessionId);
+      throw new Error('SessionService not initialized - cannot validate session');
+    }
+
+    console.log('[SessionContextManager] ✓ SessionService available, validating session:', sessionId);
+
+    try {
+      const existingSession = await this.sessionService.getSession(sessionId);
+      if (existingSession) {
         return {id: sessionId, created: false};
+      } else {
+        await this.createAutoSession(sessionId, `Session ${sessionId}`, sessionDescription);
+        return {id: sessionId, created: true};
       }
-    } else {
-      logger.systemWarn('SessionService not available - cannot validate session existence');
-      // Return the original sessionId if it's already in our standard format
+    } catch (error) {
+      logger.systemWarn(`Error checking session existence: ${error instanceof Error ? error.message : String(error)}`);
+      // Fallback to returning the session ID without verification
       return {id: sessionId, created: false};
     }
   }
@@ -238,7 +243,7 @@ export class SessionContextManager {
         const sessionData = {
           name: sessionName,
           description: sessionDescription || '',
-          workspaceId: 'default-workspace',
+          workspaceId: 'default',
           id: sessionId
         };
         

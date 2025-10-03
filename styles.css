@@ -764,10 +764,16 @@
     background: var(--background-secondary);
 }
 
+.progressive-tool-item.tool-streaming {
+    background: var(--background-secondary);
+    border-left: 3px solid var(--text-accent);
+    opacity: 0.8;
+}
+
 .progressive-tool-item.tool-executing {
-    background: linear-gradient(90deg, 
-        var(--background-primary) 0%, 
-        var(--background-modifier-hover) 50%, 
+    background: linear-gradient(90deg,
+        var(--background-primary) 0%,
+        var(--background-modifier-hover) 50%,
         var(--background-primary) 100%);
     background-size: 200% 100%;
     animation: toolExecuting 2s ease-in-out infinite;
@@ -834,6 +840,35 @@
 
 .tool-failed .tool-text {
     color: var(--text-error);
+}
+
+/* Tool parameter streaming states */
+.tool-parameters-streaming {
+    opacity: 0.7;
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+.tool-streaming-indicator {
+    margin-top: 8px;
+    font-size: 0.9em;
+    color: var(--text-accent);
+    font-style: italic;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Pulsing animation for streaming status icon */
+.tool-status-icon.pulsing {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 1;
+    }
 }
 
 /* Chat Input */

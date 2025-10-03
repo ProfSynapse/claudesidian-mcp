@@ -76,7 +76,8 @@ export class TokenCalculator {
   /**
    * Rough estimation of token count for text (4 chars ≈ 1 token)
    */
-  static estimateTextTokens(text: string): number {
+  static estimateTextTokens(text: string | null | undefined): number {
+    if (!text) return 0;
     return Math.ceil(text.length / 4);
   }
 

@@ -13,11 +13,12 @@ export interface ProgressiveToolCall {
   id: string;
   name: string;
   parameters?: any;
-  status: 'pending' | 'executing' | 'completed' | 'failed';
+  status: 'pending' | 'streaming' | 'executing' | 'completed' | 'failed';
   result?: any;
   error?: string;
   executionTime?: number;
   startTime?: number;
+  parametersComplete?: boolean; // True when parameters are fully streamed
 }
 
 export class ProgressiveToolAccordion {
@@ -61,22 +62,81 @@ export class ProgressiveToolAccordion {
   }
 
   /**
-   * Start executing a tool - shows it immediately with glow effect
+   * Detect a tool (parameters streaming) - shows it immediately with streaming state
    */
-  startTool(toolCall: { id: string; name: string; parameters?: any }): void {
-    console.log('[ProgressiveToolAccordion] Starting tool:', toolCall.name);
-    
+  detectTool(toolCall: { id: string; name: string; parameters?: any; isComplete?: boolean }): void {
+    console.log('[ProgressiveToolAccordion] Detecting tool:', toolCall.name, 'complete:', toolCall.isComplete);
+
+    // Check if tool already exists
+    const existingTool = this.tools.find(t => t.id === toolCall.id);
+    if (existingTool) {
+      // Tool already detected, just update parameters
+      this.updateToolParameters(toolCall.id, toolCall.parameters, toolCall.isComplete || false);
+      return;
+    }
+
     const progressiveTool: ProgressiveToolCall = {
       id: toolCall.id,
       name: toolCall.name,
       parameters: toolCall.parameters,
-      status: 'executing',
+      status: toolCall.isComplete ? 'pending' : 'streaming',
+      parametersComplete: toolCall.isComplete || false,
       startTime: Date.now()
     };
 
     this.tools.push(progressiveTool);
     this.updateDisplay();
     this.renderToolItem(progressiveTool);
+  }
+
+  /**
+   * Update tool parameters during streaming
+   */
+  updateToolParameters(toolId: string, parameters: any, isComplete: boolean): void {
+    console.log('[ProgressiveToolAccordion] Updating parameters for tool:', toolId, 'complete:', isComplete);
+
+    const tool = this.tools.find(t => t.id === toolId);
+    if (!tool) return;
+
+    tool.parameters = parameters;
+    tool.parametersComplete = isComplete;
+
+    if (isComplete && tool.status === 'streaming') {
+      tool.status = 'pending'; // Ready to execute
+    }
+
+    this.updateDisplay();
+    this.updateToolItemParameters(tool);
+  }
+
+  /**
+   * Start executing a tool - shows it immediately with glow effect
+   */
+  startTool(toolCall: { id: string; name: string; parameters?: any }): void {
+    console.log('[ProgressiveToolAccordion] Starting tool:', toolCall.name);
+
+    const tool = this.tools.find(t => t.id === toolCall.id);
+    if (tool) {
+      // Tool already exists from detection, just update status
+      tool.status = 'executing';
+      tool.startTime = Date.now();
+      this.updateDisplay();
+      this.updateToolItem(tool);
+    } else {
+      // New tool execution (legacy path)
+      const progressiveTool: ProgressiveToolCall = {
+        id: toolCall.id,
+        name: toolCall.name,
+        parameters: toolCall.parameters,
+        status: 'executing',
+        parametersComplete: true,
+        startTime: Date.now()
+      };
+
+      this.tools.push(progressiveTool);
+      this.updateDisplay();
+      this.renderToolItem(progressiveTool);
+    }
   }
 
   /**
@@ -228,7 +288,7 @@ export class ProgressiveToolAccordion {
     if (!item) return;
 
     // Update status classes
-    item.className = item.className.replace(/tool-(pending|executing|completed|failed)/g, '');
+    item.className = item.className.replace(/tool-(pending|streaming|executing|completed|failed)/g, '');
     item.addClass(`tool-${tool.status}`);
 
     // Update status icon
@@ -269,6 +329,61 @@ export class ProgressiveToolAccordion {
   }
 
   /**
+   * Update tool item parameters display during streaming
+   */
+  private updateToolItemParameters(tool: ProgressiveToolCall): void {
+    if (!this.element) return;
+
+    const item = this.element.querySelector(`[data-tool-id="${tool.id}"]`) as HTMLElement;
+    if (!item) return;
+
+    // Find the parameters section
+    const paramsContent = item.querySelector('.tool-code') as HTMLElement;
+    if (!paramsContent) return;
+
+    // Parse parameters for display
+    let displayText = '';
+    try {
+      const params = typeof tool.parameters === 'string'
+        ? JSON.parse(tool.parameters)
+        : tool.parameters;
+      displayText = JSON.stringify(params, null, 2);
+    } catch {
+      // If parsing fails, show raw parameters
+      displayText = typeof tool.parameters === 'string'
+        ? tool.parameters
+        : JSON.stringify(tool.parameters);
+    }
+
+    paramsContent.textContent = displayText;
+
+    // Update streaming indicator
+    let streamingIndicator = paramsContent.nextElementSibling as HTMLElement;
+
+    if (!tool.parametersComplete) {
+      // Add or update streaming indicator
+      if (!streamingIndicator || !streamingIndicator.hasClass('tool-streaming-indicator')) {
+        streamingIndicator = paramsContent.parentElement!.createDiv('tool-streaming-indicator');
+        streamingIndicator.textContent = '⋯ streaming parameters';
+      }
+      paramsContent.addClass('tool-parameters-streaming');
+    } else {
+      // Remove streaming indicator
+      if (streamingIndicator && streamingIndicator.hasClass('tool-streaming-indicator')) {
+        streamingIndicator.remove();
+      }
+      paramsContent.removeClass('tool-parameters-streaming');
+    }
+
+    // Update status icon and classes
+    const statusIcon = item.querySelector('.tool-status-icon') as HTMLElement;
+    this.updateStatusIcon(statusIcon, tool.status);
+
+    item.className = item.className.replace(/tool-(pending|streaming|executing|completed|failed)/g, '');
+    item.addClass(`tool-${tool.status}`);
+  }
+
+  /**
    * Update status icon based on tool status
    */
   private updateStatusIcon(iconElement: HTMLElement, status: string): void {
@@ -276,18 +391,24 @@ export class ProgressiveToolAccordion {
     switch (status) {
       case 'pending':
         setIcon(iconElement, 'clock');
+        iconElement.removeClass('spinning');
+        break;
+      case 'streaming':
+        setIcon(iconElement, 'file-text');
+        iconElement.addClass('pulsing'); // Use pulsing animation instead of spinning
         break;
       case 'executing':
         setIcon(iconElement, 'loader');
+        iconElement.removeClass('pulsing');
         iconElement.addClass('spinning');
         break;
       case 'completed':
         setIcon(iconElement, 'check-circle');
-        iconElement.removeClass('spinning');
+        iconElement.removeClass('spinning', 'pulsing');
         break;
       case 'failed':
         setIcon(iconElement, 'x-circle');
-        iconElement.removeClass('spinning');
+        iconElement.removeClass('spinning', 'pulsing');
         break;
     }
   }

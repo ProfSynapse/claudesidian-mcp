@@ -453,7 +453,7 @@ export class LLMService {
       tools?: any[];
       onToolEvent?: (event: 'started' | 'completed', data: any) => void;
     }
-  ): AsyncGenerator<{ chunk: string; complete: boolean; content: string; toolCalls?: any[] }, void, unknown> {
+  ): AsyncGenerator<{ chunk: string; complete: boolean; content: string; toolCalls?: any[]; toolCallsReady?: boolean }, void, unknown> {
     try {
       // Validate settings
       if (!this.settings || !this.settings.defaultModel) {
@@ -512,7 +512,10 @@ export class LLMService {
       let fullContent = '';
       let detectedToolCalls: any[] = [];
       let completeToolCallsWithResults: any[] = []; // Store complete tool calls with execution results
-      
+
+      // Store original messages for pingpong context (exclude the last user message which is userPrompt)
+      const previousMessages = messages.slice(0, -1);
+
       for await (const chunk of adapter.generateStreamAsync(userPrompt, generateOptions)) {
         // Handle text content streaming
         if (chunk.content) {
@@ -529,20 +532,21 @@ export class LLMService {
 
         // Handle dynamic tool call detection
         if (chunk.toolCalls) {
-          // CRITICAL: Only store tool calls when streaming is COMPLETE
+          // ALWAYS yield tool calls for progressive UI display
+          yield {
+            chunk: '',
+            complete: false,
+            content: fullContent,
+            toolCalls: chunk.toolCalls,
+            toolCallsReady: chunk.complete || false // Flag indicating if safe to execute
+          };
+
+          // Only STORE tool calls for execution when streaming is COMPLETE
           // Intermediate chunks may have incomplete JSON arguments that will fail JSON.parse
           if (chunk.complete) {
             detectedToolCalls = chunk.toolCalls;
             console.log(`[LLMService] Received COMPLETE tool calls: ${detectedToolCalls.length} tools`);
           }
-
-          // For incomplete chunks, yield for UI progress but DON'T store for execution
-          yield {
-            chunk: '',
-            complete: false,
-            content: fullContent,
-            toolCalls: chunk.toolCalls  // UI can show progress accordions
-          };
         }
         
         if (chunk.complete) {
@@ -590,24 +594,24 @@ export class LLMService {
             };
           });
 
-          // Step 2: Build conversation history with tool results for pingpong
-          const conversationHistory = this.buildConversationWithToolResults(
-            userPrompt, 
+          // Step 2: Build flattened conversation history with tool results for pingpong
+          const enhancedSystemPrompt = this.buildConversationWithToolResults(
+            userPrompt,
             generateOptions.systemPrompt,
-            detectedToolCalls, 
+            detectedToolCalls,
             toolResults,
-            provider
+            provider,
+            previousMessages // Pass previous messages to maintain full context
           );
 
-          // Step 3: Start NEW stream with conversation history (pingpong)
+          // Step 3: Start NEW stream with enhanced system prompt (pingpong)
           // Reset fullContent since this is a new conversation response
           fullContent = '';
 
           for await (const chunk of adapter.generateStreamAsync('', {
             ...generateOptions,
+            systemPrompt: enhancedSystemPrompt, // Use enhanced system prompt with tool results
             // Keep tools available for continued tool calling after seeing results
-            // Pass conversation history for pingpong
-            conversationHistory: conversationHistory
           })) {
             if (chunk.content) {
               fullContent += chunk.content;
@@ -623,15 +627,22 @@ export class LLMService {
 
             // Handle recursive tool calls (another pingpong iteration)
             if (chunk.toolCalls) {
-              // Yield the tool calls to UI first (for progressive display)
+              // ALWAYS yield tool calls for progressive UI display
               yield {
                 chunk: '',
                 complete: false,
                 content: fullContent,
-                toolCalls: chunk.toolCalls
+                toolCalls: chunk.toolCalls,
+                toolCallsReady: chunk.complete || false // Flag indicating if safe to execute
               };
 
-              // Execute the additional tool calls recursively with iteration limit check
+              // CRITICAL: Only EXECUTE tool calls when stream is COMPLETE
+              // Incomplete chunks can be shown in UI but not executed
+              if (!chunk.complete) {
+                continue; // Skip execution until stream completes
+              }
+
+              // Stream is complete - now we can safely execute tool calls
               toolIterationCount++;
 
               if (toolIterationCount > TOOL_ITERATION_LIMIT) {
@@ -690,19 +701,20 @@ export class LLMService {
                 // Add recursive results to complete tool calls
                 completeToolCallsWithResults = completeToolCallsWithResults.concat(recursiveCompleteToolCalls);
 
-                // Build new conversation history with recursive tool results
-                const recursiveConversationHistory = this.buildConversationWithToolResults(
+                // Build new flattened system prompt with recursive tool results
+                const recursiveEnhancedSystemPrompt = this.buildConversationWithToolResults(
                   userPrompt,
-                  generateOptions.systemPrompt, 
+                  generateOptions.systemPrompt,
                   chunk.toolCalls,
                   recursiveToolResults,
-                  provider
+                  provider,
+                  previousMessages // Pass previous messages to maintain full context
                 );
 
                 // Continue with another recursive stream
                 for await (const recursiveChunk of adapter.generateStreamAsync('', {
                   ...generateOptions,
-                  conversationHistory: recursiveConversationHistory
+                  systemPrompt: recursiveEnhancedSystemPrompt
                 })) {
                   if (recursiveChunk.content) {
                     fullContent += recursiveChunk.content;
@@ -717,11 +729,13 @@ export class LLMService {
 
                   // Handle nested recursive tool calls if any (up to iteration limit)
                   if (recursiveChunk.toolCalls) {
+                    // Always yield for progressive UI, but flag execution readiness
                     yield {
                       chunk: '',
                       complete: false,
                       content: fullContent,
-                      toolCalls: recursiveChunk.toolCalls
+                      toolCalls: recursiveChunk.toolCalls,
+                      toolCallsReady: recursiveChunk.complete || false
                     };
                   }
 
@@ -768,50 +782,56 @@ export class LLMService {
     systemPrompt: string | undefined,
     toolCalls: any[],
     toolResults: any[],
-    provider: string
-  ): any[] {
-    // Convert tool calls and results to ConversationData format
-    const conversationData: ConversationData = {
-      id: 'temp',
-      title: 'Tool Execution',
-      created: Date.now(),
-      updated: Date.now(),
-      messages: [
-        // User message
-        {
-          id: 'user-1',
-          role: 'user' as const,
-          content: originalPrompt,
-          timestamp: Date.now(),
-          conversationId: 'temp'
-        },
-        // Assistant message with tool calls
-        {
-          id: 'assistant-1',
-          role: 'assistant' as const,
-          content: '',
-          timestamp: Date.now(),
-          conversationId: 'temp',
-          toolCalls: toolCalls.map((tc, index) => ({
-            id: tc.id,
-            type: tc.type || 'function',
-            name: tc.function?.name || tc.name,
-            function: tc.function || {
-              name: tc.function?.name || tc.name || '',
-              arguments: tc.function?.arguments || JSON.stringify(tc.parameters || {})
-            },
-            parameters: tc.function?.arguments ? JSON.parse(tc.function.arguments) : (tc.parameters || {}),
-            result: toolResults[index]?.result,
-            success: toolResults[index]?.success || false,
-            error: toolResults[index]?.error,
-            executionTime: toolResults[index]?.executionTime
-          }))
+    provider: string,
+    previousMessages?: any[] // Previous conversation messages to include in system prompt
+  ): string {
+    // Build flattened conversation history including previous messages and tool results
+    const historyParts: string[] = [];
+
+    // Add previous conversation history if provided
+    if (previousMessages && previousMessages.length > 0) {
+      for (const msg of previousMessages) {
+        if (msg.role === 'user') {
+          historyParts.push(`User: ${msg.content}`);
+        } else if (msg.role === 'assistant') {
+          if (msg.tool_calls) {
+            historyParts.push(`Assistant: [Calling tools: ${msg.tool_calls.map((tc: any) => tc.function?.name || tc.name).join(', ')}]`);
+          } else if (msg.content) {
+            historyParts.push(`Assistant: ${msg.content}`);
+          }
+        } else if (msg.role === 'tool') {
+          historyParts.push(`Tool Result: ${msg.content}`);
         }
-      ],
-    };
-    
-    // Use ConversationContextBuilder to build proper conversation context
-    return ConversationContextBuilder.buildContextForProvider(conversationData, provider, systemPrompt);
+      }
+    }
+
+    // Add current user prompt if provided
+    if (originalPrompt) {
+      historyParts.push(`User: ${originalPrompt}`);
+    }
+
+    // Add tool call information
+    const toolNames = toolCalls.map(tc => tc.function?.name || tc.name).join(', ');
+    historyParts.push(`Assistant: [Calling tools: ${toolNames}]`);
+
+    // Add tool results
+    toolResults.forEach((result, index) => {
+      const toolCall = toolCalls[index];
+      const resultContent = result.success
+        ? JSON.stringify(result.result || {})
+        : `Error: ${result.error || 'Tool execution failed'}`;
+      historyParts.push(`Tool Result (${toolCall.function?.name || toolCall.name}): ${resultContent}`);
+    });
+
+    // Build enhanced system prompt with conversation history
+    const enhancedSystemPrompt = [
+      systemPrompt || '',
+      '\n=== Conversation History ===',
+      historyParts.join('\n')
+    ].filter(Boolean).join('\n');
+
+    // Return the enhanced system prompt string
+    return enhancedSystemPrompt;
   }
 
   /**

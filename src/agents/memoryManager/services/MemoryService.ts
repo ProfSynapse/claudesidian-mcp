@@ -174,6 +174,13 @@ export class MemoryService {
   }
 
   /**
+   * Delete session
+   */
+  async deleteSession(workspaceId: string, sessionId: string): Promise<void> {
+    await this.workspaceService.deleteSession(workspaceId, sessionId);
+  }
+
+  /**
    * Save state snapshot to session
    */
   async saveStateSnapshot(

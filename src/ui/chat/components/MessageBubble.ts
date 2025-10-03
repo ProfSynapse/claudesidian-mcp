@@ -177,7 +177,7 @@ export class MessageBubble extends Component {
   }
 
   /**
-   * Render tool calls accordion - only for tool role messages
+   * Render tool calls accordion for tool role messages and assistant messages with completed tool calls
    */
   private renderToolCalls(): void {
     if (!this.element) return;
@@ -187,8 +187,7 @@ export class MessageBubble extends Component {
       return;
     }
 
-    // ONLY render for tool role messages (these ARE the tool execution results)
-    // Assistant messages should NOT render static tool accordions since we have separate tool message bubbles
+    // Render for tool role messages (legacy format)
     if (this.message.role === 'tool') {
       console.log('[MessageBubble] Rendering tool accordion for tool message:', {
         messageId: this.message.id,
@@ -205,7 +204,26 @@ export class MessageBubble extends Component {
       return;
     }
 
-    // Don't render tool accordions for assistant messages - we have dedicated tool message bubbles instead
+    // Render for assistant messages with completed tool calls (NEW format)
+    if (this.message.role === 'assistant' && this.message.toolCalls.length > 0) {
+      // Check if tool calls have results (meaning they've been executed)
+      const hasResults = this.message.toolCalls.some(tc => tc.result !== undefined || tc.success !== undefined);
+
+      if (hasResults) {
+        console.log('[MessageBubble] Rendering tool accordion for completed assistant tool calls:', {
+          messageId: this.message.id,
+          toolCallCount: this.message.toolCalls.length,
+          toolNames: this.message.toolCalls.map(tc => tc.name)
+        });
+
+        const contentElement = this.element.querySelector('.message-content');
+        if (contentElement) {
+          const accordion = new ToolAccordion(this.message.toolCalls);
+          const accordionEl = accordion.createElement();
+          contentElement.appendChild(accordionEl);
+        }
+      }
+    }
   }
 
 
@@ -440,19 +458,69 @@ export class MessageBubble extends Component {
     return div.innerHTML;
   }
 
-  // Progressive tool accordion methods removed - we use dedicated tool message bubbles instead
-  // Tool execution details are shown as separate messages with role: 'tool'
-
   /**
    * Handle tool events from MessageManager
-   *
-   * NOTE: Progressive tool accordions are disabled because we have dedicated tool message bubbles.
-   * Tool execution is shown via separate 'tool' role message bubbles, not inline accordions.
+   * Supports progressive tool call display with streaming parameters
    */
-  handleToolEvent(event: 'detected' | 'started' | 'completed', data: any): void {
-    // Progressive tool accordions disabled - we use dedicated tool message bubbles instead
-    // Tool execution details are displayed as separate messages with role: 'tool'
-    // This prevents duplicate tool displays in the UI
+  handleToolEvent(event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
+    console.log('[MessageBubble] Handling tool event:', event, data);
+
+    // Get or create progressive accordion for this message
+    let accordion = this.progressiveToolAccordions.get(this.message.id);
+    if (!accordion && (event === 'detected' || event === 'started')) {
+      accordion = new ProgressiveToolAccordion();
+      const accordionElement = accordion.createElement();
+
+      // Insert accordion into message bubble (after content, before any existing tool displays)
+      const contentElement = this.element?.querySelector('.message-content');
+      if (contentElement) {
+        contentElement.after(accordionElement);
+      }
+
+      this.progressiveToolAccordions.set(this.message.id, accordion);
+    }
+
+    if (!accordion) {
+      console.warn('[MessageBubble] No accordion found for tool event:', event);
+      return;
+    }
+
+    // Handle different event types
+    switch (event) {
+      case 'detected':
+        // Tool call detected - may have incomplete parameters
+        accordion.detectTool({
+          id: data.id,
+          name: data.name,
+          parameters: data.parameters,
+          isComplete: data.isComplete
+        });
+        break;
+
+      case 'updated':
+        // Parameters updated (now complete)
+        accordion.updateToolParameters(data.id, data.parameters, data.isComplete);
+        break;
+
+      case 'started':
+        // Tool execution started
+        accordion.startTool({
+          id: data.id || data.toolId,
+          name: data.name,
+          parameters: data.parameters
+        });
+        break;
+
+      case 'completed':
+        // Tool execution completed
+        accordion.completeTool(
+          data.toolId || data.id,
+          data.result,
+          data.success,
+          data.error
+        );
+        break;
+    }
   }
 
 

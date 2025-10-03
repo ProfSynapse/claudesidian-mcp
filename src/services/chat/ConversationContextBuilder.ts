@@ -71,56 +71,38 @@ export class ConversationContextBuilder {
       }
       else if (msg.role === 'assistant') {
         if (msg.toolCalls && msg.toolCalls.length > 0) {
+          // Flatten tool calls into text for system prompt
+          console.log('[CONTEXT-BUILDER] → Assistant message has tool calls, flattening to text');
 
-          console.log('[CONTEXT-BUILDER] → Assistant message has tool calls, creating 3 LLM messages');
+          const toolNames = msg.toolCalls.map((tc: any) => tc.name).join(', ');
+          messages.push({ role: 'assistant', content: `[Calling tools: ${toolNames}]` });
 
-          // 1. Assistant message with original tool calls format
-          const assistantMessage: any = {
-            role: 'assistant',
-            content: msg.content || null // OpenAI allows null content when tool calls are present
-          };
+          console.log('[CONTEXT-BUILDER] → → Flattened tool calls:', toolNames);
 
-          // Convert our stored tool calls to OpenAI format (use snake_case tool_calls)
-          assistantMessage.tool_calls = msg.toolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function',
-            function: {
-              name: tc.name,
-              arguments: JSON.stringify(tc.parameters || {})
-            }
-          }));
+          // Add tool results as text
+          msg.toolCalls.forEach((toolCall: any, tcIndex: number) => {
+            const resultContent = toolCall.success
+              ? JSON.stringify(toolCall.result || {})
+              : `Error: ${toolCall.error || 'Tool execution failed'}`;
 
-          messages.push(assistantMessage);
-          console.log('[CONTEXT-BUILDER] → → Added assistant message WITH tool_calls:', {
-            toolCount: assistantMessage.tool_calls.length,
-            toolNames: assistantMessage.tool_calls.map((tc: any) => tc.function.name)
-          });
+            messages.push({
+              role: 'assistant',
+              content: `Tool Result (${toolCall.name}): ${resultContent}`
+            });
 
-          // 2. Tool result messages for each tool call
-          msg.toolCalls.forEach((toolCall, tcIndex) => {
-            const toolMessage = {
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: toolCall.success
-                ? JSON.stringify(toolCall.result || {})
-                : `Error: ${toolCall.error || 'Tool execution failed'}`
-            };
-
-            messages.push(toolMessage);
-            console.log(`[CONTEXT-BUILDER] → → Added tool result ${tcIndex + 1}:`, {
-              toolCallId: toolCall.id,
+            console.log(`[CONTEXT-BUILDER] → → Added tool result ${tcIndex + 1} as text:`, {
               toolName: toolCall.name,
               success: toolCall.success
             });
           });
 
-          // 3. If there's final content after tool execution, add another assistant message
+          // If there's final content after tool execution, add it
           if (msg.content && msg.content.trim()) {
             messages.push({
               role: 'assistant',
               content: msg.content
             });
-            console.log('[CONTEXT-BUILDER] → → Added ANOTHER assistant message with content');
+            console.log('[CONTEXT-BUILDER] → → Added assistant response after tool execution');
           }
         } else {
           // Regular assistant message without tools
@@ -128,28 +110,7 @@ export class ConversationContextBuilder {
           console.log('[CONTEXT-BUILDER] → Added regular assistant message (no tools)');
         }
       }
-      else if (msg.role === 'tool') {
-        console.log('[CONTEXT-BUILDER] → Processing stored TOOL message, creating tool result messages');
-        // Handle stored tool messages - convert tool_calls to individual tool result messages
-        if (msg.toolCalls && msg.toolCalls.length > 0) {
-          msg.toolCalls.forEach((toolCall, tcIndex) => {
-            const toolMessage = {
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: toolCall.success
-                ? JSON.stringify(toolCall.result || {})
-                : `Error: ${toolCall.error || 'Tool execution failed'}`
-            };
-
-            messages.push(toolMessage);
-            console.log(`[CONTEXT-BUILDER] → → Added tool result ${tcIndex + 1} (from stored tool message):`, {
-              toolCallId: toolCall.id,
-              toolName: toolCall.name,
-              success: toolCall.success
-            });
-          });
-        }
-      }
+      // Note: 'tool' role messages are not used - tool results are stored in assistant messages with toolCalls
     });
 
     console.log('[CONTEXT-BUILDER] ===== FINAL CONTEXT BEING SENT TO LLM =====');

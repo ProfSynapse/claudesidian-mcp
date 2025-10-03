@@ -1,11 +1,12 @@
 /**
  * Default Workspace Manager
- * 
+ *
  * Manages the default workspace for tool calls that don't specify a workspace.
  * Ensures all tool calls have a valid workspace association for memory traces.
  */
 
 import { App } from 'obsidian';
+import type { WorkspaceService } from '../WorkspaceService';
 
 export interface DefaultWorkspaceConfig {
   id: string;
@@ -21,14 +22,23 @@ export class DefaultWorkspaceManager {
   private defaultWorkspaceId = 'default';
   private defaultConfig: DefaultWorkspaceConfig;
   private initialized = false;
+  private workspaceService?: WorkspaceService;
 
-  constructor(private app: App) {
+  constructor(private app: App, workspaceService?: WorkspaceService) {
     this.defaultConfig = {
       id: this.defaultWorkspaceId,
       name: 'Default Workspace',
       rootFolder: '/',
       description: 'Default workspace for tool calls without explicit workspace context'
     };
+    this.workspaceService = workspaceService;
+  }
+
+  /**
+   * Set workspace service (for lazy injection after construction)
+   */
+  setWorkspaceService(workspaceService: WorkspaceService): void {
+    this.workspaceService = workspaceService;
   }
 
   /**
@@ -96,23 +106,42 @@ export class DefaultWorkspaceManager {
   }
 
   /**
-   * Ensure the default workspace exists (basic implementation)
+   * Ensure the default workspace exists - creates workspace JSON if missing
    */
   private async ensureDefaultWorkspace(): Promise<void> {
+    if (!this.workspaceService) {
+      console.warn('[DefaultWorkspaceManager] WorkspaceService not available, skipping default workspace creation');
+      return;
+    }
+
     try {
-      // Check if root folder exists
-      const rootFolder = this.app.vault.getAbstractFileByPath('/');
-      if (!rootFolder) {
-        console.warn('[DefaultWorkspaceManager] Root folder not accessible, using basic default workspace');
+      // Check if default workspace JSON already exists
+      const existingWorkspace = await this.workspaceService.getWorkspace(this.defaultWorkspaceId);
+
+      if (existingWorkspace) {
+        console.log('[DefaultWorkspaceManager] Default workspace already exists');
         return;
       }
 
-      // Default workspace is conceptual - it represents the entire vault
-      // No need to create physical folders or files for it
-      
+      // Create default workspace JSON
+      console.log('[DefaultWorkspaceManager] Creating default workspace JSON...');
+
+      await this.workspaceService.createWorkspace({
+        id: this.defaultWorkspaceId,
+        name: this.defaultConfig.name,
+        description: this.defaultConfig.description,
+        rootFolder: this.defaultConfig.rootFolder,
+        created: Date.now(),
+        lastAccessed: Date.now(),
+        isActive: true,
+        sessions: {} // Empty sessions object to start
+      });
+
+      console.log('[DefaultWorkspaceManager] Default workspace created successfully');
+
     } catch (error) {
-      console.warn('[DefaultWorkspaceManager] Could not verify default workspace setup:', error);
-      // Continue - default workspace is conceptual anyway
+      console.error('[DefaultWorkspaceManager] Failed to create default workspace:', error);
+      // Don't throw - allow plugin to continue even if workspace creation fails
     }
   }
 

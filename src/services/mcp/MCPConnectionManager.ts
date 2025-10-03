@@ -91,16 +91,41 @@ export class MCPConnectionManager implements MCPConnectionManagerInterface {
     private isServerRunning = false;
     private serverCreatedAt?: Date;
     private lastError?: { message: string; timestamp: Date };
+    private sessionContextManager: SessionContextManager | null = null;
+    private serviceManager: any = null;
 
     constructor(
         private app: App,
         private plugin: Plugin,
         private eventManager: EventManager,
-        private sessionContextManager: SessionContextManager,
+        serviceManager: any,
         private customPromptStorage?: CustomPromptStorageService,
         private onToolCall?: (toolName: string, params: any) => Promise<void>,
         private onToolResponse?: (toolName: string, params: any, response: any, success: boolean, executionTime: number) => Promise<void>
-    ) {}
+    ) {
+        this.serviceManager = serviceManager;
+    }
+
+    /**
+     * Lazy getter for SessionContextManager from ServiceManager
+     * Ensures we use the properly initialized instance with SessionService injected
+     */
+    private getSessionContextManagerFromService(): SessionContextManager {
+        if (!this.sessionContextManager) {
+            if (!this.serviceManager) {
+                throw new Error('[MCPConnectionManager] ServiceManager not available - cannot get SessionContextManager');
+            }
+
+            this.sessionContextManager = this.serviceManager.getServiceIfReady('sessionContextManager');
+
+            if (!this.sessionContextManager) {
+                throw new Error('[MCPConnectionManager] SessionContextManager not available from ServiceManager');
+            }
+
+            console.log('[MCPConnectionManager] ✓ Retrieved SessionContextManager from ServiceManager');
+        }
+        return this.sessionContextManager;
+    }
 
     /**
      * Initializes MCP connection manager
@@ -111,23 +136,63 @@ export class MCPConnectionManager implements MCPConnectionManagerInterface {
         }
 
         try {
+            // Wire up ToolCallTraceService to onToolResponse callback
+            await this.initializeToolCallTracing();
+
             // Create the MCP server
             this.server = await this.createServer();
             this.isInitialized = true;
-            
+
             logger.systemLog('MCP Connection Manager initialized successfully');
         } catch (error) {
             this.lastError = {
                 message: (error as Error).message,
                 timestamp: new Date()
             };
-            
+
             logger.systemError(error as Error, 'MCP Connection Manager Initialization');
             throw new McpError(
                 ErrorCode.InternalError,
                 'Failed to initialize MCP connection manager',
                 error
             );
+        }
+    }
+
+    /**
+     * Initialize tool call tracing by wrapping onToolResponse callback
+     */
+    private async initializeToolCallTracing(): Promise<void> {
+        try {
+            // Get ToolCallTraceService from service manager
+            const pluginWithServices = this.plugin as any;
+            if (!pluginWithServices.getService) {
+                logger.systemWarn('Plugin does not support getService - tool call tracing disabled');
+                return;
+            }
+
+            const toolCallTraceService = await pluginWithServices.getService('toolCallTraceService');
+            if (!toolCallTraceService) {
+                logger.systemWarn('ToolCallTraceService not available - tool call tracing disabled');
+                return;
+            }
+
+            // Wrap the existing onToolResponse callback to include tracing
+            const originalOnToolResponse = this.onToolResponse;
+            this.onToolResponse = async (toolName, params, response, success, executionTime) => {
+                // Call original callback first (if exists)
+                if (originalOnToolResponse) {
+                    await originalOnToolResponse(toolName, params, response, success, executionTime);
+                }
+
+                // Capture tool call trace (non-blocking, errors handled internally)
+                await toolCallTraceService.captureToolCall(toolName, params, response, success, executionTime);
+            };
+
+            logger.systemLog('Tool call tracing initialized successfully');
+        } catch (error) {
+            // Don't throw - tracing is optional
+            logger.systemWarn('Failed to initialize tool call tracing: ' + (error as Error).message);
         }
     }
 
@@ -140,7 +205,7 @@ export class MCPConnectionManager implements MCPConnectionManagerInterface {
                 this.app,
                 this.plugin,
                 this.eventManager,
-                this.sessionContextManager,
+                this.getSessionContextManagerFromService(),
                 undefined, // serviceContainer will be set later if needed
                 this.customPromptStorage,
                 this.onToolCall,
