@@ -299,8 +299,9 @@ export class ChatService {
         if (chunk.toolCalls) {
           toolCalls = chunk.toolCalls;
 
-          // Fire 'detected' event for each tool call to create UI accordions immediately
-          if (this.toolEventCallback && toolCalls) {
+          // Only fire 'detected' event and yield tool calls when stream is complete
+          // This prevents UI from trying to render tool accordions before text is done streaming
+          if (chunk.complete && this.toolEventCallback && toolCalls) {
             for (const tc of toolCalls) {
               const toolData = {
                 id: tc.id,
@@ -310,14 +311,6 @@ export class ChatService {
               this.toolEventCallback(messageId, 'detected', toolData);
             }
           }
-
-          // Immediately yield tool calls for UI update
-          yield {
-            chunk: '',
-            complete: false,
-            messageId,
-            toolCalls: toolCalls
-          };
         }
 
         // Save to database BEFORE yielding final chunk to ensure persistence
