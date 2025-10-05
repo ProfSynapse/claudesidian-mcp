@@ -280,7 +280,7 @@ export class SettingsTab extends PluginSettingTab {
         );
 
         // Setup Instructions accordion
-        new SetupInstructionsAccordion(containerEl);
+        new SetupInstructionsAccordion(containerEl, this.app);
 
         // What is Claudesidian? accordion
         new WhatIsClaudesidianAccordion(containerEl);

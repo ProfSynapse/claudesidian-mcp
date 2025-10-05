@@ -3196,3 +3196,152 @@ a:hover {
     color: var(--text-faint);
     font-style: italic;
 }
+
+/* =========================== */
+/* MCP SETUP UI STYLES        */
+/* =========================== */
+
+/* Setup sections */
+.mcp-setup-section {
+    margin: 20px 0;
+    padding: 15px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.mcp-setup-separator {
+    margin: 20px 0;
+}
+
+.mcp-setup-or {
+    text-align: center;
+    margin: 10px 0;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* Config status */
+.mcp-config-status {
+    margin: 15px 0;
+    padding: 12px;
+    border-radius: 5px;
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.mcp-status {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcp-status span {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.mcp-status-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0;
+    padding: 0;
+}
+
+.mcp-status-neutral {
+    color: var(--text-muted);
+}
+
+.mcp-status-warning {
+    color: var(--text-warning);
+}
+
+.mcp-status-success {
+    color: var(--text-success);
+}
+
+/* Info box */
+.mcp-info-box {
+    margin: 15px 0;
+    padding: 12px;
+    border-left: 3px solid var(--interactive-accent);
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+}
+
+.mcp-info-box strong {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text-normal);
+}
+
+.mcp-info-box ol,
+.mcp-info-box ul {
+    margin: 8px 0 0 0;
+    padding-left: 20px;
+}
+
+.mcp-info-box li {
+    margin: 6px 0;
+    color: var(--text-normal);
+    font-size: 13px;
+}
+
+/* Next steps notification */
+.mcp-next-steps {
+    margin: 15px 0;
+    padding: 15px;
+    border-radius: 5px;
+    background-color: var(--background-primary-alt);
+    border: 1px solid var(--interactive-accent);
+    animation: fadeIn 0.3s ease-in;
+}
+
+.mcp-next-steps h5 {
+    margin: 0 0 12px 0;
+    color: var(--text-normal);
+    font-size: 16px;
+}
+
+.mcp-next-steps-info {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mcp-next-steps-info p {
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.mcp-next-steps-info strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-normal);
+    font-size: 13px;
+}
+
+.mcp-next-steps-info ul,
+.mcp-next-steps-info ol {
+    margin: 6px 0 0 0;
+    padding-left: 20px;
+}
+
+.mcp-next-steps-info li {
+    margin: 4px 0;
+    font-size: 13px;
+    color: var(--text-normal);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
