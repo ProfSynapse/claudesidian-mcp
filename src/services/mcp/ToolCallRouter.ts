@@ -110,16 +110,25 @@ export class ToolCallRouter implements ToolCallRouterInterface {
                 );
             }
 
-            // Parse tool name to get agent and mode
-            const { agentName, modeName } = this.parseToolName(request.params.name);
-            
+            // Parse tool name to get agent (strip vault suffix)
+            const { agentName } = this.parseToolName(request.params.name);
+
+            // Get mode from arguments
+            const modeName = request.params.arguments.mode;
+            if (!modeName) {
+                throw new McpError(
+                    ErrorCode.InvalidParams,
+                    'Mode parameter is required in tool arguments'
+                );
+            }
+
             // Validate batch operations if present
             this.validateBatchOperations(request.params.arguments);
 
             // Execute the agent mode
             const result = await this.executeAgentMode(
-                agentName, 
-                modeName, 
+                agentName,
+                modeName,
                 request.params.arguments
             );
 
@@ -237,18 +246,14 @@ export class ToolCallRouter implements ToolCallRouterInterface {
 
     /**
      * Parses tool name into agent and mode components
+     * Tool name format: agentName (vault context is implicit from IPC connection)
+     * Mode is extracted from request parameters, not tool name
      * @private
      */
     private parseToolName(toolName: string): { agentName: string; modeName: string } {
-        const parts = toolName.split('_');
-        if (parts.length !== 2) {
-            throw new McpError(
-                ErrorCode.InvalidRequest,
-                `Invalid tool name format: ${toolName}. Expected format: agentName_modeName`
-            );
-        }
-
-        return { agentName: parts[0], modeName: parts[1] };
+        // Tool name is just the agent name
+        // Mode is passed separately in the request arguments
+        return { agentName: toolName, modeName: '' };
     }
 
     /**

@@ -34,8 +34,10 @@ export class ToolListService implements IToolListService {
             for (const agent of agents.values()) {
                 const agentSchema = this.buildAgentSchema(agent);
                 this.mergeModeSchemasIntoAgent(agent, agentSchema);
-                
-                const toolName = vaultName ? `${agent.name}_${vaultName}` : agent.name;
+
+                // Use agent name directly - vault context is already provided by IPC connection
+                // No need to add vault suffix which causes parsing issues with vault names containing underscores
+                const toolName = agent.name;
                 
                 // Enhance the schema and description if enhancement service is available
                 let finalSchema = agentSchema;
@@ -64,13 +66,17 @@ export class ToolListService implements IToolListService {
                     }
                 }
                 
+                // Clean up the schema - remove empty allOf arrays
+                // Claude API doesn't support allOf/oneOf/anyOf at top level
+                const cleanedSchema = this.cleanSchema(finalSchema);
+
                 tools.push({
                     name: toolName,
                     description: finalDescription,
-                    inputSchema: finalSchema
+                    inputSchema: cleanedSchema
                 });
             }
-            
+
             return { tools };
         } catch (error) {
             logger.systemError(error as Error, "Error in generateToolList");
@@ -165,5 +171,28 @@ export class ToolListService implements IToolListService {
 
     setSchemaEnhancementService(service: ISchemaEnhancementService): void {
         this.schemaEnhancementService = service;
+    }
+
+    /**
+     * Clean schema to be compatible with Claude's API
+     * Remove allOf/oneOf/anyOf at top level if empty or move conditionals to description
+     */
+    private cleanSchema(schema: any): any {
+        const cleaned = { ...schema };
+
+        // Remove allOf if it's empty
+        if (cleaned.allOf && Array.isArray(cleaned.allOf) && cleaned.allOf.length === 0) {
+            delete cleaned.allOf;
+        }
+
+        // If allOf has items, we need to flatten them or remove them
+        // Claude API doesn't support conditional schemas at top level
+        if (cleaned.allOf && Array.isArray(cleaned.allOf) && cleaned.allOf.length > 0) {
+            // For now, just remove allOf - mode-specific validation will happen server-side
+            // We keep all properties merged, just remove the conditional required fields
+            delete cleaned.allOf;
+        }
+
+        return cleaned;
     }
 }
