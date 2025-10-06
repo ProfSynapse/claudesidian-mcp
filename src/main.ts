@@ -45,8 +45,6 @@ export default class ClaudesidianPlugin extends Plugin {
 
     async onload() {
         try {
-            console.log('[Claudesidian] Starting plugin initialization...');
-
             // Create service manager and settings
             this.settings = new Settings(this);
             this.serviceManager = new ServiceManager(this.app, this);
@@ -67,8 +65,6 @@ export default class ClaudesidianPlugin extends Plugin {
             this.lifecycleManager = new PluginLifecycleManager(lifecycleConfig);
             await this.lifecycleManager.initialize();
 
-            console.log('[Claudesidian] Plugin initialization complete');
-
         } catch (error) {
             console.error('[Claudesidian] Plugin loading failed:', error);
             new Notice('Claudesidian: Plugin failed to load. Check console for details.');
@@ -77,8 +73,6 @@ export default class ClaudesidianPlugin extends Plugin {
     }
 
     async onunload() {
-        console.log('[Claudesidian] Unloading plugin...');
-
         // Shutdown lifecycle manager first (handles UI cleanup)
         if (this.lifecycleManager) {
             await this.lifecycleManager.shutdown();
@@ -90,8 +84,6 @@ export default class ClaudesidianPlugin extends Plugin {
         }
 
         // Service manager cleanup handled by lifecycle manager
-
-        console.log('[Claudesidian] Plugin unloaded');
     }
 
     /**

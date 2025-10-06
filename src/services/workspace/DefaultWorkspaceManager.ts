@@ -119,7 +119,6 @@ export class DefaultWorkspaceManager {
       const existingWorkspace = await this.workspaceService.getWorkspace(this.defaultWorkspaceId);
 
       if (existingWorkspace) {
-        console.log('[DefaultWorkspaceManager] Default workspace already exists');
         return;
       }
 

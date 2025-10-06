@@ -121,8 +121,6 @@ export class MCPConnectionManager implements MCPConnectionManagerInterface {
             if (!this.sessionContextManager) {
                 throw new Error('[MCPConnectionManager] SessionContextManager not available from ServiceManager');
             }
-
-            console.log('[MCPConnectionManager] ✓ Retrieved SessionContextManager from ServiceManager');
         }
         return this.sessionContextManager;
     }

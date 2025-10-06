@@ -60,12 +60,16 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       }
       
       // Get workspaces with optional filtering and sorting
-      const queryParams = {
-        sortBy: params.sortBy as 'name' | 'created' | 'lastAccessed',
-        sortOrder: params.order as 'asc' | 'desc'
+      const queryParams: {
+        sortBy?: 'name' | 'created' | 'lastAccessed',
+        sortOrder?: 'asc' | 'desc',
+        limit?: number
+      } = {
+        sortBy: params.sortBy as 'name' | 'created' | 'lastAccessed' | undefined,
+        sortOrder: params.order as 'asc' | 'desc' | undefined,
+        limit: params.limit
       };
-      
-      
+
       let workspaces;
       try {
         workspaces = await workspaceService.getWorkspaces(queryParams);
@@ -182,6 +186,10 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
           enum: ['asc', 'desc'],
           description: 'Sort order (ascending or descending)'
         },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of workspaces to return'
+        }
       }
     };
     

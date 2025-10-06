@@ -109,7 +109,6 @@ export class PluginLifecycleManager {
             
             // PHASE 3: Initialize essential services only
             await this.serviceRegistrar.initializeEssentialServices();
-            console.log('[Lifecycle] Essential services initialized (sessionService should be ready)');
 
             // Plugin is now "loaded" - defer full initialization to background
             const loadTime = Date.now() - startTime;
@@ -153,7 +152,6 @@ export class PluginLifecycleManager {
                 try {
                     // Initialize core services in proper dependency order
                     await this.serviceRegistrar.initializeBusinessServices();
-                    console.log('[Lifecycle] Business services initialized');
 
                     // Pre-initialize UI-critical services to avoid long loading times
                     await this.serviceRegistrar.preInitializeUICriticalServices();

@@ -37,11 +37,7 @@ export class SessionContextManager {
    * This is called during plugin initialization
    */
   setSessionService(sessionService: any): void {
-    console.log('[SessionContextManager] setSessionService called');
-    console.log('[SessionContextManager] SessionService provided:', !!sessionService);
-    console.log('[SessionContextManager] SessionService.getSession exists:', typeof sessionService?.getSession === 'function');
     this.sessionService = sessionService;
-    console.log('[SessionContextManager] ✓ SessionService stored successfully');
   }
   
   /**
@@ -205,12 +201,9 @@ export class SessionContextManager {
     
     // Session ID is in standard format - check if it exists in database
     if (!this.sessionService) {
-      console.error('[SessionContextManager] ❌ SessionService is NULL during validation!');
-      console.error('[SessionContextManager] SessionId being validated:', sessionId);
+      console.error('[SessionContextManager] SessionService is NULL during validation!');
       throw new Error('SessionService not initialized - cannot validate session');
     }
-
-    console.log('[SessionContextManager] ✓ SessionService available, validating session:', sessionId);
 
     try {
       const existingSession = await this.sessionService.getSession(sessionId);

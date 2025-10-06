@@ -189,12 +189,6 @@ export class MessageBubble extends Component {
 
     // Render for tool role messages (legacy format)
     if (this.message.role === 'tool') {
-      console.log('[MessageBubble] Rendering tool accordion for tool message:', {
-        messageId: this.message.id,
-        toolCallCount: this.message.toolCalls.length,
-        toolNames: this.message.toolCalls.map(tc => tc.name)
-      });
-
       const contentElement = this.element.querySelector('.message-content');
       if (contentElement) {
         const accordion = new ToolAccordion(this.message.toolCalls);
@@ -210,12 +204,6 @@ export class MessageBubble extends Component {
       const hasResults = this.message.toolCalls.some(tc => tc.result !== undefined || tc.success !== undefined);
 
       if (hasResults) {
-        console.log('[MessageBubble] Rendering tool accordion for completed assistant tool calls:', {
-          messageId: this.message.id,
-          toolCallCount: this.message.toolCalls.length,
-          toolNames: this.message.toolCalls.map(tc => tc.name)
-        });
-
         const contentElement = this.element.querySelector('.message-content');
         if (contentElement) {
           const accordion = new ToolAccordion(this.message.toolCalls);

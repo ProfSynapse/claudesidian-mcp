@@ -38,6 +38,49 @@ export class WorkspaceService {
   }
 
   /**
+   * Get workspaces with flexible sorting and filtering (uses index only - lightweight and fast)
+   */
+  async getWorkspaces(options?: {
+    sortBy?: 'name' | 'created' | 'lastAccessed',
+    sortOrder?: 'asc' | 'desc',
+    limit?: number
+  }): Promise<WorkspaceMetadata[]> {
+    const index = await this.indexManager.loadWorkspaceIndex();
+    let workspaces = Object.values(index.workspaces);
+
+    // Apply sorting
+    const sortBy = options?.sortBy || 'lastAccessed';
+    const sortOrder = options?.sortOrder || 'desc';
+
+    workspaces.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'created':
+          comparison = a.created - b.created;
+          break;
+        case 'lastAccessed':
+        default:
+          comparison = a.lastAccessed - b.lastAccessed;
+          break;
+      }
+
+      // Apply sort order
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    // Apply limit if specified
+    if (options?.limit) {
+      workspaces = workspaces.slice(0, options.limit);
+    }
+
+    return workspaces;
+  }
+
+  /**
    * Get full workspace with sessions and traces (loads individual file)
    */
   async getWorkspace(id: string): Promise<IndividualWorkspace | null> {
@@ -48,7 +91,6 @@ export class WorkspaceService {
       return null;
     }
 
-    console.log(`[WorkspaceService] Loaded workspace: ${id} with ${Object.keys(workspace.sessions).length} sessions`);
     return workspace;
   }
 

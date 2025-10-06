@@ -208,6 +208,7 @@ export interface LoadStateParams extends CommonParameters {
 export interface ListWorkspacesParameters extends CommonParameters {
   sortBy?: 'name' | 'created' | 'lastAccessed';
   order?: 'asc' | 'desc';
+  limit?: number;
 }
 
 export interface EditWorkspaceParameters extends CommonParameters {
