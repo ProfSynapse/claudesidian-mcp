@@ -149,20 +149,58 @@ export class MessageManager {
           }
 
           if (chunk.complete) {
-            // Update conversation with final accumulated content
-            const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-            if (placeholderMessageIndex >= 0) {
-              conversation.messages[placeholderMessageIndex] = {
-                ...conversation.messages[placeholderMessageIndex],
-                content: streamedContent,
-                toolCalls: toolCalls
-              };
-            }
+            // Check if this is TRULY the final complete (tool calls have results, or no tool calls)
+            const hasToolCalls = toolCalls && toolCalls.length > 0;
+            const toolCallsHaveResults = hasToolCalls && toolCalls!.some((tc: any) =>
+              tc.result !== undefined || tc.success !== undefined
+            );
+            const isFinalComplete = !hasToolCalls || toolCallsHaveResults;
 
-            // Send final complete content for any final processing
-            this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false); // isComplete = true, isIncremental = false
-            // Streaming complete - conversation updated without re-render
-            break;
+            console.log('[MessageManager] Received complete chunk:', {
+              hasToolCalls,
+              toolCallsHaveResults,
+              isFinalComplete,
+              toolCallsSample: toolCalls?.[0]
+            });
+
+            if (isFinalComplete) {
+              // This is the FINAL complete - either no tools or tools with results
+              // Update conversation with final accumulated content AND tool calls with results
+              const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+              if (placeholderMessageIndex >= 0) {
+                conversation.messages[placeholderMessageIndex] = {
+                  ...conversation.messages[placeholderMessageIndex],
+                  content: streamedContent,
+                  toolCalls: toolCalls  // Include tool calls with execution results
+                };
+
+                console.log('[MessageManager] Updated message with toolCalls:', {
+                  messageId: aiMessageId,
+                  hasToolCalls: !!toolCalls,
+                  toolCallsLength: toolCalls?.length ?? 0,
+                  toolCallsWithResults: toolCalls?.map((tc: any) => ({
+                    id: tc.id,
+                    name: tc.name,
+                    hasResult: !!tc.result,
+                    hasSuccess: tc.success !== undefined
+                  }))
+                });
+              }
+
+              // CRITICAL: Save conversation to storage BEFORE reloading
+              // This ensures tool calls with results are persisted
+              await this.chatService.updateConversation(conversation);
+              console.log('[MessageManager] Conversation saved to storage with toolCalls');
+
+              // Send final complete content for any final processing
+              this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false); // isComplete = true, isIncremental = false
+              // Streaming complete - conversation updated without re-render
+              break;
+            } else {
+              // This is an intermediate complete (tools detected but not yet executed)
+              // Continue listening for the final complete with tool results
+              console.log('[MessageManager] Intermediate complete - waiting for tool execution results');
+            }
           }
         }
 
@@ -171,6 +209,10 @@ export class MessageManager {
         if (freshConversation) {
           // Update the conversation object with fresh data
           Object.assign(conversation, freshConversation);
+          console.log('[MessageManager] Reloaded conversation from storage:', {
+            messageCount: freshConversation.messages.length,
+            lastMessageHasToolCalls: !!freshConversation.messages[freshConversation.messages.length - 1]?.toolCalls
+          });
         }
 
         // Notify that conversation has been updated

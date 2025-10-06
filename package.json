@@ -9,7 +9,6 @@
         "version": "node version-bump.mjs && git add manifest.json versions.json",
         "test": "jest",
         "lint": "eslint . --ext .ts",
-        "build-connector": "tsc connector.ts --outDir . --esModuleInterop true --module commonjs --skipLibCheck",
         "deploy": "npm run build && powershell.exe -ExecutionPolicy Bypass -File .\\postbuild.ps1"
     },
     "engines": {

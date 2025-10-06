@@ -169,6 +169,30 @@ export class WorkspaceService {
   }
 
   /**
+   * Update last accessed timestamp for a workspace
+   * Lightweight operation that only updates the timestamp in both file and index
+   */
+  async updateLastAccessed(id: string): Promise<void> {
+    // Load existing workspace
+    const workspace = await this.fileSystem.readWorkspace(id);
+
+    if (!workspace) {
+      throw new Error(`Workspace ${id} not found`);
+    }
+
+    // Update only the lastAccessed timestamp
+    workspace.lastAccessed = Date.now();
+
+    // Write updated workspace
+    await this.fileSystem.writeWorkspace(id, workspace);
+
+    // Update index
+    await this.indexManager.updateWorkspaceInIndex(workspace);
+
+    console.log(`[WorkspaceService] Updated last accessed timestamp: ${id}`);
+  }
+
+  /**
    * Delete workspace (deletes file + removes from index)
    */
   async deleteWorkspace(id: string): Promise<void> {

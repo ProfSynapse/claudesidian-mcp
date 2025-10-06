@@ -5,7 +5,6 @@
  */
 
 import { ConversationMessage } from '../../../types/chat/ChatTypes';
-import { ToolAccordion } from './ToolAccordion';
 import { ProgressiveToolAccordion } from './ProgressiveToolAccordion';
 import { MessageBranchNavigator, MessageBranchNavigatorEvents } from './MessageBranchNavigator';
 import { MarkdownRenderer } from '../utils/MarkdownRenderer';
@@ -14,8 +13,10 @@ import { setIcon, Component, App } from 'obsidian';
 export class MessageBubble extends Component {
   private element: HTMLElement | null = null;
   private loadingInterval: any = null;
-  private progressiveToolAccordions: Map<string, ProgressiveToolAccordion> = new Map();
+  private progressiveToolAccordions: Map<string, ProgressiveToolAccordion> = new Map(); // Keyed by tool.id
   private messageBranchNavigator: MessageBranchNavigator | null = null;
+  private toolBubbleElement: HTMLElement | null = null; // Separate tool bubble
+  private textBubbleElement: HTMLElement | null = null; // Separate text bubble
 
   constructor(
     private message: ConversationMessage,
@@ -31,9 +32,33 @@ export class MessageBubble extends Component {
 
   /**
    * Create the message bubble element
+   * For assistant messages with toolCalls, returns a fragment containing tool bubble + text bubble
    */
   createElement(): HTMLElement {
-    // Create wrapper container that holds both bubble and actions
+    // Check if we need to split into tool bubble + text bubble
+    const hasToolCalls = this.message.role === 'assistant' && this.message.toolCalls && this.message.toolCalls.length > 0;
+
+    if (hasToolCalls) {
+      // Create a wrapper fragment that will hold both bubbles
+      const wrapper = document.createElement('div');
+      wrapper.addClass('message-group');
+      wrapper.setAttribute('data-message-id', this.message.id);
+
+      // Create tool bubble
+      this.toolBubbleElement = this.createToolBubble();
+      wrapper.appendChild(this.toolBubbleElement);
+
+      // Create text bubble (if there's content)
+      if (this.message.content && this.message.content.trim()) {
+        this.textBubbleElement = this.createTextBubble();
+        wrapper.appendChild(this.textBubbleElement);
+      }
+
+      this.element = wrapper;
+      return wrapper;
+    }
+
+    // Normal single bubble for user messages or assistant without tools
     const messageContainer = document.createElement('div');
     messageContainer.addClass('message-container');
     messageContainer.addClass(`message-${this.message.role}`);
@@ -153,6 +178,116 @@ export class MessageBubble extends Component {
   }
 
   /**
+   * Create tool bubble containing multiple tool accordions
+   */
+  private createToolBubble(): HTMLElement {
+    const toolContainer = document.createElement('div');
+    toolContainer.addClass('message-container');
+    toolContainer.addClass('message-tool');
+    toolContainer.setAttribute('data-message-id', `${this.message.id}_tools`);
+
+    const bubble = toolContainer.createDiv('message-bubble tool-bubble');
+
+    // Header with wrench icon
+    const header = bubble.createDiv('message-header');
+    const roleIcon = header.createDiv('message-role-icon');
+    setIcon(roleIcon, 'wrench');
+
+    // Content area for tool accordions
+    const content = bubble.createDiv('tool-bubble-content');
+
+    // Create one ProgressiveToolAccordion per tool
+    if (this.message.toolCalls) {
+      this.message.toolCalls.forEach(toolCall => {
+        const accordion = new ProgressiveToolAccordion();
+        const accordionEl = accordion.createElement();
+
+        // Initialize accordion with completed state from JSON
+        accordion.detectTool({
+          id: toolCall.id,
+          name: toolCall.name || toolCall.function?.name || 'Unknown Tool',
+          parameters: toolCall.parameters,
+          isComplete: true
+        });
+
+        // If tool has results, mark as completed
+        if (toolCall.result !== undefined || toolCall.success !== undefined) {
+          accordion.completeTool(
+            toolCall.id,
+            toolCall.result,
+            toolCall.success !== false,
+            toolCall.error
+          );
+        }
+
+        content.appendChild(accordionEl);
+        this.progressiveToolAccordions.set(toolCall.id, accordion);
+      });
+    }
+
+    return toolContainer;
+  }
+
+  /**
+   * Create text bubble containing only the assistant response text
+   */
+  private createTextBubble(): HTMLElement {
+    const messageContainer = document.createElement('div');
+    messageContainer.addClass('message-container');
+    messageContainer.addClass('message-assistant');
+    messageContainer.setAttribute('data-message-id', `${this.message.id}_text`);
+
+    const bubble = messageContainer.createDiv('message-bubble');
+
+    // Header with bot icon
+    const header = bubble.createDiv('message-header');
+    const roleIcon = header.createDiv('message-role-icon');
+    setIcon(roleIcon, 'bot');
+
+    // Message content
+    const content = bubble.createDiv('message-content');
+
+    // Render content with enhanced markdown support
+    const activeContent = this.getActiveMessageContent(this.message);
+    this.renderContent(content, activeContent).catch(error => {
+      console.error('[MessageBubble] Error rendering text bubble content:', error);
+    });
+
+    // Actions for text bubble
+    const actions = messageContainer.createDiv('message-actions-external');
+
+    // Copy button
+    const copyBtn = actions.createEl('button', {
+      cls: 'message-action-btn',
+      attr: { title: 'Copy message' }
+    });
+    setIcon(copyBtn, 'copy');
+    copyBtn.addEventListener('click', () => {
+      this.showCopyFeedback(copyBtn);
+      this.onCopy(this.message.id);
+    });
+
+    // Message branch navigator for messages with alternatives
+    if (this.message.alternatives && this.message.alternatives.length > 0) {
+      const navigatorContainer = actions.createDiv('message-branch-navigator-container');
+
+      const navigatorEvents: MessageBranchNavigatorEvents = {
+        onAlternativeChanged: (messageId, alternativeIndex) => {
+          if (this.onMessageAlternativeChanged) {
+            this.onMessageAlternativeChanged(messageId, alternativeIndex);
+          }
+        },
+        onError: (message) => console.error('[MessageBubble] Branch navigation error:', message)
+      };
+
+      this.messageBranchNavigator = new MessageBranchNavigator(navigatorContainer, navigatorEvents);
+      this.messageBranchNavigator.updateMessage(this.message);
+    }
+
+    return messageContainer;
+  }
+
+  /**
    * Render message content using enhanced markdown renderer
    */
   private async renderContent(container: HTMLElement, content: string): Promise<void> {
@@ -172,46 +307,7 @@ export class MessageBubble extends Component {
       pre.textContent = content;
     }
 
-    // Add tool accordion if there are tool calls (after content is rendered)
-    this.renderToolCalls();
-  }
-
-  /**
-   * Render tool calls accordion for tool role messages and assistant messages with completed tool calls
-   */
-  private renderToolCalls(): void {
-    if (!this.element) return;
-
-    // Only render for messages with tool calls
-    if (!this.message.toolCalls || this.message.toolCalls.length === 0) {
-      return;
-    }
-
-    // Render for tool role messages (legacy format)
-    if (this.message.role === 'tool') {
-      const contentElement = this.element.querySelector('.message-content');
-      if (contentElement) {
-        const accordion = new ToolAccordion(this.message.toolCalls);
-        const accordionEl = accordion.createElement();
-        contentElement.appendChild(accordionEl);
-      }
-      return;
-    }
-
-    // Render for assistant messages with completed tool calls (NEW format)
-    if (this.message.role === 'assistant' && this.message.toolCalls.length > 0) {
-      // Check if tool calls have results (meaning they've been executed)
-      const hasResults = this.message.toolCalls.some(tc => tc.result !== undefined || tc.success !== undefined);
-
-      if (hasResults) {
-        const contentElement = this.element.querySelector('.message-content');
-        if (contentElement) {
-          const accordion = new ToolAccordion(this.message.toolCalls);
-          const accordionEl = accordion.createElement();
-          contentElement.appendChild(accordionEl);
-        }
-      }
-    }
+    // Tool calls are now rendered separately in createToolBubble() or via handleToolEvent()
   }
 
 
@@ -338,10 +434,23 @@ export class MessageBubble extends Component {
 
     // Stop any loading animations
     this.stopLoadingAnimation();
-    
+
+    // If we have progressive accordions, preserve them during content update
+    // Save reference to progressive accordion elements before clearing
+    const progressiveAccordions: HTMLElement[] = [];
+    if (this.progressiveToolAccordions.size > 0) {
+      const accordionElements = contentElement.querySelectorAll('.progressive-tool-accordion');
+      accordionElements.forEach(el => {
+        if (el instanceof HTMLElement) {
+          progressiveAccordions.push(el);
+          el.remove(); // Temporarily remove from DOM
+        }
+      });
+    }
+
     // Clear any existing content
     contentElement.empty();
-    
+
     // Render final content using Obsidian's markdown renderer
     this.renderContent(contentElement as HTMLElement, content).catch(error => {
       console.error('[MessageBubble] Error rendering content:', error);
@@ -350,6 +459,15 @@ export class MessageBubble extends Component {
       fallbackDiv.textContent = content;
       contentElement.appendChild(fallbackDiv);
     });
+
+    // Re-append progressive accordions if they were preserved
+    // (renderContent will call renderToolCalls which creates static accordion if tools are complete)
+    // So we only re-append if progressive accordions still exist
+    if (this.progressiveToolAccordions.size > 0 && progressiveAccordions.length > 0) {
+      progressiveAccordions.forEach(accordion => {
+        contentElement.appendChild(accordion);
+      });
+    }
   }
 
 
@@ -363,21 +481,29 @@ export class MessageBubble extends Component {
       newId: newMessage.id,
       oldContent: this.message.content.substring(0, 30) + '...',
       newContent: newMessage.content.substring(0, 30) + '...',
-      hasProgressiveAccordions: this.progressiveToolAccordions.size > 0
+      hasProgressiveAccordions: this.progressiveToolAccordions.size > 0,
+      newMessageHasToolCalls: (newMessage.toolCalls?.length ?? 0) > 0
     });
 
-    // PROBLEM: This method completely re-renders and puts tool calls at the end
-    // We should avoid calling this if we already have progressive accordions
+    // If we have progressive accordions AND the message has completed tool calls,
+    // it's time to transition from progressive to static
     if (this.progressiveToolAccordions.size > 0 && newMessage.toolCalls) {
-      // Skip update - preserving progressive accordions
-      // Just update the stored message reference but don't re-render
-      this.message = newMessage;
-      
-      // Update branch navigator if it exists
-      if (this.messageBranchNavigator) {
-        this.messageBranchNavigator.updateMessage(newMessage);
+      const hasCompletedTools = newMessage.toolCalls.some(tc =>
+        tc.result !== undefined || tc.success !== undefined
+      );
+
+      if (hasCompletedTools) {
+        // Tools are complete - transition complete
+        console.log('[MessageBubble] Tool execution complete - accordions already showing results');
+        // No need to cleanup - ProgressiveToolAccordions already show completed state
+      } else {
+        // Tools still executing - preserve progressive accordion
+        this.message = newMessage;
+        if (this.messageBranchNavigator) {
+          this.messageBranchNavigator.updateMessage(newMessage);
+        }
+        return;
       }
-      return;
     }
 
     // Update stored message reference
@@ -415,6 +541,24 @@ export class MessageBubble extends Component {
   }
 
   /**
+   * Clean up progressive tool accordions and prepare for static accordion
+   */
+  private cleanupProgressiveAccordions(): void {
+    console.log('[MessageBubble] Cleaning up progressive accordions:', this.progressiveToolAccordions.size);
+
+    // Clean up all progressive accordions
+    this.progressiveToolAccordions.forEach(accordion => {
+      const element = accordion.getElement();
+      if (element) {
+        element.remove();  // Remove from DOM
+      }
+      accordion.cleanup();  // Clean up internal state
+    });
+
+    this.progressiveToolAccordions.clear();
+  }
+
+  /**
    * Get the active content for the message (original or alternative)
    */
   private getActiveMessageContent(message: ConversationMessage): string {
@@ -448,28 +592,41 @@ export class MessageBubble extends Component {
 
   /**
    * Handle tool events from MessageManager
-   * Supports progressive tool call display with streaming parameters
+   * Creates individual accordions per tool during streaming
    */
   handleToolEvent(event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
     console.log('[MessageBubble] Handling tool event:', event, data);
 
-    // Get or create progressive accordion for this message
-    let accordion = this.progressiveToolAccordions.get(this.message.id);
+    const toolId = data.id || data.toolId;
+    if (!toolId) {
+      console.warn('[MessageBubble] Tool event missing ID:', data);
+      return;
+    }
+
+    // Get or create accordion for THIS SPECIFIC TOOL
+    let accordion = this.progressiveToolAccordions.get(toolId);
+
     if (!accordion && (event === 'detected' || event === 'started')) {
+      // Create new accordion for this tool
       accordion = new ProgressiveToolAccordion();
       const accordionElement = accordion.createElement();
 
-      // Insert accordion into message bubble (after content, before any existing tool displays)
-      const contentElement = this.element?.querySelector('.message-content');
-      if (contentElement) {
-        contentElement.after(accordionElement);
+      // Ensure tool bubble exists
+      if (!this.toolBubbleElement) {
+        this.createToolBubbleOnDemand();
       }
 
-      this.progressiveToolAccordions.set(this.message.id, accordion);
+      // Insert accordion into tool bubble content
+      const toolContent = this.toolBubbleElement?.querySelector('.tool-bubble-content');
+      if (toolContent) {
+        toolContent.appendChild(accordionElement);
+      }
+
+      this.progressiveToolAccordions.set(toolId, accordion);
     }
 
     if (!accordion) {
-      console.warn('[MessageBubble] No accordion found for tool event:', event);
+      console.warn('[MessageBubble] No accordion found for tool:', toolId);
       return;
     }
 
@@ -478,7 +635,7 @@ export class MessageBubble extends Component {
       case 'detected':
         // Tool call detected - may have incomplete parameters
         accordion.detectTool({
-          id: data.id,
+          id: toolId,
           name: data.name,
           parameters: data.parameters,
           isComplete: data.isComplete
@@ -487,13 +644,13 @@ export class MessageBubble extends Component {
 
       case 'updated':
         // Parameters updated (now complete)
-        accordion.updateToolParameters(data.id, data.parameters, data.isComplete);
+        accordion.updateToolParameters(toolId, data.parameters, data.isComplete);
         break;
 
       case 'started':
         // Tool execution started
         accordion.startTool({
-          id: data.id || data.toolId,
+          id: toolId,
           name: data.name,
           parameters: data.parameters
         });
@@ -502,12 +659,41 @@ export class MessageBubble extends Component {
       case 'completed':
         // Tool execution completed
         accordion.completeTool(
-          data.toolId || data.id,
+          toolId,
           data.result,
           data.success,
           data.error
         );
         break;
+    }
+  }
+
+  /**
+   * Create tool bubble on-demand during streaming (when first tool is detected)
+   */
+  private createToolBubbleOnDemand(): void {
+    if (this.toolBubbleElement) return; // Already exists
+
+    const toolContainer = document.createElement('div');
+    toolContainer.addClass('message-container');
+    toolContainer.addClass('message-tool');
+    toolContainer.setAttribute('data-message-id', `${this.message.id}_tools`);
+
+    const bubble = toolContainer.createDiv('message-bubble tool-bubble');
+
+    // Header with wrench icon
+    const header = bubble.createDiv('message-header');
+    const roleIcon = header.createDiv('message-role-icon');
+    setIcon(roleIcon, 'wrench');
+
+    // Content area for tool accordions
+    bubble.createDiv('tool-bubble-content');
+
+    this.toolBubbleElement = toolContainer;
+
+    // Insert before the main message bubble (or at the beginning if no main bubble yet)
+    if (this.element) {
+      this.element.insertBefore(toolContainer, this.element.firstChild);
     }
   }
 
@@ -544,10 +730,9 @@ export class MessageBubble extends Component {
    */
   cleanup(): void {
     this.stopLoadingAnimation();
-    this.progressiveToolAccordions.forEach(accordion => {
-      accordion.cleanup();
-    });
-    this.progressiveToolAccordions.clear();
+
+    // Use centralized cleanup method
+    this.cleanupProgressiveAccordions();
 
     // Cleanup branch navigator
     if (this.messageBranchNavigator) {
