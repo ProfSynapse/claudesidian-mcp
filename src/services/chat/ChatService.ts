@@ -10,6 +10,7 @@ import { ConversationData, ConversationMessage, ToolCall, CreateConversationPara
 import { documentToConversationData } from '../../types/chat/ChatTypes';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { ConversationContextBuilder } from './ConversationContextBuilder';
+import { CostCalculator } from '../llm/adapters/CostCalculator';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -309,6 +310,10 @@ export class ChatService {
       let toolCallsSaved = false; // Track if we've saved the tool call message
       const detectedToolIds = new Set<string>(); // Track which tools we've already fired 'detected' for
 
+      // Track usage and cost for conversation tracking
+      let finalUsage: any = undefined;
+      let finalCost: any = undefined;
+
       for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
         // Check if aborted FIRST before processing chunk
         if (options?.abortSignal?.aborted) {
@@ -316,6 +321,11 @@ export class ChatService {
         }
 
         accumulatedContent += chunk.chunk;
+
+        // Extract usage for cost calculation
+        if (chunk.usage) {
+          finalUsage = chunk.usage;
+        }
 
         // Extract tool calls when available and handle progressive display
         if (chunk.toolCalls) {
@@ -367,6 +377,27 @@ export class ChatService {
 
         // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
+          // Calculate cost from final usage
+          if (finalUsage) {
+            const costBreakdown = CostCalculator.calculateCost(
+              provider,
+              llmOptions.model,
+              {
+                inputTokens: finalUsage.promptTokens,
+                outputTokens: finalUsage.completionTokens,
+                totalTokens: finalUsage.totalTokens,
+                source: 'provider_api'
+              }
+            );
+
+            if (costBreakdown) {
+              finalCost = {
+                totalCost: costBreakdown.totalCost,
+                currency: costBreakdown.currency
+              };
+            }
+          }
+
           // Save final response (pingpong result or direct response)
           if (toolCalls && toolCalls.length > 0) {
             // Had tool calls - save pingpong response as separate assistant message
@@ -377,7 +408,11 @@ export class ChatService {
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',
-              content: accumulatedContent // Pingpong response text
+              content: accumulatedContent, // Pingpong response text
+              cost: finalCost,
+              usage: finalUsage,
+              provider: provider,
+              model: llmOptions.model
               // No toolCalls - this is the response AFTER seeing tool results
             });
           } else {
@@ -386,7 +421,11 @@ export class ChatService {
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',
-              content: accumulatedContent
+              content: accumulatedContent,
+              cost: finalCost,
+              usage: finalUsage,
+              provider: provider,
+              model: llmOptions.model
             });
           }
         }
@@ -528,7 +567,8 @@ export class ChatService {
       title: conversation.title || 'Untitled Conversation',
       created: conversation.created || Date.now(),
       updated: conversation.updated || Date.now(),
-      messages: conversation.messages || []
+      messages: conversation.messages || [],
+      metadata: conversation.metadata // CRITICAL: Include metadata for cost tracking
     };
   }
 

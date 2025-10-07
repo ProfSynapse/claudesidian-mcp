@@ -11,29 +11,27 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
   - Exposes vault operations as MCP agents and modes
   - Implements secure access controls
 
+- 💬 Native AI Chat
+  - Talk to your agents directly inside Obsidian
+  - Streamed responses with live tool-call monitoring
+  - Conversation list, branching, and settings UI built into the chat view
+
+- 🧠 Workspace Memory System
+  - Session and state management scoped to workspaces
+  - JSON-based storage with per-workspace context and history
+  - No external embeddings or vector databases required
+
 - 📝 Vault Operations
   - Create and read notes
   - Search vault content
   - Manage file structure
   - Operate on frontmatter
 
-- 🧠 Memory Architecture
-  - Session and state management for workspaces
-  - JSON-based storage for vault organization
-  - Efficient keyword-based search capabilities
-  - Batch operations for efficiency
-
 - 🔍 Advanced Search System
   - Text search with keyword and fuzzy matching
   - Intelligent query analysis for optimal results
   - Enhanced metadata search with tag and property filtering
   - Memory search across conversation history and workspaces
-
-- 🔄 Automatic Data Migration
-  - Seamlessly migrates from previous versions
-  - Converts ChromaDB data to optimized JSON storage
-  - No data loss during upgrade process
-  - Maintains all workspace, session, and conversation history
 
 - 🏗️ Agent-Mode Architecture
   - Domain-driven design with specialized agents
@@ -54,18 +52,27 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
 4. Configure your claude desktop config file (instructions in the plugin settings)
 5. Restart obsidian (if it's open) and fully restart claude (you might have to go to your task manager and end the task, as it runs in the background if you just `x` out).
 
-## Data Migration
+## Native Chat Experience
 
-If you're upgrading from a previous version that used ChromaDB storage, the plugin will automatically migrate your data:
+Claudesidian now ships with a fully native chat view—no external chat clients required.
 
-- **Automatic Detection**: Plugin detects existing ChromaDB collections on startup
-- **Seamless Migration**: Converts all workspace, session, and conversation data to JSON format
-- **Data Preservation**: All your memory traces, conversation history, and workspace organization is maintained
-- **New Storage**: Data is stored in `.obsidian/plugins/claudesidian-mcp/.data/` as optimized JSON files
-- **Performance**: Faster startup and search with the new JSON-based architecture
-- **Migration Status**: Check the console logs (Ctrl+Shift+I) for detailed migration progress
+- Open `Settings → Claudesidian MCP → Agent Management → AI Chat` and enable the chat view
+- Access the chat via the new ribbon icon or the “Open AI Chat” command
+- Manage multiple conversations, branch assistant replies, and inspect tool calls as they stream in
+- Tool executions surface in real time through the progressive tool accordion, making it easy to follow multi-step workflows
 
-The migration happens automatically when you first load the updated plugin. Your original ChromaDB data is preserved for backup purposes.
+The chat view shares the same service stack as MCP mode calls, so every conversation can execute tools, access vault content, and store memory just like remote agents.
+
+## Workspace Memory System
+
+Memory is now organized around workspaces instead of embeddings. Each workspace captures its own sessions, memory traces, and state snapshots.
+
+- Workspaces, sessions, and traces live in `.workspaces/` at the root of your vault
+- Conversations are stored separately in `.conversations/`, each as individual JSON files with a lightweight index
+- A Default Workspace Manager ensures every tool call is associated with a workspace, even if you don’t specify one
+- Workspace metadata powers fast search and summarization without needing vector databases or external embedding services
+
+JSON storage keeps the system transparent, portable, and easy to sync between devices.
 
 ## Multi-Vault Support
 

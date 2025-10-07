@@ -445,15 +445,15 @@ export class LLMService {
    * Following OpenAI streaming pattern from: https://platform.openai.com/docs/guides/streaming-responses
    */
   async* generateResponseStream(
-    messages: Array<{ role: string; content: string }>, 
-    options?: { 
+    messages: Array<{ role: string; content: string }>,
+    options?: {
       provider?: string;
       model?: string;
       systemPrompt?: string;
       tools?: any[];
       onToolEvent?: (event: 'started' | 'completed', data: any) => void;
     }
-  ): AsyncGenerator<{ chunk: string; complete: boolean; content: string; toolCalls?: any[]; toolCallsReady?: boolean }, void, unknown> {
+  ): AsyncGenerator<{ chunk: string; complete: boolean; content: string; toolCalls?: any[]; toolCallsReady?: boolean; usage?: any }, void, unknown> {
     try {
       // Validate settings
       if (!this.settings || !this.settings.defaultModel) {
@@ -512,11 +512,16 @@ export class LLMService {
       let fullContent = '';
       let detectedToolCalls: any[] = [];
       let completeToolCallsWithResults: any[] = []; // Store complete tool calls with execution results
+      let finalUsage: any = undefined; // Track usage for cost calculation
 
       // Store original messages for pingpong context (exclude the last user message which is userPrompt)
       const previousMessages = messages.slice(0, -1);
 
       for await (const chunk of adapter.generateStreamAsync(userPrompt, generateOptions)) {
+        // Track usage from chunks
+        if (chunk.usage) {
+          finalUsage = chunk.usage;
+        }
         // Handle text content streaming
         if (chunk.content) {
           fullContent += chunk.content;
@@ -761,12 +766,13 @@ export class LLMService {
         }
       }
       
-      // Yield final completion with complete tool calls (including results)
+      // Yield final completion with complete tool calls (including results) and usage
       yield {
         chunk: '',
         complete: true,
         content: fullContent,
-        toolCalls: completeToolCallsWithResults.length > 0 ? completeToolCallsWithResults : undefined
+        toolCalls: completeToolCallsWithResults.length > 0 ? completeToolCallsWithResults : undefined,
+        usage: finalUsage // Include usage for cost tracking
       };
 
     } catch (error) {

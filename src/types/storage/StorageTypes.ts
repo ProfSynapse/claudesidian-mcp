@@ -24,6 +24,10 @@ export interface IndividualConversation {
       agentId?: string;
       workspaceId?: string;
     };
+    // Conversation-level cost aggregation
+    totalCost?: number;
+    totalTokens?: number;
+    currency?: string;
   };
 }
 
@@ -39,6 +43,19 @@ export interface ConversationMessage {
   toolName?: string;
   toolParams?: any;
   toolResult?: any;
+
+  // Cost tracking (primarily for assistant messages)
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  cost?: {
+    totalCost: number;
+    currency: string;
+  };
+  provider?: string;
+  model?: string;
 }
 
 /**

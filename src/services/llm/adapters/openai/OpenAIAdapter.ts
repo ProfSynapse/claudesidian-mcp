@@ -101,7 +101,8 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
       const streamParams: any = {
         model,
         messages: this.buildMessages(prompt, options?.systemPrompt),
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true } // CRITICAL: Include usage data in stream
       };
 
       // Add optional parameters

@@ -147,6 +147,10 @@ export class ConversationService {
     role: 'user' | 'assistant' | 'tool';
     content: string;
     toolCalls?: any[];
+    cost?: { totalCost: number; currency: string };
+    usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+    provider?: string;
+    model?: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       // Load conversation
@@ -166,13 +170,29 @@ export class ConversationService {
         role: params.role,
         content: params.content,
         timestamp: Date.now(),
-        toolCalls: params.toolCalls || undefined
+        toolCalls: params.toolCalls || undefined,
+        cost: params.cost,
+        usage: params.usage,
+        provider: params.provider,
+        model: params.model
       };
 
       // Append message
       conversation.messages.push(message);
       conversation.message_count = conversation.messages.length;
       conversation.updated = Date.now();
+
+      // Update conversation-level cost summary
+      if (params.cost) {
+        conversation.metadata = conversation.metadata || {};
+        conversation.metadata.totalCost = (conversation.metadata.totalCost || 0) + params.cost.totalCost;
+        conversation.metadata.currency = params.cost.currency;
+      }
+
+      if (params.usage) {
+        conversation.metadata = conversation.metadata || {};
+        conversation.metadata.totalTokens = (conversation.metadata.totalTokens || 0) + params.usage.totalTokens;
+      }
 
       // Save conversation
       await this.fileSystem.writeConversation(params.conversationId, conversation);

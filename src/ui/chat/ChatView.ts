@@ -274,7 +274,8 @@ export class ChatView extends ItemView {
 
     this.contextProgressBar = new ContextProgressBar(
       refs.contextContainer,
-      () => this.getContextUsage()
+      () => this.getContextUsage(),
+      () => this.getConversationCost()
     );
 
     // Branch navigation is now handled at message level - no global navigator needed
@@ -496,6 +497,17 @@ export class ChatView extends ItemView {
       this.conversationManager.getCurrentConversation(),
       await this.modelAgentManager.getCurrentSystemPrompt()
     );
+  }
+
+  private getConversationCost(): { totalCost: number; currency: string } | null {
+    const conversation = this.conversationManager.getCurrentConversation();
+    if (!conversation?.metadata?.totalCost) {
+      return null;
+    }
+    return {
+      totalCost: conversation.metadata.totalCost,
+      currency: conversation.metadata.currency || 'USD'
+    };
   }
 
   private async updateContextProgress(): Promise<void> {

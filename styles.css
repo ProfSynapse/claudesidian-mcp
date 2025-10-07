@@ -2609,6 +2609,18 @@ a:hover {
     color: var(--text-faint);
 }
 
+/* Cost Badge */
+.chat-cost-badge {
+    margin-left: 12px;
+    padding: 2px 8px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
 .context-progress-bar-container {
     position: relative;
     height: 6px;

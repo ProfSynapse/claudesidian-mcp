@@ -16,11 +16,14 @@ export class ContextProgressBar {
   private element: HTMLElement | null = null;
   private progressBar: HTMLElement | null = null;
   private usageText: HTMLElement | null = null;
+  private costBadge: HTMLElement | null = null;
   private currentUsage: ContextUsage = { used: 0, total: 0, percentage: 0 };
+  private currentCost: { totalCost: number; currency: string } | null = null;
 
   constructor(
     private container: HTMLElement,
-    private getContextUsage: () => Promise<ContextUsage>
+    private getContextUsage: () => Promise<ContextUsage>,
+    private getConversationCost?: () => { totalCost: number; currency: string } | null
   ) {
     this.render();
   }
@@ -39,6 +42,10 @@ export class ContextProgressBar {
 
     this.usageText = header.createSpan('context-progress-usage');
     this.usageText.textContent = '0 / 0 tokens (0%)';
+
+    // Cost badge
+    this.costBadge = header.createSpan('chat-cost-badge');
+    this.costBadge.textContent = '$0.0000';
 
     // Progress bar container
     const progressContainer = this.container.createDiv('context-progress-bar-container');
@@ -76,6 +83,12 @@ export class ContextProgressBar {
   public async update(): Promise<void> {
     try {
       this.currentUsage = await this.getContextUsage();
+
+      // Update cost if callback provided
+      if (this.getConversationCost) {
+        this.currentCost = this.getConversationCost();
+      }
+
       this.updateDisplay();
     } catch (error) {
       console.error('[ContextProgressBar] Failed to update context usage:', error);
@@ -109,11 +122,18 @@ export class ContextProgressBar {
     // Update usage text
     const usedFormatted = this.formatTokenCount(used);
     const totalFormatted = this.formatTokenCount(total);
-    
+
     this.usageText.textContent = `${usedFormatted} / ${totalFormatted} tokens (${Math.round(percentage)}%)`;
-    
+
     // Add tooltip with more details
     this.usageText.title = this.createTooltipText();
+
+    // Update cost badge
+    if (this.costBadge) {
+      const cost = this.currentCost?.totalCost || 0;
+      this.costBadge.textContent = `$${cost.toFixed(4)}`;
+      this.costBadge.title = `Total conversation cost: $${cost.toFixed(6)}`;
+    }
   }
 
   /**
