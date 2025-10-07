@@ -31,7 +31,7 @@ export interface WorkspaceContext {
   workflows: Array<{
     name: string;           // "New Application", "Follow-up", "Interview Prep"
     when: string;           // "When applying to new position"
-    steps: string[];        // ["Research company", "Customize cover letter", "Apply", "Track"]
+    steps: string;          // "Research company\nCustomize cover letter\nApply\nTrack"
   }>;
 
   /**

@@ -91,6 +91,14 @@ export class WorkspaceService {
       return null;
     }
 
+    // Migrate legacy array-based workflow steps to string format
+    const migrated = this.migrateWorkflowSteps(workspace);
+    if (migrated) {
+      // Save migrated workspace back to storage
+      await this.fileSystem.writeWorkspace(id, workspace);
+      console.log(`[WorkspaceService] Migrated workflow steps for workspace: ${id}`);
+    }
+
     return workspace;
   }
 
@@ -104,6 +112,13 @@ export class WorkspaceService {
     for (const id of workspaceIds) {
       const workspace = await this.fileSystem.readWorkspace(id);
       if (workspace) {
+        // Migrate legacy array-based workflow steps to string format
+        const migrated = this.migrateWorkflowSteps(workspace);
+        if (migrated) {
+          // Save migrated workspace back to storage
+          await this.fileSystem.writeWorkspace(id, workspace);
+          console.log(`[WorkspaceService] Migrated workflow steps for workspace: ${id}`);
+        }
         workspaces.push(workspace);
       }
     }
@@ -486,5 +501,29 @@ export class WorkspaceService {
     const active = workspaces.find(ws => ws.isActive);
 
     return active || null;
+  }
+
+  /**
+   * Migrate legacy array-based workflow steps to string format
+   * @param workspace Workspace to migrate
+   * @returns true if migration was performed, false otherwise
+   */
+  private migrateWorkflowSteps(workspace: IndividualWorkspace): boolean {
+    if (!workspace.context?.workflows || workspace.context.workflows.length === 0) {
+      return false;
+    }
+
+    let migrated = false;
+
+    for (const workflow of workspace.context.workflows) {
+      // Check if steps is an array (legacy format)
+      if (Array.isArray(workflow.steps)) {
+        // Convert array to string with newlines
+        (workflow.steps as any) = (workflow.steps as string[]).join('\n');
+        migrated = true;
+      }
+    }
+
+    return migrated;
   }
 }

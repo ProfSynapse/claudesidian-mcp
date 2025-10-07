@@ -479,8 +479,8 @@ export class MemorySettingsTab {
                 const workflowInfo = workflowSummary.createDiv('workflow-info');
                 workflowInfo.style.flex = '1';
                 const workflowName = workflow.name || `Workflow ${index + 1}`;
-                const stepCount = workflow.steps?.length || 0;
-                workflowInfo.innerHTML = `<strong>${workflowName}</strong><br><small>${stepCount} steps</small>`;
+                const stepsPreview = workflow.steps ? workflow.steps.substring(0, 50) + (workflow.steps.length > 50 ? '...' : '') : 'No steps';
+                workflowInfo.innerHTML = `<strong>${workflowName}</strong><br><small>${stepsPreview}</small>`;
 
                 // Action buttons
                 const workflowActions = workflowSummary.createDiv('workflow-actions');
@@ -522,7 +522,7 @@ export class MemorySettingsTab {
                     const newWorkflow = {
                         name: '',
                         when: '',
-                        steps: []
+                        steps: ''
                     };
                     this.formData.context!.workflows.push(newWorkflow);
                     this.switchToWorkflowEditor(this.formData.context!.workflows.length - 1);
@@ -615,17 +615,14 @@ export class MemorySettingsTab {
         }
 
         // Get the workflow being edited
-        let workflow: { name: string; when: string; steps: string[] };
+        let workflow: { name: string; when: string; steps: string };
         const isNewWorkflow = this.editingWorkflowIndex === undefined ||
                              this.editingWorkflowIndex >= this.formData.context.workflows.length;
 
         if (isNewWorkflow) {
-            workflow = { name: '', when: '', steps: [''] };
+            workflow = { name: '', when: '', steps: '' };
         } else {
             workflow = { ...this.formData.context.workflows[this.editingWorkflowIndex!] };
-            if (workflow.steps.length === 0) {
-                workflow.steps = [''];
-            }
         }
 
         // Header with back button
@@ -673,60 +670,15 @@ export class MemorySettingsTab {
                 }));
 
         // Steps Section
-        const stepsSection = form.createDiv('workflow-steps-section');
-        stepsSection.style.marginTop = '20px';
-
-        stepsSection.createEl('h3', { text: 'Steps' });
-        stepsSection.createEl('p', {
-            text: 'Define the step-by-step process for this workflow',
-            cls: 'setting-item-description'
-        });
-
-        const stepsContainer = stepsSection.createDiv('workflow-steps-container');
-
-        const renderSteps = () => {
-            stepsContainer.empty();
-
-            workflow.steps.forEach((step, stepIndex) => {
-                const stepSetting = new Setting(stepsContainer)
-                    .setName(`Step ${stepIndex + 1}`)
-                    .addText(text => text
-                        .setPlaceholder('e.g., Research company, Customize cover letter')
-                        .setValue(step)
-                        .onChange(value => {
-                            workflow.steps[stepIndex] = value;
-                        }))
-                    .addButton(button => button
-                        .setButtonText('Remove')
-                        .setClass('mod-warning')
-                        .onClick(() => {
-                            workflow.steps.splice(stepIndex, 1);
-                            if (workflow.steps.length === 0) {
-                                workflow.steps.push('');
-                            }
-                            renderSteps();
-                        }));
-
-                if (workflow.steps.length === 1) {
-                    const removeButton = stepSetting.controlEl.querySelector('.mod-warning') as HTMLElement;
-                    if (removeButton) {
-                        removeButton.style.display = 'none';
-                    }
-                }
-            });
-
-            // Add Step button
-            new Setting(stepsContainer)
-                .addButton(button => button
-                    .setButtonText('+ Add Step')
-                    .setClass('mod-cta')
-                    .onClick(() => {
-                        workflow.steps.push('');
-                        renderSteps();
-                    }));
-        };
-
-        renderSteps();
+        new Setting(form)
+            .setName('Steps')
+            .setDesc('Define the step-by-step process for this workflow (one per line or as paragraphs)')
+            .addTextArea(text => text
+                .setPlaceholder('e.g., Research company\nCustomize cover letter\nApply\nTrack')
+                .setValue(workflow.steps)
+                .onChange(value => {
+                    workflow.steps = value;
+                }));
 
         // Action buttons
         const actionsContainer = editSection.createDiv('workflow-edit-actions');
@@ -937,7 +889,7 @@ export class MemorySettingsTab {
     /**
      * Save workflow and return to workspace edit
      */
-    private saveWorkflow(workflow: { name: string; when: string; steps: string[] }, isNewWorkflow: boolean): void {
+    private saveWorkflow(workflow: { name: string; when: string; steps: string }, isNewWorkflow: boolean): void {
         if (!workflow.name.trim()) {
             alert('Workflow name is required');
             return;
@@ -948,8 +900,7 @@ export class MemorySettingsTab {
             return;
         }
 
-        workflow.steps = workflow.steps.filter(step => step.trim());
-        if (workflow.steps.length === 0) {
+        if (!workflow.steps.trim()) {
             alert('At least one step is required');
             return;
         }

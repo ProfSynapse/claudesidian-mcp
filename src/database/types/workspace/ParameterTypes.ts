@@ -35,13 +35,13 @@ export interface CreateWorkspaceParameters extends CommonParameters {
   
   /**
    * Workflows for different situations (required)
-   * Provide an array of workflows with name, when to use, and steps
-   * Example: [{"name": "New Application", "when": "When applying to new position", "steps": ["Research company", "Customize cover letter", "Apply", "Track"]}]
+   * Provide an array of workflows with name, when to use, and steps as a single string
+   * Example: [{"name": "New Application", "when": "When applying to new position", "steps": "Research company\nCustomize cover letter\nApply\nTrack"}]
    */
   workflows: Array<{
     name: string;
     when: string;
-    steps: string[];
+    steps: string;
   }>;
 
   /**
@@ -194,6 +194,7 @@ export interface LoadStateResult extends CommonResult {
 // Legacy parameter types for backward compatibility
 export interface LoadWorkspaceParameters extends CommonParameters {
   id: string;
+  limit?: number; // Optional limit for sessions, states, and recentActivity (default: 3)
 }
 
 export interface LoadStateParams extends CommonParameters {

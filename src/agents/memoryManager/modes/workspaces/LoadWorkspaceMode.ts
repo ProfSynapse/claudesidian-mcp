@@ -138,28 +138,33 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         console.warn('[LoadWorkspaceMode] Failed to update last accessed timestamp:', updateError);
         // Continue - this is not critical
       }
-      
+
+      // Get limit from params (default to 3)
+      const limit = params.limit ?? 3;
+
       // Build actionable context briefing
-      const context = await this.buildContextBriefing(workspace);
-      
+      const context = await this.buildContextBriefing(workspace, limit);
+
       // Build workflows array
       const workflows = this.buildWorkflows(workspace);
-      
+
       // Extract key files
       const keyFiles = this.extractKeyFiles(workspace);
-      
+
       // Build preferences summary
       const preferences = this.buildPreferences(workspace);
-      
+
       // Get memory service for sessions and states data
       const memoryService = this.agent.getMemoryService();
-      
-      // Fetch sessions for this workspace
+
+      // Fetch sessions for this workspace and apply limit
       const sessions = await this.fetchWorkspaceSessions(workspace.id, memoryService);
-      
-      // Fetch states for this workspace
+      const limitedSessions = sessions.slice(0, limit);
+
+      // Fetch states for this workspace and apply limit
       const states = await this.fetchWorkspaceStates(workspace.id, memoryService);
-      
+      const limitedStates = states.slice(0, limit);
+
       // Fetch agent data if workspace has associated agents
       const agent = await this.fetchWorkspaceAgent(workspace);
 
@@ -183,8 +188,8 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           recentFiles: recentFiles,
           keyFiles: keyFiles,
           preferences: preferences,
-          sessions: sessions,
-          states: states,
+          sessions: limitedSessions,
+          states: limitedStates,
           ...(agent && { agent: agent })
         },
         workspaceContext: workspaceContext
@@ -194,11 +199,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       if (workspacePathResult.failed) {
         (result.data.context as any).recentActivity.push("Note: Workspace directory navigation unavailable. Use vaultManager listDirectoryMode to explore the workspace folder structure.");
       }
-      
-      // CRITICAL: Force memory cleanup after workspace loading
-      // This is essential because memory traces can consume significant memory
-      this.forceMemoryCleanup(`LoadWorkspaceMode completed for workspace ${params.id}`);
-      
+
       return result;
       
     } catch (error: any) {
@@ -207,10 +208,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         stack: error.stack,
         params: params
       });
-      
-      // CRITICAL: Force cleanup even on error to prevent memory leaks
-      this.forceMemoryCleanup(`LoadWorkspaceMode error cleanup for workspace ${params.id}`);
-      
+
       return {
         success: false,
         error: createErrorMessage('Unexpected error loading workspace: ', error),
@@ -238,22 +236,22 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
   /**
    * Build a contextual briefing for the workspace as JSON object
    */
-  private async buildContextBriefing(workspace: ProjectWorkspace): Promise<{
+  private async buildContextBriefing(workspace: ProjectWorkspace, limit: number): Promise<{
     name: string;
     description?: string;
     purpose?: string;
     rootFolder: string;
     recentActivity: string[];
   }> {
-    
+
     // Get memory service for recent activity
     const memoryService = this.agent.getMemoryService();
-    
+
     let recentActivity: string[] = [];
-    
+
     if (memoryService) {
       try {
-        recentActivity = await this.getRecentActivity(workspace.id, memoryService);
+        recentActivity = await this.getRecentActivity(workspace.id, memoryService, limit);
       } catch (error) {
         console.error(`[LoadWorkspaceMode] getRecentActivity failed:`, error);
         recentActivity = [`Recent activity error: ${error instanceof Error ? error.message : String(error)}`];
@@ -261,7 +259,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     } else {
       recentActivity = ["No recent activity"];
     }
-    
+
     const finalActivity = recentActivity.length > 0 ? recentActivity : ["No recent activity"];
 
     return {
@@ -282,8 +280,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
     }
 
     return workspace.context.workflows.map(workflow => {
-      const steps = workflow.steps.map(step => `  - ${step}`).join('\n');
-      return `**${workflow.name}** (${workflow.when}):\n${steps}`;
+      return `**${workflow.name}** (${workflow.when}):\n${workflow.steps}`;
     });
   }
   
@@ -423,125 +420,43 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
 
   /**
    * Get recent activity from memory traces
+   * Extracts sessionMemory from trace metadata to show what the LLM was doing
    */
-  private async getRecentActivity(workspaceId: string, memoryService: any): Promise<string[]> {
-    let traces: any[] = [];
+  private async getRecentActivity(workspaceId: string, memoryService: any, limit: number): Promise<string[]> {
     try {
-      traces = await memoryService.getMemoryTraces(workspaceId, 5);
-      
-      if (traces.length > 0) {
+      // Get all traces from workspace (across all sessions)
+      const traces = await memoryService.getMemoryTraces(workspaceId);
+
+      if (!traces || traces.length === 0) {
+        return ["No recent activity"];
       }
-      
-      const sessionMemories = this.extractSessionMemories(traces);
-      
-      // CRITICAL MEMORY CLEANUP: Clear large trace data immediately after processing
-      this.cleanupTraceMemory(traces);
-      
-      return sessionMemories;
+
+      // Sort by timestamp descending (newest first)
+      traces.sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0));
+
+      // Extract sessionMemory from trace metadata
+      const activities: string[] = [];
+      for (let i = 0; i < Math.min(limit, traces.length); i++) {
+        const trace = traces[i];
+
+        // Try to get sessionMemory from metadata (where it actually is stored)
+        const sessionMemory =
+          trace.metadata?.request?.normalizedParams?.context?.sessionMemory ||
+          trace.metadata?.request?.originalParams?.context?.sessionMemory;
+
+        if (sessionMemory && sessionMemory.trim()) {
+          activities.push(sessionMemory);
+        } else {
+          // Fallback to trace content if no sessionMemory
+          activities.push(trace.content || "Unknown activity");
+        }
+      }
+
+      return activities.length > 0 ? activities : ["No recent activity"];
     } catch (error) {
       console.warn('[LoadWorkspaceMode] Failed to get recent activity:', error);
-      // Cleanup traces even on error
-      if (traces.length > 0) {
-        this.cleanupTraceMemory(traces);
-      }
       return ["Recent activity unavailable"];
     }
-  }
-
-  /**
-   * Clean up memory trace data to prevent memory leaks
-   * This is critical because traces can contain large data arrays
-   */
-  private cleanupTraceMemory(traces: any[]): void {
-    if (!traces || traces.length === 0) return;
-    
-    // Clear large data arrays
-    traces.forEach(trace => {
-      
-      // Clear large document content after we've extracted what we need
-      if (trace.content && trace.content.length > 1000) {
-        trace.content = null;
-      }
-      
-      // Clear large metadata objects
-      if (trace.metadata) {
-        // Keep essential fields, clear large ones
-        if (trace.metadata.params) trace.metadata.params = null;
-        if (trace.metadata.result) trace.metadata.result = null;
-      }
-    });
-    
-    // Clear the array itself
-    traces.length = 0;
-  }
-
-  /**
-   * Force garbage collection and memory cleanup
-   * This is critical after loading memory traces to prevent memory bloat
-   */
-  private forceMemoryCleanup(operation: string): void {
-    try {
-      // Log memory usage before cleanup (if available)
-      if (typeof (global as any).gc === 'function') {
-        console.debug(`[LoadWorkspaceMode] ${operation} - Forcing garbage collection`);
-        (global as any).gc();
-      } else if (typeof window !== 'undefined' && (window as any).gc) {
-        console.debug(`[LoadWorkspaceMode] ${operation} - Forcing browser garbage collection`);
-        (window as any).gc();
-      }
-      
-      // Additional cleanup hints
-      if (typeof global !== 'undefined' && global.gc) {
-        global.gc();
-      }
-      
-      // Schedule delayed cleanup to catch any remaining references
-      setTimeout(() => {
-        try {
-          if (typeof (global as any).gc === 'function') {
-            (global as any).gc();
-          }
-        } catch (e) {
-          // Ignore GC errors
-        }
-      }, 100);
-      
-    } catch (error) {
-      // Garbage collection is not always available, that's fine
-      console.debug(`[LoadWorkspaceMode] ${operation} - GC not available, relying on natural cleanup`);
-    }
-  }
-
-  /**
-   * Extract sessionMemory values from memory traces
-   */
-  private extractSessionMemories(traces: any[]): string[] {
-    const sessionMemories: string[] = [];
-    
-    for (let i = 0; i < traces.length; i++) {
-      const trace = traces[i];
-      
-      try {
-        // Parse the structured document from content
-        let document: any;
-        try {
-          document = JSON.parse(trace.content);
-        } catch (parseError) {
-          continue;
-        }
-        
-        // Extract sessionMemory from structured document
-        if (document.request?.context?.sessionMemory) {
-          const sessionMemory = document.request.context.sessionMemory;
-          sessionMemories.push(sessionMemory);
-        } else {
-        }
-      } catch (error) {
-        continue;
-      }
-    }
-    
-    return sessionMemories.slice(0, 5);
   }
 
   
@@ -760,11 +675,18 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         id: {
           type: 'string',
           description: 'Workspace ID to load (REQUIRED)'
+        },
+        limit: {
+          type: 'number',
+          description: 'Optional limit for sessions, states, and recentActivity returned (default: 3)',
+          default: 3,
+          minimum: 1,
+          maximum: 20
         }
       },
       required: ['id']
     };
-    
+
     // Merge with common schema (adds sessionId, workspaceContext)
     return this.getMergedSchema(modeSchema);
   }

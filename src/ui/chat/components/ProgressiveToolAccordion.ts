@@ -181,21 +181,24 @@ export class ProgressiveToolAccordion {
     const failed = this.tools.filter(t => t.status === 'failed');
     const total = this.tools.length;
 
-    // Update icon based on status
+    // Update icon based on status with color states
     if (executing.length > 0) {
       icon.empty();
-      setIcon(icon, 'loader'); // Executing
+      setIcon(icon, 'loader'); // Executing - spinning
       icon.addClass('tool-executing');
+      icon.removeClass('tool-success', 'tool-failed');
       header.addClass('tool-executing');
     } else if (failed.length > 0) {
       icon.empty();
-      setIcon(icon, 'alert-triangle'); // Some failed
-      icon.removeClass('tool-executing');
+      setIcon(icon, 'alert-triangle'); // Some failed - orange
+      icon.addClass('tool-failed');
+      icon.removeClass('tool-executing', 'tool-success');
       header.removeClass('tool-executing');
     } else {
       icon.empty();
-      setIcon(icon, 'check-circle'); // All completed
-      icon.removeClass('tool-executing');
+      setIcon(icon, 'check-circle'); // All completed - green
+      icon.addClass('tool-success');
+      icon.removeClass('tool-executing', 'tool-failed');
       header.removeClass('tool-executing');
     }
 
@@ -242,12 +245,8 @@ export class ProgressiveToolAccordion {
 
     // Tool header
     const header = item.createDiv('progressive-tool-header-item');
-    
-    // Status indicator
-    const statusIcon = header.createSpan('tool-status-icon');
-    this.updateStatusIcon(statusIcon, tool.status);
-    
-    // Tool name
+
+    // Tool name (no status icon - it's in the accordion header now)
     const name = header.createSpan('tool-name');
     name.textContent = tool.name;
     
@@ -291,11 +290,7 @@ export class ProgressiveToolAccordion {
     item.className = item.className.replace(/tool-(pending|streaming|executing|completed|failed)/g, '');
     item.addClass(`tool-${tool.status}`);
 
-    // Update status icon
-    const statusIcon = item.querySelector('.tool-status-icon') as HTMLElement;
-    this.updateStatusIcon(statusIcon, tool.status);
-
-    // Update execution meta
+    // Update execution meta (status icon removed - now only in accordion header)
     const meta = item.querySelector('.tool-meta') as HTMLElement;
     this.updateExecutionMeta(meta, tool);
 
@@ -375,42 +370,9 @@ export class ProgressiveToolAccordion {
       paramsContent.removeClass('tool-parameters-streaming');
     }
 
-    // Update status icon and classes
-    const statusIcon = item.querySelector('.tool-status-icon') as HTMLElement;
-    this.updateStatusIcon(statusIcon, tool.status);
-
+    // Update status classes (status icon removed - now only in accordion header)
     item.className = item.className.replace(/tool-(pending|streaming|executing|completed|failed)/g, '');
     item.addClass(`tool-${tool.status}`);
-  }
-
-  /**
-   * Update status icon based on tool status
-   */
-  private updateStatusIcon(iconElement: HTMLElement, status: string): void {
-    iconElement.empty();
-    switch (status) {
-      case 'pending':
-        setIcon(iconElement, 'clock');
-        iconElement.removeClass('spinning');
-        break;
-      case 'streaming':
-        setIcon(iconElement, 'file-text');
-        iconElement.addClass('pulsing'); // Use pulsing animation instead of spinning
-        break;
-      case 'executing':
-        setIcon(iconElement, 'loader');
-        iconElement.removeClass('pulsing');
-        iconElement.addClass('spinning');
-        break;
-      case 'completed':
-        setIcon(iconElement, 'check-circle');
-        iconElement.removeClass('spinning', 'pulsing');
-        break;
-      case 'failed':
-        setIcon(iconElement, 'x-circle');
-        iconElement.removeClass('spinning', 'pulsing');
-        break;
-    }
   }
 
   /**

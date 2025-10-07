@@ -732,6 +732,16 @@
     animation: toolSpin 1s linear infinite;
 }
 
+/* Success state - green checkmark */
+.tool-icon.tool-success {
+    color: #22c55e;
+}
+
+/* Failure state - orange hazard */
+.tool-icon.tool-failed {
+    color: #f59e0b;
+}
+
 @keyframes toolSpin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
