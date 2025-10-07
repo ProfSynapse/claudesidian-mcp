@@ -38,8 +38,6 @@ export class CacheManager {
             return;
         }
 
-        console.log('Initializing CacheManager...');
-
         // Initialize EntityCache
         if (this.options.enableEntityCache) {
             this.entityCache = new EntityCache(
@@ -51,14 +49,12 @@ export class CacheManager {
                     maxSize: this.options.maxCacheSize
                 }
             );
-            console.log('EntityCache initialized');
         }
 
         // Initialize VaultFileIndex
         if (this.options.enableFileIndex) {
             this.vaultFileIndex = new VaultFileIndex(this.vault, this.app);
             await this.vaultFileIndex.initialize();
-            console.log('VaultFileIndex initialized');
 
             // Set up file event listeners
             this.setupFileEventListeners();
@@ -71,14 +67,12 @@ export class CacheManager {
                 this.workspaceService,
                 this.memoryService
             );
-            console.log('PrefetchManager initialized');
-            
+
             // Set up prefetch listeners
             this.setupPrefetchListeners();
         }
 
         this.isInitialized = true;
-        console.log('CacheManager initialization complete');
     }
 
     private setupFileEventListeners(): void {

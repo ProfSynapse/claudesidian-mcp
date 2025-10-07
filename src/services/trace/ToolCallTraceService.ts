@@ -96,8 +96,6 @@ export class ToolCallTraceService {
         metadata: traceMetadata
       });
 
-      console.log(`[ToolCallTraceService] Captured tool call: ${toolName} (${success ? 'success' : 'failed'})`);
-
     } catch (error) {
       // Don't throw - tracing is a secondary operation that shouldn't break the main flow
       console.error('[ToolCallTraceService] Failed to capture tool call:', error);

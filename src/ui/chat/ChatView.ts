@@ -458,18 +458,14 @@ export class ChatView extends ItemView {
   }
 
   private handleStopGeneration(): void {
-    console.log('[ChatView] Stop generation requested');
     this.messageManager.cancelCurrentGeneration();
   }
 
   private handleGenerationAborted(messageId: string, partialContent: string): void {
-    console.log('[ChatView] ⛔ Generation aborted - stopping animations immediately:', messageId);
-
     // Stop the MessageBubble's "Thinking..." animation
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     if (messageBubble) {
       messageBubble.stopLoadingAnimation();
-      console.log('[ChatView] ✅ Stopped MessageBubble loading animation');
     }
 
     // Also stop any StreamingController animations
@@ -562,12 +558,6 @@ export class ChatView extends ItemView {
   }
 
   private handleMessageIdUpdated(oldId: string, newId: string, updatedMessage: ConversationMessage): void {
-    console.log('[ChatView] RECEIVED onMessageIdUpdated event:', {
-      oldId,
-      newId,
-      updatedMessageId: updatedMessage.id,
-      messageDisplayExists: !!this.messageDisplay
-    });
     // Notify MessageDisplay to update the corresponding MessageBubble reference
     this.messageDisplay.updateMessageId(oldId, newId, updatedMessage);
   }

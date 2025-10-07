@@ -254,18 +254,6 @@ export class ChatService {
       // ALWAYS load conversation from storage to get complete history including tool calls
       const conversation = await this.dependencies.conversationService.getConversation(conversationId);
 
-      // LOG: Show what conversation was loaded from storage
-      console.log('[ChatService] Loaded conversation from storage:', {
-        id: conversationId,
-        messageCount: conversation?.messages?.length || 0,
-        messages: conversation?.messages?.map((m: any) => ({
-          role: m.role,
-          hasToolCalls: !!m.toolCalls,
-          toolCallCount: m.toolCalls?.length || 0,
-          contentPreview: m.content?.substring(0, 50)
-        })) || []
-      });
-
       // Build conversation context for LLM with provider-specific formatting
       // NOTE: buildLLMMessages includes ALL messages from storage, including the user message
       // that was just saved by sendMessage(), so we DON'T add it again here
@@ -334,7 +322,6 @@ export class ChatService {
           // Save assistant message with tool calls immediately when detected (before pingpong)
           // This happens ONCE when tool calls are first complete
           if (chunk.toolCallsReady && !toolCallsSaved) {
-            console.log('[ChatService] Saving assistant message with tool calls (before execution)');
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',
@@ -401,10 +388,6 @@ export class ChatService {
           // Save final response (pingpong result or direct response)
           if (toolCalls && toolCalls.length > 0) {
             // Had tool calls - save pingpong response as separate assistant message
-            console.log('[ChatService] Saving pingpong response (after tool execution):', {
-              contentLength: accumulatedContent.length,
-              contentPreview: accumulatedContent.substring(0, 100)
-            });
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',
@@ -417,7 +400,6 @@ export class ChatService {
             });
           } else {
             // No tool calls - save regular assistant response
-            console.log('[ChatService] Saving regular assistant response (no tools)');
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',

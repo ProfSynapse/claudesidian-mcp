@@ -30,12 +30,6 @@ export class BranchManager {
     alternativeResponse: ConversationMessage
   ): Promise<number | null> {
     try {
-      console.log('[BranchManager] Creating message alternative:', {
-        conversationId: conversation.id,
-        messageId,
-        alternativeContent: alternativeResponse.content.substring(0, 50) + '...'
-      });
-
       // Find the message in the conversation
       const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
       if (messageIndex === -1) {
@@ -60,12 +54,6 @@ export class BranchManager {
       // Save the updated conversation to repository
       await this.conversationRepo.updateConversation(conversation.id, { messages: conversation.messages });
 
-      console.log('[BranchManager] Message alternative created successfully:', {
-        messageId,
-        alternativeIndex: alternativeIndex + 1,
-        totalAlternatives: message.alternatives.length + 1 // +1 for original
-      });
-
       this.events.onMessageAlternativeCreated(messageId, alternativeIndex + 1);
       return alternativeIndex + 1;
 
@@ -85,12 +73,6 @@ export class BranchManager {
     alternativeIndex: number
   ): Promise<boolean> {
     try {
-      console.log('[BranchManager] Switching message alternative:', {
-        conversationId: conversation.id,
-        messageId,
-        alternativeIndex
-      });
-
       // Find the message in the conversation
       const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
       if (messageIndex === -1) {
@@ -112,12 +94,6 @@ export class BranchManager {
 
       // Save the updated conversation to repository
       await this.conversationRepo.updateConversation(conversation.id, { messages: conversation.messages });
-
-      console.log('[BranchManager] Switched to message alternative:', {
-        messageId,
-        alternativeIndex,
-        totalAlternatives
-      });
 
       // Don't emit event here - ChatView handles this directly to avoid recursion
       return true;

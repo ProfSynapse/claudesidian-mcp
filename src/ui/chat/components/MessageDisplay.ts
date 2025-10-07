@@ -29,14 +29,6 @@ export class MessageDisplay {
    * Set conversation to display
    */
   setConversation(conversation: ConversationData): void {
-    console.log('[MessageDisplay] setConversation called:', {
-      conversationId: conversation.id,
-      messageCount: conversation.messages.length,
-      lastMessage: conversation.messages[conversation.messages.length - 1]?.content.substring(0, 50),
-      lastMessageHasToolCalls: !!conversation.messages[conversation.messages.length - 1]?.toolCalls,
-      lastMessageToolCallsLength: conversation.messages[conversation.messages.length - 1]?.toolCalls?.length ?? 0
-    });
-
     // Always re-render from the stored conversation data (single source of truth)
     // ProgressiveToolAccordions show both streaming AND final state
     // Tool bubbles are created from toolCalls in the conversation JSON

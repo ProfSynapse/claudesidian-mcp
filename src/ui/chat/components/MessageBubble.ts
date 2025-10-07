@@ -119,13 +119,6 @@ export class MessageBubble extends Component {
       retryBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        console.log('[MessageBubble] Retry button clicked!', {
-          messageId: this.message.id,
-          messageRole: this.message.role,
-          messageContent: this.message.content.substring(0, 50) + '...',
-          onRetryExists: !!this.onRetry,
-          elementDataId: this.element?.getAttribute('data-message-id')
-        });
         if (this.onRetry) {
           this.onRetry(this.message.id);
         } else {
@@ -476,15 +469,6 @@ export class MessageBubble extends Component {
    * This triggers a re-render when tool calls are detected from LLM
    */
   updateWithNewMessage(newMessage: ConversationMessage): void {
-    console.log('[MessageBubble] updateWithNewMessage called:', {
-      oldId: this.message.id,
-      newId: newMessage.id,
-      oldContent: this.message.content.substring(0, 30) + '...',
-      newContent: newMessage.content.substring(0, 30) + '...',
-      hasProgressiveAccordions: this.progressiveToolAccordions.size > 0,
-      newMessageHasToolCalls: (newMessage.toolCalls?.length ?? 0) > 0
-    });
-
     // If we have progressive accordions AND the message has completed tool calls,
     // it's time to transition from progressive to static
     if (this.progressiveToolAccordions.size > 0 && newMessage.toolCalls) {
@@ -494,7 +478,6 @@ export class MessageBubble extends Component {
 
       if (hasCompletedTools) {
         // Tools are complete - transition complete
-        console.log('[MessageBubble] Tool execution complete - accordions already showing results');
         // No need to cleanup - ProgressiveToolAccordions already show completed state
       } else {
         // Tools still executing - preserve progressive accordion
@@ -544,8 +527,6 @@ export class MessageBubble extends Component {
    * Clean up progressive tool accordions and prepare for static accordion
    */
   private cleanupProgressiveAccordions(): void {
-    console.log('[MessageBubble] Cleaning up progressive accordions:', this.progressiveToolAccordions.size);
-
     // Clean up all progressive accordions
     this.progressiveToolAccordions.forEach(accordion => {
       const element = accordion.getElement();
@@ -595,8 +576,6 @@ export class MessageBubble extends Component {
    * Creates individual accordions per tool during streaming
    */
   handleToolEvent(event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
-    console.log('[MessageBubble] Handling tool event:', event, data);
-
     const toolId = data.id || data.toolId;
     if (!toolId) {
       console.warn('[MessageBubble] Tool event missing ID:', data);

@@ -65,8 +65,6 @@ export class ProgressiveToolAccordion {
    * Detect a tool (parameters streaming) - shows it immediately with streaming state
    */
   detectTool(toolCall: { id: string; name: string; parameters?: any; isComplete?: boolean }): void {
-    console.log('[ProgressiveToolAccordion] Detecting tool:', toolCall.name, 'complete:', toolCall.isComplete);
-
     // Check if tool already exists
     const existingTool = this.tools.find(t => t.id === toolCall.id);
     if (existingTool) {
@@ -93,8 +91,6 @@ export class ProgressiveToolAccordion {
    * Update tool parameters during streaming
    */
   updateToolParameters(toolId: string, parameters: any, isComplete: boolean): void {
-    console.log('[ProgressiveToolAccordion] Updating parameters for tool:', toolId, 'complete:', isComplete);
-
     const tool = this.tools.find(t => t.id === toolId);
     if (!tool) return;
 
@@ -113,8 +109,6 @@ export class ProgressiveToolAccordion {
    * Start executing a tool - shows it immediately with glow effect
    */
   startTool(toolCall: { id: string; name: string; parameters?: any }): void {
-    console.log('[ProgressiveToolAccordion] Starting tool:', toolCall.name);
-
     const tool = this.tools.find(t => t.id === toolCall.id);
     if (tool) {
       // Tool already exists from detection, just update status
@@ -143,8 +137,6 @@ export class ProgressiveToolAccordion {
    * Complete a tool execution with results
    */
   completeTool(toolId: string, result: any, success: boolean, error?: string): void {
-    console.log('[ProgressiveToolAccordion] Completing tool:', toolId);
-    
     const tool = this.tools.find(t => t.id === toolId);
     if (!tool) return;
 

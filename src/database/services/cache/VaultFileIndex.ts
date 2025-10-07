@@ -358,8 +358,6 @@ export class VaultFileIndex extends EventEmitter {
             metadataChangedRef,
             resolvedRef
         ];
-
-        console.log('[VaultFileIndex] Metadata cache events set up successfully');
     }
 
     /**
@@ -413,10 +411,8 @@ export class VaultFileIndex extends EventEmitter {
             });
         }
         this.metadataEventRefs = [];
-        
+
         // Clear all data
         this.clear();
-        
-        console.log('[VaultFileIndex] Cleaned up metadata cache events');
     }
 }

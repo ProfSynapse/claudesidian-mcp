@@ -85,7 +85,6 @@ export class ModelAgentManager {
                 const workspace = await workspaceService.getWorkspace(settings.workspaceId);
                 if (workspace?.context) {
                   this.workspaceContext = workspace.context;
-                  console.log('[ModelAgentManager] Loaded workspace context:', settings.workspaceId);
                 }
               }
             } catch (error) {

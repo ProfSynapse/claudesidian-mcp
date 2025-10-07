@@ -91,13 +91,6 @@ export class ConversationContextBuilder {
       // Note: 'tool' role messages are not used - tool results are stored in assistant messages with toolCalls
     });
 
-    // Log EXACT messages being sent to LLM
-    console.log('[LLM-MESSAGE] ========== EXACT MESSAGES ARRAY SENT TO LLM ==========');
-    messages.forEach((msg, idx) => {
-      console.log(`[LLM-MESSAGE] Message ${idx}:`, JSON.stringify(msg, null, 2));
-    });
-    console.log('[LLM-MESSAGE] ========== END EXACT MESSAGES ==========');
-
     return messages;
   }
   

@@ -54,7 +54,6 @@ export class MCPToolExecution {
     }
 
     // mcpConnector approach: tools are resolved dynamically during execution
-    console.log(`[MCPToolExecution] Using mcpConnector for ${provider} - tools resolved dynamically`);
     return [];
   }
 
@@ -71,8 +70,6 @@ export class MCPToolExecution {
     if (!this.supportsMCP(adapter)) {
       throw new Error(`MCP not available for ${provider}`);
     }
-
-    console.log(`[MCPToolExecution] Executing ${toolCalls.length} tool calls for ${provider}`);
 
     try {
       return await this.executeViaConnector(adapter.mcpConnector, toolCalls, onToolEvent);
@@ -98,19 +95,9 @@ export class MCPToolExecution {
         // Parse and validate tool arguments with error handling
         let parameters: any = {};
         const argumentsStr = toolCall.function.arguments || '{}';
-        
-        console.log(`[MCPToolExecution] Parsing arguments for ${toolCall.function.name}:`);
-        console.log(`[MCPToolExecution] Arguments details:`, {
-          length: argumentsStr.length,
-          startsWithBrace: argumentsStr.startsWith('{'),
-          endsWithBrace: argumentsStr.endsWith('}'),
-          preview: argumentsStr.slice(0, 150) + (argumentsStr.length > 150 ? '...' : ''),
-          lastChars: argumentsStr.slice(-20)
-        });
-        
+
         try {
           parameters = JSON.parse(argumentsStr);
-          console.log(`[MCPToolExecution] Successfully parsed arguments:`, Object.keys(parameters));
         } catch (parseError) {
           console.error(`[MCPToolExecution] Failed to parse tool arguments:`, parseError);
           console.error(`[MCPToolExecution] Raw arguments (${argumentsStr.length} chars):`, argumentsStr);
@@ -290,9 +277,7 @@ export class MCPToolExecution {
   ): Promise<any> {
     // Extract tool event callback from options for DRY approach across all adapters
     const onToolEvent = options.onToolEvent;
-    console.log('[MCPToolExecution Debug] executeWithToolSupport called, onToolEvent callback:', !!onToolEvent);
-    console.log('[MCPToolExecution Debug] executeWithToolSupport called, onToolEvent callback:', !!onToolEvent);
-    
+
     const TOOL_ITERATION_THRESHOLD = 15;
     let totalToolIterations = 0;
     let allToolResults: MCPToolResult[] = [];
@@ -351,7 +336,6 @@ export class MCPToolExecution {
         }));
 
         // Execute tool calls
-        console.log('[MCPToolExecution Debug] About to call executeToolCalls with callback:', !!onToolEvent);
         const toolResults = await MCPToolExecution.executeToolCalls(adapter, mcpToolCalls, provider, onToolEvent);
         allToolResults.push(...toolResults);
 
