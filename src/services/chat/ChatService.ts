@@ -495,17 +495,16 @@ export class ChatService {
    */
   async updateConversation(conversation: ConversationData): Promise<{ success: boolean; error?: string }> {
     try {
-      const result = await this.dependencies.conversationService.updateConversation(
+      await this.dependencies.conversationService.updateConversation(
         conversation.id,
-        { 
+        {
           title: conversation.title,
           messages: conversation.messages
         }
       );
 
       return {
-        success: result.success,
-        error: result.error
+        success: true
       };
     } catch (error) {
       console.error('Failed to update conversation:', error);

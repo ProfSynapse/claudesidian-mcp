@@ -143,6 +143,7 @@ export class ServiceRegistrar {
             await this.context.serviceManager.getService('eventManager');
             await this.context.serviceManager.getService('workspaceService');
             await this.context.serviceManager.getService('memoryService');
+            await this.context.serviceManager.getService('cacheManager');
             await this.context.serviceManager.getService('sessionService');
             await this.context.serviceManager.getService('sessionContextManager');
         } catch (error) {

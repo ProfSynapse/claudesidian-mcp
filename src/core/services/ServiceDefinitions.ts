@@ -106,6 +106,7 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
                 }
             );
 
+            await cacheManager.initialize();
             return cacheManager;
         }
     },
