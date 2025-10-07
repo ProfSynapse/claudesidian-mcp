@@ -140,7 +140,7 @@ export class WorkspaceService {
       rootFolder: data.rootFolder || '/',
       created: data.created || Date.now(),
       lastAccessed: data.lastAccessed || Date.now(),
-      isActive: data.isActive ?? false,
+      isActive: data.isActive ?? true,
       context: data.context,
       sessions: data.sessions || {}
     };

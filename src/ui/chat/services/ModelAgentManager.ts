@@ -75,7 +75,22 @@ export class ModelAgentManager {
           // Restore workspace
           if (settings.workspaceId) {
             this.selectedWorkspaceId = settings.workspaceId;
-            // Note: Workspace context will be loaded by ChatView when needed
+
+            // Load workspace context immediately
+            try {
+              const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+              const workspaceService = await plugin?.getService('workspaceService');
+
+              if (workspaceService) {
+                const workspace = await workspaceService.getWorkspace(settings.workspaceId);
+                if (workspace?.context) {
+                  this.workspaceContext = workspace.context;
+                  console.log('[ModelAgentManager] Loaded workspace context:', settings.workspaceId);
+                }
+              }
+            } catch (error) {
+              console.error('[ModelAgentManager] Failed to load workspace context:', error);
+            }
           }
 
           // Restore context notes
@@ -428,15 +443,11 @@ export class ModelAgentManager {
       prompt += '\n</agent>\n\n';
     }
 
-    // 3. Workspace section (if workspace selected)
-    if (this.selectedWorkspaceId) {
-      const workspaceData = await this.loadFullWorkspaceData(this.selectedWorkspaceId);
-
-      if (workspaceData) {
-        prompt += '<workspace>\n';
-        prompt += JSON.stringify(workspaceData, null, 2);
-        prompt += '\n</workspace>';
-      }
+    // 3. Workspace section (if workspace context loaded)
+    if (this.workspaceContext) {
+      prompt += '<workspace>\n';
+      prompt += JSON.stringify(this.workspaceContext, null, 2);
+      prompt += '\n</workspace>';
     }
 
     return prompt || null;
@@ -474,45 +485,6 @@ export class ModelAgentManager {
     }
   }
 
-  /**
-   * Load full workspace data via MCPConnector
-   */
-  private async loadFullWorkspaceData(workspaceId: string): Promise<any> {
-    try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-      if (!plugin) {
-        console.error('[ModelAgentManager] Plugin not found');
-        return null;
-      }
-
-      // Get MCPConnector
-      const connector = plugin.connector;
-      if (!connector) {
-        console.error('[ModelAgentManager] MCPConnector not available');
-        return null;
-      }
-
-      // Call load-workspace mode
-      const result = await connector.handleToolCall({
-        name: 'load-workspace',
-        arguments: {
-          id: workspaceId
-        }
-      });
-
-      if (result.isError) {
-        console.error('[ModelAgentManager] Error loading workspace:', result.content);
-        return null;
-      }
-
-      // Parse the result content (it's a JSON string in text format)
-      const parsedResult = JSON.parse(result.content[0].text);
-      return parsedResult.data || null;
-    } catch (error) {
-      console.error('[ModelAgentManager] Failed to load workspace data:', error);
-      return null;
-    }
-  }
 
   /**
    * Get display name for provider with tool calling indicator

@@ -53,31 +53,16 @@ export class ConversationContextBuilder {
    * 3. Final assistant message with response content
    */
   private static buildOpenAIContext(conversation: ConversationData, messages: any[]): any[] {
-    console.log('[CONTEXT-BUILDER] Starting to build OpenAI context from stored conversation');
-    console.log('[CONTEXT-BUILDER] Stored conversation has', conversation.messages.length, 'messages');
-
     conversation.messages.forEach((msg, index) => {
-      console.log(`[CONTEXT-BUILDER] Processing stored message ${index}:`, {
-        role: msg.role,
-        hasToolCalls: !!(msg.toolCalls && msg.toolCalls.length > 0),
-        toolCallCount: msg.toolCalls?.length || 0,
-        contentPreview: msg.content?.substring(0, 50)
-      });
-
       if (msg.role === 'user') {
         const userMsg = { role: 'user', content: msg.content };
         messages.push(userMsg);
-        console.log('[CONTEXT-BUILDER] → Added user message to LLM context');
       }
       else if (msg.role === 'assistant') {
         if (msg.toolCalls && msg.toolCalls.length > 0) {
           // Flatten tool calls into text for system prompt
-          console.log('[CONTEXT-BUILDER] → Assistant message has tool calls, flattening to text');
-
           const toolNames = msg.toolCalls.map((tc: any) => tc.name).join(', ');
           messages.push({ role: 'assistant', content: `[Calling tools: ${toolNames}]` });
-
-          console.log('[CONTEXT-BUILDER] → → Flattened tool calls:', toolNames);
 
           // Add tool results as text
           msg.toolCalls.forEach((toolCall: any, tcIndex: number) => {
@@ -89,11 +74,6 @@ export class ConversationContextBuilder {
               role: 'assistant',
               content: `Tool Result (${toolCall.name}): ${resultContent}`
             });
-
-            console.log(`[CONTEXT-BUILDER] → → Added tool result ${tcIndex + 1} as text:`, {
-              toolName: toolCall.name,
-              success: toolCall.success
-            });
           });
 
           // If there's final content after tool execution, add it
@@ -102,19 +82,14 @@ export class ConversationContextBuilder {
               role: 'assistant',
               content: msg.content
             });
-            console.log('[CONTEXT-BUILDER] → → Added assistant response after tool execution');
           }
         } else {
           // Regular assistant message without tools
           messages.push({ role: 'assistant', content: msg.content });
-          console.log('[CONTEXT-BUILDER] → Added regular assistant message (no tools)');
         }
       }
       // Note: 'tool' role messages are not used - tool results are stored in assistant messages with toolCalls
     });
-
-    console.log('[CONTEXT-BUILDER] ===== FINAL CONTEXT BEING SENT TO LLM =====');
-    console.log('[CONTEXT-BUILDER] Total messages in LLM context:', messages.length);
 
     // Log EXACT messages being sent to LLM
     console.log('[LLM-MESSAGE] ========== EXACT MESSAGES ARRAY SENT TO LLM ==========');
@@ -122,8 +97,6 @@ export class ConversationContextBuilder {
       console.log(`[LLM-MESSAGE] Message ${idx}:`, JSON.stringify(msg, null, 2));
     });
     console.log('[LLM-MESSAGE] ========== END EXACT MESSAGES ==========');
-
-    console.log('[CONTEXT-BUILDER] ===== END OF CONTEXT =====');
 
     return messages;
   }

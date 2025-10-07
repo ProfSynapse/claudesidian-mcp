@@ -58,7 +58,8 @@ export class ChatView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'AI Chat';
+    const conversation = this.conversationManager?.getCurrentConversation();
+    return conversation?.title || 'AI Chat';
   }
 
   getIcon(): string {
@@ -177,7 +178,8 @@ export class ChatView extends ItemView {
       conversationListContainer,
       // branchNavigatorContainer removed - using message-level navigation
       newChatButton,
-      settingsButton
+      settingsButton,
+      chatTitle
     });
   }
 
@@ -358,6 +360,9 @@ export class ChatView extends ItemView {
     // Re-render from stored conversation data (single source of truth)
     this.messageDisplay.setConversation(conversation);
 
+    // Update the chat title
+    this.updateChatTitle();
+
     // Branch navigation is now at message level
     this.uiStateController.setInputPlaceholder('Type your message...');
     this.updateContextProgress();
@@ -400,6 +405,9 @@ export class ChatView extends ItemView {
 
     // Always re-render from stored conversation data (single source of truth)
     this.messageDisplay.setConversation(conversation);
+
+    // Update the chat title in case it changed
+    this.updateChatTitle();
 
     this.updateContextProgress();
   }
@@ -514,6 +522,15 @@ export class ChatView extends ItemView {
     if (this.contextProgressBar) {
       await this.contextProgressBar.update();
       this.contextProgressBar.checkWarningThresholds();
+    }
+  }
+
+  private updateChatTitle(): void {
+    const conversation = this.conversationManager.getCurrentConversation();
+    const refs = this.getElementReferences();
+
+    if (refs.chatTitle) {
+      refs.chatTitle.textContent = conversation?.title || 'AI Chat';
     }
   }
 
