@@ -6,7 +6,7 @@
     "description": "MCP server integration for Obsidian",
     "author": "Synaptic Labs",
     "authorUrl": "https://github.com/ProfSynapse",
-    "isDesktopOnly": true,
+    "isDesktopOnly": false,
     "mcp": {
         "enabled": true,
         "server": true
