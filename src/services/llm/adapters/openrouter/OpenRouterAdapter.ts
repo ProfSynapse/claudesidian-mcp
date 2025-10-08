@@ -365,7 +365,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       });
 
       // Add tool result messages
-      const toolMessages = MCPToolExecution.buildToolMessages(toolResults);
+      const toolMessages = MCPToolExecution.buildToolMessages(toolResults, 'openrouter');
       messages.push(...toolMessages);
 
 

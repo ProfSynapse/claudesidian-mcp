@@ -60,9 +60,21 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
       console.log('[AnthropicAdapter] Starting streaming response');
-      
-      const messages = this.buildMessages(prompt, options?.systemPrompt);
-      
+      console.log('[AnthropicAdapter] Prompt:', prompt);
+      console.log('[AnthropicAdapter] Has history?:', options?.conversationHistory?.length || 0);
+
+      // Build messages - use conversation history if provided (for tool continuations)
+      let messages: any[];
+      if (options?.conversationHistory && options.conversationHistory.length > 0) {
+        // Use provided conversation history for tool continuations
+        messages = options.conversationHistory;
+        console.log('[AnthropicAdapter] Using conversation history:', JSON.stringify(messages, null, 2));
+      } else {
+        // Build simple messages for initial request
+        messages = this.buildMessages(prompt, options?.systemPrompt);
+        console.log('[AnthropicAdapter] Built messages:', JSON.stringify(messages, null, 2));
+      }
+
       const requestParams: any = {
         model: options?.model || this.currentModel,
         max_tokens: options?.maxTokens || 4096,
@@ -71,10 +83,12 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
         stream: true
       };
 
-      // Add system message if provided
+      // Add system message if provided (either from messages or from options)
       const systemMessage = messages.find(msg => msg.role === 'system');
       if (systemMessage) {
         requestParams.system = systemMessage.content;
+      } else if (options?.systemPrompt) {
+        requestParams.system = options.systemPrompt;
       }
 
       // Extended thinking mode for Claude 4 models
@@ -91,8 +105,9 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
       }
 
       const stream = this.client.messages.stream(requestParams);
-      
+
       let usage: any = undefined;
+      const toolCalls: Map<number, any> = new Map();
 
       for await (const event of stream) {
         console.log('[AnthropicAdapter] Stream event type:', event.type);
@@ -102,21 +117,47 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
             case 'message_start':
               usage = (event as any).message.usage;
               break;
-              
+
+            case 'content_block_start':
+              const startEvent = event as any;
+              if (startEvent.content_block?.type === 'tool_use') {
+                // Initialize tool call tracking
+                const index = startEvent.index;
+                toolCalls.set(index, {
+                  id: startEvent.content_block.id,
+                  type: 'function',
+                  function: {
+                    name: startEvent.content_block.name,
+                    arguments: ''
+                  }
+                });
+                console.log('[AnthropicAdapter] Tool use started:', startEvent.content_block.name);
+              }
+              break;
+
             case 'content_block_delta':
               const delta = (event as any).delta;
+              const deltaIndex = (event as any).index;
+
               if (delta.type === 'text_delta' && delta.text) {
-                yield { 
-                  content: delta.text, 
-                  complete: false 
+                yield {
+                  content: delta.text,
+                  complete: false
                 };
               } else if (delta.type === 'thinking_delta' && delta.thinking) {
                 // Stream thinking content if enabled
                 if (options?.enableThinking) {
-                  yield { 
-                    content: delta.thinking, 
-                    complete: false 
+                  yield {
+                    content: delta.thinking,
+                    complete: false
                   };
+                }
+              } else if (delta.type === 'input_json_delta' && delta.partial_json) {
+                // Accumulate tool input JSON
+                const toolCall = toolCalls.get(deltaIndex);
+                if (toolCall) {
+                  toolCall.function.arguments += delta.partial_json;
+                  console.log('[AnthropicAdapter] Tool input delta:', delta.partial_json.substring(0, 50));
                 }
               }
               break;
@@ -128,13 +169,25 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
               break;
               
             case 'message_stop':
-              yield { 
-                content: '', 
-                complete: true, 
-                usage: this.extractUsage({ usage }) 
+              // Convert accumulated tool calls to array
+              const finalToolCalls = toolCalls.size > 0 ? Array.from(toolCalls.values()) : undefined;
+
+              if (finalToolCalls && finalToolCalls.length > 0) {
+                console.log('[AnthropicAdapter] Streaming complete with tool calls:', finalToolCalls.length);
+              }
+
+              yield {
+                content: '',
+                complete: true,
+                usage: this.extractUsage({ usage }),
+                toolCalls: finalToolCalls
               };
               break;
               
+            case 'content_block_stop':
+              // Content block completed - already tracked in our map
+              break;
+
             default:
               // Handle ping, error, and other events
               if ((event as any).type === 'ping') {
@@ -143,7 +196,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
                 console.error('[AnthropicAdapter] Stream error:', (event as any).error);
                 throw new Error(`Anthropic stream error: ${(event as any).error.message}`);
               } else {
-                console.log('[AnthropicAdapter] Unknown event type:', (event as any).type);
+                console.log('[AnthropicAdapter] Unhandled event type:', (event as any).type);
               }
               break;
           }
@@ -231,10 +284,18 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
         },
         
         buildRequestBody: (messages: any[], isInitial: boolean) => {
+          // Clean messages to only include role and content for Anthropic
+          const cleanedMessages = messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }));
+
+          console.log('[AnthropicAdapter] Building request with messages:', JSON.stringify(cleanedMessages, null, 2));
+
           const requestParams: any = {
             model,
             max_tokens: options?.maxTokens || 4096,
-            messages,
+            messages: cleanedMessages,
             temperature: options?.temperature,
             stop_sequences: options?.stopSequences,
             tools: this.convertTools(options?.tools || [])
@@ -262,7 +323,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
         
         extractResponse: async (response: any) => {
           const toolCalls = this.extractToolCalls(response.content);
-          
+
           return {
             content: this.extractTextFromContent(response.content),
             usage: this.extractUsage(response),
@@ -270,6 +331,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
             toolCalls: toolCalls,
             choice: {
               message: {
+                role: 'assistant',
                 content: response.content,
                 toolCalls: toolCalls.length > 0 ? toolCalls : undefined
               }

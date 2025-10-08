@@ -192,20 +192,37 @@ export class MCPToolExecution {
   }
 
   /**
-   * Build tool messages for continuation (OpenAI/OpenRouter format)
+   * Build tool messages for continuation
+   * Formats differently for Anthropic vs other providers
    */
-  static buildToolMessages(toolResults: MCPToolResult[]): Array<{
-    role: 'tool';
-    tool_call_id: string;
-    content: string;
-  }> {
-    return toolResults.map(result => ({
-      role: 'tool' as const,
-      tool_call_id: result.id,
-      content: result.success 
-        ? JSON.stringify(result.result)
-        : `Error: ${result.error}`
-    }));
+  static buildToolMessages(
+    toolResults: MCPToolResult[],
+    provider: SupportedProvider
+  ): Array<any> {
+    if (provider === 'anthropic') {
+      // Anthropic format: role='user', content array with tool_result objects
+      return toolResults.map(result => ({
+        role: 'user' as const,
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: result.id,
+            content: result.success
+              ? JSON.stringify(result.result)
+              : `Error: ${result.error}`
+          }
+        ]
+      }));
+    } else {
+      // OpenAI format (used by OpenAI, OpenRouter, Groq, Mistral, etc.)
+      return toolResults.map(result => ({
+        role: 'tool' as const,
+        tool_call_id: result.id,
+        content: result.success
+          ? JSON.stringify(result.result)
+          : `Error: ${result.error}`
+      }));
+    }
   }
 
   /**
@@ -340,7 +357,10 @@ export class MCPToolExecution {
         allToolResults.push(...toolResults);
 
         // Build tool messages for continuation
-        const toolMessages = MCPToolExecution.buildToolMessages(toolResults);
+        const toolMessages = MCPToolExecution.buildToolMessages(toolResults, provider);
+
+        console.log(`[${provider} MCPToolExecution] Assistant message:`, JSON.stringify(responseData.choice.message, null, 2));
+        console.log(`[${provider} MCPToolExecution] Tool messages:`, JSON.stringify(toolMessages, null, 2));
 
         // Update conversation
         conversationMessages = [
@@ -349,6 +369,7 @@ export class MCPToolExecution {
           ...toolMessages
         ];
 
+        console.log(`[${provider} MCPToolExecution] All messages for continuation:`, JSON.stringify(conversationMessages, null, 2));
         console.log(`[${provider} Adapter] Continuing conversation with ${toolResults.length} tool results`);
 
         // Make continuation request
