@@ -59,20 +59,14 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
 
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
-      console.log('[AnthropicAdapter] Starting streaming response');
-      console.log('[AnthropicAdapter] Prompt:', prompt);
-      console.log('[AnthropicAdapter] Has history?:', options?.conversationHistory?.length || 0);
-
       // Build messages - use conversation history if provided (for tool continuations)
       let messages: any[];
       if (options?.conversationHistory && options.conversationHistory.length > 0) {
         // Use provided conversation history for tool continuations
         messages = options.conversationHistory;
-        console.log('[AnthropicAdapter] Using conversation history:', JSON.stringify(messages, null, 2));
       } else {
         // Build simple messages for initial request
         messages = this.buildMessages(prompt, options?.systemPrompt);
-        console.log('[AnthropicAdapter] Built messages:', JSON.stringify(messages, null, 2));
       }
 
       const requestParams: any = {
@@ -110,8 +104,6 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
       const toolCalls: Map<number, any> = new Map();
 
       for await (const event of stream) {
-        console.log('[AnthropicAdapter] Stream event type:', event.type);
-        
         if ('type' in event) {
           switch (event.type) {
             case 'message_start':
@@ -131,7 +123,6 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
                     arguments: ''
                   }
                 });
-                console.log('[AnthropicAdapter] Tool use started:', startEvent.content_block.name);
               }
               break;
 
@@ -157,7 +148,6 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
                 const toolCall = toolCalls.get(deltaIndex);
                 if (toolCall) {
                   toolCall.function.arguments += delta.partial_json;
-                  console.log('[AnthropicAdapter] Tool input delta:', delta.partial_json.substring(0, 50));
                 }
               }
               break;
@@ -171,10 +161,6 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
             case 'message_stop':
               // Convert accumulated tool calls to array
               const finalToolCalls = toolCalls.size > 0 ? Array.from(toolCalls.values()) : undefined;
-
-              if (finalToolCalls && finalToolCalls.length > 0) {
-                console.log('[AnthropicAdapter] Streaming complete with tool calls:', finalToolCalls.length);
-              }
 
               yield {
                 content: '',
@@ -195,15 +181,11 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
               } else if ((event as any).type === 'error') {
                 console.error('[AnthropicAdapter] Stream error:', (event as any).error);
                 throw new Error(`Anthropic stream error: ${(event as any).error.message}`);
-              } else {
-                console.log('[AnthropicAdapter] Unhandled event type:', (event as any).type);
               }
               break;
           }
         }
       }
-      
-      console.log('[AnthropicAdapter] Streaming completed');
     } catch (error) {
       console.error('[AnthropicAdapter] Streaming error:', error);
       throw error;
@@ -289,8 +271,6 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
             role: msg.role,
             content: msg.content
           }));
-
-          console.log('[AnthropicAdapter] Building request with messages:', JSON.stringify(cleanedMessages, null, 2));
 
           const requestParams: any = {
             model,

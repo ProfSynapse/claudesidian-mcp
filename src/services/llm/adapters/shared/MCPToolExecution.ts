@@ -359,9 +359,6 @@ export class MCPToolExecution {
         // Build tool messages for continuation
         const toolMessages = MCPToolExecution.buildToolMessages(toolResults, provider);
 
-        console.log(`[${provider} MCPToolExecution] Assistant message:`, JSON.stringify(responseData.choice.message, null, 2));
-        console.log(`[${provider} MCPToolExecution] Tool messages:`, JSON.stringify(toolMessages, null, 2));
-
         // Update conversation
         conversationMessages = [
           ...conversationMessages,
@@ -369,7 +366,6 @@ export class MCPToolExecution {
           ...toolMessages
         ];
 
-        console.log(`[${provider} MCPToolExecution] All messages for continuation:`, JSON.stringify(conversationMessages, null, 2));
         console.log(`[${provider} Adapter] Continuing conversation with ${toolResults.length} tool results`);
 
         // Make continuation request
