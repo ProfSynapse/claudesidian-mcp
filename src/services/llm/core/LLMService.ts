@@ -599,25 +599,47 @@ export class LLMService {
             };
           });
 
-          // Step 2: Build flattened conversation history with tool results for pingpong
-          const enhancedSystemPrompt = this.buildConversationWithToolResults(
-            userPrompt,
-            generateOptions.systemPrompt,
-            detectedToolCalls,
-            toolResults,
-            provider,
-            previousMessages // Pass previous messages to maintain full context
-          );
+          // Step 2: Build continuation for pingpong pattern
+          // For Anthropic, use proper message structure. For others, use system prompt.
+          let continuationOptions: any;
 
-          // Step 3: Start NEW stream with enhanced system prompt (pingpong)
+          if (provider === 'anthropic') {
+            // Build proper Anthropic messages with tool_use and tool_result blocks
+            const conversationHistory = this.buildAnthropicToolContinuation(
+              userPrompt,
+              detectedToolCalls,
+              toolResults,
+              previousMessages
+            );
+
+            continuationOptions = {
+              ...generateOptions,
+              conversationHistory,
+              // System prompt stays separate for Anthropic
+              systemPrompt: generateOptions.systemPrompt
+            };
+          } else {
+            // For OpenAI-style providers, use flattened system prompt
+            const enhancedSystemPrompt = this.buildConversationWithToolResults(
+              userPrompt,
+              generateOptions.systemPrompt,
+              detectedToolCalls,
+              toolResults,
+              provider,
+              previousMessages
+            );
+
+            continuationOptions = {
+              ...generateOptions,
+              systemPrompt: enhancedSystemPrompt
+            };
+          }
+
+          // Step 3: Start NEW stream with continuation (pingpong)
           // Reset fullContent since this is a new conversation response
           fullContent = '';
 
-          for await (const chunk of adapter.generateStreamAsync('', {
-            ...generateOptions,
-            systemPrompt: enhancedSystemPrompt, // Use enhanced system prompt with tool results
-            // Keep tools available for continued tool calling after seeing results
-          })) {
+          for await (const chunk of adapter.generateStreamAsync('', continuationOptions)) {
             if (chunk.content) {
               fullContent += chunk.content;
               
@@ -706,21 +728,42 @@ export class LLMService {
                 // Add recursive results to complete tool calls
                 completeToolCallsWithResults = completeToolCallsWithResults.concat(recursiveCompleteToolCalls);
 
-                // Build new flattened system prompt with recursive tool results
-                const recursiveEnhancedSystemPrompt = this.buildConversationWithToolResults(
-                  userPrompt,
-                  generateOptions.systemPrompt,
-                  chunk.toolCalls,
-                  recursiveToolResults,
-                  provider,
-                  previousMessages // Pass previous messages to maintain full context
-                );
+                // Build continuation for recursive pingpong
+                let recursiveContinuationOptions: any;
+
+                if (provider === 'anthropic') {
+                  // Build proper Anthropic messages for recursive tool continuation
+                  const recursiveHistory = this.buildAnthropicToolContinuation(
+                    userPrompt,
+                    chunk.toolCalls,
+                    recursiveToolResults,
+                    previousMessages
+                  );
+
+                  recursiveContinuationOptions = {
+                    ...generateOptions,
+                    conversationHistory: recursiveHistory,
+                    systemPrompt: generateOptions.systemPrompt
+                  };
+                } else {
+                  // For OpenAI-style providers, use flattened system prompt
+                  const recursiveEnhancedSystemPrompt = this.buildConversationWithToolResults(
+                    userPrompt,
+                    generateOptions.systemPrompt,
+                    chunk.toolCalls,
+                    recursiveToolResults,
+                    provider,
+                    previousMessages
+                  );
+
+                  recursiveContinuationOptions = {
+                    ...generateOptions,
+                    systemPrompt: recursiveEnhancedSystemPrompt
+                  };
+                }
 
                 // Continue with another recursive stream
-                for await (const recursiveChunk of adapter.generateStreamAsync('', {
-                  ...generateOptions,
-                  systemPrompt: recursiveEnhancedSystemPrompt
-                })) {
+                for await (const recursiveChunk of adapter.generateStreamAsync('', recursiveContinuationOptions)) {
                   if (recursiveChunk.content) {
                     fullContent += recursiveChunk.content;
                     yield {
@@ -778,6 +821,60 @@ export class LLMService {
     } catch (error) {
       throw error;
     }
+  }
+
+  /**
+   * Build Anthropic-style conversation messages with tool_use and tool_result blocks
+   */
+  private buildAnthropicToolContinuation(
+    originalPrompt: string,
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages?: any[]
+  ): any[] {
+    const messages: any[] = [];
+
+    // Add previous conversation history if provided
+    if (previousMessages && previousMessages.length > 0) {
+      messages.push(...previousMessages);
+    }
+
+    // Add the original user message
+    if (originalPrompt) {
+      messages.push({
+        role: 'user',
+        content: originalPrompt
+      });
+    }
+
+    // Add assistant message with tool_use blocks
+    const toolUseBlocks = toolCalls.map(tc => ({
+      type: 'tool_use',
+      id: tc.id,
+      name: tc.function?.name || tc.name,
+      input: JSON.parse(tc.function?.arguments || '{}')
+    }));
+
+    messages.push({
+      role: 'assistant',
+      content: toolUseBlocks
+    });
+
+    // Add user message with tool_result blocks
+    const toolResultBlocks = toolResults.map(result => ({
+      type: 'tool_result',
+      tool_use_id: result.id,
+      content: result.success
+        ? JSON.stringify(result.result || {})
+        : `Error: ${result.error || 'Tool execution failed'}`
+    }));
+
+    messages.push({
+      role: 'user',
+      content: toolResultBlocks
+    });
+
+    return messages;
   }
 
   /**
