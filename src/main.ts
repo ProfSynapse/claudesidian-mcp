@@ -1,12 +1,10 @@
 import { Plugin, Notice } from 'obsidian';
-import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { ServiceManager } from './core/ServiceManager';
 import { PluginLifecycleManager, type PluginLifecycleConfig } from './core/PluginLifecycleManager';
 
-export default class ClaudesidianPlugin extends Plugin {
+export default class NexusPlugin extends Plugin {
     public settings!: Settings;
-    private connector!: MCPConnector;
     private serviceManager!: ServiceManager;
     private lifecycleManager!: PluginLifecycleManager;
 
@@ -20,7 +18,7 @@ export default class ClaudesidianPlugin extends Plugin {
         try {
             return await this.serviceManager.getService<T>(name);
         } catch (error) {
-            console.error(`[Claudesidian] Failed to get service ${name}:`, error);
+            console.error(`[Nexus] Failed to get service ${name}:`, error);
             return null;
         }
     }
@@ -49,16 +47,12 @@ export default class ClaudesidianPlugin extends Plugin {
             this.settings = new Settings(this);
             this.serviceManager = new ServiceManager(this.app, this);
 
-            // Initialize connector skeleton (no agents yet)
-            this.connector = new MCPConnector(this.app, this);
-
             // Create and initialize lifecycle manager
             const lifecycleConfig: PluginLifecycleConfig = {
                 plugin: this,
                 app: this.app,
                 serviceManager: this.serviceManager,
                 settings: this.settings,
-                connector: this.connector,
                 manifest: this.manifest
             };
 
@@ -66,8 +60,8 @@ export default class ClaudesidianPlugin extends Plugin {
             await this.lifecycleManager.initialize();
 
         } catch (error) {
-            console.error('[Claudesidian] Plugin loading failed:', error);
-            new Notice('Claudesidian: Plugin failed to load. Check console for details.');
+            console.error('[Nexus] Plugin loading failed:', error);
+            new Notice('Nexus: Plugin failed to load. Check console for details.');
             throw error;
         }
     }
@@ -76,11 +70,6 @@ export default class ClaudesidianPlugin extends Plugin {
         // Shutdown lifecycle manager first (handles UI cleanup)
         if (this.lifecycleManager) {
             await this.lifecycleManager.shutdown();
-        }
-
-        // Stop connector
-        if (this.connector) {
-            await this.connector.stop();
         }
 
         // Service manager cleanup handled by lifecycle manager

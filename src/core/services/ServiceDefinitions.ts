@@ -24,7 +24,7 @@ export interface ServiceCreationContext {
     app: any;
     settings: Settings;
     serviceManager: ServiceManager;
-    connector: any; // MCPConnector
+    connector?: any; // MCPConnector - optional, MCP functionality deprecated
     manifest: any;
 }
 

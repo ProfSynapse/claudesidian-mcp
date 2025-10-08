@@ -152,7 +152,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     if (!this.memoryService) {
       try {
         // Try to get the memory service from the plugin
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = this.app.plugins.getPlugin('nexus');
         if (plugin?.services?.memoryService) {
           this.memoryService = plugin.services.memoryService;
         } else {
@@ -204,7 +204,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
       
       // Auto-track external files as associated notes
       try {
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = this.app.plugins.getPlugin('nexus');
         const workspaceService = plugin?.services?.workspaceService;
         
         if (workspaceService && parsedContext.workspaceId) {

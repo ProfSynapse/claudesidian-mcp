@@ -1,14 +1,10 @@
 {
-    "id": "claudesidian-mcp",
-    "name": "Claudesidian MCP",
-    "version": "3.0.0",
+    "id": "nexus",
+    "name": "Nexus",
+    "version": "1.0.0",
     "minAppVersion": "0.15.0",
-    "description": "MCP server integration for Obsidian",
+    "description": "AI chat assistant integrated directly into Obsidian",
     "author": "Synaptic Labs",
     "authorUrl": "https://github.com/ProfSynapse",
-    "isDesktopOnly": false,
-    "mcp": {
-        "enabled": true,
-        "server": true
-    }
+    "isDesktopOnly": false
 }

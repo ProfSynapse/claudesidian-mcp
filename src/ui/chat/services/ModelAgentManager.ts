@@ -78,7 +78,7 @@ export class ModelAgentManager {
 
             // Load workspace context immediately
             try {
-              const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+              const plugin = this.app.plugins.plugins['nexus'];
               const workspaceService = await plugin?.getService('workspaceService');
 
               if (workspaceService) {
@@ -270,7 +270,7 @@ export class ModelAgentManager {
    */
   async getDefaultModel(): Promise<{ provider: string; model: string }> {
     try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const plugin = this.app.plugins.plugins['nexus'];
       if (!plugin) {
         throw new Error('Plugin not found');
       }
@@ -294,7 +294,7 @@ export class ModelAgentManager {
   async getAvailableModels(): Promise<ModelOption[]> {
     try {
       // Get plugin instance to access settings data
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const plugin = this.app.plugins.plugins['nexus'];
       if (!plugin) {
         return [];
       }
@@ -367,7 +367,7 @@ export class ModelAgentManager {
   async getAvailableAgents(): Promise<AgentOption[]> {
     try {
       // Get plugin instance to access settings data
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const plugin = this.app.plugins.plugins['nexus'];
       if (!plugin) {
         return [];
       }

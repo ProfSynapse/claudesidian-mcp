@@ -12,7 +12,7 @@ import { Plugin, Notice } from 'obsidian';
 import { ServiceManager } from './ServiceManager';
 import { Settings } from '../settings';
 import { SettingsTab } from '../components/SettingsTab';
-import { MCPConnector } from '../connector';
+// import { MCPConnector } from '../connector'; // Removed - MCP functionality deprecated
 import { UpdateManager } from '../utils/UpdateManager';
 import { ServiceRegistrar } from './services/ServiceRegistrar';
 import { MaintenanceCommandManager } from './commands/MaintenanceCommandManager';
@@ -26,7 +26,7 @@ export interface PluginLifecycleConfig {
     app: any;
     serviceManager: ServiceManager;
     settings: Settings;
-    connector: MCPConnector;
+    // connector?: MCPConnector; // Removed - MCP functionality deprecated
     manifest: any;
 }
 
@@ -52,7 +52,7 @@ export class PluginLifecycleManager {
             app: config.app,
             serviceManager: config.serviceManager,
             settings: config.settings,
-            connector: config.connector,
+            // connector: config.connector, // Removed - MCP functionality deprecated
             manifest: config.manifest
         };
         this.serviceRegistrar = new ServiceRegistrar(serviceContext);
@@ -89,7 +89,7 @@ export class PluginLifecycleManager {
             app: config.app,
             settings: config.settings,
             serviceManager: config.serviceManager,
-            connector: config.connector,
+            // connector: config.connector, // Removed - MCP functionality deprecated
             lifecycleManager: this,
             backgroundProcessor: this.backgroundProcessor
         });
@@ -159,12 +159,7 @@ export class PluginLifecycleManager {
                     // Validate search functionality
                     await this.backgroundProcessor.validateSearchFunctionality();
 
-                    // Start MCP server AFTER services are ready (registers agents)
-                    try {
-                        await this.config.connector.start();
-                    } catch (error) {
-                        console.warn('[PluginLifecycleManager] MCP initialization failed:', error);
-                    }
+                    // MCP server removed - using local chat only
 
                     // Initialize ChatService AFTER agents are registered (so tools are available)
                     try {
@@ -290,12 +285,9 @@ export class PluginLifecycleManager {
             if (this.config.serviceManager) {
                 await this.config.serviceManager.stop();
             }
-            
-            // Stop the MCP connector
-            if (this.config.connector) {
-                await this.config.connector.stop();
-            }
-            
+
+            // MCP connector removed - using local chat only
+
         } catch (error) {
             console.error('[PluginLifecycleManager] Error during cleanup:', error);
         }

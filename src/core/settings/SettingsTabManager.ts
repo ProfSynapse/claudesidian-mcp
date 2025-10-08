@@ -18,7 +18,7 @@ export interface SettingsTabManagerConfig {
     app: any;
     settings: Settings;
     serviceManager: any;
-    connector: MCPConnector;
+    connector?: any; // MCPConnector - optional, MCP functionality deprecated
     lifecycleManager: any; // Reference to PluginLifecycleManager for ChatView activation
     backgroundProcessor?: BackgroundProcessor;
 }

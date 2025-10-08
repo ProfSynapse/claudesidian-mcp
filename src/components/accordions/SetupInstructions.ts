@@ -1,6 +1,6 @@
 import { Accordion } from '../Accordion';
 import { Setting, App, Notice, ButtonComponent } from 'obsidian';
-import { ConfigModal } from '../ConfigModal';
+// import { ConfigModal } from '../ConfigModal'; // Removed - MCP functionality deprecated
 import { MCPConfigGenerator } from '../../services/mcp/MCPConfigGenerator';
 import * as path from 'path';
 
@@ -43,14 +43,13 @@ export class SetupInstructionsAccordion {
             cls: 'setting-item-description'
         });
 
-        new Setting(claudeDesktopSection)
-            .setName('Claude Desktop Configuration')
-            .setDesc('Interactive setup wizard for Claude Desktop app')
-            .addButton(button => button
-                .setButtonText('Open Setup Wizard')
-                .onClick(() => {
-                    new ConfigModal(this.app).open();
-                }));
+        // Claude Desktop setup removed - Nexus uses local chat only
+        const deprecatedNotice = claudeDesktopSection.createEl('p', {
+            text: 'Claude Desktop configuration is no longer needed. Nexus now uses a fully integrated local chat interface.',
+            cls: 'setting-item-description'
+        });
+        deprecatedNotice.style.color = 'var(--text-muted)';
+        deprecatedNotice.style.fontStyle = 'italic';
 
         // Separator
         const separator = content.createEl('div', { cls: 'mcp-setup-separator' });

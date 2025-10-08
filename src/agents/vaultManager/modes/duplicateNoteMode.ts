@@ -34,7 +34,7 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
     // Try to get memory service from plugin if not provided
     if (!this.memoryService) {
       try {
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = this.app.plugins.getPlugin('nexus');
         if (plugin?.services?.memoryService) {
           this.memoryService = plugin.services.memoryService;
         }
@@ -167,7 +167,7 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
       // Try to get memory service from plugin if not available
       if (!this.memoryService) {
         try {
-          const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+          const plugin = this.app.plugins.getPlugin('nexus');
           if (plugin?.services?.memoryService) {
             this.memoryService = plugin.services.memoryService;
             // Try again with the newly found service

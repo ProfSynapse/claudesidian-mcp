@@ -15,13 +15,12 @@ interface GitHubRelease {
  * UpdateManager handles checking for and applying plugin updates from GitHub releases
  * Fetches the latest release info and downloads required files:
  * - main.js
- * - connector.js
  * - styles.css
  * - manifest.json
  */
 export class UpdateManager {
-    private readonly GITHUB_API = 'https://api.github.com/repos/ProfSynapse/claudesidian-mcp';
-    private readonly REQUIRED_FILES = ['main.js', 'connector.js', 'styles.css', 'manifest.json'];
+    private readonly GITHUB_API = 'https://api.github.com/repos/ProfSynapse/nexus';
+    private readonly REQUIRED_FILES = ['main.js', 'styles.css', 'manifest.json'];
 
     constructor(private plugin: Plugin) {}
 

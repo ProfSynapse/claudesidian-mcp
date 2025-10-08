@@ -1,11 +1,11 @@
 {
-    "name": "claudesidian-mcp",
-    "version": "3.0.0",
-    "description": "Model Context Protocol (MCP) integration for Obsidian",
+    "name": "nexus",
+    "version": "1.0.0",
+    "description": "AI chat assistant integrated directly into Obsidian",
     "main": "main.js",
     "scripts": {
         "dev": "node esbuild.config.mjs",
-        "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production && tsc connector.ts --outDir . --esModuleInterop true --module commonjs --skipLibCheck",
+        "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
         "version": "node version-bump.mjs && git add manifest.json versions.json",
         "test": "jest",
         "lint": "eslint . --ext .ts",
@@ -17,8 +17,9 @@
     "keywords": [
         "obsidian",
         "plugin",
-        "mcp",
-        "claude"
+        "ai",
+        "chat",
+        "assistant"
     ],
     "author": "",
     "license": "MIT",

@@ -1,8 +1,8 @@
 import { Accordion } from '../Accordion';
 
-export class WhatIsClaudesidianAccordion {
+export class WhatIsNexusAccordion {
     constructor(container: HTMLElement) {
-        const accordion = new Accordion(container, 'What is Claudesidian?', false);
+        const accordion = new Accordion(container, 'What is Nexus?', false);
         const content = accordion.getContentEl();
         this.createContent(content);
     }
@@ -15,31 +15,31 @@ export class WhatIsClaudesidianAccordion {
 
     private createContent(content: HTMLElement): void {
         content.createEl('p', {
-            text: 'Claudesidian MCP transforms your Obsidian vault into a natural language programming environment that enables powerful AI-assisted note-taking and knowledge management by connecting the Claude Desktop App to your vault, and giving it tools to take actions.'
+            text: 'Nexus is an AI chat assistant integrated directly into Obsidian, transforming your vault into an intelligent workspace. Chat with powerful AI models to manage notes, search content, and organize your knowledge—all without leaving Obsidian.'
         });
 
-        // Natural Language Programming explanation
-        const nlpInfo = content.createEl('div', { cls: 'mcp-section' });
-        nlpInfo.createEl('h4', { text: 'Natural Language Programming' });
-        nlpInfo.createEl('p', {
-            text: 'Work with your notes using natural language commands and structured templates. Claudesidian understands your vault organization and can help you:'
+        // Core Features
+        const featuresInfo = content.createEl('div', { cls: 'mcp-section' });
+        featuresInfo.createEl('h4', { text: 'Core Features' });
+        featuresInfo.createEl('p', {
+            text: 'Nexus provides a seamless chat interface with AI-powered tools to help you:'
         });
-        
-        const nlpList = nlpInfo.createEl('ul');
-        nlpList.createEl('li', {
-            text: 'Create and organize notes using consistent patterns'
+
+        const featuresList = featuresInfo.createEl('ul');
+        featuresList.createEl('li', {
+            text: 'Chat with AI models directly in Obsidian'
         });
-        nlpList.createEl('li', {
-            text: 'Search and retrieve information from your vault using natural language queries'
+        featuresList.createEl('li', {
+            text: 'Create, edit, and organize notes through conversation'
         });
-        nlpList.createEl('li', {
-            text: 'Track projects and research progress'
+        featuresList.createEl('li', {
+            text: 'Search your vault using natural language'
         });
-        nlpList.createEl('li', {
-            text: 'Build connections between your notes'
+        featuresList.createEl('li', {
+            text: 'Manage workspaces and track conversation context'
         });
-        nlpList.createEl('li', {
-            text: 'And anything else you can dream up by leveraging the below agents!'
+        featuresList.createEl('li', {
+            text: 'Execute Obsidian commands through AI'
         });
 
         // Agents section within intro
@@ -91,14 +91,14 @@ export class WhatIsClaudesidianAccordion {
         examplesSection.createEl('h4', { text: 'Example Interactions' });
         
         const examplesList = examplesSection.createEl('ul');
-        examplesList.createEl('li', { 
-            text: '"Create a literature note for this paper using our template" - Claude follows template structure and updates MOCs'
+        examplesList.createEl('li', {
+            text: '"Create a project note for my new research" - Nexus creates the note with appropriate structure'
         });
-        examplesList.createEl('li', { 
-            text: '"Analyze these research notes and update our map of contents" - Claude identifies connections and updates maps'
+        examplesList.createEl('li', {
+            text: '"Search for all notes about machine learning" - Nexus finds and summarizes relevant content'
         });
-        examplesList.createEl('li', { 
-            text: '"Start new project: Research Database" - Claude sets up project structure and tracking'
+        examplesList.createEl('li', {
+            text: '"Organize my daily notes from last week" - Nexus helps restructure and tag your notes'
         });
     }
 }

@@ -5,28 +5,18 @@ export const CONFIG = {
     /**
      * Plugin name
      */
-    PLUGIN_NAME: 'Claudesidian MCP',
-    
+    PLUGIN_NAME: 'Nexus',
+
     /**
      * Plugin version
      */
-    VERSION: '2.6.3',
-    
-    /**
-     * Default port for the MCP server
-     */
-    DEFAULT_PORT: 3001,
-    
-    /**
-     * Default host for the MCP server
-     */
-    DEFAULT_HOST: 'localhost',
-    
+    VERSION: '1.0.0',
+
     /**
      * Default timeout for requests (in milliseconds)
      */
     DEFAULT_TIMEOUT: 1200000,
-    
+
     /**
      * Maximum number of concurrent requests
      */

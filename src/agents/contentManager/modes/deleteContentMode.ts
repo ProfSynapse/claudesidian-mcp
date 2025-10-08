@@ -174,7 +174,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
     if (!this.memoryService) {
       try {
         // Try to get the memory service from the plugin
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = this.app.plugins.getPlugin('nexus');
         if (plugin?.services?.memoryService) {
           this.memoryService = plugin.services.memoryService;
         } else {

@@ -1404,11 +1404,11 @@
 }
 
 /* Settings Styles */
-.claudesidian-mcp-settings {
+.nexus-settings {
     padding: 12px;
 }
 
-.claudesidian-mcp-settings textarea {
+.nexus-settings textarea {
     min-height: 100px;
     width: 100%;
     font-family: var(--font-monospace);
@@ -1734,18 +1734,18 @@
     padding-left: 20px;
 }
 
-.claudesidian-mcp-folder-item {
+.nexus-folder-item {
     display: flex;
     align-items: center;
     padding: 4px;
     cursor: pointer;
 }
 
-.claudesidian-mcp-checkbox {
+.nexus-checkbox {
     margin-right: 8px;
 }
 
-.claudesidian-mcp-folder-name {
+.nexus-folder-name {
     flex: 1;
 }
 
