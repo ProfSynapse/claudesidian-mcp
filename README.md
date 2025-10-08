@@ -118,38 +118,6 @@ Claudesidian MCP supports running across multiple Obsidian vaults simultaneously
 - Each vault maintains isolated settings and configurations
 - Tools can only access files within their respective vault
 
-
-## Advanced Search Capabilities
-
-Claudesidian MCP includes a sophisticated search system that uses efficient keyword-based indexing to provide fast and relevant results for your queries.
-
-
-
-### Enhanced Metadata Search
-
-Advanced metadata search capabilities include:
-
-- **Tag-based search**: Find files by specific tags or combinations of tags
-- **Property filtering**: Search by custom properties and frontmatter fields
-- **Pattern matching**: Use regular expressions for complex property searches
-- **Combined criteria**: Combine tags and properties with AND/OR logic
-
-### Memory Search
-
-Search across your conversation history and workspace memory:
-
-- **Memory traces**: Find past conversations and AI interactions
-- **Session history**: Search within specific session contexts  
-- **Workspace memory**: Locate project-specific information
-- **Context preservation**: Maintain conversation continuity across searches
-
-### Search Result Features
-
-- **File-based grouping**: Results grouped by file with multiple snippets per file
-- **Relevance scoring**: Advanced scoring considers content type, exact matches, and graph relationships
-- **Connected notes**: Discover related notes through wikilink connections
-- **Rich metadata**: Includes file paths, modification dates, and content previews
-
 ## Security
 
 - The plugin runs an MCP server that only accepts local connections
@@ -165,15 +133,15 @@ Claudesidian MCP includes a comprehensive **AgentManager** that transforms your 
 
 The plugin supports multiple LLM providers with comprehensive model management:
 
-- **Anthropic Claude**: Claude-3.5-Sonnet, Claude-3-Haiku, Claude-3-Opus models
-- **OpenAI**: GPT-4o, GPT-4-Turbo, GPT-3.5-Turbo, and other models
-- **Google Gemini**: Gemini-1.5-Pro, Gemini-1.5-Flash models
-- **Groq**: Ultra-fast inference with Llama, Mixtral, and Gemma models
-- **Ollama**: Local LLM execution with complete privacy
-- **Perplexity**: Search-augmented AI responses
-- **OpenRouter**: Access to hundreds of AI models through a unified API
-- **Mistral**: High-performance European AI models
-- **Requesty**: Cost-optimized AI model access
+- **Anthropic Claude**
+- **OpenAI**
+- **Google Gemini**
+- **Groq**
+- **Ollama**
+- **Perplexity**
+- **OpenRouter**
+- **Mistral**
+- **Requesty**
 
 ### Setting Up API Keys
 
@@ -193,16 +161,6 @@ To use LLM features, configure your API keys in the plugin settings:
    - **Ollama**: No API key needed for local setup
 4. **Set Default Model**: Choose your preferred default model and provider
 5. **Test Configuration**: Use the `listModels` mode to verify your setup
-
-### Custom Agent Features
-
-- **Specialized AI Agents**: Create domain-specific prompts for recurring tasks
-- **File Integration**: Include vault content as context in AI prompts
-- **Automated Actions**: Execute ContentManager operations with AI responses
-- **Model Selection**: Choose optimal models for different tasks
-- **Cost Tracking**: Monitor API usage and costs across providers
-- **Batch Processing**: Execute multiple prompts efficiently
-- **Session Integration**: Context-aware conversations with memory persistence
 
 ### AI-Powered Workflow Examples
 
