@@ -79,17 +79,13 @@ export class ConversationManager {
    * Create a new conversation
    */
   async createNewConversation(title?: string): Promise<void> {
-    console.log('[ConversationManager] ⚠️ LEGACY PATH: createNewConversation() called (WITHOUT initial message)', { title });
-
     try {
       // Prompt for title if not provided
       const conversationTitle = title || await this.promptForConversationTitle();
       if (!conversationTitle) return; // User cancelled
 
-      console.log('[ConversationManager] Calling ChatService.createConversation() from LEGACY PATH');
       const result = await this.chatService.createConversation(conversationTitle);
-      console.log('[ConversationManager] ChatService result from LEGACY PATH:', result);
-      
+
       if (result.success && result.conversationId) {
         // Reload conversations and select the new one
         await this.loadConversations();
