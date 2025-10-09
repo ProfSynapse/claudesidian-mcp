@@ -193,7 +193,7 @@ export class MCPToolExecution {
 
   /**
    * Build tool messages for continuation
-   * Formats differently for Anthropic vs other providers
+   * Formats differently for Anthropic, Google, vs other providers
    */
   static buildToolMessages(
     toolResults: MCPToolResult[],
@@ -210,6 +210,21 @@ export class MCPToolExecution {
             content: result.success
               ? JSON.stringify(result.result)
               : `Error: ${result.error}`
+          }
+        ]
+      }));
+    } else if (provider === 'google') {
+      // Google Gemini format: role='function', parts array with functionResponse objects
+      return toolResults.map(result => ({
+        role: 'function' as const,
+        parts: [
+          {
+            functionResponse: {
+              name: result.name,
+              response: result.success
+                ? result.result
+                : { error: result.error }
+            }
           }
         ]
       }));

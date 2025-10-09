@@ -311,10 +311,18 @@ export class ModelAgentManager {
       // Import ModelRegistry to get actual model specs
       const { ModelRegistry } = await import('../../../services/llm/adapters/ModelRegistry');
 
+      // Allowed providers for chat view
+      const allowedProviders = ['openai', 'openrouter', 'anthropic', 'google', 'ollama'];
+
       // Iterate through enabled providers with valid API keys
       Object.entries(providers).forEach(([providerId, config]: [string, any]) => {
         // Only include providers that are enabled and have API keys
         if (!config.enabled || !config.apiKey || !config.apiKey.trim()) {
+          return;
+        }
+
+        // Filter to only allowed providers for chat view
+        if (!allowedProviders.includes(providerId)) {
           return;
         }
 
