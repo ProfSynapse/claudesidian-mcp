@@ -21,12 +21,15 @@ export class ModelAgentManager {
   private selectedWorkspaceId: string | null = null;
   private workspaceContext: WorkspaceContext | null = null;
   private contextNotes: string[] = [];
+  private currentConversationId: string | null = null;
 
   constructor(
     private app: any, // Obsidian App
     private events: ModelAgentManagerEvents,
-    private conversationService?: any // Optional ConversationService for persistence
+    private conversationService?: any, // Optional ConversationService for persistence
+    conversationId?: string
   ) {
+    this.currentConversationId = conversationId || null;
     // Don't auto-initialize - will be called from ChatView after conversation loads
   }
 
@@ -54,10 +57,7 @@ export class ModelAgentManager {
               this.selectedModel = model;
               this.events.onModelChanged(model);
             } else {
-              console.error('[ModelAgentManager] ❌ Saved model not found, falling back to default. Searched for:', {
-                providerId: settings.providerId,
-                modelId: settings.modelId
-              });
+              console.warn('[ModelAgentManager] Saved model not found, falling back to default');
               await this.initializeDefaultModel();
             }
           }
@@ -85,6 +85,12 @@ export class ModelAgentManager {
                 const workspace = await workspaceService.getWorkspace(settings.workspaceId);
                 if (workspace?.context) {
                   this.workspaceContext = workspace.context;
+
+                  // Bind session to workspace
+                  await this.bindSessionToWorkspace(
+                    settings.sessionId || conversation.metadata?.chatSettings?.sessionId,
+                    settings.workspaceId
+                  );
                 }
               }
             } catch (error) {
@@ -111,6 +117,7 @@ export class ModelAgentManager {
 
   /**
    * Initialize the selected model from plugin settings default
+   * ✅ CRITICAL: Also clears workspace, agent, and context notes for clean slate
    */
   private async initializeDefaultModel(): Promise<void> {
     try {
@@ -127,6 +134,18 @@ export class ModelAgentManager {
         this.selectedModel = defaultModel;
         this.events.onModelChanged(defaultModel);
       }
+
+      // ✅ CRITICAL FIX: Clear all other state for new conversations
+      // This prevents old conversation state from leaking into new conversations
+      this.selectedAgent = null;
+      this.currentSystemPrompt = null;
+      this.selectedWorkspaceId = null;
+      this.workspaceContext = null;
+      this.contextNotes = [];
+
+      // Notify listeners about the state reset
+      this.events.onAgentChanged(null);
+      this.events.onSystemPromptChanged(null);
     } catch (error) {
       console.warn('[ModelAgentManager] Failed to initialize default model:', error);
     }
@@ -142,13 +161,18 @@ export class ModelAgentManager {
     }
 
     try {
+      // ⚠️ CRITICAL: Load existing metadata first to preserve sessionId
+      const existingConversation = await this.conversationService.getConversation(conversationId);
+      const existingSessionId = existingConversation?.metadata?.chatSettings?.sessionId;
+
       const metadata = {
         chatSettings: {
           providerId: this.selectedModel?.providerId,
           modelId: this.selectedModel?.modelId,
           agentId: this.selectedAgent?.id,
           workspaceId: this.selectedWorkspaceId,
-          contextNotes: this.contextNotes
+          contextNotes: this.contextNotes,
+          sessionId: existingSessionId // ✅ PRESERVE the session ID!
         }
       };
 
@@ -218,6 +242,14 @@ export class ModelAgentManager {
   async setWorkspaceContext(workspaceId: string, context: WorkspaceContext): Promise<void> {
     this.selectedWorkspaceId = workspaceId;
     this.workspaceContext = context;
+
+    // Get session ID from current conversation
+    const sessionId = await this.getCurrentSessionId();
+
+    if (sessionId) {
+      await this.bindSessionToWorkspace(sessionId, workspaceId);
+    }
+
     this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
   }
 
@@ -311,10 +343,18 @@ export class ModelAgentManager {
       // Import ModelRegistry to get actual model specs
       const { ModelRegistry } = await import('../../../services/llm/adapters/ModelRegistry');
 
+      // Allowed providers for chat view
+      const allowedProviders = ['openai', 'openrouter', 'anthropic', 'google', 'ollama'];
+
       // Iterate through enabled providers with valid API keys
       Object.entries(providers).forEach(([providerId, config]: [string, any]) => {
         // Only include providers that are enabled and have API keys
         if (!config.enabled || !config.apiKey || !config.apiKey.trim()) {
+          return;
+        }
+
+        // Filter to only allowed providers for chat view
+        if (!allowedProviders.includes(providerId)) {
           return;
         }
 
@@ -404,11 +444,17 @@ export class ModelAgentManager {
     provider?: string;
     model?: string;
     systemPrompt?: string;
+    workspaceId?: string;
+    sessionId?: string;
   }> {
+    const sessionId = await this.getCurrentSessionId();
+
     return {
       provider: this.selectedModel?.providerId,
       model: this.selectedModel?.modelId,
-      systemPrompt: await this.buildSystemPromptWithWorkspace() || undefined
+      systemPrompt: await this.buildSystemPromptWithWorkspace() || undefined,
+      workspaceId: this.selectedWorkspaceId || undefined,
+      sessionId: sessionId
     };
   }
 
@@ -417,6 +463,35 @@ export class ModelAgentManager {
    */
   private async buildSystemPromptWithWorkspace(): Promise<string | null> {
     let prompt = '';
+
+    // 0. Session and workspace context for tool calls (CRITICAL - must be first!)
+    const sessionId = await this.getCurrentSessionId();
+    if (sessionId || this.selectedWorkspaceId) {
+      prompt += '<session_context>\n';
+      prompt += 'IMPORTANT: When using tools, you must include these values in your tool call parameters:\n\n';
+
+      if (sessionId) {
+        prompt += `- sessionId: "${sessionId}"\n`;
+      }
+
+      if (this.selectedWorkspaceId) {
+        prompt += `- workspaceId: "${this.selectedWorkspaceId}"\n`;
+      }
+
+      prompt += '\nInclude these in the "context" parameter of your tool calls, like this:\n';
+      prompt += '{\n';
+      prompt += '  "context": {\n';
+      if (sessionId) {
+        prompt += `    "sessionId": "${sessionId}",\n`;
+      }
+      if (this.selectedWorkspaceId) {
+        prompt += `    "workspaceId": "${this.selectedWorkspaceId}"\n`;
+      }
+      prompt += '  },\n';
+      prompt += '  ... other parameters ...\n';
+      prompt += '}\n';
+      prompt += '</session_context>\n\n';
+    }
 
     // 1. Context files section (if any context notes selected)
     if (this.contextNotes.length > 0) {
@@ -490,5 +565,48 @@ export class ModelAgentManager {
    */
   private getProviderDisplayName(providerId: string): string {
     return ProviderUtils.getProviderDisplayNameWithTools(providerId);
+  }
+
+  /**
+   * Bind a session to a workspace in SessionContextManager
+   */
+  private async bindSessionToWorkspace(sessionId: string | undefined, workspaceId: string): Promise<void> {
+    if (!sessionId) {
+      console.warn('[ModelAgentManager] No session ID available for workspace binding');
+      return;
+    }
+
+    try {
+      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const sessionContextManager = await plugin.getService('sessionContextManager');
+
+      if (sessionContextManager) {
+        sessionContextManager.setWorkspaceContext(sessionId, {
+          workspaceId: workspaceId,
+          activeWorkspace: true
+        });
+      } else {
+        console.warn('[ModelAgentManager] SessionContextManager not available');
+      }
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to bind session to workspace:', error);
+    }
+  }
+
+  /**
+   * Get current session ID from conversation
+   */
+  private async getCurrentSessionId(): Promise<string | undefined> {
+    if (!this.currentConversationId || !this.conversationService) {
+      return undefined;
+    }
+
+    try {
+      const conversation = await this.conversationService.getConversation(this.currentConversationId);
+      return conversation?.metadata?.chatSettings?.sessionId;
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to get session ID:', error);
+      return undefined;
+    }
   }
 }

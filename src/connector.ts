@@ -259,22 +259,10 @@ export class MCPConnector {
             const { agent, mode, params: modeParams } = params;
 
             // ========================================
-            // SESSION VALIDATION & WORKSPACE FALLBACK
+            // SESSION VALIDATION & WORKSPACE CONTEXT INJECTION
             // ========================================
 
-            // 1. WORKSPACE ID FALLBACK: Default to 'default' if not provided
-            if (!modeParams.workspaceContext) {
-                modeParams.workspaceContext = { workspaceId: 'default' };
-            } else if (!modeParams.workspaceContext.workspaceId) {
-                modeParams.workspaceContext.workspaceId = 'default';
-            }
-
-            // Also ensure context.workspaceId if context exists
-            if (modeParams.context && !modeParams.context.workspaceId) {
-                modeParams.context.workspaceId = modeParams.workspaceContext.workspaceId;
-            }
-
-            // 2. SESSION ID VALIDATION: Generate/validate sessionId
+            // 1. SESSION ID VALIDATION: Extract and validate/generate sessionId first
             const providedSessionId = modeParams.context?.sessionId || modeParams.sessionId;
             let validatedSessionId: string;
             let isNewSession = false;
@@ -292,12 +280,35 @@ export class MCPConnector {
                 validatedSessionId = providedSessionId;
             }
 
-            // 3. INJECT VALIDATED SESSION ID into all relevant locations
+            // 2. INJECT VALIDATED SESSION ID into all relevant locations
             if (!modeParams.context) {
                 modeParams.context = {};
             }
             modeParams.context.sessionId = validatedSessionId;
             modeParams.sessionId = validatedSessionId;
+
+            // 3. WORKSPACE CONTEXT LOOKUP FROM SESSION
+            const sessionContextManager = this.getSessionContextManagerFromService();
+            const workspaceContext = sessionContextManager.getWorkspaceContext(validatedSessionId);
+
+            if (workspaceContext) {
+                // Inject workspace context from session
+                modeParams.workspaceContext = workspaceContext;
+                modeParams.context.workspaceId = workspaceContext.workspaceId;
+                console.log(`[MCPConnector] ✓ Applied workspace ${workspaceContext.workspaceId} from session ${validatedSessionId}`);
+            } else {
+                // Fallback to default if no session workspace
+                if (!modeParams.workspaceContext) {
+                    modeParams.workspaceContext = { workspaceId: 'default' };
+                } else if (!modeParams.workspaceContext.workspaceId) {
+                    modeParams.workspaceContext.workspaceId = 'default';
+                }
+
+                if (modeParams.context && !modeParams.context.workspaceId) {
+                    modeParams.context.workspaceId = modeParams.workspaceContext.workspaceId;
+                }
+                console.log(`[MCPConnector] No workspace found for session, using default`);
+            }
 
             // Delegate validation and execution to ToolCallRouter
             this.toolRouter.validateBatchOperations(modeParams);

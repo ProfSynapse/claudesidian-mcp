@@ -48,6 +48,8 @@ export class MessageManager {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
     }
   ): Promise<void> {
     // Declare aiMessageId in function scope so catch block can access it
@@ -123,6 +125,8 @@ export class MessageManager {
             provider: options?.provider,
             model: options?.model,
             systemPrompt: options?.systemPrompt,
+            workspaceId: options?.workspaceId, // ✅ Pass workspace ID for tool context
+            sessionId: options?.sessionId, // ✅ CRITICAL: Pass session ID for tool context
             messageId: aiMessageId, // Pass the placeholder messageId for UI consistency
             abortSignal: this.currentAbortController.signal
           }
@@ -156,13 +160,6 @@ export class MessageManager {
             );
             const isFinalComplete = !hasToolCalls || toolCallsHaveResults;
 
-            console.log('[MessageManager] Received complete chunk:', {
-              hasToolCalls,
-              toolCallsHaveResults,
-              isFinalComplete,
-              toolCallsSample: toolCalls?.[0]
-            });
-
             if (isFinalComplete) {
               // This is the FINAL complete - either no tools or tools with results
               // Update conversation with final accumulated content AND tool calls with results
@@ -173,24 +170,11 @@ export class MessageManager {
                   content: streamedContent,
                   toolCalls: toolCalls  // Include tool calls with execution results
                 };
-
-                console.log('[MessageManager] Updated message with toolCalls:', {
-                  messageId: aiMessageId,
-                  hasToolCalls: !!toolCalls,
-                  toolCallsLength: toolCalls?.length ?? 0,
-                  toolCallsWithResults: toolCalls?.map((tc: any) => ({
-                    id: tc.id,
-                    name: tc.name,
-                    hasResult: !!tc.result,
-                    hasSuccess: tc.success !== undefined
-                  }))
-                });
               }
 
               // CRITICAL: Save conversation to storage BEFORE reloading
               // This ensures tool calls with results are persisted
               await this.chatService.updateConversation(conversation);
-              console.log('[MessageManager] Conversation saved to storage with toolCalls');
 
               // Send final complete content for any final processing
               this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false); // isComplete = true, isIncremental = false
@@ -209,10 +193,6 @@ export class MessageManager {
         if (freshConversation) {
           // Update the conversation object with fresh data
           Object.assign(conversation, freshConversation);
-          console.log('[MessageManager] Reloaded conversation from storage:', {
-            messageCount: freshConversation.messages.length,
-            lastMessageHasToolCalls: !!freshConversation.messages[freshConversation.messages.length - 1]?.toolCalls
-          });
         }
 
         // Notify that conversation has been updated
@@ -264,6 +244,8 @@ export class MessageManager {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
     }
   ): Promise<void> {
     const message = conversation.messages.find(msg => msg.id === messageId);
@@ -297,6 +279,8 @@ export class MessageManager {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
     }
   ): Promise<void> {
     const userMessage = conversation.messages.find(msg => msg.id === userMessageId);
@@ -328,6 +312,8 @@ export class MessageManager {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
     }
   ): Promise<void> {
     const aiMessage = conversation.messages.find(msg => msg.id === aiMessageId);
@@ -356,7 +342,9 @@ export class MessageManager {
         {
           provider: options?.provider,
           model: options?.model,
-          systemPrompt: options?.systemPrompt
+          systemPrompt: options?.systemPrompt,
+          workspaceId: options?.workspaceId, // ✅ Pass workspace ID for tool context
+          sessionId: options?.sessionId // ✅ Pass session ID for tool context
         }
       )) {
         if (chunk.chunk) {
@@ -412,6 +400,8 @@ export class MessageManager {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
     }
   ): Promise<void> {
     const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);

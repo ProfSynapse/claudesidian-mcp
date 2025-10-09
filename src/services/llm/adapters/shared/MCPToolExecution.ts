@@ -65,14 +65,15 @@ export class MCPToolExecution {
     adapter: MCPCapableAdapter,
     toolCalls: MCPToolCall[],
     provider: SupportedProvider,
-    onToolEvent?: (event: 'started' | 'completed', data: any) => void
+    onToolEvent?: (event: 'started' | 'completed', data: any) => void,
+    context?: { sessionId?: string; workspaceId?: string } // ✅ Added session context
   ): Promise<MCPToolResult[]> {
     if (!this.supportsMCP(adapter)) {
       throw new Error(`MCP not available for ${provider}`);
     }
 
     try {
-      return await this.executeViaConnector(adapter.mcpConnector, toolCalls, onToolEvent);
+      return await this.executeViaConnector(adapter.mcpConnector, toolCalls, onToolEvent, context);
     } catch (error) {
       console.error(`[MCPToolExecution] Tool execution failed for ${provider}:`, error);
       throw error;
@@ -86,7 +87,8 @@ export class MCPToolExecution {
   private static async executeViaConnector(
     mcpConnector: any,
     toolCalls: MCPToolCall[],
-    onToolEvent?: (event: 'started' | 'completed', data: any) => void
+    onToolEvent?: (event: 'started' | 'completed', data: any) => void,
+    context?: { sessionId?: string; workspaceId?: string } // ✅ Added session context
   ): Promise<MCPToolResult[]> {
     const results: MCPToolResult[] = [];
 
@@ -149,7 +151,18 @@ export class MCPToolExecution {
 
         const originalToolName = toolCall.function.name.replace('_', '.');
         const [agent, mode] = originalToolName.split('.');
-        const agentModeParams = { agent, mode, params: parameters };
+
+        // ✅ CRITICAL: Inject session ID and workspace ID into tool params
+        const paramsWithContext = {
+          ...parameters,
+          context: {
+            ...parameters.context,
+            sessionId: context?.sessionId, // Inject session ID from ChatService
+            workspaceId: context?.workspaceId // Inject workspace ID from ChatService
+          }
+        };
+
+        const agentModeParams = { agent, mode, params: paramsWithContext };
 
         const result = await mcpConnector.callTool(agentModeParams);
         
@@ -193,7 +206,7 @@ export class MCPToolExecution {
 
   /**
    * Build tool messages for continuation
-   * Formats differently for Anthropic vs other providers
+   * Formats differently for Anthropic, Google, vs other providers
    */
   static buildToolMessages(
     toolResults: MCPToolResult[],
@@ -210,6 +223,21 @@ export class MCPToolExecution {
             content: result.success
               ? JSON.stringify(result.result)
               : `Error: ${result.error}`
+          }
+        ]
+      }));
+    } else if (provider === 'google') {
+      // Google Gemini format: role='function', parts array with functionResponse objects
+      return toolResults.map(result => ({
+        role: 'function' as const,
+        parts: [
+          {
+            functionResponse: {
+              name: result.name,
+              response: result.success
+                ? result.result
+                : { error: result.error }
+            }
           }
         ]
       }));
@@ -270,6 +298,8 @@ export class MCPToolExecution {
       prompt: string;
       systemPrompt?: string;
       onToolEvent?: (event: 'started' | 'completed', data: any) => void;
+      sessionId?: string; // ✅ Added session context
+      workspaceId?: string; // ✅ Added workspace context
     },
     callbacks: {
       buildMessages: (prompt: string, systemPrompt?: string) => any[];
@@ -352,15 +382,18 @@ export class MCPToolExecution {
           }
         }));
 
-        // Execute tool calls
-        const toolResults = await MCPToolExecution.executeToolCalls(adapter, mcpToolCalls, provider, onToolEvent);
+        // Execute tool calls with session context
+        const toolResults = await MCPToolExecution.executeToolCalls(
+          adapter,
+          mcpToolCalls,
+          provider,
+          onToolEvent,
+          { sessionId: options.sessionId, workspaceId: options.workspaceId } // ✅ Pass session context
+        );
         allToolResults.push(...toolResults);
 
         // Build tool messages for continuation
         const toolMessages = MCPToolExecution.buildToolMessages(toolResults, provider);
-
-        console.log(`[${provider} MCPToolExecution] Assistant message:`, JSON.stringify(responseData.choice.message, null, 2));
-        console.log(`[${provider} MCPToolExecution] Tool messages:`, JSON.stringify(toolMessages, null, 2));
 
         // Update conversation
         conversationMessages = [

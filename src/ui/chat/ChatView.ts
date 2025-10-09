@@ -328,6 +328,14 @@ export class ChatView extends ItemView {
     }
 
     const currentConversation = this.conversationManager.getCurrentConversation();
+
+    // ✅ CRITICAL FIX: Ensure ModelAgentManager has the current conversation ID
+    // This is necessary for new conversations where the modal might open before
+    // the conversation ID is fully propagated
+    if (currentConversation) {
+      (this.modelAgentManager as any).currentConversationId = currentConversation.id;
+    }
+
     const modal = new ChatSettingsModal(
       this.app,
       currentConversation?.id || null,
@@ -354,6 +362,9 @@ export class ChatView extends ItemView {
   // Event Handlers
 
   private async handleConversationSelected(conversation: ConversationData): Promise<void> {
+    // Update ModelAgentManager's current conversation ID
+    (this.modelAgentManager as any).currentConversationId = conversation.id;
+
     // Initialize ModelAgentManager from conversation metadata
     await this.modelAgentManager.initializeFromConversation(conversation.id);
 
