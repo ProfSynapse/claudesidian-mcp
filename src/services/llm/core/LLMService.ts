@@ -452,6 +452,8 @@ export class LLMService {
       systemPrompt?: string;
       tools?: any[];
       onToolEvent?: (event: 'started' | 'completed', data: any) => void;
+      sessionId?: string; // ✅ Added for tool execution context
+      workspaceId?: string; // ✅ Added for tool execution context
     }
   ): AsyncGenerator<{ chunk: string; complete: boolean; content: string; toolCalls?: any[]; toolCallsReady?: boolean; usage?: any }, void, unknown> {
     try {
@@ -580,7 +582,8 @@ export class LLMService {
             adapter as any, // Cast to MCPCapableAdapter since all our adapters support MCP
             mcpToolCalls,
             provider as any,
-            generateOptions.onToolEvent
+            generateOptions.onToolEvent,
+            { sessionId: options?.sessionId, workspaceId: options?.workspaceId } // ✅ Pass session context
           );
 
           // Build complete tool calls with execution results for final yield
@@ -711,9 +714,10 @@ export class LLMService {
 
                 const recursiveToolResults = await MCPToolExecution.executeToolCalls(
                   adapter as any, // Cast to MCPCapableAdapter
-                  recursiveMcpToolCalls, 
+                  recursiveMcpToolCalls,
                   provider as any,
-                  generateOptions.onToolEvent
+                  generateOptions.onToolEvent,
+                  { sessionId: options?.sessionId, workspaceId: options?.workspaceId } // ✅ Pass session context
                 );
 
                 // Build complete tool calls with recursive results

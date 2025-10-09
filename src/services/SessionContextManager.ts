@@ -199,7 +199,15 @@ export class SessionContextManager {
       return {id: newId, created: true};
     }
     
-    // Session ID is in standard format - check if it exists in database
+    // Session ID is in standard format - check if it exists in our context map first
+    // ✅ CRITICAL FIX: If we already have workspace context for this session,
+    // it means the session was already bound - no need to check database
+    if (this.sessionContextMap.has(sessionId)) {
+      logger.systemLog(`Session ${sessionId} found in context map - already bound to workspace`);
+      return {id: sessionId, created: false};
+    }
+
+    // Check database if not in context map
     if (!this.sessionService) {
       console.error('[SessionContextManager] SessionService is NULL during validation!');
       throw new Error('SessionService not initialized - cannot validate session');
@@ -222,26 +230,30 @@ export class SessionContextManager {
 
   /**
    * Auto-create a session with given parameters
-   * 
+   *
    * @param sessionId Generated standard session ID
    * @param sessionName Friendly name provided by LLM
    * @param sessionDescription Optional session description
    */
   private async createAutoSession(sessionId: string, sessionName: string, sessionDescription?: string): Promise<void> {
-    logger.systemLog(`Auto-created session: ${sessionId} with name "${sessionName}" and description "${sessionDescription || 'No description'}"`);
-    
+    // ✅ CRITICAL FIX: Use workspace from sessionContextMap if available
+    const context = this.sessionContextMap.get(sessionId);
+    const workspaceId = context?.workspaceId || 'default';
+
+    logger.systemLog(`Auto-created session: ${sessionId} with name "${sessionName}", workspace "${workspaceId}", and description "${sessionDescription || 'No description'}"`);
+
     // Create session using the injected session service
     if (this.sessionService) {
       try {
         const sessionData = {
           name: sessionName,
           description: sessionDescription || '',
-          workspaceId: 'default',
+          workspaceId: workspaceId, // ✅ Use correct workspace from context
           id: sessionId
         };
-        
+
         const createdSession = await this.sessionService.createSession(sessionData);
-        logger.systemLog(`Session ${sessionId} successfully created in database`);
+        logger.systemLog(`Session ${sessionId} successfully created in database with workspace ${workspaceId}`);
       } catch (error) {
         logger.systemError(error as Error, `Failed to create session ${sessionId}`);
       }

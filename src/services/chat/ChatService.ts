@@ -11,6 +11,7 @@ import { documentToConversationData } from '../../types/chat/ChatTypes';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { ConversationContextBuilder } from './ConversationContextBuilder';
 import { CostCalculator } from '../llm/adapters/CostCalculator';
+import { generateSessionId } from '../../utils/sessionUtils';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -30,6 +31,7 @@ export class ChatService {
   private toolCallHistory = new Map<string, ToolCall[]>();
   private toolEventCallback?: (messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any) => void;
   private currentProvider?: string; // Track current provider for context building
+  private currentSessionId?: string; // Track current session ID for tool execution
   private isInitialized: boolean = false;
 
   constructor(
@@ -89,32 +91,44 @@ export class ChatService {
    * Create a new conversation
    */
   async createConversation(
-    title: string, 
+    title: string,
     initialMessage?: string,
     options?: {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
     }
   ): Promise<{
     success: boolean;
     conversationId?: string;
+    sessionId?: string;
     error?: string;
   }> {
     try {
+      // Generate session ID using standard method
+      const sessionId = generateSessionId();
+
       const conversation: ConversationData = {
         id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         title,
         created: Date.now(),
         updated: Date.now(),
-        messages: []
+        messages: [],
+        metadata: {
+          chatSettings: {
+            workspaceId: options?.workspaceId,
+            sessionId: sessionId
+          }
+        }
       };
 
       // Create the base conversation in storage
       await this.dependencies.conversationService.createConversation({
         id: conversation.id,
         title: conversation.title,
-        messages: []
+        messages: [],
+        metadata: conversation.metadata
       });
 
       // If there's an initial message, get AI response
@@ -130,10 +144,11 @@ export class ChatService {
 
       return {
         success: true,
-        conversationId: conversation.id
+        conversationId: conversation.id,
+        sessionId: sessionId
       };
     } catch (error) {
-      console.error('Failed to create conversation:', error);
+      console.error('[ChatService] Failed to create conversation:', error);
       return {
         success: false,
         error: getErrorMessage(error)
@@ -176,12 +191,14 @@ export class ChatService {
    * Send a message and get AI response with iterative tool execution
    */
   async sendMessage(
-    conversationId: string, 
+    conversationId: string,
     message: string,
     options?: {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
     }
   ): Promise<{
     success: boolean;
@@ -236,6 +253,8 @@ export class ChatService {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
       messageId?: string; // Allow passing existing messageId for UI consistency
       abortSignal?: AbortSignal; // Allow aborting the stream
     }
@@ -250,6 +269,7 @@ export class ChatService {
       // Get provider for context building
       const provider = options?.provider || defaultModel.provider;
       this.currentProvider = provider; // Store for context building
+      this.currentSessionId = options?.sessionId; // Store for tool execution
 
       // ALWAYS load conversation from storage to get complete history including tool calls
       const conversation = await this.dependencies.conversationService.getConversation(conversationId);
@@ -281,10 +301,10 @@ export class ChatService {
         systemPrompt: options?.systemPrompt,
         tools: openAITools,
         toolChoice: openAITools.length > 0 ? 'auto' : undefined,
-        abortSignal: options?.abortSignal
+        abortSignal: options?.abortSignal,
+        sessionId: options?.sessionId, // ✅ Pass session ID to LLMService for tool execution
+        workspaceId: options?.workspaceId // ✅ Pass workspace ID to LLMService for tool execution
       };
-
-      // Removed verbose LLM request logging - enable if debugging needed
 
       // Add tool event callback for live UI updates
       if (this.toolEventCallback) {
@@ -432,7 +452,7 @@ export class ChatService {
 
 
   /**
-   * Execute tool calls via MCPConnector
+   * Execute tool calls via MCPConnector (legacy - not used)
    */
   private async executeToolCallsViaConnector(toolCalls: any[]): Promise<ToolCall[]> {
     const results: ToolCall[] = [];
@@ -446,11 +466,22 @@ export class ChatService {
           throw new Error(`Invalid tool name format: ${toolCall.name}. Expected format: agent_mode`);
         }
 
+        const toolParams = toolCall.arguments || toolCall.parameters || {};
+
+        // Inject session ID into params
+        const paramsWithContext = {
+          ...toolParams,
+          context: {
+            ...toolParams.context,
+            sessionId: this.currentSessionId
+          }
+        };
+
         // Call connector directly (internal call to agent/mode)
         const result = await this.dependencies.mcpConnector.callTool({
           agent,
           mode,
-          params: toolCall.arguments || toolCall.parameters || {}
+          params: paramsWithContext
         });
 
         results.push({

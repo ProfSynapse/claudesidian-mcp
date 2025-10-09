@@ -23,6 +23,8 @@ export interface IndividualConversation {
       modelId?: string;
       agentId?: string;
       workspaceId?: string;
+      contextNotes?: string[];
+      sessionId?: string;
     };
     // Conversation-level cost aggregation
     totalCost?: number;

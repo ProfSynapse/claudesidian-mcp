@@ -79,12 +79,16 @@ export class ConversationManager {
    * Create a new conversation
    */
   async createNewConversation(title?: string): Promise<void> {
+    console.log('[ConversationManager] ⚠️ LEGACY PATH: createNewConversation() called (WITHOUT initial message)', { title });
+
     try {
       // Prompt for title if not provided
       const conversationTitle = title || await this.promptForConversationTitle();
       if (!conversationTitle) return; // User cancelled
-      
+
+      console.log('[ConversationManager] Calling ChatService.createConversation() from LEGACY PATH');
       const result = await this.chatService.createConversation(conversationTitle);
+      console.log('[ConversationManager] ChatService result from LEGACY PATH:', result);
       
       if (result.success && result.conversationId) {
         // Reload conversations and select the new one
@@ -111,15 +115,52 @@ export class ConversationManager {
       provider?: string;
       model?: string;
       systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
     }
   ): Promise<void> {
     const title = message.length > 50 ? message.substring(0, 47) + '...' : message;
-    
+
+    console.log('[ConversationManager] createNewConversationWithMessage() called with:', {
+      messageLength: message.length,
+      title,
+      options
+    });
+
     try {
-      const result = await this.chatService.createConversation(title, message, options);
-      
-      if (result.success && result.conversationId) {
+      console.log('[ConversationManager] Calling ChatService.createConversation()...');
+
+      const result = await this.chatService.createConversation(
+        title,
+        message,
+        {
+          ...options,
+          workspaceId: options?.workspaceId
+        }
+      );
+
+      console.log('[ConversationManager] ChatService.createConversation() result:', result);
+
+      if (result.success && result.conversationId && result.sessionId) {
+        console.log(`[ConversationManager] ✓ Created conversation ${result.conversationId} with session ${result.sessionId}`);
+
         // Reload conversations and select the new one
+        await this.loadConversations();
+        const newConversation = await this.chatService.getConversation(result.conversationId);
+
+        console.log('[ConversationManager] Reloaded conversation from storage:', {
+          id: newConversation?.id,
+          hasMetadata: !!newConversation?.metadata,
+          metadata: newConversation?.metadata
+        });
+
+        if (newConversation) {
+          await this.selectConversation(newConversation);
+        }
+      } else if (result.success && result.conversationId) {
+        // Fallback for conversations without session ID (shouldn't happen with new code)
+        console.warn('[ConversationManager] Created conversation without session ID');
+
         await this.loadConversations();
         const newConversation = await this.chatService.getConversation(result.conversationId);
         if (newConversation) {

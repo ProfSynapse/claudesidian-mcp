@@ -82,7 +82,8 @@ export class ConversationService {
       updated: data.updated || Date.now(),
       vault_name: data.vault_name || this.plugin.app.vault.getName(),
       message_count: data.messages?.length || 0,
-      messages: data.messages || []
+      messages: data.messages || [],
+      metadata: data.metadata // ⚠️ CRITICAL: Preserve metadata including sessionId!
     };
 
     // Write conversation file
