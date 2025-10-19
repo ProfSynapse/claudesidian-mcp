@@ -276,6 +276,7 @@ export class SettingsTab extends PluginSettingTab {
             this.settingsManager,
             customPromptStorage,
             this.app,
+            this.plugin,
             this.pluginLifecycleManager
         );
 

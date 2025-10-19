@@ -85,7 +85,10 @@ export class ConversationContextBuilder {
           }
         } else {
           // Regular assistant message without tools
-          messages.push({ role: 'assistant', content: msg.content });
+          // Filter out empty assistant messages (they're placeholders for streaming)
+          if (msg.content && msg.content.trim()) {
+            messages.push({ role: 'assistant', content: msg.content });
+          }
         }
       }
       // Note: 'tool' role messages are not used - tool results are stored in assistant messages with toolCalls
@@ -151,7 +154,11 @@ export class ConversationContextBuilder {
           }
         } else {
           // Regular assistant message without tools
-          messages.push({ role: 'assistant', content: msg.content });
+          // Filter out empty assistant messages for Anthropic (they're placeholders for streaming)
+          // Anthropic allows empty final assistant message, but not empty middle messages
+          if (msg.content && msg.content.trim()) {
+            messages.push({ role: 'assistant', content: msg.content });
+          }
         }
       }
       else if (msg.role === 'tool') {
