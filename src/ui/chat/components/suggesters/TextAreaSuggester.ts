@@ -118,19 +118,35 @@ export abstract class TextAreaSuggester<T> {
     this.suggestionContainer = document.createElement('div');
     this.suggestionContainer.addClass('suggestion-container', 'suggester-dropdown');
 
-    // Position below textarea
+    // Position ABOVE textarea (not below)
     const rect = this.textarea.getBoundingClientRect();
-    this.suggestionContainer.style.position = 'absolute';
+    this.suggestionContainer.style.position = 'fixed';
     this.suggestionContainer.style.left = rect.left + 'px';
-    this.suggestionContainer.style.top = (rect.bottom + 4) + 'px';
+    this.suggestionContainer.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
     this.suggestionContainer.style.width = rect.width + 'px';
+    this.suggestionContainer.style.maxHeight = '300px';
     this.suggestionContainer.style.zIndex = '1000';
 
     document.body.appendChild(this.suggestionContainer);
     this.isActive = true;
 
+    // Add click-outside handler to close
+    setTimeout(() => {
+      document.addEventListener('click', this.handleClickOutside);
+    }, 100);
+
     this.renderSuggestions();
   }
+
+  private handleClickOutside = (e: MouseEvent): void => {
+    if (!this.suggestionContainer) return;
+
+    const target = e.target as Node;
+    if (!this.suggestionContainer.contains(target) && target !== this.textarea) {
+      console.log('[TextAreaSuggester] Click outside detected, closing');
+      this.close();
+    }
+  };
 
   private renderSuggestions(): void {
     if (!this.suggestionContainer) return;
@@ -187,6 +203,9 @@ export abstract class TextAreaSuggester<T> {
       this.suggestionContainer.remove();
       this.suggestionContainer = null;
     }
+
+    // Remove click-outside handler
+    document.removeEventListener('click', this.handleClickOutside);
 
     this.isActive = false;
     this.suggestions = [];

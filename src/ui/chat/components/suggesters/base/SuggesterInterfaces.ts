@@ -73,6 +73,8 @@ export interface CacheEntry<T> {
 export interface ToolSuggestionItem {
   /** Tool name (e.g., "vaultManager.readFile") */
   name: string;
+  /** Human-friendly display name (e.g., "Read File") */
+  displayName?: string;
   /** Tool description */
   description: string;
   /** Tool category/manager */

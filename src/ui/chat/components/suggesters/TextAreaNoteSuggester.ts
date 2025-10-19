@@ -26,14 +26,10 @@ export class TextAreaNoteSuggester extends TextAreaSuggester<NoteSuggestionItem>
     });
 
     this.messageEnhancer = messageEnhancer;
-    console.log('[TextAreaNoteSuggester] Initialized');
   }
 
   async getSuggestions(query: string): Promise<SuggestionItem<NoteSuggestionItem>[]> {
-    console.log('[TextAreaNoteSuggester] Getting suggestions for query:', query);
-
     const files = this.app.vault.getMarkdownFiles();
-    console.log('[TextAreaNoteSuggester] Found', files.length, 'files');
 
     if (!query || query.trim().length === 0) {
       return files
@@ -84,8 +80,6 @@ export class TextAreaNoteSuggester extends TextAreaSuggester<NoteSuggestionItem>
   }
 
   async selectSuggestion(item: SuggestionItem<NoteSuggestionItem>): Promise<void> {
-    console.log('[TextAreaNoteSuggester] Selected:', item.data.name);
-
     // Read note content
     const content = await this.app.vault.read(item.data.file);
     const tokens = TokenCalculator.estimateTextTokens(content);
