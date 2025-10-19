@@ -13,6 +13,7 @@ import { ConversationContextBuilder } from './ConversationContextBuilder';
 import { generateSessionId } from '../../utils/sessionUtils';
 import { ToolCallService } from './ToolCallService';
 import { CostTrackingService } from './CostTrackingService';
+import { ConversationQueryService } from './ConversationQueryService';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -30,6 +31,7 @@ export interface ChatServiceDependencies {
 export class ChatService {
   private toolCallService: ToolCallService;
   private costTrackingService: CostTrackingService;
+  private conversationQueryService: ConversationQueryService;
   private currentProvider?: string; // Track current provider for context building
   private currentSessionId?: string; // Track current session ID for tool execution
   private isInitialized: boolean = false;
@@ -48,6 +50,7 @@ export class ChatService {
     // Initialize services
     this.toolCallService = new ToolCallService(dependencies.mcpConnector);
     this.costTrackingService = new CostTrackingService(dependencies.conversationService);
+    this.conversationQueryService = new ConversationQueryService(dependencies.conversationService);
   }
 
   /** Set tool event callback for live UI updates */
@@ -493,41 +496,14 @@ export class ChatService {
     }
   }
 
-  /**
-   * Get conversation by ID
-   */
+  /** Get conversation by ID */
   async getConversation(id: string): Promise<ConversationData | null> {
-    const conversation = await this.dependencies.conversationService.getConversation(id);
-    if (!conversation) return null;
-
-    // ConversationService returns conversation objects directly
-    return {
-      id: conversation.id,
-      title: conversation.title || 'Untitled Conversation',
-      created: conversation.created || Date.now(),
-      updated: conversation.updated || Date.now(),
-      messages: conversation.messages || [],
-      metadata: conversation.metadata // CRITICAL: Include metadata for cost tracking
-    };
+    return this.conversationQueryService.getConversation(id);
   }
 
-  /**
-   * List conversations
-   */
+  /** List conversations */
   async listConversations(options?: { limit?: number; offset?: number }): Promise<ConversationData[]> {
-    const searchResults = await this.dependencies.conversationService.listConversations(
-      this.dependencies.vaultName,
-      options?.limit || 50
-    );
-
-    // Convert conversation documents to ConversationData format
-    return searchResults.map((document: any) => ({
-      id: document.id,
-      title: document.title || 'Untitled Conversation',
-      created: document.created || Date.now(),
-      updated: document.updated || Date.now(),
-      messages: [] // Messages not loaded in list view for performance
-    }));
+    return this.conversationQueryService.listConversations(options);
   }
 
   /**
@@ -544,44 +520,26 @@ export class ChatService {
     }
   }
 
-  /**
-   * Search conversations
-   */
+  /** Search conversations */
   async searchConversations(query: string, limit = 10): Promise<any[]> {
-    // This would use the conversation search service when available
-    try {
-      const conversations = await this.listConversations({ limit: 50 });
-      return conversations
-        .filter(conv => 
-          conv.title.toLowerCase().includes(query.toLowerCase()) ||
-          conv.messages.some(msg => msg.content.toLowerCase().includes(query.toLowerCase()))
-        )
-        .slice(0, limit)
-        .map(conv => ({
-          id: conv.id,
-          title: conv.title,
-          summary: conv.messages[0]?.content.substring(0, 100) + '...',
-          relevanceScore: 0.8, // Mock score
-          lastUpdated: conv.updated
-        }));
-    } catch (error) {
-      console.error('Search failed:', error);
-      return [];
-    }
+    const results = await this.conversationQueryService.searchConversations(query, { limit });
+    return results.map(conv => ({
+      id: conv.id,
+      title: conv.title,
+      summary: conv.messages[0]?.content.substring(0, 100) + '...',
+      relevanceScore: 0.8,
+      lastUpdated: conv.updated
+    }));
   }
 
-  /**
-   * Get conversation repository for branch management
-   */
+  /** Get conversation repository for branch management */
   getConversationRepository(): any {
-    return this.dependencies.conversationService;
+    return this.conversationQueryService.getConversationRepository();
   }
 
-  /**
-   * Get conversation service (alias for getConversationRepository)
-   */
+  /** Get conversation service (alias for getConversationRepository) */
   getConversationService(): any {
-    return this.dependencies.conversationService;
+    return this.conversationQueryService.getConversationService();
   }
 
   /**
