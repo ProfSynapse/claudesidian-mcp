@@ -7,6 +7,7 @@ import { AgentOption } from '../components/AgentSelector';
 import { ProviderUtils } from '../utils/ProviderUtils';
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
 import { TFile } from 'obsidian';
+import { MessageEnhancement } from '../components/suggesters/base/SuggesterInterfaces';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -22,6 +23,7 @@ export class ModelAgentManager {
   private workspaceContext: WorkspaceContext | null = null;
   private contextNotes: string[] = [];
   private currentConversationId: string | null = null;
+  private messageEnhancement: MessageEnhancement | null = null;
 
   constructor(
     private app: any, // Obsidian App
@@ -298,6 +300,29 @@ export class ModelAgentManager {
   }
 
   /**
+   * Set message enhancement from suggesters
+   * @param enhancement - Message enhancement data
+   */
+  setMessageEnhancement(enhancement: MessageEnhancement | null): void {
+    this.messageEnhancement = enhancement;
+  }
+
+  /**
+   * Get current message enhancement
+   * @returns Message enhancement or null
+   */
+  getMessageEnhancement(): MessageEnhancement | null {
+    return this.messageEnhancement;
+  }
+
+  /**
+   * Clear message enhancement (call after message is sent)
+   */
+  clearMessageEnhancement(): void {
+    this.messageEnhancement = null;
+  }
+
+  /**
    * Get the configured default model from plugin settings
    */
   async getDefaultModel(): Promise<{ provider: string; model: string }> {
@@ -510,6 +535,56 @@ export class ModelAgentManager {
       prompt += '</files>\n\n';
     }
 
+    // 1b. Enhancement: Additional notes from [[suggester]]
+    if (this.messageEnhancement && this.messageEnhancement.notes.length > 0) {
+      if (this.contextNotes.length === 0) {
+        // Start files section if not already started
+        prompt += '<files>\n';
+      }
+
+      for (const note of this.messageEnhancement.notes) {
+        const xmlTag = this.normalizePathToXmlTag(note.path);
+        prompt += `<${xmlTag}>\n`;
+        prompt += `${note.path}\n\n`;
+        prompt += this.escapeXmlContent(note.content);
+        prompt += `\n</${xmlTag}>\n`;
+      }
+
+      if (this.contextNotes.length === 0) {
+        prompt += '</files>\n\n';
+      }
+    } else if (this.contextNotes.length > 0) {
+      // Close files section if it was opened earlier
+    }
+
+    // 1c. Enhancement: Tool hints from /suggester
+    if (this.messageEnhancement && this.messageEnhancement.tools.length > 0) {
+      prompt += '<tool_hints>\n';
+      prompt += 'The user has requested to use the following tools:\n\n';
+
+      for (const tool of this.messageEnhancement.tools) {
+        prompt += `Tool: ${tool.name}\n`;
+        prompt += `Description: ${tool.schema.description}\n`;
+        prompt += 'Please prioritize using this tool when applicable.\n\n';
+      }
+
+      prompt += '</tool_hints>\n\n';
+    }
+
+    // 1d. Enhancement: Custom agents from @suggester
+    if (this.messageEnhancement && this.messageEnhancement.agents.length > 0) {
+      prompt += '<custom_agents>\n';
+      prompt += 'The user has mentioned the following custom agents. Apply their personalities and instructions:\n\n';
+
+      for (const agent of this.messageEnhancement.agents) {
+        prompt += `<agent name="${this.escapeXmlAttribute(agent.name)}">\n`;
+        prompt += this.escapeXmlContent(agent.prompt);
+        prompt += `\n</agent>\n\n`;
+      }
+
+      prompt += '</custom_agents>\n\n';
+    }
+
     // 2. Agent section (if agent selected)
     if (this.currentSystemPrompt) {
       prompt += '<agent>\n';
@@ -557,6 +632,32 @@ export class ModelAgentManager {
       console.error('[ModelAgentManager] Error reading note:', notePath, error);
       return '[Error reading file]';
     }
+  }
+
+  /**
+   * Escape XML content to prevent injection attacks
+   * @param content - Content to escape
+   * @returns Escaped content
+   */
+  private escapeXmlContent(content: string): string {
+    return content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /**
+   * Escape XML attribute value
+   * @param value - Attribute value to escape
+   * @returns Escaped value
+   */
+  private escapeXmlAttribute(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
   }
 
 

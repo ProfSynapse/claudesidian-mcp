@@ -4,18 +4,21 @@
  * Provides text input, send button, and model selection
  */
 
-import { setIcon } from 'obsidian';
+import { setIcon, App } from 'obsidian';
+import { initializeSuggesters, SuggesterInstances } from './suggesters/initializeSuggesters';
 
 export class ChatInput {
   private element: HTMLElement | null = null;
   private textArea: HTMLTextAreaElement | null = null;
   private sendButton: HTMLButtonElement | null = null;
   private isLoading = false;
+  private suggesters: SuggesterInstances | null = null;
 
   constructor(
     private container: HTMLElement,
     private onSendMessage: (message: string) => void,
     private getLoadingState: () => boolean,
+    private app?: App,
     private onStopGeneration?: () => void
   ) {
     this.render();
@@ -86,6 +89,14 @@ export class ChatInput {
     });
 
     // Model selector removed - now handled by separate ModelSelector component
+
+    // Initialize suggesters if app is available
+    if (this.app && this.textArea) {
+      console.log('[ChatInput] Initializing suggesters');
+      this.suggesters = initializeSuggesters(this.app, this.textArea);
+    } else {
+      console.warn('[ChatInput] App not available - suggesters not initialized');
+    }
 
     this.element = this.container;
     this.updateUI();
@@ -208,9 +219,22 @@ export class ChatInput {
   }
 
   /**
+   * Get message enhancer (for accessing enhancements before sending)
+   */
+  getMessageEnhancer() {
+    return this.suggesters?.messageEnhancer || null;
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup(): void {
+    if (this.suggesters) {
+      console.log('[ChatInput] Cleaning up suggesters');
+      this.suggesters.cleanup();
+      this.suggesters = null;
+    }
+
     this.element = null;
     this.textArea = null;
     this.sendButton = null;

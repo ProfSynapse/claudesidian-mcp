@@ -271,6 +271,7 @@ export class ChatView extends ItemView {
       refs.inputContainer,
       (message) => this.handleSendMessage(message),
       () => this.messageManager.getIsLoading(),
+      this.app, // Pass app for suggesters
       () => this.handleStopGeneration()
     );
 

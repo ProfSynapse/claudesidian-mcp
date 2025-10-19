@@ -3364,3 +3364,175 @@ a:hover {
         transform: translateY(0);
     }
 }
+
+/* =========================== */
+/* SUGGESTER AUTOCOMPLETE      */
+/* =========================== */
+
+/* Base suggester item styles */
+.suggester-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border-radius: 4px;
+    min-height: 48px;
+}
+
+.suggester-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.suggester-item.is-selected {
+    background-color: var(--background-modifier-active-hover);
+}
+
+/* Icon container */
+.suggester-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+/* Content container */
+.suggester-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Title text */
+.suggester-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Description text */
+.suggester-description {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Badge container */
+.suggester-badge-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Base badge */
+.suggester-badge {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+/* Category badge (for tools) */
+.category-badge {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* Size badge (for notes) */
+.size-badge {
+    background-color: var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+/* Token info badge */
+.token-info {
+    background-color: var(--background-secondary-alt);
+    color: var(--text-muted);
+}
+
+/* Token warning badges */
+.token-badge {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.token-badge-info {
+    background-color: var(--color-cyan);
+    color: white;
+}
+
+.token-badge-warning {
+    background-color: var(--color-yellow);
+    color: var(--text-normal);
+}
+
+.token-badge-error {
+    background-color: var(--color-red);
+    color: white;
+}
+
+/* Specific suggester type styles */
+.note-suggester-item .suggester-icon {
+    color: var(--color-blue);
+}
+
+.agent-suggester-item .suggester-icon {
+    color: var(--color-purple);
+}
+
+.tool-suggester-item .suggester-icon {
+    color: var(--color-green);
+}
+
+/* Suggester dropdown container */
+.suggestion-container {
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-l);
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+/* Scrollbar styling for suggester */
+.suggestion-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.suggestion-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.suggestion-container::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.suggestion-container::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Empty state */
+.suggester-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
