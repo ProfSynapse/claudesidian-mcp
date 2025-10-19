@@ -918,6 +918,74 @@
     cursor: not-allowed;
 }
 
+/* Contenteditable specific styles */
+.chat-textarea[contenteditable="true"] {
+    cursor: text;
+}
+
+.chat-textarea[contenteditable="false"] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Placeholder for contenteditable */
+.chat-textarea[contenteditable="true"]:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+/* Reference badges in contenteditable */
+.chat-reference {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 0 2px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-monospace);
+    cursor: default;
+    user-select: none;
+    white-space: nowrap;
+}
+
+/* Tool reference (green) */
+.chat-reference-tool {
+    background: rgba(76, 175, 80, 0.15);
+    color: rgb(76, 175, 80);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+/* Agent reference (purple) */
+.chat-reference-agent {
+    background: rgba(156, 39, 176, 0.15);
+    color: rgb(156, 39, 176);
+    border: 1px solid rgba(156, 39, 176, 0.3);
+}
+
+/* Note reference (blue) */
+.chat-reference-note {
+    background: rgba(33, 150, 243, 0.15);
+    color: rgb(33, 150, 243);
+    border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+/* Dark mode adjustments */
+.theme-dark .chat-reference-tool {
+    background: rgba(76, 175, 80, 0.25);
+    color: rgb(129, 199, 132);
+}
+
+.theme-dark .chat-reference-agent {
+    background: rgba(156, 39, 176, 0.25);
+    color: rgb(186, 104, 200);
+}
+
+.theme-dark .chat-reference-note {
+    background: rgba(33, 150, 243, 0.25);
+    color: rgb(100, 181, 246);
+}
+
 .chat-send-button {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
@@ -3368,6 +3436,23 @@ a:hover {
 /* =========================== */
 /* SUGGESTER AUTOCOMPLETE      */
 /* =========================== */
+
+/* Suggester dropdown container */
+.suggester-container {
+    position: fixed;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+    padding: 4px;
+}
+
+.theme-dark .suggester-container {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
 
 /* Base suggester item styles */
 .suggester-item {

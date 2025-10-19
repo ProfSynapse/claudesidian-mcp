@@ -3,7 +3,8 @@
  */
 
 import { App, TFile, prepareFuzzySearch, setIcon } from 'obsidian';
-import { TextAreaSuggester } from './TextAreaSuggester';
+import { ContentEditableSuggester } from './ContentEditableSuggester';
+import { ContentEditableHelper } from '../../utils/ContentEditableHelper';
 import {
   SuggestionItem,
   NoteSuggestionItem,
@@ -12,13 +13,12 @@ import {
 import { MessageEnhancer } from '../../services/MessageEnhancer';
 import { TokenCalculator } from '../../utils/TokenCalculator';
 
-export class TextAreaNoteSuggester extends TextAreaSuggester<NoteSuggestionItem> {
+export class TextAreaNoteSuggester extends ContentEditableSuggester<NoteSuggestionItem> {
   private messageEnhancer: MessageEnhancer;
   private maxTokensPerNote = 10000;
-  private triggerStart = 0;
 
-  constructor(app: App, textarea: HTMLTextAreaElement, messageEnhancer: MessageEnhancer) {
-    super(app, textarea, {
+  constructor(app: App, element: HTMLElement, messageEnhancer: MessageEnhancer) {
+    super(app, element, {
       trigger: /\[\[([^\]]*?)$/,
       maxSuggestions: 50,
       cacheTTL: 60000,
@@ -93,21 +93,25 @@ export class TextAreaNoteSuggester extends TextAreaSuggester<NoteSuggestionItem>
     };
     this.messageEnhancer.addNote(noteRef);
 
-    // Replace [[ with [[note-name]]
-    const cursorPos = this.textarea.selectionStart;
-    const text = this.textarea.value;
+    // Replace [[ with styled reference badge
+    const cursorPos = ContentEditableHelper.getCursorPosition(this.element);
+    const text = ContentEditableHelper.getPlainText(this.element);
     const beforeCursor = text.substring(0, cursorPos);
     const match = /\[\[([^\]]*)$/.exec(beforeCursor);
 
     if (match) {
       const start = cursorPos - match[0].length;
-      const before = text.substring(0, start);
-      const after = text.substring(cursorPos);
-      const replacement = `[[${item.data.name}]]`;
 
-      this.textarea.value = before + replacement + after;
-      this.textarea.selectionStart = this.textarea.selectionEnd = start + replacement.length;
-      this.textarea.dispatchEvent(new Event('input'));
+      // Delete the trigger text
+      ContentEditableHelper.deleteTextAtCursor(this.element, start, cursorPos);
+
+      // Insert styled reference
+      ContentEditableHelper.insertReferenceNode(
+        this.element,
+        'note',
+        `[[${item.data.name}]]`,
+        item.data.path
+      );
     }
   }
 

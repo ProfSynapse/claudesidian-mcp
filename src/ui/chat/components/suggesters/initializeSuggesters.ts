@@ -1,5 +1,5 @@
 /**
- * Initialize suggesters for a textarea
+ * Initialize suggesters for a contenteditable element
  */
 
 import { App } from 'obsidian';
@@ -19,15 +19,15 @@ export interface SuggesterInstances {
 
 export function initializeSuggesters(
   app: App,
-  textarea: HTMLTextAreaElement
+  element: HTMLElement
 ): SuggesterInstances {
-  console.log('[initializeSuggesters] Setting up suggesters for textarea');
+  console.log('[initializeSuggesters] Setting up suggesters for contenteditable element');
 
   const messageEnhancer = new MessageEnhancer();
 
   // Create suggesters
-  const noteSuggester = new TextAreaNoteSuggester(app, textarea, messageEnhancer);
-  const toolSuggester = new TextAreaToolSuggester(app, textarea, messageEnhancer);
+  const noteSuggester = new TextAreaNoteSuggester(app, element, messageEnhancer);
+  const toolSuggester = new TextAreaToolSuggester(app, element, messageEnhancer);
 
   // Try to get CustomPromptStorageService for agent suggester
   let agentSuggester: TextAreaAgentSuggester | undefined;
@@ -35,7 +35,7 @@ export function initializeSuggesters(
     const plugin = (app as any).plugins.plugins['claudesidian-mcp'];
     if (plugin && plugin.settings) {
       const promptStorage = new CustomPromptStorageService(plugin.settings);
-      agentSuggester = new TextAreaAgentSuggester(app, textarea, messageEnhancer, promptStorage);
+      agentSuggester = new TextAreaAgentSuggester(app, element, messageEnhancer, promptStorage);
       console.log('[initializeSuggesters] Agent suggester initialized');
     } else {
       console.warn('[initializeSuggesters] Plugin settings not available - agent suggester disabled');

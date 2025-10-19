@@ -3,26 +3,26 @@
  */
 
 import { App, prepareFuzzySearch, setIcon } from 'obsidian';
-import { TextAreaSuggester } from './TextAreaSuggester';
+import { ContentEditableSuggester } from './ContentEditableSuggester';
+import { ContentEditableHelper } from '../../utils/ContentEditableHelper';
 import {
   SuggestionItem,
   ToolSuggestionItem,
   ToolHint
 } from './base/SuggesterInterfaces';
 import { MessageEnhancer } from '../../services/MessageEnhancer';
-import { ToolListService } from '../../../../handlers/services/ToolListService';
 
-export class TextAreaToolSuggester extends TextAreaSuggester<ToolSuggestionItem> {
+export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggestionItem> {
   private messageEnhancer: MessageEnhancer;
   private cachedTools: ToolSuggestionItem[] | null = null;
 
   constructor(
     app: App,
-    textarea: HTMLTextAreaElement,
+    element: HTMLElement,
     messageEnhancer: MessageEnhancer
   ) {
-    super(app, textarea, {
-      trigger: /^\/(\w*)$/,
+    super(app, element, {
+      trigger: /\/(\w*)$/,
       maxSuggestions: 30,
       cacheTTL: 120000,
       debounceDelay: 100
@@ -76,33 +76,28 @@ export class TextAreaToolSuggester extends TextAreaSuggester<ToolSuggestionItem>
         return;
       }
 
-      // Create ToolListService instance (it's not a registered service)
-      const toolListService = new ToolListService();
+      // Extract individual tools from each agent's modes
+      this.cachedTools = [];
 
-      // Generate tool list
-      const toolData = await toolListService.generateToolList(
-        agents,
-        true, // vault enabled
-        this.app.vault.getName() // Use actual vault name
-      );
+      for (const agent of agents.values()) {
+        const modes = (agent as any).getModes?.() || [];
 
-      // Convert to ToolSuggestionItems with display names
-      this.cachedTools = toolData.tools.map((tool: any) => {
-        const parts = tool.name.split('.');
-        const category = parts.length > 1 ? parts[0] : 'general';
+        for (const mode of modes) {
+          const toolName = `${agent.name}.${mode.slug}`;
 
-        return {
-          name: tool.name, // Keep technical name for tool call
-          displayName: this.getDisplayName(tool.name), // Add friendly display name
-          description: tool.description,
-          category: category,
-          schema: {
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema
-          }
-        };
-      });
+          this.cachedTools.push({
+            name: toolName, // Technical name: "vaultManager.readFile"
+            displayName: this.getDisplayName(toolName), // "Read File"
+            description: mode.description || `Execute ${mode.slug} on ${agent.name}`,
+            category: agent.name,
+            schema: {
+              name: toolName,
+              description: mode.description || `Execute ${mode.slug}`,
+              inputSchema: mode.getParameterSchema?.() || {}
+            }
+          });
+        }
+      }
 
       console.log('[TextAreaToolSuggester] Loaded', this.cachedTools?.length || 0, 'tools');
     } catch (error) {
@@ -173,17 +168,9 @@ export class TextAreaToolSuggester extends TextAreaSuggester<ToolSuggestionItem>
     const displayName = item.data.displayName || item.data.name;
     content.createDiv({ cls: 'suggester-title', text: displayName });
     content.createDiv({ cls: 'suggester-description', text: item.data.description });
-
-    const badgeContainer = el.createDiv({ cls: 'suggester-badge-container' });
-
-    // Capitalize category name
-    const categoryName = item.data.category.charAt(0).toUpperCase() + item.data.category.slice(1);
-    badgeContainer.createSpan({ cls: 'suggester-badge category-badge', text: categoryName });
   }
 
   selectSuggestion(item: SuggestionItem<ToolSuggestionItem>): void {
-    console.log('[TextAreaToolSuggester] Selected:', item.data.name);
-
     // Add to message enhancer
     const toolHint: ToolHint = {
       name: item.data.name,
@@ -191,20 +178,26 @@ export class TextAreaToolSuggester extends TextAreaSuggester<ToolSuggestionItem>
     };
     this.messageEnhancer.addTool(toolHint);
 
-    // Remove the /command from the message
-    const cursorPos = this.textarea.selectionStart;
-    const text = this.textarea.value;
+    // Replace /command with styled reference badge
+    const cursorPos = ContentEditableHelper.getCursorPosition(this.element);
+    const text = ContentEditableHelper.getPlainText(this.element);
     const beforeCursor = text.substring(0, cursorPos);
-    const match = /^\/(\w*)$/.exec(beforeCursor);
+    const match = /\/(\w*)$/.exec(beforeCursor);
 
     if (match) {
       const start = cursorPos - match[0].length;
-      const before = text.substring(0, start);
-      const after = text.substring(cursorPos);
+      const displayName = item.data.displayName || item.data.name;
 
-      this.textarea.value = before + after;
-      this.textarea.selectionStart = this.textarea.selectionEnd = start;
-      this.textarea.dispatchEvent(new Event('input'));
+      // Delete the trigger text
+      ContentEditableHelper.deleteTextAtCursor(this.element, start, cursorPos);
+
+      // Insert styled reference
+      ContentEditableHelper.insertReferenceNode(
+        this.element,
+        'tool',
+        `/${displayName.replace(/\s+/g, '')}`,
+        item.data.name
+      );
     }
   }
 

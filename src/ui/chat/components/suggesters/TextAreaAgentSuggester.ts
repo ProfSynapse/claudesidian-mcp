@@ -3,7 +3,8 @@
  */
 
 import { App, prepareFuzzySearch, setIcon } from 'obsidian';
-import { TextAreaSuggester } from './TextAreaSuggester';
+import { ContentEditableSuggester } from './ContentEditableSuggester';
+import { ContentEditableHelper } from '../../utils/ContentEditableHelper';
 import {
   SuggestionItem,
   AgentSuggestionItem,
@@ -13,18 +14,18 @@ import { MessageEnhancer } from '../../services/MessageEnhancer';
 import { CustomPromptStorageService } from '../../../../agents/agentManager/services/CustomPromptStorageService';
 import { TokenCalculator } from '../../utils/TokenCalculator';
 
-export class TextAreaAgentSuggester extends TextAreaSuggester<AgentSuggestionItem> {
+export class TextAreaAgentSuggester extends ContentEditableSuggester<AgentSuggestionItem> {
   private messageEnhancer: MessageEnhancer;
   private promptStorage: CustomPromptStorageService;
   private maxTokensPerAgent = 5000;
 
   constructor(
     app: App,
-    textarea: HTMLTextAreaElement,
+    element: HTMLElement,
     messageEnhancer: MessageEnhancer,
     promptStorage: CustomPromptStorageService
   ) {
-    super(app, textarea, {
+    super(app, element, {
       trigger: /@(\w*)$/,
       maxSuggestions: 20,
       cacheTTL: 30000,
@@ -95,21 +96,25 @@ export class TextAreaAgentSuggester extends TextAreaSuggester<AgentSuggestionIte
     };
     this.messageEnhancer.addAgent(agentRef);
 
-    // Replace @ with @AgentName
-    const cursorPos = this.textarea.selectionStart;
-    const text = this.textarea.value;
+    // Replace @ with styled reference badge
+    const cursorPos = ContentEditableHelper.getCursorPosition(this.element);
+    const text = ContentEditableHelper.getPlainText(this.element);
     const beforeCursor = text.substring(0, cursorPos);
     const match = /@(\w*)$/.exec(beforeCursor);
 
     if (match) {
       const start = cursorPos - match[0].length;
-      const before = text.substring(0, start);
-      const after = text.substring(cursorPos);
-      const replacement = `@${item.data.name.replace(/\s+/g, '_')} `;
 
-      this.textarea.value = before + replacement + after;
-      this.textarea.selectionStart = this.textarea.selectionEnd = start + replacement.length;
-      this.textarea.dispatchEvent(new Event('input'));
+      // Delete the trigger text
+      ContentEditableHelper.deleteTextAtCursor(this.element, start, cursorPos);
+
+      // Insert styled reference
+      ContentEditableHelper.insertReferenceNode(
+        this.element,
+        'agent',
+        `@${item.data.name.replace(/\s+/g, '_')}`,
+        item.data.id
+      );
     }
   }
 

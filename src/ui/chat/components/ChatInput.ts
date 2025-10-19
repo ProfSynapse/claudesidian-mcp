@@ -6,10 +6,12 @@
 
 import { setIcon, App } from 'obsidian';
 import { initializeSuggesters, SuggesterInstances } from './suggesters/initializeSuggesters';
+import { ContentEditableHelper } from '../utils/ContentEditableHelper';
+import { ReferenceExtractor } from '../utils/ReferenceExtractor';
 
 export class ChatInput {
   private element: HTMLElement | null = null;
-  private textArea: HTMLTextAreaElement | null = null;
+  private inputElement: HTMLElement | null = null;
   private sendButton: HTMLButtonElement | null = null;
   private isLoading = false;
   private suggesters: SuggesterInstances | null = null;
@@ -36,8 +38,8 @@ export class ChatInput {
    * Set placeholder text
    */
   setPlaceholder(placeholder: string): void {
-    if (this.textArea) {
-      this.textArea.placeholder = placeholder;
+    if (this.inputElement) {
+      this.inputElement.setAttribute('data-placeholder', placeholder);
     }
   }
 
@@ -51,27 +53,33 @@ export class ChatInput {
     // Input container with flex layout
     const inputContainer = this.container.createDiv('chat-input-flex');
 
-    // Text area container
-    const textareaContainer = inputContainer.createDiv('chat-textarea-container');
-    this.textArea = textareaContainer.createEl('textarea', {
-      cls: 'chat-textarea',
-      attr: {
-        placeholder: 'Type your message...',
-        rows: '1'
-      }
-    });
+    // Contenteditable input container
+    const inputElementContainer = inputContainer.createDiv('chat-textarea-container');
+    this.inputElement = inputElementContainer.createDiv('chat-textarea');
+    this.inputElement.contentEditable = 'true';
+    this.inputElement.setAttribute('data-placeholder', 'Type your message...');
+    this.inputElement.setAttribute('role', 'textbox');
+    this.inputElement.setAttribute('aria-multiline', 'true');
 
     // Handle Enter key (send) and Shift+Enter (new line)
-    this.textArea.addEventListener('keydown', (e) => {
+    this.inputElement.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        this.handleSendMessage();
+        // Don't send if any suggester is active (let suggester handle it)
+        const anySuggesterActive =
+          this.suggesters?.noteSuggester?.getIsActive() ||
+          this.suggesters?.toolSuggester?.getIsActive() ||
+          this.suggesters?.agentSuggester?.getIsActive();
+
+        if (!anySuggesterActive) {
+          e.preventDefault();
+          this.handleSendMessage();
+        }
       }
     });
 
-    // Auto-resize textarea
-    this.textArea.addEventListener('input', () => {
-      this.autoResizeTextarea();
+    // Auto-resize on input
+    this.inputElement.addEventListener('input', () => {
+      this.autoResizeInput();
     });
 
     // Send button container
@@ -91,9 +99,9 @@ export class ChatInput {
     // Model selector removed - now handled by separate ModelSelector component
 
     // Initialize suggesters if app is available
-    if (this.app && this.textArea) {
+    if (this.app && this.inputElement) {
       console.log('[ChatInput] Initializing suggesters');
-      this.suggesters = initializeSuggesters(this.app, this.textArea);
+      this.suggesters = initializeSuggesters(this.app, this.inputElement);
     } else {
       console.warn('[ChatInput] App not available - suggesters not initialized');
     }
@@ -123,43 +131,43 @@ export class ChatInput {
    * Handle sending a message
    */
   private handleSendMessage(): void {
-    if (!this.textArea) return;
+    if (!this.inputElement) return;
 
-    const message = this.textArea.value.trim();
+    const message = ReferenceExtractor.getPlainText(this.inputElement).trim();
     if (!message) return;
 
     // Clear the input
-    this.textArea.value = '';
-    this.autoResizeTextarea();
+    ContentEditableHelper.clear(this.inputElement);
+    this.autoResizeInput();
 
     // Send the message
     this.onSendMessage(message);
   }
 
   /**
-   * Auto-resize textarea based on content (limited to 2 lines)
+   * Auto-resize input based on content (limited to 2 lines)
    */
-  private autoResizeTextarea(): void {
-    if (!this.textArea) return;
+  private autoResizeInput(): void {
+    if (!this.inputElement) return;
 
     // Reset height to auto to get the correct scrollHeight
-    this.textArea.style.height = 'auto';
-    
+    this.inputElement.style.height = 'auto';
+
     // Set height limits for 2 lines maximum
     const minHeight = 40; // Single line height with padding
     const maxHeight = 72; // Two line height (40px base + 32px for second line)
-    const newHeight = Math.min(Math.max(this.textArea.scrollHeight, minHeight), maxHeight);
-    this.textArea.style.height = newHeight + 'px';
-    
+    const newHeight = Math.min(Math.max(this.inputElement.scrollHeight, minHeight), maxHeight);
+    this.inputElement.style.height = newHeight + 'px';
+
     // Enable scrolling if content exceeds 2 lines
-    this.textArea.style.overflowY = this.textArea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    this.inputElement.style.overflowY = this.inputElement.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }
 
   /**
    * Update UI based on current state
    */
   private updateUI(): void {
-    if (!this.sendButton || !this.textArea) return;
+    if (!this.sendButton || !this.inputElement) return;
 
     const actuallyLoading = this.isLoading || this.getLoadingState();
 
@@ -170,7 +178,7 @@ export class ChatInput {
       this.sendButton.empty();
       setIcon(this.sendButton, 'square');
       this.sendButton.setAttribute('aria-label', 'Stop generation');
-      this.textArea.disabled = true;
+      this.inputElement.contentEditable = 'false';
     } else {
       // Show normal send button
       this.sendButton.disabled = false;
@@ -178,7 +186,7 @@ export class ChatInput {
       this.sendButton.empty();
       setIcon(this.sendButton, 'send');
       this.sendButton.setAttribute('aria-label', 'Send message');
-      this.textArea.disabled = false;
+      this.inputElement.contentEditable = 'true';
     }
   }
 
@@ -186,8 +194,8 @@ export class ChatInput {
    * Focus the input
    */
   focus(): void {
-    if (this.textArea) {
-      this.textArea.focus();
+    if (this.inputElement) {
+      ContentEditableHelper.focus(this.inputElement);
     }
   }
 
@@ -195,9 +203,9 @@ export class ChatInput {
    * Clear the input
    */
   clear(): void {
-    if (this.textArea) {
-      this.textArea.value = '';
-      this.autoResizeTextarea();
+    if (this.inputElement) {
+      ContentEditableHelper.clear(this.inputElement);
+      this.autoResizeInput();
     }
   }
 
@@ -205,16 +213,16 @@ export class ChatInput {
    * Get current input value
    */
   getValue(): string {
-    return this.textArea?.value || '';
+    return this.inputElement ? ContentEditableHelper.getPlainText(this.inputElement) : '';
   }
 
   /**
    * Set input value
    */
   setValue(value: string): void {
-    if (this.textArea) {
-      this.textArea.value = value;
-      this.autoResizeTextarea();
+    if (this.inputElement) {
+      ContentEditableHelper.setPlainText(this.inputElement, value);
+      this.autoResizeInput();
     }
   }
 
@@ -236,7 +244,7 @@ export class ChatInput {
     }
 
     this.element = null;
-    this.textArea = null;
+    this.inputElement = null;
     this.sendButton = null;
   }
 }
