@@ -12,6 +12,7 @@ import { getErrorMessage } from '../../utils/errorUtils';
 import { ConversationContextBuilder } from './ConversationContextBuilder';
 import { CostCalculator } from '../llm/adapters/CostCalculator';
 import { generateSessionId } from '../../utils/sessionUtils';
+import { ToolCallService } from './ToolCallService';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -27,9 +28,7 @@ export interface ChatServiceDependencies {
 }
 
 export class ChatService {
-  private availableTools: any[] = [];
-  private toolCallHistory = new Map<string, ToolCall[]>();
-  private toolEventCallback?: (messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any) => void;
+  private toolCallService: ToolCallService;
   private currentProvider?: string; // Track current provider for context building
   private currentSessionId?: string; // Track current session ID for tool execution
   private isInitialized: boolean = false;
@@ -44,47 +43,24 @@ export class ChatService {
       enableToolChaining: true,
       ...options
     };
+
+    // Initialize ToolCallService
+    this.toolCallService = new ToolCallService(dependencies.mcpConnector);
   }
 
-  /**
-   * Set tool event callback for live UI updates
-   */
+  /** Set tool event callback for live UI updates */
   setToolEventCallback(callback: (messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any) => void): void {
-    this.toolEventCallback = callback;
+    this.toolCallService.setEventCallback(callback);
   }
 
-  /**
-   * Initialize the MCP SDK Client integration
-   */
+  /** Initialize the MCP SDK Client integration */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
       return;
     }
 
-    try {
-      // Get available tools from MCPConnector (queries all registered agents)
-      this.availableTools = this.dependencies.mcpConnector.getAvailableTools();
-
-      this.isInitialized = true;
-
-    } catch (error) {
-      console.error('Failed to initialize tools from MCPConnector:', error);
-      this.availableTools = [];
-    }
-  }
-
-  /**
-   * Convert MCP tools (with inputSchema) to OpenAI format (with parameters)
-   */
-  private convertMCPToolsToOpenAIFormat(mcpTools: any[]): any[] {
-    return mcpTools.map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema // MCP's inputSchema maps to OpenAI's parameters
-      }
-    }));
+    await this.toolCallService.initialize();
+    this.isInitialized = true;
   }
 
   /**
@@ -300,8 +276,8 @@ export class ChatService {
         messages.push({ role: 'user', content: userMessage });
       }
 
-      // Convert MCP tools to OpenAI format before passing to LLM
-      const openAITools = this.convertMCPToolsToOpenAIFormat(this.availableTools);
+      // Get tools from ToolCallService in OpenAI format
+      const openAITools = this.toolCallService.getAvailableTools();
 
       // Prepare LLM options with converted tools
       const llmOptions: any = {
@@ -315,12 +291,10 @@ export class ChatService {
         workspaceId: options?.workspaceId // ✅ Pass workspace ID to LLMService for tool execution
       };
 
-      // Add tool event callback for live UI updates
-      if (this.toolEventCallback) {
-        llmOptions.onToolEvent = (event: 'started' | 'completed', data: any) => {
-          this.toolEventCallback!(messageId, event, data);
-        };
-      }
+      // Add tool event callback for live UI updates (delegates to ToolCallService)
+      llmOptions.onToolEvent = (event: 'started' | 'completed', data: any) => {
+        this.toolCallService.fireToolEvent(messageId, event, data);
+      };
 
       // Add usage callback for async cost calculation (e.g., OpenRouter streaming)
       llmOptions.onUsageAvailable = async (usage: any, cost: any) => {
@@ -372,7 +346,7 @@ export class ChatService {
       // Stream the response from LLM service with MCP tools
       let toolCalls: any[] | undefined = undefined;
       let toolCallsSaved = false; // Track if we've saved the tool call message
-      const detectedToolIds = new Set<string>(); // Track which tools we've already fired 'detected' for
+      this.toolCallService.resetDetectedTools(); // Reset tool detection state for new message
 
       // Track usage and cost for conversation tracking
       let finalUsage: any = undefined;
@@ -422,34 +396,14 @@ export class ChatService {
             toolCallsSaved = true;
           }
 
-          // Fire 'detected' event for NEW tool calls (only once per tool)
-          // This creates the accordion immediately for progressive display
-          if (this.toolEventCallback && toolCalls) {
-            for (const tc of toolCalls) {
-              const toolId = tc.id || `${tc.function?.name}_${Date.now()}`;
-
-              // Only fire 'detected' once per tool
-              if (!detectedToolIds.has(toolId)) {
-                detectedToolIds.add(toolId);
-
-                const toolData = {
-                  id: toolId,
-                  name: tc.name || tc.function?.name,
-                  parameters: tc.function?.arguments || tc.parameters, // May be incomplete
-                  isComplete: chunk.toolCallsReady || false // Flag if parameters are complete
-                };
-                this.toolEventCallback(messageId, 'detected', toolData);
-              } else if (chunk.toolCallsReady) {
-                // Tool already detected, but now parameters are complete - fire 'updated' event
-                const toolData = {
-                  id: toolId,
-                  name: tc.name || tc.function?.name,
-                  parameters: tc.function?.arguments || tc.parameters,
-                  isComplete: true
-                };
-                this.toolEventCallback(messageId, 'updated', toolData);
-              }
-            }
+          // Handle progressive tool call detection (fires 'detected' and 'updated' events)
+          if (toolCalls) {
+            this.toolCallService.handleToolCallDetection(
+              messageId,
+              toolCalls,
+              chunk.toolCallsReady || false,
+              conversationId
+            );
           }
         }
 
@@ -549,74 +503,6 @@ export class ChatService {
 
 
   /**
-   * Execute tool calls via MCPConnector (legacy - not used)
-   */
-  private async executeToolCallsViaConnector(toolCalls: any[]): Promise<ToolCall[]> {
-    const results: ToolCall[] = [];
-
-    for (const toolCall of toolCalls) {
-      try {
-        // Parse tool name: "contentManager_readContent" → agent + mode
-        const [agent, mode] = toolCall.name.split('_');
-
-        if (!agent || !mode) {
-          throw new Error(`Invalid tool name format: ${toolCall.name}. Expected format: agent_mode`);
-        }
-
-        const toolParams = toolCall.arguments || toolCall.parameters || {};
-
-        // Inject session ID into params
-        const paramsWithContext = {
-          ...toolParams,
-          context: {
-            ...toolParams.context,
-            sessionId: this.currentSessionId
-          }
-        };
-
-        // Call connector directly (internal call to agent/mode)
-        const result = await this.dependencies.mcpConnector.callTool({
-          agent,
-          mode,
-          params: paramsWithContext
-        });
-
-        results.push({
-          id: toolCall.id,
-          type: 'function',
-          name: toolCall.name,
-          function: {
-            name: toolCall.name,
-            arguments: JSON.stringify(toolCall.arguments || toolCall.parameters || {})
-          },
-          parameters: toolCall.arguments || toolCall.parameters,
-          result: result,
-          success: true
-        });
-
-      } catch (error) {
-        console.error(`Tool call failed for ${toolCall.name}:`, error);
-
-        results.push({
-          id: toolCall.id,
-          type: 'function',
-          name: toolCall.name,
-          function: {
-            name: toolCall.name,
-            arguments: JSON.stringify(toolCall.arguments || toolCall.parameters || {})
-          },
-          parameters: toolCall.arguments || toolCall.parameters,
-          success: false,
-          error: getErrorMessage(error)
-        });
-      }
-    }
-
-    return results;
-  }
-
-
-  /**
    * Build message history for LLM context using provider-specific formatting
    * 
    * This method now uses ConversationContextBuilder to properly reconstruct
@@ -707,7 +593,7 @@ export class ChatService {
   async deleteConversation(id: string): Promise<boolean> {
     try {
       await this.dependencies.conversationService.deleteConversation(id);
-      this.toolCallHistory.delete(id);
+      // Note: Tool call history is stored per-message, not per-conversation
       return true;
     } catch (error) {
       console.error('Failed to delete conversation:', error);
