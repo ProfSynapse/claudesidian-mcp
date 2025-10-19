@@ -3,23 +3,13 @@
  * Provides unified interface to all LLM providers with Obsidian integration
  */
 
-import { 
-  OpenAIAdapter,
-  AnthropicAdapter,
-  GoogleAdapter,
-  MistralAdapter,
-  GroqAdapter,
-  OpenRouterAdapter,
-  RequestyAdapter,
-  PerplexityAdapter
-} from '../adapters';
-import { OllamaAdapter } from '../adapters/ollama/OllamaAdapter';
 import { BaseAdapter } from '../adapters/BaseAdapter';
 import { GenerateOptions, LLMResponse, ModelInfo } from '../adapters/types';
 import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
 import { MCPToolExecution } from '../adapters/shared/MCPToolExecution';
 import { ConversationContextBuilder } from '../../chat/ConversationContextBuilder';
 import { ConversationData } from '../../../types/chat/ChatTypes';
+import { AdapterRegistry } from './AdapterRegistry';
 
 export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;
@@ -52,120 +42,22 @@ export interface LLMExecutionResult {
 }
 
 export class LLMService {
-  private adapters: Map<string, BaseAdapter> = new Map();
+  private adapterRegistry: AdapterRegistry;
   private settings: LLMProviderSettings;
 
   constructor(settings: LLMProviderSettings, private mcpConnector?: any) {
     this.settings = settings;
-    this.initializeAdapters();
+    this.adapterRegistry = new AdapterRegistry(settings, mcpConnector);
+    this.adapterRegistry.initialize(settings, mcpConnector);
   }
 
-  /**
-   * Initialize adapters for all configured providers
-   */
-  private initializeAdapters(): void {
-    const providers = this.settings?.providers;
-    
-    if (!providers) {
-      console.warn('No provider settings found, skipping adapter initialization');
-      return;
-    }
-
-    // Only initialize adapters for providers with API keys
-    if (providers.openai?.apiKey && providers.openai.enabled) {
-      try {
-        const adapter = new OpenAIAdapter(providers.openai.apiKey, this.mcpConnector);
-        this.adapters.set('openai', adapter);
-      } catch (error) {
-        console.error('Failed to initialize OpenAI adapter:', error);
-        console.error('Error details:', {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          name: error instanceof Error ? error.name : undefined
-        });
-      }
-    }
-
-    if (providers.openrouter?.apiKey && providers.openrouter.enabled) {
-      try {
-        this.adapters.set('openrouter', new OpenRouterAdapter(providers.openrouter.apiKey, this.mcpConnector));
-      } catch (error) {
-        console.warn('Failed to initialize OpenRouter adapter:', error);
-      }
-    }
-
-    if (providers.anthropic?.apiKey && providers.anthropic.enabled) {
-      try {
-        this.adapters.set('anthropic', new AnthropicAdapter(providers.anthropic.apiKey, this.mcpConnector));
-      } catch (error) {
-        console.warn('Failed to initialize Anthropic adapter:', error);
-      }
-    }
-
-    if (providers.google?.apiKey && providers.google.enabled) {
-      try {
-        this.adapters.set('google', new GoogleAdapter(providers.google.apiKey));
-      } catch (error) {
-        console.warn('Failed to initialize Google adapter:', error);
-      }
-    }
-
-    if (providers.mistral?.apiKey && providers.mistral.enabled) {
-      try {
-        this.adapters.set('mistral', new MistralAdapter(providers.mistral.apiKey, this.mcpConnector));
-      } catch (error) {
-        console.warn('Failed to initialize Mistral adapter:', error);
-      }
-    }
-
-    if (providers.groq?.apiKey && providers.groq.enabled) {
-      try {
-        this.adapters.set('groq', new GroqAdapter(providers.groq.apiKey, this.mcpConnector));
-      } catch (error) {
-        console.warn('Failed to initialize Groq adapter:', error);
-      }
-    }
-
-    if (providers.requesty?.apiKey && providers.requesty.enabled) {
-      try {
-        this.adapters.set('requesty', new RequestyAdapter(providers.requesty.apiKey, this.mcpConnector));
-      } catch (error) {
-        console.warn('Failed to initialize Requesty adapter:', error);
-      }
-    }
-
-    if (providers.perplexity?.apiKey && providers.perplexity.enabled) {
-      try {
-        this.adapters.set('perplexity', new PerplexityAdapter(providers.perplexity.apiKey, this.mcpConnector));
-      } catch (error) {
-        console.warn('Failed to initialize Perplexity adapter:', error);
-      }
-    }
-
-    if (providers.ollama?.enabled && providers.ollama.apiKey) {
-      try {
-        // For Ollama, apiKey is the server URL, ollamaModel is the user-configured model
-        const ollamaModel = providers.ollama.ollamaModel;
-
-        if (!ollamaModel || !ollamaModel.trim()) {
-          console.warn('Ollama enabled but no model configured');
-          return;
-        }
-
-        this.adapters.set('ollama', new OllamaAdapter(providers.ollama.apiKey, ollamaModel));
-      } catch (error) {
-        console.warn('Failed to initialize Ollama adapter:', error);
-      }
-    }
-  }
 
   /**
    * Update settings and reinitialize adapters
    */
   updateSettings(settings: LLMProviderSettings): void {
     this.settings = settings;
-    this.adapters.clear();
-    this.initializeAdapters();
+    this.adapterRegistry.updateSettings(settings);
   }
 
   /**
@@ -173,8 +65,12 @@ export class LLMService {
    */
   async getAvailableModels(): Promise<(ModelInfo & { provider: string; userDescription?: string })[]> {
     const allModels: (ModelInfo & { provider: string; userDescription?: string })[] = [];
+    const availableProviders = this.adapterRegistry.getAvailableProviders();
 
-    for (const [providerId, adapter] of this.adapters) {
+    for (const providerId of availableProviders) {
+      const adapter = this.adapterRegistry.getAdapter(providerId);
+      if (!adapter) continue;
+
       try {
         const models = await adapter.listModels();
         // Add provider information and user description to each model
@@ -196,14 +92,14 @@ export class LLMService {
    * Get available providers (those with API keys and enabled)
    */
   getAvailableProviders(): string[] {
-    return Array.from(this.adapters.keys());
+    return this.adapterRegistry.getAvailableProviders();
   }
 
   /**
    * Check if a provider is available
    */
   isProviderAvailable(provider: string): boolean {
-    return this.adapters.has(provider);
+    return this.adapterRegistry.isProviderAvailable(provider);
   }
 
   /**
@@ -245,18 +141,11 @@ export class LLMService {
         };
       }
 
-      // Check if provider is available
-      if (!this.adapters) {
-        return {
-          success: false,
-          error: 'LLM adapters not initialized'
-        };
-      }
+      // Get adapter for the provider
+      const adapter = this.adapterRegistry.getAdapter(provider);
 
-      const adapter = this.adapters.get(provider);
-      
       if (!adapter) {
-        const availableProviders = Array.from(this.adapters.keys());
+        const availableProviders = this.adapterRegistry.getAvailableProviders();
         return {
           success: false,
           error: `Provider '${provider}' is not available. Available providers: ${availableProviders.length > 0 ? availableProviders.join(', ') : 'none (no API keys configured)'}. Please check API key configuration in settings.`
@@ -361,7 +250,7 @@ export class LLMService {
    */
   async testProvider(provider: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const adapter = this.adapters.get(provider);
+      const adapter = this.adapterRegistry.getAdapter(provider);
       if (!adapter) {
         return { success: false, error: `Provider '${provider}' is not configured` };
       }
@@ -370,9 +259,9 @@ export class LLMService {
       await adapter.generate('Hello', { maxTokens: 10 });
       return { success: true };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
@@ -469,7 +358,7 @@ export class LLMService {
 
 
       // Get adapter
-      const adapter = this.adapters?.get(provider);
+      const adapter = this.adapterRegistry.getAdapter(provider);
       if (!adapter) {
         throw new Error(`Provider not available: ${provider}`);
       }
@@ -946,7 +835,7 @@ export class LLMService {
    * Get a specific adapter instance for direct access
    */
   getAdapter(providerId: string): BaseAdapter | undefined {
-    return this.adapters.get(providerId);
+    return this.adapterRegistry.getAdapter(providerId);
   }
 
 }
