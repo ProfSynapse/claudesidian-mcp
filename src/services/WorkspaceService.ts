@@ -87,7 +87,6 @@ export class WorkspaceService {
     const workspace = await this.fileSystem.readWorkspace(id);
 
     if (!workspace) {
-      console.warn(`[WorkspaceService] Workspace not found: ${id}`);
       return null;
     }
 
@@ -96,7 +95,6 @@ export class WorkspaceService {
     if (migrated) {
       // Save migrated workspace back to storage
       await this.fileSystem.writeWorkspace(id, workspace);
-      console.log(`[WorkspaceService] Migrated workflow steps for workspace: ${id}`);
     }
 
     return workspace;
@@ -117,13 +115,11 @@ export class WorkspaceService {
         if (migrated) {
           // Save migrated workspace back to storage
           await this.fileSystem.writeWorkspace(id, workspace);
-          console.log(`[WorkspaceService] Migrated workflow steps for workspace: ${id}`);
         }
         workspaces.push(workspace);
       }
     }
 
-    console.log(`[WorkspaceService] Loaded all ${workspaces.length} workspaces`);
     return workspaces;
   }
 
@@ -151,7 +147,6 @@ export class WorkspaceService {
     // Update index
     await this.indexManager.updateWorkspaceInIndex(workspace);
 
-    console.log(`[WorkspaceService] Created workspace: ${id}`);
     return workspace;
   }
 
@@ -179,8 +174,6 @@ export class WorkspaceService {
 
     // Update index
     await this.indexManager.updateWorkspaceInIndex(updatedWorkspace);
-
-    console.log(`[WorkspaceService] Updated workspace: ${id}`);
   }
 
   /**
@@ -203,8 +196,6 @@ export class WorkspaceService {
 
     // Update index
     await this.indexManager.updateWorkspaceInIndex(workspace);
-
-    console.log(`[WorkspaceService] Updated last accessed timestamp: ${id}`);
   }
 
   /**
@@ -216,8 +207,6 @@ export class WorkspaceService {
 
     // Remove from index
     await this.indexManager.removeWorkspaceFromIndex(id);
-
-    console.log(`[WorkspaceService] Deleted workspace: ${id}`);
   }
 
   /**
@@ -254,7 +243,6 @@ export class WorkspaceService {
     // Update index
     await this.indexManager.updateWorkspaceInIndex(workspace);
 
-    console.log(`[WorkspaceService] Added session ${sessionId} to workspace ${workspaceId}`);
     return session;
   }
 
@@ -287,8 +275,6 @@ export class WorkspaceService {
 
     // Update index
     await this.indexManager.updateWorkspaceInIndex(workspace);
-
-    console.log(`[WorkspaceService] Updated session ${sessionId} in workspace ${workspaceId}`);
   }
 
   /**
@@ -311,8 +297,6 @@ export class WorkspaceService {
 
     // Update index
     await this.indexManager.updateWorkspaceInIndex(workspace);
-
-    console.log(`[WorkspaceService] Deleted session ${sessionId} from workspace ${workspaceId}`);
   }
 
   /**
@@ -322,14 +306,12 @@ export class WorkspaceService {
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
     if (!workspace) {
-      console.warn(`[WorkspaceService] Workspace not found: ${workspaceId}`);
       return null;
     }
 
     const session = workspace.sessions[sessionId];
 
     if (!session) {
-      console.warn(`[WorkspaceService] Session not found: ${sessionId} in workspace ${workspaceId}`);
       return null;
     }
 
@@ -371,7 +353,6 @@ export class WorkspaceService {
     // Update index
     await this.indexManager.updateWorkspaceInIndex(workspace);
 
-    console.log(`[WorkspaceService] Added memory trace ${traceId} to session ${sessionId}`);
     return trace;
   }
 
@@ -422,7 +403,6 @@ export class WorkspaceService {
     // Update index
     await this.indexManager.updateWorkspaceInIndex(workspace);
 
-    console.log(`[WorkspaceService] Added state ${stateId} to session ${sessionId}`);
     return state;
   }
 
@@ -474,7 +454,6 @@ export class WorkspaceService {
     // Apply limit
     const limited = limit ? results.slice(0, limit) : results;
 
-    console.log(`[WorkspaceService] Search "${query}" found ${limited.length} results`);
     return limited;
   }
 

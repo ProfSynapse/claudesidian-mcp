@@ -266,6 +266,15 @@ export class ChatService {
       // Get defaults from LLMService if user didn't select provider/model
       const defaultModel = this.dependencies.llmService.getDefaultModel();
 
+      // Create placeholder message immediately so async usage callback can update it
+      // This is saved early to ensure the message exists when async cost calculation completes
+      await this.dependencies.conversationService.addMessage({
+        conversationId,
+        role: 'assistant',
+        content: '', // Will be updated as streaming progresses
+        id: messageId
+      });
+
       // Get provider for context building
       const provider = options?.provider || defaultModel.provider;
       this.currentProvider = provider; // Store for context building
@@ -313,6 +322,53 @@ export class ChatService {
         };
       }
 
+      // Add usage callback for async cost calculation (e.g., OpenRouter streaming)
+      llmOptions.onUsageAvailable = async (usage: any, cost: any) => {
+        console.log('[ChatService] Async usage available:', { usage, cost, messageId });
+
+        try {
+          // Load conversation, find message, update it, save back
+          const conversation = await this.dependencies.conversationService.getConversation(conversationId);
+          if (!conversation) {
+            console.error('[ChatService] Conversation not found for async usage update');
+            return;
+          }
+
+          // Find the message by ID
+          const message = conversation.messages.find((m: any) => m.id === messageId);
+          if (!message) {
+            console.error('[ChatService] Message not found for async usage update:', messageId);
+            return;
+          }
+
+          // Check if message already has cost (to prevent double-counting)
+          const hadCost = !!message.cost;
+
+          // Update message with usage and cost
+          message.usage = usage;
+          message.cost = cost;
+
+          // Update conversation-level cost summary (only if message didn't already have cost)
+          if (cost && !hadCost) {
+            conversation.metadata = conversation.metadata || {};
+            conversation.metadata.totalCost = (conversation.metadata.totalCost || 0) + (cost.totalCost || 0);
+            console.log('[ChatService] Added cost to metadata.totalCost:', cost.totalCost);
+          } else if (hadCost) {
+            console.log('[ChatService] Message already had cost, skipping metadata update to prevent double-counting');
+          }
+
+          // Save updated conversation
+          await this.dependencies.conversationService.updateConversation(conversationId, {
+            messages: conversation.messages,
+            metadata: conversation.metadata
+          });
+
+          console.log('[ChatService] ✓ Message updated with async usage/cost');
+        } catch (error) {
+          console.error('[ChatService] Failed to update message with async usage:', error);
+        }
+      };
+
       // Stream the response from LLM service with MCP tools
       let toolCalls: any[] | undefined = undefined;
       let toolCallsSaved = false; // Track if we've saved the tool call message
@@ -332,6 +388,7 @@ export class ChatService {
 
         // Extract usage for cost calculation
         if (chunk.usage) {
+          console.log('[ChatService] Received usage from chunk:', chunk.usage);
           finalUsage = chunk.usage;
         }
 
@@ -385,6 +442,7 @@ export class ChatService {
         // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
           // Calculate cost from final usage
+          console.log('[ChatService] Final usage before cost calc:', finalUsage);
           if (finalUsage) {
             const costBreakdown = CostCalculator.calculateCost(
               provider,
@@ -396,6 +454,7 @@ export class ChatService {
                 source: 'provider_api'
               }
             );
+            console.log('[ChatService] Cost breakdown calculated:', costBreakdown);
 
             if (costBreakdown) {
               finalCost = {
@@ -405,9 +464,44 @@ export class ChatService {
             }
           }
 
-          // Save final response (pingpong result or direct response)
+          // Update the placeholder message with final content
+          // Load conversation, find message, update it
+          const conv = await this.dependencies.conversationService.getConversation(conversationId);
+          if (conv) {
+            const msg = conv.messages.find((m: any) => m.id === messageId);
+            if (msg) {
+              // Update existing placeholder message
+              msg.content = accumulatedContent;
+
+              // Only update cost/usage if we have values (don't overwrite with undefined)
+              // This prevents overwriting async updates from OpenRouter's generation API
+              if (finalCost) {
+                msg.cost = finalCost;
+              }
+              if (finalUsage) {
+                msg.usage = finalUsage;
+              }
+
+              msg.provider = provider;
+              msg.model = llmOptions.model;
+
+              // Update conversation-level cost summary
+              if (finalCost) {
+                conv.metadata = conv.metadata || {};
+                conv.metadata.totalCost = (conv.metadata.totalCost || 0) + (finalCost.totalCost || 0);
+              }
+
+              // Save updated conversation
+              await this.dependencies.conversationService.updateConversation(conversationId, {
+                messages: conv.messages,
+                metadata: conv.metadata
+              });
+            }
+          }
+
+          // Handle tool calls - if present, add separate message for pingpong response
           if (toolCalls && toolCalls.length > 0) {
-            // Had tool calls - save pingpong response as separate assistant message
+            // Had tool calls - the placeholder is the tool call message, add pingpong response separately
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',
@@ -417,17 +511,6 @@ export class ChatService {
               provider: provider,
               model: llmOptions.model
               // No toolCalls - this is the response AFTER seeing tool results
-            });
-          } else {
-            // No tool calls - save regular assistant response
-            await this.dependencies.conversationService.addMessage({
-              conversationId,
-              role: 'assistant',
-              content: accumulatedContent,
-              cost: finalCost,
-              usage: finalUsage,
-              provider: provider,
-              model: llmOptions.model
             });
           }
         }

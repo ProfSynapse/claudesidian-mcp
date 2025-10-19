@@ -2629,26 +2629,23 @@ a:hover {
     overflow: hidden;
 }
 
+.context-progress-bar-bg {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
 .context-progress-bar-fill {
     height: 100%;
     border-radius: 3px;
-    transition: width 0.3s ease, background-color 0.3s ease;
-}
-
-.context-progress-bar-fill.context-safe {
-    background: var(--color-green);
-}
-
-.context-progress-bar-fill.context-moderate {
-    background: var(--color-yellow);
-}
-
-.context-progress-bar-fill.context-warning {
-    background: var(--color-orange);
-}
-
-.context-progress-bar-fill.context-critical {
-    background: var(--color-red);
+    transition: width 0.3s ease;
+    background: linear-gradient(to right,
+        var(--color-green) 0%,
+        var(--color-green) 25%,
+        var(--color-yellow) 50%,
+        var(--color-orange) 75%,
+        var(--color-red) 100%
+    );
 }
 
 .context-progress-segment {

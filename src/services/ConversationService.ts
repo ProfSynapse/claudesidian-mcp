@@ -152,6 +152,7 @@ export class ConversationService {
     usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
     provider?: string;
     model?: string;
+    id?: string; // Optional: specify messageId for placeholder messages
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       // Load conversation
@@ -164,8 +165,8 @@ export class ConversationService {
         };
       }
 
-      // Create message
-      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Create message (use provided ID if available, otherwise generate new one)
+      const messageId = params.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const message = {
         id: messageId,
         role: params.role,
@@ -184,15 +185,19 @@ export class ConversationService {
       conversation.updated = Date.now();
 
       // Update conversation-level cost summary
+      console.log('[ConversationService] addMessage - cost:', params.cost, 'usage:', params.usage);
+
       if (params.cost) {
         conversation.metadata = conversation.metadata || {};
         conversation.metadata.totalCost = (conversation.metadata.totalCost || 0) + params.cost.totalCost;
         conversation.metadata.currency = params.cost.currency;
+        console.log('[ConversationService] Updated metadata totalCost:', conversation.metadata.totalCost);
       }
 
       if (params.usage) {
         conversation.metadata = conversation.metadata || {};
         conversation.metadata.totalTokens = (conversation.metadata.totalTokens || 0) + params.usage.totalTokens;
+        console.log('[ConversationService] Updated metadata totalTokens:', conversation.metadata.totalTokens);
       }
 
       // Save conversation

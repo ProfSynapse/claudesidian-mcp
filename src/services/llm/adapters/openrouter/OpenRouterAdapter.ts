@@ -65,8 +65,15 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         presence_penalty: options?.presencePenalty,
         response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
         stop: options?.stopSequences,
-        tools: options?.tools
+        tools: options?.tools,
+        usage: { include: true } // Enable token usage and cost tracking
       };
+
+      console.log('[OpenRouter Cost Debug] Request body includes usage parameter:', {
+        model,
+        hasUsageParam: !!requestBody.usage,
+        usageParam: requestBody.usage
+      });
 
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -85,8 +92,20 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       const data = await response.json();
 
+      console.log('[OpenRouter Cost Debug] Non-streaming response received:', {
+        hasUsage: !!data.usage,
+        usage: data.usage,
+        hasChoices: !!data.choices,
+        // Check for usage in different possible locations
+        topLevelUsage: data.usage,
+        choiceUsage: data.choices?.[0]?.usage,
+        metadataUsage: data.metadata?.usage,
+        fullResponse: JSON.stringify(data, null, 2)
+      });
+
       const text = data.choices[0]?.message?.content || '';
       const usage = this.extractUsage(data);
+      console.log('[OpenRouter Cost Debug] Extracted usage:', usage);
       const finishReason = data.choices[0]?.finish_reason || 'stop';
 
       // Extract web search results if web search was enabled
@@ -153,11 +172,21 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorBody}`);
       }
 
+      // Track generation ID for async usage retrieval
+      let generationId: string | null = null;
+      let usageFetchTriggered = false;
+
       // Use unified stream processing (automatically uses SSE parsing for Response objects)
       yield* this.processStream(response, {
         debugLabel: 'OpenRouter',
 
         extractContent: (parsed: any) => {
+          // Capture generation ID from first chunk
+          if (!generationId && parsed.id) {
+            generationId = parsed.id;
+            console.log('[OpenRouter Streaming] Generation ID captured:', generationId);
+          }
+
           // Process all available choices - reasoning models may use multiple choices
           // Choice 0 might be reasoning, Choice 1 might be actual response
           for (const choice of parsed.choices || []) {
@@ -185,6 +214,17 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           // Extract finish reason from any choice
           for (const choice of parsed.choices || []) {
             if (choice?.finish_reason) {
+              // When we detect completion, trigger async usage fetch (only once)
+              if (generationId && options?.onUsageAvailable && !usageFetchTriggered) {
+                usageFetchTriggered = true;
+                console.log('[OpenRouter Streaming] Triggering async usage fetch for generation:', generationId);
+
+                // Fire and forget - don't await
+                this.fetchAndNotifyUsage(generationId, baseModel, options.onUsageAvailable).catch(error => {
+                  console.error('[OpenRouter Streaming] Error in async usage fetch:', error);
+                });
+              }
+
               return choice.finish_reason;
             }
           }
@@ -192,13 +232,122 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         },
 
         extractUsage: (parsed: any) => {
-          return parsed.usage || null;
+          // OpenRouter doesn't include usage in streaming responses
+          // We'll fetch it asynchronously using the generation ID when completion is detected
+          return null;
         }
       });
 
     } catch (error) {
       throw this.handleError(error, 'streaming generation');
     }
+  }
+
+  /**
+   * Fetch usage data and notify via callback - runs asynchronously after streaming completes
+   */
+  private async fetchAndNotifyUsage(
+    generationId: string,
+    model: string,
+    onUsageAvailable: (usage: any, cost?: any) => void
+  ): Promise<void> {
+    try {
+      console.log('[OpenRouter Async] Fetching usage for generation:', generationId);
+
+      const usage = await this.fetchGenerationStats(generationId);
+
+      if (!usage) {
+        console.warn('[OpenRouter Async] Failed to fetch usage data');
+        return;
+      }
+
+      console.log('[OpenRouter Async] ✓ Usage data retrieved:', usage);
+
+      // Calculate cost
+      const cost = await this.calculateCost(usage, model);
+
+      if (cost) {
+        console.log('[OpenRouter Async] ✓ Cost calculated:', cost);
+      }
+
+      // Notify via callback
+      onUsageAvailable(usage, cost || undefined);
+      console.log('[OpenRouter Async] ✓ Callback notified with usage and cost');
+
+    } catch (error) {
+      console.error('[OpenRouter Async] Error fetching/calculating usage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch generation statistics from OpenRouter using generation ID with exponential backoff
+   * This is the proper way to get token usage and cost for streaming requests
+   */
+  private async fetchGenerationStats(generationId: string): Promise<{ promptTokens: number; completionTokens: number; totalTokens: number } | null> {
+    const maxRetries = 5;
+    const baseDelay = 800; // Start with 800ms (stats typically ready after ~800ms)
+    const incrementDelay = 200; // Increment by 200ms each retry
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Linear backoff: 800ms, 1000ms, 1200ms, 1400ms, 1600ms
+        if (attempt > 0) {
+          const delay = baseDelay + (incrementDelay * attempt);
+          console.log(`[OpenRouter] Retry ${attempt}/${maxRetries - 1} - waiting ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        const response = await fetch(`${this.baseUrl}/generation?id=${generationId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'HTTP-Referer': 'https://synaptic-lab-kit.com',
+            'X-Title': 'Synaptic Lab Kit'
+          }
+        });
+
+        if (response.status === 404) {
+          // Stats not ready yet, retry
+          console.log(`[OpenRouter] Generation stats not ready yet (404), attempt ${attempt + 1}/${maxRetries}`);
+          continue;
+        }
+
+        if (!response.ok) {
+          console.error('[OpenRouter] Failed to fetch generation stats:', response.status, response.statusText);
+          return null;
+        }
+
+        const data = await response.json();
+        console.log('[OpenRouter] Generation stats response:', data);
+
+        // Extract token counts from response
+        // OpenRouter returns: tokens_prompt, tokens_completion, native_tokens_prompt, native_tokens_completion
+        const promptTokens = data.data?.native_tokens_prompt || data.data?.tokens_prompt || 0;
+        const completionTokens = data.data?.native_tokens_completion || data.data?.tokens_completion || 0;
+
+        if (promptTokens > 0 || completionTokens > 0) {
+          console.log(`[OpenRouter] ✓ Successfully fetched stats on attempt ${attempt + 1}`);
+          return {
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens
+          };
+        }
+
+        // Data returned but no tokens - might not be ready yet
+        console.log(`[OpenRouter] Stats returned but no tokens yet, attempt ${attempt + 1}/${maxRetries}`);
+
+      } catch (error) {
+        console.error(`[OpenRouter] Error fetching generation stats (attempt ${attempt + 1}):`, error);
+        if (attempt === maxRetries - 1) {
+          return null;
+        }
+      }
+    }
+
+    console.error('[OpenRouter] Failed to fetch generation stats after all retries');
+    return null;
   }
 
   /**
@@ -283,7 +432,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           frequency_penalty: options?.frequencyPenalty,
           presence_penalty: options?.presencePenalty,
           response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
-          stop: options?.stopSequences
+          stop: options?.stopSequences,
+          usage: { include: true } // Enable token usage and cost tracking
         }),
         
         makeApiCall: async (requestBody: any) => {
@@ -369,7 +519,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       messages.push(...toolMessages);
 
 
-      // Make API call to get AI's response to the tool results  
+      // Make API call to get AI's response to the tool results
       const requestBody = {
         model,
         messages,
@@ -379,7 +529,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
-        stop: options?.stopSequences
+        stop: options?.stopSequences,
+        usage: { include: true } // Enable token usage and cost tracking
       };
       
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -453,7 +604,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       return sources;
     } catch (error) {
-      console.warn('[OpenRouter] Failed to extract search sources:', error);
       return [];
     }
   }
@@ -463,11 +613,20 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
    */
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
     try {
+      console.log('[OpenRouter Cost Debug] getModelPricing called with modelId:', modelId);
       const models = ModelRegistry.getProviderModels('openrouter');
+      console.log('[OpenRouter Cost Debug] Available models:', models.map(m => m.apiName));
       const model = models.find(m => m.apiName === modelId);
       if (!model) {
+        console.warn('[OpenRouter Cost Debug] Model not found in registry:', modelId);
         return null;
       }
+
+      console.log('[OpenRouter Cost Debug] Model found:', {
+        apiName: model.apiName,
+        inputCost: model.inputCostPerMillion,
+        outputCost: model.outputCostPerMillion
+      });
 
       return {
         rateInputPerMillion: model.inputCostPerMillion,
@@ -475,7 +634,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         currency: 'USD'
       };
     } catch (error) {
-      console.warn(`Failed to get pricing for model ${modelId}:`, error);
+      console.warn(`[OpenRouter Cost Debug] Failed to get pricing for model ${modelId}:`, error);
       return null;
     }
   }

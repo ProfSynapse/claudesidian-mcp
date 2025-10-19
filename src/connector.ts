@@ -102,8 +102,6 @@ export class MCPConnector {
             if (!this.sessionContextManager) {
                 throw new Error('[MCPConnector] SessionContextManager not available from ServiceManager');
             }
-
-            console.log('[MCPConnector] ✓ Retrieved SessionContextManager from ServiceManager');
         }
         return this.sessionContextManager;
     }
@@ -273,8 +271,6 @@ export class MCPConnector {
                 validatedSessionId = generateSessionId();
                 isNewSession = true;
                 isNonStandardId = !!providedSessionId; // True if they provided a friendly name
-
-                console.log(`[MCPConnector] Generated new session ID: ${validatedSessionId}${providedSessionId ? ` (from friendly name: ${providedSessionId})` : ''}`);
             } else {
                 // Valid standard sessionId - use it
                 validatedSessionId = providedSessionId;
@@ -295,7 +291,6 @@ export class MCPConnector {
                 // Inject workspace context from session
                 modeParams.workspaceContext = workspaceContext;
                 modeParams.context.workspaceId = workspaceContext.workspaceId;
-                console.log(`[MCPConnector] ✓ Applied workspace ${workspaceContext.workspaceId} from session ${validatedSessionId}`);
             } else {
                 // Fallback to default if no session workspace
                 if (!modeParams.workspaceContext) {
@@ -307,7 +302,6 @@ export class MCPConnector {
                 if (modeParams.context && !modeParams.context.workspaceId) {
                     modeParams.context.workspaceId = modeParams.workspaceContext.workspaceId;
                 }
-                console.log(`[MCPConnector] No workspace found for session, using default`);
             }
 
             // Delegate validation and execution to ToolCallRouter
@@ -331,7 +325,7 @@ export class MCPConnector {
                     success,
                     executionTime
                 ).catch((err: Error) => {
-                    console.warn('[MCPConnector] Failed to capture tool trace:', err);
+                    // Silent error handling for tool trace capture
                 });
             }
 
@@ -359,8 +353,6 @@ export class MCPConnector {
 
                     // Also add as a top-level field for visibility
                     result.sessionInstructions = instructions;
-
-                    console.log(`[MCPConnector] Added session instructions to result: ${instructions}`);
                 }
             }
 

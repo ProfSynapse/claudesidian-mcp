@@ -452,6 +452,7 @@ export class LLMService {
       systemPrompt?: string;
       tools?: any[];
       onToolEvent?: (event: 'started' | 'completed', data: any) => void;
+      onUsageAvailable?: (usage: any, cost?: any) => void; // ✅ Added for async usage updates (OpenRouter streaming)
       sessionId?: string; // ✅ Added for tool execution context
       workspaceId?: string; // ✅ Added for tool execution context
     }
@@ -503,7 +504,8 @@ export class LLMService {
         model,
         systemPrompt: systemPrompt || options?.systemPrompt,
         tools: options?.tools,
-        onToolEvent: options?.onToolEvent // Pass through tool event callback for live UI updates
+        onToolEvent: options?.onToolEvent, // Pass through tool event callback for live UI updates
+        onUsageAvailable: options?.onUsageAvailable // Pass through usage callback for async cost calculation
       };
 
       // STREAMING-FIRST APPROACH: Use streaming for all providers
@@ -552,7 +554,6 @@ export class LLMService {
           // Intermediate chunks may have incomplete JSON arguments that will fail JSON.parse
           if (chunk.complete) {
             detectedToolCalls = chunk.toolCalls;
-            console.log(`[LLMService] Received COMPLETE tool calls: ${detectedToolCalls.length} tools`);
           }
         }
         

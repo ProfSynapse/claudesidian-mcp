@@ -19,6 +19,8 @@ export interface GenerateOptions {
   fileSearch?: boolean;
   // Tool event callback for live UI updates
   onToolEvent?: (event: 'started' | 'completed', data: any) => void;
+  // Usage callback for async cost calculation (e.g., OpenRouter streaming)
+  onUsageAvailable?: (usage: TokenUsage, cost?: CostDetails) => void;
   // Cache options
   disableCache?: boolean;
   cacheTTL?: number;

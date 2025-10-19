@@ -103,21 +103,21 @@ export class ContextProgressBar {
 
     const { used, total, percentage } = this.currentUsage;
 
-    // Update progress bar width
-    this.progressBar.style.width = `${Math.min(percentage, 100)}%`;
-    
-    // Update color based on usage level
-    this.progressBar.className = 'context-progress-bar-fill';
-    
-    if (percentage >= 90) {
-      this.progressBar.addClass('context-critical'); // Red
-    } else if (percentage >= 75) {
-      this.progressBar.addClass('context-warning'); // Orange
-    } else if (percentage >= 50) {
-      this.progressBar.addClass('context-moderate'); // Yellow
-    } else {
-      this.progressBar.addClass('context-safe'); // Green
+    // Ensure minimum visible width for non-zero usage
+    // For large context windows (>100k), small percentages are invisible
+    // Use logarithmic scaling for better visualization
+    let visualPercentage = percentage;
+    if (used > 0 && percentage < 2) {
+      // Minimum 2% visual width if there's any usage
+      // but scale between 2-5% based on actual percentage (0-2%)
+      visualPercentage = 2 + (percentage / 2) * 3; // Maps 0-2% to 2-5%
     }
+
+    // Update progress bar width with visual scaling
+    this.progressBar.style.width = `${Math.min(visualPercentage, 100)}%`;
+
+    // The gradient automatically shows the appropriate color based on fill width
+    this.progressBar.className = 'context-progress-bar-fill';
 
     // Update usage text
     const usedFormatted = this.formatTokenCount(used);

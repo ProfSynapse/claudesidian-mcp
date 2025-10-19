@@ -136,7 +136,7 @@ export abstract class BaseAdapter {
 
       try {
         const parsed = JSON.parse(event.data);
-          
+
           // Extract content using adapter-specific logic
           const content = options.extractContent(parsed);
           if (content) {
@@ -200,7 +200,10 @@ export abstract class BaseAdapter {
           if (options.extractUsage) {
             const extractedUsage = options.extractUsage(parsed);
             if (extractedUsage) {
+              console.log(`[${debugLabel} SSE Debug] Usage extracted from stream event:`, extractedUsage);
               usage = extractedUsage;
+            } else if (parsed.usage) {
+              console.log(`[${debugLabel} SSE Debug] Event has usage but extractUsage returned null:`, parsed.usage);
             }
           }
 
@@ -213,15 +216,23 @@ export abstract class BaseAdapter {
               ? Array.from(toolCallsAccumulator.values())
               : undefined;
 
+            const finalUsageFormatted = usage ? {
+              promptTokens: usage.prompt_tokens || 0,
+              completionTokens: usage.completion_tokens || 0,
+              totalTokens: usage.total_tokens || 0
+            } : undefined;
+
+            console.log(`[${debugLabel} SSE Debug] Yielding completion chunk with usage:`, {
+              hasUsage: !!finalUsageFormatted,
+              usage: finalUsageFormatted,
+              rawUsage: usage
+            });
+
             eventQueue.push({
               content: '',
               complete: true,
               toolCalls: finalToolCalls,
-              usage: usage ? {
-                promptTokens: usage.prompt_tokens || 0,
-                completionTokens: usage.completion_tokens || 0,
-                totalTokens: usage.total_tokens || 0
-              } : undefined
+              usage: finalUsageFormatted
             });
 
             isCompleted = true;
@@ -713,6 +724,13 @@ export abstract class BaseAdapter {
     finishReason?: 'stop' | 'length' | 'tool_calls' | 'content_filter',
     toolCalls?: any[]
   ): Promise<LLMResponse> {
+    console.log('[BaseAdapter Cost Debug] buildLLMResponse called:', {
+      provider: this.name,
+      model,
+      hasUsage: !!usage,
+      usage: usage
+    });
+
     const response: LLMResponse = {
       text: content,
       model,
@@ -730,13 +748,22 @@ export abstract class BaseAdapter {
 
     // Calculate cost if usage is available
     if (usage) {
+      console.log('[BaseAdapter Cost Debug] Attempting to calculate cost for usage:', usage);
       const cost = await this.calculateCost(usage, model);
       if (cost) {
+        console.log('[BaseAdapter Cost Debug] Cost calculated successfully:', cost);
         response.cost = cost;
       } else {
+        console.warn('[BaseAdapter Cost Debug] calculateCost returned null');
       }
     } else {
+      console.warn('[BaseAdapter Cost Debug] No usage data provided, skipping cost calculation');
     }
+
+    console.log('[BaseAdapter Cost Debug] Final response:', {
+      hasCost: !!response.cost,
+      cost: response.cost
+    });
 
     return response;
   }

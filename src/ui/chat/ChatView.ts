@@ -507,11 +507,13 @@ export class ChatView extends ItemView {
   }
 
   private async getContextUsage() {
-    return TokenCalculator.getContextUsage(
+    const conversation = this.conversationManager.getCurrentConversation();
+    const usage = await TokenCalculator.getContextUsage(
       this.modelAgentManager.getSelectedModel(),
-      this.conversationManager.getCurrentConversation(),
+      conversation,
       await this.modelAgentManager.getCurrentSystemPrompt()
     );
+    return usage;
   }
 
   private getConversationCost(): { totalCost: number; currency: string } | null {
