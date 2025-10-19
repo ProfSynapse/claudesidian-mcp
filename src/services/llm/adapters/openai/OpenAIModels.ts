@@ -121,93 +121,10 @@ export const OPENAI_MODELS: ModelSpec[] = [
       supportsStreaming: true,
       supportsThinking: false
     }
-  },
+  }
 
-  // o3 models (reasoning)
-  {
-    provider: 'openai',
-    name: 'o3',
-    apiName: 'o3-2025-04-16',
-    contextWindow: 200000,
-    maxTokens: 100000,
-    inputCostPerMillion: 2.00,
-    outputCostPerMillion: 8.00,
-    capabilities: {
-      supportsJSON: false,
-      supportsImages: false,
-      supportsFunctions: false,
-      supportsStreaming: false,
-      supportsThinking: true
-    }
-  },
-  {
-    provider: 'openai',
-    name: 'o3 Pro',
-    apiName: 'o3-pro-2025-06-10',
-    contextWindow: 200000,
-    maxTokens: 100000,
-    inputCostPerMillion: 20.00,
-    outputCostPerMillion: 80.00,
-    capabilities: {
-      supportsJSON: false,
-      supportsImages: false,
-      supportsFunctions: false,
-      supportsStreaming: false,
-      supportsThinking: true
-    }
-  },
-
-  // o3 deep research models
-  // {
-  //   provider: 'openai',
-  //   name: 'o3 Deep Research',
-  //   apiName: 'o3-deep-research-2025-06-26',
-  //   contextWindow: 200000,
-  //   maxTokens: 100000,
-  //   inputCostPerMillion: 10.00,
-  //   outputCostPerMillion: 40.00,
-  //   capabilities: {
-  //     supportsJSON: false,
-  //     supportsImages: true,
-  //     supportsFunctions: false,
-  //     supportsStreaming: true,
-  //     supportsThinking: true
-  //   }
-  // },
-
-  // o4 models (reasoning)
-  {
-    provider: 'openai',
-    name: 'o4 Mini',
-    apiName: 'o4-mini-2025-04-16',
-    contextWindow: 200000,
-    maxTokens: 100000,
-    inputCostPerMillion: 1.10,
-    outputCostPerMillion: 4.40,
-    capabilities: {
-      supportsJSON: false,
-      supportsImages: false,
-      supportsFunctions: false,
-      supportsStreaming: false,
-      supportsThinking: true
-    }
-  },
-  // {
-  //   provider: 'openai',
-  //   name: 'o4 Mini Deep Research',
-  //   apiName: 'o4-mini-deep-research-2025-06-26',
-  //   contextWindow: 200000,
-  //   maxTokens: 100000,
-  //   inputCostPerMillion: 2.00,
-  //   outputCostPerMillion: 8.00,
-  //   capabilities: {
-  //     supportsJSON: false,
-  //     supportsImages: true,
-  //     supportsFunctions: false,
-  //     supportsStreaming: true,
-  //     supportsThinking: true
-  //   }
-  // }
+  // Note: o3/o4 reasoning models removed due to incompatible API (requires max_completion_tokens)
+  // These models use a different parameter structure and would need special handling
 ];
 
 export const OPENAI_DEFAULT_MODEL = 'gpt-5';

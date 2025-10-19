@@ -378,6 +378,20 @@ export class ChatService {
       let finalUsage: any = undefined;
       let finalCost: any = undefined;
 
+      // Log what we're sending to the LLM
+      console.log('[ChatService] ========== GENERATING LLM RESPONSE ==========');
+      console.log('[ChatService] User message:', userMessage);
+      console.log('[ChatService] Messages being sent to LLM:', JSON.stringify(messages, null, 2));
+      console.log('[ChatService] LLM options:', {
+        provider: llmOptions.provider,
+        model: llmOptions.model,
+        systemPrompt: llmOptions.systemPrompt ? llmOptions.systemPrompt.substring(0, 200) + '...' : 'none',
+        toolCount: llmOptions.tools?.length || 0,
+        sessionId: llmOptions.sessionId,
+        workspaceId: llmOptions.workspaceId
+      });
+      console.log('[ChatService] ===================================================');
+
       for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
         // Check if aborted FIRST before processing chunk
         if (options?.abortSignal?.aborted) {

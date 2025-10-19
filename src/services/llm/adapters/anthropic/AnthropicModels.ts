@@ -9,18 +9,18 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
   // Claude models
   {
     provider: 'anthropic',
-    name: 'Claude 3.5 Haiku',
-    apiName: 'claude-3-5-haiku-latest',
+    name: 'Claude 4.5 Haiku',
+    apiName: 'claude-haiku-4-5-20251001',
     contextWindow: 200000,
-    maxTokens: 8192,
-    inputCostPerMillion: 0.80,
-    outputCostPerMillion: 4.00,
+    maxTokens: 64000,
+    inputCostPerMillion: 1.00,
+    outputCostPerMillion: 5.00,
     capabilities: {
       supportsJSON: true,
-      supportsImages: false,
+      supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true
     }
   },
 
@@ -91,4 +91,4 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
   }
 ];
 
-export const ANTHROPIC_DEFAULT_MODEL = 'claude-3-5-haiku-latest';
+export const ANTHROPIC_DEFAULT_MODEL = 'claude-haiku-4-5-20251001';

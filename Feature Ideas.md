@@ -1,5 +1,75 @@
 # Feature Ideas & Roadmap
 
+## 🐛 Bugs & UX Issues
+
+### 1. 🔑 API Key Validation Requires Full Restart
+**Status:** 🔴 To Do  
+**Priority:** High  
+**Estimated Effort:** Small
+
+#### Problem
+When validating an API key in the LLM Provider settings, users must fully restart Obsidian before they can use the chat interface with the newly validated provider. The validation succeeds and settings are saved, but the chat cannot use the provider until restart.
+
+#### Root Cause
+The API key validation flow in `LLMProviderModal` does the following:
+1. Validates the API key via `LLMValidationService.validateApiKey()`
+2. Calls `autoSave()` which triggers the `onSave` callback
+3. The callback saves settings via `this.settings.saveSettings()` (in `AgentManagement.ts:178`)
+4. **Missing step:** The `LLMService` has an `updateSettings()` method that reinitializes adapters, but it's never called
+
+#### Technical Details
+**Affected Files:**
+- `src/components/LLMProviderModal.ts:373-378` - `autoSave()` calls `onSave` callback
+- `src/components/accordions/AgentManagement.ts:178-180` - `onSettingsChange` saves but doesn't refresh services
+- `src/services/llm/core/LLMService.ts:165-168` - `updateSettings()` method exists but isn't called
+- `src/services/llm/providers/ProviderManager.ts:41` - Already calls `llmService.updateSettings()` but only from its own `updateSettings()`
+
+#### Proposed Solution
+After saving settings in the `onSettingsChange` callback, trigger a refresh of the `LLMService`:
+
+```typescript
+// In AgentManagement.ts onSettingsChange callback:
+onSettingsChange: async (llmProviderSettings: LLMProviderSettings) => {
+    this.settings.settings.llmProviders = llmProviderSettings;
+    await this.settings.saveSettings();
+    
+    // Refresh LLMService to reinitialize adapters with new API keys
+    const llmService = await this.plugin.getService('llmService');
+    if (llmService) {
+        llmService.updateSettings(llmProviderSettings);
+    }
+}
+```
+
+#### Alternative Approach
+Could also update the `ProviderManager` to automatically call `LLMService.updateSettings()` when its own `updateSettings()` is called, which already happens in `LLMProviderTab.ts:319`.
+
+---
+
+### 2. 🤖 OpenAI o3/o4 Models Use Wrong Token Parameter
+**Status:** ✅ Resolved (Models Removed)  
+**Priority:** High  
+**Estimated Effort:** Small
+
+#### Problem
+OpenAI's o3 and o4 reasoning models (o3, o3-pro, o4-mini) failed with a 400 error when used because they require `max_completion_tokens` instead of `max_tokens` parameter.
+
+#### Resolution
+Removed o3 and o4 models from the available model list (`src/services/llm/adapters/openai/OpenAIModels.ts`) since they:
+1. Use an incompatible API parameter structure (`max_completion_tokens` vs `max_tokens`)
+2. Don't support functions/tools (which is core to MCP functionality)
+3. Don't support streaming (which the chat interface relies on)
+4. Would require significant adapter refactoring to support properly
+
+Added a comment in the models file noting why these models were removed for future reference.
+
+**Note:** If these models are needed in the future, they will require:
+- Conditional parameter logic in `OpenAIAdapter.ts` (4 locations)
+- Special handling for non-streaming responses
+- Alternative UI for reasoning models without tool support
+
+---
+
 ## 🎯 Priority Features
 
 ### 1. ⚡ Consolidated Manager Tool System
@@ -62,9 +132,57 @@ Create a single meta-tool `get_manager_tools` that dynamically returns the tool 
 ---
 
 ### 2. 🎹 Chat Interface Hotkeys
-**Status:** 🔴 To Do  
-**Priority:** High  
+**Status:** 🟡 In Progress
+**Priority:** High
 **Estimated Effort:** Large
+
+#### Current Implementation Status (2025-10-19)
+
+**✅ Completed:**
+- All suggester UI components built and functional:
+  - `TextAreaToolSuggester.ts` - `/` tool command palette
+  - `TextAreaAgentSuggester.ts` - `@` agent mentions
+  - `TextAreaNoteSuggester.ts` - `[[` note links
+  - `ContentEditableSuggester.ts` - Base suggester framework
+  - `MessageEnhancer.ts` - Enhancement metadata collector
+  - `ReferenceExtractor.ts` - Reference extraction utilities
+- Suggesters successfully detect triggers and show autocomplete dropdowns
+- Visual feedback with styled reference pills in chat input
+- References correctly inserted into contenteditable input
+
+**🔴 Blocking Issues:**
+1. **Enhancement data not being sent to LLM**
+   - `MessageEnhancer` successfully collects tool hints, agent references, and note references
+   - `ChatInput.handleSendMessage()` only sends plain text via `onSendMessage()`
+   - Enhancement data is lost and never reaches the system prompt
+   - **Impact:** `/`, `@`, and `[[` features appear to work in UI but have no effect on LLM behavior
+
+2. **Architecture gap in message flow:**
+   ```
+   ChatInput (has MessageEnhancer)
+     → onSendMessage(plainText)
+       → ChatView.handleSendMessage(plainText)
+         → MessageManager.sendMessage(plainText, options)
+           → ChatService.generateResponseStreaming(plainText, options)
+             → LLM receives only plain text ❌
+   ```
+
+**🔧 Required Fixes:**
+1. Modify message flow to pass `MessageEnhancement` data through the chain
+2. Update system prompt builder to inject:
+   - Tool hints (prioritize specific tools in context)
+   - Agent prompts (inject custom agent instructions)
+   - Note content (add to `<files>` section)
+3. Add logging to verify enhancement data reaches LLM (✅ logging added)
+
+**📝 Implementation Progress:**
+1. ✅ Add comprehensive logging to trace message flow
+2. ✅ Implement enhancement data passing through message chain
+3. ✅ Inject enhancements into system prompt before LLM call
+4. ✅ Fix callback signature bug (ChatView was dropping enhancement parameter)
+5. 🔄 Testing end-to-end functionality (ready for testing)
+
+---
 
 #### Problem
 Users need to manually type tool names and agent names, leading to typos and inefficient workflows. Context injection from notes requires multiple clicks through modals.

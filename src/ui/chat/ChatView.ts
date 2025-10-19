@@ -14,6 +14,7 @@ import { ChatSettingsModal } from './components/ChatSettingsModal';
 // BranchNavigator removed - using message-level navigation
 import { ChatService } from '../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../types/chat/ChatTypes';
+import { MessageEnhancement } from './components/suggesters/base/SuggesterInterfaces';
 
 // Services
 import { ConversationManager, ConversationManagerEvents } from './services/ConversationManager';
@@ -269,7 +270,7 @@ export class ChatView extends ItemView {
 
     this.chatInput = new ChatInput(
       refs.inputContainer,
-      (message) => this.handleSendMessage(message),
+      (message, enhancement) => this.handleSendMessage(message, enhancement),
       () => this.messageManager.getIsLoading(),
       this.app, // Pass app for suggesters
       () => this.handleStopGeneration()
@@ -424,23 +425,39 @@ export class ChatView extends ItemView {
     this.updateContextProgress();
   }
 
-  private async handleSendMessage(message: string): Promise<void> {
-    const currentConversation = this.conversationManager.getCurrentConversation();
-    const messageOptions = await this.modelAgentManager.getMessageOptions();
+  private async handleSendMessage(message: string, enhancement?: MessageEnhancement): Promise<void> {
+    try {
+      // Set enhancement on ModelAgentManager BEFORE getting message options
+      // This allows the system prompt builder to include the enhancement data
+      if (enhancement) {
+        console.log('[ChatView] Setting message enhancement:', enhancement);
+        this.modelAgentManager.setMessageEnhancement(enhancement);
+      }
 
-    if (!currentConversation) {
-      // Create new conversation with message
-      await this.conversationManager.createNewConversationWithMessage(
-        message,
-        messageOptions
-      );
-    } else {
-      // Send message in current conversation
-      await this.messageManager.sendMessage(
-        currentConversation,
-        message,
-        messageOptions
-      );
+      const currentConversation = this.conversationManager.getCurrentConversation();
+      const messageOptions = await this.modelAgentManager.getMessageOptions();
+
+      console.log('[ChatView] Message options with enhancement:', messageOptions);
+
+      if (!currentConversation) {
+        // Create new conversation with message
+        await this.conversationManager.createNewConversationWithMessage(
+          message,
+          messageOptions
+        );
+      } else {
+        // Send message in current conversation
+        await this.messageManager.sendMessage(
+          currentConversation,
+          message,
+          messageOptions
+        );
+      }
+    } finally {
+      // Always clear the enhancement after sending
+      this.modelAgentManager.clearMessageEnhancement();
+      this.chatInput?.clearMessageEnhancer();
+      console.log('[ChatView] Cleared message enhancement from both ModelAgentManager and ChatInput');
     }
   }
 

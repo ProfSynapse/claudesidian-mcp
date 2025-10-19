@@ -8,6 +8,7 @@ import { setIcon, App } from 'obsidian';
 import { initializeSuggesters, SuggesterInstances } from './suggesters/initializeSuggesters';
 import { ContentEditableHelper } from '../utils/ContentEditableHelper';
 import { ReferenceExtractor } from '../utils/ReferenceExtractor';
+import { MessageEnhancement } from './suggesters/base/SuggesterInterfaces';
 
 export class ChatInput {
   private element: HTMLElement | null = null;
@@ -18,7 +19,7 @@ export class ChatInput {
 
   constructor(
     private container: HTMLElement,
-    private onSendMessage: (message: string) => void,
+    private onSendMessage: (message: string, enhancement?: MessageEnhancement) => void,
     private getLoadingState: () => boolean,
     private app?: App,
     private onStopGeneration?: () => void
@@ -136,12 +137,49 @@ export class ChatInput {
     const message = ReferenceExtractor.getPlainText(this.inputElement).trim();
     if (!message) return;
 
+    // Build enhancement from MessageEnhancer
+    let enhancement: MessageEnhancement | undefined = undefined;
+    if (this.suggesters?.messageEnhancer && this.suggesters.messageEnhancer.hasEnhancements()) {
+      enhancement = this.suggesters.messageEnhancer.buildEnhancement(message);
+    }
+
+    // Log what we're about to send
+    console.log('[ChatInput] ========== SENDING MESSAGE ==========');
+    console.log('[ChatInput] Plain text message:', message);
+
+    // Check if there are any references in the input
+    const hasRefs = ReferenceExtractor.hasReferences(this.inputElement);
+    console.log('[ChatInput] Has references:', hasRefs);
+
+    // Extract and log references
+    if (hasRefs) {
+      const tools = ReferenceExtractor.extractReferencesByType(this.inputElement, 'tool');
+      const agents = ReferenceExtractor.extractReferencesByType(this.inputElement, 'agent');
+      const notes = ReferenceExtractor.extractReferencesByType(this.inputElement, 'note');
+
+      console.log('[ChatInput] Tool references:', tools);
+      console.log('[ChatInput] Agent references:', agents);
+      console.log('[ChatInput] Note references:', notes);
+    }
+
+    // Log MessageEnhancer state
+    if (this.suggesters?.messageEnhancer) {
+      const enhancer = this.suggesters.messageEnhancer;
+      console.log('[ChatInput] MessageEnhancer has enhancements:', enhancer.hasEnhancements());
+      console.log('[ChatInput] MessageEnhancer tools:', enhancer.getTools());
+      console.log('[ChatInput] MessageEnhancer agents:', enhancer.getAgents());
+      console.log('[ChatInput] MessageEnhancer notes:', enhancer.getNotes());
+    }
+
+    console.log('[ChatInput] Built enhancement:', enhancement);
+    console.log('[ChatInput] =======================================');
+
     // Clear the input
     ContentEditableHelper.clear(this.inputElement);
     this.autoResizeInput();
 
-    // Send the message
-    this.onSendMessage(message);
+    // Send the message with enhancement
+    this.onSendMessage(message, enhancement);
   }
 
   /**
@@ -231,6 +269,16 @@ export class ChatInput {
    */
   getMessageEnhancer() {
     return this.suggesters?.messageEnhancer || null;
+  }
+
+  /**
+   * Clear message enhancer (call after message is sent)
+   */
+  clearMessageEnhancer(): void {
+    if (this.suggesters?.messageEnhancer) {
+      this.suggesters.messageEnhancer.clearEnhancements();
+      console.log('[ChatInput] Cleared MessageEnhancer');
+    }
   }
 
   /**

@@ -56,6 +56,11 @@ export class MessageManager {
     let aiMessageId: string | null = null;
 
     try {
+      console.log('[MessageManager] ========== SENDING MESSAGE ==========');
+      console.log('[MessageManager] Message:', message);
+      console.log('[MessageManager] Options:', options);
+      console.log('[MessageManager] ==========================================');
+
       this.setLoading(true);
 
       // 1. Add user message immediately and show it

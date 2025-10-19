@@ -121,26 +121,37 @@ export class ConfigModal extends Modal {
         
         const instructions = windowsContent.createEl('div');
         instructions.createEl('p', { text: 'To configure Claude Desktop to work with Claudesidian MCP on Windows:' });
-        
+
         const steps = instructions.createEl('ol');
-        
-        // Step 1: Open config file
-        steps.createEl('li', { text: 'Open your Claude Desktop config file:' });
-        
+
+        // Step 1: Create config file through Claude Desktop
+        const step1 = steps.createEl('li');
+        step1.appendText('Open Claude Desktop → ');
+        step1.createEl('strong', { text: 'Settings' });
+        step1.appendText(' → ');
+        step1.createEl('strong', { text: 'Developer' });
+        step1.appendText(' → ');
+        step1.createEl('strong', { text: 'Edit Config' });
+        step1.appendText(' (this creates the config file if it doesn\'t exist)');
+
+        // Step 2: Alternative - use file link
+        const step2 = steps.createEl('li');
+        step2.appendText('Alternatively, open the config file directly: ');
+
         const configPath = '%AppData%\\Claude\\claude_desktop_config.json';
-        const configLink = steps.createEl('a', {
+        const configLink = step2.createEl('a', {
             text: configPath,
             href: '#'
         });
-        
+
         configLink.addEventListener('click', async (e) => {
             e.preventDefault();
             // Try to open the file with system's default program
             const actualPath = this.getWindowsConfigPath();
             window.open('file:///' + actualPath.replace(/\\/g, '/'), '_blank');
         });
-        
-        // Step 2: Copy configuration
+
+        // Step 3: Copy configuration
         steps.createEl('li', { text: 'Copy the following JSON configuration:' });
         
         const config = this.getConfiguration('windows');
@@ -180,26 +191,37 @@ export class ConfigModal extends Modal {
         
         const instructions = macContent.createEl('div');
         instructions.createEl('p', { text: 'To configure Claude Desktop to work with Claudesidian MCP on Mac:' });
-        
+
         const steps = instructions.createEl('ol');
-        
-        // Step 1: Open config file
-        steps.createEl('li', { text: 'Open your Claude Desktop config file:' });
-        
+
+        // Step 1: Create config file through Claude Desktop
+        const step1 = steps.createEl('li');
+        step1.appendText('Open Claude Desktop → ');
+        step1.createEl('strong', { text: 'Settings' });
+        step1.appendText(' → ');
+        step1.createEl('strong', { text: 'Developer' });
+        step1.appendText(' → ');
+        step1.createEl('strong', { text: 'Edit Config' });
+        step1.appendText(' (this creates the config file if it doesn\'t exist)');
+
+        // Step 2: Alternative - use file link
+        const step2 = steps.createEl('li');
+        step2.appendText('Alternatively, open the config file directly: ');
+
         const configPath = '~/Library/Application Support/Claude/claude_desktop_config.json';
-        const configLink = steps.createEl('a', {
+        const configLink = step2.createEl('a', {
             text: configPath,
             href: '#'
         });
-        
+
         configLink.addEventListener('click', async (e) => {
             e.preventDefault();
             // Try to open the file with system's default program
             const actualPath = this.getMacConfigPath();
-            window.open('file:///' + actualPath, '_blank');
+            window.open('file://' + actualPath, '_blank');
         });
-        
-        // Step 2: Copy configuration
+
+        // Step 3: Copy configuration
         steps.createEl('li', { text: 'Copy the following JSON configuration:' });
         
         const config = this.getConfiguration('mac');
@@ -239,26 +261,37 @@ export class ConfigModal extends Modal {
         
         const instructions = linuxContent.createEl('div');
         instructions.createEl('p', { text: 'To configure Claude Desktop to work with Claudesidian MCP on Linux:' });
-        
+
         const steps = instructions.createEl('ol');
-        
-        // Step 1: Open config file
-        steps.createEl('li', { text: 'Open your Claude Desktop config file:' });
-        
+
+        // Step 1: Create config file through Claude Desktop
+        const step1 = steps.createEl('li');
+        step1.appendText('Open Claude Desktop → ');
+        step1.createEl('strong', { text: 'Settings' });
+        step1.appendText(' → ');
+        step1.createEl('strong', { text: 'Developer' });
+        step1.appendText(' → ');
+        step1.createEl('strong', { text: 'Edit Config' });
+        step1.appendText(' (this creates the config file if it doesn\'t exist)');
+
+        // Step 2: Alternative - use file link
+        const step2 = steps.createEl('li');
+        step2.appendText('Alternatively, open the config file directly: ');
+
         const configPath = '~/.config/Claude/claude_desktop_config.json';
-        const configLink = steps.createEl('a', {
+        const configLink = step2.createEl('a', {
             text: configPath,
             href: '#'
         });
-        
+
         configLink.addEventListener('click', async (e) => {
             e.preventDefault();
             // Try to open the file with system's default program
             const actualPath = this.getLinuxConfigPath();
-            window.open('file:///' + actualPath, '_blank');
+            window.open('file://' + actualPath, '_blank');
         });
-        
-        // Step 2: Copy configuration
+
+        // Step 3: Copy configuration
         steps.createEl('li', { text: 'Copy the following JSON configuration:' });
         
         const config = this.getConfiguration('linux');

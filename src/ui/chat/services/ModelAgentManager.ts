@@ -489,6 +489,8 @@ export class ModelAgentManager {
   private async buildSystemPromptWithWorkspace(): Promise<string | null> {
     let prompt = '';
 
+    console.log('[ModelAgentManager] Building system prompt with enhancement:', this.messageEnhancement);
+
     // 0. Session and workspace context for tool calls (CRITICAL - must be first!)
     const sessionId = await this.getCurrentSessionId();
     if (sessionId || this.selectedWorkspaceId) {
@@ -537,6 +539,7 @@ export class ModelAgentManager {
 
     // 1b. Enhancement: Additional notes from [[suggester]]
     if (this.messageEnhancement && this.messageEnhancement.notes.length > 0) {
+      console.log('[ModelAgentManager] Injecting notes from [[suggester]]:', this.messageEnhancement.notes.length);
       if (this.contextNotes.length === 0) {
         // Start files section if not already started
         prompt += '<files>\n';
@@ -559,10 +562,12 @@ export class ModelAgentManager {
 
     // 1c. Enhancement: Tool hints from /suggester
     if (this.messageEnhancement && this.messageEnhancement.tools.length > 0) {
+      console.log('[ModelAgentManager] Injecting tool hints from /suggester:', this.messageEnhancement.tools.length);
       prompt += '<tool_hints>\n';
       prompt += 'The user has requested to use the following tools:\n\n';
 
       for (const tool of this.messageEnhancement.tools) {
+        console.log('[ModelAgentManager] - Tool hint:', tool.name);
         prompt += `Tool: ${tool.name}\n`;
         prompt += `Description: ${tool.schema.description}\n`;
         prompt += 'Please prioritize using this tool when applicable.\n\n';
@@ -573,10 +578,12 @@ export class ModelAgentManager {
 
     // 1d. Enhancement: Custom agents from @suggester
     if (this.messageEnhancement && this.messageEnhancement.agents.length > 0) {
+      console.log('[ModelAgentManager] Injecting custom agents from @suggester:', this.messageEnhancement.agents.length);
       prompt += '<custom_agents>\n';
       prompt += 'The user has mentioned the following custom agents. Apply their personalities and instructions:\n\n';
 
       for (const agent of this.messageEnhancement.agents) {
+        console.log('[ModelAgentManager] - Agent:', agent.name);
         prompt += `<agent name="${this.escapeXmlAttribute(agent.name)}">\n`;
         prompt += this.escapeXmlContent(agent.prompt);
         prompt += `\n</agent>\n\n`;

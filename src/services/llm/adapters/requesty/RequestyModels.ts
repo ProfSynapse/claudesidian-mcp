@@ -160,18 +160,18 @@ export const REQUESTY_MODELS: ModelSpec[] = [
   // Anthropic models via Requesty
   {
     provider: 'requesty',
-    name: 'Claude 3.5 Haiku',
-    apiName: 'anthropic/claude-3-5-haiku-20241022',
+    name: 'Claude 4.5 Haiku',
+    apiName: 'anthropic/claude-haiku-4-5',
     contextWindow: 200000,
-    maxTokens: 8192,
-    inputCostPerMillion: 0.80,
-    outputCostPerMillion: 4.00,
+    maxTokens: 64000,
+    inputCostPerMillion: 1.00,
+    outputCostPerMillion: 5.00,
     capabilities: {
       supportsJSON: true,
-      supportsImages: false,
+      supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true
     }
   },
   {
