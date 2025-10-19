@@ -8,6 +8,9 @@ import { ProviderUtils } from '../utils/ProviderUtils';
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
 import { TFile } from 'obsidian';
 import { MessageEnhancement } from '../components/suggesters/base/SuggesterInterfaces';
+import { SystemPromptBuilder } from './SystemPromptBuilder';
+import { AgentDiscoveryService } from '../../../services/agents/AgentDiscoveryService';
+import { ContextNotesManager } from './ContextNotesManager';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -21,9 +24,11 @@ export class ModelAgentManager {
   private currentSystemPrompt: string | null = null;
   private selectedWorkspaceId: string | null = null;
   private workspaceContext: WorkspaceContext | null = null;
-  private contextNotes: string[] = [];
+  private contextNotesManager: ContextNotesManager;
   private currentConversationId: string | null = null;
   private messageEnhancement: MessageEnhancement | null = null;
+  private systemPromptBuilder: SystemPromptBuilder;
+  private agentDiscoveryService: AgentDiscoveryService | null = null;
 
   constructor(
     private app: any, // Obsidian App
@@ -32,6 +37,10 @@ export class ModelAgentManager {
     conversationId?: string
   ) {
     this.currentConversationId = conversationId || null;
+    // Initialize services
+    this.contextNotesManager = new ContextNotesManager();
+    this.systemPromptBuilder = new SystemPromptBuilder(this.readNoteContent.bind(this));
+    // AgentDiscoveryService will be initialized lazily when needed
     // Don't auto-initialize - will be called from ChatView after conversation loads
   }
 
@@ -102,7 +111,7 @@ export class ModelAgentManager {
 
           // Restore context notes
           if (settings.contextNotes && Array.isArray(settings.contextNotes)) {
-            this.contextNotes = settings.contextNotes;
+            this.contextNotesManager.setNotes(settings.contextNotes);
           }
 
           return; // Successfully loaded from metadata
@@ -143,7 +152,7 @@ export class ModelAgentManager {
       this.currentSystemPrompt = null;
       this.selectedWorkspaceId = null;
       this.workspaceContext = null;
-      this.contextNotes = [];
+      this.contextNotesManager.clear();
 
       // Notify listeners about the state reset
       this.events.onAgentChanged(null);
@@ -173,7 +182,7 @@ export class ModelAgentManager {
           modelId: this.selectedModel?.modelId,
           agentId: this.selectedAgent?.id,
           workspaceId: this.selectedWorkspaceId,
-          contextNotes: this.contextNotes,
+          contextNotes: this.contextNotesManager.getNotes(),
           sessionId: existingSessionId // ✅ PRESERVE the session ID!
         }
       };
@@ -268,14 +277,14 @@ export class ModelAgentManager {
    * Get context notes
    */
   getContextNotes(): string[] {
-    return [...this.contextNotes];
+    return this.contextNotesManager.getNotes();
   }
 
   /**
    * Set context notes
    */
   async setContextNotes(notes: string[]): Promise<void> {
-    this.contextNotes = [...notes];
+    this.contextNotesManager.setNotes(notes);
     this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
   }
 
@@ -283,8 +292,7 @@ export class ModelAgentManager {
    * Add context note
    */
   async addContextNote(notePath: string): Promise<void> {
-    if (!this.contextNotes.includes(notePath)) {
-      this.contextNotes.push(notePath);
+    if (this.contextNotesManager.addNote(notePath)) {
       this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
     }
   }
@@ -293,8 +301,7 @@ export class ModelAgentManager {
    * Remove context note by index
    */
   async removeContextNote(index: number): Promise<void> {
-    if (index >= 0 && index < this.contextNotes.length) {
-      this.contextNotes.splice(index, 1);
+    if (this.contextNotesManager.removeNote(index)) {
       this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
     }
   }
@@ -350,80 +357,47 @@ export class ModelAgentManager {
    */
   async getAvailableModels(): Promise<ModelOption[]> {
     try {
-      // Get plugin instance to access settings data
+      // Get plugin instance to access LLMService
       const plugin = this.app.plugins.plugins['claudesidian-mcp'];
       if (!plugin) {
         return [];
       }
 
-      // Load plugin data directly
-      const pluginData = await plugin.loadData();
-      if (!pluginData?.llmProviders?.providers) {
+      // Get LLMService which has ModelDiscoveryService
+      const llmService = await plugin.getService('llmService');
+      if (!llmService) {
         return [];
       }
-
-      const models: ModelOption[] = [];
-      const providers = pluginData.llmProviders.providers;
-      
-      // Import ModelRegistry to get actual model specs
-      const { ModelRegistry } = await import('../../../services/llm/adapters/ModelRegistry');
 
       // Allowed providers for chat view
       const allowedProviders = ['openai', 'openrouter', 'anthropic', 'google', 'ollama'];
 
-      // Iterate through enabled providers with valid API keys
-      Object.entries(providers).forEach(([providerId, config]: [string, any]) => {
-        // Only include providers that are enabled and have API keys
-        if (!config.enabled || !config.apiKey || !config.apiKey.trim()) {
-          return;
-        }
+      // Get all available models from ModelDiscoveryService (via LLMService)
+      const allModels = await llmService.getAvailableModels();
 
-        // Filter to only allowed providers for chat view
-        if (!allowedProviders.includes(providerId)) {
-          return;
-        }
-
-        const providerName = this.getProviderDisplayName(providerId);
-
-        // Special handling for Ollama - single user-configured model
-        if (providerId === 'ollama') {
-          const ollamaModel = config.ollamaModel;
-
-          if (!ollamaModel || !ollamaModel.trim()) {
-            console.warn('[ModelAgentManager] Ollama enabled but no model configured - skipping');
-            return; // Skip if no model configured
-          }
-
-          const ollamaModelOption = {
-            providerId: 'ollama',
-            providerName,
-            modelId: ollamaModel,
-            modelName: ollamaModel,
-            contextWindow: 128000 // Fixed reasonable default
-          };
-
-          models.push(ollamaModelOption);
-          return;
-        }
-
-        // Standard provider handling - get models from ModelRegistry
-        const providerModels = ModelRegistry.getProviderModels(providerId, pluginData.llmProviders);
-
-        providerModels.forEach(modelSpec => {
-          models.push({
-            providerId,
-            providerName,
-            modelId: modelSpec.apiName,
-            modelName: modelSpec.name,
-            contextWindow: modelSpec.contextWindow
-          });
-        });
-      });
+      // Filter to allowed providers and convert to ModelOption format
+      const models: ModelOption[] = allModels
+        .filter((model: any) => allowedProviders.includes(model.provider))
+        .map((model: any) => this.mapToModelOption(model));
 
       return models;
     } catch (error) {
+      console.error('[ModelAgentManager] Failed to get available models:', error);
       return [];
     }
+  }
+
+  /**
+   * Convert ModelWithProvider to ModelOption format
+   */
+  private mapToModelOption(model: any): ModelOption {
+    return {
+      providerId: model.provider,
+      providerName: this.getProviderDisplayName(model.provider),
+      modelId: model.id,
+      modelName: model.name,
+      contextWindow: model.contextWindow || 128000 // Default if not specified
+    };
   }
 
   /**
@@ -431,35 +405,43 @@ export class ModelAgentManager {
    */
   async getAvailableAgents(): Promise<AgentOption[]> {
     try {
-      // Get plugin instance to access settings data
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-      if (!plugin) {
-        return [];
+      // Initialize AgentDiscoveryService if needed
+      if (!this.agentDiscoveryService) {
+        const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+        if (!plugin) {
+          return [];
+        }
+
+        const customPromptStorageService = await plugin.getService('customPromptStorageService');
+        if (!customPromptStorageService) {
+          console.warn('[ModelAgentManager] CustomPromptStorageService not available');
+          return [];
+        }
+
+        this.agentDiscoveryService = new AgentDiscoveryService(customPromptStorageService);
       }
 
-      // Load plugin data directly
-      const pluginData = await plugin.loadData();
-      const agentOptions: AgentOption[] = [];
+      // Get enabled agents from discovery service
+      const agents = await this.agentDiscoveryService.getEnabledAgents();
 
-      // Get custom prompts from plugin data - they are stored as an array, not object
-      const customPrompts = pluginData?.customPrompts?.prompts || [];
-      
-      // Add custom prompt-based agents
-      customPrompts.forEach((prompt: any) => {
-        if (prompt.prompt && prompt.prompt.trim() && prompt.isEnabled !== false) {
-          agentOptions.push({
-            id: prompt.id,
-            name: prompt.name || 'Unnamed Agent',
-            description: prompt.description || 'Custom agent prompt',
-            systemPrompt: prompt.prompt
-          });
-        }
-      });
-
-      return agentOptions;
+      // Convert to AgentOption format
+      return agents.map(agent => this.mapToAgentOption(agent));
     } catch (error) {
+      console.error('[ModelAgentManager] Failed to get available agents:', error);
       return [];
     }
+  }
+
+  /**
+   * Convert AgentInfo to AgentOption format
+   */
+  private mapToAgentOption(agent: any): AgentOption {
+    return {
+      id: agent.id,
+      name: agent.name || 'Unnamed Agent',
+      description: agent.description || 'Custom agent prompt',
+      systemPrompt: agent.prompt
+    };
   }
 
   /**
@@ -487,142 +469,23 @@ export class ModelAgentManager {
    * Build system prompt with workspace context
    */
   private async buildSystemPromptWithWorkspace(): Promise<string | null> {
-    let prompt = '';
-
     console.log('[ModelAgentManager] Building system prompt with enhancement:', this.messageEnhancement);
 
-    // 0. Session and workspace context for tool calls (CRITICAL - must be first!)
     const sessionId = await this.getCurrentSessionId();
-    if (sessionId || this.selectedWorkspaceId) {
-      prompt += '<session_context>\n';
-      prompt += 'IMPORTANT: When using tools, you must include these values in your tool call parameters:\n\n';
 
-      if (sessionId) {
-        prompt += `- sessionId: "${sessionId}"\n`;
-      }
-
-      if (this.selectedWorkspaceId) {
-        prompt += `- workspaceId: "${this.selectedWorkspaceId}"\n`;
-      }
-
-      prompt += '\nInclude these in the "context" parameter of your tool calls, like this:\n';
-      prompt += '{\n';
-      prompt += '  "context": {\n';
-      if (sessionId) {
-        prompt += `    "sessionId": "${sessionId}",\n`;
-      }
-      if (this.selectedWorkspaceId) {
-        prompt += `    "workspaceId": "${this.selectedWorkspaceId}"\n`;
-      }
-      prompt += '  },\n';
-      prompt += '  ... other parameters ...\n';
-      prompt += '}\n';
-      prompt += '</session_context>\n\n';
-    }
-
-    // 1. Context files section (if any context notes selected)
-    if (this.contextNotes.length > 0) {
-      prompt += '<files>\n';
-
-      for (const notePath of this.contextNotes) {
-        const xmlTag = this.normalizePathToXmlTag(notePath);
-        const content = await this.readNoteContent(notePath);
-
-        prompt += `<${xmlTag}>\n`;
-        prompt += `${notePath}\n\n`;
-        prompt += content || '[File content unavailable]';
-        prompt += `\n</${xmlTag}>\n`;
-      }
-
-      prompt += '</files>\n\n';
-    }
-
-    // 1b. Enhancement: Additional notes from [[suggester]]
-    if (this.messageEnhancement && this.messageEnhancement.notes.length > 0) {
-      console.log('[ModelAgentManager] Injecting notes from [[suggester]]:', this.messageEnhancement.notes.length);
-      if (this.contextNotes.length === 0) {
-        // Start files section if not already started
-        prompt += '<files>\n';
-      }
-
-      for (const note of this.messageEnhancement.notes) {
-        const xmlTag = this.normalizePathToXmlTag(note.path);
-        prompt += `<${xmlTag}>\n`;
-        prompt += `${note.path}\n\n`;
-        prompt += this.escapeXmlContent(note.content);
-        prompt += `\n</${xmlTag}>\n`;
-      }
-
-      if (this.contextNotes.length === 0) {
-        prompt += '</files>\n\n';
-      }
-    } else if (this.contextNotes.length > 0) {
-      // Close files section if it was opened earlier
-    }
-
-    // 1c. Enhancement: Tool hints from /suggester
-    if (this.messageEnhancement && this.messageEnhancement.tools.length > 0) {
-      console.log('[ModelAgentManager] Injecting tool hints from /suggester:', this.messageEnhancement.tools.length);
-      prompt += '<tool_hints>\n';
-      prompt += 'The user has requested to use the following tools:\n\n';
-
-      for (const tool of this.messageEnhancement.tools) {
-        console.log('[ModelAgentManager] - Tool hint:', tool.name);
-        prompt += `Tool: ${tool.name}\n`;
-        prompt += `Description: ${tool.schema.description}\n`;
-        prompt += 'Please prioritize using this tool when applicable.\n\n';
-      }
-
-      prompt += '</tool_hints>\n\n';
-    }
-
-    // 1d. Enhancement: Custom agents from @suggester
-    if (this.messageEnhancement && this.messageEnhancement.agents.length > 0) {
-      console.log('[ModelAgentManager] Injecting custom agents from @suggester:', this.messageEnhancement.agents.length);
-      prompt += '<custom_agents>\n';
-      prompt += 'The user has mentioned the following custom agents. Apply their personalities and instructions:\n\n';
-
-      for (const agent of this.messageEnhancement.agents) {
-        console.log('[ModelAgentManager] - Agent:', agent.name);
-        prompt += `<agent name="${this.escapeXmlAttribute(agent.name)}">\n`;
-        prompt += this.escapeXmlContent(agent.prompt);
-        prompt += `\n</agent>\n\n`;
-      }
-
-      prompt += '</custom_agents>\n\n';
-    }
-
-    // 2. Agent section (if agent selected)
-    if (this.currentSystemPrompt) {
-      prompt += '<agent>\n';
-      prompt += this.currentSystemPrompt;
-      prompt += '\n</agent>\n\n';
-    }
-
-    // 3. Workspace section (if workspace context loaded)
-    if (this.workspaceContext) {
-      prompt += '<workspace>\n';
-      prompt += JSON.stringify(this.workspaceContext, null, 2);
-      prompt += '\n</workspace>';
-    }
-
-    return prompt || null;
-  }
-
-  /**
-   * Normalize file path to valid XML tag name
-   * Example: "Notes/Style Guide.md" -> "Notes_Style_Guide"
-   */
-  private normalizePathToXmlTag(path: string): string {
-    return path
-      .replace(/\.md$/i, '')  // Remove .md extension
-      .replace(/[^a-zA-Z0-9_]/g, '_')  // Replace non-alphanumeric with underscore
-      .replace(/_{2,}/g, '_')  // Replace multiple underscores with single
-      .replace(/^_|_$/g, '');  // Remove leading/trailing underscores
+    return await this.systemPromptBuilder.build({
+      sessionId,
+      workspaceId: this.selectedWorkspaceId || undefined,
+      contextNotes: this.contextNotesManager.getNotes(),
+      messageEnhancement: this.messageEnhancement,
+      agentPrompt: this.currentSystemPrompt,
+      workspaceContext: this.workspaceContext
+    });
   }
 
   /**
    * Read note content from vault
+   * Used by SystemPromptBuilder for file content injection
    */
   private async readNoteContent(notePath: string): Promise<string> {
     try {
@@ -639,32 +502,6 @@ export class ModelAgentManager {
       console.error('[ModelAgentManager] Error reading note:', notePath, error);
       return '[Error reading file]';
     }
-  }
-
-  /**
-   * Escape XML content to prevent injection attacks
-   * @param content - Content to escape
-   * @returns Escaped content
-   */
-  private escapeXmlContent(content: string): string {
-    return content
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
-  /**
-   * Escape XML attribute value
-   * @param value - Attribute value to escape
-   * @returns Escaped value
-   */
-  private escapeXmlAttribute(value: string): string {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
   }
 
 
