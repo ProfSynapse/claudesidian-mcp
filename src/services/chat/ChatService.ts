@@ -10,9 +10,9 @@ import { ConversationData, ConversationMessage, ToolCall, CreateConversationPara
 import { documentToConversationData } from '../../types/chat/ChatTypes';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { ConversationContextBuilder } from './ConversationContextBuilder';
-import { CostCalculator } from '../llm/adapters/CostCalculator';
 import { generateSessionId } from '../../utils/sessionUtils';
 import { ToolCallService } from './ToolCallService';
+import { CostTrackingService } from './CostTrackingService';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -29,6 +29,7 @@ export interface ChatServiceDependencies {
 
 export class ChatService {
   private toolCallService: ToolCallService;
+  private costTrackingService: CostTrackingService;
   private currentProvider?: string; // Track current provider for context building
   private currentSessionId?: string; // Track current session ID for tool execution
   private isInitialized: boolean = false;
@@ -44,8 +45,9 @@ export class ChatService {
       ...options
     };
 
-    // Initialize ToolCallService
+    // Initialize services
     this.toolCallService = new ToolCallService(dependencies.mcpConnector);
+    this.costTrackingService = new CostTrackingService(dependencies.conversationService);
   }
 
   /** Set tool event callback for live UI updates */
@@ -297,51 +299,7 @@ export class ChatService {
       };
 
       // Add usage callback for async cost calculation (e.g., OpenRouter streaming)
-      llmOptions.onUsageAvailable = async (usage: any, cost: any) => {
-        console.log('[ChatService] Async usage available:', { usage, cost, messageId });
-
-        try {
-          // Load conversation, find message, update it, save back
-          const conversation = await this.dependencies.conversationService.getConversation(conversationId);
-          if (!conversation) {
-            console.error('[ChatService] Conversation not found for async usage update');
-            return;
-          }
-
-          // Find the message by ID
-          const message = conversation.messages.find((m: any) => m.id === messageId);
-          if (!message) {
-            console.error('[ChatService] Message not found for async usage update:', messageId);
-            return;
-          }
-
-          // Check if message already has cost (to prevent double-counting)
-          const hadCost = !!message.cost;
-
-          // Update message with usage and cost
-          message.usage = usage;
-          message.cost = cost;
-
-          // Update conversation-level cost summary (only if message didn't already have cost)
-          if (cost && !hadCost) {
-            conversation.metadata = conversation.metadata || {};
-            conversation.metadata.totalCost = (conversation.metadata.totalCost || 0) + (cost.totalCost || 0);
-            console.log('[ChatService] Added cost to metadata.totalCost:', cost.totalCost);
-          } else if (hadCost) {
-            console.log('[ChatService] Message already had cost, skipping metadata update to prevent double-counting');
-          }
-
-          // Save updated conversation
-          await this.dependencies.conversationService.updateConversation(conversationId, {
-            messages: conversation.messages,
-            metadata: conversation.metadata
-          });
-
-          console.log('[ChatService] ✓ Message updated with async usage/cost');
-        } catch (error) {
-          console.error('[ChatService] Failed to update message with async usage:', error);
-        }
-      };
+      llmOptions.onUsageAvailable = this.costTrackingService.createUsageCallback(conversationId, messageId);
 
       // Stream the response from LLM service with MCP tools
       let toolCalls: any[] | undefined = undefined;
@@ -409,31 +367,22 @@ export class ChatService {
 
         // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
-          // Calculate cost from final usage
+          // Calculate cost from final usage using CostTrackingService
           console.log('[ChatService] Final usage before cost calc:', finalUsage);
           if (finalUsage) {
-            const costBreakdown = CostCalculator.calculateCost(
-              provider,
-              llmOptions.model,
-              {
-                inputTokens: finalUsage.promptTokens,
-                outputTokens: finalUsage.completionTokens,
-                totalTokens: finalUsage.totalTokens,
-                source: 'provider_api'
-              }
-            );
-            console.log('[ChatService] Cost breakdown calculated:', costBreakdown);
-
-            if (costBreakdown) {
-              finalCost = {
-                totalCost: costBreakdown.totalCost,
-                currency: costBreakdown.currency
-              };
+            const usageData = this.costTrackingService.extractUsage(finalUsage);
+            if (usageData) {
+              finalCost = await this.costTrackingService.trackMessageUsage(
+                conversationId,
+                messageId,
+                provider,
+                llmOptions.model,
+                usageData
+              );
             }
           }
 
           // Update the placeholder message with final content
-          // Load conversation, find message, update it
           const conv = await this.dependencies.conversationService.getConversation(conversationId);
           if (conv) {
             const msg = conv.messages.find((m: any) => m.id === messageId);
@@ -452,12 +401,6 @@ export class ChatService {
 
               msg.provider = provider;
               msg.model = llmOptions.model;
-
-              // Update conversation-level cost summary
-              if (finalCost) {
-                conv.metadata = conv.metadata || {};
-                conv.metadata.totalCost = (conv.metadata.totalCost || 0) + (finalCost.totalCost || 0);
-              }
 
               // Save updated conversation
               await this.dependencies.conversationService.updateConversation(conversationId, {
