@@ -7,3 +7,5 @@ export { LLMService } from './LLMService';
 export type { LLMExecutionOptions, LLMExecutionResult } from './LLMService';
 export { AdapterRegistry } from './AdapterRegistry';
 export type { IAdapterRegistry } from './AdapterRegistry';
+export { ModelDiscoveryService } from './ModelDiscoveryService';
+export type { IModelDiscoveryService, ModelWithProvider } from './ModelDiscoveryService';

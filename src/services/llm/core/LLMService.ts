@@ -10,6 +10,7 @@ import { MCPToolExecution } from '../adapters/shared/MCPToolExecution';
 import { ConversationContextBuilder } from '../../chat/ConversationContextBuilder';
 import { ConversationData } from '../../../types/chat/ChatTypes';
 import { AdapterRegistry } from './AdapterRegistry';
+import { ModelDiscoveryService } from './ModelDiscoveryService';
 
 export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;
@@ -43,12 +44,14 @@ export interface LLMExecutionResult {
 
 export class LLMService {
   private adapterRegistry: AdapterRegistry;
+  private modelDiscovery: ModelDiscoveryService;
   private settings: LLMProviderSettings;
 
   constructor(settings: LLMProviderSettings, private mcpConnector?: any) {
     this.settings = settings;
     this.adapterRegistry = new AdapterRegistry(settings, mcpConnector);
     this.adapterRegistry.initialize(settings, mcpConnector);
+    this.modelDiscovery = new ModelDiscoveryService(this.adapterRegistry, settings);
   }
 
 
@@ -58,34 +61,15 @@ export class LLMService {
   updateSettings(settings: LLMProviderSettings): void {
     this.settings = settings;
     this.adapterRegistry.updateSettings(settings);
+    this.modelDiscovery = new ModelDiscoveryService(this.adapterRegistry, settings);
   }
 
   /**
    * Get all available models from enabled providers
+   * Delegates to ModelDiscoveryService
    */
   async getAvailableModels(): Promise<(ModelInfo & { provider: string; userDescription?: string })[]> {
-    const allModels: (ModelInfo & { provider: string; userDescription?: string })[] = [];
-    const availableProviders = this.adapterRegistry.getAvailableProviders();
-
-    for (const providerId of availableProviders) {
-      const adapter = this.adapterRegistry.getAdapter(providerId);
-      if (!adapter) continue;
-
-      try {
-        const models = await adapter.listModels();
-        // Add provider information and user description to each model
-        const modelsWithProvider = models.map(model => ({
-          ...model,
-          provider: providerId,
-          userDescription: this.settings.providers[providerId]?.userDescription
-        }));
-        allModels.push(...modelsWithProvider);
-      } catch (error) {
-        console.warn(`Failed to get models from ${providerId}:`, error);
-      }
-    }
-
-    return allModels;
+    return this.modelDiscovery.getAvailableModels();
   }
 
   /**
