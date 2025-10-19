@@ -455,17 +455,19 @@ export class LLMService {
           });
 
           // Step 2: Build continuation for pingpong pattern
-          // For Anthropic, use proper message structure. For others, use system prompt.
+          // Build tool continuation context using ConversationContextBuilder
           let continuationOptions: any;
 
           if (provider === 'anthropic') {
             // Build proper Anthropic messages with tool_use and tool_result blocks
-            const conversationHistory = this.buildAnthropicToolContinuation(
+            const conversationHistory = ConversationContextBuilder.buildToolContinuation(
+              provider,
               userPrompt,
               detectedToolCalls,
               toolResults,
-              previousMessages
-            );
+              previousMessages,
+              generateOptions.systemPrompt
+            ) as any[];
 
             continuationOptions = {
               ...generateOptions,
@@ -475,14 +477,14 @@ export class LLMService {
             };
           } else {
             // For OpenAI-style providers, use flattened system prompt
-            const enhancedSystemPrompt = this.buildConversationWithToolResults(
+            const enhancedSystemPrompt = ConversationContextBuilder.buildToolContinuation(
+              provider,
               userPrompt,
-              generateOptions.systemPrompt,
               detectedToolCalls,
               toolResults,
-              provider,
-              previousMessages
-            );
+              previousMessages,
+              generateOptions.systemPrompt
+            ) as string;
 
             continuationOptions = {
               ...generateOptions,
@@ -584,17 +586,19 @@ export class LLMService {
                 // Add recursive results to complete tool calls
                 completeToolCallsWithResults = completeToolCallsWithResults.concat(recursiveCompleteToolCalls);
 
-                // Build continuation for recursive pingpong
+                // Build continuation for recursive pingpong using ConversationContextBuilder
                 let recursiveContinuationOptions: any;
 
                 if (provider === 'anthropic') {
                   // Build proper Anthropic messages for recursive tool continuation
-                  const recursiveHistory = this.buildAnthropicToolContinuation(
+                  const recursiveHistory = ConversationContextBuilder.buildToolContinuation(
+                    provider,
                     userPrompt,
                     chunk.toolCalls,
                     recursiveToolResults,
-                    previousMessages
-                  );
+                    previousMessages,
+                    generateOptions.systemPrompt
+                  ) as any[];
 
                   recursiveContinuationOptions = {
                     ...generateOptions,
@@ -603,14 +607,14 @@ export class LLMService {
                   };
                 } else {
                   // For OpenAI-style providers, use flattened system prompt
-                  const recursiveEnhancedSystemPrompt = this.buildConversationWithToolResults(
+                  const recursiveEnhancedSystemPrompt = ConversationContextBuilder.buildToolContinuation(
+                    provider,
                     userPrompt,
-                    generateOptions.systemPrompt,
                     chunk.toolCalls,
                     recursiveToolResults,
-                    provider,
-                    previousMessages
-                  );
+                    previousMessages,
+                    generateOptions.systemPrompt
+                  ) as string;
 
                   recursiveContinuationOptions = {
                     ...generateOptions,
@@ -679,119 +683,6 @@ export class LLMService {
     }
   }
 
-  /**
-   * Build Anthropic-style conversation messages with tool_use and tool_result blocks
-   */
-  private buildAnthropicToolContinuation(
-    originalPrompt: string,
-    toolCalls: any[],
-    toolResults: any[],
-    previousMessages?: any[]
-  ): any[] {
-    const messages: any[] = [];
-
-    // Add previous conversation history if provided
-    if (previousMessages && previousMessages.length > 0) {
-      messages.push(...previousMessages);
-    }
-
-    // Add the original user message
-    if (originalPrompt) {
-      messages.push({
-        role: 'user',
-        content: originalPrompt
-      });
-    }
-
-    // Add assistant message with tool_use blocks
-    const toolUseBlocks = toolCalls.map(tc => ({
-      type: 'tool_use',
-      id: tc.id,
-      name: tc.function?.name || tc.name,
-      input: JSON.parse(tc.function?.arguments || '{}')
-    }));
-
-    messages.push({
-      role: 'assistant',
-      content: toolUseBlocks
-    });
-
-    // Add user message with tool_result blocks
-    const toolResultBlocks = toolResults.map(result => ({
-      type: 'tool_result',
-      tool_use_id: result.id,
-      content: result.success
-        ? JSON.stringify(result.result || {})
-        : `Error: ${result.error || 'Tool execution failed'}`
-    }));
-
-    messages.push({
-      role: 'user',
-      content: toolResultBlocks
-    });
-
-    return messages;
-  }
-
-  /**
-   * Build conversation history with tool results for pingpong pattern using ConversationContextBuilder
-   */
-  private buildConversationWithToolResults(
-    originalPrompt: string,
-    systemPrompt: string | undefined,
-    toolCalls: any[],
-    toolResults: any[],
-    provider: string,
-    previousMessages?: any[] // Previous conversation messages to include in system prompt
-  ): string {
-    // Build flattened conversation history including previous messages and tool results
-    const historyParts: string[] = [];
-
-    // Add previous conversation history if provided
-    if (previousMessages && previousMessages.length > 0) {
-      for (const msg of previousMessages) {
-        if (msg.role === 'user') {
-          historyParts.push(`User: ${msg.content}`);
-        } else if (msg.role === 'assistant') {
-          if (msg.tool_calls) {
-            historyParts.push(`Assistant: [Calling tools: ${msg.tool_calls.map((tc: any) => tc.function?.name || tc.name).join(', ')}]`);
-          } else if (msg.content) {
-            historyParts.push(`Assistant: ${msg.content}`);
-          }
-        } else if (msg.role === 'tool') {
-          historyParts.push(`Tool Result: ${msg.content}`);
-        }
-      }
-    }
-
-    // Add current user prompt if provided
-    if (originalPrompt) {
-      historyParts.push(`User: ${originalPrompt}`);
-    }
-
-    // Add tool call information
-    const toolNames = toolCalls.map(tc => tc.function?.name || tc.name).join(', ');
-    historyParts.push(`Assistant: [Calling tools: ${toolNames}]`);
-
-    // Add tool results
-    toolResults.forEach((result, index) => {
-      const toolCall = toolCalls[index];
-      const resultContent = result.success
-        ? JSON.stringify(result.result || {})
-        : `Error: ${result.error || 'Tool execution failed'}`;
-      historyParts.push(`Tool Result (${toolCall.function?.name || toolCall.name}): ${resultContent}`);
-    });
-
-    // Build enhanced system prompt with conversation history
-    const enhancedSystemPrompt = [
-      systemPrompt || '',
-      '\n=== Conversation History ===',
-      historyParts.join('\n')
-    ].filter(Boolean).join('\n');
-
-    // Return the enhanced system prompt string
-    return enhancedSystemPrompt;
-  }
 
   /**
    * Get a specific adapter instance for direct access

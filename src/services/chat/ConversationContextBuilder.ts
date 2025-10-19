@@ -197,6 +197,167 @@ export class ConversationContextBuilder {
   }
   
   /**
+   * Build tool continuation context for streaming pingpong pattern
+   *
+   * After tools are executed during streaming, this builds the continuation
+   * context to send back to the LLM for the next response.
+   *
+   * @param provider - LLM provider (determines format)
+   * @param userPrompt - Original user prompt
+   * @param toolCalls - Tool calls that were detected and executed
+   * @param toolResults - Results from tool execution
+   * @param previousMessages - Previous conversation messages (optional)
+   * @param systemPrompt - System prompt for OpenAI-style providers (optional)
+   * @returns Continuation context (Anthropic: message array, OpenAI-style: system prompt string)
+   */
+  static buildToolContinuation(
+    provider: string,
+    userPrompt: string,
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages?: any[],
+    systemPrompt?: string
+  ): any[] | string {
+    switch (provider.toLowerCase()) {
+      case 'anthropic':
+        return this.buildAnthropicToolContinuation(
+          userPrompt,
+          toolCalls,
+          toolResults,
+          previousMessages
+        );
+      default:
+        // OpenAI-style providers (openai, openrouter, groq, mistral, requesty, perplexity)
+        return this.buildOpenAIToolContinuation(
+          userPrompt,
+          systemPrompt,
+          toolCalls,
+          toolResults,
+          previousMessages
+        );
+    }
+  }
+
+  /**
+   * Build Anthropic-specific tool continuation
+   * Returns message array with tool_use and tool_result blocks
+   *
+   * @private
+   */
+  private static buildAnthropicToolContinuation(
+    userPrompt: string,
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages?: any[]
+  ): any[] {
+    const messages: any[] = [];
+
+    // Add previous conversation history if provided
+    if (previousMessages && previousMessages.length > 0) {
+      messages.push(...previousMessages);
+    }
+
+    // Add the original user message
+    if (userPrompt) {
+      messages.push({
+        role: 'user',
+        content: userPrompt
+      });
+    }
+
+    // Add assistant message with tool_use blocks
+    const toolUseBlocks = toolCalls.map(tc => ({
+      type: 'tool_use',
+      id: tc.id,
+      name: tc.function?.name || tc.name,
+      input: JSON.parse(tc.function?.arguments || '{}')
+    }));
+
+    messages.push({
+      role: 'assistant',
+      content: toolUseBlocks
+    });
+
+    // Add user message with tool_result blocks
+    const toolResultBlocks = toolResults.map(result => ({
+      type: 'tool_result',
+      tool_use_id: result.id,
+      content: result.success
+        ? JSON.stringify(result.result || {})
+        : `Error: ${result.error || 'Tool execution failed'}`
+    }));
+
+    messages.push({
+      role: 'user',
+      content: toolResultBlocks
+    });
+
+    return messages;
+  }
+
+  /**
+   * Build OpenAI-style tool continuation
+   * Returns enhanced system prompt with conversation history and tool results
+   *
+   * @private
+   */
+  private static buildOpenAIToolContinuation(
+    userPrompt: string,
+    systemPrompt: string | undefined,
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages?: any[]
+  ): string {
+    // Build flattened conversation history including previous messages and tool results
+    const historyParts: string[] = [];
+
+    // Add previous conversation history if provided
+    if (previousMessages && previousMessages.length > 0) {
+      for (const msg of previousMessages) {
+        if (msg.role === 'user') {
+          historyParts.push(`User: ${msg.content}`);
+        } else if (msg.role === 'assistant') {
+          if (msg.tool_calls) {
+            historyParts.push(`Assistant: [Calling tools: ${msg.tool_calls.map((tc: any) => tc.function?.name || tc.name).join(', ')}]`);
+          } else if (msg.content) {
+            historyParts.push(`Assistant: ${msg.content}`);
+          }
+        } else if (msg.role === 'tool') {
+          historyParts.push(`Tool Result: ${msg.content}`);
+        }
+      }
+    }
+
+    // Add current user prompt if provided
+    if (userPrompt) {
+      historyParts.push(`User: ${userPrompt}`);
+    }
+
+    // Add tool call information
+    const toolNames = toolCalls.map(tc => tc.function?.name || tc.name).join(', ');
+    historyParts.push(`Assistant: [Calling tools: ${toolNames}]`);
+
+    // Add tool results
+    toolResults.forEach((result, index) => {
+      const toolCall = toolCalls[index];
+      const resultContent = result.success
+        ? JSON.stringify(result.result || {})
+        : `Error: ${result.error || 'Tool execution failed'}`;
+      historyParts.push(`Tool Result (${toolCall.function?.name || toolCall.name}): ${resultContent}`);
+    });
+
+    // Build enhanced system prompt with conversation history
+    const enhancedSystemPrompt = [
+      systemPrompt || '',
+      '\n=== Conversation History ===',
+      historyParts.join('\n')
+    ].filter(Boolean).join('\n');
+
+    // Return the enhanced system prompt string
+    return enhancedSystemPrompt;
+  }
+
+  /**
    * Get provider categories for debugging
    */
   static getProviderCategory(provider: string): string {
@@ -206,7 +367,7 @@ export class ConversationContextBuilder {
       case 'google':
         return 'google';
       case 'openai':
-      case 'openrouter': 
+      case 'openrouter':
       case 'groq':
       case 'mistral':
       case 'requesty':
