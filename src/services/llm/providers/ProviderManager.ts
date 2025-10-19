@@ -42,10 +42,18 @@ export class LLMProviderManager {
   }
 
   /**
-   * Set vault adapter for file operations
+   * Set VaultOperations for file reading
+   */
+  setVaultOperations(vaultOperations: any): void {
+    this.llmService.setVaultOperations(vaultOperations);
+  }
+
+  /**
+   * @deprecated Use setVaultOperations instead
+   * Kept for backward compatibility
    */
   setVaultAdapter(adapter: any): void {
-    this.llmService.setVaultAdapter(adapter);
+    console.warn('ProviderManager.setVaultAdapter() is deprecated. Plugin should call setVaultOperations() instead.');
   }
 
   /**

@@ -11,6 +11,8 @@ import { ConversationContextBuilder } from '../../chat/ConversationContextBuilde
 import { ConversationData } from '../../../types/chat/ChatTypes';
 import { AdapterRegistry } from './AdapterRegistry';
 import { ModelDiscoveryService } from './ModelDiscoveryService';
+import { FileContentService } from './FileContentService';
+import { VaultOperations } from '../../../core/VaultOperations';
 
 export interface LLMExecutionOptions extends GenerateOptions {
   provider?: string;
@@ -45,6 +47,7 @@ export interface LLMExecutionResult {
 export class LLMService {
   private adapterRegistry: AdapterRegistry;
   private modelDiscovery: ModelDiscoveryService;
+  private fileContentService?: FileContentService;
   private settings: LLMProviderSettings;
 
   constructor(settings: LLMProviderSettings, private mcpConnector?: any) {
@@ -142,10 +145,14 @@ export class LLMService {
       // Add file content if filepaths provided
       let filesIncluded: string[] = [];
       if (options.filepaths && options.filepaths.length > 0) {
-        const fileContent = await this.gatherFileContent(options.filepaths);
-        if (fileContent.length > 0) {
-          fullPrompt = `Context from files:\n\n${fileContent}\n\n---\n\nUser request: ${options.userPrompt}`;
-          filesIncluded = options.filepaths;
+        if (!this.fileContentService) {
+          console.warn('LLMService: FileContentService not initialized. Call setVaultOperations() first.');
+        } else {
+          const fileContent = await this.fileContentService.gatherFileContent(options.filepaths);
+          if (fileContent.length > 0) {
+            fullPrompt = `Context from files:\n\n${fileContent}\n\n---\n\nUser request: ${options.userPrompt}`;
+            filesIncluded = options.filepaths;
+          }
         }
       }
 
@@ -193,40 +200,11 @@ export class LLMService {
   }
 
   /**
-   * Gather content from file paths
+   * Set VaultOperations for file reading
+   * This initializes the FileContentService for file context gathering
    */
-  private async gatherFileContent(filepaths: string[]): Promise<string> {
-    const contentParts: string[] = [];
-
-    if (!this.vaultAdapter) {
-      console.error('LLMService: Vault adapter not initialized. File content cannot be read.');
-      return '[Error: Vault adapter not initialized. File content unavailable.]';
-    }
-
-    for (const filepath of filepaths) {
-      try {
-        // Use Obsidian's app.vault.adapter to read file content
-        const content = await this.vaultAdapter.read(filepath);
-        contentParts.push(`--- ${filepath} ---\n${content}\n`);
-      } catch (error) {
-        console.warn(`Failed to read file ${filepath}:`, error);
-        contentParts.push(`--- ${filepath} ---\n[Error reading file: ${error}]\n`);
-      }
-    }
-
-    return contentParts.join('\n');
-  }
-
-  /**
-   * Vault adapter for reading files - will be set by the plugin
-   */
-  private vaultAdapter: any = null;
-
-  /**
-   * Set the vault adapter for file reading
-   */
-  setVaultAdapter(adapter: any): void {
-    this.vaultAdapter = adapter;
+  setVaultOperations(vaultOperations: VaultOperations): void {
+    this.fileContentService = new FileContentService(vaultOperations);
   }
 
   /**

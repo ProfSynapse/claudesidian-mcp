@@ -419,8 +419,12 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
                     // Create LLM Provider Manager
                     llmProviderManager = new LLMProviderManager(llmProviderSettings);
 
-                    // Set the vault adapter for file reading
-                    llmProviderManager.setVaultAdapter(this.app.vault.adapter);
+                    // Set VaultOperations for file reading
+                    if ((this.plugin as any).vaultOperations) {
+                        llmProviderManager.setVaultOperations((this.plugin as any).vaultOperations);
+                    } else {
+                        console.warn('VaultOperations not available, file reading may not work');
+                    }
 
                     // Create usage tracker
                     const { UsageTracker } = await import('../UsageTracker');
