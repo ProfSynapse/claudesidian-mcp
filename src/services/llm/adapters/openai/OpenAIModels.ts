@@ -1,6 +1,14 @@
 /**
  * OpenAI Model Specifications
- * Updated August 10, 2025 with GPT-5 model family
+ * Updated October 19, 2025 - Fixed GPT-4.1 pricing
+ *
+ * Pricing Notes:
+ * - GPT-5 family supports 90% caching discount (cached tokens: $0.125/M vs $1.25/M fresh)
+ * - GPT-4.1 family supports 75% caching discount (cached tokens: $0.50/M vs $2.00/M fresh)
+ * - Caching discounts are applied automatically when prompt_tokens_details.cached_tokens > 0
+ * - Pricing shown here is for Standard tier; Batch API offers 50% off, Priority costs more
+ *
+ * Reference: https://openai.com/api/pricing/
  */
 
 import { ModelSpec } from '../modelTypes';
@@ -80,7 +88,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
     apiName: 'gpt-4.1-2025-04-14',
     contextWindow: 1047576,
     maxTokens: 32768,
-    inputCostPerMillion: 8.00,
+    inputCostPerMillion: 2.00, // Fixed: was 8.00, corrected to match OpenAI pricing
     outputCostPerMillion: 8.00,
     capabilities: {
       supportsJSON: true,
@@ -96,7 +104,7 @@ export const OPENAI_MODELS: ModelSpec[] = [
     apiName: 'gpt-4.1-mini-2025-04-14',
     contextWindow: 1047576,
     maxTokens: 32768,
-    inputCostPerMillion: 0.10,
+    inputCostPerMillion: 0.40, // Fixed: was 0.10, corrected to match OpenAI pricing
     outputCostPerMillion: 1.60,
     capabilities: {
       supportsJSON: true,

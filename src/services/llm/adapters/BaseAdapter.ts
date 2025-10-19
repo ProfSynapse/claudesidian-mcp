@@ -671,26 +671,70 @@ export abstract class BaseAdapter {
   protected extractUsage(response: any): TokenUsage | undefined {
     // Default implementation - override in specific adapters
     if (response.usage) {
-      return {
+      const usage: TokenUsage = {
         promptTokens: response.usage.prompt_tokens || response.usage.input_tokens || 0,
         completionTokens: response.usage.completion_tokens || response.usage.output_tokens || 0,
         totalTokens: response.usage.total_tokens || 0
       };
+
+      // Extract detailed token breakdowns (OpenAI format)
+      if (response.usage.prompt_tokens_details?.cached_tokens) {
+        usage.cachedTokens = response.usage.prompt_tokens_details.cached_tokens;
+      }
+
+      if (response.usage.completion_tokens_details?.reasoning_tokens) {
+        usage.reasoningTokens = response.usage.completion_tokens_details.reasoning_tokens;
+      }
+
+      // Audio tokens (sum of input and output if present)
+      const inputAudio = response.usage.prompt_tokens_details?.audio_tokens || 0;
+      const outputAudio = response.usage.completion_tokens_details?.audio_tokens || 0;
+      if (inputAudio + outputAudio > 0) {
+        usage.audioTokens = inputAudio + outputAudio;
+      }
+
+      return usage;
     }
     return undefined;
   }
 
   // Cost calculation methods
   protected async calculateCost(usage: TokenUsage, model: string): Promise<CostDetails | null> {
-    
+
     const modelPricing = await this.getModelPricing(model);
-    
+
     if (!modelPricing) {
       return null;
     }
-    
-    // Calculate actual costs based on token usage and pricing rates
-    const inputCost = (usage.promptTokens / 1_000_000) * modelPricing.rateInputPerMillion;
+
+    // Determine caching discount rate based on provider and model
+    const cachingDiscount = this.getCachingDiscount(model);
+
+    // Calculate input cost with caching discount
+    let inputCost = 0;
+    let cachedCost = 0;
+
+    if (usage.cachedTokens && usage.cachedTokens > 0 && cachingDiscount < 1.0) {
+      // Split input tokens into cached and fresh
+      const freshTokens = usage.promptTokens - usage.cachedTokens;
+      const freshCost = (freshTokens / 1_000_000) * modelPricing.rateInputPerMillion;
+      cachedCost = (usage.cachedTokens / 1_000_000) * modelPricing.rateInputPerMillion * cachingDiscount;
+      inputCost = freshCost + cachedCost;
+
+      console.log('[BaseAdapter] Applied caching discount:', {
+        model,
+        cachingDiscount,
+        freshTokens,
+        cachedTokens: usage.cachedTokens,
+        freshCost,
+        cachedCost,
+        totalInputCost: inputCost
+      });
+    } else {
+      // No cached tokens, use standard pricing
+      inputCost = (usage.promptTokens / 1_000_000) * modelPricing.rateInputPerMillion;
+    }
+
     const outputCost = (usage.completionTokens / 1_000_000) * modelPricing.rateOutputPerMillion;
     const totalCost = inputCost + outputCost;
 
@@ -702,6 +746,14 @@ export abstract class BaseAdapter {
       rateInputPerMillion: modelPricing.rateInputPerMillion,
       rateOutputPerMillion: modelPricing.rateOutputPerMillion
     };
+
+    // Add cached token details if applicable
+    if (usage.cachedTokens && usage.cachedTokens > 0) {
+      costDetails.cached = {
+        tokens: usage.cachedTokens,
+        cost: cachedCost
+      };
+    }
     
     console.log('BaseAdapter: calculated cost successfully', {
       provider: this.name,
@@ -714,6 +766,36 @@ export abstract class BaseAdapter {
       calculatedCosts: costDetails
     });
     return costDetails;
+  }
+
+  /**
+   * Get caching discount multiplier for a model
+   * Returns the fraction of the original price (e.g., 0.1 = 90% off, 0.25 = 75% off)
+   */
+  protected getCachingDiscount(model: string): number {
+    // OpenAI pricing as of Oct 2025:
+    // GPT-5 family: 90% off cached tokens (pay 10%)
+    if (model.startsWith('gpt-5')) {
+      return 0.1;
+    }
+
+    // GPT-4.1 family: 75% off cached tokens (pay 25%)
+    if (model.startsWith('gpt-4.1')) {
+      return 0.25;
+    }
+
+    // Anthropic Claude: 90% off cached tokens
+    if (model.startsWith('claude')) {
+      return 0.1;
+    }
+
+    // Google Gemini: 50% off cached tokens
+    if (model.startsWith('gemini')) {
+      return 0.5;
+    }
+
+    // Default: no caching discount
+    return 1.0;
   }
 
   protected async buildLLMResponse(

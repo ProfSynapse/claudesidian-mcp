@@ -63,7 +63,10 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-  reasoningTokens?: number; // For thinking models
+  // Detailed breakdowns from OpenAI API
+  cachedTokens?: number; // Cached input tokens (75-90% discount)
+  reasoningTokens?: number; // Hidden reasoning tokens (o1/o3 models)
+  audioTokens?: number; // Audio input/output tokens
 }
 
 export interface CostDetails {
