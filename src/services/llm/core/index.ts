@@ -11,3 +11,5 @@ export { ModelDiscoveryService } from './ModelDiscoveryService';
 export type { IModelDiscoveryService, ModelWithProvider } from './ModelDiscoveryService';
 export { FileContentService } from './FileContentService';
 export type { IFileContentService } from './FileContentService';
+export { StreamingOrchestrator } from './StreamingOrchestrator';
+export type { StreamingOptions, StreamYield } from './StreamingOrchestrator';
