@@ -82,6 +82,11 @@ export interface ConversationSearchResult {
 export interface CreateConversationParams {
   title?: string;
   initialMessage?: string;
+  provider?: string;
+  model?: string;
+  systemPrompt?: string;
+  workspaceId?: string;
+  sessionId?: string;
 }
 
 export interface AddMessageParams {

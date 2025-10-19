@@ -7,13 +7,12 @@
  */
 
 import { ConversationData, ConversationMessage, ToolCall, CreateConversationParams } from '../../types/chat/ChatTypes';
-import { documentToConversationData } from '../../types/chat/ChatTypes';
 import { getErrorMessage } from '../../utils/errorUtils';
-import { ConversationContextBuilder } from './ConversationContextBuilder';
-import { generateSessionId } from '../../utils/sessionUtils';
 import { ToolCallService } from './ToolCallService';
 import { CostTrackingService } from './CostTrackingService';
 import { ConversationQueryService } from './ConversationQueryService';
+import { ConversationManager } from './ConversationManager';
+import { StreamingResponseService } from './StreamingResponseService';
 
 export interface ChatServiceOptions {
   maxToolIterations?: number;
@@ -32,6 +31,8 @@ export class ChatService {
   private toolCallService: ToolCallService;
   private costTrackingService: CostTrackingService;
   private conversationQueryService: ConversationQueryService;
+  private conversationManager: ConversationManager;
+  private streamingResponseService: StreamingResponseService;
   private currentProvider?: string; // Track current provider for context building
   private currentSessionId?: string; // Track current session ID for tool execution
   private isInitialized: boolean = false;
@@ -51,6 +52,19 @@ export class ChatService {
     this.toolCallService = new ToolCallService(dependencies.mcpConnector);
     this.costTrackingService = new CostTrackingService(dependencies.conversationService);
     this.conversationQueryService = new ConversationQueryService(dependencies.conversationService);
+    this.streamingResponseService = new StreamingResponseService({
+      llmService: dependencies.llmService,
+      conversationService: dependencies.conversationService,
+      toolCallService: this.toolCallService,
+      costTrackingService: this.costTrackingService
+    });
+    this.conversationManager = new ConversationManager(
+      {
+        conversationService: dependencies.conversationService,
+        streamingGenerator: this.generateResponseStreaming.bind(this)
+      },
+      dependencies.vaultName
+    );
   }
 
   /** Set tool event callback for live UI updates */
@@ -87,46 +101,28 @@ export class ChatService {
     error?: string;
   }> {
     try {
-      // Generate session ID using standard method
-      const sessionId = generateSessionId();
-
-      const conversation: ConversationData = {
-        id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      const conversation = await this.conversationManager.createConversation({
         title,
-        created: Date.now(),
-        updated: Date.now(),
-        messages: [],
-        metadata: {
-          chatSettings: {
-            workspaceId: options?.workspaceId,
-            sessionId: sessionId
-          }
-        }
-      };
-
-      // Create the base conversation in storage
-      await this.dependencies.conversationService.createConversation({
-        id: conversation.id,
-        title: conversation.title,
-        messages: [],
-        metadata: conversation.metadata
+        initialMessage,
+        provider: options?.provider,
+        model: options?.model,
+        systemPrompt: options?.systemPrompt,
+        workspaceId: options?.workspaceId
       });
 
       // If there's an initial message, get AI response
       if (initialMessage?.trim()) {
-        // Get AI response with potential tool calls
-        // Use streaming method and collect complete response
+        // Generate streaming response
         let completeResponse = '';
         for await (const chunk of this.generateResponseStreaming(conversation.id, initialMessage, options)) {
           completeResponse += chunk.chunk;
         }
-        // Note: AI response is automatically saved by the streaming method
       }
 
       return {
         success: true,
         conversationId: conversation.id,
-        sessionId: sessionId
+        sessionId: conversation.metadata?.chatSettings?.sessionId
       };
     } catch (error) {
       console.error('[ChatService] Failed to create conversation:', error);
@@ -147,7 +143,7 @@ export class ChatService {
     toolCalls?: any[];
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const result = await this.dependencies.conversationService.addMessage({
+      await this.conversationManager.addMessage({
         conversationId: params.conversationId,
         role: params.role,
         content: params.content,
@@ -155,9 +151,7 @@ export class ChatService {
       });
 
       return {
-        success: result.success,
-        messageId: result.messageId,
-        error: result.error
+        success: true
       };
     } catch (error) {
       console.error('Failed to add message:', error);
@@ -187,30 +181,17 @@ export class ChatService {
     error?: string;
   }> {
     try {
-      // Get existing conversation
-      const conversation = await this.dependencies.conversationService.getConversation(conversationId);
-      if (!conversation) {
-        return { success: false, error: 'Conversation not found' };
-      }
-
-      // Add user message to repository
-      const userMessage = await this.dependencies.conversationService.addMessage({
-        conversationId,
-        role: 'user',
-        content: message
-      });
-
-      // Generate AI response with tool execution
       // Use streaming method and collect complete response
       let completeResponse = '';
-      for await (const chunk of this.generateResponseStreaming(conversationId, message, options)) {
+      let messageId: string | undefined;
+      for await (const chunk of this.conversationManager.sendMessage(conversationId, message, options)) {
         completeResponse += chunk.chunk;
+        messageId = chunk.messageId;
       }
-      // Note: AI response is automatically saved by the streaming method
 
       return {
         success: true,
-        messageId: userMessage.success ? userMessage.messageId : undefined
+        messageId
       };
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -225,7 +206,7 @@ export class ChatService {
    * Generate AI response with streaming support
    * Yields chunks of the response as they're generated
    *
-   * Always loads conversation from storage to ensure fresh data with tool calls
+   * Delegates to StreamingResponseService for coordination
    */
   async* generateResponseStreaming(
     conversationId: string,
@@ -236,239 +217,21 @@ export class ChatService {
       systemPrompt?: string;
       workspaceId?: string;
       sessionId?: string;
-      messageId?: string; // Allow passing existing messageId for UI consistency
-      abortSignal?: AbortSignal; // Allow aborting the stream
+      messageId?: string;
+      abortSignal?: AbortSignal;
     }
   ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string; toolCalls?: any[] }, void, unknown> {
-    try {
-      const messageId = options?.messageId || `msg_${Date.now()}_ai`;
-      let accumulatedContent = '';
-
-      // Get defaults from LLMService if user didn't select provider/model
-      const defaultModel = this.dependencies.llmService.getDefaultModel();
-
-      // Create placeholder message immediately so async usage callback can update it
-      // This is saved early to ensure the message exists when async cost calculation completes
-      await this.dependencies.conversationService.addMessage({
-        conversationId,
-        role: 'assistant',
-        content: '', // Will be updated as streaming progresses
-        id: messageId
-      });
-
-      // Get provider for context building
-      const provider = options?.provider || defaultModel.provider;
-      this.currentProvider = provider; // Store for context building
-      this.currentSessionId = options?.sessionId; // Store for tool execution
-
-      // ALWAYS load conversation from storage to get complete history including tool calls
-      const conversation = await this.dependencies.conversationService.getConversation(conversationId);
-
-      // Build conversation context for LLM with provider-specific formatting
-      // NOTE: buildLLMMessages includes ALL messages from storage, including the user message
-      // that was just saved by sendMessage(), so we DON'T add it again here
-      const messages = conversation ?
-        this.buildLLMMessages(conversation, provider, options?.systemPrompt) : [];
-
-      // Add system prompt if provided and not already added by buildLLMMessages
-      if (options?.systemPrompt && !messages.some(m => m.role === 'system')) {
-        messages.unshift({ role: 'system', content: options.systemPrompt });
-      }
-
-      // Only add user message if it's NOT already in the conversation
-      // (happens on first message when conversation is empty)
-      if (!conversation || !conversation.messages.some((m: any) => m.content === userMessage && m.role === 'user')) {
-        messages.push({ role: 'user', content: userMessage });
-      }
-
-      // Get tools from ToolCallService in OpenAI format
-      const openAITools = this.toolCallService.getAvailableTools();
-
-      // Prepare LLM options with converted tools
-      const llmOptions: any = {
-        provider: options?.provider || defaultModel.provider,
-        model: options?.model || defaultModel.model,
-        systemPrompt: options?.systemPrompt,
-        tools: openAITools,
-        toolChoice: openAITools.length > 0 ? 'auto' : undefined,
-        abortSignal: options?.abortSignal,
-        sessionId: options?.sessionId, // ✅ Pass session ID to LLMService for tool execution
-        workspaceId: options?.workspaceId // ✅ Pass workspace ID to LLMService for tool execution
-      };
-
-      // Add tool event callback for live UI updates (delegates to ToolCallService)
-      llmOptions.onToolEvent = (event: 'started' | 'completed', data: any) => {
-        this.toolCallService.fireToolEvent(messageId, event, data);
-      };
-
-      // Add usage callback for async cost calculation (e.g., OpenRouter streaming)
-      llmOptions.onUsageAvailable = this.costTrackingService.createUsageCallback(conversationId, messageId);
-
-      // Stream the response from LLM service with MCP tools
-      let toolCalls: any[] | undefined = undefined;
-      let toolCallsSaved = false; // Track if we've saved the tool call message
-      this.toolCallService.resetDetectedTools(); // Reset tool detection state for new message
-
-      // Track usage and cost for conversation tracking
-      let finalUsage: any = undefined;
-      let finalCost: any = undefined;
-
-      // Log what we're sending to the LLM
-      console.log('[ChatService] ========== GENERATING LLM RESPONSE ==========');
-      console.log('[ChatService] User message:', userMessage);
-      console.log('[ChatService] Messages being sent to LLM:', JSON.stringify(messages, null, 2));
-      console.log('[ChatService] LLM options:', {
-        provider: llmOptions.provider,
-        model: llmOptions.model,
-        systemPrompt: llmOptions.systemPrompt ? llmOptions.systemPrompt.substring(0, 200) + '...' : 'none',
-        toolCount: llmOptions.tools?.length || 0,
-        sessionId: llmOptions.sessionId,
-        workspaceId: llmOptions.workspaceId
-      });
-      console.log('[ChatService] ===================================================');
-
-      for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
-        // Check if aborted FIRST before processing chunk
-        if (options?.abortSignal?.aborted) {
-          throw new DOMException('Generation aborted by user', 'AbortError');
-        }
-
-        accumulatedContent += chunk.chunk;
-
-        // Extract usage for cost calculation
-        if (chunk.usage) {
-          console.log('[ChatService] Received usage from chunk:', chunk.usage);
-          finalUsage = chunk.usage;
-        }
-
-        // Extract tool calls when available and handle progressive display
-        if (chunk.toolCalls) {
-          toolCalls = chunk.toolCalls;
-
-          // Save assistant message with tool calls immediately when detected (before pingpong)
-          // This happens ONCE when tool calls are first complete
-          if (chunk.toolCallsReady && !toolCallsSaved) {
-            await this.dependencies.conversationService.addMessage({
-              conversationId,
-              role: 'assistant',
-              content: null, // OpenAI format: content is null when making tool calls
-              toolCalls: toolCalls
-            });
-            toolCallsSaved = true;
-          }
-
-          // Handle progressive tool call detection (fires 'detected' and 'updated' events)
-          if (toolCalls) {
-            this.toolCallService.handleToolCallDetection(
-              messageId,
-              toolCalls,
-              chunk.toolCallsReady || false,
-              conversationId
-            );
-          }
-        }
-
-        // Save to database BEFORE yielding final chunk to ensure persistence
-        if (chunk.complete) {
-          // Calculate cost from final usage using CostTrackingService
-          console.log('[ChatService] Final usage before cost calc:', finalUsage);
-          if (finalUsage) {
-            const usageData = this.costTrackingService.extractUsage(finalUsage);
-            if (usageData) {
-              finalCost = await this.costTrackingService.trackMessageUsage(
-                conversationId,
-                messageId,
-                provider,
-                llmOptions.model,
-                usageData
-              );
-            }
-          }
-
-          // Update the placeholder message with final content
-          const conv = await this.dependencies.conversationService.getConversation(conversationId);
-          if (conv) {
-            const msg = conv.messages.find((m: any) => m.id === messageId);
-            if (msg) {
-              // Update existing placeholder message
-              msg.content = accumulatedContent;
-
-              // Only update cost/usage if we have values (don't overwrite with undefined)
-              // This prevents overwriting async updates from OpenRouter's generation API
-              if (finalCost) {
-                msg.cost = finalCost;
-              }
-              if (finalUsage) {
-                msg.usage = finalUsage;
-              }
-
-              msg.provider = provider;
-              msg.model = llmOptions.model;
-
-              // Save updated conversation
-              await this.dependencies.conversationService.updateConversation(conversationId, {
-                messages: conv.messages,
-                metadata: conv.metadata
-              });
-            }
-          }
-
-          // Handle tool calls - if present, add separate message for pingpong response
-          if (toolCalls && toolCalls.length > 0) {
-            // Had tool calls - the placeholder is the tool call message, add pingpong response separately
-            await this.dependencies.conversationService.addMessage({
-              conversationId,
-              role: 'assistant',
-              content: accumulatedContent, // Pingpong response text
-              cost: finalCost,
-              usage: finalUsage,
-              provider: provider,
-              model: llmOptions.model
-              // No toolCalls - this is the response AFTER seeing tool results
-            });
-          }
-        }
-
-        yield {
-          chunk: chunk.chunk,
-          complete: chunk.complete,
-          messageId,
-          toolCalls: toolCalls
-        };
-
-        if (chunk.complete) {
-          break;
-        }
-      }
-
-    } catch (error) {
-      console.error('Error in generateResponseStreaming:', error);
-      throw error;
+    // Store current provider and session for backward compatibility
+    if (options?.provider) {
+      this.currentProvider = options.provider;
+      this.streamingResponseService.setProvider(options.provider);
     }
-  }
+    if (options?.sessionId) {
+      this.currentSessionId = options.sessionId;
+    }
 
-
-  /**
-   * Build message history for LLM context using provider-specific formatting
-   * 
-   * This method now uses ConversationContextBuilder to properly reconstruct
-   * conversation history with tool calls in the correct format for each provider.
-   */
-  private buildLLMMessages(conversation: ConversationData, provider?: string, systemPrompt?: string): any[] {
-    const currentProvider = provider || this.getCurrentProvider();
-
-    return ConversationContextBuilder.buildContextForProvider(
-      conversation,
-      currentProvider,
-      systemPrompt
-    );
-  }
-
-  /**
-   * Get current provider for context building
-   */
-  private getCurrentProvider(): string {
-    return this.currentProvider || this.dependencies.llmService.getDefaultModel().provider;
+    // Delegate to StreamingResponseService
+    yield* this.streamingResponseService.generateResponse(conversationId, userMessage, options);
   }
 
   /**
@@ -476,13 +239,10 @@ export class ChatService {
    */
   async updateConversation(conversation: ConversationData): Promise<{ success: boolean; error?: string }> {
     try {
-      await this.dependencies.conversationService.updateConversation(
-        conversation.id,
-        {
-          title: conversation.title,
-          messages: conversation.messages
-        }
-      );
+      await this.conversationManager.updateConversation(conversation.id, {
+        title: conversation.title,
+        messages: conversation.messages
+      });
 
       return {
         success: true
@@ -510,14 +270,7 @@ export class ChatService {
    * Delete conversation
    */
   async deleteConversation(id: string): Promise<boolean> {
-    try {
-      await this.dependencies.conversationService.deleteConversation(id);
-      // Note: Tool call history is stored per-message, not per-conversation
-      return true;
-    } catch (error) {
-      console.error('Failed to delete conversation:', error);
-      return false;
-    }
+    return await this.conversationManager.deleteConversation(id);
   }
 
   /** Search conversations */
