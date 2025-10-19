@@ -59,47 +59,34 @@ export class LLMService {
   }
 
 
-  /**
-   * Update settings and reinitialize adapters
-   */
+  /** Update settings and reinitialize adapters */
   updateSettings(settings: LLMProviderSettings): void {
     this.settings = settings;
     this.adapterRegistry.updateSettings(settings);
     this.modelDiscovery = new ModelDiscoveryService(this.adapterRegistry, settings);
   }
 
-  /**
-   * Get all available models from enabled providers
-   * Delegates to ModelDiscoveryService
-   */
+  /** Get all available models from enabled providers */
   async getAvailableModels(): Promise<(ModelInfo & { provider: string; userDescription?: string })[]> {
     return this.modelDiscovery.getAvailableModels();
   }
 
-  /**
-   * Get available providers (those with API keys and enabled)
-   */
+  /** Get available providers (those with API keys and enabled) */
   getAvailableProviders(): string[] {
     return this.adapterRegistry.getAvailableProviders();
   }
 
-  /**
-   * Check if a provider is available
-   */
+  /** Check if a provider is available */
   isProviderAvailable(provider: string): boolean {
     return this.adapterRegistry.isProviderAvailable(provider);
   }
 
-  /**
-   * Get the default provider and model
-   */
+  /** Get the default provider and model */
   getDefaultModel(): { provider: string; model: string } {
     return this.settings.defaultModel;
   }
 
-  /**
-   * Execute a prompt with the specified or default provider/model
-   */
+  /** Execute a prompt with the specified or default provider/model */
   async executePrompt(options: LLMExecutionOptions): Promise<LLMExecutionResult> {
     try {
       // Validate that we have settings
@@ -200,17 +187,12 @@ export class LLMService {
     }
   }
 
-  /**
-   * Set VaultOperations for file reading
-   * This initializes the FileContentService for file context gathering
-   */
+  /** Set VaultOperations for file reading */
   setVaultOperations(vaultOperations: VaultOperations): void {
     this.fileContentService = new FileContentService(vaultOperations);
   }
 
-  /**
-   * Test connection to a specific provider
-   */
+  /** Test connection to a specific provider */
   async testProvider(provider: string): Promise<{ success: boolean; error?: string }> {
     try {
       const adapter = this.adapterRegistry.getAdapter(provider);
@@ -229,94 +211,29 @@ export class LLMService {
     }
   }
 
-  /**
-   * Get provider configuration
-   */
+  /** Get provider configuration */
   getProviderConfig(provider: string): LLMProviderConfig | undefined {
     return this.settings.providers[provider];
   }
 
-  /**
-   * Get all provider configurations
-   */
+  /** Get all provider configurations */
   getAllProviderConfigs(): { [providerId: string]: LLMProviderConfig } {
     return this.settings.providers;
   }
 
-  /**
-   * Generate response compatible with ChatService
-   * Wrapper around executePrompt for tool-calling scenarios
-   */
-  async generateResponse(
-    messages: Array<{ role: string; content: string }>, 
-    options?: { 
-      tools?: any[]; 
-      toolChoice?: string;
-      provider?: string;
-      model?: string;
-    }
-  ): Promise<{ content: string; toolCalls?: any[] }> {
-    try {
-      // Convert message array to single prompt
-      const userPrompt = messages
-        .filter(msg => msg.role === 'user')
-        .map(msg => msg.content)
-        .join('\n');
-      
-      const systemPrompt = messages
-        .filter(msg => msg.role === 'system')
-        .map(msg => msg.content)
-        .join('\n');
-
-      // Execute prompt using existing method
-      const result = await this.executePrompt({
-        userPrompt,
-        systemPrompt: systemPrompt || undefined,
-        tools: options?.tools,
-        provider: options?.provider,
-        model: options?.model
-      });
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to generate response');
-      }
-
-      // Return in expected format
-      return {
-        content: result.response || '',
-        toolCalls: [] // TODO: Extract tool calls from result if supported
-      };
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  /**
-   * Streaming wrapper for real-time response generation
-   * Returns an async generator that yields chunks of the response in real-time
-   * Following OpenAI streaming pattern from: https://platform.openai.com/docs/guides/streaming-responses
-   */
-  /**
-   * Generate streaming LLM response with tool execution support
-   * Delegates to StreamingOrchestrator for all streaming logic
-   */
+  /** Generate streaming LLM response with tool execution support */
   async* generateResponseStream(
     messages: Array<{ role: string; content: string }>,
     options?: StreamingOptions
   ): AsyncGenerator<StreamYield, void, unknown> {
-    // Delegate to StreamingOrchestrator for all streaming logic
     const orchestrator = new StreamingOrchestrator(
       this.adapterRegistry,
       this.settings
     );
-
     yield* orchestrator.generateResponseStream(messages, options);
   }
 
-
-  /**
-   * Get a specific adapter instance for direct access
-   */
+  /** Get a specific adapter instance for direct access */
   getAdapter(providerId: string): BaseAdapter | undefined {
     return this.adapterRegistry.getAdapter(providerId);
   }
