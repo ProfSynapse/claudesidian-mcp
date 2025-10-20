@@ -273,7 +273,8 @@ export class ChatView extends ItemView {
       (message, enhancement) => this.handleSendMessage(message, enhancement),
       () => this.messageManager.getIsLoading(),
       this.app, // Pass app for suggesters
-      () => this.handleStopGeneration()
+      () => this.handleStopGeneration(),
+      () => this.conversationManager.getCurrentConversation() !== null
     );
 
     this.contextProgressBar = new ContextProgressBar(
@@ -357,8 +358,27 @@ export class ChatView extends ItemView {
     const conversations = this.conversationManager.getConversations();
     if (conversations.length === 0) {
       this.uiStateController.showWelcomeState();
+      // Disable input when showing welcome screen
+      if (this.chatInput) {
+        this.chatInput.setConversationState(false);
+      }
+      // Wire up the welcome screen button
+      this.wireWelcomeButton();
     }
     // If conversations exist, the ConversationManager will auto-select the most recent one
+  }
+
+  /**
+   * Wire up the welcome screen "Start New Conversation" button
+   */
+  private wireWelcomeButton(): void {
+    // Use event delegation since the button is dynamically created
+    const welcomeButton = this.containerEl.querySelector('.chat-welcome-button');
+    if (welcomeButton) {
+      welcomeButton.addEventListener('click', () => {
+        this.conversationManager.createNewConversation();
+      });
+    }
   }
 
   // Event Handlers
@@ -379,6 +399,11 @@ export class ChatView extends ItemView {
     // Branch navigation is now at message level
     this.uiStateController.setInputPlaceholder('Type your message...');
     this.updateContextProgress();
+
+    // Enable input when conversation is selected
+    if (this.chatInput) {
+      this.chatInput.setConversationState(true);
+    }
 
     // Close the sidebar menu after selecting a conversation
     if (this.uiStateController.getSidebarVisible()) {
@@ -426,6 +451,14 @@ export class ChatView extends ItemView {
   }
 
   private async handleSendMessage(message: string, enhancement?: MessageEnhancement): Promise<void> {
+    const currentConversation = this.conversationManager.getCurrentConversation();
+
+    // Prevent sending messages when no conversation is active
+    if (!currentConversation) {
+      console.log('[ChatView] Cannot send message - no active conversation');
+      return;
+    }
+
     try {
       // Set enhancement on ModelAgentManager BEFORE getting message options
       // This allows the system prompt builder to include the enhancement data
@@ -434,25 +467,16 @@ export class ChatView extends ItemView {
         this.modelAgentManager.setMessageEnhancement(enhancement);
       }
 
-      const currentConversation = this.conversationManager.getCurrentConversation();
       const messageOptions = await this.modelAgentManager.getMessageOptions();
 
       console.log('[ChatView] Message options with enhancement:', messageOptions);
 
-      if (!currentConversation) {
-        // Create new conversation with message
-        await this.conversationManager.createNewConversationWithMessage(
-          message,
-          messageOptions
-        );
-      } else {
-        // Send message in current conversation
-        await this.messageManager.sendMessage(
-          currentConversation,
-          message,
-          messageOptions
-        );
-      }
+      // Send message in current conversation
+      await this.messageManager.sendMessage(
+        currentConversation,
+        message,
+        messageOptions
+      );
     } finally {
       // Always clear the enhancement after sending
       this.modelAgentManager.clearMessageEnhancement();

@@ -43,7 +43,7 @@ export class UIStateController {
           <li>Search and organize your vault</li>
           <li>Get help with any task</li>
         </ul>
-        <p>Type a message below to get started!</p>
+        <button class="chat-welcome-button mod-cta">Start New Conversation</button>
       </div>
     `;
   }

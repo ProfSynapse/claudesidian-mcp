@@ -15,6 +15,7 @@ export class ChatInput {
   private inputElement: HTMLElement | null = null;
   private sendButton: HTMLButtonElement | null = null;
   private isLoading = false;
+  private hasConversation = false;
   private suggesters: SuggesterInstances | null = null;
 
   constructor(
@@ -22,7 +23,8 @@ export class ChatInput {
     private onSendMessage: (message: string, enhancement?: MessageEnhancement) => void,
     private getLoadingState: () => boolean,
     private app?: App,
-    private onStopGeneration?: () => void
+    private onStopGeneration?: () => void,
+    private getHasConversation?: () => boolean
   ) {
     this.render();
   }
@@ -32,6 +34,14 @@ export class ChatInput {
    */
   setLoading(loading: boolean): void {
     this.isLoading = loading;
+    this.updateUI();
+  }
+
+  /**
+   * Set conversation state (whether a conversation is active)
+   */
+  setConversationState(hasConversation: boolean): void {
+    this.hasConversation = hasConversation;
     this.updateUI();
   }
 
@@ -134,6 +144,13 @@ export class ChatInput {
   private handleSendMessage(): void {
     if (!this.inputElement) return;
 
+    // Check if a conversation is active
+    const hasConversation = this.getHasConversation ? this.getHasConversation() : this.hasConversation;
+    if (!hasConversation) {
+      console.log('[ChatInput] Cannot send message - no active conversation');
+      return;
+    }
+
     const message = ReferenceExtractor.getPlainText(this.inputElement).trim();
     if (!message) return;
 
@@ -208,8 +225,18 @@ export class ChatInput {
     if (!this.sendButton || !this.inputElement) return;
 
     const actuallyLoading = this.isLoading || this.getLoadingState();
+    const hasConversation = this.getHasConversation ? this.getHasConversation() : this.hasConversation;
 
-    if (actuallyLoading) {
+    if (!hasConversation) {
+      // No conversation selected - disable everything
+      this.sendButton.disabled = true;
+      this.sendButton.classList.remove('stop-mode');
+      this.sendButton.empty();
+      setIcon(this.sendButton, 'send');
+      this.sendButton.setAttribute('aria-label', 'No conversation selected');
+      this.inputElement.contentEditable = 'false';
+      this.inputElement.setAttribute('data-placeholder', 'Select or create a conversation to begin');
+    } else if (actuallyLoading) {
       // Show red stop button (keep enabled so user can click to stop)
       this.sendButton.disabled = false;
       this.sendButton.classList.add('stop-mode');
@@ -225,6 +252,7 @@ export class ChatInput {
       setIcon(this.sendButton, 'send');
       this.sendButton.setAttribute('aria-label', 'Send message');
       this.inputElement.contentEditable = 'true';
+      this.inputElement.setAttribute('data-placeholder', 'Type your message...');
     }
   }
 

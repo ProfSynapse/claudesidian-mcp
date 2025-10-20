@@ -158,7 +158,10 @@ export class MessageDisplay {
     list.createEl('li', { text: 'Search and organize your vault' });
     list.createEl('li', { text: 'Get help with any task' });
 
-    welcomeContent.createEl('p', { text: 'Type a message below to get started!' });
+    const startButton = welcomeContent.createEl('button', {
+      cls: 'chat-welcome-button mod-cta',
+      text: 'Start New Conversation'
+    });
   }
 
   /**
