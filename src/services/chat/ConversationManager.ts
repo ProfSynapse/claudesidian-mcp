@@ -33,23 +33,49 @@ export class ConversationManager {
    * Create a new conversation
    */
   async createConversation(params: CreateConversationParams): Promise<ConversationData> {
-    const conversation = await this.dependencies.conversationService.createConversation({
+    console.log('[ConversationManager] 🔵 Creating conversation with params:', {
       title: params.title,
       vaultName: this.vaultName,
       provider: params.provider,
       model: params.model,
-      systemPrompt: params.systemPrompt,
       workspaceId: params.workspaceId,
-      sessionId: params.sessionId || generateSessionId()
+      hasInitialMessage: !!params.initialMessage
+    });
+
+    const conversationData = {
+      title: params.title,
+      vault_name: this.vaultName,
+      messages: [],
+      metadata: {
+        chatSettings: {
+          providerId: params.provider,
+          modelId: params.model,
+          workspaceId: params.workspaceId,
+          sessionId: params.sessionId || generateSessionId()
+        }
+      }
+    };
+
+    console.log('[ConversationManager] 🔵 Conversation data to create:', JSON.stringify(conversationData, null, 2));
+
+    const conversation = await this.dependencies.conversationService.createConversation(conversationData);
+
+    console.log('[ConversationManager] ✅ Conversation created:', {
+      id: conversation.id,
+      title: conversation.title,
+      hasMetadata: !!conversation.metadata,
+      sessionId: conversation.metadata?.chatSettings?.sessionId
     });
 
     // Add initial message if provided
     if (params.initialMessage) {
+      console.log('[ConversationManager] 🔵 Adding initial message to conversation:', conversation.id);
       await this.dependencies.conversationService.addMessage({
         conversationId: conversation.id,
         role: 'user',
         content: params.initialMessage
       });
+      console.log('[ConversationManager] ✅ Initial message added');
     }
 
     return conversation;
@@ -126,8 +152,20 @@ export class ConversationManager {
    * Set conversation workspace
    */
   async setWorkspace(conversationId: string, workspaceId: string): Promise<void> {
+    // Get current conversation to preserve existing metadata
+    const conversation = await this.dependencies.conversationService.getConversation(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
     await this.updateConversation(conversationId, {
-      metadata: { workspaceId }
+      metadata: {
+        ...conversation.metadata,
+        chatSettings: {
+          ...conversation.metadata?.chatSettings,
+          workspaceId
+        }
+      }
     });
   }
 }

@@ -11,7 +11,6 @@
  */
 
 import { ConversationData } from '../../types/chat/ChatTypes';
-import { documentToConversationData } from '../../types/chat/ChatTypes';
 
 export class ConversationQueryService {
   constructor(
@@ -40,8 +39,23 @@ export class ConversationQueryService {
     sortOrder?: 'asc' | 'desc';
   }): Promise<ConversationData[]> {
     try {
-      const documents = await this.conversationService.listConversations(options);
-      return documents.map(documentToConversationData);
+      // ConversationService.listConversations expects (vaultName?: string, limit?: number)
+      // We pass undefined for vaultName to get all conversations, and extract limit from options
+      const metadataList = await this.conversationService.listConversations(undefined, options?.limit);
+
+      // Convert ConversationMetadata to ConversationData format
+      // Note: messages array is empty since we're only using the index (lightweight)
+      return metadataList.map((metadata: any) => ({
+        id: metadata.id,
+        title: metadata.title,
+        messages: [], // Empty for list view - messages loaded when conversation is selected
+        created: metadata.created,
+        updated: metadata.updated,
+        metadata: {
+          vault_name: metadata.vault_name,
+          message_count: metadata.message_count
+        }
+      }));
     } catch (error) {
       console.error('Failed to list conversations:', error);
       return [];
@@ -56,8 +70,20 @@ export class ConversationQueryService {
     fields?: string[];
   }): Promise<ConversationData[]> {
     try {
-      const documents = await this.conversationService.searchConversations(query, options);
-      return documents.map(documentToConversationData);
+      const metadataList = await this.conversationService.searchConversations(query, options?.limit);
+
+      // Convert ConversationMetadata to ConversationData format
+      return metadataList.map((metadata: any) => ({
+        id: metadata.id,
+        title: metadata.title,
+        messages: [], // Empty for search results - messages loaded when conversation is selected
+        created: metadata.created,
+        updated: metadata.updated,
+        metadata: {
+          vault_name: metadata.vault_name,
+          message_count: metadata.message_count
+        }
+      }));
     } catch (error) {
       console.error('Failed to search conversations:', error);
       return [];

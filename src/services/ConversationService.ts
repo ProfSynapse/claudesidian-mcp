@@ -19,12 +19,16 @@ export class ConversationService {
    * List conversations (uses index only - lightweight and fast)
    */
   async listConversations(vaultName?: string, limit?: number): Promise<ConversationMetadata[]> {
+    console.log('[ConversationService] 🔵 listConversations called:', { vaultName, limit });
     const index = await this.indexManager.loadConversationIndex();
+    console.log('[ConversationService] 🔵 Loaded index with', Object.keys(index.conversations).length, 'conversations');
     let conversations = Object.values(index.conversations);
 
     // Filter by vault if specified
     if (vaultName) {
+      const beforeFilter = conversations.length;
       conversations = conversations.filter(conv => conv.vault_name === vaultName);
+      console.log('[ConversationService] 🔵 Filtered by vault:', vaultName, '- Before:', beforeFilter, 'After:', conversations.length);
     }
 
     // Sort by updated timestamp (most recent first)
@@ -33,6 +37,16 @@ export class ConversationService {
     // Apply limit if specified
     if (limit) {
       conversations = conversations.slice(0, limit);
+      console.log('[ConversationService] 🔵 Applied limit:', limit, '- Result count:', conversations.length);
+    }
+
+    console.log('[ConversationService] ✅ Returning', conversations.length, 'conversations');
+    if (conversations.length > 0) {
+      console.log('[ConversationService] 🔵 First conversation:', {
+        id: conversations[0].id,
+        title: conversations[0].title,
+        vault_name: conversations[0].vault_name
+      });
     }
 
     return conversations;
@@ -73,7 +87,10 @@ export class ConversationService {
    * Create new conversation (writes file + updates index)
    */
   async createConversation(data: Partial<IndividualConversation>): Promise<IndividualConversation> {
+    console.log('[ConversationService] 🔵 createConversation called with data:', JSON.stringify(data, null, 2));
+
     const id = data.id || `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('[ConversationService] 🔵 Generated conversation ID:', id);
 
     const conversation: IndividualConversation = {
       id,
@@ -86,12 +103,19 @@ export class ConversationService {
       metadata: data.metadata // ⚠️ CRITICAL: Preserve metadata including sessionId!
     };
 
+    console.log('[ConversationService] 🔵 Full conversation object:', JSON.stringify(conversation, null, 2));
+
     // Write conversation file
+    console.log('[ConversationService] 🔵 Writing conversation file:', id);
     await this.fileSystem.writeConversation(id, conversation);
+    console.log('[ConversationService] ✅ Conversation file written');
 
     // Update index
+    console.log('[ConversationService] 🔵 Updating conversation index');
     await this.indexManager.updateConversationInIndex(conversation);
+    console.log('[ConversationService] ✅ Index updated');
 
+    console.log('[ConversationService] ✅ Conversation created successfully:', id);
     return conversation;
   }
 

@@ -22,10 +22,12 @@ export class FileSystemService {
    * Ensure conversations/ directory exists
    */
   async ensureConversationsDirectory(): Promise<void> {
+    console.log('[FileSystemService] 🔵 Ensuring conversations directory:', this.conversationsPath);
     try {
       await this.plugin.app.vault.adapter.mkdir(this.conversationsPath);
+      console.log('[FileSystemService] ✅ Conversations directory created');
     } catch (error) {
-      // Directory might already exist
+      console.log('[FileSystemService] ℹ️ Conversations directory already exists');
     }
   }
 
@@ -44,9 +46,17 @@ export class FileSystemService {
    * Write individual conversation file
    */
   async writeConversation(id: string, data: IndividualConversation): Promise<void> {
+    await this.ensureConversationsDirectory();
     const filePath = normalizePath(`${this.conversationsPath}/${id}.json`);
+    console.log('[FileSystemService] 🔵 Writing conversation to:', filePath);
+    console.log('[FileSystemService] 🔵 Conversation data size:', JSON.stringify(data).length, 'bytes');
     const jsonString = JSON.stringify(data, null, 2);
     await this.plugin.app.vault.adapter.write(filePath, jsonString);
+    console.log('[FileSystemService] ✅ Conversation file written successfully');
+
+    // Verify the file was written
+    const exists = await this.plugin.app.vault.adapter.exists(filePath);
+    console.log('[FileSystemService] 🔵 File exists after write:', exists);
   }
 
   /**
