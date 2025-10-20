@@ -419,11 +419,20 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
                     // Create LLM Provider Manager
                     llmProviderManager = new LLMProviderManager(llmProviderSettings);
 
-                    // Set VaultOperations for file reading
-                    if ((this.plugin as any).vaultOperations) {
-                        llmProviderManager.setVaultOperations((this.plugin as any).vaultOperations);
+                    // Set VaultOperations for file reading from service manager
+                    if (this.serviceManager) {
+                        try {
+                            const vaultOperations = await this.serviceManager.getService('vaultOperations');
+                            if (vaultOperations) {
+                                llmProviderManager.setVaultOperations(vaultOperations);
+                            } else {
+                                console.warn('VaultOperations service not yet initialized, file reading may not work');
+                            }
+                        } catch (error) {
+                            console.warn('Failed to get VaultOperations from service manager:', error);
+                        }
                     } else {
-                        console.warn('VaultOperations not available, file reading may not work');
+                        console.warn('ServiceManager not available, file reading may not work');
                     }
 
                     // Create usage tracker

@@ -41,6 +41,20 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
         }
     },
 
+    // VaultOperations - centralized vault operations using Obsidian API
+    {
+        name: 'vaultOperations',
+        create: async (context) => {
+            const { VaultOperations } = await import('../VaultOperations');
+            const { ObsidianPathManager } = await import('../ObsidianPathManager');
+            const { StructuredLogger } = await import('../StructuredLogger');
+
+            const pathManager = new ObsidianPathManager(context.app.vault);
+            const logger = new StructuredLogger(context.plugin);
+            return new VaultOperations(context.app.vault, pathManager, logger);
+        }
+    },
+
     // Note: ProcessedFilesStateManager and SimpleMemoryService removed in simplify-search-architecture
     // State management is now handled by simplified JSON-based storage
 
@@ -167,13 +181,34 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
     // LLM services for chat functionality
     {
         name: 'llmService',
+        dependencies: ['vaultOperations'],
         create: async (context) => {
             const { LLMService } = await import('../../services/llm/core/LLMService');
+            const { VaultOperations } = await import('../../core/VaultOperations');
+
             const llmProviders = context.settings.settings.llmProviders;
             if (!llmProviders || typeof llmProviders !== 'object' || !('providers' in llmProviders)) {
                 throw new Error('Invalid LLM provider settings');
             }
-            return new LLMService(llmProviders, context.connector); // Pass mcpConnector for tool execution
+
+            const llmService = new LLMService(llmProviders, context.connector); // Pass mcpConnector for tool execution
+
+            // Inject VaultOperations for file reading
+            const vaultOperations = await context.serviceManager.getService('vaultOperations') as InstanceType<typeof VaultOperations>;
+            if (vaultOperations) {
+                llmService.setVaultOperations(vaultOperations);
+            }
+
+            return llmService;
+        }
+    },
+
+    // Custom prompt storage service for AgentManager
+    {
+        name: 'customPromptStorageService',
+        create: async (context) => {
+            const { CustomPromptStorageService } = await import('../../agents/agentManager/services/CustomPromptStorageService');
+            return new CustomPromptStorageService(context.settings);
         }
     },
 

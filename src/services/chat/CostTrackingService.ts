@@ -136,8 +136,8 @@ export class CostTrackingService {
       // Add message cost to conversation total
       conversation.cost.totalCost += messageCost.totalCost;
 
-      // Save updated conversation
-      await this.conversationService.updateConversation(conversation);
+      // Save updated conversation (pass ID and updates separately)
+      await this.conversationService.updateConversation(conversationId, { cost: conversation.cost });
 
       console.log('[CostTrackingService] Conversation cost updated:', {
         conversationId,

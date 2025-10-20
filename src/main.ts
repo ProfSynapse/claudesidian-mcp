@@ -40,6 +40,14 @@ export default class ClaudesidianPlugin extends Plugin {
             return services;
         }
         // Return only ready services for immediate access
+        // These are used by agent modes for activity recording and UI components
+        const serviceNames = ['memoryService', 'workspaceService', 'sessionService', 'conversationService', 'customPromptStorageService'];
+        for (const name of serviceNames) {
+            const service = this.serviceManager.getServiceIfReady(name);
+            if (service) {
+                services[name] = service;
+            }
+        }
         return services;
     }
 
