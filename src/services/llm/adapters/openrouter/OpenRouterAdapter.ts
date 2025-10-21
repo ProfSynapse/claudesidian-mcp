@@ -80,8 +80,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         headers: {
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': 'https://synaptic-lab-kit.com',
-          'X-Title': 'Synaptic Lab Kit'
+          'HTTP-Referer': 'https://www.synapticlabs.ai',
+          'X-Title': 'Claudesidian'
         },
         body: JSON.stringify(requestBody)
       });
@@ -160,8 +160,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         headers: {
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': 'https://synaptic-lab-kit.com',
-          'X-Title': 'Synaptic Lab Kit'
+          'HTTP-Referer': 'https://www.synapticlabs.ai',
+          'X-Title': 'Claudesidian'
         },
         body: JSON.stringify(requestBody)
       });
@@ -302,8 +302,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://synaptic-lab-kit.com',
-            'X-Title': 'Synaptic Lab Kit'
+            'HTTP-Referer': 'https://www.synapticlabs.ai',
+            'X-Title': 'Claudesidian'
           }
         });
 
@@ -442,8 +442,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
             headers: {
               ...this.buildHeaders(),
               'Authorization': `Bearer ${this.apiKey}`,
-              'HTTP-Referer': 'https://synaptic-lab-kit.com',
-              'X-Title': 'Synaptic Lab Kit'
+              'HTTP-Referer': 'https://www.synapticlabs.ai',
+              'X-Title': 'Claudesidian'
             },
             body: JSON.stringify(requestBody)
           });
@@ -538,8 +538,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         headers: {
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': 'https://synaptic-lab-kit.com',
-          'X-Title': 'Synaptic Lab Kit'
+          'HTTP-Referer': 'https://www.synapticlabs.ai',
+          'X-Title': 'Claudesidian'
         },
         body: JSON.stringify(requestBody)
       });

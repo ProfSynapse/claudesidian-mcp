@@ -226,32 +226,44 @@ export class LLMValidationService {
 
   private static async validateOpenRouter(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
+      console.log('[OpenRouter Validation] Starting validation...');
+      
+      const requestBody = {
+        model: 'openai/gpt-4o-mini',
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 5
+      };
+      
+      console.log('[OpenRouter Validation] Request body:', requestBody);
+      
       const response = await this.requestWithTimeout({
         url: 'https://openrouter.ai/api/v1/chat/completions',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://github.com/anthropics/claude-code',
-          'X-Title': 'Claude Code Obsidian Plugin'
+          'HTTP-Referer': 'https://www.synapticlabs.ai',
+          'X-Title': 'Claudesidian'
         },
-        body: JSON.stringify({
-          model: 'openai/gpt-4.1-nano',
-          messages: [{ role: 'user', content: 'Hi' }],
-          max_tokens: 5
-        })
+        body: JSON.stringify(requestBody)
       });
+
+      console.log('[OpenRouter Validation] Response status:', response.status);
+      console.log('[OpenRouter Validation] Response body:', response.json);
 
       if (response.status >= 200 && response.status < 300) {
         return { success: true };
       } else {
         const errorData = response.json || {};
+        const errorMessage = errorData.error?.message || JSON.stringify(errorData) || `HTTP ${response.status}`;
+        console.error('[OpenRouter Validation] Error:', errorMessage);
         return { 
           success: false, 
-          error: errorData.error?.message || `HTTP ${response.status}` 
+          error: errorMessage
         };
       }
     } catch (error: any) {
+      console.error('[OpenRouter Validation] Exception:', error);
       return { 
         success: false, 
         error: error.message || 'OpenRouter API key validation failed' 
