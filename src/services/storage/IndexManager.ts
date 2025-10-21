@@ -20,11 +20,9 @@ export class IndexManager {
    * Load conversation index (creates empty if not exists)
    */
   async loadConversationIndex(): Promise<ConversationIndex> {
-    console.log('[IndexManager] 🔵 Loading conversation index');
     const index = await this.fileSystem.readConversationIndex();
 
     if (!index) {
-      console.log('[IndexManager] ℹ️ No existing index found, creating empty index');
       const emptyIndex: ConversationIndex = {
         conversations: {},
         byTitle: {},
@@ -36,7 +34,6 @@ export class IndexManager {
       return emptyIndex;
     }
 
-    console.log('[IndexManager] ✅ Loaded index with', Object.keys(index.conversations).length, 'conversations');
     return index;
   }
 
@@ -44,7 +41,6 @@ export class IndexManager {
    * Update single conversation in index
    */
   async updateConversationInIndex(conversation: IndividualConversation): Promise<void> {
-    console.log('[IndexManager] 🔵 Updating conversation in index:', conversation.id);
     const index = await this.loadConversationIndex();
 
     // Update metadata
@@ -57,10 +53,7 @@ export class IndexManager {
       message_count: conversation.message_count
     };
 
-    console.log('[IndexManager] 🔵 Conversation metadata:', JSON.stringify(metadata, null, 2));
-
     index.conversations[conversation.id] = metadata;
-    console.log('[IndexManager] 🔵 Index now has', Object.keys(index.conversations).length, 'conversations');
 
     // Update search indices
     this.updateSearchIndicesForConversation(index, conversation);
@@ -69,9 +62,7 @@ export class IndexManager {
     index.lastUpdated = Date.now();
 
     // Save index
-    console.log('[IndexManager] 🔵 Saving updated index');
     await this.fileSystem.writeConversationIndex(index);
-    console.log('[IndexManager] ✅ Index saved successfully');
   }
 
   /**

@@ -29,7 +29,6 @@ export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggesti
     });
 
     this.messageEnhancer = messageEnhancer;
-    console.log('[TextAreaToolSuggester] Initialized');
   }
 
   /**
@@ -60,19 +59,16 @@ export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggesti
     try {
       const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
       if (!plugin) {
-        console.warn('[TextAreaToolSuggester] Plugin not found');
         return;
       }
 
       // Get agents from connector's agent registry
       if (!plugin.connector?.agentRegistry) {
-        console.warn('[TextAreaToolSuggester] Connector or agent registry not available');
         return;
       }
 
       const agents = plugin.connector.agentRegistry.getAllAgents();
       if (!agents || agents.size === 0) {
-        console.warn('[TextAreaToolSuggester] No agents registered yet - will retry when suggestions are requested');
         return;
       }
 
@@ -98,15 +94,12 @@ export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggesti
           });
         }
       }
-
-      console.log('[TextAreaToolSuggester] Loaded', this.cachedTools?.length || 0, 'tools');
     } catch (error) {
-      console.error('[TextAreaToolSuggester] Failed to load tools:', error);
+      // Failed to load tools
     }
   }
 
   async getSuggestions(query: string): Promise<SuggestionItem<ToolSuggestionItem>[]> {
-    console.log('[TextAreaToolSuggester] Getting suggestions for query:', query);
 
     // Wait for tools to load if not yet loaded
     if (!this.cachedTools) {
@@ -114,7 +107,6 @@ export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggesti
     }
 
     if (!this.cachedTools || this.cachedTools.length === 0) {
-      console.warn('[TextAreaToolSuggester] No tools available');
       return [];
     }
 

@@ -123,11 +123,6 @@ export class NoteSuggester extends BaseSuggester<NoteSuggestionItem> {
     // Token badge
     const badgeContainer = el.createDiv({ cls: 'suggester-badge-container' });
 
-    // File size badge
-    const sizeKB = (item.data.size / 1024).toFixed(1);
-    const sizeBadge = badgeContainer.createSpan({ cls: 'suggester-badge size-badge' });
-    sizeBadge.textContent = `${sizeKB} KB`;
-
     // Token warning badge if needed
     if (item.data.estimatedTokens > this.maxTokensPerNote * 0.75) {
       this.addTokenBadge(badgeContainer, item.data.estimatedTokens, this.maxTokensPerNote);

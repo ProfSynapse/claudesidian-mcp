@@ -89,8 +89,36 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             if (error instanceof McpError) {
                 throw error;
             }
+            
+            // Enhance error messages with helpful context
+            const errorMsg = (error as Error).message || 'Unknown error';
+            let enhancedMessage = errorMsg;
+            
+            // Add helpful hints for common parameter errors
+            if (errorMsg.toLowerCase().includes('parameter') || 
+                errorMsg.toLowerCase().includes('required') ||
+                errorMsg.toLowerCase().includes('missing')) {
+                enhancedMessage += '\n\n💡 Parameter Help: Check the tool schema for required parameters and their correct format.';
+                
+                // Try to get parameter schema for additional context
+                if (context && context.agentName && context.mode) {
+                    try {
+                        const agent = this.getAgent(context.agentName);
+                        const modeInstance = agent.getMode(context.mode);
+                        if (modeInstance && typeof modeInstance.getParameterSchema === 'function') {
+                            const schema = modeInstance.getParameterSchema();
+                            if (schema && schema.required) {
+                                enhancedMessage += `\n\n📋 Required Parameters: ${schema.required.join(', ')}`;
+                            }
+                        }
+                    } catch (schemaError) {
+                        // Ignore schema retrieval errors
+                    }
+                }
+            }
+            
             logger.systemError(error as Error, 'Tool Execution Strategy');
-            throw new McpError(ErrorCode.InternalError, 'Failed to execute tool', error);
+            throw new McpError(ErrorCode.InternalError, enhancedMessage, error);
         }
     }
 
@@ -100,7 +128,7 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
         if (!parsedArgs) {
             throw new McpError(
                 ErrorCode.InvalidParams,
-                `Missing arguments for tool ${fullToolName}`
+                `❌ Missing arguments for tool ${fullToolName}\n\n💡 Provide the required parameters including "mode" to specify the operation.`
             );
         }
 
@@ -110,7 +138,7 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
         if (!mode) {
             throw new McpError(
                 ErrorCode.InvalidParams,
-                `Missing required parameter: mode for agent ${agentName}`
+                `❌ Missing required parameter: mode for agent ${agentName}\n\n💡 Specify which operation mode to use.\n\nExample: { "mode": "searchDirectoryMode", "query": "search term", ... }`
             );
         }
 

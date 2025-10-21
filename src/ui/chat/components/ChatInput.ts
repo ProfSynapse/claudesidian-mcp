@@ -111,10 +111,7 @@ export class ChatInput {
 
     // Initialize suggesters if app is available
     if (this.app && this.inputElement) {
-      console.log('[ChatInput] Initializing suggesters');
       this.suggesters = initializeSuggesters(this.app, this.inputElement);
-    } else {
-      console.warn('[ChatInput] App not available - suggesters not initialized');
     }
 
     this.element = this.container;
@@ -147,7 +144,6 @@ export class ChatInput {
     // Check if a conversation is active
     const hasConversation = this.getHasConversation ? this.getHasConversation() : this.hasConversation;
     if (!hasConversation) {
-      console.log('[ChatInput] Cannot send message - no active conversation');
       return;
     }
 
@@ -159,37 +155,6 @@ export class ChatInput {
     if (this.suggesters?.messageEnhancer && this.suggesters.messageEnhancer.hasEnhancements()) {
       enhancement = this.suggesters.messageEnhancer.buildEnhancement(message);
     }
-
-    // Log what we're about to send
-    console.log('[ChatInput] ========== SENDING MESSAGE ==========');
-    console.log('[ChatInput] Plain text message:', message);
-
-    // Check if there are any references in the input
-    const hasRefs = ReferenceExtractor.hasReferences(this.inputElement);
-    console.log('[ChatInput] Has references:', hasRefs);
-
-    // Extract and log references
-    if (hasRefs) {
-      const tools = ReferenceExtractor.extractReferencesByType(this.inputElement, 'tool');
-      const agents = ReferenceExtractor.extractReferencesByType(this.inputElement, 'agent');
-      const notes = ReferenceExtractor.extractReferencesByType(this.inputElement, 'note');
-
-      console.log('[ChatInput] Tool references:', tools);
-      console.log('[ChatInput] Agent references:', agents);
-      console.log('[ChatInput] Note references:', notes);
-    }
-
-    // Log MessageEnhancer state
-    if (this.suggesters?.messageEnhancer) {
-      const enhancer = this.suggesters.messageEnhancer;
-      console.log('[ChatInput] MessageEnhancer has enhancements:', enhancer.hasEnhancements());
-      console.log('[ChatInput] MessageEnhancer tools:', enhancer.getTools());
-      console.log('[ChatInput] MessageEnhancer agents:', enhancer.getAgents());
-      console.log('[ChatInput] MessageEnhancer notes:', enhancer.getNotes());
-    }
-
-    console.log('[ChatInput] Built enhancement:', enhancement);
-    console.log('[ChatInput] =======================================');
 
     // Clear the input
     ContentEditableHelper.clear(this.inputElement);
@@ -305,7 +270,6 @@ export class ChatInput {
   clearMessageEnhancer(): void {
     if (this.suggesters?.messageEnhancer) {
       this.suggesters.messageEnhancer.clearEnhancements();
-      console.log('[ChatInput] Cleared MessageEnhancer');
     }
   }
 
@@ -314,7 +278,6 @@ export class ChatInput {
    */
   cleanup(): void {
     if (this.suggesters) {
-      console.log('[ChatInput] Cleaning up suggesters');
       this.suggesters.cleanup();
       this.suggesters = null;
     }

@@ -85,24 +85,46 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
     const startTime = Date.now();
 
     try {
-      // Simple parameter validation
+      // Validate query parameter
       if (!params.query || params.query.trim().length === 0) {
         return this.prepareResult(false, {
           query: params.query || '',
           results: [],
           totalResults: 0,
           executionTime: Date.now() - startTime,
-          searchCapabilities: this.getCapabilities()
+          searchCapabilities: this.getCapabilities(),
+          error: 'Query parameter is required and cannot be empty',
+          parameterHints: '🔍 The "query" parameter is REQUIRED. Provide the search term you want to find.\n\nExample: { "query": "fallujah", "paths": ["/"] }',
+          suggestions: [
+            'Use "query" (not "filter") for the search term',
+            'Provide a simple text search term without wildcards',
+            'Example: "query": "fallujah"'
+          ],
+          providedParams: params
         }, 'Query parameter is required and cannot be empty', params.context);
       }
 
+      // Validate paths parameter
       if (!params.paths || params.paths.length === 0) {
         return this.prepareResult(false, {
           query: params.query,
           results: [],
           totalResults: 0,
           executionTime: Date.now() - startTime,
-          searchCapabilities: this.getCapabilities()
+          searchCapabilities: this.getCapabilities(),
+          error: 'Paths parameter is required and cannot be empty',
+          parameterHints: '📁 The "paths" parameter is REQUIRED and must be a non-empty array.\n\nSpecify which directories to search:\n- Use ["/"] to search the entire vault\n- Use ["FolderName"] for a specific folder\n- Use ["Folder1", "Folder2"] for multiple folders',
+          suggestions: [
+            'Provide a "paths" array with at least one directory',
+            'Example for whole vault: "paths": ["/"]',
+            'Example for specific folder: "paths": ["Projects"]',
+            'Example for multiple folders: "paths": ["Work", "Personal"]'
+          ],
+          providedParams: params,
+          expectedParams: {
+            query: 'string (e.g., "fallujah")',
+            paths: 'array of strings (e.g., ["/"] or ["Projects"])'
+          }
         }, 'Paths parameter is required and cannot be empty - specify directories to search', params.context);
       }
 
@@ -140,14 +162,24 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
       };
       
     } catch (error) {
+      const errorMessage = getErrorMessage(error);
       return this.prepareResult(false, {
         query: params.query || '',
         searchedPaths: params.paths || [],
         results: [],
         totalResults: 0,
         executionTime: Date.now() - startTime,
-        searchCapabilities: this.getCapabilities()
-      }, `Directory search failed: ${getErrorMessage(error)}`, params.context);
+        searchCapabilities: this.getCapabilities(),
+        error: `Directory search failed: ${errorMessage}`,
+        parameterHints: '💡 Check that your parameters are correctly formatted:\n- query: string (search term)\n- paths: array of directory paths (e.g., ["/"])',
+        suggestions: [
+          'Verify that the specified directories exist in your vault',
+          'Check that paths are formatted correctly (use "/" for root)',
+          'Ensure query is a non-empty string',
+          'Try simplifying your search parameters'
+        ],
+        providedParams: params
+      }, `Directory search failed: ${errorMessage}`, params.context);
     }
   }
 
@@ -411,48 +443,48 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
   getParameterSchema() {
     const modeSchema = {
       type: 'object',
-      title: 'Focused Directory Search Parameters',
-      description: 'FOCUSED directory search with REQUIRED paths parameter. Search within specific directory paths for better organization and navigation.',
+      title: 'Search Directory Mode - Find Files and Folders',
+      description: 'Search for files and/or folders within specific directory paths. CRITICAL: Use "query" parameter (NOT "filter") for the search term, and "paths" array is REQUIRED.',
       properties: {
         query: {
           type: 'string',
-          description: 'REQUIRED: Search query to find in file/folder names and paths',
+          description: '🔍 REQUIRED: The search term to find in file/folder names and paths. Use simple text without wildcards (fuzzy matching is automatic). Examples: "fallujah", "project", "meeting notes"',
           minLength: 1,
-          examples: ['project', 'meeting notes', 'config', 'README']
+          examples: ['fallujah', 'project', 'meeting notes', 'config', 'README']
         },
         paths: {
           type: 'array',
           items: { type: 'string' },
           minItems: 1,
-          description: 'REQUIRED: Directory paths to search within. Cannot be empty. Specify the folder paths where you want to search for focused results.',
+          description: '📁 REQUIRED: Array of directory paths to search within. Cannot be empty. Use ["/"] to search the entire vault root. Examples: ["/"] for whole vault, ["Projects/WebApp"] for specific folder, ["Notes", "Archive"] for multiple folders.',
           examples: [
+            ['/'],  // Search entire vault root
             ['Projects/WebApp'],
             ['Notes', 'Archive'], 
-            ['/'],  // Search entire vault root
             ['Work/Current Projects', 'Personal/Ideas']
           ]
         },
         searchType: {
           type: 'string',
           enum: ['files', 'folders', 'both'],
-          description: 'What to search for within the specified directories',
+          description: '🎯 What to search for: "files" (only files), "folders" (only folders), or "both" (files and folders). Default: "both"',
           default: 'both'
         },
         fileTypes: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Filter results by file extensions (e.g., ["md", "txt"])',
-          examples: [["md"], ["md", "txt"], ["pdf", "docx"]]
+          description: '📄 Optional: Filter by file extensions without dots. Examples: ["md"], ["md", "txt"], ["pdf", "docx"]',
+          examples: [['md'], ['md', 'txt'], ['pdf', 'docx']]
         },
         depth: {
           type: 'number',
-          description: 'Maximum directory depth to include in results',
+          description: '🔢 Optional: Maximum directory depth to search (1-10). Limits how deep into subdirectories to look.',
           minimum: 1,
           maximum: 10
         },
         pattern: {
           type: 'string',
-          description: 'Regex pattern to filter paths',
+          description: '🔎 Optional: Regular expression pattern to filter paths. Advanced users only. Examples: "^Archive/", ".*Projects.*", "[0-9]{4}"',
           examples: ['^Archive/', '.*Projects.*', '[0-9]{4}']
         },
         dateRange: {
@@ -461,30 +493,42 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
             start: {
               type: 'string',
               format: 'date',
-              description: 'Start date for filtering results (ISO format)'
+              description: '📅 Start date in ISO format (YYYY-MM-DD)'
             },
             end: {
               type: 'string',
               format: 'date',
-              description: 'End date for filtering results (ISO format)'
+              description: '📅 End date in ISO format (YYYY-MM-DD)'
             }
           },
-          description: 'Filter results by modification date range'
+          description: '🗓️ Optional: Filter results by modification date range (ISO format dates)'
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results to return',
+          description: '🔢 Optional: Maximum number of results to return (1-100). Default: 20',
           default: 20,
           minimum: 1,
           maximum: 100
         },
         includeContent: {
           type: 'boolean',
-          description: 'Include file content snippets in results',
+          description: '📝 Optional: Include content snippets from files in results. Default: true',
           default: true
         }
       },
-      required: ['query', 'paths']
+      required: ['query', 'paths'],
+      additionalProperties: true,
+      errorHelp: {
+        missingQuery: 'The "query" parameter is required. Do NOT use "filter" - use "query" instead. Example: { "query": "fallujah", "paths": ["/"] }',
+        missingPaths: 'The "paths" parameter is required and must be a non-empty array. Specify directories to search. Example: { "query": "fallujah", "paths": ["/"] }',
+        emptyPaths: 'The "paths" array cannot be empty. Provide at least one directory path to search within.',
+        commonMistakes: [
+          'Using "filter" instead of "query" - always use "query"',
+          'Forgetting the "paths" array - it\'s required',
+          'Using wildcards (*) in query - just use plain text',
+          'Providing paths as a string instead of array - wrap in brackets: ["/"]'
+        ]
+      }
     };
     
     return this.getMergedSchema(modeSchema);

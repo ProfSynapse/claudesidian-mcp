@@ -51,7 +51,13 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             // Get workspace service
             const serviceResult = await this.serviceIntegration.getWorkspaceService();
             if (!serviceResult.success || !serviceResult.service) {
-                return this.prepareResult(false, {}, `Workspace service not available: ${serviceResult.error}`);
+                return this.prepareResult(false, {
+                    error: `Workspace service not available: ${serviceResult.error}`,
+                    suggestions: [
+                        'Check that the plugin is properly initialized',
+                        'Try reloading the plugin'
+                    ]
+                }, `Workspace service not available: ${serviceResult.error}`, params.context);
             }
             
             const workspaceService = serviceResult.service;
@@ -59,8 +65,19 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             // Validate required fields
             const validationErrors = this.serviceIntegration.validateWorkspaceCreationParams(params);
             if (validationErrors.length > 0) {
-                const firstError = validationErrors[0];
-                return this.prepareResult(false, {}, `Validation error - ${firstError.field}: ${firstError.requirement}`);
+                const errorMessages = validationErrors.map(e => `${e.field}: ${e.requirement}`).join(', ');
+                return this.prepareResult(false, {
+                    error: `Validation failed: ${errorMessages}`,
+                    validationErrors: validationErrors,
+                    parameterHints: '💡 Required parameters: name, rootFolder, purpose, currentGoal, workflows (array with name, when, steps)',
+                    suggestions: [
+                        'Ensure all required parameters are provided',
+                        'Check that workflows is an array with at least one workflow',
+                        'Each workflow must have name, when, and steps properties',
+                        'steps should be a single string with steps separated by \\n (newline characters)'
+                    ],
+                    providedParams: params
+                }, `Validation error - ${errorMessages}`, params.context);
             }
             
             // Ensure root folder exists
@@ -149,7 +166,18 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             }, undefined, `Created workspace "${params.name}" with purpose: ${params.purpose}`);
             
         } catch (error) {
-            return this.prepareResult(false, {}, createErrorMessage('Error creating workspace: ', error));
+            const errorMsg = createErrorMessage('Error creating workspace: ', error);
+            return this.prepareResult(false, {
+                error: errorMsg,
+                parameterHints: '💡 Check that all required parameters are correctly formatted:\n- name: string\n- rootFolder: string (existing folder path)\n- purpose: string\n- currentGoal: string\n- workflows: array of workflow objects (with steps as a string with \\n separators)',
+                suggestions: [
+                    'Verify that rootFolder path exists or can be created',
+                    'Ensure workflows array has at least one workflow',
+                    'Check that each workflow has name, when, and steps properties',
+                    'Verify steps is a single string with \\n separators, not an array: "Step 1\\nStep 2\\nStep 3"'
+                ],
+                providedParams: params
+            }, errorMsg, params.context);
         }
     }
     
@@ -220,44 +248,118 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
     getParameterSchema(): any {
         const customSchema = {
             type: 'object',
+            title: 'Create Workspace - Define Project Context',
+            description: 'Create a new workspace with structured workflows and context. CRITICAL: workflows must be an array where each workflow has "steps" as an ARRAY of strings, not a single string.',
             properties: {
-                name: { type: 'string', description: 'Workspace name (REQUIRED)' },
-                rootFolder: { type: 'string', description: 'Root folder path for this workspace (REQUIRED)' },
-                purpose: { type: 'string', description: 'What is this workspace for? (REQUIRED)' },
-                currentGoal: { type: 'string', description: 'What are you trying to accomplish right now? (REQUIRED)' },
+                name: { 
+                    type: 'string', 
+                    description: '📝 REQUIRED: Workspace name (e.g., "Fallujah Screenplay")',
+                    examples: ['Fallujah Screenplay', 'Marketing Campaign', 'Research Project']
+                },
+                rootFolder: { 
+                    type: 'string', 
+                    description: '📁 REQUIRED: Root folder path for this workspace (e.g., "_Projects/FALLUJAH")',
+                    examples: ['_Projects/FALLUJAH', 'Work/Marketing', 'Research/AI']
+                },
+                purpose: { 
+                    type: 'string', 
+                    description: '🎯 REQUIRED: What is this workspace for? Describe the overall purpose.',
+                    examples: [
+                        'Workspace for developing a screenplay from Fallujah source materials',
+                        'Managing marketing campaign for Q4 product launch',
+                        'Research project on AI safety'
+                    ]
+                },
+                currentGoal: { 
+                    type: 'string', 
+                    description: '🎯 REQUIRED: What are you trying to accomplish right now? Current focus.',
+                    examples: [
+                        'Create story outline and beat sheet',
+                        'Complete social media calendar for October',
+                        'Finish literature review by end of month'
+                    ]
+                },
                 workflows: {
                     type: 'array',
-                    description: 'Workflows for different situations (REQUIRED)',
+                    description: '⚙️ REQUIRED: Workflows for different situations. IMPORTANT: "steps" should be a SINGLE STRING with steps separated by newlines (\\n), not an array.',
                     items: {
                         type: 'object',
                         properties: {
-                            name: { type: 'string' },
-                            when: { type: 'string' },
-                            steps: { type: 'array', items: { type: 'string' } }
+                            name: { 
+                                type: 'string',
+                                description: 'Workflow name (e.g., "Story Outline Development")'
+                            },
+                            when: { 
+                                type: 'string',
+                                description: 'When to use this workflow (e.g., "When outlining a movie screenplay")'
+                            },
+                            steps: { 
+                                type: 'string',
+                                description: '📋 CRITICAL: Single string with steps separated by newline characters (\\n). Each step on a new line within the string.',
+                                examples: [
+                                    'Review relevant source materials\nEngage with Story Outline Assistant\nDevelop story structure\nCreate outline document\nSave completed outline'
+                                ]
+                            }
                         },
                         required: ['name', 'when', 'steps']
                     },
-                    minItems: 1
+                    minItems: 1,
+                    examples: [
+                        [{
+                            name: 'Story Outline Development',
+                            when: 'When outlining a movie screenplay',
+                            steps: 'Review relevant source materials\nEngage with Story Outline Assistant\nDevelop story structure\nCreate outline document'
+                        }]
+                    ]
                 },
                 keyFiles: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Simple list of key file paths for this workspace'
+                    description: '📄 Optional: Array of key file paths for quick reference (e.g., ["_Projects/FALLUJAH/outline.md"])'
                 },
                 preferences: {
                     type: 'string',
-                    description: 'User preferences as a single text field'
+                    description: '⚙️ Optional: User preferences or workspace settings as text'
                 },
                 dedicatedAgentId: {
                     type: 'string',
-                    description: 'ID of dedicated agent for this workspace (systemPrompt included when loading)'
+                    description: '🤖 Optional: ID of dedicated AI agent for this workspace (e.g., "prompt_1761045311666_7oo79kpto")',
+                    examples: ['prompt_1761045311666_7oo79kpto']
                 },
-                description: { type: 'string' },
-                relatedFolders: { type: 'array', items: { type: 'string' } },
-                relatedFiles: { type: 'array', items: { type: 'string' } },
-                keyFileInstructions: { type: 'string' }
+                description: { 
+                    type: 'string',
+                    description: '📝 Optional: Additional description or notes'
+                },
+                relatedFolders: { 
+                    type: 'array', 
+                    items: { type: 'string' },
+                    description: '📁 Optional: Related folder paths'
+                },
+                relatedFiles: { 
+                    type: 'array', 
+                    items: { type: 'string' },
+                    description: '📄 Optional: Related file paths'
+                },
+                keyFileInstructions: { 
+                    type: 'string',
+                    description: '📋 Optional: Instructions for working with key files'
+                }
             },
-            required: ['name', 'rootFolder', 'purpose', 'currentGoal', 'workflows']
+            required: ['name', 'rootFolder', 'purpose', 'currentGoal', 'workflows'],
+            errorHelp: {
+                missingName: 'The "name" parameter is required. Provide a descriptive workspace name.',
+                missingRootFolder: 'The "rootFolder" parameter is required. Specify the folder path for this workspace.',
+                missingPurpose: 'The "purpose" parameter is required. Describe what this workspace is for.',
+                missingCurrentGoal: 'The "currentGoal" parameter is required. Describe your current objective.',
+                missingWorkflows: 'The "workflows" parameter is required. Provide at least one workflow with name, when, and steps (as a single string with \\n separators).',
+                workflowStepsFormat: 'CRITICAL: workflow "steps" should be a SINGLE STRING with steps separated by newline characters (\\n). Example: "Step 1\\nStep 2\\nStep 3"',
+                commonMistakes: [
+                    'Using an array of strings for workflow steps instead of a single string with \\n separators',
+                    'Forgetting the \\n between steps in the string',
+                    'Not providing the workflows array',
+                    'Missing required workflow properties (name, when, steps)'
+                ]
+            }
         };
         
         return this.getMergedSchema(customSchema);

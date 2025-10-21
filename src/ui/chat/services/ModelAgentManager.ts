@@ -68,7 +68,6 @@ export class ModelAgentManager {
               this.selectedModel = model;
               this.events.onModelChanged(model);
             } else {
-              console.warn('[ModelAgentManager] Saved model not found, falling back to default');
               await this.initializeDefaultModel();
             }
           }
@@ -105,7 +104,7 @@ export class ModelAgentManager {
                 }
               }
             } catch (error) {
-              console.error('[ModelAgentManager] Failed to load workspace context:', error);
+              // Failed to load workspace context
             }
           }
 
@@ -121,7 +120,6 @@ export class ModelAgentManager {
       // Fall back to plugin default if no metadata
       await this.initializeDefaultModel();
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to initialize from conversation:', error);
       await this.initializeDefaultModel();
     }
   }
@@ -158,7 +156,7 @@ export class ModelAgentManager {
       this.events.onAgentChanged(null);
       this.events.onSystemPromptChanged(null);
     } catch (error) {
-      console.warn('[ModelAgentManager] Failed to initialize default model:', error);
+      // Failed to initialize default model
     }
   }
 
@@ -167,7 +165,6 @@ export class ModelAgentManager {
    */
   async saveToConversation(conversationId: string): Promise<void> {
     if (!this.conversationService) {
-      console.warn('[ModelAgentManager] Cannot save - ConversationService not available');
       return;
     }
 
@@ -189,7 +186,7 @@ export class ModelAgentManager {
 
       await this.conversationService.updateConversationMetadata(conversationId, metadata);
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to save to conversation:', error);
+      // Failed to save to conversation
     }
   }
 
@@ -382,7 +379,6 @@ export class ModelAgentManager {
 
       return models;
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to get available models:', error);
       return [];
     }
   }
@@ -414,7 +410,6 @@ export class ModelAgentManager {
 
         const customPromptStorageService = await plugin.getService('customPromptStorageService');
         if (!customPromptStorageService) {
-          console.warn('[ModelAgentManager] CustomPromptStorageService not available');
           return [];
         }
 
@@ -427,7 +422,6 @@ export class ModelAgentManager {
       // Convert to AgentOption format
       return agents.map(agent => this.mapToAgentOption(agent));
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to get available agents:', error);
       return [];
     }
   }
@@ -469,8 +463,6 @@ export class ModelAgentManager {
    * Build system prompt with workspace context
    */
   private async buildSystemPromptWithWorkspace(): Promise<string | null> {
-    console.log('[ModelAgentManager] Building system prompt with enhancement:', this.messageEnhancement);
-
     const sessionId = await this.getCurrentSessionId();
 
     return await this.systemPromptBuilder.build({
@@ -496,10 +488,8 @@ export class ModelAgentManager {
         return content;
       }
 
-      console.warn('[ModelAgentManager] File not found:', notePath);
       return '[File not found]';
     } catch (error) {
-      console.error('[ModelAgentManager] Error reading note:', notePath, error);
       return '[Error reading file]';
     }
   }
@@ -517,7 +507,6 @@ export class ModelAgentManager {
    */
   private async bindSessionToWorkspace(sessionId: string | undefined, workspaceId: string): Promise<void> {
     if (!sessionId) {
-      console.warn('[ModelAgentManager] No session ID available for workspace binding');
       return;
     }
 
@@ -530,11 +519,9 @@ export class ModelAgentManager {
           workspaceId: workspaceId,
           activeWorkspace: true
         });
-      } else {
-        console.warn('[ModelAgentManager] SessionContextManager not available');
       }
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to bind session to workspace:', error);
+      // Failed to bind session to workspace
     }
   }
 
@@ -550,7 +537,6 @@ export class ModelAgentManager {
       const conversation = await this.conversationService.getConversation(this.currentConversationId);
       return conversation?.metadata?.chatSettings?.sessionId;
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to get session ID:', error);
       return undefined;
     }
   }

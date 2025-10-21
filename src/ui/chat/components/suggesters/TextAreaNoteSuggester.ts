@@ -70,11 +70,13 @@ export class TextAreaNoteSuggester extends ContentEditableSuggester<NoteSuggesti
     content.createDiv({ cls: 'suggester-description', text: item.data.path });
 
     const badgeContainer = el.createDiv({ cls: 'suggester-badge-container' });
-    const sizeKB = (item.data.size / 1024).toFixed(1);
-    badgeContainer.createSpan({ cls: 'suggester-badge size-badge', text: `${sizeKB} KB` });
-
+    
     if (item.data.estimatedTokens > this.maxTokensPerNote * 0.75) {
       const tokenBadge = badgeContainer.createSpan({ cls: 'suggester-badge token-badge-warning' });
+      tokenBadge.textContent = `~${item.data.estimatedTokens.toLocaleString()} tokens`;
+    } else {
+      // Just show token count
+      const tokenBadge = badgeContainer.createSpan({ cls: 'suggester-badge token-info' });
       tokenBadge.textContent = `~${item.data.estimatedTokens.toLocaleString()} tokens`;
     }
   }

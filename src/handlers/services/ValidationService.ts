@@ -203,17 +203,17 @@ export class ValidationService implements IValidationService {
                         code: 'PARSE_ERROR',
                         expectedType: 'array',
                         receivedType: 'string',
-                        hint: "The 'paths' parameter must be a valid JSON array of strings"
+                        hint: "The 'paths' parameter must be a valid JSON array of strings. Example: [\"file1.md\", \"file2.md\"]"
                     });
                 }
             } else {
                 pathErrors.push({
                     path: ['paths'],
-                    message: `'paths' must be an array`,
+                    message: `'paths' must be an array, not a ${typeof paths}`,
                     code: 'TYPE_ERROR',
                     expectedType: 'array',
                     receivedType: typeof paths,
-                    hint: "The 'paths' parameter must be an array of strings specifying the paths to read"
+                    hint: "The 'paths' parameter must be an array of strings. Example: [\"Projects/file.md\"] or [\"/\"] for root"
                 });
             }
         } else {
@@ -221,20 +221,21 @@ export class ValidationService implements IValidationService {
                 if (typeof path !== 'string') {
                     pathErrors.push({
                         path: ['paths', index.toString()],
-                        message: 'Path must be a string',
+                        message: `Path at index ${index} must be a string, not ${typeof path}`,
                         code: 'TYPE_ERROR',
                         expectedType: 'string',
                         receivedType: typeof path,
-                        hint: "Each path in the 'paths' array must be a string"
+                        hint: "Each path in the 'paths' array must be a string representing a file or folder path"
                     });
                 }
             });
         }
         
         if (pathErrors.length > 0) {
+            const errorMessage = formatValidationErrors(pathErrors);
             throw new McpError(
                 ErrorCode.InvalidParams,
-                formatValidationErrors(pathErrors)
+                `❌ Path Validation Failed\n\n${errorMessage}\n\n💡 Tip: Paths should be an array of strings like ["/"] or ["folder/file.md"]`
             );
         }
     }
@@ -265,22 +266,34 @@ export class ValidationService implements IValidationService {
                 if (missingRequiredParams.length > 0) {
                     const missingParamsInfo = missingRequiredParams.map((param: string) => {
                         const paramSchema = schema.properties[param];
-                        return `- ${param}: ${paramSchema?.description || 'No description'}` + 
-                               `${paramSchema?.type ? ` (${paramSchema.type})` : ''}`;
-                    }).join('\n');
+                        let info = `- ${param}: ${paramSchema?.description || 'No description'}`;
+                        
+                        if (paramSchema?.type) {
+                            info += ` (type: ${paramSchema.type})`;
+                        }
+                        
+                        if (paramSchema?.examples && paramSchema.examples.length > 0) {
+                            const exampleValue = typeof paramSchema.examples[0] === 'string' 
+                                ? `"${paramSchema.examples[0]}"`
+                                : JSON.stringify(paramSchema.examples[0]);
+                            info += `\n  Example: ${exampleValue}`;
+                        }
+                        
+                        return info;
+                    }).join('\n\n');
                     
-                    const requiredParamsMessage = `\nRequired parameters:\n${missingParamsInfo}`;
+                    const requiredParamsMessage = `\n\n📋 Missing Required Parameters:\n${missingParamsInfo}\n\n💡 Tip: Check the tool schema to see what parameters are needed.`;
                     
                     throw new McpError(
                         ErrorCode.InvalidParams,
-                        formatValidationErrors(validationErrors) + requiredParamsMessage
+                        `❌ Validation Failed\n\n` + formatValidationErrors(validationErrors) + requiredParamsMessage
                     );
                 }
             }
             
             throw new McpError(
                 ErrorCode.InvalidParams,
-                formatValidationErrors(validationErrors)
+                `❌ Validation Failed\n\n` + formatValidationErrors(validationErrors) + `\n\n💡 Check parameter types and required fields.`
             );
         }
     }

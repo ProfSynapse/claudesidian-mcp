@@ -21,8 +21,6 @@ export function initializeSuggesters(
   app: App,
   element: HTMLElement
 ): SuggesterInstances {
-  console.log('[initializeSuggesters] Setting up suggesters for contenteditable element');
-
   const messageEnhancer = new MessageEnhancer();
 
   // Create suggesters
@@ -36,15 +34,10 @@ export function initializeSuggesters(
     if (plugin && plugin.settings) {
       const promptStorage = new CustomPromptStorageService(plugin.settings);
       agentSuggester = new TextAreaAgentSuggester(app, element, messageEnhancer, promptStorage);
-      console.log('[initializeSuggesters] Agent suggester initialized');
-    } else {
-      console.warn('[initializeSuggesters] Plugin settings not available - agent suggester disabled');
     }
   } catch (error) {
-    console.warn('[initializeSuggesters] Failed to initialize agent suggester:', error);
+    // Agent suggester initialization failed - will be undefined
   }
-
-  console.log('[initializeSuggesters] All suggesters initialized successfully');
 
   return {
     noteSuggester,
