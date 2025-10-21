@@ -221,6 +221,14 @@ export class ChatViewTab {
         notesList.createEl('li', { text: 'Chat conversations will consume API tokens from your providers' });
         notesList.createEl('li', { text: 'The chat can access and modify your vault through available agents' });
         notesList.createEl('li', { text: 'Report any issues or unexpected behavior on GitHub' });
+        
+        // Chat input shortcuts
+        usageSection.createEl('h5', { text: 'Chat Input Shortcuts:' });
+        
+        const shortcutsList = usageSection.createEl('ul');
+        shortcutsList.createEl('li', { text: '@ - Mention agents/prompts (e.g., @research-assistant)' });
+        shortcutsList.createEl('li', { text: '/ - Browse and execute MCP tools (e.g., /createContent)' });
+        shortcutsList.createEl('li', { text: '[[ - Reference vault notes with context (e.g., [[My Note]])' });
     }
     
     /**

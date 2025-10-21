@@ -57,11 +57,21 @@ Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact wi
 Claudesidian now ships with a fully native chat view—no external chat clients required.
 
 - Open `Settings → Claudesidian MCP → Agent Management → AI Chat` and enable the chat view
-- Access the chat via the new ribbon icon or the “Open AI Chat” command
+- Access the chat via the new ribbon icon or the "Open AI Chat" command
 - Manage multiple conversations, branch assistant replies, and inspect tool calls as they stream in
 - Tool executions surface in real time through the progressive tool accordion, making it easy to follow multi-step workflows
 
 The chat view shares the same service stack as MCP mode calls, so every conversation can execute tools, access vault content, and store memory just like remote agents.
+
+### Chat Input Shortcuts
+
+The chat input supports intelligent autocomplete with the following hotkeys:
+
+- **`@` mention** - Type `@` to reference custom AI agents/prompts. Start typing an agent name to filter suggestions.
+- **`/` commands** - Type `/` to browse and execute available MCP tools directly from the chat.
+- **`[[` note links** - Type `[[` to search and reference notes from your vault. The note content will be included in the conversation context.
+
+These shortcuts provide quick access to agents, tools, and vault content while composing messages.
 
 ## Workspace Memory System
 
