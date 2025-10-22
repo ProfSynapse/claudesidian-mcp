@@ -133,8 +133,10 @@ export class MemoryService {
    */
   async createSession(session: Omit<WorkspaceSession, 'id'>): Promise<WorkspaceSession> {
     const workspaceId = (session as any).workspaceId;
+    const sessionId = (session as any).id; // Extract ID if provided
 
     const createdSession = await this.workspaceService.addSession(workspaceId, {
+      id: sessionId, // Pass the ID through!
       name: session.name,
       description: session.description,
       startTime: (session as any).startTime || Date.now(),

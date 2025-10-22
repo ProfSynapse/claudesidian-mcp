@@ -360,12 +360,10 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
 
             // Verify essential snapshot fields
             if (!retrieved.snapshot || !retrieved.snapshot.activeTask) {
-                console.error('[CreateStateMode] Verification failed - retrieved state:', JSON.stringify(retrieved, null, 2));
                 return { success: false, error: 'State data incomplete after persistence - missing snapshot.activeTask' };
             }
 
             if (!retrieved.workspaceId || !retrieved.name) {
-                console.error('[CreateStateMode] Verification failed - missing critical fields. Retrieved state:', JSON.stringify(retrieved, null, 2));
                 return { success: false, error: 'Critical state fields missing after persistence - missing workspaceId or name' };
             }
 
@@ -381,10 +379,10 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
     private async rollbackState(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<void> {
         try {
             await memoryService.deleteSnapshot(workspaceId, sessionId, stateId);
-            console.warn(`[CreateStateMode] Rolled back state ${stateId} due to verification failure`);
+            // State rolled back silently - error will be reported through main flow
         } catch (error) {
-            console.error(`[CreateStateMode] Failed to rollback state ${stateId}:`, error);
-            // Don't throw here - verification failure is the primary issue
+            // Rollback failure is not critical - verification failure is the primary issue
+            // Don't log or throw here to avoid noise
         }
     }
 
