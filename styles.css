@@ -393,9 +393,9 @@
 }
 
 .message-container.message-tool .message-bubble {
-    background: var(--background-secondary);
+    background: var(--background-modifier-form-field);
     color: var(--text-normal);
-    border: 1px solid var(--background-modifier-border);
+    border: 1px solid var(--background-modifier-border-hover);
 }
 
 .message-header {
