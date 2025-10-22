@@ -72,11 +72,33 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             // Phase 2: Validate parameters (consolidated validation logic)
             const validationErrors = this.validateParameters(params);
             if (validationErrors.length > 0) {
-                const firstError = validationErrors[0];
+                const errorMessages = validationErrors.map(e => `${e.field}: ${e.requirement}`).join('\n');
+                const missingFields = validationErrors.map(e => e.field).join(', ');
+                
                 return this.prepareResult(
                     false, 
-                    undefined, 
-                    `Validation error - ${firstError.field}: ${firstError.requirement}`,
+                    {
+                        error: `❌ Validation Failed - Missing or invalid required parameters: ${missingFields}\n\n${errorMessages}`,
+                        validationErrors: validationErrors,
+                        parameterHints: `💡 All Required Parameters:\n- name: string (descriptive name for this state)\n- conversationContext: string (what was happening)\n- activeTask: string (what you were working on)\n- activeFiles: array of file paths\n- nextSteps: array of action items\n- reasoning: string (why saving now)`,
+                        suggestions: [
+                            'Ensure ALL required parameters are provided',
+                            'name is REQUIRED - provide a descriptive name for this state',
+                            'activeFiles must be an array of file paths, e.g., ["file1.md", "file2.md"]',
+                            'nextSteps must be an array of action items, e.g., ["Step 1", "Step 2"]',
+                            'All text fields (name, conversationContext, activeTask, reasoning) must be non-empty strings'
+                        ],
+                        providedParams: params,
+                        expectedParams: {
+                            name: 'string (REQUIRED)',
+                            conversationContext: 'string (REQUIRED)',
+                            activeTask: 'string (REQUIRED)',
+                            activeFiles: 'array of strings (REQUIRED)',
+                            nextSteps: 'array of strings (REQUIRED)',
+                            reasoning: 'string (REQUIRED)'
+                        }
+                    }, 
+                    `Validation failed: ${missingFields} - ${errorMessages}`,
                     extractContextFromParams(params)
                 );
             }
@@ -124,7 +146,24 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             );
 
         } catch (error) {
-            return this.prepareResult(false, undefined, createErrorMessage('Error creating state: ', error));
+            const errorMsg = createErrorMessage('Error creating state: ', error);
+            return this.prepareResult(
+                false, 
+                {
+                    error: errorMsg,
+                    parameterHints: '💡 Check that all required parameters are correctly formatted:\n- name: string\n- conversationContext: string (what was happening)\n- activeTask: string (what you were working on)\n- activeFiles: array of file paths\n- nextSteps: array of action items\n- reasoning: string (why saving now)',
+                    suggestions: [
+                        'Verify all required fields are provided',
+                        'Ensure activeFiles is an array: ["file1.md", "file2.md"]',
+                        'Ensure nextSteps is an array: ["Step 1", "Step 2", "Step 3"]',
+                        'Check that workspace context is available',
+                        'Verify memory service is initialized'
+                    ],
+                    providedParams: params
+                }, 
+                errorMsg,
+                extractContextFromParams(params)
+            );
         }
     }
 
@@ -261,11 +300,16 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             const now = Date.now();
 
             // Build WorkspaceStateSnapshot for storage following the architecture design
-            const snapshotData = {
+            // This matches the WorkspaceStateSnapshot interface which extends State
+            const workspaceStateSnapshot = {
+                // Core State fields (required)
+                id: `state_${now}_${Math.random().toString(36).substring(2, 11)}`,
                 name: params.name,
                 workspaceId: workspaceId,
                 created: now,
-                snapshot: snapshot,
+                snapshot: snapshot,  // The inner StateSnapshot with activeTask, activeFiles, etc.
+                
+                // Legacy/optional WorkspaceStateSnapshot fields
                 sessionId: params.targetSessionId || params.context.sessionId || 'current',
                 timestamp: now,
                 description: `${params.activeTask} - ${params.reasoning}`,
@@ -287,16 +331,16 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
                 }
             };
 
-            // Persist to MemoryService
+            // Persist to MemoryService - pass the full WorkspaceStateSnapshot
             const sessionId = params.targetSessionId || params.context.sessionId || 'current';
             const stateId = await memoryService.saveStateSnapshot(
                 workspaceId,
                 sessionId,
-                snapshotData.snapshot,
-                snapshotData.name
+                workspaceStateSnapshot,  // Pass the full object, not just snapshot
+                workspaceStateSnapshot.name
             );
 
-            return { success: true, stateId, savedSnapshot: { id: stateId, ...snapshotData } };
+            return { success: true, stateId, savedSnapshot: workspaceStateSnapshot };
 
         } catch (error) {
             return { success: false, error: createErrorMessage('Error persisting state: ', error) };
@@ -308,17 +352,21 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
      */
     private async verifyStatePersistence(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string}> {
         try {
+            // getStateSnapshot returns WorkspaceStateSnapshot which has a snapshot property
             const retrieved = await memoryService.getStateSnapshot(workspaceId, sessionId, stateId);
             if (!retrieved) {
                 return { success: false, error: 'State not found after creation' };
             }
 
+            // Verify essential snapshot fields
             if (!retrieved.snapshot || !retrieved.snapshot.activeTask) {
-                return { success: false, error: 'State data incomplete after persistence' };
+                console.error('[CreateStateMode] Verification failed - retrieved state:', JSON.stringify(retrieved, null, 2));
+                return { success: false, error: 'State data incomplete after persistence - missing snapshot.activeTask' };
             }
 
             if (!retrieved.workspaceId || !retrieved.name) {
-                return { success: false, error: 'Critical state fields missing after persistence' };
+                console.error('[CreateStateMode] Verification failed - missing critical fields. Retrieved state:', JSON.stringify(retrieved, null, 2));
+                return { success: false, error: 'Critical state fields missing after persistence - missing workspaceId or name' };
             }
 
             return { success: true };
@@ -415,71 +463,119 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
     getParameterSchema(): any {
         const customSchema = {
             type: 'object',
+            title: 'Create State - Save Work Context for Resumption',
+            description: '⚠️ CRITICAL: "name" is the FIRST required parameter - provide a short descriptive title. Create a state snapshot to save your current work context for later resumption.',
             properties: {
                 name: {
                     type: 'string',
-                    description: 'State name (REQUIRED)'
+                    description: '📝 ⚠️ REQUIRED (FIRST PARAMETER): State name - a short descriptive title for this save point. This is DIFFERENT from "reason". Example: "Google Cover Letter Draft"',
+                    examples: ['Google Cover Letter Draft', 'Pre-Submission Checkpoint', 'Research Phase Complete', 'Story Outline v1']
                 },
                 conversationContext: {
                     type: 'string',
-                    description: 'What was happening when you decided to save this state? (REQUIRED) Provide a summary of the conversation and what you were working on. Example: "We were customizing the cover letter for Google\'s Marketing Manager position. We researched their team and identified key requirements."'
+                    description: '💬 REQUIRED: What was happening when you decided to save this state? Provide a summary of the conversation and what you were working on.\n\nExample: "We were customizing the cover letter for Google\'s Marketing Manager position. We researched their team and identified key requirements."',
+                    examples: [
+                        'We were customizing the cover letter for Google\'s Marketing Manager position. We researched their team and identified key requirements.',
+                        'Working on the story outline, just completed act 2 structure with key plot points',
+                        'Analyzed research papers on AI safety, identified three main themes'
+                    ]
                 },
                 activeTask: {
                     type: 'string',
-                    description: 'What task were you actively working on? (REQUIRED) Be specific about the current task. Example: "Finishing the cover letter paragraph about data-driven campaign optimization results"'
+                    description: '🎯 REQUIRED: What task were you actively working on? Be specific about the current task.\n\nExample: "Finishing the cover letter paragraph about data-driven campaign optimization results"',
+                    examples: [
+                        'Finishing the cover letter paragraph about data-driven campaign optimization results',
+                        'Writing the climax sequence for Act 3',
+                        'Summarizing findings from latest AI safety papers'
+                    ]
                 },
                 activeFiles: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Which files were you working with? (REQUIRED) List the files that were being edited or referenced. Example: ["cover-letter-google.md", "application-tracker.md"]'
+                    description: '📄 REQUIRED: Which files were you working with? Provide an ARRAY of file paths that were being edited or referenced.\n\nExample: ["cover-letter-google.md", "application-tracker.md"]',
+                    examples: [
+                        ['cover-letter-google.md', 'application-tracker.md'],
+                        ['story-outline.md', 'character-profiles.md'],
+                        ['research-notes.md', 'literature-review.md']
+                    ]
                 },
                 nextSteps: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'What are the immediate next steps when you resume? (REQUIRED) Provide specific actionable next steps. Example: ["Complete cover letter customization", "Review resume for Google-specific keywords", "Submit application"]'
+                    description: '✅ REQUIRED: What are the immediate next steps when you resume? Provide an ARRAY of specific actionable next steps.\n\nExample: ["Complete cover letter customization", "Review resume for Google-specific keywords", "Submit application"]',
+                    examples: [
+                        ['Complete cover letter customization', 'Review resume for Google-specific keywords', 'Submit application'],
+                        ['Revise Act 3 climax', 'Add character development notes', 'Draft beat sheet'],
+                        ['Complete literature review', 'Organize findings by theme', 'Start writing methodology section']
+                    ]
                 },
                 reasoning: {
                     type: 'string',
-                    description: 'Why are you saving this state right now? (REQUIRED) Explain the reason for saving at this point. Example: "Saving before context limit, about to submit application"'
+                    description: '💭 REQUIRED: Why are you saving this state right now? Explain the reason for saving at this point.\n\nExample: "Saving before context limit, about to submit application"',
+                    examples: [
+                        'Saving before context limit, about to submit application',
+                        'Good stopping point before switching to beat sheet work',
+                        'Checkpoint before analysis phase, want to preserve research findings'
+                    ]
                 },
                 
                 // Optional fields
                 description: { 
                     type: 'string', 
-                    description: 'Optional description for the state' 
+                    description: '📋 Optional: Additional description for the state' 
                 },
                 targetSessionId: { 
                     type: 'string', 
-                    description: 'Target session ID (optional, defaults to current session)' 
+                    description: '🔗 Optional: Target session ID (defaults to current session)' 
                 },
                 includeSummary: { 
                     type: 'boolean', 
-                    description: 'Whether to include a summary (default: false)' 
+                    description: '📊 Optional: Whether to include a summary (default: false)' 
                 },
                 includeFileContents: { 
                     type: 'boolean', 
-                    description: 'Whether to include file contents (default: false)' 
+                    description: '📄 Optional: Whether to include file contents (default: false)' 
                 },
                 maxFiles: { 
                     type: 'number', 
-                    description: 'Maximum number of files to include' 
+                    description: '🔢 Optional: Maximum number of files to include (must be non-negative)',
+                    minimum: 0
                 },
                 maxTraces: { 
                     type: 'number', 
-                    description: 'Maximum number of memory traces to include' 
+                    description: '🔢 Optional: Maximum number of memory traces to include (must be non-negative)',
+                    minimum: 0
                 },
                 tags: { 
                     type: 'array', 
                     items: { type: 'string' }, 
-                    description: 'Tags to associate with the state' 
+                    description: '🏷️ Optional: Tags to associate with the state (array of strings)',
+                    examples: [['work', 'cover-letter'], ['screenplay', 'outline'], ['research', 'ai-safety']]
                 },
                 reason: { 
                     type: 'string', 
-                    description: 'Additional reason for creating this state' 
+                    description: '📝 Optional: Additional reason for creating this state (NOT the same as "name" or "reasoning")' 
                 }
             },
             required: ['name', 'conversationContext', 'activeTask', 'activeFiles', 'nextSteps', 'reasoning'],
-            additionalProperties: false
+            additionalProperties: false,
+            errorHelp: {
+                missingName: '⚠️ CRITICAL: The "name" parameter is REQUIRED and must come first. This is a short title for the state, NOT the same as "reason". Example: { "name": "Google Cover Letter Draft", ... }',
+                missingConversationContext: 'The "conversationContext" parameter is required. Explain what was happening when you decided to save.',
+                missingActiveTask: 'The "activeTask" parameter is required. Describe what specific task you were working on.',
+                missingActiveFiles: 'The "activeFiles" parameter is required. Provide an array of file paths you were working with.',
+                missingNextSteps: 'The "nextSteps" parameter is required. Provide an array of actionable next steps for when you resume.',
+                missingReasoning: 'The "reasoning" parameter is required. Explain why you\'re saving this state right now.',
+                arrayFormat: 'activeFiles and nextSteps must be ARRAYS of strings, not single strings or comma-separated values.',
+                commonMistakes: [
+                    '⚠️ Forgetting the "name" parameter (most common mistake!) - name is REQUIRED',
+                    'Confusing "name" with "reason" - they are different parameters',
+                    'Providing activeFiles as a string instead of an array - wrap in brackets: ["file.md"]',
+                    'Providing nextSteps as a string instead of an array - wrap in brackets: ["Step 1", "Step 2"]',
+                    'Forgetting to include all required fields',
+                    'Using negative numbers for maxFiles or maxTraces'
+                ]
+            }
         };
         
         return this.getMergedSchema(customSchema);

@@ -86,13 +86,12 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
                 }
             }
             
-            if (error instanceof McpError) {
-                throw error;
-            }
+            logger.systemError(error as Error, 'Tool Execution Strategy');
             
-            // Enhance error messages with helpful context
+            // Build detailed error result object
             const errorMsg = (error as Error).message || 'Unknown error';
             let enhancedMessage = errorMsg;
+            let parameterSchema: any = null;
             
             // Add helpful hints for common parameter errors
             if (errorMsg.toLowerCase().includes('parameter') || 
@@ -106,9 +105,9 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
                         const agent = this.getAgent(context.agentName);
                         const modeInstance = agent.getMode(context.mode);
                         if (modeInstance && typeof modeInstance.getParameterSchema === 'function') {
-                            const schema = modeInstance.getParameterSchema();
-                            if (schema && schema.required) {
-                                enhancedMessage += `\n\n📋 Required Parameters: ${schema.required.join(', ')}`;
+                            parameterSchema = modeInstance.getParameterSchema();
+                            if (parameterSchema && parameterSchema.required) {
+                                enhancedMessage += `\n\n📋 Required Parameters: ${parameterSchema.required.join(', ')}`;
                             }
                         }
                     } catch (schemaError) {
@@ -117,8 +116,24 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
                 }
             }
             
-            logger.systemError(error as Error, 'Tool Execution Strategy');
-            throw new McpError(ErrorCode.InternalError, enhancedMessage, error);
+            // Instead of throwing, return a formatted error response
+            // This allows Claude Desktop to see the actual error message
+            const errorResult = {
+                success: false,
+                error: enhancedMessage,
+                providedParams: context?.params,
+                expectedParams: parameterSchema?.required,
+                suggestions: [
+                    'Double-check all required parameters are provided',
+                    'Ensure parameter names match the schema exactly',
+                    'Check that parameter values are the correct type (string, array, object, etc.)'
+                ]
+            };
+            
+            return this.dependencies.responseFormatter.formatToolExecutionResponse(
+                errorResult,
+                context?.sessionInfo
+            );
         }
     }
 
@@ -221,9 +236,20 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
 
         // Session validation is now handled in buildRequestContext() to avoid duplication
         // Only handle session description updates here if needed
-        if (this.sessionContextManager && enhancedParams.context?.sessionId && enhancedParams.context?.sessionDescription) {
+        if (this.sessionContextManager && 
+            enhancedParams.context?.sessionId && 
+            enhancedParams.context?.sessionDescription) {
             try {
-                await this.sessionContextManager.updateSessionDescription(enhancedParams.context.sessionId, enhancedParams.context.sessionDescription);
+                // Safety check: ensure sessionId is not undefined
+                const sessionIdToUpdate = enhancedParams.context.sessionId;
+                if (sessionIdToUpdate && sessionIdToUpdate !== 'undefined') {
+                    await this.sessionContextManager.updateSessionDescription(
+                        sessionIdToUpdate, 
+                        enhancedParams.context.sessionDescription
+                    );
+                } else {
+                    logger.systemWarn(`Skipping session description update - sessionId is undefined or invalid`);
+                }
             } catch (error) {
                 logger.systemWarn(`Session description update failed: ${getErrorMessage(error)}`);
             }

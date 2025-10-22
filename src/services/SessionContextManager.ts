@@ -274,10 +274,26 @@ export class SessionContextManager {
     // Update session using the injected session service
     if (this.sessionService) {
       try {
-        // Note: This assumes the session service has an updateSession method
-        // If not, we may need to use a different method
-        await this.sessionService.updateSession?.(sessionId, { description: sessionDescription });
-        logger.systemLog(`Session ${sessionId} description updated in database`);
+        // Get the workspace context for this session to determine workspaceId
+        const workspaceContext = this.getWorkspaceContext(sessionId);
+        const workspaceId = workspaceContext?.workspaceId || 'default';
+        
+        // Fetch existing session to get current data
+        const existingSession = await this.sessionService.getSession(sessionId);
+        
+        // Update session with correct SessionData structure
+        if (existingSession) {
+          await this.sessionService.updateSession({
+            id: sessionId,
+            workspaceId: existingSession.workspaceId || workspaceId,
+            name: existingSession.name,
+            description: sessionDescription,
+            metadata: existingSession.metadata
+          });
+          logger.systemLog(`Session ${sessionId} description updated in database`);
+        } else {
+          logger.systemWarn(`Session ${sessionId} not found - cannot update description`);
+        }
       } catch (error) {
         logger.systemError(error as Error, `Failed to update session ${sessionId} description`);
       }
