@@ -5,10 +5,43 @@
 
 import OpenAI from 'openai';
 import { requestUrl } from 'obsidian';
+import { createHash } from 'crypto';
 
 export class LLMValidationService {
   private static readonly VALIDATION_TIMEOUT = 10000; // 10 seconds
   private static readonly VALIDATION_DELAY = 2000; // 2 seconds delay before validation
+
+  /**
+   * Create a hash of the API key for validation caching
+   */
+  private static createKeyHash(apiKey: string): string {
+    return createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  }
+
+  /**
+   * Check if cached validation is still fresh (< 24 hours old and key unchanged)
+   */
+  private static isValidationCacheFresh(
+    provider: string,
+    apiKey: string,
+    providerConfig?: { lastValidated?: number; validationHash?: string }
+  ): boolean {
+    if (!providerConfig?.lastValidated || !providerConfig?.validationHash) {
+      return false; // No cache exists
+    }
+    
+    // Check if key has changed
+    const currentHash = this.createKeyHash(apiKey);
+    if (currentHash !== providerConfig.validationHash) {
+      return false; // Key changed since last validation
+    }
+    
+    // Check if validation is less than 24 hours old
+    const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+    const age = Date.now() - providerConfig.lastValidated;
+    
+    return age < twentyFourHoursMs;
+  }
 
   /**
    * Wrapper for requestUrl with timeout support
@@ -34,31 +67,66 @@ export class LLMValidationService {
   /**
    * Validate an API key by making a simple test request
    */
-  static async validateApiKey(provider: string, apiKey: string): Promise<{ success: boolean; error?: string }> {
+  static async validateApiKey(
+    provider: string,
+    apiKey: string,
+    options?: {
+      forceValidation?: boolean;  // Set true to bypass cache
+      providerConfig?: { lastValidated?: number; validationHash?: string };
+      onValidationSuccess?: (hash: string, timestamp: number) => void;  // Callback to save validation state
+    }
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Wait a couple seconds before validation as requested
+      // Check cache first (unless forced)
+      if (!options?.forceValidation && options?.providerConfig) {
+        if (this.isValidationCacheFresh(provider, apiKey, options.providerConfig)) {
+          return { success: true };
+        }
+      }
+      
+      // Wait before validation
       await new Promise(resolve => setTimeout(resolve, this.VALIDATION_DELAY));
+      
+      // Perform actual validation
+      let result: { success: boolean; error?: string };
       
       switch (provider) {
         case 'openai':
-          return await this.validateOpenAI(apiKey);
+          result = await this.validateOpenAI(apiKey);
+          break;
         case 'anthropic':
-          return await this.validateAnthropic(apiKey);
+          result = await this.validateAnthropic(apiKey);
+          break;
         case 'google':
-          return await this.validateGoogle(apiKey);
+          result = await this.validateGoogle(apiKey);
+          break;
         case 'mistral':
-          return await this.validateMistral(apiKey);
+          result = await this.validateMistral(apiKey);
+          break;
         case 'groq':
-          return await this.validateGroq(apiKey);
+          result = await this.validateGroq(apiKey);
+          break;
         case 'openrouter':
-          return await this.validateOpenRouter(apiKey);
+          result = await this.validateOpenRouter(apiKey);
+          break;
         case 'perplexity':
-          return await this.validatePerplexity(apiKey);
+          result = await this.validatePerplexity(apiKey);
+          break;
         case 'requesty':
-          return await this.validateRequesty(apiKey);
+          result = await this.validateRequesty(apiKey);
+          break;
         default:
           return { success: false, error: `Unsupported provider: ${provider}` };
       }
+      
+      // If validation succeeded, update cache via callback
+      if (result.success && options?.onValidationSuccess) {
+        const hash = this.createKeyHash(apiKey);
+        const timestamp = Date.now();
+        options.onValidationSuccess(hash, timestamp);
+      }
+      
+      return result;
     } catch (error) {
       return { 
         success: false, 
@@ -226,15 +294,11 @@ export class LLMValidationService {
 
   private static async validateOpenRouter(apiKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('[OpenRouter Validation] Starting validation...');
-      
       const requestBody = {
         model: 'openai/gpt-4o-mini',
         messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 5
       };
-      
-      console.log('[OpenRouter Validation] Request body:', requestBody);
       
       const response = await this.requestWithTimeout({
         url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -247,9 +311,6 @@ export class LLMValidationService {
         },
         body: JSON.stringify(requestBody)
       });
-
-      console.log('[OpenRouter Validation] Response status:', response.status);
-      console.log('[OpenRouter Validation] Response body:', response.json);
 
       if (response.status >= 200 && response.status < 300) {
         return { success: true };

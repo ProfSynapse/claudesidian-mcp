@@ -331,6 +331,8 @@
     width: 90%;
     position: relative;
     animation: messageSlideIn 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Wider screens - reduce bubble width for better readability */
@@ -359,15 +361,21 @@
 }
 
 .message-container.message-user {
-    align-self: flex-end;
+    align-self: stretch;
+    width: 100%;
+    max-width: none;
 }
 
 .message-container.message-assistant {
-    align-self: flex-start;
+    align-self: stretch;
+    width: 100%;
+    max-width: none;
 }
 
 .message-container.message-tool {
-    align-self: flex-start;
+    align-self: stretch;
+    width: 100%;
+    max-width: none;
 }
 
 /* Message Bubbles */
@@ -387,15 +395,16 @@
 }
 
 .message-container.message-assistant .message-bubble {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-    border: none;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
 }
 
 .message-container.message-tool .message-bubble {
-    background: var(--background-modifier-form-field);
-    color: var(--text-normal);
-    border: 1px solid var(--background-modifier-border-hover);
+    background: var(--tool-bubble-background, #7e1dfb);
+    color: var(--text-on-accent);
+    border: none;
+    box-shadow: 0 0 12px rgba(var(--tool-bubble-background-rgb, 126, 29, 251), 0.35);
 }
 
 .message-header {
@@ -430,46 +439,74 @@
     width: 100%;
 }
 
-/* External message actions (positioned outside and below the bubble) */
+/* External message actions (pill-grouped, positioned based on role) */
 .message-actions-external {
-    position: absolute;
-    top: 100%;
-    right: 0;
     display: flex;
-    gap: 0.25rem;
-    margin-top: 0.125rem;
-    padding: 0;
-    justify-content: flex-end;
+    gap: 0;
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 50px;
+    padding: 0.2rem;
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
     z-index: 10;
+    width: fit-content;
+}
+
+/* User messages: pill in top-left (icon is in top-right), absolute positioning outside bubble */
+.message-container.message-user .message-actions-external {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.75rem;
+}
+
+/* Assistant messages: pill in top-right (icon is in top-left), inside bubble with sticky */
+.message-container.message-assistant .message-actions-external {
+    position: sticky;
+    top: 0.5rem;
+    float: right;
+    margin-right: 0.75rem;
+    margin-top: 0.5rem;
+    z-index: 20;
+}
+
+/* Tool messages: pill in top-right, absolute positioning outside bubble */
+.message-container.message-tool .message-actions-external {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
 }
 
 .message-container:hover .message-actions-external {
     opacity: 1;
+    transform: translateY(0);
 }
 
 .message-action-btn {
-    background: none;
+    background: transparent;
     border: none;
-    padding: 0.25rem;
-    border-radius: 3px;
+    padding: 0.35rem;
+    border-radius: 50%;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background 0.15s ease, color 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: var(--text-muted);
+    width: 28px;
+    height: 28px;
 }
 
 .message-action-btn svg {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     stroke: currentColor;
 }
 
 .message-action-btn:hover {
     background: var(--background-modifier-hover);
-    transform: scale(1.1);
+    color: var(--text-normal);
 }
 
 .message-action-btn.copy-success {
@@ -588,6 +625,12 @@
     border: 1px solid var(--background-modifier-border);
     border-radius: 6px;
     overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tool-accordion:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
 }
 
 .tool-accordion-header {
@@ -597,11 +640,11 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s ease;
 }
 
 .tool-accordion-header:hover {
-    background: var(--background-modifier-hover);
+    background: var(--background-secondary);
 }
 
 .tool-summary {
@@ -713,7 +756,12 @@
     border: 1px solid var(--background-modifier-border);
     border-radius: 6px;
     overflow: hidden;
-    transition: all 0.3s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.progressive-tool-accordion:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
 }
 
 .progressive-tool-header {
@@ -723,11 +771,11 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: all 0.3s ease;
+    transition: background-color 0.2s ease;
 }
 
 .progressive-tool-header:hover {
-    background: var(--background-modifier-hover);
+    background: var(--background-secondary);
 }
 
 /* Glow effect during tool execution */

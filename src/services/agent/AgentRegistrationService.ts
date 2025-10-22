@@ -577,8 +577,27 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
                 return false;
             }
 
-            // Validate the API key
-            const validation = await LLMValidationService.validateApiKey(defaultProvider, providerConfig.apiKey);
+            // Validate with caching - this will use cached validation if available
+            const validation = await LLMValidationService.validateApiKey(
+                defaultProvider,
+                providerConfig.apiKey,
+                {
+                    forceValidation: false,  // Use cache during startup
+                    providerConfig: providerConfig,
+                    onValidationSuccess: (hash: string, timestamp: number) => {
+                        // Update validation state in settings
+                        if (providerConfig) {
+                            providerConfig.lastValidated = timestamp;
+                            providerConfig.validationHash = hash;
+                            // Save settings asynchronously
+                            (this.plugin as any)?.settings?.saveSettings().catch((err: Error) => {
+                                logger.systemError(err, 'Failed to save validation state');
+                            });
+                        }
+                    }
+                }
+            );
+            
             return validation.success;
         } catch (error) {
             logger.systemError(error as Error, 'LLM API Key Validation');

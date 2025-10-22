@@ -115,6 +115,10 @@ export class LLMProviderModal extends Modal {
               this.apiKeyInput.removeClass('success');
               this.apiKeyInput.removeClass('error');
               
+              // Clear validation cache when URL changes
+              this.config.config.lastValidated = undefined;
+              this.config.config.validationHash = undefined;
+              
               // Clear existing timeout
               if (this.validationTimeout) {
                 clearTimeout(this.validationTimeout);
@@ -166,6 +170,10 @@ export class LLMProviderModal extends Modal {
               this.isValidated = false;
               this.apiKeyInput.removeClass('success');
               this.apiKeyInput.removeClass('error');
+              
+              // Clear validation cache when key changes
+              this.config.config.lastValidated = undefined;
+              this.config.config.validationHash = undefined;
               
               // Clear existing timeout
               if (this.validationTimeout) {
@@ -354,7 +362,20 @@ export class LLMProviderModal extends Modal {
 
     try {
       // Use the dedicated validation service for real API testing
-      const result = await LLMValidationService.validateApiKey(this.config.providerId, apiKey);
+      // Force validation when user manually clicks button
+      const result = await LLMValidationService.validateApiKey(
+        this.config.providerId,
+        apiKey,
+        {
+          forceValidation: true,  // Always validate fresh when user clicks button
+          providerConfig: this.config.config,
+          onValidationSuccess: (hash: string, timestamp: number) => {
+            // Update config with validation state
+            this.config.config.lastValidated = timestamp;
+            this.config.config.validationHash = hash;
+          }
+        }
+      );
       
       if (result.success) {
         // Mark as validated and auto-save

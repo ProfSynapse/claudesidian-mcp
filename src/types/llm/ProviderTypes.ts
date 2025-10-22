@@ -20,6 +20,8 @@ export interface LLMProviderConfig {
   enabled: boolean;
   models?: { [modelId: string]: ModelConfig }; // Model-specific configurations
   ollamaModel?: string; // For Ollama: user-configured model name
+  lastValidated?: number; // Unix timestamp (ms) of last successful validation
+  validationHash?: string; // First 16 chars of SHA256 hash of validated API key
 }
 
 /**

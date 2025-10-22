@@ -99,15 +99,17 @@ export class MessageBubble extends Component {
 
     // Message content
     const content = bubble.createDiv('message-content');
-    
+
     // Render content with enhanced markdown support (use active alternative if any)
     const activeContent = this.getActiveMessageContent(this.message);
     this.renderContent(content, activeContent).catch(error => {
       console.error('[MessageBubble] Error rendering initial content:', error);
     });
 
-    // Actions outside and underneath the bubble, justified right
-    const actions = messageContainer.createDiv('message-actions-external');
+    // Create actions - inside bubble for assistant, outside for user/tool
+    const actions = this.message.role === 'assistant'
+      ? bubble.createDiv('message-actions-external')
+      : messageContainer.createDiv('message-actions-external');
     
     if (this.message.role === 'user') {
       // Edit button for user messages
@@ -242,6 +244,9 @@ export class MessageBubble extends Component {
 
     const bubble = messageContainer.createDiv('message-bubble');
 
+    // Actions inside the bubble (for sticky positioning)
+    const actions = bubble.createDiv('message-actions-external');
+
     // Header with bot icon
     const header = bubble.createDiv('message-header');
     const roleIcon = header.createDiv('message-role-icon');
@@ -256,8 +261,7 @@ export class MessageBubble extends Component {
       console.error('[MessageBubble] Error rendering text bubble content:', error);
     });
 
-    // Actions for text bubble
-    const actions = messageContainer.createDiv('message-actions-external');
+    // Populate actions (already created above)
 
     // Copy button
     const copyBtn = actions.createEl('button', {
