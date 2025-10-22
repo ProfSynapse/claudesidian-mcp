@@ -22,12 +22,10 @@ export class FileSystemService {
    * Ensure conversations/ directory exists
    */
   async ensureConversationsDirectory(): Promise<void> {
-    console.log('[FileSystemService] 🔵 Ensuring conversations directory:', this.conversationsPath);
     try {
       await this.plugin.app.vault.adapter.mkdir(this.conversationsPath);
-      console.log('[FileSystemService] ✅ Conversations directory created');
     } catch (error) {
-      console.log('[FileSystemService] ℹ️ Conversations directory already exists');
+      // Directory might already exist
     }
   }
 
@@ -48,15 +46,8 @@ export class FileSystemService {
   async writeConversation(id: string, data: IndividualConversation): Promise<void> {
     await this.ensureConversationsDirectory();
     const filePath = normalizePath(`${this.conversationsPath}/${id}.json`);
-    console.log('[FileSystemService] 🔵 Writing conversation to:', filePath);
-    console.log('[FileSystemService] 🔵 Conversation data size:', JSON.stringify(data).length, 'bytes');
     const jsonString = JSON.stringify(data, null, 2);
     await this.plugin.app.vault.adapter.write(filePath, jsonString);
-    console.log('[FileSystemService] ✅ Conversation file written successfully');
-
-    // Verify the file was written
-    const exists = await this.plugin.app.vault.adapter.exists(filePath);
-    console.log('[FileSystemService] 🔵 File exists after write:', exists);
   }
 
   /**
@@ -81,7 +72,6 @@ export class FileSystemService {
     try {
       await this.plugin.app.vault.adapter.remove(filePath);
     } catch (error) {
-      console.error(`[FileSystemService] Failed to delete conversation: ${id}`, error);
       throw error;
     }
   }
@@ -135,7 +125,6 @@ export class FileSystemService {
     try {
       await this.plugin.app.vault.adapter.remove(filePath);
     } catch (error) {
-      console.error(`[FileSystemService] Failed to delete workspace: ${id}`, error);
       throw error;
     }
   }
@@ -199,7 +188,6 @@ export class FileSystemService {
 
       return data;
     } catch (error) {
-      console.error('[FileSystemService] Error reading workspace index:', error);
       return null;
     }
   }
@@ -221,7 +209,6 @@ export class FileSystemService {
       const exists = await this.plugin.app.vault.adapter.exists(this.conversationsPath);
       return exists;
     } catch (error) {
-      console.error(`[FileSystemService] Error checking conversations directory:`, error);
       return false;
     }
   }
@@ -234,7 +221,6 @@ export class FileSystemService {
       const exists = await this.plugin.app.vault.adapter.exists(this.workspacesPath);
       return exists;
     } catch (error) {
-      console.error(`[FileSystemService] Error checking workspaces directory:`, error);
       return false;
     }
   }
@@ -257,7 +243,6 @@ export class FileSystemService {
       const items = data.items || [];
       return items;
     } catch (error) {
-      console.error(`[FileSystemService] Error reading ChromaDB collection: ${collectionName}`, error);
       return [];
     }
   }

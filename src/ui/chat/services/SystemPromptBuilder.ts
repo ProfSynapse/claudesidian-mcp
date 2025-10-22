@@ -141,8 +141,6 @@ export class SystemPromptBuilder {
 
     // Add enhancement notes from [[suggester]]
     if (hasEnhancementNotes) {
-      console.log('[SystemPromptBuilder] Injecting notes from [[suggester]]:', messageEnhancement!.notes.length);
-
       for (const note of messageEnhancement!.notes) {
         const xmlTag = this.normalizePathToXmlTag(note.path);
         prompt += `<${xmlTag}>\n`;
@@ -165,13 +163,10 @@ export class SystemPromptBuilder {
       return null;
     }
 
-    console.log('[SystemPromptBuilder] Injecting tool hints from /suggester:', messageEnhancement.tools.length);
-
     let prompt = '<tool_hints>\n';
     prompt += 'The user has requested to use the following tools:\n\n';
 
     for (const tool of messageEnhancement.tools) {
-      console.log('[SystemPromptBuilder] - Tool hint:', tool.name);
       prompt += `Tool: ${tool.name}\n`;
       prompt += `Description: ${tool.schema.description}\n`;
       prompt += 'Please prioritize using this tool when applicable.\n\n';
@@ -190,13 +185,10 @@ export class SystemPromptBuilder {
       return null;
     }
 
-    console.log('[SystemPromptBuilder] Injecting custom agents from @suggester:', messageEnhancement.agents.length);
-
     let prompt = '<custom_agents>\n';
     prompt += 'The user has mentioned the following custom agents. Apply their personalities and instructions:\n\n';
 
     for (const agent of messageEnhancement.agents) {
-      console.log('[SystemPromptBuilder] - Agent:', agent.name);
       prompt += `<agent name="${this.escapeXmlAttribute(agent.name)}">\n`;
       prompt += this.escapeXmlContent(agent.prompt);
       prompt += `\n</agent>\n\n`;

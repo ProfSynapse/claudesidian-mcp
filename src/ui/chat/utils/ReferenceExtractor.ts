@@ -19,6 +19,19 @@ export interface ExtractedContent {
   agents: AgentReference[];
   /** Note references found */
   notes: NoteReference[];
+  /** Reference metadata for badge reconstruction */
+  references: ExtractedReference[];
+}
+
+export interface ExtractedReference {
+  type: 'tool' | 'agent' | 'note';
+  displayText: string;
+  technicalName: string;
+  position: number;
+}
+
+export interface ReferenceMetadata {
+  references: ExtractedReference[];
 }
 
 export class ReferenceExtractor {
@@ -30,12 +43,15 @@ export class ReferenceExtractor {
     const agents: AgentReference[] = [];
     const notes: NoteReference[] = [];
     const textParts: string[] = [];
+    const references: ExtractedReference[] = [];
+    let currentOffset = 0;
 
     const traverse = (node: Node): void => {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent || '';
         if (text) {
           textParts.push(text);
+          currentOffset += text.length;
         }
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const element = node as HTMLElement;
@@ -46,11 +62,16 @@ export class ReferenceExtractor {
           const name = element.getAttribute('data-name');
           const displayText = element.textContent || '';
 
-          if (type && name) {
-            // Store reference (already added via MessageEnhancer during selection)
-            // Just skip in text output
-            return;
+          if (type && name && (type === 'tool' || type === 'agent' || type === 'note')) {
+            references.push({
+              type,
+              displayText,
+              technicalName: name,
+              position: currentOffset
+            });
           }
+          // Do not return early - keep traversing children so the display text
+          // remains part of the plain-text message sent to the LLM.
         }
 
         // Traverse children
@@ -61,19 +82,31 @@ export class ReferenceExtractor {
         // Add line break for block elements
         if (this.isBlockElement(element)) {
           textParts.push('\n');
+          currentOffset += 1;
         }
       }
     };
 
     traverse(element);
 
-    const plainText = textParts.join('').trim();
+    const rawText = textParts.join('');
+    const leadingWhitespace = rawText.length - rawText.trimStart().length;
+    const plainText = rawText.trim();
+    const normalizedReferences = references.map(reference => {
+      const adjustedPosition = Math.max(0, reference.position - leadingWhitespace);
+      const boundedPosition = Math.min(adjustedPosition, plainText.length);
+      return {
+        ...reference,
+        position: boundedPosition
+      };
+    });
 
     return {
       plainText,
       tools,
       agents,
-      notes
+      notes,
+      references: normalizedReferences
     };
   }
 

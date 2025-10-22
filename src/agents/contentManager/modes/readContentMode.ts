@@ -202,47 +202,6 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
         sessionId: params.context.sessionId || ''
       });
       
-      // Auto-track external files as associated notes
-      try {
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
-        const workspaceService = plugin?.services?.workspaceService;
-        
-        if (workspaceService && parsedContext.workspaceId) {
-          // Get the current workspace to check if this file is outside the workspace folder
-          const workspace = await workspaceService.getWorkspace(parsedContext.workspaceId);
-          
-          if (workspace) {
-            // Normalize paths for comparison
-            const { sanitizePath } = await import('../../../utils/pathUtils');
-            const normalizedFilePath = sanitizePath(params.filePath, false);
-            const normalizedRootFolder = sanitizePath(workspace.rootFolder, false);
-            const rootFolderWithSlash = normalizedRootFolder.endsWith('/') ? 
-              normalizedRootFolder : normalizedRootFolder + '/';
-            
-            // Check if file is outside workspace folder
-            const isOutsideWorkspace = normalizedFilePath !== normalizedRootFolder && 
-                                     !normalizedFilePath.startsWith(rootFolderWithSlash);
-            
-            if (isOutsideWorkspace) {
-              // Add to workspace's associatedNotes
-              await workspaceService.addAssociatedNote(parsedContext.workspaceId, params.filePath);
-            }
-          }
-        }
-        
-        // Record activity in workspace
-        if (workspaceService && parsedContext.workspaceId) {
-          await workspaceService.recordActivity(parsedContext.workspaceId, {
-            action: 'view',
-            timestamp: Date.now(),
-            hierarchyPath: [params.filePath],
-            toolName: 'readContent'
-          });
-        }
-      } catch (error) {
-        console.warn('Error recording file activity:', getErrorMessage(error));
-        // Don't fail the main operation
-      }
     } catch (error) {
       // Log but don't fail the main operation
       console.error('Failed to record content reading activity with memory service:', getErrorMessage(error));

@@ -381,14 +381,15 @@
 }
 
 .message-container.message-user .message-bubble {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-}
-
-.message-container.message-assistant .message-bubble {
     background: var(--background-secondary);
     color: var(--text-normal);
     border: 1px solid var(--background-modifier-border);
+}
+
+.message-container.message-assistant .message-bubble {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
 }
 
 .message-container.message-tool .message-bubble {
@@ -561,6 +562,24 @@
 .message-content pre code {
     background: none;
     padding: 0;
+}
+
+.message-content ul,
+.message-content ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+    color: inherit;
+}
+
+.message-content ul li,
+.message-content ol li {
+    margin: 0.25rem 0;
+    color: inherit;
+}
+
+.message-content ul li::marker,
+.message-content ol li::marker {
+    color: inherit;
 }
 
 /* Tool Accordion */

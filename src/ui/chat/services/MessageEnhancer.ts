@@ -105,26 +105,13 @@ export class MessageEnhancer {
   }
 
   /**
-   * Clean message by removing trigger characters and references
-   * Converts:
-   *   "/readFile Get [[project-notes]]" → "Get project-notes"
-   *   "@agent analyze this" → "analyze this"
+   * Clean message for optional downstream usage.
+   * Currently just trims whitespace so the LLM sees the message exactly as typed.
    * @param message - Original message
    * @returns Cleaned message
    */
   private cleanMessage(message: string): string {
-    let cleaned = message;
-
-    // Remove slash commands at start
-    cleaned = cleaned.replace(/^\/\w+\s*/, '');
-
-    // Remove @ mentions (keep the name for context)
-    cleaned = cleaned.replace(/@(\w+)/g, '$1');
-
-    // Remove [[ ]] wikilink brackets (keep the note name)
-    cleaned = cleaned.replace(/\[\[([^\]]+)\]\]/g, '$1');
-
-    return cleaned.trim();
+    return message.trim();
   }
 
   /**

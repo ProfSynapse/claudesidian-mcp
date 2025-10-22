@@ -136,20 +136,6 @@ export class StreamingResponseService {
       let finalUsage: any = undefined;
       let finalCost: any = undefined;
 
-      // Log what we're sending to the LLM
-      console.log('[StreamingResponseService] ========== GENERATING LLM RESPONSE ==========');
-      console.log('[StreamingResponseService] User message:', userMessage);
-      console.log('[StreamingResponseService] Messages being sent to LLM:', JSON.stringify(messages, null, 2));
-      console.log('[StreamingResponseService] LLM options:', {
-        provider: llmOptions.provider,
-        model: llmOptions.model,
-        systemPrompt: llmOptions.systemPrompt ? llmOptions.systemPrompt.substring(0, 200) + '...' : 'none',
-        toolCount: llmOptions.tools?.length || 0,
-        sessionId: llmOptions.sessionId,
-        workspaceId: llmOptions.workspaceId
-      });
-      console.log('[StreamingResponseService] ===================================================');
-
       for await (const chunk of this.dependencies.llmService.generateResponseStream(messages, llmOptions)) {
         // Check if aborted FIRST before processing chunk
         if (options?.abortSignal?.aborted) {
@@ -160,7 +146,6 @@ export class StreamingResponseService {
 
         // Extract usage for cost calculation
         if (chunk.usage) {
-          console.log('[StreamingResponseService] Received usage from chunk:', chunk.usage);
           finalUsage = chunk.usage;
         }
 
@@ -194,7 +179,6 @@ export class StreamingResponseService {
         // Save to database BEFORE yielding final chunk to ensure persistence
         if (chunk.complete) {
           // Calculate cost from final usage using CostTrackingService
-          console.log('[StreamingResponseService] Final usage before cost calc:', finalUsage);
           if (finalUsage) {
             const usageData = this.dependencies.costTrackingService.extractUsage(finalUsage);
             if (usageData) {

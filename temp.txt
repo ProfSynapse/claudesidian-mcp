@@ -1,0 +1,200 @@
+/**
+ * MessageBubble - Individual message bubble component
+ * 
+ * Renders user/AI messages with copy, retry, and edit actions
+ */
+
+import { ConversationMessage } from '../../../types/chat/ChatTypes';
+import { ProgressiveToolAccordion } from './ProgressiveToolAccordion';
+import { MessageBranchNavigator, MessageBranchNavigatorEvents } from './MessageBranchNavigator';
+import { MarkdownRenderer } from '../utils/MarkdownRenderer';
+import { setIcon, Component, App } from 'obsidian';
+import { ExtractedReference, ReferenceMetadata } from '../utils/ReferenceExtractor';
+
+interface ReferencePlaceholder {
+  token: string;
+  index: number;
+  reference: ExtractedReference;
+}
+
+export class MessageBubble extends Component {
+  private static readonly PLACEHOLDER_PREFIX = '\uFFF0REF';
+  private static readonly PLACEHOLDER_SUFFIX = '\uFFF1';
+
+  private element: HTMLElement | null = null;
+  private loadingInterval: any = null;
+  private progressiveToolAccordions: Map<string, ProgressiveToolAccordion> = new Map(); // Keyed by tool.id
+  private messageBranchNavigator: MessageBranchNavigator | null = null;
+  private toolBubbleElement: HTMLElement | null = null; // Separate tool bubble
+  private textBubbleElement: HTMLElement | null = null; // Separate text bubble
+
+  constructor(
+    private message: ConversationMessage,
+    private app: App,
+    private onCopy: (messageId: string) => void,
+    private onRetry: (messageId: string) => void,
+    private onEdit?: (messageId: string, newContent: string) => void,
+    private onToolEvent?: (messageId: string, event: 'detected' | 'started' | 'completed', data: any) => void,
+    private onMessageAlternativeChanged?: (messageId: string, alternativeIndex: number) => void
+  ) {
+    super();
+  }
+
+  /**
+   * Create the message bubble element
+   * For assistant messages with toolCalls, returns a fragment containing tool bubble + text bubble
+   */
+  createElement(): HTMLElement {
+    // Check if we need to split into tool bubble + text bubble
+    const hasToolCalls = this.message.role === 'assistant' && this.message.toolCalls && this.message.toolCalls.length > 0;
+
+    if (hasToolCalls) {
+      // Create a wrapper fragment that will hold both bubbles
+      const wrapper = document.createElement('div');
+      wrapper.addClass('message-group');
+      wrapper.setAttribute('data-message-id', this.message.id);
+
+      // Create tool bubble
+      this.toolBubbleElement = this.createToolBubble();
+      wrapper.appendChild(this.toolBubbleElement);
+
+      // Create text bubble (if there's content)
+      if (this.message.content && this.message.content.trim()) {
+        this.textBubbleElement = this.createTextBubble();
+        wrapper.appendChild(this.textBubbleElement);
+      }
+
+      this.element = wrapper;
+      return wrapper;
+    }
+
+    // Normal single bubble for user messages or assistant without tools
+    const messageContainer = document.createElement('div');
+    messageContainer.addClass('message-container');
+    messageContainer.addClass(`message-${this.message.role}`);
+    messageContainer.setAttribute('data-message-id', this.message.id);
+
+    // Create the actual bubble
+    const bubble = messageContainer.createDiv('message-bubble');
+
+    // Message header with role icon only
+    const header = bubble.createDiv('message-header');
+
+    // Role icon
+    const roleIcon = header.createDiv('message-role-icon');
+    if (this.message.role === 'user') {
+      setIcon(roleIcon, 'user');
+    } else if (this.message.role === 'tool') {
+      setIcon(roleIcon, 'wrench');
+    } else {
+      setIcon(roleIcon, 'bot');
+    }
+
+    // Add loading state in header if AI message is loading with empty content
+    if (this.message.role === 'assistant' && this.message.isLoading && !this.message.content.trim()) {
+      const loadingSpan = header.createEl('span', { cls: 'ai-loading-header' });
+      loadingSpan.innerHTML = 'Thinking<span class="dots">...</span>';
+      this.startLoadingAnimation(loadingSpan);
+    }
+
+    // Message content
+    const content = bubble.createDiv('message-content');
+    
+    // Render content with enhanced markdown support (use active alternative if any)
+    const activeContent = this.getActiveMessageContent(this.message);
+    this.renderContent(content, activeContent).catch(error => {
+      console.error('[MessageBubble] Error rendering initial content:', error);
+    });
+
+    // Actions outside and underneath the bubble, justified right
+    const actions = messageContainer.createDiv('message-actions-external');
+    
+    if (this.message.role === 'user') {
+      // Edit button for user messages
+      if (this.onEdit) {
+        const editBtn = actions.createEl('button', { 
+          cls: 'message-action-btn',
+          attr: { title: 'Edit message' }
+        });
+        setIcon(editBtn, 'edit');
+        editBtn.addEventListener('click', () => this.handleEdit());
+      }
+      
+      // Retry button for user messages
+      const retryBtn = actions.createEl('button', { 
+        cls: 'message-action-btn',
+        attr: { title: 'Retry message' }
+      });
+      setIcon(retryBtn, 'rotate-ccw');
+      retryBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.onRetry) {
+          this.onRetry(this.message.id);
+        } else {
+          console.error('[MessageBubble] onRetry callback is null/undefined!');
+        }
+      });
+    } else if (this.message.role === 'tool') {
+      // Tool messages get minimal actions - just copy for debugging
+      const copyBtn = actions.createEl('button', { 
+        cls: 'message-action-btn',
+        attr: { title: 'Copy tool execution details' }
+      });
+      setIcon(copyBtn, 'copy');
+      copyBtn.addEventListener('click', () => {
+        this.showCopyFeedback(copyBtn);
+        this.onCopy(this.message.id);
+      });
+    } else {
+      // Copy button for AI messages
+      const copyBtn = actions.createEl('button', { 
+        cls: 'message-action-btn',
+        attr: { title: 'Copy message' }
+      });
+      setIcon(copyBtn, 'copy');
+      copyBtn.addEventListener('click', () => {
+        this.showCopyFeedback(copyBtn);
+        this.onCopy(this.message.id);
+      });
+      
+      // Message branch navigator for AI messages with alternatives
+      if (this.message.alternatives && this.message.alternatives.length > 0) {
+        const navigatorContainer = actions.createDiv('message-branch-navigator-container');
+        
+        const navigatorEvents: MessageBranchNavigatorEvents = {
+          onAlternativeChanged: (messageId, alternativeIndex) => {
+            if (this.onMessageAlternativeChanged) {
+              this.onMessageAlternativeChanged(messageId, alternativeIndex);
+            }
+          },
+          onError: (message) => console.error('[MessageBubble] Branch navigation error:', message)
+        };
+        
+        this.messageBranchNavigator = new MessageBranchNavigator(navigatorContainer, navigatorEvents);
+        this.messageBranchNavigator.updateMessage(this.message);
+      }
+    }
+
+    this.element = messageContainer;
+    return messageContainer;
+  }
+
+  /**
+   * Create tool bubble containing multiple tool accordions
+   */
+  private createToolBubble(): HTMLElement {
+    const toolContainer = document.createElement('div');
+    toolContainer.addClass('message-container');
+    toolContainer.addClass('message-tool');
+    toolContainer.setAttribute('data-message-id', `${this.message.id}_tools`);
+
+    const bubble = toolContainer.createDiv('message-bubble tool-bubble');
+
+    // Header with wrench icon
+    const header = bubble.createDiv('message-header');
+    const roleIcon = header.createDiv('message-role-icon');
+    setIcon(roleIcon, 'wrench');
+
+    // Content area for tool accordions
+    const content = bubble.createDiv('tool-bubble-content');

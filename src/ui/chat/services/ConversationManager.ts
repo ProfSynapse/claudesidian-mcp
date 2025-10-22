@@ -50,7 +50,6 @@ export class ConversationManager {
         await this.selectConversation(this.conversations[0]);
       }
     } catch (error) {
-      console.error('[ConversationManager] Failed to load conversations:', error);
       this.events.onError('Failed to load conversations');
     }
   }
@@ -70,7 +69,6 @@ export class ConversationManager {
         this.events.onConversationSelected(fullConversation);
       }
     } catch (error) {
-      console.error('[ConversationManager] Failed to select conversation:', error);
       this.events.onError('Failed to load conversation');
     }
   }
@@ -97,7 +95,6 @@ export class ConversationManager {
         this.events.onError(result.error || 'Failed to create conversation');
       }
     } catch (error) {
-      console.error('[ConversationManager] Failed to create conversation:', error);
       this.events.onError('Failed to create conversation');
     }
   }
@@ -117,15 +114,7 @@ export class ConversationManager {
   ): Promise<void> {
     const title = message.length > 50 ? message.substring(0, 47) + '...' : message;
 
-    console.log('[ConversationManager] createNewConversationWithMessage() called with:', {
-      messageLength: message.length,
-      title,
-      options
-    });
-
     try {
-      console.log('[ConversationManager] Calling ChatService.createConversation()...');
-
       const result = await this.chatService.createConversation(
         title,
         message,
@@ -135,28 +124,16 @@ export class ConversationManager {
         }
       );
 
-      console.log('[ConversationManager] ChatService.createConversation() result:', result);
-
       if (result.success && result.conversationId && result.sessionId) {
-        console.log(`[ConversationManager] ✓ Created conversation ${result.conversationId} with session ${result.sessionId}`);
-
         // Reload conversations and select the new one
         await this.loadConversations();
         const newConversation = await this.chatService.getConversation(result.conversationId);
-
-        console.log('[ConversationManager] Reloaded conversation from storage:', {
-          id: newConversation?.id,
-          hasMetadata: !!newConversation?.metadata,
-          metadata: newConversation?.metadata
-        });
 
         if (newConversation) {
           await this.selectConversation(newConversation);
         }
       } else if (result.success && result.conversationId) {
         // Fallback for conversations without session ID (shouldn't happen with new code)
-        console.warn('[ConversationManager] Created conversation without session ID');
-
         await this.loadConversations();
         const newConversation = await this.chatService.getConversation(result.conversationId);
         if (newConversation) {
@@ -166,7 +143,6 @@ export class ConversationManager {
         this.events.onError(result.error || 'Failed to create conversation');
       }
     } catch (error) {
-      console.error('[ConversationManager] Failed to create conversation with message:', error);
       this.events.onError('Failed to create conversation');
     }
   }
@@ -190,7 +166,6 @@ export class ConversationManager {
         this.events.onError('Failed to delete conversation');
       }
     } catch (error) {
-      console.error('[ConversationManager] Failed to delete conversation:', error);
       this.events.onError('Failed to delete conversation');
     }
   }

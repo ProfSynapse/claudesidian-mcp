@@ -93,7 +93,7 @@ export class CostTrackingService {
       }
 
       // Save updated conversation
-      await this.conversationService.updateConversation(conversation);
+      await this.conversationService.updateConversation(conversation.id, { messages: conversation.messages });
 
       // Update conversation-level cost aggregation
       // Only add to conversation cost if we didn't already count this message

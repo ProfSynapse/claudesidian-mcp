@@ -5,6 +5,7 @@
 import { ChatService } from '../../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { BranchManager } from './BranchManager';
+import { ReferenceMetadata } from '../utils/ReferenceExtractor';
 
 export interface MessageManagerEvents {
   onMessageAdded: (message: ConversationMessage) => void;
@@ -50,7 +51,8 @@ export class MessageManager {
       systemPrompt?: string;
       workspaceId?: string;
       sessionId?: string;
-    }
+    },
+    metadata?: ReferenceMetadata
   ): Promise<void> {
     // Declare aiMessageId in function scope so catch block can access it
     let aiMessageId: string | null = null;
@@ -69,7 +71,8 @@ export class MessageManager {
         role: 'user' as const,
         content: message,
         timestamp: Date.now(),
-        conversationId: conversation.id
+        conversationId: conversation.id,
+        metadata: metadata
       };
 
       // Add user message to conversation and display immediately (progressive updates only)
@@ -101,7 +104,8 @@ export class MessageManager {
         const userMessageResult = await this.chatService.addMessage({
           conversationId: conversation.id,
           role: 'user',
-          content: message
+          content: message,
+          metadata: metadata
         });
 
         // Update the temporary user message with the real ID from repository
@@ -414,6 +418,9 @@ export class MessageManager {
     
     // Update ONLY the message content
     conversation.messages[messageIndex].content = newContent;
+    if (conversation.messages[messageIndex].metadata) {
+      delete conversation.messages[messageIndex].metadata;
+    }
     
     // Update the conversation in storage
     await this.chatService.updateConversation(conversation);

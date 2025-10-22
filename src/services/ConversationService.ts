@@ -152,6 +152,7 @@ export class ConversationService {
     provider?: string;
     model?: string;
     id?: string; // Optional: specify messageId for placeholder messages
+    metadata?: any;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       // Load conversation
@@ -175,7 +176,8 @@ export class ConversationService {
         cost: params.cost,
         usage: params.usage,
         provider: params.provider,
-        model: params.model
+        model: params.model,
+        metadata: params.metadata
       };
 
       // Append message

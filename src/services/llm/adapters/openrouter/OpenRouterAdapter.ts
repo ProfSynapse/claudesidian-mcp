@@ -69,12 +69,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         usage: { include: true } // Enable token usage and cost tracking
       };
 
-      console.log('[OpenRouter Cost Debug] Request body includes usage parameter:', {
-        model,
-        hasUsageParam: !!requestBody.usage,
-        usageParam: requestBody.usage
-      });
-
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -92,20 +86,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       const data = await response.json();
 
-      console.log('[OpenRouter Cost Debug] Non-streaming response received:', {
-        hasUsage: !!data.usage,
-        usage: data.usage,
-        hasChoices: !!data.choices,
-        // Check for usage in different possible locations
-        topLevelUsage: data.usage,
-        choiceUsage: data.choices?.[0]?.usage,
-        metadataUsage: data.metadata?.usage,
-        fullResponse: JSON.stringify(data, null, 2)
-      });
-
       const text = data.choices[0]?.message?.content || '';
       const usage = this.extractUsage(data);
-      console.log('[OpenRouter Cost Debug] Extracted usage:', usage);
       const finishReason = data.choices[0]?.finish_reason || 'stop';
 
       // Extract web search results if web search was enabled
@@ -613,20 +595,11 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
    */
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
     try {
-      console.log('[OpenRouter Cost Debug] getModelPricing called with modelId:', modelId);
       const models = ModelRegistry.getProviderModels('openrouter');
-      console.log('[OpenRouter Cost Debug] Available models:', models.map(m => m.apiName));
       const model = models.find(m => m.apiName === modelId);
       if (!model) {
-        console.warn('[OpenRouter Cost Debug] Model not found in registry:', modelId);
         return null;
       }
-
-      console.log('[OpenRouter Cost Debug] Model found:', {
-        apiName: model.apiName,
-        inputCost: model.inputCostPerMillion,
-        outputCost: model.outputCostPerMillion
-      });
 
       return {
         rateInputPerMillion: model.inputCostPerMillion,
@@ -634,7 +607,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         currency: 'USD'
       };
     } catch (error) {
-      console.warn(`[OpenRouter Cost Debug] Failed to get pricing for model ${modelId}:`, error);
       return null;
     }
   }

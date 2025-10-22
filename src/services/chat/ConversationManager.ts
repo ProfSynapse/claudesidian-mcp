@@ -33,15 +33,6 @@ export class ConversationManager {
    * Create a new conversation
    */
   async createConversation(params: CreateConversationParams): Promise<ConversationData> {
-    console.log('[ConversationManager] 🔵 Creating conversation with params:', {
-      title: params.title,
-      vaultName: this.vaultName,
-      provider: params.provider,
-      model: params.model,
-      workspaceId: params.workspaceId,
-      hasInitialMessage: !!params.initialMessage
-    });
-
     const conversationData = {
       title: params.title,
       vault_name: this.vaultName,
@@ -56,26 +47,15 @@ export class ConversationManager {
       }
     };
 
-    console.log('[ConversationManager] 🔵 Conversation data to create:', JSON.stringify(conversationData, null, 2));
-
     const conversation = await this.dependencies.conversationService.createConversation(conversationData);
-
-    console.log('[ConversationManager] ✅ Conversation created:', {
-      id: conversation.id,
-      title: conversation.title,
-      hasMetadata: !!conversation.metadata,
-      sessionId: conversation.metadata?.chatSettings?.sessionId
-    });
 
     // Add initial message if provided
     if (params.initialMessage) {
-      console.log('[ConversationManager] 🔵 Adding initial message to conversation:', conversation.id);
       await this.dependencies.conversationService.addMessage({
         conversationId: conversation.id,
         role: 'user',
         content: params.initialMessage
       });
-      console.log('[ConversationManager] ✅ Initial message added');
     }
 
     return conversation;
@@ -117,6 +97,7 @@ export class ConversationManager {
     content: string;
     id?: string;
     toolCalls?: any[];
+    metadata?: any;
   }): Promise<void> {
     await this.dependencies.conversationService.addMessage(params);
   }

@@ -7,7 +7,7 @@
 import { setIcon, App } from 'obsidian';
 import { initializeSuggesters, SuggesterInstances } from './suggesters/initializeSuggesters';
 import { ContentEditableHelper } from '../utils/ContentEditableHelper';
-import { ReferenceExtractor } from '../utils/ReferenceExtractor';
+import { ReferenceExtractor, ReferenceMetadata } from '../utils/ReferenceExtractor';
 import { MessageEnhancement } from './suggesters/base/SuggesterInterfaces';
 
 export class ChatInput {
@@ -20,7 +20,11 @@ export class ChatInput {
 
   constructor(
     private container: HTMLElement,
-    private onSendMessage: (message: string, enhancement?: MessageEnhancement) => void,
+    private onSendMessage: (
+      message: string,
+      enhancement?: MessageEnhancement,
+      metadata?: ReferenceMetadata
+    ) => void,
     private getLoadingState: () => boolean,
     private app?: App,
     private onStopGeneration?: () => void,
@@ -147,7 +151,8 @@ export class ChatInput {
       return;
     }
 
-    const message = ReferenceExtractor.getPlainText(this.inputElement).trim();
+    const extracted = ReferenceExtractor.extractContent(this.inputElement);
+    const message = extracted.plainText.trim();
     if (!message) return;
 
     // Build enhancement from MessageEnhancer
@@ -156,12 +161,19 @@ export class ChatInput {
       enhancement = this.suggesters.messageEnhancer.buildEnhancement(message);
     }
 
+    const metadata: ReferenceMetadata | undefined =
+      extracted.references.length > 0
+        ? {
+            references: extracted.references
+          }
+        : undefined;
+
     // Clear the input
     ContentEditableHelper.clear(this.inputElement);
     this.autoResizeInput();
 
     // Send the message with enhancement
-    this.onSendMessage(message, enhancement);
+    this.onSendMessage(message, enhancement, metadata);
   }
 
   /**

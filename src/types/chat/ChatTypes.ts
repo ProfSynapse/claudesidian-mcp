@@ -14,6 +14,7 @@ export interface ChatMessage {
   alternatives?: ChatMessage[];
   activeAlternativeIndex?: number;
   isLoading?: boolean;
+  metadata?: Record<string, any>;
 }
 
 export interface ToolCall {
@@ -94,6 +95,7 @@ export interface AddMessageParams {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   toolCalls?: ToolCall[];
+  metadata?: Record<string, any>;
 }
 
 export interface UpdateConversationParams {

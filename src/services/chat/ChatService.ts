@@ -141,13 +141,15 @@ export class ChatService {
     role: 'user' | 'assistant';
     content: string;
     toolCalls?: any[];
+    metadata?: any;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       await this.conversationManager.addMessage({
         conversationId: params.conversationId,
         role: params.role,
         content: params.content,
-        toolCalls: params.toolCalls
+        toolCalls: params.toolCalls,
+        metadata: params.metadata
       });
 
       return {

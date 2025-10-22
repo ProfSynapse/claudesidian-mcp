@@ -29,6 +29,7 @@ import { StreamingController } from './controllers/StreamingController';
 // Utils
 import { TokenCalculator } from './utils/TokenCalculator';
 import { ProviderUtils } from './utils/ProviderUtils';
+import { ReferenceMetadata } from './utils/ReferenceExtractor';
 
 export const CHAT_VIEW_TYPE = 'claudesidian-chat';
 
@@ -270,7 +271,7 @@ export class ChatView extends ItemView {
 
     this.chatInput = new ChatInput(
       refs.inputContainer,
-      (message, enhancement) => this.handleSendMessage(message, enhancement),
+      (message, enhancement, metadata) => this.handleSendMessage(message, enhancement, metadata),
       () => this.messageManager.getIsLoading(),
       this.app, // Pass app for suggesters
       () => this.handleStopGeneration(),
@@ -450,7 +451,11 @@ export class ChatView extends ItemView {
     this.updateContextProgress();
   }
 
-  private async handleSendMessage(message: string, enhancement?: MessageEnhancement): Promise<void> {
+  private async handleSendMessage(
+    message: string,
+    enhancement?: MessageEnhancement,
+    metadata?: ReferenceMetadata
+  ): Promise<void> {
     const currentConversation = this.conversationManager.getCurrentConversation();
 
     // Prevent sending messages when no conversation is active
@@ -475,7 +480,8 @@ export class ChatView extends ItemView {
       await this.messageManager.sendMessage(
         currentConversation,
         message,
-        messageOptions
+        messageOptions,
+        metadata
       );
     } finally {
       // Always clear the enhancement after sending
