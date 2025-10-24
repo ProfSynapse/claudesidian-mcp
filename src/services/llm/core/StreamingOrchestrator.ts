@@ -441,10 +441,14 @@ export class StreamingOrchestrator {
     previousMessages: any[],
     generateOptions: any
   ): any {
-    if (provider === 'anthropic') {
+    // Check if this is an Anthropic model (direct or via OpenRouter)
+    const isAnthropicModel = provider === 'anthropic' ||
+      (provider === 'openrouter' && generateOptions.model?.includes('anthropic'));
+
+    if (isAnthropicModel) {
       // Build proper Anthropic messages with tool_use and tool_result blocks
       const conversationHistory = ConversationContextBuilder.buildToolContinuation(
-        provider,
+        'anthropic', // Use 'anthropic' for proper message formatting
         userPrompt,
         toolCalls,
         toolResults,

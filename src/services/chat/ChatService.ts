@@ -221,6 +221,7 @@ export class ChatService {
       sessionId?: string;
       messageId?: string;
       abortSignal?: AbortSignal;
+      excludeFromMessageId?: string;
     }
   ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string; toolCalls?: any[] }, void, unknown> {
     // Store current provider and session for backward compatibility

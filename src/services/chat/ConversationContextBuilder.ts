@@ -55,8 +55,11 @@ export class ConversationContextBuilder {
   private static buildOpenAIContext(conversation: ConversationData, messages: any[]): any[] {
     conversation.messages.forEach((msg, index) => {
       if (msg.role === 'user') {
-        const userMsg = { role: 'user', content: msg.content };
-        messages.push(userMsg);
+        // Skip empty user messages (shouldn't happen, but safety check)
+        if (msg.content && msg.content.trim()) {
+          const userMsg = { role: 'user', content: msg.content };
+          messages.push(userMsg);
+        }
       }
       else if (msg.role === 'assistant') {
         if (msg.toolCalls && msg.toolCalls.length > 0) {
@@ -104,7 +107,10 @@ export class ConversationContextBuilder {
   private static buildAnthropicContext(conversation: ConversationData, messages: any[]): any[] {
     conversation.messages.forEach((msg, index) => {
       if (msg.role === 'user') {
-        messages.push({ role: 'user', content: msg.content });
+        // Skip empty user messages (shouldn't happen, but safety check)
+        if (msg.content && msg.content.trim()) {
+          messages.push({ role: 'user', content: msg.content });
+        }
       }
       else if (msg.role === 'assistant') {
         if (msg.toolCalls && msg.toolCalls.length > 0) {

@@ -204,7 +204,7 @@ export class ChatView extends ItemView {
       onConversationsChanged: () => this.handleConversationsChanged(),
       onError: (message) => this.uiStateController.showError(message)
     };
-    this.conversationManager = new ConversationManager(this.chatService, this.branchManager, conversationEvents);
+    this.conversationManager = new ConversationManager(this.app, this.chatService, this.branchManager, conversationEvents);
 
     // Message handling
     const messageEvents: MessageManagerEvents = {
@@ -413,10 +413,30 @@ export class ChatView extends ItemView {
     }
   }
 
-  private handleConversationsChanged(): void {
+  private async handleConversationsChanged(): Promise<void> {
     // Ensure component is initialized before updating
     if (this.conversationList) {
       this.conversationList.setConversations(this.conversationManager.getConversations());
+    }
+
+    const conversations = this.conversationManager.getConversations();
+    const currentConversation = this.conversationManager.getCurrentConversation();
+
+    // Handle the case where there are no conversations left
+    if (conversations.length === 0) {
+      // Show welcome state
+      this.uiStateController.showWelcomeState();
+      // Disable input
+      if (this.chatInput) {
+        this.chatInput.setConversationState(false);
+      }
+      // Wire up the welcome button
+      this.wireWelcomeButton();
+    }
+    // Handle the case where current conversation is null but conversations exist
+    else if (!currentConversation && conversations.length > 0) {
+      // Auto-select the first conversation
+      await this.conversationManager.selectConversation(conversations[0]);
     }
   }
 
@@ -426,6 +446,11 @@ export class ChatView extends ItemView {
   }
 
   private handleStreamingUpdate(messageId: string, content: string, isComplete: boolean, isIncremental?: boolean): void {
+    // Check if this is a retry operation (message has alternatives)
+    const currentConversation = this.conversationManager?.getCurrentConversation();
+    const message = currentConversation?.messages.find((m: any) => m.id === messageId);
+    const isRetry = message && message.alternatives && message.alternatives.length > 0;
+
     if (isIncremental) {
       // Streaming chunk - route to StreamingController
       this.streamingController.updateStreamingChunk(messageId, content);
@@ -433,6 +458,9 @@ export class ChatView extends ItemView {
       // Final content - finalize streaming and update MessageBubble
       this.streamingController.finalizeStreaming(messageId, content);
       this.messageDisplay.updateMessageContent(messageId, content);
+
+      // If retry, the MessageManager will handle conversation refresh
+      // to show branching UI - no need to do anything extra here
     } else {
       // Start of new stream - initialize streaming
       this.streamingController.startStreaming(messageId);

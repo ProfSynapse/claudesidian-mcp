@@ -31,6 +31,7 @@ export interface StreamingOptions {
   sessionId?: string;
   messageId?: string;
   abortSignal?: AbortSignal;
+  excludeFromMessageId?: string; // Exclude this message and everything after from context (for retry)
 }
 
 export interface StreamingChunk {
@@ -71,14 +72,19 @@ export class StreamingResponseService {
       // Get defaults from LLMService if user didn't select provider/model
       const defaultModel = this.dependencies.llmService.getDefaultModel();
 
-      // Create placeholder message immediately so async usage callback can update it
-      // This is saved early to ensure the message exists when async cost calculation completes
-      await this.dependencies.conversationService.addMessage({
-        conversationId,
-        role: 'assistant',
-        content: '', // Will be updated as streaming progresses
-        id: messageId
-      });
+      // Check if message already exists (retry case)
+      const existingConv = await this.dependencies.conversationService.getConversation(conversationId);
+      const messageExists = existingConv?.messages.some((m: any) => m.id === messageId);
+
+      // Only create placeholder if message doesn't exist (prevents duplicate during retry)
+      if (!messageExists) {
+        await this.dependencies.conversationService.addMessage({
+          conversationId,
+          role: 'assistant',
+          content: '', // Will be updated as streaming progresses
+          id: messageId
+        });
+      }
 
       // Get provider for context building
       const provider = options?.provider || defaultModel.provider;
@@ -87,20 +93,32 @@ export class StreamingResponseService {
       // ALWAYS load conversation from storage to get complete history including tool calls
       const conversation = await this.dependencies.conversationService.getConversation(conversationId);
 
+      // Filter conversation for retry: exclude message being retried and everything after
+      let filteredConversation = conversation;
+      if (conversation && options?.excludeFromMessageId) {
+        const excludeIndex = conversation.messages.findIndex((m: any) => m.id === options.excludeFromMessageId);
+        if (excludeIndex >= 0) {
+          filteredConversation = {
+            ...conversation,
+            messages: conversation.messages.slice(0, excludeIndex)
+          };
+        }
+      }
+
       // Build conversation context for LLM with provider-specific formatting
       // NOTE: buildLLMMessages includes ALL messages from storage, including the user message
       // that was just saved by sendMessage(), so we DON'T add it again here
-      const messages = conversation ?
-        this.buildLLMMessages(conversation, provider, options?.systemPrompt) : [];
+      const messages = filteredConversation ?
+        this.buildLLMMessages(filteredConversation, provider, options?.systemPrompt) : [];
 
       // Add system prompt if provided and not already added by buildLLMMessages
       if (options?.systemPrompt && !messages.some(m => m.role === 'system')) {
         messages.unshift({ role: 'system', content: options.systemPrompt });
       }
 
-      // Only add user message if it's NOT already in the conversation
-      // (happens on first message when conversation is empty)
-      if (!conversation || !conversation.messages.some((m: any) => m.content === userMessage && m.role === 'user')) {
+      // Only add user message if it's NOT already in the filtered conversation
+      // (happens on first message when conversation is empty, or during retry)
+      if (!filteredConversation || !filteredConversation.messages.some((m: any) => m.content === userMessage && m.role === 'user')) {
         messages.push({ role: 'user', content: userMessage });
       }
 

@@ -216,22 +216,34 @@ export class MessageManager {
       // Check if this was an abort (user clicked stop)
       if (error instanceof Error && error.name === 'AbortError') {
         if (aiMessageId) {
-          // Save the partial AI message to conversation history
           const aiMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
           if (aiMessageIndex >= 0) {
-            const partialContent = conversation.messages[aiMessageIndex].content;
+            const aiMessage = conversation.messages[aiMessageIndex];
+            const hasContent = aiMessage.content && aiMessage.content.trim();
 
-            // Mark as not loading anymore
-            conversation.messages[aiMessageIndex].isLoading = false;
+            if (hasContent) {
+              // Keep partial response - clean up incomplete tool calls
+              aiMessage.toolCalls = undefined; // Remove incomplete tool calls
+              aiMessage.isLoading = false;
 
-            // Save conversation with partial message
-            await this.chatService.updateConversation(conversation);
+              // Save conversation with cleaned partial message
+              await this.chatService.updateConversation(conversation);
 
-            // Finalize streaming with partial content (stops animation, renders final content)
-            this.events.onStreamingUpdate(aiMessageId, partialContent, true, false);
+              // Finalize streaming with partial content (stops animation, renders final content)
+              this.events.onStreamingUpdate(aiMessageId, aiMessage.content, true, false);
 
-            // Update UI to show final partial message
-            this.events.onConversationUpdated(conversation);
+              // Update UI to show final partial message
+              this.events.onConversationUpdated(conversation);
+            } else {
+              // No content generated - delete the empty message entirely
+              conversation.messages.splice(aiMessageIndex, 1);
+
+              // Save conversation without the empty message
+              await this.chatService.updateConversation(conversation);
+
+              // Update UI to remove the empty message bubble
+              this.events.onConversationUpdated(conversation);
+            }
           }
         }
       } else {
@@ -335,11 +347,15 @@ export class MessageManager {
     const userMessage = conversation.messages[aiMessageIndex - 1];
     if (!userMessage || userMessage.role !== 'user') return;
 
+    // Store the original content and tool calls before retry
+    const originalContent = aiMessage.content;
+    const originalToolCalls = aiMessage.toolCalls;
+
     try {
       this.setLoading(true);
 
-      // Reset the existing AI message to loading state by clearing its content
-      this.events.onStreamingUpdate(aiMessageId, '', false, false);
+      // Don't clear the UI bubble - keep showing original during retry
+      // The streaming will update it, but we'll restore the original after
 
       // Generate new AI response with streaming (conversation loaded from storage inside the method)
       let streamedContent = '';
@@ -353,7 +369,8 @@ export class MessageManager {
           model: options?.model,
           systemPrompt: options?.systemPrompt,
           workspaceId: options?.workspaceId, // ✅ Pass workspace ID for tool context
-          sessionId: options?.sessionId // ✅ Pass session ID for tool context
+          sessionId: options?.sessionId, // ✅ Pass session ID for tool context
+          excludeFromMessageId: aiMessageId // ✅ Exclude AI message being retried from context
         }
       )) {
         if (chunk.chunk) {
@@ -368,6 +385,16 @@ export class MessageManager {
           // Final streaming update
           this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false);
           break;
+        }
+      }
+
+      // Restore the original content to the message before creating alternative
+      const messageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+      if (messageIndex >= 0) {
+        // If original content exists, restore it (this was not the first response)
+        if (originalContent && originalContent.trim()) {
+          conversation.messages[messageIndex].content = originalContent;
+          conversation.messages[messageIndex].toolCalls = originalToolCalls;
         }
       }
 
@@ -387,6 +414,15 @@ export class MessageManager {
         aiMessageId,
         alternativeResponse
       );
+
+      // Reload conversation from storage to get fresh state with alternative
+      const freshConversation = await this.chatService.getConversation(conversation.id);
+      if (freshConversation) {
+        Object.assign(conversation, freshConversation);
+      }
+
+      // Notify UI to refresh and show the branching controls
+      this.events.onConversationUpdated(conversation);
 
     } catch (error) {
       this.events.onError('Failed to generate alternative response');

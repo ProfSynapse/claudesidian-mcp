@@ -2,9 +2,11 @@
  * ConversationManager - Handles all conversation CRUD operations
  */
 
+import { App } from 'obsidian';
 import { ChatService } from '../../../services/chat/ChatService';
 import { ConversationData } from '../../../types/chat/ChatTypes';
 import { BranchManager } from './BranchManager';
+import { ConversationTitleModal } from '../components/ConversationTitleModal';
 
 export interface ConversationManagerEvents {
   onConversationSelected: (conversation: ConversationData) => void;
@@ -17,6 +19,7 @@ export class ConversationManager {
   private conversations: ConversationData[] = [];
 
   constructor(
+    private app: App,
     private chatService: ChatService,
     private branchManager: BranchManager,
     private events: ConversationManagerEvents
@@ -178,95 +181,14 @@ export class ConversationManager {
   }
 
   /**
-   * Prompt user for conversation title
+   * Prompt user for conversation title using Obsidian's Modal
    */
   private async promptForConversationTitle(): Promise<string | null> {
     return new Promise((resolve) => {
-      // Create modal overlay
-      const overlay = document.createElement('div');
-      overlay.addClass('chat-modal-overlay');
-      
-      // Create modal dialog
-      const modal = overlay.createDiv('chat-modal');
-      
-      // Modal header
-      const header = modal.createDiv('chat-modal-header');
-      header.createEl('h3', { text: 'New Conversation' });
-      
-      // Close button
-      const closeBtn = header.createEl('button', { 
-        cls: 'chat-modal-close',
-        text: '×' 
+      const modal = new ConversationTitleModal(this.app, (title) => {
+        resolve(title);
       });
-      
-      // Modal content
-      const content = modal.createDiv('chat-modal-content');
-      content.createEl('p', { text: 'Enter a title for your new conversation:' });
-      
-      const input = content.createEl('input', {
-        type: 'text',
-        cls: 'chat-title-input',
-        attr: { placeholder: 'e.g., "Help with React project"' }
-      });
-      
-      // Modal actions
-      const actions = modal.createDiv('chat-modal-actions');
-      const cancelBtn = actions.createEl('button', { 
-        text: 'Cancel',
-        cls: 'chat-btn-secondary'
-      });
-      const createBtn = actions.createEl('button', { 
-        text: 'Create Chat',
-        cls: 'chat-btn-primary'
-      });
-      
-      // Event handlers
-      const cleanup = () => {
-        overlay.remove();
-      };
-      
-      const handleSubmit = () => {
-        const title = input.value.trim();
-        if (title) {
-          cleanup();
-          resolve(title);
-        } else {
-          input.focus();
-          input.addClass('chat-input-error');
-          setTimeout(() => input.removeClass('chat-input-error'), 2000);
-        }
-      };
-      
-      const handleCancel = () => {
-        cleanup();
-        resolve(null);
-      };
-      
-      // Wire up events
-      closeBtn.addEventListener('click', handleCancel);
-      cancelBtn.addEventListener('click', handleCancel);
-      createBtn.addEventListener('click', handleSubmit);
-      
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          handleSubmit();
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          handleCancel();
-        }
-      });
-      
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
-          handleCancel();
-        }
-      });
-      
-      // Add to page and focus
-      document.body.appendChild(overlay);
-      input.focus();
-      input.select();
+      modal.open();
     });
   }
 
