@@ -39,7 +39,10 @@ export class ModelAgentManager {
     this.currentConversationId = conversationId || null;
     // Initialize services
     this.contextNotesManager = new ContextNotesManager();
-    this.systemPromptBuilder = new SystemPromptBuilder(this.readNoteContent.bind(this));
+    this.systemPromptBuilder = new SystemPromptBuilder(
+      this.readNoteContent.bind(this),
+      this.loadWorkspace.bind(this)
+    );
     // AgentDiscoveryService will be initialized lazily when needed
     // Don't auto-initialize - will be called from ChatView after conversation loads
   }
@@ -491,6 +494,62 @@ export class ModelAgentManager {
       return '[File not found]';
     } catch (error) {
       return '[Error reading file]';
+    }
+  }
+
+  /**
+   * Load workspace by ID with full context (like loadWorkspace tool)
+   * Used by SystemPromptBuilder for workspace context injection
+   * This executes the LoadWorkspaceMode to get comprehensive data including file structure
+   */
+  private async loadWorkspace(workspaceId: string): Promise<any> {
+    try {
+      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+
+      // Try to get the memoryManager agent and execute LoadWorkspaceMode
+      const memoryManager = plugin?.agentManager?.getAgent('memoryManager');
+
+      if (memoryManager) {
+        // Execute LoadWorkspaceMode to get comprehensive workspace data
+        const result = await memoryManager.executeMode('loadWorkspace', {
+          id: workspaceId,
+          limit: 3 // Get recent sessions, states, and activity
+        });
+
+        if (result.success && result.data) {
+          // Return the comprehensive workspace data from the tool
+          return {
+            id: workspaceId,
+            ...result.data,
+            // Keep the workspace context from the result
+            workspaceContext: result.workspaceContext
+          };
+        }
+      }
+
+      // Fallback: just load basic workspace data if LoadWorkspaceMode fails
+      const workspaceService = await plugin?.getService('workspaceService');
+      if (workspaceService) {
+        const workspace = await workspaceService.getWorkspace(workspaceId);
+        return workspace;
+      }
+
+      return null;
+    } catch (error) {
+      console.error(`Error loading workspace ${workspaceId}:`, error);
+
+      // Fallback: try basic workspace loading
+      try {
+        const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+        const workspaceService = await plugin?.getService('workspaceService');
+        if (workspaceService) {
+          return await workspaceService.getWorkspace(workspaceId);
+        }
+      } catch (fallbackError) {
+        console.error(`Fallback workspace loading also failed:`, fallbackError);
+      }
+
+      return null;
     }
   }
 

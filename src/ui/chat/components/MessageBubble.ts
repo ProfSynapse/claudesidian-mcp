@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MessageBubble - Individual message bubble component
  * 
  * Renders user/AI messages with copy, retry, and edit actions
@@ -10,6 +10,7 @@ import { MessageBranchNavigator, MessageBranchNavigatorEvents } from './MessageB
 import { MarkdownRenderer } from '../utils/MarkdownRenderer';
 import { setIcon, Component, App } from 'obsidian';
 import { ExtractedReference, ReferenceMetadata } from '../utils/ReferenceExtractor';
+import { formatToolDisplayName, normalizeToolName } from '../../../utils/toolNameUtils';
 
 interface ReferencePlaceholder {
   token: string;
@@ -208,10 +209,19 @@ export class MessageBubble extends Component {
         const accordionEl = accordion.createElement();
 
         // Initialize accordion with completed state from JSON
+        const rawName = toolCall.technicalName || toolCall.name || toolCall.function?.name || 'Unknown Tool';
+        const displayName = toolCall.displayName || formatToolDisplayName(rawName);
+        const technicalName = toolCall.technicalName || normalizeToolName(rawName) || rawName;
+        const fallbackArguments = this.getToolCallArguments(toolCall);
+        const parameters = this.parseParameterValue(
+          toolCall.parameters !== undefined ? toolCall.parameters : fallbackArguments
+        );
+
         accordion.detectTool({
           id: toolCall.id,
-          name: toolCall.name || toolCall.function?.name || 'Unknown Tool',
-          parameters: toolCall.parameters,
+          name: displayName,
+          technicalName: technicalName,
+          parameters,
           isComplete: true
         });
 
@@ -776,7 +786,8 @@ export class MessageBubble extends Component {
    * Creates individual accordions per tool during streaming
    */
   handleToolEvent(event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
-    const toolId = data.id || data.toolId || data.toolCall?.id;
+    const info = this.getToolEventInfo(data);
+    const toolId = info.toolId;
     if (!toolId) {
       console.warn('[MessageBubble] Tool event missing ID:', data);
       return;
@@ -815,23 +826,25 @@ export class MessageBubble extends Component {
         // Tool call detected - may have incomplete parameters
         accordion.detectTool({
           id: toolId,
-          name: data.name,
-          parameters: data.parameters,
-          isComplete: data.isComplete
+          name: info.displayName,
+          technicalName: info.technicalName,
+          parameters: info.parameters,
+          isComplete: info.isComplete
         });
         break;
 
       case 'updated':
         // Parameters updated (now complete)
-        accordion.updateToolParameters(toolId, data.parameters, data.isComplete);
+        accordion.updateToolParameters(toolId, info.parameters, info.isComplete);
         break;
 
       case 'started':
         // Tool execution started
         accordion.startTool({
           id: toolId,
-          name: data.name,
-          parameters: data.parameters
+          name: info.displayName,
+          technicalName: info.technicalName,
+          parameters: info.parameters
         });
         break;
 
@@ -845,6 +858,101 @@ export class MessageBubble extends Component {
         );
         break;
     }
+  }
+
+  private getToolEventInfo(data: any): {
+    toolId: string | null;
+    displayName: string;
+    technicalName?: string;
+    parameters?: any;
+    isComplete: boolean;
+  } {
+    const toolCall = data?.toolCall;
+    const toolId = data?.id ?? data?.toolId ?? toolCall?.id ?? null;
+    const rawName =
+      data?.rawName ??
+      data?.technicalName ??
+      data?.name ??
+      toolCall?.function?.name ??
+      toolCall?.name;
+
+    const displayName =
+      typeof data?.displayName === 'string' && data.displayName.trim().length > 0
+        ? data.displayName
+        : formatToolDisplayName(rawName);
+
+    const technicalNameCandidate =
+      typeof data?.technicalName === 'string' && data.technicalName.trim().length > 0
+        ? data.technicalName
+        : rawName;
+
+    const technicalName = technicalNameCandidate
+      ? normalizeToolName(technicalNameCandidate) ?? technicalNameCandidate
+      : undefined;
+
+    const parameters = this.extractToolParametersFromEvent(data);
+    const isComplete =
+      data?.isComplete !== undefined
+        ? Boolean(data.isComplete)
+        : Boolean(toolCall?.parametersComplete);
+
+    return {
+      toolId,
+      displayName,
+      technicalName,
+      parameters,
+      isComplete
+    };
+  }
+
+  private extractToolParametersFromEvent(data: any): any {
+    if (!data) {
+      return undefined;
+    }
+
+    if (data.parameters !== undefined) {
+      return this.parseParameterValue(data.parameters);
+    }
+
+    const toolCall = data.toolCall;
+    if (!toolCall) {
+      return undefined;
+    }
+
+    if (toolCall.parameters !== undefined) {
+      return this.parseParameterValue(toolCall.parameters);
+    }
+
+    const rawArguments = this.getToolCallArguments(toolCall);
+    return this.parseParameterValue(rawArguments);
+  }
+
+  private parseParameterValue(value: any): any {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    }
+
+    return value;
+  }
+
+  private getToolCallArguments(toolCall: any): any {
+    if (!toolCall) {
+      return undefined;
+    }
+
+    if (toolCall.function && typeof toolCall.function === 'object' && 'arguments' in toolCall.function) {
+      return toolCall.function.arguments;
+    }
+
+    return (toolCall as any)?.arguments;
   }
 
   /**

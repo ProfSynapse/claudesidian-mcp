@@ -11,6 +11,7 @@ import {
   ToolHint
 } from './base/SuggesterInterfaces';
 import { MessageEnhancer } from '../../services/MessageEnhancer';
+import { formatToolDisplayName } from '../../../../utils/toolNameUtils';
 
 export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggestionItem> {
   private messageEnhancer: MessageEnhancer;
@@ -29,27 +30,6 @@ export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggesti
     });
 
     this.messageEnhancer = messageEnhancer;
-  }
-
-  /**
-   * Convert technical tool name to human-friendly display name
-   * "vaultManager.readFile" → "Read File"
-   */
-  private getDisplayName(technicalName: string): string {
-    // Split by dot: "vaultManager.readFile" → ["vaultManager", "readFile"]
-    const parts = technicalName.split('.');
-    if (parts.length < 2) return technicalName;
-
-    const action = parts[1];
-
-    // Convert camelCase to Title Case with spaces
-    // "readFile" → "Read File"
-    const displayName = action
-      .replace(/([A-Z])/g, ' $1') // Insert space before capitals
-      .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
-      .trim();
-
-    return displayName;
   }
 
   /**
@@ -83,7 +63,7 @@ export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggesti
 
           this.cachedTools.push({
             name: toolName, // Technical name: "vaultManager.readFile"
-            displayName: this.getDisplayName(toolName), // "Read File"
+            displayName: formatToolDisplayName(toolName), // "Read File"
             description: mode.description || `Execute ${mode.slug} on ${agent.name}`,
             category: agent.name,
             schema: {

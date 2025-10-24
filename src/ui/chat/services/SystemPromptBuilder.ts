@@ -25,7 +25,8 @@ export interface SystemPromptOptions {
 
 export class SystemPromptBuilder {
   constructor(
-    private readNoteContent: (notePath: string) => Promise<string>
+    private readNoteContent: (notePath: string) => Promise<string>,
+    private loadWorkspace?: (workspaceId: string) => Promise<any>
   ) {}
 
   /**
@@ -61,13 +62,19 @@ export class SystemPromptBuilder {
       sections.push(customAgentsSection);
     }
 
-    // 5. Agent prompt (if agent selected)
+    // 5. Workspace references from #suggester
+    const workspaceReferencesSection = await this.buildWorkspaceReferencesSection(options.messageEnhancement);
+    if (workspaceReferencesSection) {
+      sections.push(workspaceReferencesSection);
+    }
+
+    // 6. Agent prompt (if agent selected)
     const agentSection = this.buildAgentSection(options.agentPrompt);
     if (agentSection) {
       sections.push(agentSection);
     }
 
-    // 6. Workspace context
+    // 7. Workspace context (legacy single workspace support)
     const workspaceSection = this.buildWorkspaceSection(options.workspaceContext);
     if (workspaceSection) {
       sections.push(workspaceSection);
@@ -196,6 +203,85 @@ export class SystemPromptBuilder {
 
     prompt += '</custom_agents>';
 
+    return prompt;
+  }
+
+  /**
+   * Build workspace references section from #suggester
+   * This provides comprehensive workspace data similar to the loadWorkspace tool
+   */
+  private async buildWorkspaceReferencesSection(messageEnhancement?: MessageEnhancement | null): Promise<string | null> {
+    if (!messageEnhancement || messageEnhancement.workspaces.length === 0) {
+      return null;
+    }
+
+    if (!this.loadWorkspace) {
+      // If workspace loader not provided, just include basic info
+      let prompt = '<workspaces>\n';
+      prompt += 'The user has referenced the following workspaces:\n\n';
+
+      for (const workspace of messageEnhancement.workspaces) {
+        prompt += `Workspace: ${workspace.name}\n`;
+        if (workspace.description) {
+          prompt += `Description: ${workspace.description}\n`;
+        }
+        prompt += `Root Folder: ${workspace.rootFolder}\n\n`;
+      }
+
+      prompt += '</workspaces>';
+      return prompt;
+    }
+
+    // Load full workspace data for each reference
+    let prompt = '<workspaces>\n';
+    prompt += 'The user has referenced the following workspaces. Use their context for your responses:\n\n';
+
+    for (const workspaceRef of messageEnhancement.workspaces) {
+      try {
+        const workspaceData = await this.loadWorkspace(workspaceRef.id);
+        if (workspaceData) {
+          // Check if this is comprehensive data from LoadWorkspaceMode or basic workspace object
+          const isComprehensive = workspaceData.context && typeof workspaceData.context === 'object' && 'name' in workspaceData.context;
+
+          if (isComprehensive) {
+            // Comprehensive workspace data from LoadWorkspaceMode
+            const workspaceName = workspaceData.context?.name || workspaceRef.name;
+            prompt += `<workspace name="${this.escapeXmlAttribute(workspaceName)}" id="${this.escapeXmlAttribute(workspaceRef.id)}">\n`;
+
+            // Format the comprehensive workspace data
+            prompt += this.escapeXmlContent(JSON.stringify({
+              context: workspaceData.context,
+              workflows: workspaceData.workflows || [],
+              workspaceStructure: workspaceData.workspaceStructure || [],
+              recentFiles: workspaceData.recentFiles || [],
+              keyFiles: workspaceData.keyFiles || {},
+              preferences: workspaceData.preferences || '',
+              sessions: workspaceData.sessions || [],
+              states: workspaceData.states || []
+            }, null, 2));
+
+            prompt += `\n</workspace>\n\n`;
+          } else {
+            // Basic workspace object (fallback)
+            prompt += `<workspace name="${this.escapeXmlAttribute(workspaceData.name || workspaceRef.name)}" id="${this.escapeXmlAttribute(workspaceRef.id)}">\n`;
+
+            prompt += this.escapeXmlContent(JSON.stringify({
+              name: workspaceData.name,
+              description: workspaceData.description,
+              rootFolder: workspaceData.rootFolder,
+              context: workspaceData.context
+            }, null, 2));
+
+            prompt += `\n</workspace>\n\n`;
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to load workspace ${workspaceRef.id}:`, error);
+        // Continue with other workspaces
+      }
+    }
+
+    prompt += '</workspaces>';
     return prompt;
   }
 

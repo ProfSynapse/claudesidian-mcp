@@ -175,6 +175,40 @@ export interface NoteReference {
 }
 
 // ============================================================================
+// Workspace Suggester Types
+// ============================================================================
+
+/**
+ * Workspace suggestion data
+ */
+export interface WorkspaceSuggestionItem {
+  /** Workspace ID */
+  id: string;
+  /** Workspace name */
+  name: string;
+  /** Workspace description */
+  description?: string;
+  /** Root folder */
+  rootFolder: string;
+  /** Last accessed timestamp */
+  lastAccessed: number;
+}
+
+/**
+ * Workspace reference for injection
+ */
+export interface WorkspaceReference {
+  /** Workspace ID */
+  id: string;
+  /** Workspace name */
+  name: string;
+  /** Workspace description */
+  description?: string;
+  /** Root folder */
+  rootFolder: string;
+}
+
+// ============================================================================
 // Message Enhancement Types
 // ============================================================================
 
@@ -184,7 +218,8 @@ export interface NoteReference {
 export enum EnhancementType {
   TOOL = 'tool',
   AGENT = 'agent',
-  NOTE = 'note'
+  NOTE = 'note',
+  WORKSPACE = 'workspace'
 }
 
 /**
@@ -201,6 +236,8 @@ export interface MessageEnhancement {
   agents: AgentReference[];
   /** Note references */
   notes: NoteReference[];
+  /** Workspace references */
+  workspaces: WorkspaceReference[];
   /** Total estimated tokens */
   totalTokens: number;
 }
@@ -210,7 +247,7 @@ export interface MessageEnhancement {
  */
 export interface EnhancementData {
   type: EnhancementType;
-  data: ToolHint | AgentReference | NoteReference;
+  data: ToolHint | AgentReference | NoteReference | WorkspaceReference;
 }
 
 // ============================================================================
@@ -223,7 +260,8 @@ export interface EnhancementData {
 export enum SuggesterType {
   TOOL = 'tool',
   AGENT = 'agent',
-  NOTE = 'note'
+  NOTE = 'note',
+  WORKSPACE = 'workspace'
 }
 
 /**

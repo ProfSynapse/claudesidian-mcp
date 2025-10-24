@@ -13,6 +13,7 @@
  */
 
 import { ToolCall } from '../../types/chat/ChatTypes';
+import { getToolNameMetadata } from '../../utils/toolNameUtils';
 
 export interface ToolEventCallback {
   (messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any): void;
@@ -103,11 +104,19 @@ export class ToolCallService {
       // Determine if this is the first time we've seen this tool call
       const isFirstDetection = !this.detectedToolIds.has(toolId);
 
+      const nameMetadata = getToolNameMetadata(
+        tc.function?.name || tc.name
+      );
+
       // Build tool data for event
       const toolData = {
         conversationId,
         toolCall: tc,
-        isComplete: isComplete
+        isComplete: isComplete,
+        displayName: nameMetadata.displayName,
+        technicalName: nameMetadata.technicalName,
+        agentName: nameMetadata.agentName,
+        actionName: nameMetadata.actionName
       };
 
       if (isFirstDetection) {
@@ -140,13 +149,21 @@ export class ToolCallService {
     const executedCalls: ToolCall[] = [];
 
     for (const toolCall of toolCalls) {
+      const nameMetadata = getToolNameMetadata(
+        toolCall.function?.name || toolCall.name
+      );
       try {
+
         // Fire 'started' event
         if (this.toolEventCallback) {
           this.fireToolEvent('', 'started', {
             toolCall,
             sessionId: context?.sessionId,
-            workspaceId: context?.workspaceId
+            workspaceId: context?.workspaceId,
+            displayName: nameMetadata.displayName,
+            technicalName: nameMetadata.technicalName,
+            agentName: nameMetadata.agentName,
+            actionName: nameMetadata.actionName
           });
         }
 
@@ -167,7 +184,9 @@ export class ToolCallService {
         const executed: ToolCall = {
           id: toolCall.id,
           type: 'function',
-          name: toolCall.function?.name || toolCall.name,
+          name: nameMetadata.displayName || toolCall.function?.name || toolCall.name,
+          displayName: nameMetadata.displayName,
+          technicalName: nameMetadata.technicalName,
           function: {
             name: toolCall.function?.name || toolCall.name,
             arguments: JSON.stringify(enrichedArgs)
@@ -183,7 +202,11 @@ export class ToolCallService {
         if (this.toolEventCallback) {
           this.fireToolEvent('', 'completed', {
             toolCall: executed,
-            result
+            result,
+            displayName: nameMetadata.displayName,
+            technicalName: nameMetadata.technicalName,
+            agentName: nameMetadata.agentName,
+            actionName: nameMetadata.actionName
           });
         }
 
@@ -193,7 +216,9 @@ export class ToolCallService {
         const failed: ToolCall = {
           id: toolCall.id,
           type: 'function',
-          name: toolCall.function?.name || toolCall.name,
+          name: nameMetadata.displayName || toolCall.function?.name || toolCall.name,
+          displayName: nameMetadata.displayName,
+          technicalName: nameMetadata.technicalName,
           function: {
             name: toolCall.function?.name || toolCall.name,
             arguments: toolCall.function?.arguments || JSON.stringify({})
@@ -206,6 +231,19 @@ export class ToolCallService {
         };
 
         executedCalls.push(failed);
+
+        if (this.toolEventCallback) {
+          this.fireToolEvent('', 'completed', {
+            toolCall: failed,
+            result: failed.error,
+            displayName: nameMetadata.displayName,
+            technicalName: nameMetadata.technicalName,
+            agentName: nameMetadata.agentName,
+            actionName: nameMetadata.actionName,
+            success: false,
+            error: failed.error
+          });
+        }
       }
     }
 

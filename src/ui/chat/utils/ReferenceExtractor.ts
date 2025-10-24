@@ -7,7 +7,8 @@
 import {
   ToolHint,
   AgentReference,
-  NoteReference
+  NoteReference,
+  WorkspaceReference
 } from '../components/suggesters/base/SuggesterInterfaces';
 
 export interface ExtractedContent {
@@ -19,12 +20,14 @@ export interface ExtractedContent {
   agents: AgentReference[];
   /** Note references found */
   notes: NoteReference[];
+  /** Workspace references found */
+  workspaces: WorkspaceReference[];
   /** Reference metadata for badge reconstruction */
   references: ExtractedReference[];
 }
 
 export interface ExtractedReference {
-  type: 'tool' | 'agent' | 'note';
+  type: 'tool' | 'agent' | 'note' | 'workspace';
   displayText: string;
   technicalName: string;
   position: number;
@@ -42,6 +45,7 @@ export class ReferenceExtractor {
     const tools: ToolHint[] = [];
     const agents: AgentReference[] = [];
     const notes: NoteReference[] = [];
+    const workspaces: WorkspaceReference[] = [];
     const textParts: string[] = [];
     const references: ExtractedReference[] = [];
     let currentOffset = 0;
@@ -62,7 +66,7 @@ export class ReferenceExtractor {
           const name = element.getAttribute('data-name');
           const displayText = element.textContent || '';
 
-          if (type && name && (type === 'tool' || type === 'agent' || type === 'note')) {
+          if (type && name && (type === 'tool' || type === 'agent' || type === 'note' || type === 'workspace')) {
             references.push({
               type,
               displayText,
@@ -106,6 +110,7 @@ export class ReferenceExtractor {
       tools,
       agents,
       notes,
+      workspaces,
       references: normalizedReferences
     };
   }
@@ -130,7 +135,7 @@ export class ReferenceExtractor {
    */
   static extractReferencesByType(
     element: HTMLElement,
-    type: 'tool' | 'agent' | 'note'
+    type: 'tool' | 'agent' | 'note' | 'workspace'
   ): Array<{ displayText: string; technicalName: string }> {
     const references: Array<{ displayText: string; technicalName: string }> = [];
 
@@ -167,17 +172,20 @@ export class ReferenceExtractor {
     tools: number;
     agents: number;
     notes: number;
+    workspaces: number;
     total: number;
   } {
     const tools = this.extractReferencesByType(element, 'tool').length;
     const agents = this.extractReferencesByType(element, 'agent').length;
     const notes = this.extractReferencesByType(element, 'note').length;
+    const workspaces = this.extractReferencesByType(element, 'workspace').length;
 
     return {
       tools,
       agents,
       notes,
-      total: tools + agents + notes
+      workspaces,
+      total: tools + agents + notes + workspaces
     };
   }
 

@@ -21,6 +21,8 @@ export interface ToolCall {
   id: string;
   type: string;
   name?: string;
+  displayName?: string;
+  technicalName?: string;
   function: {
     name: string;
     arguments: string;

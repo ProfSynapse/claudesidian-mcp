@@ -8,6 +8,7 @@ import {
   ToolHint,
   AgentReference,
   NoteReference,
+  WorkspaceReference,
   EnhancementType,
   EnhancementData
 } from '../components/suggesters/base/SuggesterInterfaces';
@@ -21,6 +22,7 @@ export class MessageEnhancer {
   private tools: ToolHint[] = [];
   private agents: AgentReference[] = [];
   private notes: NoteReference[] = [];
+  private workspaces: WorkspaceReference[] = [];
 
   constructor() {
     // No initialization needed - TokenCalculator is static
@@ -64,6 +66,17 @@ export class MessageEnhancer {
   }
 
   /**
+   * Add a workspace reference from workspace suggester
+   * @param workspace - Workspace reference data
+   */
+  addWorkspace(workspace: WorkspaceReference): void {
+    // Avoid duplicates by ID
+    if (!this.workspaces.find(w => w.id === workspace.id)) {
+      this.workspaces.push(workspace);
+    }
+  }
+
+  /**
    * Add enhancement data based on type
    * @param enhancement - Enhancement data with type discriminator
    */
@@ -77,6 +90,9 @@ export class MessageEnhancer {
         break;
       case EnhancementType.NOTE:
         this.addNote(enhancement.data as NoteReference);
+        break;
+      case EnhancementType.WORKSPACE:
+        this.addWorkspace(enhancement.data as WorkspaceReference);
         break;
     }
   }
@@ -100,6 +116,7 @@ export class MessageEnhancer {
       tools: [...this.tools],
       agents: [...this.agents],
       notes: [...this.notes],
+      workspaces: [...this.workspaces],
       totalTokens
     };
   }
@@ -162,6 +179,14 @@ export class MessageEnhancer {
   }
 
   /**
+   * Get all current workspace references
+   * @returns Array of workspace references
+   */
+  getWorkspaces(): WorkspaceReference[] {
+    return [...this.workspaces];
+  }
+
+  /**
    * Get current total token count
    * @returns Estimated token count
    */
@@ -174,7 +199,7 @@ export class MessageEnhancer {
    * @returns True if enhancements exist
    */
   hasEnhancements(): boolean {
-    return this.tools.length > 0 || this.agents.length > 0 || this.notes.length > 0;
+    return this.tools.length > 0 || this.agents.length > 0 || this.notes.length > 0 || this.workspaces.length > 0;
   }
 
   // ==========================================================================
@@ -188,6 +213,7 @@ export class MessageEnhancer {
     this.tools = [];
     this.agents = [];
     this.notes = [];
+    this.workspaces = [];
   }
 
   /**
@@ -212,5 +238,13 @@ export class MessageEnhancer {
    */
   removeNote(notePath: string): void {
     this.notes = this.notes.filter(n => n.path !== notePath);
+  }
+
+  /**
+   * Remove a specific workspace reference
+   * @param workspaceId - ID of workspace to remove
+   */
+  removeWorkspace(workspaceId: string): void {
+    this.workspaces = this.workspaces.filter(w => w.id !== workspaceId);
   }
 }

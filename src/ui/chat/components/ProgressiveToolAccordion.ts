@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ProgressiveToolAccordion - Real-time tool execution display
  *
  * Shows tool execution progress in real-time with visual feedback:
@@ -12,6 +12,7 @@ import { setIcon } from 'obsidian';
 export interface ProgressiveToolCall {
   id: string;
   name: string;
+  technicalName?: string;
   parameters?: any;
   status: 'pending' | 'streaming' | 'executing' | 'completed' | 'failed';
   result?: any;
@@ -64,18 +65,22 @@ export class ProgressiveToolAccordion {
   /**
    * Detect a tool (parameters streaming) - shows it immediately with streaming state
    */
-  detectTool(toolCall: { id: string; name: string; parameters?: any; isComplete?: boolean }): void {
+  detectTool(toolCall: { id: string; name: string; technicalName?: string; parameters?: any; isComplete?: boolean }): void {
     // Check if tool already exists
     const existingTool = this.tools.find(t => t.id === toolCall.id);
     if (existingTool) {
-      // Tool already detected, just update parameters
+      // Tool already detected, just update metadata and parameters
+      existingTool.name = toolCall.name;
+      existingTool.technicalName = toolCall.technicalName;
       this.updateToolParameters(toolCall.id, toolCall.parameters, toolCall.isComplete || false);
+      this.updateToolItem(existingTool);
       return;
     }
 
     const progressiveTool: ProgressiveToolCall = {
       id: toolCall.id,
       name: toolCall.name,
+      technicalName: toolCall.technicalName,
       parameters: toolCall.parameters,
       status: toolCall.isComplete ? 'pending' : 'streaming',
       parametersComplete: toolCall.isComplete || false,
@@ -108,12 +113,14 @@ export class ProgressiveToolAccordion {
   /**
    * Start executing a tool - shows it immediately with glow effect
    */
-  startTool(toolCall: { id: string; name: string; parameters?: any }): void {
+  startTool(toolCall: { id: string; name: string; technicalName?: string; parameters?: any }): void {
     const tool = this.tools.find(t => t.id === toolCall.id);
     if (tool) {
       // Tool already exists from detection, just update status
       tool.status = 'executing';
       tool.startTime = Date.now();
+      tool.name = toolCall.name;
+      tool.technicalName = toolCall.technicalName;
       this.updateDisplay();
       this.updateToolItem(tool);
     } else {
@@ -121,6 +128,7 @@ export class ProgressiveToolAccordion {
       const progressiveTool: ProgressiveToolCall = {
         id: toolCall.id,
         name: toolCall.name,
+        technicalName: toolCall.technicalName,
         parameters: toolCall.parameters,
         status: 'executing',
         parametersComplete: true,
@@ -236,15 +244,18 @@ export class ProgressiveToolAccordion {
     item.setAttribute('data-tool-id', tool.id);
 
     // Tool header
-    const header = item.createDiv('progressive-tool-header-item');
+      const header = item.createDiv('progressive-tool-header-item');
 
-    // Tool name (no status icon - it's in the accordion header now)
-    const name = header.createSpan('tool-name');
-    name.textContent = tool.name;
-    
-    // Execution info
-    const meta = header.createSpan('tool-meta');
-    this.updateExecutionMeta(meta, tool);
+      // Tool name (no status icon - it's in the accordion header now)
+      const name = header.createSpan('tool-name');
+      name.textContent = tool.name;
+      if (tool.technicalName) {
+        name.setAttribute('title', tool.technicalName);
+      }
+      
+      // Execution info
+      const meta = header.createSpan('tool-meta');
+      this.updateExecutionMeta(meta, tool);
 
     // Parameters section (collapsible)
     if (tool.parameters && Object.keys(tool.parameters).length > 0) {

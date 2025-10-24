@@ -21,6 +21,7 @@ import { ConversationManager, ConversationManagerEvents } from './services/Conve
 import { MessageManager, MessageManagerEvents } from './services/MessageManager';
 import { ModelAgentManager, ModelAgentManagerEvents } from './services/ModelAgentManager';
 import { BranchManager, BranchManagerEvents } from './services/BranchManager';
+import { getToolNameMetadata } from '../../utils/toolNameUtils';
 
 // Controllers
 import { UIStateController, UIStateControllerEvents } from './controllers/UIStateController';
@@ -597,11 +598,33 @@ export class ChatView extends ItemView {
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     if (messageBubble && toolCalls && toolCalls.length > 0) {
       for (const toolCall of toolCalls) {
+        const metadata = getToolNameMetadata(
+          toolCall.function?.name || toolCall.name
+        );
+
+        let parameters = toolCall.parameters || toolCall.arguments;
+        if (!parameters && toolCall.function?.arguments) {
+          parameters = toolCall.function.arguments;
+        }
+        if (typeof parameters === 'string') {
+          try {
+            parameters = JSON.parse(parameters);
+          } catch {
+            // leave as string if parsing fails
+          }
+        }
+
         // Extract the tool call data in the format expected by MessageBubble
         const toolData = {
           id: toolCall.id,
-          name: toolCall.name || toolCall.function?.name,
-          parameters: toolCall.parameters || toolCall.arguments
+          name: metadata.displayName,
+          displayName: metadata.displayName,
+          technicalName: metadata.technicalName,
+          agentName: metadata.agentName,
+          actionName: metadata.actionName,
+          rawName: toolCall.function?.name || toolCall.name,
+          parameters: parameters,
+          isComplete: toolCall.isComplete
         };
         messageBubble.handleToolEvent('detected', toolData);
       }
@@ -625,7 +648,72 @@ export class ChatView extends ItemView {
 
   private handleToolEvent(messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
-    messageBubble?.handleToolEvent(event, data);
+    if (!messageBubble) {
+      return;
+    }
+
+    const enriched = this.enrichToolEventData(data);
+    messageBubble.handleToolEvent(event, enriched);
+  }
+  
+  private enrichToolEventData(data: any): any {
+    if (!data) {
+      return data;
+    }
+
+    const toolCall = data.toolCall;
+    const rawName =
+      data.rawName ||
+      data.technicalName ||
+      data.name ||
+      toolCall?.function?.name ||
+      toolCall?.name;
+
+    const metadata = getToolNameMetadata(rawName);
+    const parameters =
+      data.parameters !== undefined
+        ? data.parameters
+        : this.extractToolParameters(toolCall);
+
+    return {
+      ...data,
+      name: metadata.displayName,
+      displayName: metadata.displayName,
+      technicalName: metadata.technicalName,
+      agentName: metadata.agentName,
+      actionName: metadata.actionName,
+      rawName,
+      parameters
+    };
+  }
+
+  private extractToolParameters(toolCall: any): any {
+    if (!toolCall) {
+      return undefined;
+    }
+
+    if (toolCall.parameters !== undefined) {
+      return toolCall.parameters;
+    }
+
+    const raw =
+      toolCall.function?.arguments !== undefined
+        ? toolCall.function.arguments
+        : toolCall.arguments;
+
+    if (raw === undefined) {
+      return undefined;
+    }
+
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return raw;
+      }
+    }
+
+    return raw;
   }
 
   // Element reference management (simple store/retrieve)

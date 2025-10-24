@@ -199,11 +199,11 @@ export class MessageDisplay {
     const bubble = new MessageBubble(
       message,
       this.app,
-      (messageId) => this.onCopyMessage(messageId),
-      (messageId) => this.handleRetryMessage(messageId),
-      (messageId, newContent) => this.handleEditMessage(messageId, newContent),
+      (messageId: string) => this.onCopyMessage(messageId),
+      (messageId: string) => this.handleRetryMessage(messageId),
+      (messageId: string, newContent: string) => this.handleEditMessage(messageId, newContent),
       this.onToolEvent,
-      this.onMessageAlternativeChanged ? (messageId, alternativeIndex) => this.handleMessageAlternativeChanged(messageId, alternativeIndex) : undefined
+      this.onMessageAlternativeChanged ? (messageId: string, alternativeIndex: number) => this.handleMessageAlternativeChanged(messageId, alternativeIndex) : undefined
     );
 
     this.messageBubbles.push(bubble);
