@@ -127,6 +127,7 @@ export class MessageManager {
 
         let streamedContent = '';
         let toolCalls: any[] | undefined = undefined;
+        let hasStartedStreaming = false;
 
         // Stream the AI response (conversation will be loaded from storage inside the method)
         for await (const chunk of this.chatService.generateResponseStreaming(
@@ -146,9 +147,18 @@ export class MessageManager {
           // For token chunks, add to accumulated content AND emit incremental update
           if (chunk.chunk) {
             // Real-time chunk received - send to UI immediately
-            
+
+            // Update state to streaming on first chunk
+            if (!hasStartedStreaming) {
+              hasStartedStreaming = true;
+              const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+              if (placeholderMessageIndex >= 0) {
+                conversation.messages[placeholderMessageIndex].state = 'streaming';
+              }
+            }
+
             streamedContent += chunk.chunk;
-            
+
             // Send only the new chunk to UI for incremental updates
             this.events.onStreamingUpdate(aiMessageId, chunk.chunk, false, true); // isComplete = false, isIncremental = true
           }
@@ -179,6 +189,7 @@ export class MessageManager {
                 conversation.messages[placeholderMessageIndex] = {
                   ...conversation.messages[placeholderMessageIndex],
                   content: streamedContent,
+                  state: 'complete', // Mark as complete
                   toolCalls: toolCalls  // Include tool calls with execution results
                 };
               }
@@ -227,6 +238,7 @@ export class MessageManager {
               // Keep partial response - clean up incomplete tool calls
               aiMessage.toolCalls = undefined; // Remove incomplete tool calls
               aiMessage.isLoading = false;
+              aiMessage.state = 'aborted'; // Mark as aborted (will be included in context)
 
               // Save conversation with cleaned partial message
               await this.chatService.updateConversation(conversation);
@@ -237,7 +249,11 @@ export class MessageManager {
               // Update UI to show final partial message
               this.events.onConversationUpdated(conversation);
             } else {
-              // No content generated - delete the empty message entirely
+              // No content generated - mark as invalid and delete
+              aiMessage.state = 'invalid'; // Mark as invalid (will be filtered from context)
+              aiMessage.isLoading = false;
+
+              // Delete the empty message entirely
               conversation.messages.splice(aiMessageIndex, 1);
 
               // Save conversation without the empty message
