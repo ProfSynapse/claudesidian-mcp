@@ -10,36 +10,82 @@
 import { ConversationData } from '../../types/chat/ChatTypes';
 
 export class ConversationContextBuilder {
-  
+
+  /**
+   * Validate if a message should be included in LLM context
+   * Filters out invalid, streaming, and incomplete messages
+   */
+  private static isValidForContext(msg: any, isLastMessage: boolean): boolean {
+    // Rule 1: Exclude invalid messages
+    if (msg.state === 'invalid') return false;
+
+    // Rule 2: Exclude streaming messages (shouldn't be in storage, but safety check)
+    if (msg.state === 'streaming') return false;
+
+    // Rule 3: User messages must have content
+    if (msg.role === 'user' && (!msg.content || !msg.content.trim())) return false;
+
+    // Rule 4: Assistant messages must have content OR be final message (Anthropic allows empty final)
+    if (msg.role === 'assistant') {
+      const hasContent = msg.content && msg.content.trim();
+      const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0;
+
+      // If no content and no tool calls, only allow if it's the last message
+      if (!hasContent && !hasToolCalls && !isLastMessage) return false;
+
+      // Rule 5: Messages with tool calls must have results (not incomplete)
+      if (hasToolCalls) {
+        const allHaveResults = msg.toolCalls.every((tc: any) =>
+          tc.result !== undefined || tc.error !== undefined
+        );
+        if (!allHaveResults) return false;
+      }
+    }
+
+    return true;
+  }
+
   /**
    * Build LLM-ready conversation context from stored conversation data
-   * 
+   *
    * @param conversation - The stored conversation data with tool calls
    * @param provider - LLM provider (determines format)
    * @param systemPrompt - Optional system prompt to prepend
    * @returns Properly formatted conversation messages for the LLM provider
    */
   static buildContextForProvider(
-    conversation: ConversationData, 
+    conversation: ConversationData,
     provider: string,
     systemPrompt?: string
   ): any[] {
     const messages: any[] = [];
-    
+
     // Add system prompt if provided
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
     }
-    
+
+    // Filter valid messages before building context
+    const validMessages = conversation.messages.filter((msg, index) => {
+      const isLastMessage = index === conversation.messages.length - 1;
+      return this.isValidForContext(msg, isLastMessage);
+    });
+
+    // Build filtered conversation with valid messages only
+    const filteredConversation = {
+      ...conversation,
+      messages: validMessages
+    };
+
     // Build conversation based on provider format
     switch (provider.toLowerCase()) {
       case 'anthropic':
-        return this.buildAnthropicContext(conversation, messages);
+        return this.buildAnthropicContext(filteredConversation, messages);
       case 'google':
-        return this.buildGoogleContext(conversation, messages);
+        return this.buildGoogleContext(filteredConversation, messages);
       default:
         // OpenAI format (used by: openai, openrouter, groq, mistral, requesty, perplexity)
-        return this.buildOpenAIContext(conversation, messages);
+        return this.buildOpenAIContext(filteredConversation, messages);
     }
   }
   
