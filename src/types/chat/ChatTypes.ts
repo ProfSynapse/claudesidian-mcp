@@ -9,6 +9,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   conversationId: string;
+  state?: 'draft' | 'streaming' | 'complete' | 'aborted' | 'invalid'; // Message lifecycle state
   toolCalls?: ToolCall[];
   tokens?: number;
   alternatives?: ChatMessage[];

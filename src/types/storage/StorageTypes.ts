@@ -41,6 +41,7 @@ export interface ConversationMessage {
   role: 'user' | 'assistant' | 'tool';
   content: string;
   timestamp: number;
+  state?: 'draft' | 'streaming' | 'complete' | 'aborted' | 'invalid'; // Message lifecycle state
   toolCalls?: ToolCall[];
   toolName?: string;
   toolParams?: any;

@@ -48,6 +48,18 @@ export class ConversationService {
       return null;
     }
 
+    // Migration: Add state field to messages that don't have it
+    if (conversation.messages && conversation.messages.length > 0) {
+      conversation.messages = conversation.messages.map(msg => {
+        if (!msg.state) {
+          // Default existing messages to 'complete' state
+          // They were saved, so they must be complete
+          msg.state = 'complete';
+        }
+        return msg;
+      });
+    }
+
     return conversation;
   }
 
@@ -167,11 +179,20 @@ export class ConversationService {
 
       // Create message (use provided ID if available, otherwise generate new one)
       const messageId = params.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Determine initial state based on role and content
+      let initialState: 'draft' | 'complete' = 'complete';
+      if (params.role === 'assistant' && (!params.content || params.content.trim() === '')) {
+        // Empty assistant messages are placeholders for streaming
+        initialState = 'draft';
+      }
+
       const message = {
         id: messageId,
         role: params.role,
         content: params.content,
         timestamp: Date.now(),
+        state: initialState,
         toolCalls: params.toolCalls || undefined,
         cost: params.cost,
         usage: params.usage,

@@ -72,6 +72,7 @@ export class MessageManager {
         content: message,
         timestamp: Date.now(),
         conversationId: conversation.id,
+        state: 'complete', // User messages are complete when created
         metadata: metadata
       };
 
@@ -87,6 +88,7 @@ export class MessageManager {
         content: '',
         timestamp: Date.now(),
         conversationId: conversation.id,
+        state: 'draft', // Placeholder - about to start streaming
         isLoading: true
       };
       
