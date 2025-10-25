@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/profsynapse-claudesidian-mcp-badge.png)](https://mseep.ai/app/profsynapse-claudesidian-mcp)
+
 # Claudesidian MCP Plugin for Obsidian
 
 Claudesidian MCP is an Obsidian plugin that enables AI assistants to interact with your vault through the Model Context Protocol (MCP). It provides atomic operations for vault management and implements a structured memory system. The plugin uses an Agent-Mode Architecture that organizes functionality into logical domains (agents) with specific operations (modes) within each domain.
