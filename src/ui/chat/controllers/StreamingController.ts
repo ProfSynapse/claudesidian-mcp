@@ -1,6 +1,20 @@
 /**
  * StreamingController - Handles all streaming-related UI updates and animations
  * Now with streaming-markdown integration for progressive markdown rendering
+ *
+ * ARCHITECTURE NOTE:
+ * This controller manages ONLY ephemeral UI animation state:
+ * - Loading dot animations (activeAnimations)
+ * - Streaming-markdown parser state (streamingStates)
+ *
+ * It does NOT maintain message lifecycle state (draft/streaming/complete/etc).
+ * Message lifecycle state is managed by MessageManager and stored in the
+ * message objects themselves. This controller is called by ChatView when
+ * streaming events occur, and it updates the UI accordingly.
+ *
+ * State separation:
+ * - Message state (draft/streaming/complete) → MessageManager + Storage
+ * - UI animation state (dots, parser) → StreamingController (ephemeral)
  */
 
 import { MarkdownRenderer } from '../utils/MarkdownRenderer';
