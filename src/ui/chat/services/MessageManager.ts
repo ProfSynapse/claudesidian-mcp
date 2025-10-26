@@ -336,8 +336,10 @@ export class MessageManager {
       // Create alternative for existing AI message
       await this.createAlternativeAIResponse(conversation, aiMessage.id, options);
     } else {
-      // No AI response exists, generate a new one
-      await this.sendMessage(conversation, userMessage.content, options);
+      // No AI response exists - this shouldn't happen in normal retry flow
+      // If it does, log error and don't create duplicate user message
+      console.error('[MessageManager] Retry attempted on user message with no AI response');
+      this.events.onError('Cannot retry: No AI response found');
     }
   }
 
@@ -365,9 +367,10 @@ export class MessageManager {
     const userMessage = conversation.messages[aiMessageIndex - 1];
     if (!userMessage || userMessage.role !== 'user') return;
 
-    // Store the original content and tool calls before retry
+    // Store the original content, tool calls, and state before retry
     const originalContent = aiMessage.content;
     const originalToolCalls = aiMessage.toolCalls;
+    const originalState = aiMessage.state;
 
     try {
       this.setLoading(true);
@@ -413,6 +416,7 @@ export class MessageManager {
         if (originalContent && originalContent.trim()) {
           conversation.messages[messageIndex].content = originalContent;
           conversation.messages[messageIndex].toolCalls = originalToolCalls;
+          conversation.messages[messageIndex].state = originalState || 'complete'; // Restore original state
         }
       }
 
@@ -423,6 +427,7 @@ export class MessageManager {
         content: streamedContent,
         timestamp: Date.now(),
         conversationId: conversation.id,
+        state: 'complete', // Alternatives are complete when created
         toolCalls: toolCalls
       };
 
