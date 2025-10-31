@@ -163,8 +163,6 @@ export class MessageBubble extends Component {
       
       // Message branch navigator for AI messages with alternatives
       if (this.message.alternatives && this.message.alternatives.length > 0) {
-        const navigatorContainer = actions.createDiv('message-branch-navigator-container');
-        
         const navigatorEvents: MessageBranchNavigatorEvents = {
           onAlternativeChanged: (messageId, alternativeIndex) => {
             if (this.onMessageAlternativeChanged) {
@@ -173,8 +171,8 @@ export class MessageBubble extends Component {
           },
           onError: (message) => console.error('[MessageBubble] Branch navigation error:', message)
         };
-        
-        this.messageBranchNavigator = new MessageBranchNavigator(navigatorContainer, navigatorEvents);
+
+        this.messageBranchNavigator = new MessageBranchNavigator(actions, navigatorEvents);
         this.messageBranchNavigator.updateMessage(this.message);
       }
     }
@@ -286,8 +284,6 @@ export class MessageBubble extends Component {
 
     // Message branch navigator for messages with alternatives
     if (this.message.alternatives && this.message.alternatives.length > 0) {
-      const navigatorContainer = actions.createDiv('message-branch-navigator-container');
-
       const navigatorEvents: MessageBranchNavigatorEvents = {
         onAlternativeChanged: (messageId, alternativeIndex) => {
           if (this.onMessageAlternativeChanged) {
@@ -297,7 +293,7 @@ export class MessageBubble extends Component {
         onError: (message) => console.error('[MessageBubble] Branch navigation error:', message)
       };
 
-      this.messageBranchNavigator = new MessageBranchNavigator(navigatorContainer, navigatorEvents);
+      this.messageBranchNavigator = new MessageBranchNavigator(actions, navigatorEvents);
       this.messageBranchNavigator.updateMessage(this.message);
     }
 

@@ -331,15 +331,173 @@ export class MessageManager {
 
     const aiMessageIndex = userMessageIndex + 1;
     const aiMessage = conversation.messages[aiMessageIndex];
-    
+
     if (aiMessage && aiMessage.role === 'assistant') {
       // Create alternative for existing AI message
       await this.createAlternativeAIResponse(conversation, aiMessage.id, options);
     } else {
-      // No AI response exists - this shouldn't happen in normal retry flow
-      // If it does, log error and don't create duplicate user message
-      console.error('[MessageManager] Retry attempted on user message with no AI response');
-      this.events.onError('Cannot retry: No AI response found');
+      // No AI response exists - this can happen if user aborted before any content was generated
+      // Generate a fresh AI response for this user message
+      console.log('[MessageManager] No AI response found after user message - generating fresh response');
+      await this.generateFreshAIResponse(conversation, userMessage, options);
+    }
+  }
+
+  /**
+   * Generate a fresh AI response when no response exists (e.g., after abort)
+   */
+  private async generateFreshAIResponse(
+    conversation: ConversationData,
+    userMessage: ConversationMessage,
+    options?: {
+      provider?: string;
+      model?: string;
+      systemPrompt?: string;
+      workspaceId?: string;
+      sessionId?: string;
+    }
+  ): Promise<void> {
+    try {
+      this.setLoading(true);
+
+      // Create new AI message placeholder
+      const aiMessageId = `msg_${Date.now()}_ai`;
+      const placeholderAiMessage: ConversationMessage = {
+        id: aiMessageId,
+        role: 'assistant' as const,
+        content: '',
+        timestamp: Date.now(),
+        conversationId: conversation.id,
+        state: 'draft',
+        isLoading: true
+      };
+
+      // Add placeholder AI message and create bubble for streaming
+      conversation.messages.push(placeholderAiMessage);
+      this.events.onAIMessageStarted(placeholderAiMessage);
+
+      // Create abort controller for this request
+      this.currentAbortController = new AbortController();
+      this.currentStreamingMessageId = aiMessageId;
+
+      let streamedContent = '';
+      let toolCalls: any[] | undefined = undefined;
+      let hasStartedStreaming = false;
+
+      // Stream the AI response
+      for await (const chunk of this.chatService.generateResponseStreaming(
+        conversation.id,
+        userMessage.content,
+        {
+          provider: options?.provider,
+          model: options?.model,
+          systemPrompt: options?.systemPrompt,
+          workspaceId: options?.workspaceId,
+          sessionId: options?.sessionId,
+          messageId: aiMessageId,
+          abortSignal: this.currentAbortController.signal
+        }
+      )) {
+        // For token chunks, add to accumulated content AND emit incremental update
+        if (chunk.chunk) {
+          // Update state to streaming on first chunk
+          if (!hasStartedStreaming) {
+            hasStartedStreaming = true;
+            const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+            if (placeholderMessageIndex >= 0) {
+              conversation.messages[placeholderMessageIndex].state = 'streaming';
+            }
+          }
+
+          streamedContent += chunk.chunk;
+          this.events.onStreamingUpdate(aiMessageId, chunk.chunk, false, true);
+        }
+
+        // Extract tool calls when available
+        if (chunk.toolCalls) {
+          toolCalls = chunk.toolCalls;
+
+          // Emit tool calls detected event immediately for UI to create tool bubbles
+          if (chunk.complete) {
+            this.events.onToolCallsDetected(aiMessageId, toolCalls);
+          }
+        }
+
+        if (chunk.complete) {
+          // Check if this is TRULY the final complete
+          const hasToolCalls = toolCalls && toolCalls.length > 0;
+          const toolCallsHaveResults = hasToolCalls && toolCalls!.some((tc: any) =>
+            tc.result !== undefined || tc.success !== undefined
+          );
+          const isFinalComplete = !hasToolCalls || toolCallsHaveResults;
+
+          if (isFinalComplete) {
+            // Update conversation with final content
+            const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+            if (placeholderMessageIndex >= 0) {
+              conversation.messages[placeholderMessageIndex] = {
+                ...conversation.messages[placeholderMessageIndex],
+                content: streamedContent,
+                state: 'complete',
+                toolCalls: toolCalls
+              };
+            }
+
+            // Save conversation to storage
+            await this.chatService.updateConversation(conversation);
+
+            // Send final complete content
+            this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false);
+            break;
+          } else {
+            console.log('[MessageManager] Intermediate complete - waiting for tool execution results');
+          }
+        }
+      }
+
+      // Reload conversation from storage
+      const freshConversation = await this.chatService.getConversation(conversation.id);
+      if (freshConversation) {
+        Object.assign(conversation, freshConversation);
+      }
+
+      // Notify that conversation has been updated
+      this.events.onConversationUpdated(conversation);
+
+    } catch (error) {
+      // Check if this was an abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Handle abort the same way as in sendMessage
+        const aiMessageId = this.currentStreamingMessageId;
+        if (aiMessageId) {
+          const aiMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+          if (aiMessageIndex >= 0) {
+            const aiMessage = conversation.messages[aiMessageIndex];
+            const hasContent = aiMessage.content && aiMessage.content.trim();
+
+            if (hasContent) {
+              aiMessage.toolCalls = undefined;
+              aiMessage.isLoading = false;
+              aiMessage.state = 'aborted';
+              await this.chatService.updateConversation(conversation);
+              this.events.onStreamingUpdate(aiMessageId, aiMessage.content, true, false);
+              this.events.onConversationUpdated(conversation);
+            } else {
+              aiMessage.state = 'invalid';
+              aiMessage.isLoading = false;
+              conversation.messages.splice(aiMessageIndex, 1);
+              await this.chatService.updateConversation(conversation);
+              this.events.onConversationUpdated(conversation);
+            }
+          }
+        }
+      } else {
+        this.events.onError('Failed to generate AI response');
+      }
+    } finally {
+      this.currentAbortController = null;
+      this.currentStreamingMessageId = null;
+      this.setLoading(false);
     }
   }
 
@@ -375,12 +533,29 @@ export class MessageManager {
     try {
       this.setLoading(true);
 
-      // Don't clear the UI bubble - keep showing original during retry
-      // The streaming will update it, but we'll restore the original after
+      // Clear the AI message and show loading state (fresh start behavior)
+      const messageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+      if (messageIndex >= 0) {
+        conversation.messages[messageIndex].content = '';
+        conversation.messages[messageIndex].toolCalls = undefined;
+        conversation.messages[messageIndex].isLoading = true;
+        conversation.messages[messageIndex].state = 'draft';
+
+        // First update just the content to empty (clears the bubble immediately)
+        this.events.onStreamingUpdate(aiMessageId, '', false, false);
+
+        // Then trigger full UI update to show thinking animation
+        this.events.onConversationUpdated(conversation);
+      }
 
       // Generate new AI response with streaming (conversation loaded from storage inside the method)
       let streamedContent = '';
       let toolCalls: any[] | undefined = undefined;
+      let hasStartedStreaming = false;
+
+      // Create abort controller for this request
+      this.currentAbortController = new AbortController();
+      this.currentStreamingMessageId = aiMessageId;
 
       for await (const chunk of this.chatService.generateResponseStreaming(
         conversation.id,
@@ -391,48 +566,74 @@ export class MessageManager {
           systemPrompt: options?.systemPrompt,
           workspaceId: options?.workspaceId, // ✅ Pass workspace ID for tool context
           sessionId: options?.sessionId, // ✅ Pass session ID for tool context
-          excludeFromMessageId: aiMessageId // ✅ Exclude AI message being retried from context
+          excludeFromMessageId: aiMessageId, // ✅ Exclude AI message being retried from context
+          abortSignal: this.currentAbortController.signal
         }
       )) {
         if (chunk.chunk) {
+          // Update state to streaming on first chunk
+          if (!hasStartedStreaming) {
+            hasStartedStreaming = true;
+            const msgIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+            if (msgIndex >= 0) {
+              conversation.messages[msgIndex].state = 'streaming';
+              conversation.messages[msgIndex].isLoading = false;
+            }
+          }
+
           streamedContent += chunk.chunk;
           // Stream only the new chunk to the UI in real-time (not accumulated content)
           this.events.onStreamingUpdate(aiMessageId, chunk.chunk, false, true);
         }
         if (chunk.toolCalls) {
           toolCalls = chunk.toolCalls;
+
+          // Emit tool calls detected event for UI to create tool bubbles
+          if (chunk.complete) {
+            this.events.onToolCallsDetected(aiMessageId, toolCalls);
+          }
         }
         if (chunk.complete) {
-          // Final streaming update
-          this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false);
-          break;
+          // Check if this is TRULY the final complete
+          const hasToolCalls = toolCalls && toolCalls.length > 0;
+          const toolCallsHaveResults = hasToolCalls && toolCalls!.some((tc: any) =>
+            tc.result !== undefined || tc.success !== undefined
+          );
+          const isFinalComplete = !hasToolCalls || toolCallsHaveResults;
+
+          if (isFinalComplete) {
+            // Final streaming update
+            this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false);
+            break;
+          } else {
+            console.log('[MessageManager] Intermediate complete - waiting for tool execution results');
+          }
         }
       }
 
       // Restore the original content to the message before creating alternative
-      const messageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-      if (messageIndex >= 0) {
-        // If original content exists, restore it (this was not the first response)
-        if (originalContent && originalContent.trim()) {
-          conversation.messages[messageIndex].content = originalContent;
-          conversation.messages[messageIndex].toolCalls = originalToolCalls;
-          conversation.messages[messageIndex].state = originalState || 'complete'; // Restore original state
-        }
+      const restoreIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+      if (restoreIndex >= 0) {
+        // Restore original content (this was the old response)
+        conversation.messages[restoreIndex].content = originalContent;
+        conversation.messages[restoreIndex].toolCalls = originalToolCalls;
+        conversation.messages[restoreIndex].state = originalState || 'complete';
+        conversation.messages[restoreIndex].isLoading = false;
       }
 
-      // Create alternative response
+      // Create alternative response with the new content
       const alternativeResponse: ConversationMessage = {
         id: `alt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
         role: 'assistant',
         content: streamedContent,
         timestamp: Date.now(),
         conversationId: conversation.id,
-        state: 'complete', // Alternatives are complete when created
+        state: 'complete',
         toolCalls: toolCalls
       };
 
       // Add alternative using BranchManager
-      const alternativeIndex = await this.branchManager.createMessageAlternative(
+      await this.branchManager.createMessageAlternative(
         conversation,
         aiMessageId,
         alternativeResponse
@@ -448,8 +649,36 @@ export class MessageManager {
       this.events.onConversationUpdated(conversation);
 
     } catch (error) {
-      this.events.onError('Failed to generate alternative response');
+      // Check if this was an abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        const msgIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+        if (msgIndex >= 0) {
+          const aiMsg = conversation.messages[msgIndex];
+          const hasContent = aiMsg.content && aiMsg.content.trim();
+
+          if (hasContent) {
+            aiMsg.toolCalls = undefined;
+            aiMsg.isLoading = false;
+            aiMsg.state = 'aborted';
+            await this.chatService.updateConversation(conversation);
+            this.events.onStreamingUpdate(aiMessageId, aiMsg.content, true, false);
+            this.events.onConversationUpdated(conversation);
+          } else {
+            // Restore original content if aborted before any new content
+            aiMsg.content = originalContent;
+            aiMsg.toolCalls = originalToolCalls;
+            aiMsg.state = originalState || 'complete';
+            aiMsg.isLoading = false;
+            await this.chatService.updateConversation(conversation);
+            this.events.onConversationUpdated(conversation);
+          }
+        }
+      } else {
+        this.events.onError('Failed to generate alternative response');
+      }
     } finally {
+      this.currentAbortController = null;
+      this.currentStreamingMessageId = null;
       this.setLoading(false);
     }
   }
