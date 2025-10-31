@@ -194,10 +194,37 @@ export class ModelAgentManager {
   }
 
   /**
-   * Get current selected model
+   * Get current selected model (sync - returns null if none selected)
    */
   getSelectedModel(): ModelOption | null {
     return this.selectedModel;
+  }
+
+  /**
+   * Get current selected model or default (async - fetches default if none selected)
+   */
+  async getSelectedModelOrDefault(): Promise<ModelOption | null> {
+    // If a model is explicitly selected, return it
+    if (this.selectedModel) {
+      return this.selectedModel;
+    }
+
+    // Otherwise, get the default model
+    try {
+      const defaultModelConfig = await this.getDefaultModel();
+      const availableModels = await this.getAvailableModels();
+
+      const defaultModel = availableModels.find(
+        m => m.providerId === defaultModelConfig.provider &&
+             m.modelId === defaultModelConfig.model
+      );
+
+      console.log('[ModelAgentManager] getSelectedModelOrDefault - returning default model:', defaultModel?.modelName);
+      return defaultModel || null;
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to get default model:', error);
+      return null;
+    }
   }
 
   /**

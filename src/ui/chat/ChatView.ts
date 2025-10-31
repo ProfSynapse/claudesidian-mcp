@@ -469,6 +469,9 @@ export class ChatView extends ItemView {
   }
 
   private handleConversationUpdated(conversation: ConversationData): void {
+    console.log('[ChatView] handleConversationUpdated called, conversation:', conversation.id);
+    console.log('[ChatView] Message count:', conversation.messages.length);
+
     this.conversationManager.updateCurrentConversation(conversation);
 
     // Always re-render from stored conversation data (single source of truth)
@@ -477,6 +480,7 @@ export class ChatView extends ItemView {
     // Update the chat title in case it changed
     this.updateChatTitle();
 
+    console.log('[ChatView] About to call updateContextProgress');
     this.updateContextProgress();
   }
 
@@ -585,8 +589,12 @@ export class ChatView extends ItemView {
 
   private async getContextUsage() {
     const conversation = this.conversationManager.getCurrentConversation();
+    const selectedModel = await this.modelAgentManager.getSelectedModelOrDefault();
+
+    console.log('[ChatView] getContextUsage - selectedModel from ModelAgentManager:', selectedModel);
+
     const usage = await TokenCalculator.getContextUsage(
-      this.modelAgentManager.getSelectedModel(),
+      selectedModel,
       conversation,
       await this.modelAgentManager.getCurrentSystemPrompt()
     );

@@ -16,7 +16,13 @@ export class TokenCalculator {
     currentSystemPrompt: string | null
   ): Promise<ContextUsage> {
     try {
+      console.log('[TokenCalculator] getContextUsage called');
+      console.log('[TokenCalculator] selectedModel:', selectedModel?.modelName);
+      console.log('[TokenCalculator] currentConversation:', currentConversation?.id);
+      console.log('[TokenCalculator] message count:', currentConversation?.messages?.length);
+
       if (!selectedModel || !currentConversation) {
+        console.log('[TokenCalculator] Missing model or conversation, returning 0');
         return { used: 0, total: 0, percentage: 0 };
       }
 
@@ -24,6 +30,11 @@ export class TokenCalculator {
       const totalTokens = this.estimateTokenCount(currentConversation, currentSystemPrompt);
       const contextWindow = selectedModel.contextWindow;
       const percentage = (totalTokens / contextWindow) * 100;
+
+      console.log('[TokenCalculator] Token calculation:');
+      console.log('  - totalTokens:', totalTokens);
+      console.log('  - contextWindow:', contextWindow);
+      console.log('  - percentage:', percentage.toFixed(2) + '%');
 
       return {
         used: totalTokens,
@@ -44,32 +55,63 @@ export class TokenCalculator {
     currentSystemPrompt?: string | null
   ): number {
     let totalTokens = 0;
-    
-    // Add system prompt tokens if provided
+    let hasActualUsageData = false;
+
+    console.log('[TokenCalculator] estimateTokenCount - message count:', conversation.messages.length);
+
+    // Add system prompt tokens if provided (always estimated)
     if (currentSystemPrompt) {
-      totalTokens += this.estimateTextTokens(currentSystemPrompt);
+      const systemPromptTokens = this.estimateTextTokens(currentSystemPrompt);
+      console.log('[TokenCalculator] System prompt tokens (estimated):', systemPromptTokens);
+      totalTokens += systemPromptTokens;
     }
-    
-    // Add message tokens
-    conversation.messages.forEach(message => {
-      totalTokens += this.estimateTextTokens(message.content);
-      
-      // Add tokens for tool calls if present
-      if (message.toolCalls) {
-        message.toolCalls.forEach(toolCall => {
-          if (toolCall.parameters) {
-            totalTokens += this.estimateTextTokens(JSON.stringify(toolCall.parameters));
-          }
-          if (toolCall.result) {
-            const resultText = typeof toolCall.result === 'string' 
-              ? toolCall.result 
-              : JSON.stringify(toolCall.result);
-            totalTokens += this.estimateTextTokens(resultText);
-          }
-        });
+
+    // Add message tokens - USE ACTUAL USAGE DATA when available
+    conversation.messages.forEach((message: any, index) => {
+      // Check if message has actual usage data from API response
+      if (message.usage) {
+        hasActualUsageData = true;
+        // Use actual token counts from OpenAI/Anthropic/etc API
+        const promptTokens = message.usage.prompt_tokens || message.usage.input_tokens || 0;
+        const completionTokens = message.usage.completion_tokens || message.usage.output_tokens || 0;
+        const totalMessageTokens = message.usage.total_tokens || (promptTokens + completionTokens);
+
+        console.log(`[TokenCalculator] Message ${index} (${message.role}) - ACTUAL USAGE DATA:`);
+        console.log(`  - prompt_tokens: ${promptTokens}`);
+        console.log(`  - completion_tokens: ${completionTokens}`);
+        console.log(`  - total_tokens: ${totalMessageTokens}`);
+
+        totalTokens += totalMessageTokens;
+      } else {
+        // Fallback to estimation if no usage data
+        const messageTokens = this.estimateTextTokens(message.content);
+        console.log(`[TokenCalculator] Message ${index} (${message.role}): ${messageTokens} tokens (ESTIMATED)`);
+        totalTokens += messageTokens;
+
+        // Add tokens for tool calls if present (estimated)
+        if (message.toolCalls) {
+          console.log(`[TokenCalculator] Message ${index} has ${message.toolCalls.length} tool calls`);
+          message.toolCalls.forEach((toolCall: any) => {
+            if (toolCall.parameters) {
+              const paramTokens = this.estimateTextTokens(JSON.stringify(toolCall.parameters));
+              console.log(`[TokenCalculator]   - Tool params: ${paramTokens} tokens (ESTIMATED)`);
+              totalTokens += paramTokens;
+            }
+            if (toolCall.result) {
+              const resultText = typeof toolCall.result === 'string'
+                ? toolCall.result
+                : JSON.stringify(toolCall.result);
+              const resultTokens = this.estimateTextTokens(resultText);
+              console.log(`[TokenCalculator]   - Tool result: ${resultTokens} tokens (ESTIMATED)`);
+              totalTokens += resultTokens;
+            }
+          });
+        }
       }
     });
-    
+
+    console.log('[TokenCalculator] Total tokens:', totalTokens);
+    console.log('[TokenCalculator] Used actual usage data:', hasActualUsageData);
     return totalTokens;
   }
 
