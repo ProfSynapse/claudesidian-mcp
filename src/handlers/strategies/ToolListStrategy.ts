@@ -26,6 +26,8 @@ export class ToolListStrategy implements IRequestStrategy<ToolListRequest, ToolL
 
     async handle(request: ToolListRequest): Promise<ToolListResponse> {
         try {
+            // Claude Desktop: Return all tools (no dynamic registration)
+            // Bounded context is only for Chat View internal connector
             return await this.dependencies.toolListService.generateToolList(
                 this.agents,
                 this.isVaultEnabled,

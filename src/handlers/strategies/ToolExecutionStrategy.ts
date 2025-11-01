@@ -34,6 +34,8 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
     }
 
     canHandle(request: ToolExecutionRequest): boolean {
+        // Handle all tool execution requests
+        // We'll validate the tool exists in handle() method
         return !!(request.params && request.params.name && request.params.arguments);
     }
 

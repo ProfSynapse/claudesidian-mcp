@@ -67,7 +67,7 @@ export class MCPServer implements IMCPServer {
         this.stdioTransportManager = new StdioTransportManager(this.server);
         this.ipcTransportManager = new IPCTransportManager(this.configuration, this.stdioTransportManager);
         this.executionManager = new AgentExecutionManager(this.agentRegistry, sessionContextManager);
-        
+
         // Initialize request routing
         this.initializeRequestRouter();
         

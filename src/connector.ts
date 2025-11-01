@@ -18,6 +18,7 @@ import { AgentRegistrationService, AgentRegistrationServiceInterface } from './s
 import { AgentModeParams } from './types/agent/AgentTypes';
 import { VaultLibrarianAgent } from './agents';
 import { MemoryManagerAgent } from './agents';
+import { AGENTS } from './config/agentConfigs';
 
 
 /**
@@ -216,9 +217,39 @@ export class MCPConnector {
      * Now delegates to ToolCallRouter service for validation and execution
      */
     /**
-     * Get available tools for ChatService
+     * Get available tools for ChatService - Bounded Context Discovery
+     * Returns single get_tools meta-tool instead of all 46 tools
      */
     getAvailableTools(): any[] {
+        // Build agent enum values with descriptions
+        const agentDescriptions = AGENTS.map(a => `- ${a.name}: ${a.description}`).join('\n');
+
+        const getToolsTool = {
+            name: 'get_tools',
+            description: `Discover available tools for specific agents. Each agent represents a bounded context of related operations:\n\n${agentDescriptions}\n\nCall this to get tool schemas for the capabilities you need. You can request multiple agents at once.`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agents: {
+                        type: 'array',
+                        items: {
+                            type: 'string',
+                            enum: AGENTS.map(a => a.name)
+                        },
+                        description: 'Array of agent names to retrieve tools for'
+                    }
+                },
+                required: ['agents']
+            }
+        };
+
+        return [getToolsTool];
+    }
+
+    /**
+     * Get tools for specific agents (called via get_tools meta-tool)
+     */
+    private getToolsForAgents(agentNames: string[]): any[] {
         const tools: any[] = [];
 
         if (!this.agentRegistry) {
@@ -226,10 +257,24 @@ export class MCPConnector {
         }
 
         const registeredAgents = this.agentRegistry.getAllAgents();
-        
+
+        // Validate requested agent names
+        const validAgentNames = agentNames.filter(name =>
+            AGENTS.some(a => a.name === name)
+        );
+
+        if (validAgentNames.length === 0) {
+            return [];
+        }
+
         for (const [agentName, agent] of registeredAgents) {
+            // Only include tools for requested agents
+            if (!validAgentNames.includes(agentName)) {
+                continue;
+            }
+
             const modes = (agent as any).getModes?.() || [];
-            
+
             // getModes returns an array, so iterate directly over modes
             for (const mode of modes) {
                 const modeInstance = mode as any;
@@ -255,6 +300,30 @@ export class MCPConnector {
     async callTool(params: AgentModeParams): Promise<any> {
         try {
             const { agent, mode, params: modeParams } = params;
+
+            // ========================================
+            // BOUNDED CONTEXT TOOL DISCOVERY - Intercept get_tools meta-tool
+            // ========================================
+            if (agent === 'get' && mode === 'tools') {
+                // This is a call to the get_tools meta-tool
+                const agentNames = modeParams.agents || modeParams.context?.agents || [];
+
+                if (!Array.isArray(agentNames) || agentNames.length === 0) {
+                    return {
+                        success: false,
+                        error: 'agents parameter must be a non-empty array of agent names'
+                    };
+                }
+
+                const tools = this.getToolsForAgents(agentNames);
+
+                return {
+                    success: true,
+                    tools: tools,
+                    agentNames: agentNames,
+                    toolCount: tools.length
+                };
+            }
 
             // ========================================
             // SESSION VALIDATION & WORKSPACE CONTEXT INJECTION
