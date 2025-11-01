@@ -192,8 +192,9 @@ export class MemoryService {
     name?: string
   ): Promise<string> {
     const state = await this.workspaceService.addState(workspaceId, sessionId, {
-      name: name || 'Unnamed State',
-      created: Date.now(),
+      id: snapshot.id,  // Pass the ID from the snapshot to preserve it
+      name: name || snapshot.name || 'Unnamed State',
+      created: snapshot.created || Date.now(),
       snapshot
     });
 
