@@ -166,9 +166,24 @@ export class MessageManager {
           // Extract tool calls when available
           if (chunk.toolCalls) {
             toolCalls = chunk.toolCalls;
-            
+
+            console.log('[MessageManager] 🔍 Tool calls detected in chunk', {
+              messageId: aiMessageId,
+              toolCallsCount: toolCalls.length,
+              isComplete: chunk.complete,
+              toolCallDetails: toolCalls.map((tc: any) => ({
+                id: tc.id,
+                name: tc.function?.name,
+                hasArgs: !!tc.function?.arguments
+              }))
+            });
+
             // Only emit tool calls event for final chunk to avoid duplication
             if (chunk.complete) {
+                console.log('[MessageManager] 🚀 EMITTING onToolCallsDetected event', {
+                  messageId: aiMessageId,
+                  toolCallsCount: toolCalls.length
+                });
                 this.events.onToolCallsDetected(aiMessageId, toolCalls);
             }
           }

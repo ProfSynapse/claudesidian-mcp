@@ -140,7 +140,7 @@ export class AdapterRegistry implements IAdapterRegistry {
       (config) => new AnthropicAdapter(config.apiKey, this.mcpConnector));
 
     this.initializeProvider('google', providers.google,
-      (config) => new GoogleAdapter(config.apiKey));
+      (config) => new GoogleAdapter(config.apiKey, this.mcpConnector));
 
     this.initializeProvider('mistral', providers.mistral,
       (config) => new MistralAdapter(config.apiKey, this.mcpConnector));

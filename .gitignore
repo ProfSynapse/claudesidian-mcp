@@ -34,6 +34,7 @@ data/
 chats.db
 
 .data/
+.env
 
 
 # Claude Flow generated files

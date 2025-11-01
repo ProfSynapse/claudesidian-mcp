@@ -82,23 +82,73 @@ export class StreamingOrchestrator {
       const latestUserMessage = messages[messages.length - 1];
       const userPrompt = latestUserMessage?.role === 'user' ? latestUserMessage.content : '';
 
-      // Build conversation history from all previous messages
-      const conversationHistory = this.buildConversationHistory(messages);
+      // Check if this is a Google model
+      const isGoogleModel = provider === 'google' ||
+        (provider === 'openrouter' && model?.includes('google'));
 
-      // Combine system prompt + conversation history
-      const systemPrompt = [
-        options?.systemPrompt || '',
-        conversationHistory ? '\n=== Conversation History ===\n' + conversationHistory : ''
-      ].filter(Boolean).join('\n');
+      let generateOptions: any;
 
-      // Build generate options with tools
-      const generateOptions = {
-        model,
-        systemPrompt: systemPrompt || options?.systemPrompt,
-        tools: options?.tools,
-        onToolEvent: options?.onToolEvent,
-        onUsageAvailable: options?.onUsageAvailable
-      };
+      if (isGoogleModel) {
+        // For Google, build proper conversation history in Google format
+        const googleConversationHistory: any[] = [];
+
+        console.log('[StreamingOrchestrator] Building Google conversation history', {
+          messagesCount: messages.length,
+          messages: messages.map(m => ({ role: m.role, contentLength: m.content?.length }))
+        });
+
+        // Add all messages in Google format
+        for (const msg of messages) {
+          // Skip messages with empty content
+          if (!msg.content || !msg.content.trim()) {
+            console.log('[StreamingOrchestrator] Skipping empty message', { role: msg.role });
+            continue;
+          }
+
+          if (msg.role === 'user') {
+            googleConversationHistory.push({
+              role: 'user',
+              parts: [{ text: msg.content }]
+            });
+          } else if (msg.role === 'assistant') {
+            googleConversationHistory.push({
+              role: 'model',
+              parts: [{ text: msg.content }]
+            });
+          }
+        }
+
+        console.log('[StreamingOrchestrator] Google conversation history built', {
+          historyLength: googleConversationHistory.length,
+          firstMessage: JSON.stringify(googleConversationHistory[0]),
+          lastMessage: JSON.stringify(googleConversationHistory[googleConversationHistory.length - 1])
+        });
+
+        generateOptions = {
+          model,
+          systemPrompt: options?.systemPrompt, // Google uses systemInstruction
+          conversationHistory: googleConversationHistory, // Pass structured history
+          tools: options?.tools,
+          onToolEvent: options?.onToolEvent,
+          onUsageAvailable: options?.onUsageAvailable
+        };
+      } else {
+        // For other providers (OpenAI, Anthropic), use text-based system prompt
+        const conversationHistory = this.buildConversationHistory(messages);
+
+        const systemPrompt = [
+          options?.systemPrompt || '',
+          conversationHistory ? '\n=== Conversation History ===\n' + conversationHistory : ''
+        ].filter(Boolean).join('\n');
+
+        generateOptions = {
+          model,
+          systemPrompt: systemPrompt || options?.systemPrompt,
+          tools: options?.tools,
+          onToolEvent: options?.onToolEvent,
+          onUsageAvailable: options?.onUsageAvailable
+        };
+      }
 
       // Store original messages for pingpong context (exclude the last user message which is userPrompt)
       const previousMessages = messages.slice(0, -1);
@@ -108,7 +158,11 @@ export class StreamingOrchestrator {
       let detectedToolCalls: any[] = [];
       let finalUsage: any = undefined;
 
-      for await (const chunk of adapter.generateStreamAsync(userPrompt, generateOptions)) {
+      // For Google, pass empty string as prompt since conversation is in conversationHistory
+      // For other providers, pass the extracted userPrompt
+      const promptToPass = isGoogleModel ? '' : userPrompt;
+
+      for await (const chunk of adapter.generateStreamAsync(promptToPass, generateOptions)) {
         // Track usage from chunks
         if (chunk.usage) {
           finalUsage = chunk.usage;
@@ -162,6 +216,12 @@ export class StreamingOrchestrator {
       }
 
       // Tool calls detected - execute tools and continue streaming (pingpong)
+      console.log('[StreamingOrchestrator] 🔄 Starting tool execution and continuation', {
+        provider,
+        toolCallsCount: detectedToolCalls.length,
+        toolNames: detectedToolCalls.map(tc => tc.function?.name || tc.name)
+      });
+
       yield* this.executeToolsAndContinue(
         adapter,
         provider,
@@ -213,11 +273,17 @@ export class StreamingOrchestrator {
     options: StreamingOptions | undefined,
     initialUsage: any
   ): AsyncGenerator<StreamYield, void, unknown> {
+    console.log('[StreamingOrchestrator] 🔧 executeToolsAndContinue ENTERED', {
+      provider,
+      toolCallsCount: detectedToolCalls.length
+    });
+
     let completeToolCallsWithResults: any[] = [];
     let toolIterationCount = 1;
 
     try {
       // Step 1: Execute tools via MCP to get results
+      console.log('[StreamingOrchestrator] 📞 Executing MCP tool calls...');
       const mcpToolCalls = detectedToolCalls.map((tc: any) => ({
         id: tc.id,
         function: {
@@ -226,6 +292,12 @@ export class StreamingOrchestrator {
         }
       }));
 
+      console.log('[StreamingOrchestrator] 🔧 MCP tool calls prepared:', {
+        count: mcpToolCalls.length,
+        calls: mcpToolCalls.map(tc => ({ id: tc.id, name: tc.function.name }))
+      });
+
+      console.log('[StreamingOrchestrator] ⏳ Awaiting MCPToolExecution.executeToolCalls...');
       const toolResults = await MCPToolExecution.executeToolCalls(
         adapter as any,
         mcpToolCalls,
@@ -233,6 +305,11 @@ export class StreamingOrchestrator {
         generateOptions.onToolEvent,
         { sessionId: options?.sessionId, workspaceId: options?.workspaceId }
       );
+
+      console.log('[StreamingOrchestrator] ✅ Tool execution completed!', {
+        resultsCount: toolResults.length,
+        results: toolResults.map(r => ({ id: r.id, success: r.success, hasResult: !!r.result }))
+      });
 
       // Build complete tool calls with execution results
       completeToolCallsWithResults = detectedToolCalls.map(originalCall => {
@@ -250,6 +327,7 @@ export class StreamingOrchestrator {
       });
 
       // Step 2: Build continuation for pingpong pattern
+      console.log('[StreamingOrchestrator] 🔨 Building continuation options for provider:', provider);
       const continuationOptions = this.buildContinuationOptions(
         provider,
         userPrompt,
@@ -259,7 +337,14 @@ export class StreamingOrchestrator {
         generateOptions
       );
 
+      console.log('[StreamingOrchestrator] ✅ Continuation options built', {
+        hasConversationHistory: !!continuationOptions.conversationHistory,
+        historyLength: continuationOptions.conversationHistory?.length,
+        hasSystemPrompt: !!continuationOptions.systemPrompt
+      });
+
       // Step 3: Start NEW stream with continuation (pingpong)
+      console.log('[StreamingOrchestrator] 🚀 Starting continuation stream...');
       let fullContent = '';
 
       for await (const chunk of adapter.generateStreamAsync('', continuationOptions)) {
@@ -445,10 +530,30 @@ export class StreamingOrchestrator {
     const isAnthropicModel = provider === 'anthropic' ||
       (provider === 'openrouter' && generateOptions.model?.includes('anthropic'));
 
+    // Check if this is a Google model (direct or via OpenRouter)
+    const isGoogleModel = provider === 'google' ||
+      (provider === 'openrouter' && generateOptions.model?.includes('google'));
+
     if (isAnthropicModel) {
       // Build proper Anthropic messages with tool_use and tool_result blocks
       const conversationHistory = ConversationContextBuilder.buildToolContinuation(
         'anthropic', // Use 'anthropic' for proper message formatting
+        userPrompt,
+        toolCalls,
+        toolResults,
+        previousMessages,
+        generateOptions.systemPrompt
+      ) as any[];
+
+      return {
+        ...generateOptions,
+        conversationHistory,
+        systemPrompt: generateOptions.systemPrompt
+      };
+    } else if (isGoogleModel) {
+      // Build proper Google/Gemini conversation history with functionCall and functionResponse
+      const conversationHistory = ConversationContextBuilder.buildToolContinuation(
+        'google',
         userPrompt,
         toolCalls,
         toolResults,

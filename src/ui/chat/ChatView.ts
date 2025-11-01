@@ -630,10 +630,28 @@ export class ChatView extends ItemView {
 
   // Tool event handlers
   private handleToolCallsDetected(messageId: string, toolCalls: any[]): void {
+    console.log('[ChatView] 📥 handleToolCallsDetected called', {
+      messageId,
+      toolCallsCount: toolCalls?.length || 0,
+      toolCalls: toolCalls
+    });
+
     // Fire individual 'detected' event for each tool call to create progressive accordions
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
+    console.log('[ChatView] 🔍 Message bubble lookup', {
+      messageId,
+      found: !!messageBubble,
+      hasToolCalls: !!(toolCalls && toolCalls.length > 0)
+    });
+
     if (messageBubble && toolCalls && toolCalls.length > 0) {
       for (const toolCall of toolCalls) {
+        console.log('[ChatView] 🔧 Processing tool call', {
+          id: toolCall.id,
+          functionName: toolCall.function?.name,
+          name: toolCall.name
+        });
+
         const metadata = getToolNameMetadata(
           toolCall.function?.name || toolCall.name
         );
@@ -662,8 +680,22 @@ export class ChatView extends ItemView {
           parameters: parameters,
           isComplete: toolCall.isComplete
         };
+
+        console.log('[ChatView] 🎯 Calling messageBubble.handleToolEvent', {
+          event: 'detected',
+          toolId: toolData.id,
+          toolName: toolData.name,
+          technicalName: toolData.technicalName
+        });
+
         messageBubble.handleToolEvent('detected', toolData);
       }
+    } else {
+      console.log('[ChatView] ⚠️ Skipping tool processing', {
+        hasMessageBubble: !!messageBubble,
+        hasToolCalls: !!(toolCalls && toolCalls.length > 0),
+        toolCallsLength: toolCalls?.length
+      });
     }
   }
 

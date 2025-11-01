@@ -68,12 +68,22 @@ export class MCPToolExecution {
     onToolEvent?: (event: 'started' | 'completed', data: any) => void,
     context?: { sessionId?: string; workspaceId?: string } // ✅ Added session context
   ): Promise<MCPToolResult[]> {
+    console.log('[MCPToolExecution] 🚀 executeToolCalls CALLED', {
+      provider,
+      toolCallsCount: toolCalls.length,
+      hasMCP: this.supportsMCP(adapter)
+    });
+
     if (!this.supportsMCP(adapter)) {
       throw new Error(`MCP not available for ${provider}`);
     }
 
+    console.log('[MCPToolExecution] ✅ MCP supported, calling executeViaConnector');
+
     try {
-      return await this.executeViaConnector(adapter.mcpConnector, toolCalls, onToolEvent, context);
+      const result = await this.executeViaConnector(adapter.mcpConnector, toolCalls, onToolEvent, context);
+      console.log('[MCPToolExecution] ✅ executeViaConnector returned', { resultsCount: result.length });
+      return result;
     } catch (error) {
       console.error(`[MCPToolExecution] Tool execution failed for ${provider}:`, error);
       throw error;
@@ -90,16 +100,37 @@ export class MCPToolExecution {
     onToolEvent?: (event: 'started' | 'completed', data: any) => void,
     context?: { sessionId?: string; workspaceId?: string } // ✅ Added session context
   ): Promise<MCPToolResult[]> {
+    console.log('[MCPToolExecution] 🔧 executeViaConnector ENTERED', {
+      toolCallsCount: toolCalls.length,
+      hasConnector: !!mcpConnector,
+      hasOnToolEvent: !!onToolEvent
+    });
+
     const results: MCPToolResult[] = [];
 
     for (const toolCall of toolCalls) {
+      console.log('[MCPToolExecution] 🔄 Processing tool call', {
+        id: toolCall.id,
+        name: toolCall.function.name
+      });
+
       try {
         // Parse and validate tool arguments with error handling
         let parameters: any = {};
         const argumentsStr = toolCall.function.arguments || '{}';
 
+        console.log('[MCPToolExecution] 📝 Parsing arguments', {
+          id: toolCall.id,
+          argsLength: argumentsStr.length,
+          argsPreview: argumentsStr.substring(0, 100)
+        });
+
         try {
           parameters = JSON.parse(argumentsStr);
+          console.log('[MCPToolExecution] ✅ Arguments parsed successfully', {
+            id: toolCall.id,
+            params: parameters
+          });
         } catch (parseError) {
           console.error(`[MCPToolExecution] Failed to parse tool arguments:`, parseError);
           console.error(`[MCPToolExecution] Raw arguments (${argumentsStr.length} chars):`, argumentsStr);
@@ -164,8 +195,22 @@ export class MCPToolExecution {
 
         const agentModeParams = { agent, mode, params: paramsWithContext };
 
+        console.log('[MCPToolExecution] 📞 Calling mcpConnector.callTool', {
+          agent,
+          mode,
+          toolId: toolCall.id,
+          hasConnector: !!mcpConnector
+        });
+
         const result = await mcpConnector.callTool(agentModeParams);
-        
+
+        console.log('[MCPToolExecution] ✅ mcpConnector.callTool returned', {
+          agent,
+          mode,
+          toolId: toolCall.id,
+          success: result.success
+        });
+
         results.push({
           id: toolCall.id,
           name: toolCall.function.name, // Preserve the tool name

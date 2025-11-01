@@ -62,110 +62,136 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
   }
 
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    let request: any;
     try {
-      console.log('[Google Adapter] Starting streaming response', {
-        hasTools: !!options?.tools,
-        toolCount: options?.tools?.length || 0,
-        enableTools: options?.enableTools,
-        hasConversationHistory: !!options?.conversationHistory,
-        conversationHistoryLength: options?.conversationHistory?.length || 0,
-        toolNames: options?.tools?.map(t => t.function?.name)
-      });
-
       // Build contents - use conversation history if provided (for tool continuations)
       let contents: any[];
       if (options?.conversationHistory && options.conversationHistory.length > 0) {
-        console.log('[Google Adapter] Using conversation history', {
-          historyLength: options.conversationHistory.length
+        console.log('[Google Adapter] Using conversation history for tool continuation', {
+          historyLength: options.conversationHistory.length,
+          lastMessage: options.conversationHistory[options.conversationHistory.length - 1]
         });
         contents = options.conversationHistory;
       } else {
+        // Ensure prompt is not empty
+        if (!prompt || !prompt.trim()) {
+          console.warn('[Google Adapter] Empty prompt provided, using default');
+          prompt = 'Continue the conversation';
+        }
         contents = [{
           role: 'user',
           parts: [{ text: prompt }]
         }];
       }
 
-      const request: any = {
-        model: options?.model || this.currentModel,
-        contents: contents,
+      // Validate contents structure before sending
+      console.log('[Google Adapter] Final contents structure:', {
+        contentsLength: contents.length,
+        firstContent: JSON.stringify(contents[0]),
+        allContentRoles: contents.map(c => ({
+          role: c.role,
+          partsCount: c.parts?.length,
+          firstPartKeys: c.parts?.[0] ? Object.keys(c.parts[0]) : []
+        }))
+      });
+
+      // Build config object with all generation settings
+      const config: any = {
         generationConfig: {
-          temperature: options?.temperature,
+          // Use temperature 0 when tools are provided for more deterministic function calling
+          temperature: (options?.tools && options.tools.length > 0) ? 0 : (options?.temperature ?? 0.7),
           maxOutputTokens: options?.maxTokens || 4096,
           topK: 40,
           topP: 0.95
         }
       };
 
-      // Add system instruction if provided
+      // Add system instruction if provided (inside config)
       if (options?.systemPrompt) {
-        request.systemInstruction = {
+        config.systemInstruction = {
           parts: [{ text: options.systemPrompt }]
         };
       }
 
-      // Add tools if provided
+      // Add tools if provided (inside config)
       if (options?.tools && options.tools.length > 0) {
-        request.tools = this.convertTools(options.tools);
+        // TODO: Google recommends max 10-20 tools. Consider implementing tool filtering/selection
+        // Current: sending all tools may cause MALFORMED_FUNCTION_CALL with large tool sets (46+ tools)
+        config.tools = this.convertTools(options.tools);
 
-        // Add function calling config to encourage tool use
-        request.toolConfig = {
+        // Add function calling config - let model decide when to use tools
+        config.toolConfig = {
           functionCallingConfig: {
-            mode: 'AUTO' // Let model decide when to use tools
+            mode: 'AUTO' // Model decides when tools are appropriate
           }
         };
 
-        console.log('[Google Adapter] Added tools to request', {
+        console.log('[Google Adapter] Added tools to config', {
           toolsCount: options.tools.length,
           firstToolName: options.tools[0]?.function?.name,
-          hasFunctionCallingConfig: true,
-          firstThreeTools: options.tools.slice(0, 3).map(t => ({
-            name: t.function?.name,
-            description: t.function?.description?.substring(0, 100)
-          }))
+          sampleToolName: config.tools[0]?.functionDeclarations?.[0]?.name,
+          sampleToolParamsKeys: Object.keys(config.tools[0]?.functionDeclarations?.[0]?.parameters || {}),
+          totalToolsSize: JSON.stringify(config.tools).length
         });
+
+        // Log first 3 tools for inspection
+        console.log('[Google Adapter] First 3 tool schemas:',
+          config.tools[0]?.functionDeclarations?.slice(0, 3).map((t: any) => ({
+            name: t.name,
+            description: t.description?.substring(0, 100),
+            parametersKeys: Object.keys(t.parameters || {}),
+            propertiesCount: Object.keys(t.parameters?.properties || {}).length
+          }))
+        );
       }
 
-      console.log('[Google Adapter] Sending request', {
-        model: request.model,
-        hasSystemInstruction: !!request.systemInstruction,
-        hasTools: !!request.tools,
-        contentsLength: request.contents.length
-      });
+      // Build final request with config wrapper
+      const request: any = {
+        model: options?.model || this.currentModel,
+        contents: contents,
+        config: config
+      };
 
-      const response = await this.client.models.generateContentStream(request);
+      let response;
+      try {
+        response = await this.client.models.generateContentStream(request);
+      } catch (error: any) {
+        console.error('[Google Adapter] Error calling generateContentStream:', error);
+        throw error;
+      }
 
       let usage: any = undefined;
       const toolCallAccumulator: Map<string, any> = new Map();
 
       for await (const chunk of response) {
-        console.log('[Google Adapter] Stream chunk received', {
-          hasText: !!chunk.text,
-          hasCandidates: !!chunk.candidates,
-          candidatesCount: chunk.candidates?.length || 0,
-          finishReason: chunk.candidates?.[0]?.finishReason
-        });
-
         // Extract text from parts
         const parts = chunk.candidates?.[0]?.content?.parts || [];
-        const partTypeDetails = parts.map((p: any) => ({
-          hasText: !!p.text,
-          hasFunctionCall: !!p.functionCall,
-          hasFunctionResponse: !!p.functionResponse,
-          keys: Object.keys(p)
-        }));
 
-        console.log('[Google Adapter] Processing parts', {
+        const finishReason = chunk.candidates?.[0]?.finishReason;
+
+        console.log('[Google Adapter] 📦 Received chunk', {
+          hasCandidate: !!chunk.candidates?.[0],
           partsCount: parts.length,
-          partTypeDetails: partTypeDetails
+          partTypes: parts.map((p: any) => Object.keys(p)),
+          finishReason: finishReason
         });
+
+        // Handle malformed function call
+        if (finishReason === 'MALFORMED_FUNCTION_CALL') {
+          console.error('[Google Adapter] ⚠️ MALFORMED_FUNCTION_CALL detected!');
+          console.error('[Google Adapter] Full response:', JSON.stringify(chunk, null, 2));
+
+          // Continue processing instead of throwing - this allows us to see what happened
+          yield {
+            content: '\n\n⚠️ Google returned MALFORMED_FUNCTION_CALL. This usually means the tool schema has validation issues. Check console for details.',
+            complete: true
+          };
+          return;
+        }
 
         for (const part of parts) {
           if (part.text) {
-            console.log('[Google Adapter] Yielding text chunk', {
-              textLength: part.text.length,
-              textPreview: part.text.substring(0, 100)
-            });
+            console.log('[Google Adapter] 📝 Text content:', part.text.substring(0, 100));
             yield {
               content: part.text,
               complete: false
@@ -175,11 +201,7 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           // Accumulate function calls
           if (part.functionCall) {
             const toolId = part.functionCall.name + '_' + Date.now();
-            console.log('[Google Adapter] ⚙️ Found functionCall in part', {
-              functionName: part.functionCall.name,
-              hasArgs: !!part.functionCall.args,
-              argsKeys: Object.keys(part.functionCall.args || {})
-            });
+            console.log('[Google Adapter] 🔧 Tool call detected:', part.functionCall.name);
             toolCallAccumulator.set(toolId, {
               id: toolId,
               type: 'function',
@@ -187,12 +209,6 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
                 name: part.functionCall.name,
                 arguments: JSON.stringify(part.functionCall.args || {})
               }
-            });
-          } else {
-            // Log why no function call
-            console.log('[Google Adapter] ❌ No functionCall in part', {
-              partKeys: Object.keys(part),
-              hasText: !!part.text
             });
           }
         }
@@ -208,23 +224,38 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         ? Array.from(toolCallAccumulator.values())
         : undefined;
 
-      console.log('[Google Adapter] Stream completed', {
+      console.log('[Google Adapter] 🔍 Stream completed - FINAL TOOL CALL CHECK', {
         accumulatorSize: toolCallAccumulator.size,
         hasToolCalls: !!finalToolCalls,
         toolCallsCount: finalToolCalls?.length || 0,
-        toolCallNames: finalToolCalls?.map(tc => tc.function?.name)
+        toolCallNames: finalToolCalls?.map(tc => tc.function?.name),
+        fullToolCalls: finalToolCalls
       });
 
-      yield {
+      const finalChunk = {
         content: '',
         complete: true,
         usage: this.extractUsage({ usageMetadata: usage }),
         toolCalls: finalToolCalls
       };
 
-      console.log('[Google Adapter] Streaming completed');
-    } catch (error) {
-      console.error('[GoogleAdapter] Streaming error:', error);
+      console.log('[Google Adapter] 🚀 YIELDING FINAL CHUNK:', {
+        hasToolCalls: !!finalChunk.toolCalls,
+        toolCallsCount: finalChunk.toolCalls?.length || 0,
+        complete: finalChunk.complete,
+        fullChunk: finalChunk
+      });
+
+      yield finalChunk;
+
+      console.log('[Google Adapter] ✅ Streaming completed');
+    } catch (error: any) {
+      console.error('[Google Adapter] ❌❌❌ STREAMING ERROR:', error);
+      console.error('[Google Adapter] Error details:', {
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack
+      });
       throw error;
     }
   }
@@ -334,10 +365,10 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           if (options?.tools && options.tools.length > 0) {
             requestParams.tools = this.convertTools(options.tools);
 
-            // Add function calling config to encourage tool use
+            // Add function calling config - let model decide when to use tools
             requestParams.toolConfig = {
               functionCallingConfig: {
-                mode: 'AUTO' // Let model decide when to use tools
+                mode: 'AUTO' // Model decides when tools are appropriate
               }
             };
           }
@@ -468,12 +499,65 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           return {
             name: tool.function.name,
             description: tool.function.description,
-            parameters: tool.function.parameters
+            parameters: this.sanitizeSchemaForGoogle(tool.function.parameters)
           };
         }
         return tool;
       })
     }];
+  }
+
+  /**
+   * Sanitize JSON Schema for Google's simplified schema format
+   * Google doesn't support: if/then, allOf/anyOf/oneOf, examples, $ref, etc.
+   */
+  private sanitizeSchemaForGoogle(schema: any): any {
+    if (!schema || typeof schema !== 'object') {
+      return schema;
+    }
+
+    // Create a clean copy
+    const sanitized: any = {};
+
+    // Copy basic properties that Google supports
+    const allowedTopLevel = ['type', 'description', 'properties', 'required', 'items', 'enum'];
+    for (const key of allowedTopLevel) {
+      if (key in schema) {
+        sanitized[key] = schema[key];
+      }
+    }
+
+    // Recursively sanitize nested properties
+    if (sanitized.properties && typeof sanitized.properties === 'object') {
+      const cleanProps: any = {};
+      for (const [propName, propSchema] of Object.entries(sanitized.properties)) {
+        cleanProps[propName] = this.sanitizeSchemaForGoogle(propSchema);
+      }
+      sanitized.properties = cleanProps;
+    }
+
+    // Recursively sanitize array items
+    if (sanitized.items && typeof sanitized.items === 'object') {
+      sanitized.items = this.sanitizeSchemaForGoogle(sanitized.items);
+    }
+
+    // CRITICAL: Validate required array - remove any properties that don't exist in sanitized.properties
+    if (sanitized.required && Array.isArray(sanitized.required) && sanitized.properties) {
+      sanitized.required = sanitized.required.filter((propName: string) => {
+        const exists = propName in sanitized.properties;
+        if (!exists) {
+          console.warn(`[Google Adapter] Removed required property "${propName}" - not in sanitized properties`);
+        }
+        return exists;
+      });
+
+      // If required array is now empty, remove it
+      if (sanitized.required.length === 0) {
+        delete sanitized.required;
+      }
+    }
+
+    return sanitized;
   }
 
   private extractToolCalls(response: any): any[] {

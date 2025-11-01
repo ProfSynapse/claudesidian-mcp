@@ -241,11 +241,74 @@ export class ConversationContextBuilder {
   }
   
   /**
-   * Google format: function_call/function_response
-   * TODO: Implement Google-specific format when needed  
+   * Google/Gemini format: functionCall and functionResponse parts in conversation
+   *
+   * Pattern:
+   * 1. User message with text parts
+   * 2. Model message with functionCall parts
+   * 3. Function message with functionResponse parts
+   * 4. Model message with final response
    */
   private static buildGoogleContext(conversation: ConversationData, messages: any[]): any[] {
-    return this.buildOpenAIContext(conversation, messages);
+    conversation.messages.forEach((msg, index) => {
+      if (msg.role === 'user') {
+        if (msg.content && msg.content.trim()) {
+          messages.push({
+            role: 'user',
+            parts: [{ text: msg.content }]
+          });
+        }
+      }
+      else if (msg.role === 'assistant') {
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          // Model message with functionCall parts
+          const functionCallParts = msg.toolCalls.map((tc: any) => ({
+            functionCall: {
+              name: tc.name,
+              args: tc.parameters || {}
+            }
+          }));
+
+          messages.push({
+            role: 'model',
+            parts: functionCallParts
+          });
+
+          // Function response parts (sent as separate message with role 'function')
+          const functionResponseParts = msg.toolCalls.map((tc: any) => ({
+            functionResponse: {
+              name: tc.name,
+              response: tc.success
+                ? (tc.result || {})
+                : { error: tc.error || 'Tool execution failed' }
+            }
+          }));
+
+          messages.push({
+            role: 'function',
+            parts: functionResponseParts
+          });
+
+          // If there's final content after tool execution, add it
+          if (msg.content && msg.content.trim()) {
+            messages.push({
+              role: 'model',
+              parts: [{ text: msg.content }]
+            });
+          }
+        } else {
+          // Regular assistant message without tools
+          if (msg.content && msg.content.trim()) {
+            messages.push({
+              role: 'model',
+              parts: [{ text: msg.content }]
+            });
+          }
+        }
+      }
+    });
+
+    return messages;
   }
   
   /**
@@ -273,6 +336,13 @@ export class ConversationContextBuilder {
     switch (provider.toLowerCase()) {
       case 'anthropic':
         return this.buildAnthropicToolContinuation(
+          userPrompt,
+          toolCalls,
+          toolResults,
+          previousMessages
+        );
+      case 'google':
+        return this.buildGoogleToolContinuation(
           userPrompt,
           toolCalls,
           toolResults,
@@ -342,6 +412,81 @@ export class ConversationContextBuilder {
     messages.push({
       role: 'user',
       content: toolResultBlocks
+    });
+
+    return messages;
+  }
+
+  /**
+   * Build Google/Gemini-specific tool continuation
+   * Returns message array with functionCall and functionResponse parts
+   *
+   * Google format requires:
+   * 1. User message with text parts
+   * 2. Model message with functionCall parts
+   * 3. Function message with functionResponse parts
+   *
+   * @private
+   */
+  private static buildGoogleToolContinuation(
+    userPrompt: string,
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages?: any[]
+  ): any[] {
+    const messages: any[] = [];
+
+    // Add previous conversation history if provided (convert to Google format)
+    if (previousMessages && previousMessages.length > 0) {
+      for (const msg of previousMessages) {
+        if (msg.role === 'user') {
+          messages.push({
+            role: 'user',
+            parts: [{ text: msg.content }]
+          });
+        } else if (msg.role === 'assistant') {
+          messages.push({
+            role: 'model',
+            parts: [{ text: msg.content }]
+          });
+        }
+      }
+    }
+
+    // Add the original user message
+    if (userPrompt) {
+      messages.push({
+        role: 'user',
+        parts: [{ text: userPrompt }]
+      });
+    }
+
+    // Add model message with functionCall parts
+    const functionCallParts = toolCalls.map(tc => ({
+      functionCall: {
+        name: tc.function?.name || tc.name,
+        args: JSON.parse(tc.function?.arguments || '{}')
+      }
+    }));
+
+    messages.push({
+      role: 'model',
+      parts: functionCallParts
+    });
+
+    // Add function response parts
+    const functionResponseParts = toolResults.map(result => ({
+      functionResponse: {
+        name: result.name || (result.function?.name),
+        response: result.success
+          ? (result.result || {})
+          : { error: result.error || 'Tool execution failed' }
+      }
+    }));
+
+    messages.push({
+      role: 'function',
+      parts: functionResponseParts
     });
 
     return messages;

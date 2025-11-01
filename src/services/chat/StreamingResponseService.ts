@@ -277,10 +277,35 @@ export class StreamingResponseService {
    *
    * This method uses ConversationContextBuilder to properly reconstruct
    * conversation history with tool calls in the correct format for each provider.
+   *
+   * NOTE: For Google, we return simple {role, content} format because
+   * StreamingOrchestrator will convert to Google format ({role, parts})
    */
   private buildLLMMessages(conversation: ConversationData, provider?: string, systemPrompt?: string): any[] {
     const currentProvider = provider || this.getCurrentProvider();
 
+    // For Google, return simple format - StreamingOrchestrator handles Google conversion
+    if (currentProvider === 'google') {
+      const messages: any[] = [];
+
+      // Add system prompt if provided
+      if (systemPrompt) {
+        messages.push({ role: 'system', content: systemPrompt });
+      }
+
+      // Add conversation messages in simple format
+      for (const msg of conversation.messages) {
+        if (msg.role === 'user' && msg.content && msg.content.trim()) {
+          messages.push({ role: 'user', content: msg.content });
+        } else if (msg.role === 'assistant' && msg.content && msg.content.trim()) {
+          messages.push({ role: 'assistant', content: msg.content });
+        }
+      }
+
+      return messages;
+    }
+
+    // For other providers, use ConversationContextBuilder
     return ConversationContextBuilder.buildContextForProvider(
       conversation,
       currentProvider,

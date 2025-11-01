@@ -134,10 +134,12 @@ export class ProviderUtils {
   static supportsStreaming(providerId: string): boolean {
     const streamingProviders = [
       'openai',
-      'anthropic', 
+      'anthropic',
       'mistral',
       'ollama',
-      'openrouter'
+      'openrouter',
+      'google',      // ✅ Google Gemini streaming via generateContentStream
+      'groq'         // ✅ Groq streaming support
     ];
     return streamingProviders.includes(providerId);
   }
@@ -150,10 +152,11 @@ export class ProviderUtils {
     const functionCallingProviders = [
       'openai',      // ✅ Native OpenAI function calling
       'openrouter',  // ✅ OpenAI-compatible function calling
-      'groq',        // ✅ OpenAI-compatible function calling  
+      'groq',        // ✅ OpenAI-compatible function calling
       'mistral',     // ✅ Native Mistral function calling
       'requesty',    // ✅ OpenAI-compatible function calling
-      'anthropic'    // ✅ Native Claude tool calling
+      'anthropic',   // ✅ Native Claude tool calling
+      'google'       // ✅ Native Google Gemini function calling (functionDeclarations)
     ];
     // Note: Perplexity does NOT support function calling (web search focused)
     return functionCallingProviders.includes(providerId);
