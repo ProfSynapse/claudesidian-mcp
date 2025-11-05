@@ -14,7 +14,7 @@ import { OperationValidator } from './validation/OperationValidator';
 import { BatchExecutor } from './execution/BatchExecutor';
 import { ResultCollector } from './results/ResultCollector';
 import { ActivityRecorder } from './activity/ActivityRecorder';
-import { SchemaBuilder } from './schemas/SchemaBuilder';
+import { SchemaBuilder } from '../../../../utils/schemas/SchemaBuilder';
 import { addRecommendations, Recommendation } from '../../../../utils/recommendationUtils';
 import { NudgeHelpers } from '../../../../utils/nudgeHelpers';
 

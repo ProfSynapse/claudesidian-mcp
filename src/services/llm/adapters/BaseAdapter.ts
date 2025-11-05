@@ -4,11 +4,11 @@
  * Based on patterns from services/llm/BaseLLMProvider.ts
  */
 
-import { 
-  GenerateOptions, 
-  StreamChunk, 
-  LLMResponse, 
-  ModelInfo, 
+import {
+  GenerateOptions,
+  StreamChunk,
+  LLMResponse,
+  ModelInfo,
   LLMProviderError,
   ProviderConfig,
   ProviderCapabilities,
@@ -18,7 +18,11 @@ import {
 } from './types';
 import { BaseCache, CacheManager } from '../utils/CacheManager';
 import { createHash } from 'crypto';
-import { createParser, type ParsedEvent, type ParseEvent } from 'eventsource-parser';
+import { LLMCostCalculator } from '../utils/LLMCostCalculator';
+import { TokenUsageExtractor } from '../utils/TokenUsageExtractor';
+import { SchemaValidator } from '../utils/SchemaValidator';
+import { SSEStreamProcessor } from '../streaming/SSEStreamProcessor';
+import { StreamChunkProcessor } from '../streaming/StreamChunkProcessor';
 
 export abstract class BaseAdapter {
   abstract readonly name: string;
@@ -62,8 +66,7 @@ export abstract class BaseAdapter {
 
   /**
    * Centralized SSE streaming processor using eventsource-parser
-   * Handles all the complex buffering, parsing, and error recovery
-   * Each adapter provides extraction functions for their specific format
+   * Delegates to SSEStreamProcessor for actual processing
    */
   protected async* processSSEStream(
     response: Response,
@@ -82,228 +85,7 @@ export abstract class BaseAdapter {
       };
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {
-    if (!response.body) {
-      throw new Error('Response body is not readable');
-    }
-
-    const debugLabel = options.debugLabel || 'SSE';
-    let tokenCount = 0;
-    let usage: any = undefined;
-    
-    // Tool call accumulation system
-    const toolCallsAccumulator: Map<number, any> = new Map();
-    let accumulatedContent = '';
-    
-    // Event queue for handling async events in sync generator
-    const eventQueue: StreamChunk[] = [];
-    let isCompleted = false;
-    let completionError: Error | null = null;
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    const parser = createParser((event: ParseEvent) => {
-      if (isCompleted) return;
-
-      // Handle reconnect intervals
-      if (event.type === 'reconnect-interval') {
-        return;
-      }
-
-      // Handle [DONE] event
-      if (event.data === '[DONE]') {
-        
-        const finalUsage = usage ? { 
-          promptTokens: usage.prompt_tokens || 0,
-          completionTokens: usage.completion_tokens || 0,
-          totalTokens: usage.total_tokens || 0 
-        } : undefined;
-
-        const finalToolCalls = options.accumulateToolCalls && toolCallsAccumulator.size > 0 
-          ? Array.from(toolCallsAccumulator.values()) 
-          : undefined;
-
-        eventQueue.push({
-          content: '',
-          complete: true,
-          usage: finalUsage,
-          toolCalls: finalToolCalls
-        });
-        
-        isCompleted = true;
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(event.data);
-
-          // Extract content using adapter-specific logic
-          const content = options.extractContent(parsed);
-          if (content) {
-            tokenCount++;
-            accumulatedContent += content;
-            
-            eventQueue.push({ 
-              content, 
-              complete: false 
-            });
-          }
-
-          // Extract tool calls using adapter-specific logic
-          const toolCalls = options.extractToolCalls(parsed);
-          if (toolCalls && options.accumulateToolCalls) {
-            
-            let shouldYieldToolCalls = false;
-            
-            for (const toolCall of toolCalls) {
-              const index = toolCall.index || 0;
-              
-              if (!toolCallsAccumulator.has(index)) {
-                // Initialize new tool call
-                toolCallsAccumulator.set(index, {
-                  id: toolCall.id || '',
-                  type: toolCall.type || 'function',
-                  function: {
-                    name: toolCall.function?.name || '',
-                    arguments: toolCall.function?.arguments || ''
-                  }
-                });
-                shouldYieldToolCalls = options.toolCallThrottling?.initialYield !== false;
-              } else {
-                // Accumulate existing tool call
-                const existing = toolCallsAccumulator.get(index);
-                if (toolCall.id) existing.id = toolCall.id;
-                if (toolCall.function?.name) existing.function.name = toolCall.function.name;
-                if (toolCall.function?.arguments) {
-                  existing.function.arguments += toolCall.function.arguments;
-                  
-                  // Check throttling conditions
-                  const argLength = existing.function.arguments.length;
-                  const interval = options.toolCallThrottling?.progressInterval || 50;
-                  shouldYieldToolCalls = argLength > 0 && argLength % interval === 0;
-                }
-              }
-            }
-            
-            if (shouldYieldToolCalls) {
-              const currentToolCalls = Array.from(toolCallsAccumulator.values());
-              
-              eventQueue.push({
-                content: '',
-                complete: false,
-                toolCalls: currentToolCalls
-              });
-            }
-          }
-
-          // Extract usage information
-          if (options.extractUsage) {
-            const extractedUsage = options.extractUsage(parsed);
-            if (extractedUsage) {
-              console.log(`[${debugLabel} SSE Debug] Usage extracted from stream event:`, extractedUsage);
-              usage = extractedUsage;
-            } else if (parsed.usage) {
-              console.log(`[${debugLabel} SSE Debug] Event has usage but extractUsage returned null:`, parsed.usage);
-            }
-          }
-
-          // Handle completion
-          const finishReason = options.extractFinishReason(parsed);
-          if (finishReason === 'stop' || finishReason === 'length' || finishReason === 'tool_calls') {
-
-            // Include accumulated tool calls in completion event (same pattern as [DONE])
-            const finalToolCalls = options.accumulateToolCalls && toolCallsAccumulator.size > 0
-              ? Array.from(toolCallsAccumulator.values())
-              : undefined;
-
-            const finalUsageFormatted = usage ? {
-              promptTokens: usage.prompt_tokens || 0,
-              completionTokens: usage.completion_tokens || 0,
-              totalTokens: usage.total_tokens || 0
-            } : undefined;
-
-            console.log(`[${debugLabel} SSE Debug] Yielding completion chunk with usage:`, {
-              hasUsage: !!finalUsageFormatted,
-              usage: finalUsageFormatted,
-              rawUsage: usage
-            });
-
-            eventQueue.push({
-              content: '',
-              complete: true,
-              toolCalls: finalToolCalls,
-              usage: finalUsageFormatted
-            });
-
-            isCompleted = true;
-          }
-
-        } catch (parseError) {
-          if (options.onParseError) {
-            options.onParseError(parseError as Error, event.data);
-          }
-          // Continue processing other events
-        }
-      });
-
-    try {
-      // Process the stream
-      while (!isCompleted && !completionError) {
-        const { done, value } = await reader.read();
-        
-        if (done) {
-          isCompleted = true;
-          break;
-        }
-
-        // Feed chunk to parser
-        const chunk = decoder.decode(value, { stream: true });
-        parser.feed(chunk);
-
-        // Yield any queued events
-        while (eventQueue.length > 0) {
-          const event = eventQueue.shift()!;
-          yield event;
-          
-          // If this was a completion event, we're done
-          if (event.complete) {
-            isCompleted = true;
-            break;
-          }
-        }
-      }
-
-      // Yield any remaining queued events
-      while (eventQueue.length > 0) {
-        const event = eventQueue.shift()!;
-        yield event;
-      }
-
-      // If we completed without a completion event, yield one
-      if (!isCompleted || (!eventQueue.length && !completionError)) {
-        yield {
-          content: '',
-          complete: true,
-          usage: usage ? {
-            promptTokens: usage.prompt_tokens || 0,
-            completionTokens: usage.completion_tokens || 0,
-            totalTokens: usage.total_tokens || 0
-          } : undefined
-        };
-      }
-
-    } catch (error) {
-      throw error;
-    } finally {
-      try {
-        reader.cancel();
-      } catch (error) {
-      }
-    }
-
-    if (completionError) {
-      throw completionError;
-    }
+    yield* SSEStreamProcessor.processSSEStream(response, options);
   }
 
   /**
@@ -386,7 +168,7 @@ export abstract class BaseAdapter {
 
   /**
    * Process individual stream chunk with tool call accumulation
-   * Handles delta.content and delta.tool_calls from any OpenAI-compatible provider
+   * Delegates to StreamChunkProcessor for actual processing
    */
   private* processStreamChunk(
     chunk: any,
@@ -399,54 +181,7 @@ export abstract class BaseAdapter {
     toolCallsAccumulator: Map<number, any>,
     usageRef: any
   ): Generator<StreamChunk, void, unknown> {
-
-    // Extract text content
-    const content = options.extractContent(chunk);
-    if (content) {
-      yield { content, complete: false };
-    }
-
-    // Extract and accumulate tool calls
-    const toolCalls = options.extractToolCalls(chunk);
-    if (toolCalls) {
-      for (const toolCall of toolCalls) {
-        const index = toolCall.index || 0;
-
-        if (!toolCallsAccumulator.has(index)) {
-          // Initialize new tool call
-          toolCallsAccumulator.set(index, {
-            id: toolCall.id || '',
-            type: toolCall.type || 'function',
-            function: {
-              name: toolCall.function?.name || '',
-              arguments: toolCall.function?.arguments || ''
-            }
-          });
-        } else {
-          // Accumulate existing tool call arguments
-          const existing = toolCallsAccumulator.get(index);
-          if (toolCall.id) existing.id = toolCall.id;
-          if (toolCall.function?.name) existing.function.name = toolCall.function.name;
-          if (toolCall.function?.arguments) {
-            existing.function.arguments += toolCall.function.arguments;
-          }
-        }
-      }
-
-      // Yield progress for UI (every 50 characters of arguments)
-      const currentToolCalls = Array.from(toolCallsAccumulator.values());
-      const totalArgLength = currentToolCalls.reduce((sum, tc) =>
-        sum + (tc.function?.arguments?.length || 0), 0
-      );
-
-      if (totalArgLength > 0 && totalArgLength % 50 === 0) {
-        yield {
-          content: '',
-          complete: false,
-          toolCalls: currentToolCalls
-        };
-      }
-    }
+    yield* StreamChunkProcessor.processStreamChunk(chunk, options, toolCallsAccumulator, usageRef);
   }
 
   // Cached generate method
@@ -627,33 +362,7 @@ export abstract class BaseAdapter {
   }
 
   protected validateSchema(data: any, schema: any): boolean {
-    // Basic schema validation - could be enhanced with a proper validator
-    if (typeof schema !== 'object' || schema === null) {
-      return true;
-    }
-
-    if (schema.type) {
-      const expectedType = schema.type;
-      const actualType = Array.isArray(data) ? 'array' : typeof data;
-      
-      if (expectedType !== actualType) {
-        return false;
-      }
-    }
-
-    if (schema.properties && typeof data === 'object') {
-      for (const [key, propSchema] of Object.entries(schema.properties)) {
-        if (schema.required?.includes(key) && !(key in data)) {
-          return false;
-        }
-        
-        if (key in data && !this.validateSchema(data[key], propSchema)) {
-          return false;
-        }
-      }
-    }
-
-    return true;
+    return SchemaValidator.validateSchema(data, schema);
   }
 
   protected buildMessages(prompt: string, systemPrompt?: string): any[] {
@@ -669,133 +378,21 @@ export abstract class BaseAdapter {
   }
 
   protected extractUsage(response: any): TokenUsage | undefined {
-    // Default implementation - override in specific adapters
-    if (response.usage) {
-      const usage: TokenUsage = {
-        promptTokens: response.usage.prompt_tokens || response.usage.input_tokens || 0,
-        completionTokens: response.usage.completion_tokens || response.usage.output_tokens || 0,
-        totalTokens: response.usage.total_tokens || 0
-      };
-
-      // Extract detailed token breakdowns (OpenAI format)
-      if (response.usage.prompt_tokens_details?.cached_tokens) {
-        usage.cachedTokens = response.usage.prompt_tokens_details.cached_tokens;
-      }
-
-      if (response.usage.completion_tokens_details?.reasoning_tokens) {
-        usage.reasoningTokens = response.usage.completion_tokens_details.reasoning_tokens;
-      }
-
-      // Audio tokens (sum of input and output if present)
-      const inputAudio = response.usage.prompt_tokens_details?.audio_tokens || 0;
-      const outputAudio = response.usage.completion_tokens_details?.audio_tokens || 0;
-      if (inputAudio + outputAudio > 0) {
-        usage.audioTokens = inputAudio + outputAudio;
-      }
-
-      return usage;
-    }
-    return undefined;
+    return TokenUsageExtractor.extractUsage(response);
   }
 
   // Cost calculation methods
   protected async calculateCost(usage: TokenUsage, model: string): Promise<CostDetails | null> {
-
     const modelPricing = await this.getModelPricing(model);
-
-    if (!modelPricing) {
-      return null;
-    }
-
-    // Determine caching discount rate based on provider and model
-    const cachingDiscount = this.getCachingDiscount(model);
-
-    // Calculate input cost with caching discount
-    let inputCost = 0;
-    let cachedCost = 0;
-
-    if (usage.cachedTokens && usage.cachedTokens > 0 && cachingDiscount < 1.0) {
-      // Split input tokens into cached and fresh
-      const freshTokens = usage.promptTokens - usage.cachedTokens;
-      const freshCost = (freshTokens / 1_000_000) * modelPricing.rateInputPerMillion;
-      cachedCost = (usage.cachedTokens / 1_000_000) * modelPricing.rateInputPerMillion * cachingDiscount;
-      inputCost = freshCost + cachedCost;
-
-      console.log('[BaseAdapter] Applied caching discount:', {
-        model,
-        cachingDiscount,
-        freshTokens,
-        cachedTokens: usage.cachedTokens,
-        freshCost,
-        cachedCost,
-        totalInputCost: inputCost
-      });
-    } else {
-      // No cached tokens, use standard pricing
-      inputCost = (usage.promptTokens / 1_000_000) * modelPricing.rateInputPerMillion;
-    }
-
-    const outputCost = (usage.completionTokens / 1_000_000) * modelPricing.rateOutputPerMillion;
-    const totalCost = inputCost + outputCost;
-
-    const costDetails: CostDetails = {
-      inputCost,
-      outputCost,
-      totalCost,
-      currency: modelPricing.currency || 'USD',
-      rateInputPerMillion: modelPricing.rateInputPerMillion,
-      rateOutputPerMillion: modelPricing.rateOutputPerMillion
-    };
-
-    // Add cached token details if applicable
-    if (usage.cachedTokens && usage.cachedTokens > 0) {
-      costDetails.cached = {
-        tokens: usage.cachedTokens,
-        cost: cachedCost
-      };
-    }
-    
-    console.log('BaseAdapter: calculated cost successfully', {
-      provider: this.name,
-      model,
-      usage,
-      rates: {
-        input: modelPricing.rateInputPerMillion,
-        output: modelPricing.rateOutputPerMillion
-      },
-      calculatedCosts: costDetails
-    });
-    return costDetails;
+    return LLMCostCalculator.calculateCost(usage, model, modelPricing);
   }
 
   /**
    * Get caching discount multiplier for a model
-   * Returns the fraction of the original price (e.g., 0.1 = 90% off, 0.25 = 75% off)
+   * Delegates to LLMCostCalculator
    */
   protected getCachingDiscount(model: string): number {
-    // OpenAI pricing as of Oct 2025:
-    // GPT-5 family: 90% off cached tokens (pay 10%)
-    if (model.startsWith('gpt-5')) {
-      return 0.1;
-    }
-
-    // GPT-4.1 family: 75% off cached tokens (pay 25%)
-    if (model.startsWith('gpt-4.1')) {
-      return 0.25;
-    }
-
-    // Anthropic Claude: 90% off cached tokens
-    if (model.startsWith('claude')) {
-      return 0.1;
-    }
-
-    // Google Gemini: 50% off cached tokens
-    if (model.startsWith('gemini')) {
-      return 0.5;
-    }
-
-    // Default: no caching discount
-    return 1.0;
+    return LLMCostCalculator.getCachingDiscount(model);
   }
 
   protected async buildLLMResponse(

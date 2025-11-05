@@ -18,6 +18,7 @@ import {
 import { GOOGLE_MODELS, GOOGLE_DEFAULT_MODEL } from './GoogleModels';
 import { WebSearchUtils } from '../../utils/WebSearchUtils';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
+import { SchemaValidator } from '../../utils/SchemaValidator';
 
 export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'google';
@@ -509,55 +510,10 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
 
   /**
    * Sanitize JSON Schema for Google's simplified schema format
-   * Google doesn't support: if/then, allOf/anyOf/oneOf, examples, $ref, etc.
+   * Delegates to SchemaValidator utility
    */
   private sanitizeSchemaForGoogle(schema: any): any {
-    if (!schema || typeof schema !== 'object') {
-      return schema;
-    }
-
-    // Create a clean copy
-    const sanitized: any = {};
-
-    // Copy basic properties that Google supports
-    const allowedTopLevel = ['type', 'description', 'properties', 'required', 'items', 'enum'];
-    for (const key of allowedTopLevel) {
-      if (key in schema) {
-        sanitized[key] = schema[key];
-      }
-    }
-
-    // Recursively sanitize nested properties
-    if (sanitized.properties && typeof sanitized.properties === 'object') {
-      const cleanProps: any = {};
-      for (const [propName, propSchema] of Object.entries(sanitized.properties)) {
-        cleanProps[propName] = this.sanitizeSchemaForGoogle(propSchema);
-      }
-      sanitized.properties = cleanProps;
-    }
-
-    // Recursively sanitize array items
-    if (sanitized.items && typeof sanitized.items === 'object') {
-      sanitized.items = this.sanitizeSchemaForGoogle(sanitized.items);
-    }
-
-    // CRITICAL: Validate required array - remove any properties that don't exist in sanitized.properties
-    if (sanitized.required && Array.isArray(sanitized.required) && sanitized.properties) {
-      sanitized.required = sanitized.required.filter((propName: string) => {
-        const exists = propName in sanitized.properties;
-        if (!exists) {
-          console.warn(`[Google Adapter] Removed required property "${propName}" - not in sanitized properties`);
-        }
-        return exists;
-      });
-
-      // If required array is now empty, remove it
-      if (sanitized.required.length === 0) {
-        delete sanitized.required;
-      }
-    }
-
-    return sanitized;
+    return SchemaValidator.sanitizeSchemaForGoogle(schema);
   }
 
   private extractToolCalls(response: any): any[] {

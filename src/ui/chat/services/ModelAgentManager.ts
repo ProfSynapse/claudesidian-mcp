@@ -1,16 +1,17 @@
 /**
  * ModelAgentManager - Handles model and agent selection, loading, and state management
+ * Refactored to use extracted utilities following SOLID principles
  */
 
 import { ModelOption } from '../components/ModelSelector';
 import { AgentOption } from '../components/AgentSelector';
-import { ProviderUtils } from '../utils/ProviderUtils';
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
-import { TFile } from 'obsidian';
 import { MessageEnhancement } from '../components/suggesters/base/SuggesterInterfaces';
 import { SystemPromptBuilder } from './SystemPromptBuilder';
-import { AgentDiscoveryService } from '../../../services/agents/AgentDiscoveryService';
 import { ContextNotesManager } from './ContextNotesManager';
+import { ModelSelectionUtility } from '../utils/ModelSelectionUtility';
+import { AgentConfigurationUtility } from '../utils/AgentConfigurationUtility';
+import { WorkspaceIntegrationService } from './WorkspaceIntegrationService';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -28,7 +29,7 @@ export class ModelAgentManager {
   private currentConversationId: string | null = null;
   private messageEnhancement: MessageEnhancement | null = null;
   private systemPromptBuilder: SystemPromptBuilder;
-  private agentDiscoveryService: AgentDiscoveryService | null = null;
+  private workspaceIntegration: WorkspaceIntegrationService;
 
   constructor(
     private app: any, // Obsidian App
@@ -37,14 +38,14 @@ export class ModelAgentManager {
     conversationId?: string
   ) {
     this.currentConversationId = conversationId || null;
+
     // Initialize services
     this.contextNotesManager = new ContextNotesManager();
+    this.workspaceIntegration = new WorkspaceIntegrationService(app);
     this.systemPromptBuilder = new SystemPromptBuilder(
-      this.readNoteContent.bind(this),
-      this.loadWorkspace.bind(this)
+      this.workspaceIntegration.readNoteContent.bind(this.workspaceIntegration),
+      this.workspaceIntegration.loadWorkspace.bind(this.workspaceIntegration)
     );
-    // AgentDiscoveryService will be initialized lazily when needed
-    // Don't auto-initialize - will be called from ChatView after conversation loads
   }
 
   /**
@@ -57,65 +58,7 @@ export class ModelAgentManager {
         const conversation = await this.conversationService.getConversation(conversationId);
 
         if (conversation?.metadata?.chatSettings) {
-          const settings = conversation.metadata.chatSettings;
-          const availableModels = await this.getAvailableModels();
-          const availableAgents = await this.getAvailableAgents();
-
-          // Restore model
-          if (settings.providerId && settings.modelId) {
-            const model = availableModels.find(
-              m => m.providerId === settings.providerId && m.modelId === settings.modelId
-            );
-
-            if (model) {
-              this.selectedModel = model;
-              this.events.onModelChanged(model);
-            } else {
-              await this.initializeDefaultModel();
-            }
-          }
-
-          // Restore agent
-          if (settings.agentId) {
-            const agent = availableAgents.find(a => a.id === settings.agentId);
-            if (agent) {
-              this.selectedAgent = agent;
-              this.currentSystemPrompt = agent.systemPrompt || null;
-              this.events.onAgentChanged(agent);
-            }
-          }
-
-          // Restore workspace
-          if (settings.workspaceId) {
-            this.selectedWorkspaceId = settings.workspaceId;
-
-            // Load workspace context immediately
-            try {
-              const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-              const workspaceService = await plugin?.getService('workspaceService');
-
-              if (workspaceService) {
-                const workspace = await workspaceService.getWorkspace(settings.workspaceId);
-                if (workspace?.context) {
-                  this.workspaceContext = workspace.context;
-
-                  // Bind session to workspace
-                  await this.bindSessionToWorkspace(
-                    settings.sessionId || conversation.metadata?.chatSettings?.sessionId,
-                    settings.workspaceId
-                  );
-                }
-              }
-            } catch (error) {
-              // Failed to load workspace context
-            }
-          }
-
-          // Restore context notes
-          if (settings.contextNotes && Array.isArray(settings.contextNotes)) {
-            this.contextNotesManager.setNotes(settings.contextNotes);
-          }
-
+          await this.restoreFromConversationMetadata(conversation.metadata.chatSettings);
           return; // Successfully loaded from metadata
         }
       }
@@ -128,27 +71,86 @@ export class ModelAgentManager {
   }
 
   /**
+   * Restore settings from conversation metadata
+   */
+  private async restoreFromConversationMetadata(settings: any): Promise<void> {
+    const availableModels = await this.getAvailableModels();
+    const availableAgents = await this.getAvailableAgents();
+
+    // Restore model
+    if (settings.providerId && settings.modelId) {
+      const model = availableModels.find(
+        m => m.providerId === settings.providerId && m.modelId === settings.modelId
+      );
+
+      if (model) {
+        this.selectedModel = model;
+        this.events.onModelChanged(model);
+      } else {
+        await this.initializeDefaultModel();
+      }
+    }
+
+    // Restore agent
+    if (settings.agentId) {
+      const agent = availableAgents.find(a => a.id === settings.agentId);
+      if (agent) {
+        this.selectedAgent = agent;
+        this.currentSystemPrompt = agent.systemPrompt || null;
+        this.events.onAgentChanged(agent);
+      }
+    }
+
+    // Restore workspace
+    if (settings.workspaceId) {
+      await this.restoreWorkspace(settings.workspaceId, settings.sessionId);
+    }
+
+    // Restore context notes
+    if (settings.contextNotes && Array.isArray(settings.contextNotes)) {
+      this.contextNotesManager.setNotes(settings.contextNotes);
+    }
+  }
+
+  /**
+   * Restore workspace from settings
+   */
+  private async restoreWorkspace(workspaceId: string, sessionId?: string): Promise<void> {
+    this.selectedWorkspaceId = workspaceId;
+
+    try {
+      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const workspaceService = await plugin?.getService('workspaceService');
+
+      if (workspaceService) {
+        const workspace = await workspaceService.getWorkspace(workspaceId);
+        if (workspace?.context) {
+          this.workspaceContext = workspace.context;
+
+          // Bind session to workspace
+          await this.workspaceIntegration.bindSessionToWorkspace(sessionId, workspaceId);
+        }
+      }
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to restore workspace:', error);
+    }
+  }
+
+  /**
    * Initialize the selected model from plugin settings default
-   * ✅ CRITICAL: Also clears workspace, agent, and context notes for clean slate
+   * Also clears workspace, agent, and context notes for clean slate
    */
   private async initializeDefaultModel(): Promise<void> {
     try {
-      const defaultModelConfig = await this.getDefaultModel();
       const availableModels = await this.getAvailableModels();
-
-      // Find the default model in available models
-      const defaultModel = availableModels.find(
-        m => m.providerId === defaultModelConfig.provider &&
-             m.modelId === defaultModelConfig.model
-      );
+      const defaultModel = await ModelSelectionUtility.findDefaultModelOption(this.app, availableModels);
 
       if (defaultModel) {
         this.selectedModel = defaultModel;
         this.events.onModelChanged(defaultModel);
       }
 
-      // ✅ CRITICAL FIX: Clear all other state for new conversations
-      // This prevents old conversation state from leaking into new conversations
+      // Clear all other state for new conversations
       this.selectedAgent = null;
       this.currentSystemPrompt = null;
       this.selectedWorkspaceId = null;
@@ -159,7 +161,7 @@ export class ModelAgentManager {
       this.events.onAgentChanged(null);
       this.events.onSystemPromptChanged(null);
     } catch (error) {
-      // Failed to initialize default model
+      console.error('[ModelAgentManager] Failed to initialize default model:', error);
     }
   }
 
@@ -172,7 +174,7 @@ export class ModelAgentManager {
     }
 
     try {
-      // ⚠️ CRITICAL: Load existing metadata first to preserve sessionId
+      // Load existing metadata first to preserve sessionId
       const existingConversation = await this.conversationService.getConversation(conversationId);
       const existingSessionId = existingConversation?.metadata?.chatSettings?.sessionId;
 
@@ -183,13 +185,13 @@ export class ModelAgentManager {
           agentId: this.selectedAgent?.id,
           workspaceId: this.selectedWorkspaceId,
           contextNotes: this.contextNotesManager.getNotes(),
-          sessionId: existingSessionId // ✅ PRESERVE the session ID!
+          sessionId: existingSessionId // Preserve the session ID
         }
       };
 
       await this.conversationService.updateConversationMetadata(conversationId, metadata);
     } catch (error) {
-      // Failed to save to conversation
+      console.error('[ModelAgentManager] Failed to save to conversation:', error);
     }
   }
 
@@ -204,27 +206,16 @@ export class ModelAgentManager {
    * Get current selected model or default (async - fetches default if none selected)
    */
   async getSelectedModelOrDefault(): Promise<ModelOption | null> {
-    // If a model is explicitly selected, return it
     if (this.selectedModel) {
       return this.selectedModel;
     }
 
-    // Otherwise, get the default model
-    try {
-      const defaultModelConfig = await this.getDefaultModel();
-      const availableModels = await this.getAvailableModels();
+    // Get the default model
+    const availableModels = await this.getAvailableModels();
+    const defaultModel = await ModelSelectionUtility.findDefaultModelOption(this.app, availableModels);
 
-      const defaultModel = availableModels.find(
-        m => m.providerId === defaultModelConfig.provider &&
-             m.modelId === defaultModelConfig.model
-      );
-
-      console.log('[ModelAgentManager] getSelectedModelOrDefault - returning default model:', defaultModel?.modelName);
-      return defaultModel || null;
-    } catch (error) {
-      console.error('[ModelAgentManager] Failed to get default model:', error);
-      return null;
-    }
+    console.log('[ModelAgentManager] getSelectedModelOrDefault - returning default model:', defaultModel?.modelName);
+    return defaultModel;
   }
 
   /**
@@ -285,7 +276,7 @@ export class ModelAgentManager {
     const sessionId = await this.getCurrentSessionId();
 
     if (sessionId) {
-      await this.bindSessionToWorkspace(sessionId, workspaceId);
+      await this.workspaceIntegration.bindSessionToWorkspace(sessionId, workspaceId);
     }
 
     this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
@@ -335,7 +326,6 @@ export class ModelAgentManager {
 
   /**
    * Set message enhancement from suggesters
-   * @param enhancement - Message enhancement data
    */
   setMessageEnhancement(enhancement: MessageEnhancement | null): void {
     this.messageEnhancement = enhancement;
@@ -343,7 +333,6 @@ export class ModelAgentManager {
 
   /**
    * Get current message enhancement
-   * @returns Message enhancement or null
    */
   getMessageEnhancement(): MessageEnhancement | null {
     return this.messageEnhancement;
@@ -357,115 +346,17 @@ export class ModelAgentManager {
   }
 
   /**
-   * Get the configured default model from plugin settings
-   */
-  async getDefaultModel(): Promise<{ provider: string; model: string }> {
-    try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-      if (!plugin) {
-        throw new Error('Plugin not found');
-      }
-
-      const pluginData = await plugin.loadData();
-      const defaultModel = pluginData?.llmProviders?.defaultModel;
-      
-      if (!defaultModel?.provider || !defaultModel?.model) {
-        throw new Error('No default model configured in settings');
-      }
-
-      return defaultModel;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  /**
    * Get available models from validated providers
    */
   async getAvailableModels(): Promise<ModelOption[]> {
-    try {
-      // Get plugin instance to access LLMService
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-      if (!plugin) {
-        return [];
-      }
-
-      // Get LLMService which has ModelDiscoveryService
-      const llmService = await plugin.getService('llmService');
-      if (!llmService) {
-        return [];
-      }
-
-      // Allowed providers for chat view
-      const allowedProviders = ['openai', 'openrouter', 'anthropic', 'google', 'ollama'];
-
-      // Get all available models from ModelDiscoveryService (via LLMService)
-      const allModels = await llmService.getAvailableModels();
-
-      // Filter to allowed providers and convert to ModelOption format
-      const models: ModelOption[] = allModels
-        .filter((model: any) => allowedProviders.includes(model.provider))
-        .map((model: any) => this.mapToModelOption(model));
-
-      return models;
-    } catch (error) {
-      return [];
-    }
-  }
-
-  /**
-   * Convert ModelWithProvider to ModelOption format
-   */
-  private mapToModelOption(model: any): ModelOption {
-    return {
-      providerId: model.provider,
-      providerName: this.getProviderDisplayName(model.provider),
-      modelId: model.id,
-      modelName: model.name,
-      contextWindow: model.contextWindow || 128000 // Default if not specified
-    };
+    return await ModelSelectionUtility.getAvailableModels(this.app);
   }
 
   /**
    * Get available agents from agent manager
    */
   async getAvailableAgents(): Promise<AgentOption[]> {
-    try {
-      // Initialize AgentDiscoveryService if needed
-      if (!this.agentDiscoveryService) {
-        const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-        if (!plugin) {
-          return [];
-        }
-
-        const customPromptStorageService = await plugin.getService('customPromptStorageService');
-        if (!customPromptStorageService) {
-          return [];
-        }
-
-        this.agentDiscoveryService = new AgentDiscoveryService(customPromptStorageService);
-      }
-
-      // Get enabled agents from discovery service
-      const agents = await this.agentDiscoveryService.getEnabledAgents();
-
-      // Convert to AgentOption format
-      return agents.map(agent => this.mapToAgentOption(agent));
-    } catch (error) {
-      return [];
-    }
-  }
-
-  /**
-   * Convert AgentInfo to AgentOption format
-   */
-  private mapToAgentOption(agent: any): AgentOption {
-    return {
-      id: agent.id,
-      name: agent.name || 'Unnamed Agent',
-      description: agent.description || 'Custom agent prompt',
-      systemPrompt: agent.prompt
-    };
+    return await AgentConfigurationUtility.getAvailableAgents(this.app);
   }
 
   /**
@@ -503,112 +394,6 @@ export class ModelAgentManager {
       agentPrompt: this.currentSystemPrompt,
       workspaceContext: this.workspaceContext
     });
-  }
-
-  /**
-   * Read note content from vault
-   * Used by SystemPromptBuilder for file content injection
-   */
-  private async readNoteContent(notePath: string): Promise<string> {
-    try {
-      const file = this.app.vault.getAbstractFileByPath(notePath);
-
-      if (file instanceof TFile) {
-        const content = await this.app.vault.read(file);
-        return content;
-      }
-
-      return '[File not found]';
-    } catch (error) {
-      return '[Error reading file]';
-    }
-  }
-
-  /**
-   * Load workspace by ID with full context (like loadWorkspace tool)
-   * Used by SystemPromptBuilder for workspace context injection
-   * This executes the LoadWorkspaceMode to get comprehensive data including file structure
-   */
-  private async loadWorkspace(workspaceId: string): Promise<any> {
-    try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-
-      // Try to get the memoryManager agent and execute LoadWorkspaceMode
-      const memoryManager = plugin?.agentManager?.getAgent('memoryManager');
-
-      if (memoryManager) {
-        // Execute LoadWorkspaceMode to get comprehensive workspace data
-        const result = await memoryManager.executeMode('loadWorkspace', {
-          id: workspaceId,
-          limit: 3 // Get recent sessions, states, and activity
-        });
-
-        if (result.success && result.data) {
-          // Return the comprehensive workspace data from the tool
-          return {
-            id: workspaceId,
-            ...result.data,
-            // Keep the workspace context from the result
-            workspaceContext: result.workspaceContext
-          };
-        }
-      }
-
-      // Fallback: just load basic workspace data if LoadWorkspaceMode fails
-      const workspaceService = await plugin?.getService('workspaceService');
-      if (workspaceService) {
-        const workspace = await workspaceService.getWorkspace(workspaceId);
-        return workspace;
-      }
-
-      return null;
-    } catch (error) {
-      console.error(`Error loading workspace ${workspaceId}:`, error);
-
-      // Fallback: try basic workspace loading
-      try {
-        const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-        const workspaceService = await plugin?.getService('workspaceService');
-        if (workspaceService) {
-          return await workspaceService.getWorkspace(workspaceId);
-        }
-      } catch (fallbackError) {
-        console.error(`Fallback workspace loading also failed:`, fallbackError);
-      }
-
-      return null;
-    }
-  }
-
-
-  /**
-   * Get display name for provider with tool calling indicator
-   */
-  private getProviderDisplayName(providerId: string): string {
-    return ProviderUtils.getProviderDisplayNameWithTools(providerId);
-  }
-
-  /**
-   * Bind a session to a workspace in SessionContextManager
-   */
-  private async bindSessionToWorkspace(sessionId: string | undefined, workspaceId: string): Promise<void> {
-    if (!sessionId) {
-      return;
-    }
-
-    try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-      const sessionContextManager = await plugin.getService('sessionContextManager');
-
-      if (sessionContextManager) {
-        sessionContextManager.setWorkspaceContext(sessionId, {
-          workspaceId: workspaceId,
-          activeWorkspace: true
-        });
-      }
-    } catch (error) {
-      // Failed to bind session to workspace
-    }
   }
 
   /**

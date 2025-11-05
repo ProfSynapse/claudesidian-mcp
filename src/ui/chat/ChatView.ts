@@ -1,8 +1,11 @@
 /**
  * ChatView - Clean orchestrator for the chat interface
- * 
+ * Location: /src/ui/chat/ChatView.ts
+ *
  * Coordinates between services, controllers, and UI components following SOLID principles.
  * This class is responsible for initialization, delegation, and high-level event coordination only.
+ * Delegates UI construction to ChatLayoutBuilder, event binding to ChatEventBinder,
+ * and tool event coordination to ToolEventCoordinator.
  */
 
 import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
@@ -11,7 +14,6 @@ import { MessageDisplay } from './components/MessageDisplay';
 import { ChatInput } from './components/ChatInput';
 import { ContextProgressBar } from './components/ContextProgressBar';
 import { ChatSettingsModal } from './components/ChatSettingsModal';
-// BranchNavigator removed - using message-level navigation
 import { ChatService } from '../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../types/chat/ChatTypes';
 import { MessageEnhancement } from './components/suggesters/base/SuggesterInterfaces';
@@ -21,15 +23,20 @@ import { ConversationManager, ConversationManagerEvents } from './services/Conve
 import { MessageManager, MessageManagerEvents } from './services/MessageManager';
 import { ModelAgentManager, ModelAgentManagerEvents } from './services/ModelAgentManager';
 import { BranchManager, BranchManagerEvents } from './services/BranchManager';
-import { getToolNameMetadata } from '../../utils/toolNameUtils';
 
 // Controllers
 import { UIStateController, UIStateControllerEvents } from './controllers/UIStateController';
 import { StreamingController } from './controllers/StreamingController';
 
+// Coordinators
+import { ToolEventCoordinator } from './coordinators/ToolEventCoordinator';
+
+// Builders and Utilities
+import { ChatLayoutBuilder, ChatLayoutElements } from './builders/ChatLayoutBuilder';
+import { ChatEventBinder } from './utils/ChatEventBinder';
+
 // Utils
 import { TokenCalculator } from './utils/TokenCalculator';
-import { ProviderUtils } from './utils/ProviderUtils';
 import { ReferenceMetadata } from './utils/ReferenceExtractor';
 
 export const CHAT_VIEW_TYPE = 'claudesidian-chat';
@@ -40,17 +47,20 @@ export class ChatView extends ItemView {
   private messageDisplay!: MessageDisplay;
   private chatInput!: ChatInput;
   private contextProgressBar!: ContextProgressBar;
-  // Branch navigation is now handled at message level
-  
+
   // Services
   private conversationManager!: ConversationManager;
   private messageManager!: MessageManager;
   private modelAgentManager!: ModelAgentManager;
   private branchManager!: BranchManager;
 
-  // Controllers
+  // Controllers and Coordinators
   private uiStateController!: UIStateController;
   private streamingController!: StreamingController;
+  private toolEventCoordinator!: ToolEventCoordinator;
+
+  // Layout elements
+  private layoutElements!: ChatLayoutElements;
 
   constructor(leaf: WorkspaceLeaf, private chatService: ChatService) {
     super(leaf);
@@ -77,7 +87,7 @@ export class ChatView extends ItemView {
     try {
       await this.chatService.initialize();
 
-      // Set up tool event callback for live UI updates (including 'detected', 'started', 'completed')
+      // Set up tool event callback for live UI updates
       this.chatService.setToolEventCallback((messageId, event, data) => {
         this.handleToolEvent(messageId, event, data);
       });
@@ -106,91 +116,18 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * Create the main chat interface layout (DOM only)
+   * Create the main chat interface layout using builder
    */
   private createChatInterface(): void {
-    const container = this.containerEl.children[1];
-    container.empty();
-    container.addClass('chat-view-container');
-
-    // Create main layout structure
-    const chatLayout = container.createDiv('chat-layout');
-    const mainContainer = chatLayout.createDiv('chat-main');
-    
-    // Experimental warning banner (auto-hide after 5 seconds)
-    const warningBanner = mainContainer.createDiv('chat-experimental-warning');
-    warningBanner.innerHTML = `
-      <span class="warning-icon">⚠️</span>
-      <span class="warning-text">Experimental Feature: AI Chat is in beta.</span>
-      <a href="https://github.com/ProfSynapse/claudesidian-mcp/issues" target="_blank" rel="noopener noreferrer" class="warning-link">Report issues</a>
-      <span class="warning-text">• Use at your own risk</span>
-    `;
-
-    // Auto-hide warning after 5 seconds
-    setTimeout(() => {
-      warningBanner.style.opacity = '0';
-      warningBanner.style.transition = 'opacity 0.5s ease-out';
-      setTimeout(() => {
-        warningBanner.style.display = 'none';
-      }, 500); // Wait for fade transition to complete
-    }, 5000);
-    
-    // Header
-    const chatHeader = mainContainer.createDiv('chat-header');
-
-    // Left: Hamburger button
-    const hamburgerButton = chatHeader.createEl('button', { cls: 'chat-hamburger-button' });
-    hamburgerButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg>';
-    hamburgerButton.setAttribute('aria-label', 'Toggle conversations');
-
-    // Center: Title
-    const chatTitle = chatHeader.createDiv('chat-title');
-    chatTitle.textContent = 'AI Chat';
-
-    // Right: Settings gear icon
-    const settingsButton = chatHeader.createEl('button', { cls: 'chat-settings-button' });
-    setIcon(settingsButton, 'settings');
-    settingsButton.setAttribute('aria-label', 'Chat settings');
-    
-    // Branch navigation is now at message level - no global navigator needed
-    
-    // Main content areas
-    const messageContainer = mainContainer.createDiv('message-display-container');
-    const inputContainer = mainContainer.createDiv('chat-input-container');
-    const contextContainer = mainContainer.createDiv('chat-context-container');
-    
-    // Backdrop and sidebar
-    const backdrop = chatLayout.createDiv('chat-backdrop');
-    const sidebarContainer = chatLayout.createDiv('chat-sidebar');
-    sidebarContainer.addClass('chat-sidebar-hidden');
-    
-    const sidebarHeader = sidebarContainer.createDiv('chat-sidebar-header');
-    sidebarHeader.createEl('h3', { text: 'Conversations' });
-    const newChatButton = sidebarHeader.createEl('button', { 
-      cls: 'chat-new-button',
-      text: '+ New Chat'
-    });
-    
-    const conversationListContainer = sidebarContainer.createDiv('conversation-list-container');
-
-    // Store references for services/controllers
-    this.storeElementReferences({
-      messageContainer,
-      inputContainer,
-      contextContainer,
-      conversationListContainer,
-      // branchNavigatorContainer removed - using message-level navigation
-      newChatButton,
-      settingsButton,
-      chatTitle
-    });
+    const container = this.containerEl.children[1] as HTMLElement;
+    this.layoutElements = ChatLayoutBuilder.buildLayout(container);
   }
 
   /**
    * Initialize business logic services
    */
   private initializeServices(): void {
-    // Branch management - needed by other services
+    // Branch management
     const branchEvents: BranchManagerEvents = {
       onMessageAlternativeCreated: (messageId, alternativeIndex) => this.handleMessageAlternativeCreated(messageId, alternativeIndex),
       onMessageAlternativeSwitched: (messageId, alternativeIndex) => this.handleMessageAlternativeSwitched(messageId, alternativeIndex),
@@ -215,10 +152,10 @@ export class ChatView extends ItemView {
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
       onLoadingStateChanged: (loading) => this.handleLoadingStateChanged(loading),
       onError: (message) => this.uiStateController.showError(message),
-      onToolCallsDetected: (messageId, toolCalls) => this.handleToolCallsDetected(messageId, toolCalls),
-      onToolExecutionStarted: (messageId, toolCall) => this.handleToolExecutionStarted(messageId, toolCall),
+      onToolCallsDetected: (messageId, toolCalls) => this.toolEventCoordinator.handleToolCallsDetected(messageId, toolCalls),
+      onToolExecutionStarted: (messageId, toolCall) => this.toolEventCoordinator.handleToolExecutionStarted(messageId, toolCall),
       onToolExecutionCompleted: (messageId, toolId, result, success, error) =>
-        this.handleToolExecutionCompleted(messageId, toolId, result, success, error),
+        this.toolEventCoordinator.handleToolExecutionCompleted(messageId, toolId, result, success, error),
       onMessageIdUpdated: (oldId, newId, updatedMessage) => this.handleMessageIdUpdated(oldId, newId, updatedMessage),
       onGenerationAborted: (messageId, partialContent) => this.handleGenerationAborted(messageId, partialContent)
     };
@@ -238,7 +175,7 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * Initialize UI controllers
+   * Initialize UI controllers and coordinators
    */
   private initializeControllers(): void {
     const uiStateEvents: UIStateControllerEvents = {
@@ -252,16 +189,14 @@ export class ChatView extends ItemView {
    * Initialize UI components
    */
   private initializeComponents(): void {
-    const refs = this.getElementReferences();
-
     this.conversationList = new ConversationList(
-      refs.conversationListContainer,
+      this.layoutElements.conversationListContainer,
       (conversation) => this.conversationManager.selectConversation(conversation),
       (conversationId) => this.conversationManager.deleteConversation(conversationId)
     );
 
     this.messageDisplay = new MessageDisplay(
-      refs.messageContainer,
+      this.layoutElements.messageContainer,
       this.app,
       this.branchManager,
       (messageId) => this.handleRetryMessage(messageId),
@@ -270,22 +205,23 @@ export class ChatView extends ItemView {
       (messageId, alternativeIndex) => this.handleMessageAlternativeSwitched(messageId, alternativeIndex)
     );
 
+    // Initialize tool event coordinator after messageDisplay is created
+    this.toolEventCoordinator = new ToolEventCoordinator(this.messageDisplay);
+
     this.chatInput = new ChatInput(
-      refs.inputContainer,
+      this.layoutElements.inputContainer,
       (message, enhancement, metadata) => this.handleSendMessage(message, enhancement, metadata),
       () => this.messageManager.getIsLoading(),
-      this.app, // Pass app for suggesters
+      this.app,
       () => this.handleStopGeneration(),
       () => this.conversationManager.getCurrentConversation() !== null
     );
 
     this.contextProgressBar = new ContextProgressBar(
-      refs.contextContainer,
+      this.layoutElements.contextContainer,
       () => this.getContextUsage(),
       () => this.getConversationCost()
     );
-
-    // Branch navigation is now handled at message level - no global navigator needed
 
     // Update conversation list if conversations were already loaded
     const conversations = this.conversationManager.getConversations();
@@ -295,22 +231,19 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * Wire up event handlers
+   * Wire up event handlers using event binder
    */
   private wireEventHandlers(): void {
-    const refs = this.getElementReferences();
-    
-    // New chat button
-    refs.newChatButton.addEventListener('click', () =>
-      this.conversationManager.createNewConversation()
+    ChatEventBinder.bindNewChatButton(
+      this.layoutElements.newChatButton,
+      () => this.conversationManager.createNewConversation()
     );
 
-    // Settings button
-    refs.settingsButton.addEventListener('click', () =>
-      this.openChatSettingsModal()
+    ChatEventBinder.bindSettingsButton(
+      this.layoutElements.settingsButton,
+      () => this.openChatSettingsModal()
     );
 
-    // UI state controller events
     this.uiStateController.initializeEventListeners();
   }
 
@@ -318,14 +251,12 @@ export class ChatView extends ItemView {
    * Open chat settings modal
    */
   private async openChatSettingsModal(): Promise<void> {
-    // Get WorkspaceService from plugin
     const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
     if (!plugin) {
       console.error('[ChatView] Plugin not found');
       return;
     }
 
-    // Get WorkspaceService using the plugin's async service getter
     const workspaceService = await plugin.getService('workspaceService');
     if (!workspaceService) {
       console.error('[ChatView] WorkspaceService not available');
@@ -334,9 +265,6 @@ export class ChatView extends ItemView {
 
     const currentConversation = this.conversationManager.getCurrentConversation();
 
-    // ✅ CRITICAL FIX: Ensure ModelAgentManager has the current conversation ID
-    // This is necessary for new conversations where the modal might open before
-    // the conversation ID is fully propagated
     if (currentConversation) {
       (this.modelAgentManager as any).currentConversationId = currentConversation.id;
     }
@@ -356,65 +284,46 @@ export class ChatView extends ItemView {
   private async loadInitialData(): Promise<void> {
     await this.conversationManager.loadConversations();
 
-    // Only show welcome state if no conversations exist
     const conversations = this.conversationManager.getConversations();
     if (conversations.length === 0) {
       this.uiStateController.showWelcomeState();
-      // Disable input when showing welcome screen
       if (this.chatInput) {
         this.chatInput.setConversationState(false);
       }
-      // Wire up the welcome screen button
       this.wireWelcomeButton();
     }
-    // If conversations exist, the ConversationManager will auto-select the most recent one
   }
 
   /**
-   * Wire up the welcome screen "Start New Conversation" button
+   * Wire up the welcome screen button
    */
   private wireWelcomeButton(): void {
-    // Use event delegation since the button is dynamically created
-    const welcomeButton = this.containerEl.querySelector('.chat-welcome-button');
-    if (welcomeButton) {
-      welcomeButton.addEventListener('click', () => {
-        this.conversationManager.createNewConversation();
-      });
-    }
+    ChatEventBinder.bindWelcomeButton(
+      this.containerEl,
+      () => this.conversationManager.createNewConversation()
+    );
   }
 
   // Event Handlers
 
   private async handleConversationSelected(conversation: ConversationData): Promise<void> {
-    // Update ModelAgentManager's current conversation ID
     (this.modelAgentManager as any).currentConversationId = conversation.id;
-
-    // Initialize ModelAgentManager from conversation metadata
     await this.modelAgentManager.initializeFromConversation(conversation.id);
-
-    // Re-render from stored conversation data (single source of truth)
     this.messageDisplay.setConversation(conversation);
-
-    // Update the chat title
     this.updateChatTitle();
-
-    // Branch navigation is now at message level
     this.uiStateController.setInputPlaceholder('Type your message...');
     this.updateContextProgress();
 
-    // Enable input when conversation is selected
     if (this.chatInput) {
       this.chatInput.setConversationState(true);
     }
 
-    // Close the sidebar menu after selecting a conversation
     if (this.uiStateController.getSidebarVisible()) {
       this.uiStateController.toggleConversationList();
     }
   }
 
   private async handleConversationsChanged(): Promise<void> {
-    // Ensure component is initialized before updating
     if (this.conversationList) {
       this.conversationList.setConversations(this.conversationManager.getConversations());
     }
@@ -422,47 +331,32 @@ export class ChatView extends ItemView {
     const conversations = this.conversationManager.getConversations();
     const currentConversation = this.conversationManager.getCurrentConversation();
 
-    // Handle the case where there are no conversations left
     if (conversations.length === 0) {
-      // Show welcome state
       this.uiStateController.showWelcomeState();
-      // Disable input
       if (this.chatInput) {
         this.chatInput.setConversationState(false);
       }
-      // Wire up the welcome button
       this.wireWelcomeButton();
-    }
-    // Handle the case where current conversation is null but conversations exist
-    else if (!currentConversation && conversations.length > 0) {
-      // Auto-select the first conversation
+    } else if (!currentConversation && conversations.length > 0) {
       await this.conversationManager.selectConversation(conversations[0]);
     }
   }
 
   private handleAIMessageStarted(message: ConversationMessage): void {
-    // Create AI message bubble directly without full conversation re-render
     this.messageDisplay.addAIMessage(message);
   }
 
   private handleStreamingUpdate(messageId: string, content: string, isComplete: boolean, isIncremental?: boolean): void {
-    // Check if this is a retry operation (message has alternatives)
     const currentConversation = this.conversationManager?.getCurrentConversation();
     const message = currentConversation?.messages.find((m: any) => m.id === messageId);
     const isRetry = message && message.alternatives && message.alternatives.length > 0;
 
     if (isIncremental) {
-      // Streaming chunk - route to StreamingController
       this.streamingController.updateStreamingChunk(messageId, content);
     } else if (isComplete) {
-      // Final content - finalize streaming and update MessageBubble
       this.streamingController.finalizeStreaming(messageId, content);
       this.messageDisplay.updateMessageContent(messageId, content);
-
-      // If retry, the MessageManager will handle conversation refresh
-      // to show branching UI - no need to do anything extra here
     } else {
-      // Start of new stream - initialize streaming
       this.streamingController.startStreaming(messageId);
       this.streamingController.updateStreamingChunk(messageId, content);
     }
@@ -473,11 +367,7 @@ export class ChatView extends ItemView {
     console.log('[ChatView] Message count:', conversation.messages.length);
 
     this.conversationManager.updateCurrentConversation(conversation);
-
-    // Always re-render from stored conversation data (single source of truth)
     this.messageDisplay.setConversation(conversation);
-
-    // Update the chat title in case it changed
     this.updateChatTitle();
 
     console.log('[ChatView] About to call updateContextProgress');
@@ -491,25 +381,20 @@ export class ChatView extends ItemView {
   ): Promise<void> {
     const currentConversation = this.conversationManager.getCurrentConversation();
 
-    // Prevent sending messages when no conversation is active
     if (!currentConversation) {
       console.log('[ChatView] Cannot send message - no active conversation');
       return;
     }
 
     try {
-      // Set enhancement on ModelAgentManager BEFORE getting message options
-      // This allows the system prompt builder to include the enhancement data
       if (enhancement) {
         console.log('[ChatView] Setting message enhancement:', enhancement);
         this.modelAgentManager.setMessageEnhancement(enhancement);
       }
 
       const messageOptions = await this.modelAgentManager.getMessageOptions();
-
       console.log('[ChatView] Message options with enhancement:', messageOptions);
 
-      // Send message in current conversation
       await this.messageManager.sendMessage(
         currentConversation,
         message,
@@ -517,7 +402,6 @@ export class ChatView extends ItemView {
         metadata
       );
     } finally {
-      // Always clear the enhancement after sending
       this.modelAgentManager.clearMessageEnhancement();
       this.chatInput?.clearMessageEnhancer();
       console.log('[ChatView] Cleared message enhancement from both ModelAgentManager and ChatInput');
@@ -554,13 +438,11 @@ export class ChatView extends ItemView {
   }
 
   private handleGenerationAborted(messageId: string, partialContent: string): void {
-    // Stop the MessageBubble's "Thinking..." animation
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     if (messageBubble) {
       messageBubble.stopLoadingAnimation();
     }
 
-    // Also stop any StreamingController animations
     const messageElement = this.containerEl.querySelector(`[data-message-id="${messageId}"]`);
     if (messageElement) {
       const contentElement = messageElement.querySelector('.message-bubble .message-content');
@@ -569,7 +451,6 @@ export class ChatView extends ItemView {
       }
     }
 
-    // Finalize any streaming state
     this.streamingController.finalizeStreaming(messageId, partialContent);
   }
 
@@ -621,200 +502,32 @@ export class ChatView extends ItemView {
 
   private updateChatTitle(): void {
     const conversation = this.conversationManager.getCurrentConversation();
-    const refs = this.getElementReferences();
 
-    if (refs.chatTitle) {
-      refs.chatTitle.textContent = conversation?.title || 'AI Chat';
+    if (this.layoutElements.chatTitle) {
+      this.layoutElements.chatTitle.textContent = conversation?.title || 'AI Chat';
     }
   }
 
-  // Tool event handlers
-  private handleToolCallsDetected(messageId: string, toolCalls: any[]): void {
-    console.log('[ChatView] 📥 handleToolCallsDetected called', {
-      messageId,
-      toolCallsCount: toolCalls?.length || 0,
-      toolCalls: toolCalls
-    });
+  // Tool event handlers delegated to coordinator
 
-    // Fire individual 'detected' event for each tool call to create progressive accordions
-    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
-    console.log('[ChatView] 🔍 Message bubble lookup', {
-      messageId,
-      found: !!messageBubble,
-      hasToolCalls: !!(toolCalls && toolCalls.length > 0)
-    });
-
-    if (messageBubble && toolCalls && toolCalls.length > 0) {
-      for (const toolCall of toolCalls) {
-        console.log('[ChatView] 🔧 Processing tool call', {
-          id: toolCall.id,
-          functionName: toolCall.function?.name,
-          name: toolCall.name
-        });
-
-        const metadata = getToolNameMetadata(
-          toolCall.function?.name || toolCall.name
-        );
-
-        let parameters = toolCall.parameters || toolCall.arguments;
-        if (!parameters && toolCall.function?.arguments) {
-          parameters = toolCall.function.arguments;
-        }
-        if (typeof parameters === 'string') {
-          try {
-            parameters = JSON.parse(parameters);
-          } catch {
-            // leave as string if parsing fails
-          }
-        }
-
-        // Extract the tool call data in the format expected by MessageBubble
-        const toolData = {
-          id: toolCall.id,
-          name: metadata.displayName,
-          displayName: metadata.displayName,
-          technicalName: metadata.technicalName,
-          agentName: metadata.agentName,
-          actionName: metadata.actionName,
-          rawName: toolCall.function?.name || toolCall.name,
-          parameters: parameters,
-          isComplete: toolCall.isComplete
-        };
-
-        console.log('[ChatView] 🎯 Calling messageBubble.handleToolEvent', {
-          event: 'detected',
-          toolId: toolData.id,
-          toolName: toolData.name,
-          technicalName: toolData.technicalName
-        });
-
-        messageBubble.handleToolEvent('detected', toolData);
-      }
-    } else {
-      console.log('[ChatView] ⚠️ Skipping tool processing', {
-        hasMessageBubble: !!messageBubble,
-        hasToolCalls: !!(toolCalls && toolCalls.length > 0),
-        toolCallsLength: toolCalls?.length
-      });
-    }
-  }
-
-  private handleToolExecutionStarted(messageId: string, toolCall: { id: string; name: string; parameters?: any }): void {
-    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
-    messageBubble?.handleToolEvent('started', toolCall);
-  }
-
-  private handleToolExecutionCompleted(messageId: string, toolId: string, result: any, success: boolean, error?: string): void {
-    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
-    messageBubble?.handleToolEvent('completed', { toolId, result, success, error });
+  private handleToolEvent(messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
+    this.toolEventCoordinator.handleToolEvent(messageId, event, data);
   }
 
   private handleMessageIdUpdated(oldId: string, newId: string, updatedMessage: ConversationMessage): void {
-    // Notify MessageDisplay to update the corresponding MessageBubble reference
     this.messageDisplay.updateMessageId(oldId, newId, updatedMessage);
   }
 
-  private handleToolEvent(messageId: string, event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
-    const messageBubble = this.messageDisplay.findMessageBubble(messageId);
-    if (!messageBubble) {
-      return;
-    }
+  // Branch event handlers
 
-    const enriched = this.enrichToolEventData(data);
-    messageBubble.handleToolEvent(event, enriched);
-  }
-  
-  private enrichToolEventData(data: any): any {
-    if (!data) {
-      return data;
-    }
-
-    const toolCall = data.toolCall;
-    const rawName =
-      data.rawName ||
-      data.technicalName ||
-      data.name ||
-      toolCall?.function?.name ||
-      toolCall?.name;
-
-    const metadata = getToolNameMetadata(rawName);
-    const parameters =
-      data.parameters !== undefined
-        ? data.parameters
-        : this.extractToolParameters(toolCall);
-
-    return {
-      ...data,
-      name: metadata.displayName,
-      displayName: metadata.displayName,
-      technicalName: metadata.technicalName,
-      agentName: metadata.agentName,
-      actionName: metadata.actionName,
-      rawName,
-      parameters
-    };
-  }
-
-  private extractToolParameters(toolCall: any): any {
-    if (!toolCall) {
-      return undefined;
-    }
-
-    if (toolCall.parameters !== undefined) {
-      return toolCall.parameters;
-    }
-
-    const raw =
-      toolCall.function?.arguments !== undefined
-        ? toolCall.function.arguments
-        : toolCall.arguments;
-
-    if (raw === undefined) {
-      return undefined;
-    }
-
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return raw;
-      }
-    }
-
-    return raw;
-  }
-
-  // Element reference management (simple store/retrieve)
-  private elementRefs: any = {};
-
-  private storeElementReferences(refs: any): void {
-    this.elementRefs = refs;
-  }
-
-  private getElementReferences(): any {
-    return this.elementRefs;
-  }
-
-  // =============================================================================
-  // BRANCH EVENT HANDLERS
-  // =============================================================================
-
-  /**
-   * Handle message alternative creation
-   */
   private handleMessageAlternativeCreated(messageId: string, alternativeIndex: number): void {
-    // Update the message display to reflect new alternatives
     const currentConversation = this.conversationManager.getCurrentConversation();
     if (currentConversation) {
       this.messageDisplay.setConversation(currentConversation);
     }
   }
 
-  /**
-   * Handle message alternative switching
-   */
   private async handleMessageAlternativeSwitched(messageId: string, alternativeIndex: number): Promise<void> {
-    // Use BranchManager to switch to the alternative (this updates the conversation)
     const currentConversation = this.conversationManager.getCurrentConversation();
     if (currentConversation) {
       const success = await this.branchManager.switchToMessageAlternative(
@@ -822,9 +535,8 @@ export class ChatView extends ItemView {
         messageId,
         alternativeIndex
       );
-      
+
       if (success) {
-        // Get the updated message and update the bubble
         const updatedMessage = currentConversation.messages.find(msg => msg.id === messageId);
         if (updatedMessage) {
           this.messageDisplay.updateMessage(messageId, updatedMessage);
@@ -833,13 +545,11 @@ export class ChatView extends ItemView {
     }
   }
 
-
   private cleanup(): void {
     this.conversationList?.cleanup();
     this.messageDisplay?.cleanup();
     this.chatInput?.cleanup();
     this.contextProgressBar?.cleanup();
-    // Branch navigator cleanup no longer needed
     this.uiStateController?.cleanup();
     this.streamingController?.cleanup();
   }

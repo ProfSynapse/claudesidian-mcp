@@ -1,53 +1,44 @@
 /**
  * Location: src/database/services/cache/ContentCache.ts
- * 
- * Summary: Consolidated content caching service that provides high-level content
- * caching operations including file content, metadata, searchs, and search results.
- * Consolidates caching functionality from multiple specialized cache services into
- * a unified interface with TTL, memory management, and cache invalidation.
- * 
+ *
+ * Summary: Consolidated content caching service using Strategy pattern
+ * Refactored to use cache strategies following SOLID principles
+ *
  * Used by: All services requiring content caching capabilities
- * Dependencies: EntityCache, VaultFileIndex, PrefetchManager patterns
+ * Dependencies: BaseCacheStrategy, CacheEvictionPolicy
  */
 
 import { EventEmitter } from 'events';
-import { Plugin, TFile, Vault } from 'obsidian';
-import { getErrorMessage } from '../../../utils/errorUtils';
+import { Plugin, TFile } from 'obsidian';
+import { BaseCacheStrategy } from './strategies/BaseCacheStrategy';
+import { CachedEntry } from './strategies/CacheStrategy';
+import { CacheEvictionPolicy } from './CacheEvictionPolicy';
 
 export interface ContentCacheOptions {
   enableFileContentCache?: boolean;
   enableMetadataCache?: boolean;
-  enablesearchDataCache?: boolean;
+  enableEmbeddingDataCache?: boolean;
   enableSearchCache?: boolean;
   defaultTTL?: number;
   maxCacheSize?: number;
   maxMemoryMB?: number;
 }
 
-export interface CachedContent {
-  data: any;
-  timestamp: number;
-  size: number;
-  ttl: number;
-  accessCount: number;
-  lastAccess: number;
-}
-
-export interface FileContent extends CachedContent {
+export interface FileContent extends CachedEntry {
   filePath: string;
   content: string;
   metadata?: any;
   hash?: string;
 }
 
-export interface searchContent extends CachedContent {
+export interface EmbeddingContent extends CachedEntry {
   filePath: string;
-  search: number[];
+  embedding: number[];
   model: string;
   chunkIndex?: number;
 }
 
-export interface SearchResult extends CachedContent {
+export interface SearchResult extends CachedEntry {
   query: string;
   results: any[];
   type: string;
@@ -67,21 +58,37 @@ export interface CacheStats {
 }
 
 /**
+ * File content cache strategy
+ */
+class FileContentCacheStrategy extends BaseCacheStrategy<FileContent> {}
+
+/**
+ * Embedding cache strategy
+ */
+class EmbeddingCacheStrategy extends BaseCacheStrategy<EmbeddingContent> {}
+
+/**
+ * Search results cache strategy
+ */
+class SearchCacheStrategy extends BaseCacheStrategy<SearchResult> {}
+
+/**
+ * Generic cached content strategy
+ */
+class GenericCacheStrategy extends BaseCacheStrategy<CachedEntry> {}
+
+/**
  * Content Cache Service
- * 
- * Provides unified caching for:
- * - File content and metadata
- * - search data and results
- * - Search results and queries
- * - Computed values and transformations
+ *
+ * Provides unified caching with Strategy pattern for different cache types
  */
 export class ContentCache extends EventEmitter {
-  // Cache storage maps by type
-  private fileContentCache = new Map<string, FileContent>();
-  private metadataCache = new Map<string, CachedContent>();
-  private searchDataCache = new Map<string, searchContent>();
-  private searchResultsCache = new Map<string, SearchResult>();
-  private computedCache = new Map<string, CachedContent>();
+  // Cache strategies
+  private fileContentStrategy: FileContentCacheStrategy;
+  private metadataStrategy: GenericCacheStrategy;
+  private embeddingStrategy: EmbeddingCacheStrategy;
+  private searchResultsStrategy: SearchCacheStrategy;
+  private computedStrategy: GenericCacheStrategy;
 
   // Cache statistics
   private hits = 0;
@@ -92,7 +99,7 @@ export class ContentCache extends EventEmitter {
   private readonly defaultTTL: number;
   private readonly maxCacheSize: number;
   private readonly maxMemoryMB: number;
-  
+
   // Cleanup timer
   private cleanupInterval: NodeJS.Timeout | null = null;
 
@@ -106,6 +113,13 @@ export class ContentCache extends EventEmitter {
     this.defaultTTL = options.defaultTTL || 30 * 60 * 1000; // 30 minutes
     this.maxCacheSize = options.maxCacheSize || 1000;
     this.maxMemoryMB = options.maxMemoryMB || 100; // 100MB default
+
+    // Initialize cache strategies
+    this.fileContentStrategy = new FileContentCacheStrategy();
+    this.metadataStrategy = new GenericCacheStrategy();
+    this.embeddingStrategy = new EmbeddingCacheStrategy();
+    this.searchResultsStrategy = new SearchCacheStrategy();
+    this.computedStrategy = new GenericCacheStrategy();
 
     // Start periodic cleanup
     this.startCleanupTimer();
@@ -142,7 +156,7 @@ export class ContentCache extends EventEmitter {
       lastAccess: Date.now()
     };
 
-    this.fileContentCache.set(filePath, cacheEntry);
+    this.fileContentStrategy.set(filePath, cacheEntry);
     this.currentMemoryMB += size / (1024 * 1024);
 
     this.emit('cached', { type: 'file', filePath, size });
@@ -153,24 +167,14 @@ export class ContentCache extends EventEmitter {
    * Get cached file content
    */
   getCachedFileContent(filePath: string): FileContent | null {
-    const cached = this.fileContentCache.get(filePath);
-    
+    const cached = this.fileContentStrategy.get(filePath);
+
     if (!cached) {
       this.misses++;
       return null;
     }
 
-    if (this.isExpired(cached)) {
-      this.fileContentCache.delete(filePath);
-      this.misses++;
-      return null;
-    }
-
-    // Update access statistics
-    cached.accessCount++;
-    cached.lastAccess = Date.now();
     this.hits++;
-
     return cached;
   }
 
@@ -181,7 +185,7 @@ export class ContentCache extends EventEmitter {
     try {
       const content = await this.plugin.app.vault.read(file);
       const metadata = this.plugin.app.metadataCache.getFileCache(file);
-      
+
       await this.cacheFileContent(file.path, content, metadata, ttl);
     } catch (error) {
       console.error(`[ContentCache] Failed to cache file ${file.path}:`, error);
@@ -189,32 +193,32 @@ export class ContentCache extends EventEmitter {
   }
 
   // =============================================================================
-  // search CACHING
+  // EMBEDDING CACHING
   // =============================================================================
 
   /**
-   * Cache search data
+   * Cache embedding data
    */
-  cachesearch(
+  cacheEmbedding(
     filePath: string,
-    search: number[],
+    embedding: number[],
     model: string,
     chunkIndex?: number,
     ttl?: number
   ): void {
-    if (!this.options.enablesearchDataCache) {
+    if (!this.options.enableEmbeddingDataCache) {
       return;
     }
 
-    const cacheKey = this.getsearchDataCacheKey(filePath, model, chunkIndex);
-    const size = this.estimateSize(search);
+    const cacheKey = this.getEmbeddingCacheKey(filePath, model, chunkIndex);
+    const size = this.estimateSize(embedding);
 
-    const cacheEntry: searchContent = {
+    const cacheEntry: EmbeddingContent = {
       filePath,
-      search,
+      embedding,
       model,
       chunkIndex,
-      data: search,
+      data: embedding,
       timestamp: Date.now(),
       size,
       ttl: ttl || this.defaultTTL,
@@ -222,39 +226,30 @@ export class ContentCache extends EventEmitter {
       lastAccess: Date.now()
     };
 
-    this.searchDataCache.set(cacheKey, cacheEntry);
+    this.embeddingStrategy.set(cacheKey, cacheEntry);
     this.currentMemoryMB += size / (1024 * 1024);
 
-    this.emit('cached', { type: 'search', filePath, model, size });
+    this.emit('cached', { type: 'embedding', filePath, model, size });
     this.enforceMemoryLimits();
   }
 
   /**
-   * Get cached search
+   * Get cached embedding
    */
-  getCachedsearch(
+  getCachedEmbedding(
     filePath: string,
     model: string,
     chunkIndex?: number
-  ): searchContent | null {
-    const cacheKey = this.getsearchDataCacheKey(filePath, model, chunkIndex);
-    const cached = this.searchDataCache.get(cacheKey);
+  ): EmbeddingContent | null {
+    const cacheKey = this.getEmbeddingCacheKey(filePath, model, chunkIndex);
+    const cached = this.embeddingStrategy.get(cacheKey);
 
     if (!cached) {
       this.misses++;
       return null;
     }
 
-    if (this.isExpired(cached)) {
-      this.searchDataCache.delete(cacheKey);
-      this.misses++;
-      return null;
-    }
-
-    cached.accessCount++;
-    cached.lastAccess = Date.now();
     this.hits++;
-
     return cached;
   }
 
@@ -290,7 +285,7 @@ export class ContentCache extends EventEmitter {
       lastAccess: Date.now()
     };
 
-    this.searchResultsCache.set(cacheKey, cacheEntry);
+    this.searchResultsStrategy.set(cacheKey, cacheEntry);
     this.currentMemoryMB += size / (1024 * 1024);
 
     this.emit('cached', { type: 'search', query, searchType, size });
@@ -302,23 +297,14 @@ export class ContentCache extends EventEmitter {
    */
   getCachedSearchResults(query: string, searchType: string): SearchResult | null {
     const cacheKey = this.getSearchCacheKey(query, searchType);
-    const cached = this.searchResultsCache.get(cacheKey);
+    const cached = this.searchResultsStrategy.get(cacheKey);
 
     if (!cached) {
       this.misses++;
       return null;
     }
 
-    if (this.isExpired(cached)) {
-      this.searchResultsCache.delete(cacheKey);
-      this.misses++;
-      return null;
-    }
-
-    cached.accessCount++;
-    cached.lastAccess = Date.now();
     this.hits++;
-
     return cached;
   }
 
@@ -332,7 +318,7 @@ export class ContentCache extends EventEmitter {
   cacheValue(key: string, value: any, ttl?: number): void {
     const size = this.estimateSize(value);
 
-    const cacheEntry: CachedContent = {
+    const cacheEntry: CachedEntry = {
       data: value,
       timestamp: Date.now(),
       size,
@@ -341,7 +327,7 @@ export class ContentCache extends EventEmitter {
       lastAccess: Date.now()
     };
 
-    this.computedCache.set(key, cacheEntry);
+    this.computedStrategy.set(key, cacheEntry);
     this.currentMemoryMB += size / (1024 * 1024);
 
     this.emit('cached', { type: 'computed', key, size });
@@ -352,23 +338,14 @@ export class ContentCache extends EventEmitter {
    * Get cached computed value
    */
   getCachedValue(key: string): any | null {
-    const cached = this.computedCache.get(key);
+    const cached = this.computedStrategy.get(key);
 
     if (!cached) {
       this.misses++;
       return null;
     }
 
-    if (this.isExpired(cached)) {
-      this.computedCache.delete(key);
-      this.misses++;
-      return null;
-    }
-
-    cached.accessCount++;
-    cached.lastAccess = Date.now();
     this.hits++;
-
     return cached.data;
   }
 
@@ -381,18 +358,18 @@ export class ContentCache extends EventEmitter {
    */
   invalidateFile(filePath: string): void {
     // Remove file content cache
-    this.fileContentCache.delete(filePath);
+    this.fileContentStrategy.delete(filePath);
 
-    // Remove search caches for this file
-    const searchKeys = Array.from(this.searchDataCache.keys())
-      .filter(key => key.startsWith(`${filePath}:`));
-    
-    for (const key of searchKeys) {
-      this.searchDataCache.delete(key);
+    // Remove embedding caches for this file
+    const embeddingCache = this.embeddingStrategy.getAll();
+    for (const key of embeddingCache.keys()) {
+      if (key.startsWith(`${filePath}:`)) {
+        this.embeddingStrategy.delete(key);
+      }
     }
 
     // Remove metadata cache
-    this.metadataCache.delete(filePath);
+    this.metadataStrategy.delete(filePath);
 
     this.emit('invalidated', { type: 'file', filePath });
   }
@@ -401,12 +378,12 @@ export class ContentCache extends EventEmitter {
    * Clear all caches
    */
   clearAll(): void {
-    this.fileContentCache.clear();
-    this.metadataCache.clear();
-    this.searchDataCache.clear();
-    this.searchResultsCache.clear();
-    this.computedCache.clear();
-    
+    this.fileContentStrategy.clear();
+    this.metadataStrategy.clear();
+    this.embeddingStrategy.clear();
+    this.searchResultsStrategy.clear();
+    this.computedStrategy.clear();
+
     this.currentMemoryMB = 0;
     this.hits = 0;
     this.misses = 0;
@@ -421,37 +398,10 @@ export class ContentCache extends EventEmitter {
     const now = Date.now();
     let cleanedCount = 0;
 
-    // Clean file content cache
-    for (const [key, entry] of this.fileContentCache.entries()) {
-      if (this.isExpired(entry, now)) {
-        this.fileContentCache.delete(key);
-        cleanedCount++;
-      }
-    }
-
-    // Clean search data cache
-    for (const [key, entry] of this.searchDataCache.entries()) {
-      if (this.isExpired(entry, now)) {
-        this.searchDataCache.delete(key);
-        cleanedCount++;
-      }
-    }
-
-    // Clean search results cache
-    for (const [key, entry] of this.searchResultsCache.entries()) {
-      if (this.isExpired(entry, now)) {
-        this.searchResultsCache.delete(key);
-        cleanedCount++;
-      }
-    }
-
-    // Clean computed cache
-    for (const [key, entry] of this.computedCache.entries()) {
-      if (this.isExpired(entry, now)) {
-        this.computedCache.delete(key);
-        cleanedCount++;
-      }
-    }
+    cleanedCount += this.fileContentStrategy.cleanup(now);
+    cleanedCount += this.embeddingStrategy.cleanup(now);
+    cleanedCount += this.searchResultsStrategy.cleanup(now);
+    cleanedCount += this.computedStrategy.cleanup(now);
 
     if (cleanedCount > 0) {
       this.emit('cleaned', { removedEntries: cleanedCount });
@@ -471,10 +421,10 @@ export class ContentCache extends EventEmitter {
       hitRate,
       memoryUsageMB: this.currentMemoryMB,
       cachesByType: {
-        fileContent: this.getCacheTypeStats(this.fileContentCache),
-        searchData: this.getCacheTypeStats(this.searchDataCache),
-        searchResults: this.getCacheTypeStats(this.searchResultsCache),
-        computed: this.getCacheTypeStats(this.computedCache)
+        fileContent: this.fileContentStrategy.getStatistics(),
+        embeddingData: this.embeddingStrategy.getStatistics(),
+        searchResults: this.searchResultsStrategy.getStatistics(),
+        computed: this.computedStrategy.getStatistics()
       }
     };
   }
@@ -487,7 +437,7 @@ export class ContentCache extends EventEmitter {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
-    
+
     this.clearAll();
     this.removeAllListeners();
   }
@@ -503,88 +453,42 @@ export class ContentCache extends EventEmitter {
     }, 5 * 60 * 1000);
   }
 
-  private isExpired(entry: CachedContent, now?: number): boolean {
-    const currentTime = now || Date.now();
-    return (currentTime - entry.timestamp) > entry.ttl;
-  }
-
   private enforceMemoryLimits(): void {
     if (this.currentMemoryMB <= this.maxMemoryMB) {
       return;
     }
 
-    // Remove least recently used entries until under limit
-    const allEntries: { key: string; entry: CachedContent; type: string }[] = [];
+    // Collect all cache groups
+    const cacheGroups = new Map<string, Map<string, CachedEntry>>([
+      ['file', this.fileContentStrategy.getAll()],
+      ['embedding', this.embeddingStrategy.getAll()],
+      ['searchResults', this.searchResultsStrategy.getAll()],
+      ['computed', this.computedStrategy.getAll()]
+    ]);
 
-    // Collect all entries with their keys and types
-    this.fileContentCache.forEach((entry, key) => 
-      allEntries.push({ key, entry, type: 'file' }));
-    this.searchDataCache.forEach((entry, key) =>
-      allEntries.push({ key, entry, type: 'searchData' }));
-    this.searchResultsCache.forEach((entry, key) =>
-      allEntries.push({ key, entry, type: 'searchResults' }));
-    this.computedCache.forEach((entry, key) => 
-      allEntries.push({ key, entry, type: 'computed' }));
-
-    // Sort by last access time (oldest first)
-    allEntries.sort((a, b) => a.entry.lastAccess - b.entry.lastAccess);
-
-    // Remove entries until under memory limit
-    let removedCount = 0;
-    for (const { key, entry, type } of allEntries) {
-      if (this.currentMemoryMB <= this.maxMemoryMB * 0.8) {
-        break; // Stop when under 80% of limit
+    // Use eviction policy to remove LRU entries
+    const { evictedCount, freedMemoryMB } = CacheEvictionPolicy.enforceLimits(
+      cacheGroups,
+      this.currentMemoryMB,
+      this.maxMemoryMB,
+      (key, type, sizeMB) => {
+        this.emit('evicted', { key, type, sizeMB });
       }
+    );
 
-      this.removeEntry(key, type);
-      this.currentMemoryMB -= entry.size / (1024 * 1024);
-      removedCount++;
-    }
+    this.currentMemoryMB -= freedMemoryMB;
 
-    if (removedCount > 0) {
-      this.emit('memoryLimitEnforced', { removedEntries: removedCount });
-    }
-  }
-
-  private removeEntry(key: string, type: string): void {
-    switch (type) {
-      case 'file':
-        this.fileContentCache.delete(key);
-        break;
-      case 'searchData':
-        this.searchDataCache.delete(key);
-        break;
-      case 'searchResults':
-        this.searchResultsCache.delete(key);
-        break;
-      case 'computed':
-        this.computedCache.delete(key);
-        break;
+    if (evictedCount > 0) {
+      this.emit('memoryLimitEnforced', { removedEntries: evictedCount, freedMemoryMB });
     }
   }
 
   private getTotalEntries(): number {
-    return this.fileContentCache.size + this.searchDataCache.size +
-           this.searchResultsCache.size + this.computedCache.size + this.metadataCache.size;
-  }
-
-  private getCacheTypeStats(cache: Map<string, any>): any {
-    const entries = Array.from(cache.values());
-    const count = entries.length;
-    
-    if (count === 0) {
-      return { count: 0, sizeMB: 0, oldestEntry: 0, newestEntry: 0 };
-    }
-
-    const sizeMB = entries.reduce((sum, entry) => sum + (entry.size / (1024 * 1024)), 0);
-    const timestamps = entries.map(entry => entry.timestamp);
-    
-    return {
-      count,
-      sizeMB,
-      oldestEntry: Math.min(...timestamps),
-      newestEntry: Math.max(...timestamps)
-    };
+    return this.fileContentStrategy.getStatistics().count +
+           this.embeddingStrategy.getStatistics().count +
+           this.searchResultsStrategy.getStatistics().count +
+           this.computedStrategy.getStatistics().count +
+           this.metadataStrategy.getStatistics().count;
   }
 
   private estimateSize(data: any): number {
@@ -608,9 +512,9 @@ export class ContentCache extends EventEmitter {
     return hash.toString(36);
   }
 
-  private getsearchDataCacheKey(
-    filePath: string, 
-    model: string, 
+  private getEmbeddingCacheKey(
+    filePath: string,
+    model: string,
     chunkIndex?: number
   ): string {
     return `${filePath}:${model}${chunkIndex !== undefined ? `:${chunkIndex}` : ''}`;

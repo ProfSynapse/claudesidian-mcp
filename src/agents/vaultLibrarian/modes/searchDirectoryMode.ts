@@ -1,8 +1,27 @@
-import { Plugin, TFile, TFolder, TAbstractFile, prepareFuzzySearch } from 'obsidian';
+/**
+ * Location: /src/agents/vaultLibrarian/modes/searchDirectoryMode.ts
+ * Purpose: Unified search mode for files and folders using fuzzy matching
+ *
+ * This file handles directory search operations with fuzzy matching,
+ * filtering, and result formatting capabilities.
+ *
+ * Used by: VaultLibrarian agent for directory search operations
+ * Integrates with: WorkspaceService for workspace context
+ * Refactored: Now uses dedicated services for item collection, filtering,
+ *             fuzzy searching, and result formatting following SOLID principles
+ */
+
+import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
 import { WorkspaceService } from '../../../services/WorkspaceService';
+
+// Import refactored services
+import { DirectoryItemCollector } from '../services/DirectoryItemCollector';
+import { SearchFilterApplicator, SearchFilters } from '../services/SearchFilterApplicator';
+import { FuzzySearchEngine } from '../services/FuzzySearchEngine';
+import { SearchResultFormatter, DirectoryItem } from '../services/SearchResultFormatter';
 
 /**
  * Directory search parameters interface
@@ -10,7 +29,7 @@ import { WorkspaceService } from '../../../services/WorkspaceService';
 export interface SearchDirectoryParams extends CommonParameters {
   // REQUIRED PARAMETERS
   query: string;
-  paths: string[];  // Cannot be empty - this is the key requirement
+  paths: string[];
 
   // OPTIONAL PARAMETERS
   searchType?: 'files' | 'folders' | 'both';
@@ -33,24 +52,6 @@ interface SearchModeCapabilities {
   hybridSearch: boolean;
 }
 
-export interface DirectoryItem {
-  path: string;
-  name: string;
-  type: 'file' | 'folder';
-  score: number;
-  searchMethod: string;
-  snippet?: string;
-  metadata: {
-    fileType?: string;
-    created?: number;
-    modified?: number;
-    size?: number;
-    depth?: number;
-    fileCount?: number;
-    folderCount?: number;
-  };
-}
-
 export interface SearchDirectoryResult {
   success: boolean;
   query: string;
@@ -64,92 +65,86 @@ export interface SearchDirectoryResult {
 
 /**
  * Unified search mode for both files and folders using fuzzy matching
+ *
+ * Follows SOLID principles with service composition:
+ * - DirectoryItemCollector: Collects files/folders from paths
+ * - SearchFilterApplicator: Applies various filters
+ * - FuzzySearchEngine: Performs fuzzy matching
+ * - SearchResultFormatter: Formats results with metadata
  */
 export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchDirectoryResult> {
   private plugin: Plugin;
   private workspaceService?: WorkspaceService;
 
+  // Composed services following Dependency Inversion Principle
+  private itemCollector: DirectoryItemCollector;
+  private filterApplicator: SearchFilterApplicator;
+  private searchEngine: FuzzySearchEngine;
+  private resultFormatter: SearchResultFormatter;
+
   constructor(plugin: Plugin, workspaceService?: WorkspaceService) {
     super(
-      'searchDirectoryMode', 
-      'Search Directory', 
-      'FOCUSED directory search with REQUIRED paths parameter. Search for files and/or folders within specific directory paths using fuzzy matching and optional workspace context. Requires: query (search terms) and paths (directory paths to search - cannot be empty).', 
+      'searchDirectoryMode',
+      'Search Directory',
+      'FOCUSED directory search with REQUIRED paths parameter. Search for files and/or folders within specific directory paths using fuzzy matching and optional workspace context. Requires: query (search terms) and paths (directory paths to search - cannot be empty).',
       '2.0.0'
     );
-    
+
     this.plugin = plugin;
     this.workspaceService = workspaceService;
+
+    // Initialize composed services
+    this.itemCollector = new DirectoryItemCollector(plugin);
+    this.filterApplicator = new SearchFilterApplicator();
+    this.searchEngine = new FuzzySearchEngine();
+    this.resultFormatter = new SearchResultFormatter(plugin.app);
   }
 
   async execute(params: SearchDirectoryParams): Promise<SearchDirectoryResult> {
     const startTime = Date.now();
 
     try {
-      // Validate query parameter
-      if (!params.query || params.query.trim().length === 0) {
-        return this.prepareResult(false, {
-          query: params.query || '',
-          results: [],
-          totalResults: 0,
-          executionTime: Date.now() - startTime,
-          searchCapabilities: this.getCapabilities(),
-          error: 'Query parameter is required and cannot be empty',
-          parameterHints: '🔍 The "query" parameter is REQUIRED. Provide the search term you want to find.\n\nExample: { "query": "fallujah", "paths": ["/"] }',
-          suggestions: [
-            'Use "query" (not "filter") for the search term',
-            'Provide a simple text search term without wildcards',
-            'Example: "query": "fallujah"'
-          ],
-          providedParams: params
-        }, 'Query parameter is required and cannot be empty', params.context);
-      }
-
-      // Validate paths parameter
-      if (!params.paths || params.paths.length === 0) {
-        return this.prepareResult(false, {
-          query: params.query,
-          results: [],
-          totalResults: 0,
-          executionTime: Date.now() - startTime,
-          searchCapabilities: this.getCapabilities(),
-          error: 'Paths parameter is required and cannot be empty',
-          parameterHints: '📁 The "paths" parameter is REQUIRED and must be a non-empty array.\n\nSpecify which directories to search:\n- Use ["/"] to search the entire vault\n- Use ["FolderName"] for a specific folder\n- Use ["Folder1", "Folder2"] for multiple folders',
-          suggestions: [
-            'Provide a "paths" array with at least one directory',
-            'Example for whole vault: "paths": ["/"]',
-            'Example for specific folder: "paths": ["Projects"]',
-            'Example for multiple folders: "paths": ["Work", "Personal"]'
-          ],
-          providedParams: params,
-          expectedParams: {
-            query: 'string (e.g., "fallujah")',
-            paths: 'array of strings (e.g., ["/"] or ["Projects"])'
-          }
-        }, 'Paths parameter is required and cannot be empty - specify directories to search', params.context);
+      // Validate parameters
+      const validationError = this.validateParameters(params);
+      if (validationError) {
+        return this.createErrorResult(validationError, params, startTime);
       }
 
       const query = params.query.trim();
       const limit = params.limit || 20;
       const searchType = params.searchType || 'both';
-      
-      // Get items from specified directories
-      const items = await this.getDirectoryItems(params.paths, searchType, params);
-      
+
+      // Get items from specified directories using item collector
+      const items = await this.itemCollector.getDirectoryItems(
+        params.paths,
+        searchType,
+        params.depth
+      );
+
       // Apply workspace context if available
       const contextualItems = await this.applyWorkspaceContext(items, params.workspaceId);
-      
-      // Apply additional filters
-      const filteredItems = this.applyFilters(contextualItems, params);
-      
-      // Perform fuzzy search
-      const matches = this.performFuzzySearch(filteredItems, query);
-      
+
+      // Apply filters using filter applicator
+      const filters: SearchFilters = {
+        fileTypes: params.fileTypes,
+        depth: params.depth,
+        pattern: params.pattern,
+        dateRange: params.dateRange
+      };
+      const filteredItems = this.filterApplicator.applyFilters(contextualItems, filters);
+
+      // Perform fuzzy search using search engine
+      const matches = this.searchEngine.performFuzzySearch(filteredItems, query);
+
       // Sort and limit results
       matches.sort((a, b) => b.score - a.score);
       const topMatches = matches.slice(0, limit);
-      
-      // Transform to enhanced format
-      const results = await this.transformResults(topMatches, params);
+
+      // Transform to enhanced format using result formatter
+      const results = await this.resultFormatter.transformResults(
+        topMatches,
+        params.includeContent !== false
+      );
 
       return {
         success: true,
@@ -160,253 +155,114 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
         executionTime: Date.now() - startTime,
         searchCapabilities: this.getCapabilities()
       };
-      
+
     } catch (error) {
       const errorMessage = getErrorMessage(error);
-      return this.prepareResult(false, {
-        query: params.query || '',
-        searchedPaths: params.paths || [],
-        results: [],
-        totalResults: 0,
-        executionTime: Date.now() - startTime,
-        searchCapabilities: this.getCapabilities(),
-        error: `Directory search failed: ${errorMessage}`,
-        parameterHints: '💡 Check that your parameters are correctly formatted:\n- query: string (search term)\n- paths: array of directory paths (e.g., ["/"])',
-        suggestions: [
-          'Verify that the specified directories exist in your vault',
-          'Check that paths are formatted correctly (use "/" for root)',
-          'Ensure query is a non-empty string',
-          'Try simplifying your search parameters'
-        ],
-        providedParams: params
-      }, `Directory search failed: ${errorMessage}`, params.context);
+      return this.createErrorResult(
+        `Directory search failed: ${errorMessage}`,
+        params,
+        startTime
+      );
     }
   }
 
-  private async getDirectoryItems(
-    paths: string[], 
-    searchType: 'files' | 'folders' | 'both',
-    params: SearchDirectoryParams
-  ): Promise<(TFile | TFolder)[]> {
-    const allItems: (TFile | TFolder)[] = [];
-
-    for (const path of paths) {
-      const normalizedPath = this.normalizePath(path);
-      
-      if (normalizedPath === '/' || normalizedPath === '') {
-        // Root path - get all vault items
-        const vaultItems = this.plugin.app.vault.getAllLoadedFiles()
-          .filter(file => this.matchesSearchType(file, searchType)) as (TFile | TFolder)[];
-        allItems.push(...vaultItems);
-      } else {
-        // Specific directory
-        const directoryItems = await this.getItemsInDirectory(normalizedPath, searchType, params);
-        allItems.push(...directoryItems);
-      }
+  /**
+   * Validate search parameters
+   * @param params Parameters to validate
+   * @returns Error message if invalid, null if valid
+   */
+  private validateParameters(params: SearchDirectoryParams): string | null {
+    if (!params.query || params.query.trim().length === 0) {
+      return 'Query parameter is required and cannot be empty';
     }
 
-    // Remove duplicates
-    return Array.from(new Map(allItems.map(item => [item.path, item])).values());
+    if (!params.paths || params.paths.length === 0) {
+      return 'Paths parameter is required and cannot be empty';
+    }
+
+    return null;
   }
 
-  private applyFilters(items: (TFile | TFolder)[], params: SearchDirectoryParams): (TFile | TFolder)[] {
-    let filtered = items;
-
-    // File type filter (only applies to files)
-    if (params.fileTypes && params.fileTypes.length > 0) {
-      const allowedTypes = params.fileTypes.map(type => type.toLowerCase());
-      filtered = filtered.filter(item => {
-        if (item instanceof TFile) {
-          return allowedTypes.includes(item.extension.toLowerCase());
-        }
-        return true; // Keep folders when file type filter is applied
-      });
-    }
-
-    // Depth filter
-    if (params.depth !== undefined) {
-      filtered = filtered.filter(item => {
-        const pathDepth = item.path.split('/').filter(p => p.length > 0).length;
-        return pathDepth <= params.depth!;
-      });
-    }
-
-    // Pattern filter
-    if (params.pattern) {
-      try {
-        const regex = new RegExp(params.pattern, 'i');
-        filtered = filtered.filter(item => {
-          const name = item instanceof TFile ? item.basename : item.name;
-          return regex.test(item.path) || regex.test(name);
-        });
-      } catch (error) {
-      }
-    }
-
-    // Date range filter (only applies to files)
-    if (params.dateRange) {
-      const startDate = params.dateRange.start ? new Date(params.dateRange.start).getTime() : 0;
-      const endDate = params.dateRange.end ? new Date(params.dateRange.end).getTime() : Date.now();
-      
-      filtered = filtered.filter(item => {
-        if (item instanceof TFile) {
-          const modified = item.stat.mtime;
-          return modified >= startDate && modified <= endDate;
-        }
-        return true; // Keep folders when date filter is applied
-      });
-    }
-
-    return filtered;
+  /**
+   * Create an error result with diagnostics
+   * @param errorMessage The error message
+   * @param params The request parameters
+   * @param startTime The start time for execution time calculation
+   * @returns Error result
+   */
+  protected createErrorResult(
+    errorMessage: string,
+    params: SearchDirectoryParams,
+    startTime: number
+  ): SearchDirectoryResult {
+    return this.prepareResult(false, {
+      query: params.query || '',
+      searchedPaths: params.paths || [],
+      results: [],
+      totalResults: 0,
+      executionTime: Date.now() - startTime,
+      searchCapabilities: this.getCapabilities(),
+      error: errorMessage,
+      parameterHints: this.getParameterHints(errorMessage),
+      suggestions: this.getSuggestions(errorMessage),
+      providedParams: params
+    }, errorMessage, params.context);
   }
 
-  private performFuzzySearch(items: (TFile | TFolder)[], query: string): Array<{ item: TFile | TFolder; score: number; matchType: string }> {
-    const fuzzySearch = prepareFuzzySearch(query);
-    const matches: Array<{ item: TFile | TFolder; score: number; matchType: string }> = [];
-
-    for (const item of items) {
-      let bestScore = 0;
-      let bestMatchType = '';
-
-      // Get appropriate name for search
-      const itemName = item instanceof TFile ? item.basename : item.name;
-
-      // Search by name
-      const nameResult = fuzzySearch(itemName);
-      if (nameResult) {
-        const normalizedScore = Math.max(0, Math.min(1, 1 + (nameResult.score / 100)));
-        if (normalizedScore > bestScore) {
-          bestScore = normalizedScore;
-          bestMatchType = 'name';
-        }
-      }
-
-      // Search by full path
-      const pathResult = fuzzySearch(item.path);
-      if (pathResult) {
-        const normalizedScore = Math.max(0, Math.min(1, 1 + (pathResult.score / 100))) * 0.8; // Lower weight for path matches
-        if (normalizedScore > bestScore) {
-          bestScore = normalizedScore;
-          bestMatchType = 'path';
-        }
-      }
-
-      // Include item if it has any match
-      if (bestScore > 0) {
-        matches.push({ item, score: bestScore, matchType: bestMatchType });
-      }
+  /**
+   * Get parameter hints based on error type
+   * @param errorMessage The error message
+   * @returns Parameter hints
+   */
+  private getParameterHints(errorMessage: string): string {
+    if (errorMessage.includes('query')) {
+      return '🔍 The "query" parameter is REQUIRED. Provide the search term you want to find.\n\nExample: { "query": "fallujah", "paths": ["/"] }';
     }
-
-    return matches;
+    if (errorMessage.includes('paths')) {
+      return '📁 The "paths" parameter is REQUIRED and must be a non-empty array.\n\nSpecify which directories to search:\n- Use ["/"] to search the entire vault\n- Use ["FolderName"] for a specific folder\n- Use ["Folder1", "Folder2"] for multiple folders';
+    }
+    return '💡 Check that your parameters are correctly formatted:\n- query: string (search term)\n- paths: array of directory paths (e.g., ["/"])';
   }
 
-  private async transformResults(matches: Array<{ item: TFile | TFolder; score: number; matchType: string }>, params: SearchDirectoryParams): Promise<DirectoryItem[]> {
-    const results: DirectoryItem[] = [];
-
-    for (const match of matches) {
-      const item = match.item;
-      const isFile = item instanceof TFile;
-
-      let snippet = '';
-      if (isFile && params.includeContent !== false) {
-        try {
-          const content = await this.plugin.app.vault.read(item);
-          const lines = content.split('\n');
-          const firstFewLines = lines.slice(0, 3).join(' ');
-          snippet = firstFewLines.length > 200 ? firstFewLines.substring(0, 200) + '...' : firstFewLines;
-        } catch (error) {
-          snippet = 'Content not available';
-        }
-      }
-
-      const result: DirectoryItem = {
-        path: item.path,
-        name: isFile ? item.basename : item.name,
-        type: isFile ? 'file' : 'folder',
-        score: match.score,
-        searchMethod: `fuzzy_${match.matchType}`,
-        snippet: snippet || undefined,
-        metadata: {}
-      };
-
-      // Add file-specific metadata
-      if (isFile) {
-        result.metadata = {
-          fileType: item.extension,
-          created: item.stat.ctime,
-          modified: item.stat.mtime,
-          size: item.stat.size
-        };
-      } else {
-        // Add folder-specific metadata
-        const folder = item as TFolder;
-        const children = folder.children || [];
-        const fileCount = children.filter(child => child instanceof TFile).length;
-        const folderCount = children.filter(child => child instanceof TFolder).length;
-        
-        result.metadata = {
-          depth: folder.path.split('/').filter(p => p.length > 0).length,
-          fileCount: fileCount,
-          folderCount: folderCount
-        };
-      }
-
-      results.push(result);
+  /**
+   * Get suggestions based on error type
+   * @param errorMessage The error message
+   * @returns Array of suggestions
+   */
+  private getSuggestions(errorMessage: string): string[] {
+    if (errorMessage.includes('query')) {
+      return [
+        'Use "query" (not "filter") for the search term',
+        'Provide a simple text search term without wildcards',
+        'Example: "query": "fallujah"'
+      ];
     }
-
-    return results;
+    if (errorMessage.includes('paths')) {
+      return [
+        'Provide a "paths" array with at least one directory',
+        'Example for whole vault: "paths": ["/"]',
+        'Example for specific folder: "paths": ["Projects"]',
+        'Example for multiple folders: "paths": ["Work", "Personal"]'
+      ];
+    }
+    return [
+      'Verify that the specified directories exist in your vault',
+      'Check that paths are formatted correctly (use "/" for root)',
+      'Ensure query is a non-empty string',
+      'Try simplifying your search parameters'
+    ];
   }
 
-  private async getItemsInDirectory(
-    directoryPath: string,
-    searchType: 'files' | 'folders' | 'both',
-    params: SearchDirectoryParams
-  ): Promise<(TFile | TFolder)[]> {
-    const folder = this.plugin.app.vault.getAbstractFileByPath(directoryPath);
-    
-    if (!folder || !('children' in folder)) {
-      return [];
-    }
-
-    const items: (TFile | TFolder)[] = [];
-
-    const collectItems = (currentFolder: TFolder, currentDepth: number = 0) => {
-      if (params.depth && currentDepth >= params.depth) {
-        return;
-      }
-
-      for (const child of currentFolder.children) {
-        if (this.matchesSearchType(child, searchType)) {
-          items.push(child as TFile | TFolder);
-        }
-        
-        // Recursive traversal for folders
-        if ('children' in child) {
-          collectItems(child as TFolder, currentDepth + 1);
-        }
-      }
-    };
-
-    collectItems(folder as TFolder);
-    return items;
-  }
-
-  private matchesSearchType(item: TAbstractFile, searchType: 'files' | 'folders' | 'both'): boolean {
-    switch (searchType) {
-      case 'files':
-        return item instanceof TFile;
-      case 'folders':
-        return item instanceof TFolder;
-      case 'both':
-      default:
-        return item instanceof TFile || item instanceof TFolder;
-    }
-  }
-
+  /**
+   * Apply workspace context for boosted relevance (doesn't filter)
+   * @param items Items to apply context to
+   * @param workspaceId Optional workspace ID
+   * @returns Items (potentially boosted if workspace context available)
+   */
   private async applyWorkspaceContext(
-    items: (TFile | TFolder)[],
+    items: any[],
     workspaceId?: string
-  ): Promise<(TFile | TFolder)[]> {
+  ): Promise<any[]> {
     if (!this.workspaceService || !workspaceId || workspaceId === 'global-workspace-default') {
       return items;
     }
@@ -414,23 +270,23 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
     try {
       const workspace = await this.workspaceService.getWorkspace(workspaceId);
       if (!workspace) {
-        return items; // No workspace context, return all items
+        return items;
       }
 
       // For directory search, workspace context can boost relevance but doesn't filter
       // This maintains the explicit directory paths while adding workspace awareness
       return items;
-      
+
     } catch (error) {
       console.warn(`Could not apply workspace context for ${workspaceId}:`, error);
       return items;
     }
   }
 
-  private normalizePath(path: string): string {
-    return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
-  }
-
+  /**
+   * Get search capabilities
+   * @returns Capabilities object
+   */
   private getCapabilities(): SearchModeCapabilities {
     return {
       semanticSearch: false,
@@ -458,9 +314,9 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
           minItems: 1,
           description: '📁 REQUIRED: Array of directory paths to search within. Cannot be empty. Use ["/"] to search the entire vault root. Examples: ["/"] for whole vault, ["Projects/WebApp"] for specific folder, ["Notes", "Archive"] for multiple folders.',
           examples: [
-            ['/'],  // Search entire vault root
+            ['/'],
             ['Projects/WebApp'],
-            ['Notes', 'Archive'], 
+            ['Notes', 'Archive'],
             ['Work/Current Projects', 'Personal/Ideas']
           ]
         },
@@ -530,7 +386,7 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
         ]
       }
     };
-    
+
     return this.getMergedSchema(modeSchema);
   }
 

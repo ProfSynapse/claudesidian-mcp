@@ -29,6 +29,9 @@ export {
   type CacheMetrics
 } from './CacheManager';
 export { WebSearchUtils } from './WebSearchUtils';
+export { LLMCostCalculator } from './LLMCostCalculator';
+export { TokenUsageExtractor } from './TokenUsageExtractor';
+export { SchemaValidator } from './SchemaValidator';
 
 /**
  * Quick setup function for basic lab kit initialization
