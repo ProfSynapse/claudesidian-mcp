@@ -469,15 +469,22 @@ export class ConversationContextBuilder {
     // Add previous conversation history if provided (convert to Google format)
     if (previousMessages && previousMessages.length > 0) {
       for (const msg of previousMessages) {
-        if (msg.role === 'user') {
+        // Skip messages that are already in Google format
+        if (msg.parts) {
+          messages.push(msg);
+          continue;
+        }
+
+        // Convert from simple message format
+        if (msg.role === 'user' && msg.content) {
           messages.push({
             role: 'user',
-            parts: [{ text: msg.content }]
+            parts: [{ text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) }]
           });
-        } else if (msg.role === 'assistant') {
+        } else if (msg.role === 'assistant' && msg.content) {
           messages.push({
             role: 'model',
-            parts: [{ text: msg.content }]
+            parts: [{ text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) }]
           });
         }
       }
@@ -505,6 +512,7 @@ export class ConversationContextBuilder {
     });
 
     // Add function response parts
+    // Google uses 'user' role for function responses (not 'function')
     const functionResponseParts = toolResults.map(result => ({
       functionResponse: {
         name: result.name || (result.function?.name),
@@ -515,7 +523,7 @@ export class ConversationContextBuilder {
     }));
 
     messages.push({
-      role: 'function',
+      role: 'user',  // Google uses 'user' role for function responses
       parts: functionResponseParts
     });
 

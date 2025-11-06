@@ -6,6 +6,7 @@ import {
   ExecuteCommandMode
 } from './modes';
 import { MemoryService } from "../../agents/memoryManager/services/MemoryService";
+import { isAgentHidden } from '../../config/toolVisibility';
 
 /**
  * CommandManager Agent for command palette operations
@@ -35,11 +36,13 @@ export class CommandManagerAgent extends BaseAgent {
     
     this.app = app;
     this.memoryService = memoryService || null;
-    
-    // Register modes
-    this.registerMode(new ListCommandsMode(app));
-    this.registerMode(new ExecuteCommandMode(app, this));
-    
+
+    // Register modes only if agent is not hidden
+    if (!isAgentHidden('commandManager')) {
+      this.registerMode(new ListCommandsMode(app));
+      this.registerMode(new ExecuteCommandMode(app, this));
+    }
+
     // Memory service is now injected via constructor or remains null
     // Backward compatibility: if no service injected, it will remain null
   }

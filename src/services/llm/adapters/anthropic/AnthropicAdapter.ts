@@ -98,6 +98,12 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
         requestParams.tools = this.convertTools(options.tools);
       }
 
+      // Add beta headers if model requires them (for 1M context window)
+      const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === (options?.model || this.currentModel));
+      if (modelSpec?.betaHeaders && modelSpec.betaHeaders.length > 0) {
+        requestParams.betas = modelSpec.betaHeaders;
+      }
+
       const stream = this.client.messages.stream(requestParams);
 
       let usage: any = undefined;
@@ -295,9 +301,15 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
             };
           }
 
+          // Add beta headers if model requires them (for 1M context window)
+          const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === model);
+          if (modelSpec?.betaHeaders && modelSpec.betaHeaders.length > 0) {
+            requestParams.betas = modelSpec.betaHeaders;
+          }
+
           return requestParams;
         },
-        
+
         makeApiCall: async (requestBody: any) => {
           return await this.client.messages.create(requestBody);
         },
@@ -382,6 +394,12 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
         name: 'web_search',
         max_uses: 5
       });
+    }
+
+    // Add beta headers if model requires them (for 1M context window)
+    const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === (options?.model || this.currentModel));
+    if (modelSpec?.betaHeaders && modelSpec.betaHeaders.length > 0) {
+      requestParams.betas = modelSpec.betaHeaders;
     }
 
     const response = await this.client.messages.create(requestParams);

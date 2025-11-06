@@ -37,9 +37,10 @@ export const AGENTS: AgentDescriptor[] = [
   {
     name: "memoryManager",
     description: "Session management, workspace management, context/state snapshots"
-  },
-  {
-    name: "commandManager",
-    description: "Obsidian command palette execution"
   }
+  // Temporarily hidden (2025-11-06) - See /src/config/toolVisibility.ts
+  // {
+  //   name: "commandManager",
+  //   description: "Obsidian command palette execution"
+  // }
 ];

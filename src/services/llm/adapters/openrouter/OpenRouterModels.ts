@@ -212,7 +212,7 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
     provider: 'openrouter',
     name: 'Claude 4.5 Sonnet',
     apiName: 'anthropic/claude-sonnet-4.5',
-    contextWindow: 200000,
+    contextWindow: 1000000,
     maxTokens: 64000,
     inputCostPerMillion: 3.00,
     outputCostPerMillion: 15.00,

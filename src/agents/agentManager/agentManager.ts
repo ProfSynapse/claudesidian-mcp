@@ -19,6 +19,7 @@ import { LLMProviderManager } from '../../services/llm/providers/ProviderManager
 import { AgentManager } from '../../services/AgentManager';
 import { UsageTracker } from '../../services/UsageTracker';
 import { Vault } from 'obsidian';
+import { isModeHidden } from '../../config/toolVisibility';
 
 /**
  * AgentManager Agent for custom prompt operations
@@ -99,12 +100,17 @@ export class AgentManagerAgent extends BaseAgent {
 
     // Register LLM modes with dependencies already available
     this.registerMode(new ListModelsMode(this.providerManager));
-    this.registerMode(new ExecutePromptMode({
-      providerManager: this.providerManager,
-      promptStorage: this.storageService,
-      agentManager: this.parentAgentManager,
-      usageTracker: this.usageTracker
-    }));
+
+    // Conditionally register ExecutePromptMode based on visibility config
+    if (!isModeHidden('agentManager', 'executePrompt')) {
+      this.registerMode(new ExecutePromptMode({
+        providerManager: this.providerManager,
+        promptStorage: this.storageService,
+        agentManager: this.parentAgentManager,
+        usageTracker: this.usageTracker
+      }));
+    }
+
     this.registerMode(new BatchExecutePromptMode(
       undefined, // plugin - not needed in constructor injection pattern
       undefined, // llmService - will be resolved internally

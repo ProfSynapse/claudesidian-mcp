@@ -38,23 +38,12 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     return this.withRetry(async () => {
       try {
-        console.log('[Google Adapter] generateUncached called', {
-          hasTools: !!options?.tools,
-          toolCount: options?.tools?.length || 0,
-          enableTools: options?.enableTools,
-          toolNames: options?.tools?.map(t => t.function?.name)
-        });
-
         // If tools are provided (pre-converted by ChatService), use tool-enabled generation
         if (options?.tools && options.tools.length > 0) {
-          console.log('[Google Adapter] Using tool-enabled generation', {
-            toolCount: options.tools.length
-          });
           return await this.generateWithProvidedTools(prompt, options);
         }
 
         // Otherwise use basic message generation
-        console.log('[Google Adapter] Using basic message generation (no tools)');
         return await this.generateWithBasicMessages(prompt, options);
       } catch (error) {
         this.handleError(error, 'generation');
@@ -68,15 +57,10 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
       // Build contents - use conversation history if provided (for tool continuations)
       let contents: any[];
       if (options?.conversationHistory && options.conversationHistory.length > 0) {
-        console.log('[Google Adapter] Using conversation history for tool continuation', {
-          historyLength: options.conversationHistory.length,
-          lastMessage: options.conversationHistory[options.conversationHistory.length - 1]
-        });
         contents = options.conversationHistory;
       } else {
         // Ensure prompt is not empty
         if (!prompt || !prompt.trim()) {
-          console.warn('[Google Adapter] Empty prompt provided, using default');
           prompt = 'Continue the conversation';
         }
         contents = [{
@@ -85,17 +69,6 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         }];
       }
 
-      // Validate contents structure before sending
-      console.log('[Google Adapter] Final contents structure:', {
-        contentsLength: contents.length,
-        firstContent: JSON.stringify(contents[0]),
-        allContentRoles: contents.map(c => ({
-          role: c.role,
-          partsCount: c.parts?.length,
-          firstPartKeys: c.parts?.[0] ? Object.keys(c.parts[0]) : []
-        }))
-      });
-
       // Build config object with all generation settings
       const config: any = {
         generationConfig: {
@@ -103,7 +76,12 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           temperature: (options?.tools && options.tools.length > 0) ? 0 : (options?.temperature ?? 0.7),
           maxOutputTokens: options?.maxTokens || 4096,
           topK: 40,
-          topP: 0.95
+          topP: 0.95,
+          // Enable thinking mode when tools are present for better function calling accuracy
+          // Gemini 2.5 Flash supports 0-24576 token thinking budget
+          ...(options?.tools && options.tools.length > 0 && {
+            thinkingBudget: 8192  // Moderate thinking budget for tool calling
+          })
         }
       };
 
@@ -116,9 +94,30 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
 
       // Add tools if provided (inside config)
       if (options?.tools && options.tools.length > 0) {
-        // TODO: Google recommends max 10-20 tools. Consider implementing tool filtering/selection
-        // Current: sending all tools may cause MALFORMED_FUNCTION_CALL with large tool sets (46+ tools)
+        // Google recommends max 10-20 tools for optimal performance
+        if (options.tools.length > 20) {
+          console.warn(`[Google Adapter] ⚠️ ${options.tools.length} tools provided - Google recommends max 10-20`);
+          console.warn('[Google Adapter] Large tool sets may cause MALFORMED_FUNCTION_CALL errors');
+          console.warn('[Google Adapter] Consider using bounded-context tool packs (see CLAUDE.md)');
+        }
+
         config.tools = this.convertTools(options.tools);
+
+        // Validate each tool schema before sending to Google
+        let validationFailures = 0;
+        for (const tool of config.tools[0]?.functionDeclarations || []) {
+          const validation = SchemaValidator.validateGoogleSchema(tool.parameters, tool.name);
+          if (!validation.valid) {
+            validationFailures++;
+            console.error(`[Google Adapter] ⚠️ Schema validation failed for tool "${tool.name}":`);
+            console.error(`[Google Adapter]    ${validation.error}`);
+            console.error(`[Google Adapter]    This may cause MALFORMED_FUNCTION_CALL errors`);
+          }
+        }
+
+        if (validationFailures > 0) {
+          console.error(`[Google Adapter] ❌ ${validationFailures} of ${config.tools[0]?.functionDeclarations?.length} tools have schema validation issues`);
+        }
 
         // Add function calling config - let model decide when to use tools
         config.toolConfig = {
@@ -127,23 +126,6 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           }
         };
 
-        console.log('[Google Adapter] Added tools to config', {
-          toolsCount: options.tools.length,
-          firstToolName: options.tools[0]?.function?.name,
-          sampleToolName: config.tools[0]?.functionDeclarations?.[0]?.name,
-          sampleToolParamsKeys: Object.keys(config.tools[0]?.functionDeclarations?.[0]?.parameters || {}),
-          totalToolsSize: JSON.stringify(config.tools).length
-        });
-
-        // Log first 3 tools for inspection
-        console.log('[Google Adapter] First 3 tool schemas:',
-          config.tools[0]?.functionDeclarations?.slice(0, 3).map((t: any) => ({
-            name: t.name,
-            description: t.description?.substring(0, 100),
-            parametersKeys: Object.keys(t.parameters || {}),
-            propertiesCount: Object.keys(t.parameters?.properties || {}).length
-          }))
-        );
       }
 
       // Build final request with config wrapper
@@ -167,24 +149,23 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
       for await (const chunk of response) {
         // Extract text from parts
         const parts = chunk.candidates?.[0]?.content?.parts || [];
-
         const finishReason = chunk.candidates?.[0]?.finishReason;
-
-        console.log('[Google Adapter] 📦 Received chunk', {
-          hasCandidate: !!chunk.candidates?.[0],
-          partsCount: parts.length,
-          partTypes: parts.map((p: any) => Object.keys(p)),
-          finishReason: finishReason
-        });
 
         // Handle malformed function call
         if (finishReason === 'MALFORMED_FUNCTION_CALL') {
-          console.error('[Google Adapter] ⚠️ MALFORMED_FUNCTION_CALL detected!');
+          console.error('[Google Adapter] ❌ MALFORMED_FUNCTION_CALL detected!');
+          console.error('[Google Adapter] This means one or more tool schemas violate Google\'s JSON Schema requirements');
+          console.error('[Google Adapter] Common causes:');
+          console.error('[Google Adapter]   1. Schema contains "default", "examples", "minLength", "maxLength", "pattern", or other unsupported properties');
+          console.error('[Google Adapter]   2. Schema is too deeply nested (max depth: 10 levels)');
+          console.error('[Google Adapter]   3. "required" array references properties that don\'t exist in "properties"');
+          console.error('[Google Adapter]   4. Too many tools provided (Google recommends max 10-20)');
+          console.error('[Google Adapter] Check schema validation warnings above for specific issues');
           console.error('[Google Adapter] Full response:', JSON.stringify(chunk, null, 2));
 
-          // Continue processing instead of throwing - this allows us to see what happened
+          // Provide helpful error message to user
           yield {
-            content: '\n\n⚠️ Google returned MALFORMED_FUNCTION_CALL. This usually means the tool schema has validation issues. Check console for details.',
+            content: '\n\n⚠️ **Google Gemini Schema Error**\n\nGoogle returned `MALFORMED_FUNCTION_CALL` - this means one or more tool schemas contain unsupported properties.\n\nCheck the console for detailed validation errors. Common issues:\n- Tool schemas contain `default` values (not supported by Google)\n- Schemas use `minLength`, `maxLength`, or `pattern` properties\n- Too many tools provided at once\n\nThe schemas have been automatically sanitized, but some tools may need schema updates.',
             complete: true
           };
           return;
@@ -192,7 +173,6 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
 
         for (const part of parts) {
           if (part.text) {
-            console.log('[Google Adapter] 📝 Text content:', part.text.substring(0, 100));
             yield {
               content: part.text,
               complete: false
@@ -202,7 +182,6 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           // Accumulate function calls
           if (part.functionCall) {
             const toolId = part.functionCall.name + '_' + Date.now();
-            console.log('[Google Adapter] 🔧 Tool call detected:', part.functionCall.name);
             toolCallAccumulator.set(toolId, {
               id: toolId,
               type: 'function',
@@ -225,32 +204,13 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         ? Array.from(toolCallAccumulator.values())
         : undefined;
 
-      console.log('[Google Adapter] 🔍 Stream completed - FINAL TOOL CALL CHECK', {
-        accumulatorSize: toolCallAccumulator.size,
-        hasToolCalls: !!finalToolCalls,
-        toolCallsCount: finalToolCalls?.length || 0,
-        toolCallNames: finalToolCalls?.map(tc => tc.function?.name),
-        fullToolCalls: finalToolCalls
-      });
-
-      const finalChunk = {
+      yield {
         content: '',
         complete: true,
         usage: this.extractUsage({ usageMetadata: usage }),
         toolCalls: finalToolCalls,
         toolCallsReady: finalToolCalls && finalToolCalls.length > 0 ? true : undefined
       };
-
-      console.log('[Google Adapter] 🚀 YIELDING FINAL CHUNK:', {
-        hasToolCalls: !!finalChunk.toolCalls,
-        toolCallsCount: finalChunk.toolCalls?.length || 0,
-        complete: finalChunk.complete,
-        fullChunk: finalChunk
-      });
-
-      yield finalChunk;
-
-      console.log('[Google Adapter] ✅ Streaming completed');
     } catch (error: any) {
       console.error('[Google Adapter] ❌❌❌ STREAMING ERROR:', error);
       console.error('[Google Adapter] Error details:', {
@@ -524,20 +484,8 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
     const parts = response.candidates?.[0]?.content?.parts || [];
     const toolCalls: any[] = [];
 
-    console.log('[Google Adapter] extractToolCalls called', {
-      hasCandidates: !!response.candidates,
-      candidatesLength: response.candidates?.length || 0,
-      hasContent: !!response.candidates?.[0]?.content,
-      partsLength: parts.length,
-      partTypes: parts.map((p: any) => Object.keys(p))
-    });
-
     for (const part of parts) {
       if (part.functionCall) {
-        console.log('[Google Adapter] Found functionCall', {
-          name: part.functionCall.name,
-          args: part.functionCall.args
-        });
         toolCalls.push({
           id: part.functionCall.name + '_' + Date.now(),
           type: 'function',
@@ -548,11 +496,6 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         });
       }
     }
-
-    console.log('[Google Adapter] Extracted tool calls', {
-      count: toolCalls.length,
-      toolNames: toolCalls.map(tc => tc.function?.name)
-    });
 
     return toolCalls;
   }

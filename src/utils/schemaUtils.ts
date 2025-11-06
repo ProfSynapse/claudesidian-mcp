@@ -114,28 +114,23 @@ export function getContextSchema(): any {
         },
         sessionDescription: {
           type: 'string',
-          description: 'Brief description of what this session is about - updates as conversation evolves',
-          minLength: 10
+          description: 'Brief description of what this session is about - updates as conversation evolves'
         },
         sessionMemory: {
           type: 'string',
-          description: 'Summary of what has happened in the conversation so far, including key decisions, actions taken, and important context',
-          minLength: 10
+          description: 'Summary of what has happened in the conversation so far, including key decisions, actions taken, and important context'
         },
         toolContext: {
-          type: 'string', 
-          description: 'Specific context for why this tool/mode is being used at this moment',
-          minLength: 5
+          type: 'string',
+          description: 'Specific context for why this tool/mode is being used at this moment'
         },
         primaryGoal: {
           type: 'string',
-          description: 'The overarching goal of the current conversation/task',
-          minLength: 5
+          description: 'The overarching goal of the current conversation/task'
         },
         subgoal: {
           type: 'string',
-          description: 'What this specific tool call is trying to accomplish',
-          minLength: 5
+          description: 'What this specific tool call is trying to accomplish'
         }
       },
       required: ['sessionId', 'workspaceId', 'sessionDescription', 'sessionMemory', 'toolContext', 'primaryGoal', 'subgoal'],

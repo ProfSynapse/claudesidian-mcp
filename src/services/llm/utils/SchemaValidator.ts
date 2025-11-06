@@ -51,7 +51,23 @@ export class SchemaValidator {
 
   /**
    * Sanitize JSON Schema for Google's simplified schema format
-   * Google doesn't support: if/then, allOf/anyOf/oneOf, examples, $ref, etc.
+   * Based on official Gemini API documentation (ai.google.dev/gemini-api/docs/structured-output)
+   *
+   * SUPPORTED Properties:
+   * - Universal: type, title, description
+   * - Object: properties, required, additionalProperties
+   * - String: enum, format (date-time, date, time)
+   * - Number/Integer: enum, minimum, maximum
+   * - Array: items, prefixItems, minItems, maxItems
+   *
+   * NOT SUPPORTED (will be removed):
+   * - default, examples, nullable, $ref, $schema, $id, $defs
+   * - allOf, anyOf, oneOf, not
+   * - minLength, maxLength, pattern
+   * - uniqueItems, minProperties, maxProperties
+   * - const, if/then/else, and other advanced features
+   *
+   * Note: For nullable types, use type arrays like ["string", "null"] instead of nullable property
    */
   static sanitizeSchemaForGoogle(schema: any): any {
     if (!schema || typeof schema !== 'object') {
@@ -61,12 +77,41 @@ export class SchemaValidator {
     // Create a clean copy
     const sanitized: any = {};
 
-    // Copy basic properties that Google supports
-    const allowedTopLevel = ['type', 'description', 'properties', 'required', 'items', 'enum'];
-    for (const key of allowedTopLevel) {
+    // Properties officially supported by Google Gemini (as per docs)
+    const allowedProperties = [
+      'type',
+      'title',
+      'description',
+      'properties',
+      'required',
+      'items',
+      'prefixItems',
+      'enum',
+      'format',
+      'minimum',
+      'maximum',
+      'minItems',
+      'maxItems',
+      'additionalProperties'
+    ];
+
+    // Copy allowed properties
+    for (const key of allowedProperties) {
       if (key in schema) {
         sanitized[key] = schema[key];
       }
+    }
+
+    // Handle nullable types - convert to type array if needed
+    if (schema.nullable === true && sanitized.type && sanitized.type !== 'null') {
+      if (Array.isArray(sanitized.type)) {
+        if (!sanitized.type.includes('null')) {
+          sanitized.type = [...sanitized.type, 'null'];
+        }
+      } else {
+        sanitized.type = [sanitized.type, 'null'];
+      }
+      delete sanitized.nullable; // Remove after converting to type array
     }
 
     // Recursively sanitize nested properties
@@ -79,12 +124,34 @@ export class SchemaValidator {
     }
 
     // Recursively sanitize array items
-    if (sanitized.items && typeof sanitized.items === 'object') {
-      sanitized.items = this.sanitizeSchemaForGoogle(sanitized.items);
+    if (sanitized.items) {
+      if (Array.isArray(sanitized.items)) {
+        // Convert array of schemas to prefixItems (tuple validation)
+        console.warn('[SchemaValidator] Converting items array to prefixItems for tuple validation');
+        sanitized.prefixItems = sanitized.items.map((itemSchema: any) =>
+          this.sanitizeSchemaForGoogle(itemSchema)
+        );
+        delete sanitized.items;
+      } else if (typeof sanitized.items === 'object') {
+        sanitized.items = this.sanitizeSchemaForGoogle(sanitized.items);
+      }
+    }
+
+    // Recursively sanitize prefixItems (tuple schemas)
+    if (sanitized.prefixItems && Array.isArray(sanitized.prefixItems)) {
+      sanitized.prefixItems = sanitized.prefixItems.map((itemSchema: any) =>
+        this.sanitizeSchemaForGoogle(itemSchema)
+      );
+    }
+
+    // Recursively sanitize additionalProperties if it's a schema
+    if (sanitized.additionalProperties && typeof sanitized.additionalProperties === 'object') {
+      sanitized.additionalProperties = this.sanitizeSchemaForGoogle(sanitized.additionalProperties);
     }
 
     // CRITICAL: Validate required array - remove any properties that don't exist in sanitized.properties
     if (sanitized.required && Array.isArray(sanitized.required) && sanitized.properties) {
+      const originalRequired = [...sanitized.required];
       sanitized.required = sanitized.required.filter((propName: string) => {
         const exists = propName in sanitized.properties;
         if (!exists) {
@@ -96,9 +163,108 @@ export class SchemaValidator {
       // If required array is now empty, remove it
       if (sanitized.required.length === 0) {
         delete sanitized.required;
+      } else if (originalRequired.length !== sanitized.required.length) {
+        console.warn(`[SchemaValidator] Required array modified: ${originalRequired.length} -> ${sanitized.required.length}`);
       }
     }
 
+    // Log removed properties for debugging
+    const removedProps = Object.keys(schema).filter(key => !(key in sanitized));
+    if (removedProps.length > 0) {
+      console.debug(`[SchemaValidator] Removed unsupported properties: ${removedProps.join(', ')}`);
+    }
+
     return sanitized;
+  }
+
+  /**
+   * Validate that a schema is suitable for Google Gemini
+   * Returns validation result with error details if invalid
+   */
+  static validateGoogleSchema(schema: any, schemaName?: string): { valid: boolean; error?: string } {
+    if (!schema || typeof schema !== 'object') {
+      return { valid: false, error: 'Schema must be an object' };
+    }
+
+    // Check for unsupported properties at top level
+    // Based on official Gemini API documentation - these are explicitly NOT supported
+    const unsupportedProperties = [
+      'default', 'examples', 'nullable', '$ref', '$schema', '$id', '$defs',
+      'allOf', 'anyOf', 'oneOf', 'not',
+      'minLength', 'maxLength', 'pattern',
+      'uniqueItems',
+      'minProperties', 'maxProperties',
+      'const', 'if', 'then', 'else'
+    ];
+
+    const foundUnsupported = unsupportedProperties.filter(prop => prop in schema);
+    if (foundUnsupported.length > 0) {
+      return {
+        valid: false,
+        error: `Schema "${schemaName || 'unknown'}" contains unsupported properties: ${foundUnsupported.join(', ')}`
+      };
+    }
+
+    // Check schema complexity (deep nesting can cause issues)
+    const maxDepth = this.calculateSchemaDepth(schema);
+    if (maxDepth > 10) {
+      return {
+        valid: false,
+        error: `Schema "${schemaName || 'unknown'}" is too deeply nested (depth: ${maxDepth}, max: 10)`
+      };
+    }
+
+    // Recursively validate nested properties
+    if (schema.properties && typeof schema.properties === 'object') {
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        const result = this.validateGoogleSchema(propSchema, `${schemaName}.${propName}`);
+        if (!result.valid) {
+          return result;
+        }
+      }
+    }
+
+    // Validate array items
+    if (schema.items && typeof schema.items === 'object' && !Array.isArray(schema.items)) {
+      const result = this.validateGoogleSchema(schema.items, `${schemaName}.items`);
+      if (!result.valid) {
+        return result;
+      }
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Calculate the maximum depth of a schema (for complexity checking)
+   */
+  private static calculateSchemaDepth(schema: any, currentDepth: number = 0): number {
+    if (!schema || typeof schema !== 'object' || currentDepth > 20) {
+      return currentDepth;
+    }
+
+    let maxDepth = currentDepth;
+
+    // Check nested properties
+    if (schema.properties && typeof schema.properties === 'object') {
+      for (const propSchema of Object.values(schema.properties)) {
+        const depth = this.calculateSchemaDepth(propSchema, currentDepth + 1);
+        maxDepth = Math.max(maxDepth, depth);
+      }
+    }
+
+    // Check array items
+    if (schema.items && typeof schema.items === 'object') {
+      const depth = this.calculateSchemaDepth(schema.items, currentDepth + 1);
+      maxDepth = Math.max(maxDepth, depth);
+    }
+
+    // Check additionalProperties
+    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+      const depth = this.calculateSchemaDepth(schema.additionalProperties, currentDepth + 1);
+      maxDepth = Math.max(maxDepth, depth);
+    }
+
+    return maxDepth;
   }
 }

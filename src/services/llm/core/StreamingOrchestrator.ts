@@ -59,11 +59,6 @@ export class StreamingOrchestrator {
     toolCalls: any[],
     toolResults: any[]
   ): any[] {
-    console.log('[TOOL_CHAIN] 🔍 parseAndMergeTools', {
-      existingToolsCount: existingTools.length,
-      toolCallsCount: toolCalls.length
-    });
-
     const newTools = [...existingTools];
 
     for (let i = 0; i < toolCalls.length; i++) {
@@ -73,10 +68,6 @@ export class StreamingOrchestrator {
       // Check if this was a get_tools call
       if (toolCall.function?.name === 'get_tools' && result?.success && result?.result?.tools) {
         const returnedTools = result.result.tools;
-        console.log('[TOOL_CHAIN] ✅ Found get_tools result', {
-          returnedToolsCount: returnedTools.length,
-          toolNames: returnedTools.map((t: any) => t.name)
-        });
 
         // Convert MCP tool format to OpenAI Responses API format
         for (const mcpTool of returnedTools) {
@@ -86,7 +77,6 @@ export class StreamingOrchestrator {
           );
 
           if (!exists) {
-            console.log('[TOOL_CHAIN] ➕ Adding tool:', mcpTool.name);
             // Convert to Responses API format: {type, name, description, parameters}
             newTools.push({
               type: 'function',
@@ -98,12 +88,6 @@ export class StreamingOrchestrator {
         }
       }
     }
-
-    console.log('[TOOL_CHAIN] 📊 Result:', {
-      before: existingTools.length,
-      after: newTools.length,
-      added: newTools.length - existingTools.length
-    });
 
     return newTools;
   }
@@ -460,12 +444,6 @@ export class StreamingOrchestrator {
 
         // Handle recursive tool calls (another pingpong iteration)
         if (chunk.toolCalls) {
-          console.log('[TOOL_CHAIN] 🔧 Continuation tool calls detected', {
-            count: chunk.toolCalls.length,
-            complete: chunk.complete,
-            tools: chunk.toolCalls.map(tc => tc.function?.name || 'unknown').join(', ')
-          });
-
           // ALWAYS yield tool calls for progressive UI display
           yield {
             chunk: '',
@@ -477,11 +455,8 @@ export class StreamingOrchestrator {
 
           // CRITICAL: Only EXECUTE tool calls when stream is COMPLETE
           if (!chunk.complete) {
-            console.log('[TOOL_CHAIN] ⏸️ Waiting for completion...');
             continue;
           }
-
-          console.log('[TOOL_CHAIN] ✅ Executing recursive tool calls');
 
           // Update response ID BEFORE recursive call (OpenAI only)
           if (provider === 'openai' && chunk.metadata?.responseId && options?.sessionId) {
@@ -509,9 +484,6 @@ export class StreamingOrchestrator {
         }
 
         if (chunk.complete) {
-          console.log('[TOOL_CHAIN] ✅ Stream complete', {
-            hadToolCalls: !!chunk.toolCalls
-          });
           break;
         }
       }
@@ -544,12 +516,6 @@ export class StreamingOrchestrator {
     options: StreamingOptions | undefined,
     completeToolCallsWithResults: any[]
   ): AsyncGenerator<StreamYield, void, unknown> {
-    console.log('[TOOL_CHAIN] 🔄 handleRecursiveToolCalls ENTERED', {
-      provider,
-      toolCount: recursiveToolCalls.length,
-      toolNames: recursiveToolCalls.map(tc => tc.function?.name || tc.name || 'unknown').join(', ')
-    });
-
     try {
       // Convert recursive tool calls to MCP format
       const recursiveMcpToolCalls = recursiveToolCalls.map((tc: any) => {
@@ -608,17 +574,6 @@ export class StreamingOrchestrator {
       }
 
       // Build continuation for recursive pingpong
-      console.log('[TOOL_CHAIN] 📋 Building recursive continuation', {
-        toolCalls: recursiveToolCalls.map(tc => ({
-          name: tc.function?.name || tc.name,
-          id: tc.id
-        })),
-        results: recursiveToolResults.map(r => ({
-          success: r.success,
-          hasResult: !!r.result
-        }))
-      });
-
       const recursiveContinuationOptions = this.buildContinuationOptions(
         provider,
         userPrompt,
@@ -664,13 +619,6 @@ export class StreamingOrchestrator {
 
         // Handle nested recursive tool calls if any (up to iteration limit)
         if (recursiveChunk.toolCalls) {
-          console.log('[TOOL_CHAIN] 🔧 Nested tool calls detected', {
-            count: recursiveChunk.toolCalls.length,
-            complete: recursiveChunk.complete,
-            toolCallsReady: recursiveChunk.toolCallsReady,
-            tools: recursiveChunk.toolCalls.map((tc: any) => tc.function?.name || tc.name || 'unknown').join(', ')
-          });
-
           yield {
             chunk: '',
             complete: false,
@@ -681,18 +629,11 @@ export class StreamingOrchestrator {
 
           // Store for execution after stream completes
           if (recursiveChunk.complete && recursiveChunk.toolCallsReady) {
-            console.log('[TOOL_CHAIN] ✅ Nested tools ready for execution');
             recursiveToolCallsDetected = recursiveChunk.toolCalls;
-          } else {
-            console.log('[TOOL_CHAIN] ⏸️ Nested tools not ready', {
-              complete: recursiveChunk.complete,
-              ready: recursiveChunk.toolCallsReady
-            });
           }
         }
 
         if (recursiveChunk.complete) {
-          console.log('[TOOL_CHAIN] ✅ Recursive stream complete');
           // Update response ID for next continuation (OpenAI only)
           if (provider === 'openai' && recursiveChunk.metadata?.responseId && options?.sessionId) {
             this.conversationResponseIds.set(options.sessionId, recursiveChunk.metadata.responseId);
@@ -703,9 +644,6 @@ export class StreamingOrchestrator {
 
       // If the recursive stream ended with tool calls, handle them (nested recursion)
       if (recursiveToolCallsDetected.length > 0) {
-        console.log('[TOOL_CHAIN] 🔄 Starting nested recursion', {
-          toolCount: recursiveToolCallsDetected.length
-        });
         yield* this.handleRecursiveToolCalls(
           adapter,
           provider,
@@ -716,8 +654,6 @@ export class StreamingOrchestrator {
           options,
           completeToolCallsWithResults
         );
-      } else {
-        console.log('[TOOL_CHAIN] ✅ No nested tools to execute');
       }
 
     } catch (recursiveError) {

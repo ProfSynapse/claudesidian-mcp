@@ -36,7 +36,7 @@ export const GOOGLE_MODELS: ModelSpec[] = [
       supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true  // Updated: 2.5 Flash now supports thinking mode
     }
   }
 ];

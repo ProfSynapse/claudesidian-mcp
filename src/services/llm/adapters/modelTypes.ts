@@ -26,4 +26,6 @@ export interface ModelSpec {
     supportsStreaming: boolean;
     supportsThinking: boolean;
   };
+  /** Optional beta headers required for this model (Anthropic only) */
+  betaHeaders?: string[];
 }
