@@ -329,6 +329,46 @@ export abstract class BaseAdapter {
     return headers;
   }
 
+  /**
+   * Retry operation with exponential backoff
+   * Used for handling OpenAI Responses API race conditions (previous_response_not_found)
+   * @param operation - Async operation to retry
+   * @param maxRetries - Maximum number of retry attempts (default: 3)
+   * @param initialDelayMs - Initial delay in milliseconds (default: 50)
+   * @returns Result of successful operation
+   */
+  protected async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    initialDelayMs: number = 50
+  ): Promise<T> {
+    let lastError: any;
+    let delay = initialDelayMs;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+
+        // Only retry on specific "previous_response_not_found" error
+        const isPreviousResponseNotFound =
+          error?.status === 400 &&
+          error?.error?.message?.includes('previous_response_not_found');
+
+        if (!isPreviousResponseNotFound || attempt === maxRetries - 1) {
+          throw error;
+        }
+
+        console.log(`[${this.name}] Retrying after ${delay}ms (attempt ${attempt + 1}/${maxRetries}) - previous_response_not_found`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Exponential backoff: 50ms, 100ms, 200ms
+      }
+    }
+
+    throw lastError;
+  }
+
   protected handleError(error: any, operation: string): never {
     if (error instanceof LLMProviderError) {
       throw error;

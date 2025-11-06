@@ -76,9 +76,9 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
         return await this.generateWithProvidedTools(prompt, options);
       }
 
-      // Otherwise use basic chat completions
-      console.log('[OpenAI Adapter] Using basic chat completions (no tools)');
-      return await this.generateWithChatCompletions(prompt, options);
+      // Otherwise use basic Responses API without tools
+      console.log('[OpenAI Adapter] Using basic Responses API (no tools)');
+      return await this.generateWithResponsesAPI(prompt, options);
     } catch (error) {
       throw this.handleError(error, 'generation');
     }
@@ -86,7 +86,7 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
 
   /**
    * Generate streaming response using async generator
-   * Uses unified stream processing with automatic tool call accumulation
+   * Uses OpenAI Responses API for stateful conversations with tool support
    */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
@@ -97,41 +97,198 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
         throw new Error(`Deep research models (${model}) cannot be used in streaming chat. Please select a different model for real-time conversations.`);
       }
 
-      // Build streaming parameters
-      const streamParams: any = {
-        model,
-        messages: this.buildMessages(prompt, options?.systemPrompt),
-        stream: true,
-        stream_options: { include_usage: true } // CRITICAL: Include usage data in stream
-      };
+      // Build Responses API parameters with retry logic for race conditions
+      const stream = await this.retryWithBackoff(async () => {
+        const responseParams: any = {
+          model,
+          stream: true
+        };
 
-      // Add optional parameters
-      if (options?.temperature !== undefined) streamParams.temperature = options.temperature;
-      if (options?.maxTokens !== undefined) streamParams.max_tokens = options.maxTokens;
-      if (options?.jsonMode) streamParams.response_format = { type: 'json_object' };
-      if (options?.stopSequences) streamParams.stop = options.stopSequences;
-      if (options?.tools) streamParams.tools = options.tools;
-      if (options?.topP !== undefined) streamParams.top_p = options.topP;
-      if (options?.frequencyPenalty !== undefined) streamParams.frequency_penalty = options.frequencyPenalty;
-      if (options?.presencePenalty !== undefined) streamParams.presence_penalty = options.presencePenalty;
+        // Handle input - either tool outputs (continuation) or text (initial)
+        if (options?.conversationHistory && options.conversationHistory.length > 0) {
+          // Tool continuation: conversationHistory contains ResponseInputItem[] (function_call_output)
+          responseParams.input = options.conversationHistory;
+        } else {
+          // Initial request: use text input
+          responseParams.input = prompt;
+        }
 
-      console.log(`[OpenAIAdapter] Creating stream with params:`, { ...streamParams, messages: '[hidden]' });
+        // Add instructions (replaces system message in Chat Completions)
+        if (options?.systemPrompt) {
+          responseParams.instructions = options.systemPrompt;
+        }
 
-      // Create OpenAI stream
-      const stream = await this.client.chat.completions.create(streamParams) as any;
+        // Add previous_response_id for stateful continuation
+        if (options?.previousResponseId) {
+          responseParams.previous_response_id = options.previousResponseId;
+        }
 
-      // Use unified stream processing with automatic tool call accumulation
-      yield* this.processStream(stream, {
-        debugLabel: 'OpenAI',
-        extractContent: (chunk) => chunk.choices[0]?.delta?.content || null,
-        extractToolCalls: (chunk) => chunk.choices[0]?.delta?.tool_calls || null,
-        extractFinishReason: (chunk) => chunk.choices[0]?.finish_reason || null,
-        extractUsage: (chunk) => chunk.usage || null
+        // Add tools if provided (convert from Chat Completions format to Responses API format)
+        if (options?.tools) {
+          responseParams.tools = options.tools.map((tool: any) => {
+            // Responses API uses flat structure: {type, name, description, parameters}
+            // Chat Completions uses nested: {type, function: {name, description, parameters}}
+            if (tool.function) {
+              return {
+                type: 'function',
+                name: tool.function.name,
+                description: tool.function.description || null,
+                parameters: tool.function.parameters || null,
+                strict: tool.function.strict || null
+              };
+            }
+            // Already in Responses API format
+            return tool;
+          });
+        }
+
+        // Add optional parameters
+        if (options?.temperature !== undefined) responseParams.temperature = options.temperature;
+        if (options?.maxTokens !== undefined) responseParams.max_output_tokens = options.maxTokens;
+        if (options?.topP !== undefined) responseParams.top_p = options.topP;
+        if (options?.frequencyPenalty !== undefined) responseParams.frequency_penalty = options.frequencyPenalty;
+        if (options?.presencePenalty !== undefined) responseParams.presence_penalty = options.presencePenalty;
+
+        console.log('[OpenAIAdapter] Creating Responses API stream with params:', {
+          model: responseParams.model,
+          hasInput: !!responseParams.input,
+          inputType: Array.isArray(responseParams.input) ? 'array' : 'string',
+          hasInstructions: !!responseParams.instructions,
+          hasPreviousResponseId: !!responseParams.previous_response_id,
+          toolCount: responseParams.tools?.length || 0
+        });
+
+        // Create Responses API stream
+        return await this.client.responses.create(responseParams) as any;
       });
+
+      // Process Responses API stream events
+      yield* this.processResponsesStream(stream);
 
     } catch (error) {
       console.error('[OpenAIAdapter] Streaming error:', error);
       throw this.handleError(error, 'streaming generation');
+    }
+  }
+
+  /**
+   * Process Responses API stream events
+   * Handles ResponseStreamEvent format from OpenAI Responses API
+   * @private
+   */
+  private async* processResponsesStream(stream: any): AsyncGenerator<StreamChunk, void, unknown> {
+    let fullContent = '';
+    let currentResponseId: string | null = null;
+    const toolCallsMap = new Map<number, any>();
+    let usage: any = null;
+
+    try {
+      for await (const event of stream) {
+        // Extract response ID from events
+        if (event.response?.id && !currentResponseId) {
+          currentResponseId = event.response.id;
+        }
+
+        // Handle different event types
+        switch (event.type) {
+          case 'response.output_text.delta':
+            // Text content delta
+            if (event.delta) {
+              fullContent += event.delta;
+              yield {
+                content: event.delta,
+                complete: false,
+                usage: undefined
+              };
+            }
+            break;
+
+          case 'response.output_item.added':
+            // New output item added (could be message or function call)
+            if (event.item) {
+              const item = event.item;
+
+              // Handle message with text content (only for messages, not function calls)
+              if (item.type === 'message' && item.content) {
+                for (const content of item.content) {
+                  if (content.type === 'text' && content.text) {
+                    fullContent += content.text;
+                    yield {
+                      content: content.text,
+                      complete: false,
+                      usage: undefined
+                    };
+                  }
+                }
+              }
+            }
+            break;
+
+          case 'response.output_item.done':
+            // Output item complete - capture function calls here with full arguments
+            if (event.item) {
+              const item = event.item;
+
+              if (item.type === 'function_call') {
+                const index = event.output_index || 0;
+
+                toolCallsMap.set(index, {
+                  id: item.call_id || item.id,
+                  type: 'function',
+                  function: {
+                    name: item.name || '',
+                    arguments: item.arguments || '{}'
+                  }
+                });
+              }
+            }
+            break;
+
+          case 'response.function_call_arguments.delta':
+            // Arguments are streamed but we capture the complete call in output_item.done
+            // No action needed here - just let the deltas flow
+            break;
+
+          case 'response.done':
+          case 'response.completed':
+            // Final event - extract usage if available
+            if (event.response?.usage) {
+              usage = {
+                promptTokens: event.response.usage.input_tokens || 0,
+                completionTokens: event.response.usage.output_tokens || 0,
+                totalTokens: event.response.usage.total_tokens || 0
+              };
+            }
+
+            // Store response ID in metadata for continuation
+            const metadata = currentResponseId ? { responseId: currentResponseId } : undefined;
+
+            // Final yield with tool calls if any
+            const toolCallsArray = Array.from(toolCallsMap.values());
+            yield {
+              content: '',
+              complete: true,
+              usage,
+              toolCalls: toolCallsArray.length > 0 ? toolCallsArray : undefined,
+              toolCallsReady: toolCallsArray.length > 0,
+              metadata // Include response ID for tracking
+            };
+
+            if (metadata) {
+              console.log('[OpenAIAdapter] ✅ Response ID for continuation:', metadata.responseId);
+            }
+            break;
+
+          default:
+            // Log other event types for debugging
+            if (event.type) {
+              console.log('[OpenAIAdapter] Unhandled event type:', event.type);
+            }
+        }
+      }
+    } catch (error) {
+      console.error('[OpenAIAdapter] Error processing Responses API stream:', error);
+      throw error;
     }
   }
 
@@ -206,51 +363,59 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
   }
 
   /**
-   * Generate using standard chat completions
+   * Generate using Responses API for non-streaming requests
    */
-  private async generateWithChatCompletions(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
+  private async generateWithResponsesAPI(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     const model = options?.model || this.currentModel;
-    
-    const chatParams: any = {
+
+    const responseParams: any = {
       model,
-      messages: this.buildMessages(prompt, options?.systemPrompt)
+      input: prompt,
+      stream: false
     };
 
+    // Add instructions (replaces system message)
+    if (options?.systemPrompt) {
+      responseParams.instructions = options.systemPrompt;
+    }
+
     // Add optional parameters
-    if (options?.temperature !== undefined) chatParams.temperature = options.temperature;
-    if (options?.maxTokens !== undefined) chatParams.max_tokens = options.maxTokens;
-    if (options?.jsonMode) chatParams.response_format = { type: 'json_object' };
-    if (options?.stopSequences) chatParams.stop = options.stopSequences;
-    if (options?.tools) chatParams.tools = options.tools;
-    if (options?.topP !== undefined) chatParams.top_p = options.topP;
-    if (options?.frequencyPenalty !== undefined) chatParams.frequency_penalty = options.frequencyPenalty;
-    if (options?.presencePenalty !== undefined) chatParams.presence_penalty = options.presencePenalty;
+    if (options?.temperature !== undefined) responseParams.temperature = options.temperature;
+    if (options?.maxTokens !== undefined) responseParams.max_output_tokens = options.maxTokens;
+    if (options?.topP !== undefined) responseParams.top_p = options.topP;
+    if (options?.frequencyPenalty !== undefined) responseParams.frequency_penalty = options.frequencyPenalty;
+    if (options?.presencePenalty !== undefined) responseParams.presence_penalty = options.presencePenalty;
 
-    const response = await this.client.chat.completions.create(chatParams);
-    const choice = response.choices[0];
-    
-    if (!choice) {
-      throw new Error('No response from OpenAI');
-    }
-    
-    let text = choice.message?.content || '';
-    const usage = this.extractUsage({ usage: response.usage });
-    let finishReason = choice.finish_reason || 'stop';
+    const response = await this.client.responses.create(responseParams) as any;
 
-    // If tools were provided and we got tool calls, we need to handle them
-    // For now, just return the response as-is since tool execution is complex
-    // TODO: Implement proper tool call execution if needed
-    if (options?.tools && choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
-      console.log(`[OpenAI Adapter] Received ${choice.message.tool_calls.length} tool calls, but tool execution not implemented in basic mode`);
-      text = text || '[AI requested tool calls but tool execution not available]';
+    if (!response.output || response.output.length === 0) {
+      throw new Error('No output from OpenAI Responses API');
     }
+
+    // Extract text content from output array
+    let text = '';
+    for (const item of response.output) {
+      if (item.type === 'message' && item.content) {
+        for (const content of item.content) {
+          if (content.type === 'text') {
+            text += content.text || '';
+          }
+        }
+      }
+    }
+
+    const usage = response.usage ? {
+      promptTokens: response.usage.input_tokens || 0,
+      completionTokens: response.usage.output_tokens || 0,
+      totalTokens: response.usage.total_tokens || 0
+    } : undefined;
 
     return this.buildLLMResponse(
       text,
       model,
       usage,
-      undefined,
-      finishReason as any
+      { responseId: response.id }, // Store response ID
+      'stop'
     );
   }
 

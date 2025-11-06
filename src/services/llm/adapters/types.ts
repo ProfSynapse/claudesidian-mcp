@@ -31,6 +31,8 @@ export interface GenerateOptions {
   detectedToolCalls?: any[];
   // Conversation history for pingpong pattern (overrides prompt-based message building)
   conversationHistory?: any[];
+  // OpenAI Responses API: Previous response ID for stateful continuations
+  previousResponseId?: string;
 }
 
 export interface StreamChunk {
@@ -39,6 +41,7 @@ export interface StreamChunk {
   usage?: TokenUsage;
   toolCalls?: ToolCall[];
   toolCallsReady?: boolean; // True when tool calls are complete and safe to execute
+  metadata?: Record<string, any>; // For provider-specific metadata (e.g., OpenAI response ID)
 }
 
 export interface SearchResult {

@@ -348,8 +348,13 @@ export class ConversationContextBuilder {
           toolResults,
           previousMessages
         );
+      case 'openai':
+        // OpenAI uses Responses API - should use buildResponsesAPIToolInput directly
+        // This case should not be hit from StreamingOrchestrator (which handles OpenAI separately)
+        throw new Error('OpenAI tool continuation should use buildResponsesAPIToolInput directly via StreamingOrchestrator');
       default:
-        // OpenAI-style providers (openai, openrouter, groq, mistral, requesty, perplexity)
+        // Other OpenAI-compatible providers (openrouter, groq, mistral, requesty, perplexity)
+        // These still use Chat Completions API message arrays
         return this.buildOpenAIToolContinuation(
           userPrompt,
           systemPrompt,
@@ -358,6 +363,31 @@ export class ConversationContextBuilder {
           previousMessages
         );
     }
+  }
+
+  /**
+   * Build Responses API tool input for OpenAI continuations
+   * Converts tool results to ResponseInputItem.FunctionCallOutput format
+   *
+   * @param toolCalls - Tool calls that were executed
+   * @param toolResults - Results from tool execution
+   * @returns Array of FunctionCallOutput items for Responses API input
+   */
+  static buildResponsesAPIToolInput(
+    toolCalls: any[],
+    toolResults: any[]
+  ): any[] {
+    return toolResults.map((result, index) => {
+      const toolCall = toolCalls[index];
+
+      return {
+        type: 'function_call_output',
+        call_id: toolCall.id, // Links to the original function call ID
+        output: result.success
+          ? JSON.stringify(result.result || {})
+          : JSON.stringify({ error: result.error || 'Tool execution failed' })
+      };
+    });
   }
 
   /**
@@ -494,7 +524,7 @@ export class ConversationContextBuilder {
 
   /**
    * Build OpenAI-style tool continuation
-   * Returns enhanced system prompt with conversation history and tool results
+   * Returns message array with proper OpenAI format including tool calls and results
    *
    * @private
    */
@@ -504,54 +534,63 @@ export class ConversationContextBuilder {
     toolCalls: any[],
     toolResults: any[],
     previousMessages?: any[]
-  ): string {
-    // Build flattened conversation history including previous messages and tool results
-    const historyParts: string[] = [];
+  ): any[] {
+    const messages: any[] = [];
 
     // Add previous conversation history if provided
     if (previousMessages && previousMessages.length > 0) {
-      for (const msg of previousMessages) {
-        if (msg.role === 'user') {
-          historyParts.push(`User: ${msg.content}`);
-        } else if (msg.role === 'assistant') {
-          if (msg.tool_calls) {
-            historyParts.push(`Assistant: [Calling tools: ${msg.tool_calls.map((tc: any) => tc.function?.name || tc.name).join(', ')}]`);
-          } else if (msg.content) {
-            historyParts.push(`Assistant: ${msg.content}`);
-          }
-        } else if (msg.role === 'tool') {
-          historyParts.push(`Tool Result: ${msg.content}`);
-        }
-      }
+      messages.push(...previousMessages);
     }
 
-    // Add current user prompt if provided
+    // Add the original user message
     if (userPrompt) {
-      historyParts.push(`User: ${userPrompt}`);
+      messages.push({
+        role: 'user',
+        content: userPrompt
+      });
     }
 
-    // Add tool call information
-    const toolNames = toolCalls.map(tc => tc.function?.name || tc.name).join(', ');
-    historyParts.push(`Assistant: [Calling tools: ${toolNames}]`);
+    // Add assistant message with tool calls
+    messages.push({
+      role: 'assistant',
+      content: null,
+      tool_calls: toolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function',
+        function: {
+          name: tc.function?.name || tc.name,
+          arguments: tc.function?.arguments || JSON.stringify({})
+        }
+      }))
+    });
 
-    // Add tool results
+    // Add tool result messages
     toolResults.forEach((result, index) => {
       const toolCall = toolCalls[index];
       const resultContent = result.success
         ? JSON.stringify(result.result || {})
-        : `Error: ${result.error || 'Tool execution failed'}`;
-      historyParts.push(`Tool Result (${toolCall.function?.name || toolCall.name}): ${resultContent}`);
+        : JSON.stringify({ error: result.error || 'Tool execution failed' });
+
+      const toolMessage = {
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: resultContent
+      };
+
+      // Log tool result for debugging
+      console.log('[ConversationContextBuilder] 🔧 Adding tool result:', {
+        toolCallId: toolCall.id,
+        toolName: toolCall.function?.name || toolCall.name,
+        success: result.success,
+        contentLength: resultContent.length,
+        contentPreview: resultContent.substring(0, 200) + (resultContent.length > 200 ? '...' : '')
+      });
+
+      messages.push(toolMessage);
     });
 
-    // Build enhanced system prompt with conversation history
-    const enhancedSystemPrompt = [
-      systemPrompt || '',
-      '\n=== Conversation History ===',
-      historyParts.join('\n')
-    ].filter(Boolean).join('\n');
-
-    // Return the enhanced system prompt string
-    return enhancedSystemPrompt;
+    console.log('[ConversationContextBuilder] ✅ Built OpenAI continuation with', messages.length, 'messages');
+    return messages;
   }
 
   /**

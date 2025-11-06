@@ -47,6 +47,51 @@ export class StreamingOrchestrator {
   // Safety limit for recursive tool calls
   private readonly TOOL_ITERATION_LIMIT = 15;
 
+  // Track OpenAI response IDs for stateful continuations
+  private conversationResponseIds: Map<string, string> = new Map();
+
+  /**
+   * Parse get_tools results and merge with existing tools
+   * @private
+   */
+  private parseAndMergeTools(
+    existingTools: any[],
+    toolCalls: any[],
+    toolResults: any[]
+  ): any[] {
+    const newTools = [...existingTools];
+
+    for (let i = 0; i < toolCalls.length; i++) {
+      const toolCall = toolCalls[i];
+      const result = toolResults[i];
+
+      // Check if this was a get_tools call
+      if (toolCall.function?.name === 'get_tools' && result?.success && result?.result?.tools) {
+        const returnedTools = result.result.tools;
+
+        // Convert MCP tool format to OpenAI Responses API format
+        for (const mcpTool of returnedTools) {
+          // Check if tool already exists
+          const exists = newTools.some(t =>
+            (t.name === mcpTool.name) || (t.function?.name === mcpTool.name)
+          );
+
+          if (!exists) {
+            // Convert to Responses API format: {type, name, description, parameters}
+            newTools.push({
+              type: 'function',
+              name: mcpTool.name,
+              description: mcpTool.description || '',
+              parameters: mcpTool.inputSchema || { type: 'object', properties: {} }
+            });
+          }
+        }
+      }
+    }
+
+    return newTools;
+  }
+
   constructor(
     private adapterRegistry: IAdapterRegistry,
     private settings: LLMProviderSettings
@@ -199,6 +244,10 @@ export class StreamingOrchestrator {
         }
 
         if (chunk.complete) {
+          // Store OpenAI response ID for future continuations
+          if (provider === 'openai' && chunk.metadata?.responseId && options?.sessionId) {
+            this.conversationResponseIds.set(options.sessionId, chunk.metadata.responseId);
+          }
           break;
         }
       }
@@ -326,15 +375,38 @@ export class StreamingOrchestrator {
         };
       });
 
+      // Step 1.5: For OpenAI, parse get_tools results and update generateOptions BEFORE building continuation
+      if (provider === 'openai') {
+        const beforeCount = generateOptions.tools?.length || 0;
+        const updatedTools = this.parseAndMergeTools(
+          generateOptions.tools || [],
+          detectedToolCalls,
+          toolResults
+        );
+        if (updatedTools.length > beforeCount) {
+          generateOptions = { ...generateOptions, tools: updatedTools };
+        }
+      }
+
       // Step 2: Build continuation for pingpong pattern
       console.log('[StreamingOrchestrator] 🔨 Building continuation options for provider:', provider);
+      console.log('[StreamingOrchestrator] 📋 Tool results being passed to continuation:', {
+        count: toolResults.length,
+        results: toolResults.map(r => ({
+          id: r.id,
+          success: r.success,
+          hasResult: !!r.result,
+          resultPreview: r.result ? JSON.stringify(r.result).substring(0, 150) + '...' : 'null'
+        }))
+      });
       const continuationOptions = this.buildContinuationOptions(
         provider,
         userPrompt,
         detectedToolCalls,
         toolResults,
         previousMessages,
-        generateOptions
+        generateOptions,
+        options
       );
 
       console.log('[StreamingOrchestrator] ✅ Continuation options built', {
@@ -375,6 +447,11 @@ export class StreamingOrchestrator {
             continue;
           }
 
+          // Update response ID BEFORE recursive call (OpenAI only)
+          if (provider === 'openai' && chunk.metadata?.responseId && options?.sessionId) {
+            this.conversationResponseIds.set(options.sessionId, chunk.metadata.responseId);
+          }
+
           // Check iteration limit before recursing
           toolIterationCount++;
           if (toolIterationCount > this.TOOL_ITERATION_LIMIT) {
@@ -382,7 +459,7 @@ export class StreamingOrchestrator {
             break;
           }
 
-          // Execute recursive tool calls
+          // Execute recursive tool calls (will use updated responseId)
           yield* this.handleRecursiveToolCalls(
             adapter,
             provider,
@@ -470,6 +547,19 @@ export class StreamingOrchestrator {
       // Add recursive results to complete tool calls
       completeToolCallsWithResults.push(...recursiveCompleteToolCalls);
 
+      // For OpenAI Responses API: Parse get_tools results and add to available tools
+      if (provider === 'openai') {
+        const beforeCount = generateOptions.tools?.length || 0;
+        const updatedTools = this.parseAndMergeTools(
+          generateOptions.tools || [],
+          recursiveToolCalls,
+          recursiveToolResults
+        );
+        if (updatedTools.length > beforeCount) {
+          generateOptions = { ...generateOptions, tools: updatedTools };
+        }
+      }
+
       // Build continuation for recursive pingpong
       const recursiveContinuationOptions = this.buildContinuationOptions(
         provider,
@@ -477,11 +567,14 @@ export class StreamingOrchestrator {
         recursiveToolCalls,
         recursiveToolResults,
         previousMessages,
-        generateOptions
+        generateOptions,
+        options
       );
 
       // Continue with another recursive stream
       let fullContent = '';
+      let recursiveToolCallsDetected: any[] = [];
+
       for await (const recursiveChunk of adapter.generateStreamAsync('', recursiveContinuationOptions)) {
         if (recursiveChunk.content) {
           fullContent += recursiveChunk.content;
@@ -502,11 +595,34 @@ export class StreamingOrchestrator {
             toolCalls: recursiveChunk.toolCalls,
             toolCallsReady: recursiveChunk.complete || false
           };
+
+          // Store for execution after stream completes
+          if (recursiveChunk.complete && recursiveChunk.toolCallsReady) {
+            recursiveToolCallsDetected = recursiveChunk.toolCalls;
+          }
         }
 
         if (recursiveChunk.complete) {
+          // Update response ID for next continuation (OpenAI only)
+          if (provider === 'openai' && recursiveChunk.metadata?.responseId && options?.sessionId) {
+            this.conversationResponseIds.set(options.sessionId, recursiveChunk.metadata.responseId);
+          }
           break;
         }
+      }
+
+      // If the recursive stream ended with tool calls, handle them (nested recursion)
+      if (recursiveToolCallsDetected.length > 0) {
+        yield* this.handleRecursiveToolCalls(
+          adapter,
+          provider,
+          recursiveToolCallsDetected,
+          previousMessages,
+          userPrompt,
+          generateOptions,
+          options,
+          completeToolCallsWithResults
+        );
       }
 
     } catch (recursiveError) {
@@ -524,7 +640,8 @@ export class StreamingOrchestrator {
     toolCalls: any[],
     toolResults: any[],
     previousMessages: any[],
-    generateOptions: any
+    generateOptions: any,
+    options?: StreamingOptions
   ): any {
     // Check if this is an Anthropic model (direct or via OpenRouter)
     const isAnthropicModel = provider === 'anthropic' ||
@@ -566,20 +683,42 @@ export class StreamingOrchestrator {
         conversationHistory,
         systemPrompt: generateOptions.systemPrompt
       };
+    } else if (provider === 'openai') {
+      // OpenAI uses Responses API with function_call_output items
+      const toolInput = ConversationContextBuilder.buildResponsesAPIToolInput(
+        toolCalls,
+        toolResults
+      );
+
+      // Get previous response ID for this conversation
+      const conversationId = options?.sessionId;
+      const previousResponseId = conversationId
+        ? this.conversationResponseIds.get(conversationId)
+        : undefined;
+
+      return {
+        ...generateOptions,
+        conversationHistory: toolInput, // ResponseInputItem[] for Responses API
+        previousResponseId,
+        systemPrompt: generateOptions.systemPrompt,
+        tools: generateOptions.tools // Ensure tools are passed to continuation
+      };
     } else {
-      // For OpenAI-style providers, use flattened system prompt
-      const enhancedSystemPrompt = ConversationContextBuilder.buildToolContinuation(
+      // Other OpenAI-compatible providers (groq, mistral, perplexity, requesty, openrouter)
+      // These still use Chat Completions API message arrays
+      const conversationHistory = ConversationContextBuilder.buildToolContinuation(
         provider,
         userPrompt,
         toolCalls,
         toolResults,
         previousMessages,
         generateOptions.systemPrompt
-      ) as string;
+      ) as any[];
 
       return {
         ...generateOptions,
-        systemPrompt: enhancedSystemPrompt
+        conversationHistory,
+        systemPrompt: generateOptions.systemPrompt
       };
     }
   }

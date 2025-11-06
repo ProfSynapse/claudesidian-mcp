@@ -7,6 +7,7 @@ import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './utils/logger';
 import { CustomPromptStorageService } from "./agents/agentManager/services/CustomPromptStorageService";
 import { generateSessionId, formatSessionInstructions, isStandardSessionId } from './utils/sessionUtils';
+import { getContextSchema } from './utils/schemaUtils';
 // ToolCallCaptureService removed in simplified architecture
 
 // Extracted services
@@ -224,6 +225,9 @@ export class MCPConnector {
         // Build agent enum values with descriptions
         const agentDescriptions = AGENTS.map(a => `- ${a.name}: ${a.description}`).join('\n');
 
+        // Get standard context schema to ensure sessionId persistence
+        const contextSchema = getContextSchema();
+
         const getToolsTool = {
             name: 'get_tools',
             description: `Discover available tools for specific agents. Each agent represents a bounded context of related operations:\n\n${agentDescriptions}\n\nCall this to get tool schemas for the capabilities you need. You can request multiple agents at once.`,
@@ -237,9 +241,10 @@ export class MCPConnector {
                             enum: AGENTS.map(a => a.name)
                         },
                         description: 'Array of agent names to retrieve tools for'
-                    }
+                    },
+                    ...contextSchema
                 },
-                required: ['agents']
+                required: ['agents', 'context']
             }
         };
 
@@ -248,6 +253,7 @@ export class MCPConnector {
 
     /**
      * Get tools for specific agents (called via get_tools meta-tool)
+     * Returns clean schemas WITHOUT common parameters to reduce context bloat
      */
     private getToolsForAgents(agentNames: string[]): any[] {
         const tools: any[] = [];
@@ -281,11 +287,16 @@ export class MCPConnector {
                 if (modeInstance && typeof modeInstance.getParameterSchema === 'function') {
                     try {
                         const paramSchema = modeInstance.getParameterSchema();
+
+                        // Strip common parameters to reduce context bloat
+                        // The instruction in get_tools result will tell LLM to add them
+                        const cleanSchema = this.stripCommonParameters(paramSchema);
+
                         const modeName = modeInstance.slug || modeInstance.name || 'unknown';
                         tools.push({
                             name: `${agentName}_${modeName}`,
                             description: modeInstance.description || `Execute ${modeName} on ${agentName}`,
-                            inputSchema: paramSchema
+                            inputSchema: cleanSchema
                         });
                     } catch (error) {
                         // Skip modes with invalid schemas
@@ -295,6 +306,27 @@ export class MCPConnector {
         }
 
         return tools;
+    }
+
+    /**
+     * Strip common parameters from tool schema to reduce context bloat
+     * Common parameters (context, workspaceContext, sessionId) are documented in get_tools instruction
+     */
+    private stripCommonParameters(schema: any): any {
+        if (!schema || !schema.properties) {
+            return schema;
+        }
+
+        const { context, workspaceContext, sessionId, ...cleanProperties } = schema.properties;
+        const cleanRequired = (schema.required || []).filter(
+            (field: string) => field !== 'context' && field !== 'workspaceContext' && field !== 'sessionId'
+        );
+
+        return {
+            ...schema,
+            properties: cleanProperties,
+            required: cleanRequired.length > 0 ? cleanRequired : undefined
+        };
     }
 
     async callTool(params: AgentModeParams): Promise<any> {
@@ -316,12 +348,37 @@ export class MCPConnector {
                 }
 
                 const tools = this.getToolsForAgents(agentNames);
+                const sessionId = modeParams.context?.sessionId;
+                const workspaceId = modeParams.context?.workspaceId || 'default';
+
+                // Instruction for LLM to add common parameters to every tool call
+                const instruction = `
+IMPORTANT: All ${tools.length} tools returned require a 'context' parameter that was omitted from schemas to reduce token usage.
+
+You MUST add the following 'context' object to EVERY tool call:
+
+{
+  "context": {
+    "sessionId": "${sessionId || 'REQUIRED'}",
+    "workspaceId": "${workspaceId}",
+    "sessionDescription": "Brief description of current session (10+ chars)",
+    "sessionMemory": "Summary of conversation so far (10+ chars)",
+    "toolContext": "Why using this tool now (5+ chars)",
+    "primaryGoal": "Overall conversation goal (5+ chars)",
+    "subgoal": "What this specific call accomplishes (5+ chars)"
+  }
+}
+
+All 7 fields in context are REQUIRED for every tool call. Update sessionDescription/sessionMemory as conversation evolves.
+Keep sessionId and workspaceId values EXACTLY as shown above throughout the conversation.
+`.trim();
 
                 return {
                     success: true,
                     tools: tools,
                     agentNames: agentNames,
-                    toolCount: tools.length
+                    toolCount: tools.length,
+                    instruction: instruction
                 };
             }
 

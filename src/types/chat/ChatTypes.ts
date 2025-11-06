@@ -41,7 +41,10 @@ export interface Conversation {
   messages: ChatMessage[];
   created: number;
   updated: number;
-  metadata?: Record<string, any>;
+  metadata?: {
+    previousResponseId?: string; // OpenAI Responses API: Track last response ID for continuations
+    [key: string]: any;
+  };
 }
 
 export interface ChatContext {
