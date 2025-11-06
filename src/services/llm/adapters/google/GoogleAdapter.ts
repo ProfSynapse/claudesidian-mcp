@@ -237,7 +237,8 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         content: '',
         complete: true,
         usage: this.extractUsage({ usageMetadata: usage }),
-        toolCalls: finalToolCalls
+        toolCalls: finalToolCalls,
+        toolCallsReady: finalToolCalls && finalToolCalls.length > 0 ? true : undefined
       };
 
       console.log('[Google Adapter] 🚀 YIELDING FINAL CHUNK:', {
@@ -497,10 +498,12 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
     return [{
       functionDeclarations: tools.map(tool => {
         if (tool.type === 'function') {
+          // Handle both nested (Chat Completions) and flat (Responses API) formats
+          const toolDef = tool.function || tool;
           return {
-            name: tool.function.name,
-            description: tool.function.description,
-            parameters: this.sanitizeSchemaForGoogle(tool.function.parameters)
+            name: toolDef.name,
+            description: toolDef.description,
+            parameters: this.sanitizeSchemaForGoogle(toolDef.parameters || toolDef.input_schema)
           };
         }
         return tool;

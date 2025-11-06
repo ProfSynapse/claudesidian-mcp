@@ -77,7 +77,7 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
         top_p: options?.topP,
         presence_penalty: options?.presencePenalty,
         frequency_penalty: options?.frequencyPenalty,
-        tools: options?.tools,
+        tools: options?.tools ? this.convertTools(options.tools) : undefined,
         stream: true,
         extra: {
           search_mode: options?.searchMode || 'web',
@@ -198,7 +198,7 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
         buildRequestBody: (messages: any[], isInitial: boolean) => ({
           model,
           messages,
-          tools: options?.tools,
+          tools: options?.tools ? this.convertTools(options.tools) : undefined,
           tool_choice: 'auto',
           temperature: options?.temperature,
           max_tokens: options?.maxTokens,
@@ -281,7 +281,7 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
 
     // Add tools if provided
     if (options?.tools) {
-      requestBody.tools = options.tools;
+      requestBody.tools = this.convertTools(options.tools);
     }
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -400,11 +400,29 @@ export class PerplexityAdapter extends BaseAdapter implements MCPCapableAdapter 
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
     const costs = this.getCostPer1kTokens(modelId);
     if (!costs) return null;
-    
+
     return {
       rateInputPerMillion: costs.input * 1000,
       rateOutputPerMillion: costs.output * 1000,
       currency: 'USD'
     };
+  }
+
+  private convertTools(tools: any[]): any[] {
+    return tools.map(tool => {
+      if (tool.type === 'function') {
+        // Handle both nested (Chat Completions) and flat (Responses API) formats
+        const toolDef = tool.function || tool;
+        return {
+          type: 'function',
+          function: {
+            name: toolDef.name,
+            description: toolDef.description,
+            parameters: toolDef.parameters || toolDef.input_schema
+          }
+        };
+      }
+      return tool;
+    });
   }
 }

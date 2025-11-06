@@ -89,7 +89,8 @@ export class SSEStreamProcessor {
           content: '',
           complete: true,
           usage: finalUsage,
-          toolCalls: finalToolCalls
+          toolCalls: finalToolCalls,
+          toolCallsReady: finalToolCalls && finalToolCalls.length > 0 ? true : undefined
         });
 
         isCompleted = true;
@@ -192,7 +193,8 @@ export class SSEStreamProcessor {
             content: '',
             complete: true,
             toolCalls: finalToolCalls,
-            usage: finalUsageFormatted
+            usage: finalUsageFormatted,
+            toolCallsReady: finalToolCalls && finalToolCalls.length > 0 ? true : undefined
           });
 
           isCompleted = true;

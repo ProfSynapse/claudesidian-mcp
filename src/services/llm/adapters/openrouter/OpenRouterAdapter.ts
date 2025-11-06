@@ -65,7 +65,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         presence_penalty: options?.presencePenalty,
         response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
         stop: options?.stopSequences,
-        tools: options?.tools,
+        tools: options?.tools ? this.convertTools(options.tools) : undefined,
         usage: { include: true } // Enable token usage and cost tracking
       };
 
@@ -406,7 +406,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         buildRequestBody: (messages: any[], isInitial: boolean) => ({
           model,
           messages,
-          tools: options?.tools,
+          tools: options?.tools ? this.convertTools(options.tools) : undefined,
           tool_choice: 'auto',
           temperature: options?.temperature,
           max_tokens: options?.maxTokens,
@@ -609,5 +609,23 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     } catch (error) {
       return null;
     }
+  }
+
+  private convertTools(tools: any[]): any[] {
+    return tools.map(tool => {
+      if (tool.type === 'function') {
+        // Handle both nested (Chat Completions) and flat (Responses API) formats
+        const toolDef = tool.function || tool;
+        return {
+          type: 'function',
+          function: {
+            name: toolDef.name,
+            description: toolDef.description,
+            parameters: toolDef.parameters || toolDef.input_schema
+          }
+        };
+      }
+      return tool;
+    });
   }
 }

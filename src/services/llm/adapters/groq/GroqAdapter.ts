@@ -277,13 +277,15 @@ export class GroqAdapter extends BaseAdapter implements MCPCapableAdapter {
   // Private methods
   private convertTools(tools: any[]): any[] {
     return tools.map(tool => {
-      if (tool.type === 'function' && tool.function) {
+      if (tool.type === 'function') {
+        // Handle both nested (Chat Completions) and flat (Responses API) formats
+        const toolDef = tool.function || tool;
         return {
           type: 'function',
           function: {
-            name: tool.function.name,
-            description: tool.function.description,
-            parameters: tool.function.parameters
+            name: toolDef.name,
+            description: toolDef.description,
+            parameters: toolDef.parameters || toolDef.input_schema
           }
         };
       }

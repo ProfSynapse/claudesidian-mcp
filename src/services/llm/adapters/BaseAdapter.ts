@@ -149,7 +149,8 @@ export abstract class BaseAdapter {
         content: '',
         complete: true,
         usage: finalUsage,
-        toolCalls: finalToolCalls
+        toolCalls: finalToolCalls,
+        toolCallsReady: finalToolCalls && finalToolCalls.length > 0 ? true : undefined
       };
     } else {
       // Process SSE stream (Requesty, Perplexity, OpenRouter via Response object)
