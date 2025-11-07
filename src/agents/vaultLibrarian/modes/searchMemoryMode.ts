@@ -2,7 +2,7 @@ import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import {
-  MemorySearchParameters,
+  MemorySearchParams,
   MemorySearchResult,
   SearchMemoryModeResult,
   MemoryFilterOptions,
@@ -12,14 +12,14 @@ import {
 import { MemorySearchProcessor, MemorySearchProcessorInterface } from '../services/MemorySearchProcessor';
 import { MemorySearchFilters, MemorySearchFiltersInterface } from '../services/MemorySearchFilters';
 import { ResultFormatter, ResultFormatterInterface } from '../services/ResultFormatter';
-import { CommonParameters } from '../../../types/mcp/AgentTypes';
+import { CommonParams } from '../../../types/mcp/AgentTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
-import { WorkspaceService } from '../../../services/WorkspaceService';
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
 import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
 /**
- * Memory types available for search (aligned with MemorySearchParameters)
+ * Memory types available for search (aligned with MemorySearchParams)
  */
 export type MemoryType = 'traces' | 'sessions' | 'states' | 'workspaces' | 'toolCalls';
 
@@ -43,9 +43,9 @@ export interface TemporalFilterOptions {
 }
 
 /**
- * Memory search parameters interface (aligned with MemorySearchParameters)
+ * Memory search parameters interface (aligned with MemorySearchParams)
  */
-export interface SearchMemoryParams extends CommonParameters {
+export interface SearchMemoryParams extends CommonParams {
   // REQUIRED PARAMETERS
   query: string;
   workspaceId: string;  // Defaults to global workspace if not provided
@@ -59,7 +59,7 @@ export interface SearchMemoryParams extends CommonParameters {
   includeMetadata?: boolean;
   includeContent?: boolean;
   
-  // Additional properties to match MemorySearchParameters
+  // Additional properties to match MemorySearchParams
   workspace?: string;
   dateRange?: DateRange;
   toolCallFilters?: any;
@@ -104,9 +104,9 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
     formatter?: ResultFormatterInterface
   ) {
     super(
-      'searchMemoryMode', 
-      'Search Memory', 
-      'MEMORY-FOCUSED search with mandatory workspaceId parameter. Search through memory traces, sessions, states, and activities with workspace context and temporal filtering. Requires: query (search terms) and workspaceId (workspace context - defaults to "global-workspace-default").', 
+      'searchMemory',
+      'Search Memory',
+      'MEMORY-FOCUSED search with mandatory workspaceId parameter. Search through memory traces, sessions, states, and activities with workspace context and temporal filtering. Requires: query (search terms) and workspaceId (workspace context - defaults to "global-workspace").',
       '2.0.0'
     );
     
@@ -136,7 +136,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       }
 
       // Apply default workspace if not provided
-      const workspaceId = params.workspaceId || 'global-workspace-default';
+      const workspaceId = params.workspaceId || GLOBAL_WORKSPACE_ID;
       const searchParams = { ...params, workspaceId };
 
       // Core processing through extracted services
@@ -193,7 +193,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
     // Create the enhanced mode-specific schema
     const modeSchema = {
       type: 'object',
-      title: 'Memory Search Parameters',
+      title: 'Memory Search Params',
       description: 'MEMORY-FOCUSED search with workspace context. Search through memory traces, sessions, states, and activities with temporal filtering.',
       properties: {
         query: {
@@ -204,9 +204,9 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
         },
         workspaceId: {
           type: 'string',
-          description: 'REQUIRED: Workspace context for memory search. IMPORTANT: If not provided or empty, defaults to "global-workspace-default" which has minimal memory content. Specify a proper workspace ID to access workspace-specific memory traces, sessions, and activities.',
-          default: 'global-workspace-default',
-          examples: ['project-alpha', 'research-workspace', 'global-workspace-default']
+          description: 'REQUIRED: Workspace context for memory search. IMPORTANT: If not provided or empty, defaults to "global-workspace" which is the default workspace. Specify a proper workspace ID to access workspace-specific memory traces, sessions, and activities.',
+          default: 'global-workspace',
+          examples: ['project-alpha', 'research-workspace', 'global-workspace']
         },
         memoryTypes: {
           type: 'array',

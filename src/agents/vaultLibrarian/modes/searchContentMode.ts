@@ -320,7 +320,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
   getParameterSchema() {
     const schema = {
       type: 'object',
-      title: 'Content Search Parameters',
+      title: 'Content Search Params',
       description: 'Search vault files using native Obsidian fuzzy search for file names combined with keyword search in content. Results are ranked by relevance.',
       properties: {
         query: {

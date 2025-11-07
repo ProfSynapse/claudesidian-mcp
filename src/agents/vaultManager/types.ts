@@ -1,9 +1,9 @@
-import { CommonParameters } from '../../types';
+import { CommonParams } from '../../types';
 
 /**
  * Arguments for creating a note
  */
-export interface CreateNoteArgs extends CommonParameters {
+export interface CreateNoteParams extends CommonParams {
   /**
    * Path to the note
    */
@@ -48,7 +48,7 @@ export interface CreateNoteResult {
 /**
  * Arguments for creating a folder
  */
-export interface CreateFolderArgs extends CommonParameters {
+export interface CreateFolderParams extends CommonParams {
   /**
    * Path to the folder
    */
@@ -83,7 +83,7 @@ export interface CreateFolderResult {
 /**
  * Arguments for deleting a note
  */
-export interface DeleteNoteArgs extends CommonParameters {
+export interface DeleteNoteParams extends CommonParams {
   /**
    * Path to the note
    */
@@ -113,7 +113,7 @@ export interface DeleteNoteResult {
 /**
  * Arguments for deleting a folder
  */
-export interface DeleteFolderArgs extends CommonParameters {
+export interface DeleteFolderParams extends CommonParams {
   /**
    * Path to the folder
    */
@@ -148,7 +148,7 @@ export interface DeleteFolderResult {
 /**
  * Arguments for moving a note
  */
-export interface MoveNoteArgs extends CommonParameters {
+export interface MoveNoteParams extends CommonParams {
   /**
    * Path to the note
    */
@@ -193,7 +193,7 @@ export interface MoveNoteResult {
 /**
  * Arguments for moving a folder
  */
-export interface MoveFolderArgs extends CommonParameters {
+export interface MoveFolderParams extends CommonParams {
   /**
    * Path to the folder
    */
@@ -238,7 +238,7 @@ export interface MoveFolderResult {
 /**
  * Arguments for duplicating a note
  */
-export interface DuplicateNoteArgs extends CommonParameters {
+export interface DuplicateNoteParams extends CommonParams {
   /**
    * Path to the source note to duplicate
    */

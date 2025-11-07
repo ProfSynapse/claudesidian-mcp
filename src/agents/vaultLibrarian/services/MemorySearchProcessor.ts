@@ -20,7 +20,7 @@ import {
   MemoryType
 } from '../../../types/memory/MemorySearchTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
-import { WorkspaceService } from '../../../services/WorkspaceService';
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
 
 export interface MemorySearchProcessorInterface {
   process(params: MemorySearchParameters): Promise<MemorySearchResult[]>;
@@ -224,7 +224,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
 
   private buildSearchOptions(params: MemorySearchParameters): MemorySearchExecutionOptions {
     return {
-      workspaceId: params.workspace,
+      workspaceId: (params as any).workspaceId || params.workspace,
       sessionId: params.context.sessionId,
       limit: params.limit || this.configuration.defaultLimit,
       toolCallFilters: params.toolCallFilters
@@ -236,9 +236,9 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      // Get all traces from workspace
+      // Get all traces from workspace (with fallback to global workspace)
       const allTraces = await memoryService.getMemoryTraces(
-        options.workspaceId || 'default',
+        options.workspaceId || GLOBAL_WORKSPACE_ID,
         options.sessionId
       );
 
@@ -273,7 +273,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const sessions = await memoryService.getSessions(options.workspaceId || 'default-workspace');
+      const sessions = await memoryService.getSessions(options.workspaceId || GLOBAL_WORKSPACE_ID);
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
@@ -310,7 +310,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const states = await memoryService.getStateSnapshots(options.workspaceId || 'default-workspace', options.sessionId);
+      const states = await memoryService.getStateSnapshots(options.workspaceId || GLOBAL_WORKSPACE_ID, options.sessionId);
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 

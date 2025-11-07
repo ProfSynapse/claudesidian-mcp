@@ -143,7 +143,7 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
   
   /**
    * Record content prepending activity in workspace memory
-   * @param params Parameters used for prepending content
+   * @param params Params used for prepending content
    * @param resultData Result data containing prepend information
    */
   private async recordActivity(

@@ -4,7 +4,7 @@
  */
 
 import { BaseMode } from '../../baseMode';
-import { CommonResult, CommonParameters } from '../../../types';
+import { CommonResult, CommonParams } from '../../../types';
 import { createResult } from '../../../utils/schemaUtils';
 import { ImageGenerationService } from '../../../services/llm/ImageGenerationService';
 import { 
@@ -16,7 +16,7 @@ import { SchemaBuilder, SchemaType } from '../../../utils/schemas/SchemaBuilder'
 import { Vault } from 'obsidian';
 import { LLMProviderSettings } from '../../../types/llm/ProviderTypes';
 
-export interface GenerateImageParams extends CommonParameters {
+export interface GenerateImageParams extends CommonParams {
   prompt: string;
   provider: 'google'; // Only Google Imagen supported
   model?: 'imagen-4' | 'imagen-4-ultra' | 'imagen-4-fast';

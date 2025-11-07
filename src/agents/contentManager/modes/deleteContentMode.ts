@@ -152,7 +152,7 @@ export class DeleteContentMode extends BaseMode<DeleteContentParams, DeleteConte
   
   /**
    * Record content deletion activity in workspace memory
-   * @param params Parameters used for deleting content
+   * @param params Params used for deleting content
    * @param resultData Result data containing deletion information
    */
   private async recordActivity(

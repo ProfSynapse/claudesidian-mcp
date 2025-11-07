@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { DuplicateNoteArgs, DuplicateNoteResult } from '../types';
+import { DuplicateNoteParams, DuplicateNoteResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
@@ -11,7 +11,7 @@ import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 /**
  * Mode for duplicating a note
  */
-export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNoteResult> {
+export class DuplicateNoteMode extends BaseMode<DuplicateNoteParams, DuplicateNoteResult> {
   private app: App;
   private memoryService: MemoryService | null = null;
   
@@ -49,7 +49,7 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
    * @param params Mode parameters
    * @returns Promise that resolves with the result of duplicating the note
    */
-  async execute(params: DuplicateNoteArgs): Promise<DuplicateNoteResult> {
+  async execute(params: DuplicateNoteParams): Promise<DuplicateNoteResult> {
     try {
       // Validate parameters
       if (!params.sourcePath) {
@@ -106,11 +106,11 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteArgs, DuplicateNote
   
   /**
    * Record note duplication activity in workspace memory
-   * @param params Parameters used for note duplication
+   * @param params Params used for note duplication
    * @param result Result of duplication operation
    */
   private async recordActivity(
-    params: DuplicateNoteArgs,
+    params: DuplicateNoteParams,
     result: {
       sourcePath: string;
       targetPath: string;

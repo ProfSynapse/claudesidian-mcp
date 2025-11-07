@@ -25,12 +25,12 @@ import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuild
 /**
  * Union type for all management parameters
  */
-type UpdateSessionParams = EditSessionParams;
+type EditSessionParams = EditSessionParams;
 
 /**
  * Consolidated UpdateSessionMode - combines all session update functionality
  */
-export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResult> {
+export class UpdateSessionMode extends BaseMode<EditSessionParams, SessionResult> {
     private app: App;
     private serviceIntegration: ReturnType<typeof createServiceIntegration>;
     private schemaBuilder: SchemaBuilder;
@@ -55,7 +55,7 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
     /**
      * Execute session management based on operation type
      */
-    async execute(params: UpdateSessionParams): Promise<SessionResult> {
+    async execute(params: EditSessionParams): Promise<SessionResult> {
         try {
             // Determine operation type based on parameters
             const operation = this.determineOperation(params);
@@ -71,7 +71,7 @@ export class UpdateSessionMode extends BaseMode<UpdateSessionParams, SessionResu
     /**
      * Determine operation type from parameters
      */
-    private determineOperation(params: UpdateSessionParams): 'edit' {
+    private determineOperation(params: EditSessionParams): 'edit' {
         // Only edit operation supported
         return 'edit';
     }

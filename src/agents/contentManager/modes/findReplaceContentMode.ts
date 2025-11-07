@@ -183,7 +183,7 @@ export class FindReplaceContentMode extends BaseMode<FindReplaceContentParams, F
   
   /**
    * Record find and replace activity in workspace memory
-   * @param params Parameters used for find and replace operation
+   * @param params Params used for find and replace operation
    * @param resultData Result data containing replacement information
    */
   private async recordActivity(

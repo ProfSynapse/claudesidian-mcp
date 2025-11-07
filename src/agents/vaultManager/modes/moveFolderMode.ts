@@ -1,13 +1,13 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { MoveFolderArgs, MoveFolderResult } from '../types';
+import { MoveFolderParams, MoveFolderResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for moving a folder
  */
-export class MoveFolderMode extends BaseMode<MoveFolderArgs, MoveFolderResult> {
+export class MoveFolderMode extends BaseMode<MoveFolderParams, MoveFolderResult> {
   private app: App;
   
   /**
@@ -30,7 +30,7 @@ export class MoveFolderMode extends BaseMode<MoveFolderArgs, MoveFolderResult> {
    * @param params Mode parameters
    * @returns Promise that resolves with the result of moving the folder
    */
-  async execute(params: MoveFolderArgs): Promise<MoveFolderResult> {
+  async execute(params: MoveFolderParams): Promise<MoveFolderResult> {
     const { path, newPath, overwrite } = params;
     
     try {

@@ -1,14 +1,14 @@
 import { App, TFile, TFolder } from 'obsidian';
 import { BaseDirectoryMode } from './baseDirectoryMode';
-import { CommonParameters, CommonResult } from '../../../types';
+import { CommonParams, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 
 /**
- * Parameters for list directory mode
+ * Params for list directory mode
  */
-interface ListDirectoryParameters extends CommonParameters {
+interface ListDirectoryParams extends CommonParams {
   /**
    * Directory path to list contents from (required)
    * Use empty string (""), "/" or "." for root directory
@@ -77,7 +77,7 @@ interface ListDirectoryResult extends CommonResult {
 /**
  * Mode to list files and/or folders in a directory
  */
-export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParameters, ListDirectoryResult> {
+export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParams, ListDirectoryResult> {
   
   /**
    * Create a new ListDirectoryMode
@@ -98,7 +98,7 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParameters
    * @param params Mode parameters
    * @returns Promise resolving to the result
    */
-  async execute(params: ListDirectoryParameters): Promise<ListDirectoryResult> {
+  async execute(params: ListDirectoryParams): Promise<ListDirectoryResult> {
     try {
       // Get the folder using base class method
       const parentFolder = await this.getFolder(params.path);
@@ -179,7 +179,7 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParameters
   /**
    * Resolve include options based on parameters
    */
-  private resolveIncludeOptions(params: ListDirectoryParameters): { includeFiles: boolean; includeFolders: boolean } {
+  private resolveIncludeOptions(params: ListDirectoryParams): { includeFiles: boolean; includeFolders: boolean } {
     // Handle shortcut parameters first
     if (params.filesOnly) {
       return { includeFiles: true, includeFolders: false };

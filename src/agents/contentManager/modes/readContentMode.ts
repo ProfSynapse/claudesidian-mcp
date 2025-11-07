@@ -127,7 +127,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
   
   /**
    * Record content reading activity in workspace memory
-   * @param params Parameters used for reading content
+   * @param params Params used for reading content
    * @param resultData Result data containing content information
    */
   private async recordActivity(

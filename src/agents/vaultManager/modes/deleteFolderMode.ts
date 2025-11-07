@@ -1,13 +1,13 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { DeleteFolderArgs, DeleteFolderResult } from '../types';
+import { DeleteFolderParams, DeleteFolderResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for deleting a folder
  */
-export class DeleteFolderMode extends BaseMode<DeleteFolderArgs, DeleteFolderResult> {
+export class DeleteFolderMode extends BaseMode<DeleteFolderParams, DeleteFolderResult> {
   private app: App;
   
   /**
@@ -30,7 +30,7 @@ export class DeleteFolderMode extends BaseMode<DeleteFolderArgs, DeleteFolderRes
    * @param params Mode parameters
    * @returns Promise that resolves with the result of deleting the folder
    */
-  async execute(params: DeleteFolderArgs): Promise<DeleteFolderResult> {
+  async execute(params: DeleteFolderParams): Promise<DeleteFolderResult> {
     const { path, recursive } = params;
     
     try {

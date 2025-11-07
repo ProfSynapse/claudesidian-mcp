@@ -182,7 +182,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
   getParameterSchema() {
     const batchSchema = {
       type: 'object',
-      title: 'Batch Universal Search Parameters',
+      title: 'Batch Universal Search Params',
       description: 'Execute multiple universal searches concurrently. Each search automatically covers all content types. Use this when you need to run several different searches at once.',
       properties: {
         searches: {

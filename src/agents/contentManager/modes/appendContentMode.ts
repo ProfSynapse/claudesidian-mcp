@@ -143,7 +143,7 @@ export class AppendContentMode extends BaseMode<AppendContentParams, AppendConte
   
   /**
    * Record content appending activity in workspace memory
-   * @param params Parameters used for appending content
+   * @param params Params used for appending content
    * @param resultData Result data containing append information
    */
   private async recordActivity(

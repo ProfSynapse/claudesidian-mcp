@@ -1,13 +1,13 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { DeleteNoteArgs, DeleteNoteResult } from '../types';
+import { DeleteNoteParams, DeleteNoteResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Mode for deleting a note
  */
-export class DeleteNoteMode extends BaseMode<DeleteNoteArgs, DeleteNoteResult> {
+export class DeleteNoteMode extends BaseMode<DeleteNoteParams, DeleteNoteResult> {
   private app: App;
   
   /**
@@ -30,7 +30,7 @@ export class DeleteNoteMode extends BaseMode<DeleteNoteArgs, DeleteNoteResult> {
    * @param params Mode parameters
    * @returns Promise that resolves with the result of deleting the note
    */
-  async execute(params: DeleteNoteArgs): Promise<DeleteNoteResult> {
+  async execute(params: DeleteNoteParams): Promise<DeleteNoteResult> {
     const { path } = params;
     
     try {

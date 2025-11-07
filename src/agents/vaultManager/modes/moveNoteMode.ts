@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { MoveNoteArgs, MoveNoteResult } from '../types';
+import { MoveNoteParams, MoveNoteResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
@@ -9,7 +9,7 @@ import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 /**
  * Mode for moving a note
  */
-export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
+export class MoveNoteMode extends BaseMode<MoveNoteParams, MoveNoteResult> {
   private app: App;
   
   /**
@@ -32,7 +32,7 @@ export class MoveNoteMode extends BaseMode<MoveNoteArgs, MoveNoteResult> {
    * @param params Mode parameters
    * @returns Promise that resolves with the result of moving the note
    */
-  async execute(params: MoveNoteArgs): Promise<MoveNoteResult> {
+  async execute(params: MoveNoteParams): Promise<MoveNoteResult> {
     const { path, newPath, overwrite } = params;
     
     try {

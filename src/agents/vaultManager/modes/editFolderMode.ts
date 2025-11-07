@@ -1,12 +1,12 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParameters, CommonResult } from '../../../types';
+import { CommonParams, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Arguments for editing a folder
  */
-export interface EditFolderArgs extends CommonParameters {
+export interface EditFolderParams extends CommonParams {
   /**
    * Path to the folder to edit
    */
@@ -36,7 +36,7 @@ export interface EditFolderResult extends CommonResult {
 /**
  * Mode for editing a folder
  */
-export class EditFolderMode extends BaseMode<EditFolderArgs, EditFolderResult> {
+export class EditFolderMode extends BaseMode<EditFolderParams, EditFolderResult> {
   private app: App;
   
   /**
@@ -58,7 +58,7 @@ export class EditFolderMode extends BaseMode<EditFolderArgs, EditFolderResult> {
    * @param params Mode parameters
    * @returns Promise resolving to the result
    */
-  async execute(params: EditFolderArgs): Promise<EditFolderResult> {
+  async execute(params: EditFolderParams): Promise<EditFolderResult> {
     try {
       if (!params.path) {
         return {

@@ -1,9 +1,9 @@
-import { CommonParameters, CommonResult } from '../../types';
+import { CommonParams, CommonResult } from '../../types';
 
 /**
- * Parameters for listing available commands
+ * Params for listing available commands
  */
-export interface ListCommandsParams extends CommonParameters {
+export interface ListCommandsParams extends CommonParams {
   /**
    * Optional filter to apply to command list
    */
@@ -53,9 +53,9 @@ export interface ListCommandsResult extends CommonResult {
 }
 
 /**
- * Parameters for executing a command
+ * Params for executing a command
  */
-export interface ExecuteCommandParams extends CommonParameters {
+export interface ExecuteCommandParams extends CommonParams {
   /**
    * ID of the command to execute
    */

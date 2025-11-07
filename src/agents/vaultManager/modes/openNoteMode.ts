@@ -1,13 +1,13 @@
 import { App, TFile, WorkspaceLeaf } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParameters, CommonResult } from '../../../types';
+import { CommonParams, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { smartNormalizePath } from '../../../utils/pathUtils';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 /**
- * Parameters for open note mode
+ * Params for open note mode
  */
-interface OpenNoteParameters extends CommonParameters {
+interface OpenNoteParams extends CommonParams {
   /**
    * Path to the note to open
    */
@@ -42,7 +42,7 @@ interface OpenNoteResult extends CommonResult {
 /**
  * Mode to open a note in the vault
  */
-export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
+export class OpenNoteMode extends BaseMode<OpenNoteParams, OpenNoteResult> {
   private app: App;
   
   /**
@@ -64,7 +64,7 @@ export class OpenNoteMode extends BaseMode<OpenNoteParameters, OpenNoteResult> {
    * @param params Mode parameters
    * @returns Promise resolving to the result
    */
-  async execute(params: OpenNoteParameters): Promise<OpenNoteResult> {
+  async execute(params: OpenNoteParams): Promise<OpenNoteResult> {
     try {
       // Validate parameters
       if (!params.path) {

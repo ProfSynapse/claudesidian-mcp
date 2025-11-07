@@ -1,10 +1,10 @@
-import { CommonResult, CommonParameters } from '../../types';
+import { CommonResult, CommonParams } from '../../types';
 import { WorkspaceContext } from '../../utils/contextUtils';
 
 /**
  * Base parameters for memory management operations
  */
-export interface MemoryParameters extends CommonParameters {
+export interface MemoryParams extends CommonParams {
   /**
    * Optional context depth for memory operations
    * - minimal: Just basic information
@@ -38,8 +38,8 @@ export interface MemoryResult extends CommonResult {
  * Session-related parameter and result types
  */
 
-// Parameters for creating a session
-export interface CreateSessionParams extends MemoryParameters {
+// Params for creating a session
+export interface CreateSessionParams extends MemoryParams {
   /**
    * Session name (optional, generates default if not provided)
    */
@@ -66,9 +66,9 @@ export interface CreateSessionParams extends MemoryParameters {
   previousSessionId?: string;
   
   /**
-   * Override for the session ID from MemoryParameters.
+   * Override for the session ID from MemoryParams.
    * This allows creating a session with a specific session ID rather than using the tracking ID.
-   * Note: This is distinct from the required sessionId in MemoryParameters which tracks the tool call itself.
+   * Note: This is distinct from the required sessionId in MemoryParams which tracks the tool call itself.
    */
   newSessionId?: string;
   
@@ -80,8 +80,8 @@ export interface CreateSessionParams extends MemoryParameters {
   workspaceContext?: WorkspaceContext | string;
 }
 
-// Parameters for listing sessions
-export interface ListSessionsParams extends MemoryParameters {
+// Params for listing sessions
+export interface ListSessionsParams extends MemoryParams {
   /**
    * Maximum number of sessions to return
    */
@@ -93,8 +93,8 @@ export interface ListSessionsParams extends MemoryParameters {
   order?: 'asc' | 'desc';
 }
 
-// Parameters for editing a session  
-export interface EditSessionParams extends Omit<MemoryParameters, 'sessionId'> {
+// Params for editing a session  
+export interface EditSessionParams extends Omit<MemoryParams, 'sessionId'> {
   /**
    * Session ID for tracking this tool call
    */
@@ -121,8 +121,8 @@ export interface EditSessionParams extends Omit<MemoryParameters, 'sessionId'> {
   sessionGoal?: string;
 }
 
-// Parameters for deleting a session
-export interface DeleteSessionParams extends Omit<MemoryParameters, 'sessionId'> {
+// Params for deleting a session
+export interface DeleteSessionParams extends Omit<MemoryParams, 'sessionId'> {
   /**
    * Session ID for tracking this tool call
    */
@@ -200,9 +200,9 @@ export interface SessionResult extends MemoryResult {
 }
 
 /**
- * Parameters for loading a session
+ * Params for loading a session
  */
-export interface LoadSessionParams extends Omit<MemoryParameters, 'sessionId'> {
+export interface LoadSessionParams extends Omit<MemoryParams, 'sessionId'> {
   /**
    * Session ID for tracking this tool call
    */
@@ -233,8 +233,8 @@ export interface LoadSessionParams extends Omit<MemoryParameters, 'sessionId'> {
  * State-related parameter and result types
  */
 
-// Parameters for creating a state
-export interface CreateStateParams extends MemoryParameters {
+// Params for creating a state
+export interface CreateStateParams extends MemoryParams {
   /**
    * State name
    */
@@ -307,8 +307,8 @@ export interface CreateStateParams extends MemoryParameters {
   reasoning?: string;
 }
 
-// Parameters for listing states
-export interface ListStatesParams extends MemoryParameters {
+// Params for listing states
+export interface ListStatesParams extends MemoryParams {
   /**
    * Whether to include state context information
    */
@@ -335,8 +335,8 @@ export interface ListStatesParams extends MemoryParameters {
   tags?: string[];
 }
 
-// Parameters for loading a state
-export interface LoadStateParams extends MemoryParameters {
+// Params for loading a state
+export interface LoadStateParams extends MemoryParams {
   /**
    * ID of the state to load
    */
@@ -363,8 +363,8 @@ export interface LoadStateParams extends MemoryParameters {
   continueExistingSession?: boolean;
 }
 
-// Parameters for editing a state
-export interface EditStateParams extends MemoryParameters {
+// Params for editing a state
+export interface EditStateParams extends MemoryParams {
   /**
    * ID of the state to edit
    */
@@ -391,8 +391,8 @@ export interface EditStateParams extends MemoryParameters {
   removeTags?: string[];
 }
 
-// Parameters for deleting a state
-export interface DeleteStateParams extends MemoryParameters {
+// Params for deleting a state
+export interface DeleteStateParams extends MemoryParams {
   /**
    * ID of the state to delete
    */

@@ -155,7 +155,7 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
   
   /**
    * Record content replacement activity in workspace memory
-   * @param params Parameters used for replacing content
+   * @param params Params used for replacing content
    * @param resultData Result data containing replacement information
    */
   private async recordActivity(

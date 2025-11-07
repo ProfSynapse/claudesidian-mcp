@@ -1,15 +1,15 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParameters, CommonResult } from '../../../types';
+import { CommonParams, CommonResult } from '../../../types';
 import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import {parseWorkspaceContext} from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
- * Parameters for create folder mode
+ * Params for create folder mode
  */
-interface CreateFolderParameters extends CommonParameters {
+interface CreateFolderParams extends CommonParams {
   /**
    * Path of the folder to create
    */
@@ -29,7 +29,7 @@ interface CreateFolderResult extends CommonResult {
 /**
  * Mode to create a new folder
  */
-export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFolderResult> {
+export class CreateFolderMode extends BaseMode<CreateFolderParams, CreateFolderResult> {
   private app: App;
   private memoryService: MemoryService | null = null;
   
@@ -66,7 +66,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
    * @param params Mode parameters
    * @returns Promise resolving to the result
    */
-  async execute(params: CreateFolderParameters): Promise<CreateFolderResult> {
+  async execute(params: CreateFolderParams): Promise<CreateFolderResult> {
     try {
       // Validate parameters
       if (!params.path) {
@@ -127,11 +127,11 @@ export class CreateFolderMode extends BaseMode<CreateFolderParameters, CreateFol
   
   /**
    * Record folder creation activity in workspace memory
-   * @param params Parameters used for folder creation
+   * @param params Params used for folder creation
    * @param result Result of folder creation operation
    */
   private async recordActivity(
-    params: CreateFolderParameters, 
+    params: CreateFolderParams, 
     result: { path: string; existed: boolean }
   ): Promise<void> {
     // Parse workspace context

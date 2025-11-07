@@ -14,8 +14,8 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
-import { CommonParameters } from '../../../types/mcp/AgentTypes';
-import { WorkspaceService } from '../../../services/WorkspaceService';
+import { CommonParams } from '../../../types/mcp/AgentTypes';
+import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
 
 // Import refactored services
 import { DirectoryItemCollector } from '../services/DirectoryItemCollector';
@@ -26,7 +26,7 @@ import { SearchResultFormatter, DirectoryItem } from '../services/SearchResultFo
 /**
  * Directory search parameters interface
  */
-export interface SearchDirectoryParams extends CommonParameters {
+export interface SearchDirectoryParams extends CommonParams {
   // REQUIRED PARAMETERS
   query: string;
   paths: string[];
@@ -84,7 +84,7 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
 
   constructor(plugin: Plugin, workspaceService?: WorkspaceService) {
     super(
-      'searchDirectoryMode',
+      'searchDirectory',
       'Search Directory',
       'FOCUSED directory search with REQUIRED paths parameter. Search for files and/or folders within specific directory paths using fuzzy matching and optional workspace context. Requires: query (search terms) and paths (directory paths to search - cannot be empty).',
       '2.0.0'
@@ -105,7 +105,7 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
 
     try {
       // Validate parameters
-      const validationError = this.validateParameters(params);
+      const validationError = this.validateParams(params);
       if (validationError) {
         return this.createErrorResult(validationError, params, startTime);
       }
@@ -168,10 +168,10 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
 
   /**
    * Validate search parameters
-   * @param params Parameters to validate
+   * @param params Params to validate
    * @returns Error message if invalid, null if valid
    */
-  private validateParameters(params: SearchDirectoryParams): string | null {
+  private validateParams(params: SearchDirectoryParams): string | null {
     if (!params.query || params.query.trim().length === 0) {
       return 'Query parameter is required and cannot be empty';
     }
@@ -263,7 +263,7 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
     items: any[],
     workspaceId?: string
   ): Promise<any[]> {
-    if (!this.workspaceService || !workspaceId || workspaceId === 'global-workspace-default') {
+    if (!this.workspaceService || !workspaceId || workspaceId === GLOBAL_WORKSPACE_ID) {
       return items;
     }
 

@@ -155,7 +155,7 @@ export class CreateContentMode extends BaseMode<CreateContentParams, CreateConte
   
   /**
    * Record content creation activity in workspace memory
-   * @param params Parameters used for creating content
+   * @param params Params used for creating content
    * @param resultData Result data containing creation information
    */
   private async recordActivity(
