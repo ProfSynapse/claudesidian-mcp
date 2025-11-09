@@ -218,6 +218,34 @@ export class MCPConnector {
      * Now delegates to ToolCallRouter service for validation and execution
      */
     /**
+     * ═══════════════════════════════════════════════════════════════════
+     * META-TOOLS: Special Exception to Standard Agent/Mode Pattern
+     * ═══════════════════════════════════════════════════════════════════
+     *
+     * The following tools are defined directly in connector.ts and do NOT
+     * follow the standard agent/mode pattern used by all other tools.
+     *
+     * Current Meta-Tools:
+     * - get_tools: Dynamic tool discovery for bounded context architecture
+     *
+     * What get_tools Does:
+     * Allows LLMs to discover and load tool schemas on-demand by requesting
+     * specific agents (e.g., vaultManager, contentManager). Instead of
+     * overwhelming the LLM with all 46 tools upfront, get_tools provides
+     * just-in-time access to the tools needed for the current task.
+     *
+     * Why This Exception Exists:
+     * - Tool discovery is a meta-operation, not a domain operation
+     * - Requires direct access to agent registry and connector internals
+     * - Must dynamically generate schemas based on registered agents
+     * - Bounded context architecture intentionally has this meta-layer
+     *
+     * If adding more meta-tools in the future, consider creating a
+     * dedicated meta-tools service to maintain consistency.
+     * ═══════════════════════════════════════════════════════════════════
+     */
+
+    /**
      * Get available tools for ChatService - Bounded Context Discovery
      * Returns single get_tools meta-tool instead of all 46 tools
      */

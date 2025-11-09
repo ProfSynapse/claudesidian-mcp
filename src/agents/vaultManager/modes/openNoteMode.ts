@@ -1,43 +1,9 @@
 import { App, TFile, WorkspaceLeaf } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParams, CommonResult } from '../../../types';
+import { OpenNoteParams, OpenNoteResult } from '../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { smartNormalizePath } from '../../../utils/pathUtils';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
-/**
- * Params for open note mode
- */
-interface OpenNoteParams extends CommonParams {
-  /**
-   * Path to the note to open
-   */
-  path: string;
-  
-  /**
-   * Where to open the note
-   * - 'tab': Open in new tab
-   * - 'split': Open in horizontal split
-   * - 'window': Open in new window
-   * - 'current': Open in current tab (default)
-   */
-  mode?: 'tab' | 'split' | 'window' | 'current';
-  
-  /**
-   * Whether to focus the opened note
-   */
-  focus?: boolean;
-}
-
-/**
- * Result for open note mode
- */
-interface OpenNoteResult extends CommonResult {
-  data?: {
-    path: string;
-    opened: boolean;
-    mode: string;
-  };
-}
 
 /**
  * Mode to open a note in the vault

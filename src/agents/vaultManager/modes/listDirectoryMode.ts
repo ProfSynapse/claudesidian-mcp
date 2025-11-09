@@ -1,78 +1,9 @@
 import { App, TFile, TFolder } from 'obsidian';
 import { BaseDirectoryMode } from './baseDirectoryMode';
-import { CommonParams, CommonResult } from '../../../types';
+import { ListDirectoryParams, ListDirectoryResult } from '../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
-
-/**
- * Params for list directory mode
- */
-interface ListDirectoryParams extends CommonParams {
-  /**
-   * Directory path to list contents from (required)
-   * Use empty string (""), "/" or "." for root directory
-   */
-  path: string;
-  
-  /**
-   * Optional filter pattern for files and folders
-   */
-  filter?: string;
-  
-  /**
-   * Recursive depth for directory traversal (optional)
-   * 0 = only current directory (default)
-   * 1 = current directory + immediate subdirectories
-   * 2 = current directory + subdirectories + their subdirectories
-   * etc.
-   */
-  depth?: number;
-  
-  /**
-   * Whether to include files in the results (default: true)
-   */
-  includeFiles?: boolean;
-  
-  /**
-   * Whether to include folders in the results (default: true)
-   */
-  includeFolders?: boolean;
-  
-  /**
-   * Shortcut to only return files (sets includeFiles=true, includeFolders=false)
-   */
-  filesOnly?: boolean;
-  
-  /**
-   * Shortcut to only return folders (sets includeFiles=false, includeFolders=true)
-   */
-  foldersOnly?: boolean;
-}
-
-/**
- * Result for list directory mode
- */
-interface ListDirectoryResult extends CommonResult {
-  data?: {
-    files?: Array<{
-      name: string;
-      path: string;
-      size: number;
-      created: number;
-      modified: number;
-    }>;
-    folders?: Array<{
-      name: string;
-      path: string;
-    }>;
-    summary?: {
-      fileCount: number;
-      folderCount: number;
-      totalItems: number;
-    };
-  };
-}
 
 /**
  * Mode to list files and/or folders in a directory

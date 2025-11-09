@@ -295,3 +295,126 @@ export interface DuplicateNoteResult {
    */
   wasOverwritten?: boolean;
 }
+/**
+ * Arguments for opening a note
+ */
+export interface OpenNoteParams extends CommonParams {
+  /**
+   * Path to the note to open
+   */
+  path: string;
+  
+  /**
+   * Where to open the note
+   * - 'tab': Open in new tab
+   * - 'split': Open in horizontal split
+   * - 'window': Open in new window
+   * - 'current': Open in current tab (default)
+   */
+  mode?: 'tab' | 'split' | 'window' | 'current';
+  
+  /**
+   * Whether to focus the opened note
+   */
+  focus?: boolean;
+}
+
+/**
+ * Result of opening a note
+ */
+export interface OpenNoteResult {
+  /**
+   * Path to the opened note
+   */
+  path: string;
+  
+  /**
+   * Whether the note was opened successfully
+   */
+  success: boolean;
+  
+  /**
+   * Error message if opening failed
+   */
+  error?: string;
+  
+  /**
+   * Whether the note was opened in the specified mode
+   */
+  opened: boolean;
+  
+  /**
+   * The actual mode used to open the note
+   */
+  mode: 'tab' | 'split' | 'window' | 'current';
+}
+
+/**
+ * Arguments for listing directory contents
+ */
+export interface ListDirectoryParams extends CommonParams {
+  /**
+   * Directory path to list contents from (required)
+   * Use empty string (""), "/" or "." for root directory
+   */
+  path: string;
+  
+  /**
+   * Optional filter pattern for files and folders
+   */
+  filter?: string;
+  
+  /**
+   * Recursive depth for directory traversal (optional)
+   * 0 = only current directory (default)
+   * 1 = current directory + immediate subdirectories
+   * 2 = current directory + subdirectories + their subdirectories
+   * etc.
+   */
+  depth?: number;
+  
+  /**
+   * Whether to include files in the results (default: true)
+   */
+  includeFiles?: boolean;
+  
+  /**
+   * Whether to include folders in the results (default: true)
+   */
+  includeFolders?: boolean;
+}
+
+/**
+ * Result of listing directory contents
+ */
+export interface ListDirectoryResult {
+  /**
+   * Directory path that was listed
+   */
+  path: string;
+  
+  /**
+   * List of files found
+   */
+  files: string[];
+  
+  /**
+   * List of folders found
+   */
+  folders: string[];
+  
+  /**
+   * Whether the operation was successful
+   */
+  success: boolean;
+  
+  /**
+   * Error message if listing failed
+   */
+  error?: string;
+  
+  /**
+   * Total number of items found
+   */
+  totalCount: number;
+}

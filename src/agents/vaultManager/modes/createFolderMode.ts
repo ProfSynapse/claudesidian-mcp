@@ -1,30 +1,10 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParams, CommonResult } from '../../../types';
+import { CreateFolderParams, CreateFolderResult } from '../types';
 import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import {parseWorkspaceContext} from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
-
-/**
- * Params for create folder mode
- */
-interface CreateFolderParams extends CommonParams {
-  /**
-   * Path of the folder to create
-   */
-  path: string;
-}
-
-/**
- * Result for create folder mode
- */
-interface CreateFolderResult extends CommonResult {
-  data?: {
-    path: string;
-    existed?: boolean;
-  };
-}
 
 /**
  * Mode to create a new folder
