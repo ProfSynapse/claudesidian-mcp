@@ -589,7 +589,6 @@ export class StreamingOrchestrator {
       const updatedPreviousMessages = this.updatePreviousMessagesWithToolExecution(
         provider,
         previousMessages,
-        userPrompt,
         recursiveToolCalls,
         recursiveToolResults
       );
@@ -669,25 +668,26 @@ export class StreamingOrchestrator {
   private updatePreviousMessagesWithToolExecution(
     provider: string,
     previousMessages: any[],
-    userPrompt: string,
     toolCalls: any[],
     toolResults: any[]
   ): any[] {
-    // Build the full continuation (which includes previous + current)
-    // OpenRouter uses OpenAI format, not Anthropic format
-    const continuation = ConversationContextBuilder.buildToolContinuation(
+    // Use appendToolExecution which does NOT add the user message
+    // This is the architectural fix - we only append tool execution, not the full continuation
+    console.log('[ARCHITECTURE-FIX] 🔄 updatePreviousMessagesWithToolExecution using appendToolExecution');
+
+    const updatedMessages = ConversationContextBuilder.appendToolExecution(
       provider === 'anthropic' ? 'anthropic' :
       provider === 'google' ? 'google' :
       provider,
-      userPrompt,
       toolCalls,
       toolResults,
       previousMessages
-    ) as any[];
+    );
 
-    // Return the continuation as the new previousMessages for next iteration
-    // This accumulates: [previous messages, user message, assistant with tool_use, user with tool_result]
-    return continuation;
+    // Return the updated messages for next iteration
+    // This accumulates: [previous messages, assistant with tool_use, user with tool_result]
+    // NOTE: User message is NOT added here - it's already in previousMessages
+    return updatedMessages;
   }
 
   /**

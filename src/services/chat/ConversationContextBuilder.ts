@@ -333,6 +333,13 @@ export class ConversationContextBuilder {
     previousMessages?: any[],
     systemPrompt?: string
   ): any[] | string {
+    console.log('[ARCHITECTURE-FIX] 🔧 buildToolContinuation called', {
+      provider,
+      hasUserPrompt: !!userPrompt,
+      previousMessagesCount: previousMessages?.length || 0,
+      toolCallsCount: toolCalls.length
+    });
+
     switch (provider.toLowerCase()) {
       case 'anthropic':
         return this.buildAnthropicToolContinuation(
@@ -388,6 +395,169 @@ export class ConversationContextBuilder {
           : JSON.stringify({ error: result.error || 'Tool execution failed' })
       };
     });
+  }
+
+  /**
+   * Append tool execution to existing conversation history
+   *
+   * This method appends ONLY the tool call and results to previousMessages.
+   * Unlike buildToolContinuation, it does NOT add the user message.
+   *
+   * Use this for accumulating conversation history during recursive tool calls.
+   *
+   * @param provider - Provider type (anthropic, google, openai-compatible)
+   * @param toolCalls - Tool calls that were executed
+   * @param toolResults - Results from tool execution
+   * @param previousMessages - Existing conversation history (already contains user message)
+   * @returns Updated message array with tool execution appended
+   */
+  static appendToolExecution(
+    provider: string,
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages: any[]
+  ): any[] {
+    console.log('[ARCHITECTURE-FIX] 📎 appendToolExecution called', {
+      provider,
+      previousMessagesCount: previousMessages.length,
+      toolCallsCount: toolCalls.length
+    });
+
+    switch (provider.toLowerCase()) {
+      case 'anthropic':
+        return this.appendAnthropicToolExecution(toolCalls, toolResults, previousMessages);
+      case 'google':
+        return this.appendGoogleToolExecution(toolCalls, toolResults, previousMessages);
+      default:
+        // OpenAI-compatible providers (openrouter, groq, mistral, perplexity)
+        return this.appendOpenAIToolExecution(toolCalls, toolResults, previousMessages);
+    }
+  }
+
+  /**
+   * Append Anthropic tool execution (NO user message added)
+   * @private
+   */
+  private static appendAnthropicToolExecution(
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages: any[]
+  ): any[] {
+    const messages = [...previousMessages];
+
+    // Add assistant message with tool_use blocks
+    const toolUseBlocks = toolCalls.map(tc => ({
+      type: 'tool_use',
+      id: tc.id,
+      name: tc.function?.name || tc.name,
+      input: JSON.parse(tc.function?.arguments || '{}')
+    }));
+
+    messages.push({
+      role: 'assistant',
+      content: toolUseBlocks
+    });
+
+    // Add user message with tool_result blocks
+    const toolResultBlocks = toolResults.map(result => ({
+      type: 'tool_result',
+      tool_use_id: result.id,
+      content: result.success
+        ? JSON.stringify(result.result || {})
+        : `Error: ${result.error || 'Tool execution failed'}`
+    }));
+
+    messages.push({
+      role: 'user',
+      content: toolResultBlocks
+    });
+
+    console.log('[ARCHITECTURE-FIX] ✅ Anthropic: appended tool execution, messages:', messages.length);
+    return messages;
+  }
+
+  /**
+   * Append OpenAI-compatible tool execution (NO user message added)
+   * @private
+   */
+  private static appendOpenAIToolExecution(
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages: any[]
+  ): any[] {
+    const messages = [...previousMessages];
+
+    // Add assistant message with tool calls
+    messages.push({
+      role: 'assistant',
+      content: null,
+      tool_calls: toolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function',
+        function: {
+          name: tc.function?.name || tc.name,
+          arguments: tc.function?.arguments || JSON.stringify({})
+        }
+      }))
+    });
+
+    // Add tool result messages
+    toolResults.forEach((result, index) => {
+      const toolCall = toolCalls[index];
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: result.success
+          ? JSON.stringify(result.result || {})
+          : JSON.stringify({ error: result.error || 'Tool execution failed' })
+      });
+    });
+
+    console.log('[ARCHITECTURE-FIX] ✅ OpenAI: appended tool execution, messages:', messages.length);
+    return messages;
+  }
+
+  /**
+   * Append Google tool execution (NO user message added)
+   * @private
+   */
+  private static appendGoogleToolExecution(
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages: any[]
+  ): any[] {
+    const messages = [...previousMessages];
+
+    // Add model message with functionCall parts
+    const functionCallParts = toolCalls.map(tc => ({
+      functionCall: {
+        name: tc.function?.name || tc.name,
+        args: JSON.parse(tc.function?.arguments || '{}')
+      }
+    }));
+
+    messages.push({
+      role: 'model',
+      parts: functionCallParts
+    });
+
+    // Add function response parts
+    const functionResponseParts = toolResults.map(result => ({
+      functionResponse: {
+        name: result.name || (result.function?.name),
+        response: result.success
+          ? (result.result || {})
+          : { error: result.error || 'Tool execution failed' }
+      }
+    }));
+
+    messages.push({
+      role: 'user',
+      parts: functionResponseParts
+    });
+
+    console.log('[ARCHITECTURE-FIX] ✅ Google: appended tool execution, messages:', messages.length);
+    return messages;
   }
 
   /**
@@ -550,13 +720,10 @@ export class ConversationContextBuilder {
       messages.push(...previousMessages);
     }
 
-    // Add the original user message ONLY if it's not already in previousMessages
-    // This prevents duplicate user messages in recursive tool calls
-    const hasUserMessage = previousMessages?.some(msg =>
-      msg.role === 'user' && msg.content === userPrompt
-    );
-
-    if (userPrompt && !hasUserMessage) {
+    // Add the original user message
+    // This is called by buildContinuationOptions for the FIRST continuation only
+    // For subsequent continuations, use appendToolExecution instead
+    if (userPrompt) {
       messages.push({
         role: 'user',
         content: userPrompt
