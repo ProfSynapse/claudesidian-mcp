@@ -78,16 +78,27 @@ export class ModelRegistry {
   /**
    * Find a specific model by provider and API name
    * For OpenRouter, supports :online suffix (e.g., "gpt-4:online")
+   * For Anthropic, supports :1m suffix for 1M context variants (e.g., "claude-sonnet-4-5-20250929:1m")
    */
   static findModel(provider: string, apiName: string): ModelSpec | undefined {
     const providerModels = this.getProviderModels(provider);
-    
+
     // For OpenRouter models, check if apiName has :online suffix
     if (provider === 'openrouter' && apiName.endsWith(':online')) {
       const baseModelName = apiName.replace(':online', '');
       return providerModels.find(model => model.apiName === baseModelName);
     }
-    
+
+    // For Anthropic models, check if apiName has :1m suffix
+    // The :1m suffix indicates 1M context variant, which shares the same apiName
+    // but has different contextWindow and betaHeaders
+    if (provider === 'anthropic' && apiName.endsWith(':1m')) {
+      const baseModelName = apiName.replace(':1m', '');
+      return providerModels.find(model =>
+        model.apiName === baseModelName && model.contextWindow >= 1000000
+      );
+    }
+
     return providerModels.find(model => model.apiName === apiName);
   }
 

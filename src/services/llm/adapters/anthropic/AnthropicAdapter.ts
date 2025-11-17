@@ -99,7 +99,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
       }
 
       // Add beta headers if model requires them (for 1M context window)
-      const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === (options?.model || this.currentModel));
+      const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === this.normalizeModelId(options?.model || this.currentModel));
       if (modelSpec?.betaHeaders && modelSpec.betaHeaders.length > 0) {
         requestParams.betas = modelSpec.betaHeaders;
       }
@@ -202,7 +202,8 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
   async listModels(): Promise<ModelInfo[]> {
     try {
       return ANTHROPIC_MODELS.map(model => ({
-        id: model.apiName,
+        // For 1M context models, append :1m to make ID unique
+        id: model.contextWindow >= 1000000 ? `${model.apiName}:1m` : model.apiName,
         name: model.name,
         contextWindow: model.contextWindow,
         maxOutputTokens: model.maxTokens,
@@ -302,7 +303,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
           }
 
           // Add beta headers if model requires them (for 1M context window)
-          const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === model);
+          const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === this.normalizeModelId(model));
           if (modelSpec?.betaHeaders && modelSpec.betaHeaders.length > 0) {
             requestParams.betas = modelSpec.betaHeaders;
           }
@@ -397,7 +398,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
     }
 
     // Add beta headers if model requires them (for 1M context window)
-    const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === (options?.model || this.currentModel));
+    const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === this.normalizeModelId(options?.model || this.currentModel));
     if (modelSpec?.betaHeaders && modelSpec.betaHeaders.length > 0) {
       requestParams.betas = modelSpec.betaHeaders;
     }
@@ -423,8 +424,18 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
   }
 
   // Private methods
+
+  /**
+   * Normalize model ID by removing :1m suffix to match against apiName
+   * The :1m suffix is used to distinguish the 1M context variant in the UI,
+   * but both variants use the same API name with different beta headers
+   */
+  private normalizeModelId(modelId: string): string {
+    return modelId.replace(':1m', '');
+  }
+
   private supportsThinking(modelId: string): boolean {
-    const model = ANTHROPIC_MODELS.find(m => m.apiName === modelId);
+    const model = ANTHROPIC_MODELS.find(m => m.apiName === this.normalizeModelId(modelId));
     return model?.capabilities.supportsThinking || false;
   }
 
@@ -496,9 +507,9 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
   }
 
   private getCostPer1kTokens(modelId: string): { input: number; output: number } | undefined {
-    const model = ANTHROPIC_MODELS.find(m => m.apiName === modelId);
+    const model = ANTHROPIC_MODELS.find(m => m.apiName === this.normalizeModelId(modelId));
     if (!model) return undefined;
-    
+
     return {
       input: model.inputCostPerMillion / 1000,
       output: model.outputCostPerMillion / 1000
