@@ -133,7 +133,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         presence_penalty: options?.presencePenalty,
         response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
         stop: options?.stopSequences,
-        tools: options?.tools,
+        tools: options?.tools ? this.convertTools(options.tools) : undefined,
         stream: true // Enable streaming
       };
 
