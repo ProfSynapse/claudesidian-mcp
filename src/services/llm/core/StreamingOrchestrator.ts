@@ -674,8 +674,9 @@ export class StreamingOrchestrator {
     toolResults: any[]
   ): any[] {
     // Build the full continuation (which includes previous + current)
+    // OpenRouter uses OpenAI format, not Anthropic format
     const continuation = ConversationContextBuilder.buildToolContinuation(
-      provider === 'anthropic' || (provider === 'openrouter') ? 'anthropic' :
+      provider === 'anthropic' ? 'anthropic' :
       provider === 'google' ? 'google' :
       provider,
       userPrompt,
