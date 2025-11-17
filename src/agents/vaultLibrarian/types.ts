@@ -1,4 +1,4 @@
-import { CommonParams, CommonResult } from '../../types';
+import { CommonParameters, CommonResult } from '../../types';
 
 
 
@@ -31,7 +31,7 @@ export type CategoryType =
 /**
  * Universal search parameters
  */
-export interface UniversalSearchParams extends CommonParams, GraphBoostOptions {
+export interface UniversalSearchParams extends CommonParameters, GraphBoostOptions {
   /**
    * Search query across all content types
    * Supports metadata filtering syntax: "tag:javascript priority:high content query"
@@ -244,7 +244,7 @@ export interface UniversalSearchResult extends CommonResult {
 /**
  * Batch universal search parameters
  */
-export interface BatchUniversalSearchParams extends CommonParams {
+export interface BatchUniversalSearchParams extends CommonParameters {
   /**
    * Array of universal search queries to execute
    */

@@ -1,12 +1,12 @@
 import { App } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParams, CommonResult } from '../../../types';
+import { CommonParameters, CommonResult } from '../../../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Arguments for editing a folder
  */
-export interface EditFolderParams extends CommonParams {
+export interface EditFolderParams extends CommonParameters {
   /**
    * Path to the folder to edit
    */

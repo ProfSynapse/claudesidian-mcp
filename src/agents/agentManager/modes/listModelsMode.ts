@@ -4,12 +4,12 @@
  */
 
 import { BaseMode } from '../../baseMode';
-import { CommonResult, CommonParams } from '../../../types';
+import { CommonResult, CommonParameters } from '../../../types';
 import { createResult, getCommonResultSchema } from '../../../utils/schemaUtils';
 // Import removed - using this.getMergedSchema() instead of mergeWithCommonSchema
 import { LLMProviderManager } from '../../../services/llm/providers/ProviderManager';
 
-export interface ListModelsParams extends CommonParams {
+export interface ListModelsParams extends CommonParameters {
   // No additional parameters beyond common ones
 }
 

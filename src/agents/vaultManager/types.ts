@@ -1,9 +1,9 @@
-import { CommonParams } from '../../types';
+import { CommonParameters } from '../../types';
 
 /**
  * Arguments for creating a note
  */
-export interface CreateNoteParams extends CommonParams {
+export interface CreateNoteParams extends CommonParameters {
   /**
    * Path to the note
    */
@@ -48,7 +48,7 @@ export interface CreateNoteResult {
 /**
  * Arguments for creating a folder
  */
-export interface CreateFolderParams extends CommonParams {
+export interface CreateFolderParams extends CommonParameters {
   /**
    * Path to the folder
    */
@@ -83,7 +83,7 @@ export interface CreateFolderResult {
 /**
  * Arguments for deleting a note
  */
-export interface DeleteNoteParams extends CommonParams {
+export interface DeleteNoteParams extends CommonParameters {
   /**
    * Path to the note
    */
@@ -113,7 +113,7 @@ export interface DeleteNoteResult {
 /**
  * Arguments for deleting a folder
  */
-export interface DeleteFolderParams extends CommonParams {
+export interface DeleteFolderParams extends CommonParameters {
   /**
    * Path to the folder
    */
@@ -148,7 +148,7 @@ export interface DeleteFolderResult {
 /**
  * Arguments for moving a note
  */
-export interface MoveNoteParams extends CommonParams {
+export interface MoveNoteParams extends CommonParameters {
   /**
    * Path to the note
    */
@@ -193,7 +193,7 @@ export interface MoveNoteResult {
 /**
  * Arguments for moving a folder
  */
-export interface MoveFolderParams extends CommonParams {
+export interface MoveFolderParams extends CommonParameters {
   /**
    * Path to the folder
    */
@@ -238,7 +238,7 @@ export interface MoveFolderResult {
 /**
  * Arguments for duplicating a note
  */
-export interface DuplicateNoteParams extends CommonParams {
+export interface DuplicateNoteParams extends CommonParameters {
   /**
    * Path to the source note to duplicate
    */
@@ -298,7 +298,7 @@ export interface DuplicateNoteResult {
 /**
  * Arguments for opening a note
  */
-export interface OpenNoteParams extends CommonParams {
+export interface OpenNoteParams extends CommonParameters {
   /**
    * Path to the note to open
    */
@@ -352,7 +352,7 @@ export interface OpenNoteResult {
 /**
  * Arguments for listing directory contents
  */
-export interface ListDirectoryParams extends CommonParams {
+export interface ListDirectoryParams extends CommonParameters {
   /**
    * Directory path to list contents from (required)
    * Use empty string (""), "/" or "." for root directory
@@ -382,6 +382,16 @@ export interface ListDirectoryParams extends CommonParams {
    * Whether to include folders in the results (default: true)
    */
   includeFolders?: boolean;
+
+  /**
+   * Shortcut: Only return files (equivalent to includeFiles=true, includeFolders=false)
+   */
+  filesOnly?: boolean;
+
+  /**
+   * Shortcut: Only return folders (equivalent to includeFiles=false, includeFolders=true)
+   */
+  foldersOnly?: boolean;
 }
 
 /**

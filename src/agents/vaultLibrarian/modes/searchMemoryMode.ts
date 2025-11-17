@@ -2,7 +2,7 @@ import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import {
-  MemorySearchParams,
+  MemorySearchParameters,
   MemorySearchResult,
   SearchMemoryModeResult,
   MemoryFilterOptions,
@@ -12,7 +12,7 @@ import {
 import { MemorySearchProcessor, MemorySearchProcessorInterface } from '../services/MemorySearchProcessor';
 import { MemorySearchFilters, MemorySearchFiltersInterface } from '../services/MemorySearchFilters';
 import { ResultFormatter, ResultFormatterInterface } from '../services/ResultFormatter';
-import { CommonParams } from '../../../types/mcp/AgentTypes';
+import { CommonParameters } from '../../../types/mcp/AgentTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
@@ -45,7 +45,7 @@ export interface TemporalFilterOptions {
 /**
  * Memory search parameters interface (aligned with MemorySearchParams)
  */
-export interface SearchMemoryParams extends CommonParams {
+export interface SearchMemoryParams extends CommonParameters {
   // REQUIRED PARAMETERS
   query: string;
   workspaceId: string;  // Defaults to global workspace if not provided

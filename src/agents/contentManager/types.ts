@@ -1,9 +1,9 @@
-import { CommonParams, CommonResult } from '../../types';
+import { CommonParameters, CommonResult } from '../../types';
 
 /**
  * Params for reading content from a file
  */
-export interface ReadContentParams extends CommonParams {
+export interface ReadContentParams extends CommonParameters {
   /**
    * Path to the file to read
    */
@@ -60,7 +60,7 @@ export interface ReadContentResult extends CommonResult {
 /**
  * Params for creating a new file with content
  */
-export interface CreateContentParams extends CommonParams {
+export interface CreateContentParams extends CommonParameters {
   /**
    * Path to the file to create
    */
@@ -92,7 +92,7 @@ export interface CreateContentResult extends CommonResult {
 /**
  * Params for appending content to a file
  */
-export interface AppendContentParams extends CommonParams {
+export interface AppendContentParams extends CommonParameters {
   /**
    * Path to the file to append to
    */
@@ -129,7 +129,7 @@ export interface AppendContentResult extends CommonResult {
 /**
  * Params for prepending content to a file
  */
-export interface PrependContentParams extends CommonParams {
+export interface PrependContentParams extends CommonParameters {
   /**
    * Path to the file to prepend to
    */
@@ -166,7 +166,7 @@ export interface PrependContentResult extends CommonResult {
 /**
  * Params for replacing content in a file
  */
-export interface ReplaceContentParams extends CommonParams {
+export interface ReplaceContentParams extends CommonParameters {
   /**
    * Path to the file to modify
    */
@@ -209,7 +209,7 @@ export interface ReplaceContentResult extends CommonResult {
 /**
  * Params for replacing content by line number
  */
-export interface ReplaceByLineParams extends CommonParams {
+export interface ReplaceByLineParams extends CommonParameters {
   /**
    * Path to the file to modify
    */
@@ -251,7 +251,7 @@ export interface ReplaceByLineResult extends CommonResult {
 /**
  * Params for deleting content from a file
  */
-export interface DeleteContentParams extends CommonParams {
+export interface DeleteContentParams extends CommonParameters {
   /**
    * Path to the file to modify
    */
@@ -289,7 +289,7 @@ export interface DeleteContentResult extends CommonResult {
 /**
  * Params for find and replace operations in a file
  */
-export interface FindReplaceContentParams extends CommonParams {
+export interface FindReplaceContentParams extends CommonParameters {
   /**
    * Path to the file to modify
    */
@@ -355,19 +355,19 @@ export interface FindReplaceContentResult extends CommonResult {
  * Content operation type for batch operations
  */
 export type ContentOperation = 
-  | { type: 'read', params: Omit<ReadContentParams, keyof CommonParams> }
-  | { type: 'create', params: Omit<CreateContentParams, keyof CommonParams> }
-  | { type: 'append', params: Omit<AppendContentParams, keyof CommonParams> }
-  | { type: 'prepend', params: Omit<PrependContentParams, keyof CommonParams> }
-  | { type: 'replace', params: Omit<ReplaceContentParams, keyof CommonParams> }
-  | { type: 'replaceByLine', params: Omit<ReplaceByLineParams, keyof CommonParams> }
-  | { type: 'delete', params: Omit<DeleteContentParams, keyof CommonParams> }
-  | { type: 'findReplace', params: Omit<FindReplaceContentParams, keyof CommonParams> };
+  | { type: 'read', params: Omit<ReadContentParams, keyof CommonParameters> }
+  | { type: 'create', params: Omit<CreateContentParams, keyof CommonParameters> }
+  | { type: 'append', params: Omit<AppendContentParams, keyof CommonParameters> }
+  | { type: 'prepend', params: Omit<PrependContentParams, keyof CommonParameters> }
+  | { type: 'replace', params: Omit<ReplaceContentParams, keyof CommonParameters> }
+  | { type: 'replaceByLine', params: Omit<ReplaceByLineParams, keyof CommonParameters> }
+  | { type: 'delete', params: Omit<DeleteContentParams, keyof CommonParameters> }
+  | { type: 'findReplace', params: Omit<FindReplaceContentParams, keyof CommonParameters> };
 
 /**
  * Params for batch content operations
  */
-export interface BatchContentParams extends CommonParams {
+export interface BatchContentParams extends CommonParameters {
   /**
    * Array of operations to perform
    */

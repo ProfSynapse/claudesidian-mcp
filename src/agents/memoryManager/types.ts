@@ -1,10 +1,10 @@
-import { CommonResult, CommonParams } from '../../types';
+import { CommonResult, CommonParameters } from '../../types';
 import { WorkspaceContext } from '../../utils/contextUtils';
 
 /**
  * Base parameters for memory management operations
  */
-export interface MemoryParams extends CommonParams {
+export interface MemoryParams extends CommonParameters {
   /**
    * Optional context depth for memory operations
    * - minimal: Just basic information

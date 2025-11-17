@@ -250,29 +250,44 @@ export class MCPConnector {
      * Returns single get_tools meta-tool instead of all 46 tools
      */
     getAvailableTools(): any[] {
-        // Build agent enum values with descriptions
-        const agentDescriptions = AGENTS.map(a => `- ${a.name}: ${a.description}`).join('\n');
+        // Build agent/mode list for bootup visibility
+        let agentModeList = '';
+
+        if (this.agentRegistry) {
+            const registeredAgents = this.agentRegistry.getAllAgents();
+            const agentModeLines: string[] = [];
+
+            for (const [agentName, agent] of registeredAgents) {
+                const modes = (agent as any).getModes?.() || [];
+                const modeNames = modes.map((m: any) => m.slug || m.name || 'unknown');
+                agentModeLines.push(`- ${agentName}: [${modeNames.join(', ')}]`);
+            }
+
+            agentModeList = agentModeLines.join('\n');
+        } else {
+            // Fallback to static agent descriptions if registry not yet initialized
+            agentModeList = AGENTS.map(a => `- ${a.name}: ${a.description}`).join('\n');
+        }
 
         // Get standard context schema to ensure sessionId persistence
         const contextSchema = getContextSchema();
 
         const getToolsTool = {
             name: 'get_tools',
-            description: `Discover available tools for specific agents. Each agent represents a bounded context of related operations:\n\n${agentDescriptions}\n\nCall this to get tool schemas for the capabilities you need. You can request multiple agents at once.`,
+            description: `Discover available tools on-demand. Request specific tool schemas only for capabilities you need.\n\nAvailable agents and modes:\n${agentModeList}\n\nTo use a tool, request its schema first:\n- get_tools({ tools: ["contentManager_createNote", "vaultManager_openNote"] })\n\nThen call the actual tool with required parameters.`,
             inputSchema: {
                 type: 'object',
                 properties: {
-                    agents: {
+                    tools: {
                         type: 'array',
                         items: {
-                            type: 'string',
-                            enum: AGENTS.map(a => a.name)
+                            type: 'string'
                         },
-                        description: 'Array of agent names to retrieve tools for'
+                        description: 'Array of specific tool names to retrieve schemas for (format: "agentName_modeName"). Examples: ["contentManager_createNote", "vaultLibrarian_searchDirectory"]'
                     },
                     ...contextSchema
                 },
-                required: ['agents', 'context']
+                required: ['tools', 'context']
             }
         };
 
@@ -280,10 +295,38 @@ export class MCPConnector {
     }
 
     /**
-     * Get tools for specific agents (called via get_tools meta-tool)
-     * Returns clean schemas WITHOUT common parameters to reduce context bloat
+     * Get overview of all agents and their available modes (no schemas)
+     * Used when get_tools is called with empty tools array
      */
-    private getToolsForAgents(agentNames: string[]): any[] {
+    private getAgentModeOverview(): any {
+        const overview: any = {};
+
+        if (!this.agentRegistry) {
+            return overview;
+        }
+
+        const registeredAgents = this.agentRegistry.getAllAgents();
+
+        for (const [agentName, agent] of registeredAgents) {
+            const modes = (agent as any).getModes?.() || [];
+            const agentDescription = (agent as any).description || '';
+
+            overview[agentName] = {
+                description: agentDescription,
+                modes: modes.map((mode: any) => mode.slug || mode.name || 'unknown')
+            };
+        }
+
+        return overview;
+    }
+
+    /**
+     * Get schemas for specific tool names (called via get_tools meta-tool)
+     * Returns clean schemas WITHOUT common parameters to reduce context bloat
+     *
+     * @param toolNames Array of specific tool names like ["contentManager_createNote", "vaultLibrarian_searchDirectory"]
+     */
+    private getToolsForSpecificNames(toolNames: string[]): any[] {
         const tools: any[] = [];
 
         if (!this.agentRegistry) {
@@ -292,43 +335,48 @@ export class MCPConnector {
 
         const registeredAgents = this.agentRegistry.getAllAgents();
 
-        // Validate requested agent names
-        const validAgentNames = agentNames.filter(name =>
-            AGENTS.some(a => a.name === name)
-        );
-
-        if (validAgentNames.length === 0) {
-            return [];
-        }
-
-        for (const [agentName, agent] of registeredAgents) {
-            // Only include tools for requested agents
-            if (!validAgentNames.includes(agentName)) {
-                continue;
+        for (const toolName of toolNames) {
+            // Parse tool name: "contentManager_createNote" -> agentName="contentManager", modeName="createNote"
+            const parts = toolName.split('_');
+            if (parts.length < 2) {
+                continue; // Invalid tool name format
             }
 
+            const agentName = parts[0];
+            const modeName = parts.slice(1).join('_'); // Handle mode names with underscores
+
+            // Find the agent
+            const agent = registeredAgents.get(agentName);
+            if (!agent) {
+                continue; // Agent not found
+            }
+
+            // Find the mode
             const modes = (agent as any).getModes?.() || [];
+            const modeInstance = modes.find((m: any) =>
+                (m.slug || m.name) === modeName
+            );
 
-            // getModes returns an array, so iterate directly over modes
-            for (const mode of modes) {
-                const modeInstance = mode as any;
-                if (modeInstance && typeof modeInstance.getParameterSchema === 'function') {
-                    try {
-                        const paramSchema = modeInstance.getParameterSchema();
+            if (!modeInstance) {
+                continue; // Mode not found
+            }
 
-                        // Strip common parameters to reduce context bloat
-                        // The instruction in get_tools result will tell LLM to add them
-                        const cleanSchema = this.stripCommonParameters(paramSchema);
+            // Get and clean the schema
+            if (typeof modeInstance.getParameterSchema === 'function') {
+                try {
+                    const paramSchema = modeInstance.getParameterSchema();
 
-                        const modeName = modeInstance.slug || modeInstance.name || 'unknown';
-                        tools.push({
-                            name: `${agentName}_${modeName}`,
-                            description: modeInstance.description || `Execute ${modeName} on ${agentName}`,
-                            inputSchema: cleanSchema
-                        });
-                    } catch (error) {
-                        // Skip modes with invalid schemas
-                    }
+                    // Strip common parameters to reduce context bloat
+                    // The instruction in get_tools result will tell LLM to add them
+                    const cleanSchema = this.stripCommonParameters(paramSchema);
+
+                    tools.push({
+                        name: toolName,
+                        description: modeInstance.description || `Execute ${modeName} on ${agentName}`,
+                        inputSchema: cleanSchema
+                    });
+                } catch (error) {
+                    // Skip modes with invalid schemas
                 }
             }
         }
@@ -366,18 +414,40 @@ export class MCPConnector {
             // ========================================
             if (agent === 'get' && mode === 'tools') {
                 // This is a call to the get_tools meta-tool
-                const agentNames = modeParams.agents || modeParams.context?.agents || [];
+                const toolNames = modeParams.tools || modeParams.context?.tools || [];
 
-                if (!Array.isArray(agentNames) || agentNames.length === 0) {
+                if (!Array.isArray(toolNames)) {
                     return {
                         success: false,
-                        error: 'agents parameter must be a non-empty array of agent names'
+                        error: 'tools parameter must be an array'
                     };
                 }
 
-                const tools = this.getToolsForAgents(agentNames);
                 const sessionId = modeParams.context?.sessionId;
                 const workspaceId = modeParams.context?.workspaceId || 'default';
+
+                // TIER 1: Discovery mode (empty array) - return agent/mode overview
+                if (toolNames.length === 0) {
+                    const overview = this.getAgentModeOverview();
+
+                    return {
+                        success: true,
+                        overview: overview,
+                        sessionId: sessionId,
+                        workspaceId: workspaceId,
+                        instruction: 'Above is the overview of all available agents and their modes. To use specific tools, call get_tools again with the exact tool names (e.g., get_tools({ tools: ["contentManager_createNote", "vaultLibrarian_searchDirectory"] }))'
+                    };
+                }
+
+                // TIER 2: Specific tool retrieval - return schemas for requested tools
+                const tools = this.getToolsForSpecificNames(toolNames);
+
+                if (tools.length === 0) {
+                    return {
+                        success: false,
+                        error: `No valid tools found for the requested names: ${toolNames.join(', ')}. Make sure to use exact tool names like "contentManager_createNote".`
+                    };
+                }
 
                 // Instruction for LLM to add common parameters to every tool call
                 const instruction = `
@@ -404,7 +474,7 @@ Keep sessionId and workspaceId values EXACTLY as shown above throughout the conv
                 return {
                     success: true,
                     tools: tools,
-                    agentNames: agentNames,
+                    requestedTools: toolNames,
                     toolCount: tools.length,
                     instruction: instruction
                 };

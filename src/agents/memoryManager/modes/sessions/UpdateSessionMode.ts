@@ -23,11 +23,6 @@ import { createServiceIntegration } from '../../services/ValidationService';
 import { SchemaBuilder, SchemaType } from '../../../../utils/schemas/SchemaBuilder';
 
 /**
- * Union type for all management parameters
- */
-type EditSessionParams = EditSessionParams;
-
-/**
  * Consolidated UpdateSessionMode - combines all session update functionality
  */
 export class UpdateSessionMode extends BaseMode<EditSessionParams, SessionResult> {

@@ -1,12 +1,12 @@
 import { App, TFolder } from 'obsidian';
 import { BaseMode } from '../../baseMode';
-import { CommonParams, CommonResult } from '../../../types';
+import { CommonParameters, CommonResult } from '../../../types';
 
 /**
  * Base class for directory listing operations
  * Provides common functionality for modes that work with directories
  */
-export abstract class BaseDirectoryMode<T extends CommonParams, R extends CommonResult> extends BaseMode<T, R> {
+export abstract class BaseDirectoryMode<T extends CommonParameters, R extends CommonResult> extends BaseMode<T, R> {
   protected app: App;
   
   constructor(slug: string, name: string, description: string, version: string, app: App) {

@@ -14,7 +14,7 @@
 import { Plugin } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
-import { CommonParams } from '../../../types/mcp/AgentTypes';
+import { CommonParameters } from '../../../types/mcp/AgentTypes';
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
 
 // Import refactored services
@@ -26,7 +26,7 @@ import { SearchResultFormatter, DirectoryItem } from '../services/SearchResultFo
 /**
  * Directory search parameters interface
  */
-export interface SearchDirectoryParams extends CommonParams {
+export interface SearchDirectoryParams extends CommonParameters {
   // REQUIRED PARAMETERS
   query: string;
   paths: string[];
