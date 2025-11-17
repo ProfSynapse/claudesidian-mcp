@@ -70,7 +70,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
       }
 
       const requestParams: any = {
-        model: options?.model || this.currentModel,
+        model: this.normalizeModelId(options?.model || this.currentModel),
         max_tokens: options?.maxTokens || 4096,
         messages: messages.filter(msg => msg.role !== 'system'),
         temperature: options?.temperature,
