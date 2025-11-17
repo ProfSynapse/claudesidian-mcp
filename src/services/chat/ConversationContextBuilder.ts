@@ -550,8 +550,13 @@ export class ConversationContextBuilder {
       messages.push(...previousMessages);
     }
 
-    // Add the original user message
-    if (userPrompt) {
+    // Add the original user message ONLY if it's not already in previousMessages
+    // This prevents duplicate user messages in recursive tool calls
+    const hasUserMessage = previousMessages?.some(msg =>
+      msg.role === 'user' && msg.content === userPrompt
+    );
+
+    if (userPrompt && !hasUserMessage) {
       messages.push({
         role: 'user',
         content: userPrompt
