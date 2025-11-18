@@ -128,8 +128,8 @@ export class StreamingOrchestrator {
       const userPrompt = latestUserMessage?.role === 'user' ? latestUserMessage.content : '';
 
       // Check if this is a Google model
-      const isGoogleModel = provider === 'google' ||
-        (provider === 'openrouter' && model?.includes('google'));
+      // Note: OpenRouter always uses OpenAI format, even for Google models
+      const isGoogleModel = provider === 'google';
 
       let generateOptions: any;
 
@@ -417,6 +417,13 @@ export class StreamingOrchestrator {
         hasSystemPrompt: !!continuationOptions.systemPrompt
       });
 
+      // Debug: For Google provider, log conversation history details
+      if (provider === 'google') {
+        console.log('[GEMINI-DEBUG] Continuation conversation history:',
+          JSON.stringify(continuationOptions.conversationHistory, null, 2)
+        );
+      }
+
       // Step 3: Start NEW stream with continuation (pingpong)
       console.log('[StreamingOrchestrator] 🚀 Starting continuation stream...');
 
@@ -703,13 +710,13 @@ export class StreamingOrchestrator {
     generateOptions: any,
     options?: StreamingOptions
   ): any {
-    // Check if this is an Anthropic model (direct or via OpenRouter)
-    const isAnthropicModel = provider === 'anthropic' ||
-      (provider === 'openrouter' && generateOptions.model?.includes('anthropic'));
+    // Check if this is an Anthropic model (direct only)
+    // Note: OpenRouter always uses OpenAI format, even for Anthropic models
+    const isAnthropicModel = provider === 'anthropic';
 
-    // Check if this is a Google model (direct or via OpenRouter)
-    const isGoogleModel = provider === 'google' ||
-      (provider === 'openrouter' && generateOptions.model?.includes('google'));
+    // Check if this is a Google model (direct only)
+    // Note: OpenRouter always uses OpenAI format, even for Google models
+    const isGoogleModel = provider === 'google';
 
     if (isAnthropicModel) {
       // Build proper Anthropic messages with tool_use and tool_result blocks

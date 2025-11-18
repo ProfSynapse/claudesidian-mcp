@@ -262,12 +262,22 @@ export class ConversationContextBuilder {
       else if (msg.role === 'assistant') {
         if (msg.toolCalls && msg.toolCalls.length > 0) {
           // Model message with functionCall parts
-          const functionCallParts = msg.toolCalls.map((tc: any) => ({
-            functionCall: {
-              name: tc.name,
-              args: tc.parameters || {}
+          // Gemini 3.0+ requires preserving thought_signature from original response
+          const functionCallParts = msg.toolCalls.map((tc: any) => {
+            const part: any = {
+              functionCall: {
+                name: tc.name,
+                args: tc.parameters || {}
+              }
+            };
+
+            // Preserve thought_signature if it was in the original tool call
+            if (tc.thought_signature) {
+              part.thought_signature = tc.thought_signature;
             }
-          }));
+
+            return part;
+          });
 
           messages.push({
             role: 'model',
@@ -529,12 +539,49 @@ export class ConversationContextBuilder {
     const messages = [...previousMessages];
 
     // Add model message with functionCall parts
-    const functionCallParts = toolCalls.map(tc => ({
-      functionCall: {
+    // Gemini 3.0+ requires preserving thought_signature from original response
+    console.log('[GEMINI-DEBUG] Building functionCall parts from toolCalls:', {
+      toolCallsCount: toolCalls.length,
+      toolCalls: toolCalls.map(tc => ({
+        id: tc.id,
         name: tc.function?.name || tc.name,
-        args: JSON.parse(tc.function?.arguments || '{}')
+        hasThoughtSignature: !!tc.thought_signature,
+        toolCallKeys: Object.keys(tc)
+      }))
+    });
+
+    const functionCallParts = toolCalls.map(tc => {
+      console.log('[GEMINI-DEBUG] Processing tool call:', JSON.stringify(tc, null, 2));
+
+      // Create part with functionCall
+      const part: any = {
+        functionCall: {
+          name: tc.function?.name || tc.name,
+          args: JSON.parse(tc.function?.arguments || '{}')
+        }
+      };
+
+      // Add thought signature AT THE SAME LEVEL as functionCall (not as separate part)
+      // Google API returns it this way and expects it back this way
+      if (tc.thought_signature) {
+        part.thoughtSignature = tc.thought_signature;
+        console.log('[GEMINI-DEBUG] ✅ Added thought_signature to functionCall part:', {
+          functionName: part.functionCall.name,
+          signaturePreview: typeof tc.thought_signature === 'string'
+            ? tc.thought_signature.substring(0, 50) + '...'
+            : 'not a string'
+        });
+      } else {
+        console.log('[GEMINI-DEBUG] ⚠️ Tool call missing thought_signature:', {
+          functionName: part.functionCall.name,
+          availableFields: Object.keys(tc)
+        });
       }
-    }));
+
+      return part;
+    });
+
+    console.log('[GEMINI-DEBUG] Final functionCallParts:', JSON.stringify(functionCallParts, null, 2));
 
     messages.push({
       role: 'model',
@@ -669,12 +716,49 @@ export class ConversationContextBuilder {
     }
 
     // Add model message with functionCall parts
-    const functionCallParts = toolCalls.map(tc => ({
-      functionCall: {
+    // Gemini 3.0+ requires preserving thought_signature from original response
+    console.log('[GEMINI-DEBUG] Building functionCall parts from toolCalls:', {
+      toolCallsCount: toolCalls.length,
+      toolCalls: toolCalls.map(tc => ({
+        id: tc.id,
         name: tc.function?.name || tc.name,
-        args: JSON.parse(tc.function?.arguments || '{}')
+        hasThoughtSignature: !!tc.thought_signature,
+        toolCallKeys: Object.keys(tc)
+      }))
+    });
+
+    const functionCallParts = toolCalls.map(tc => {
+      console.log('[GEMINI-DEBUG] Processing tool call:', JSON.stringify(tc, null, 2));
+
+      // Create part with functionCall
+      const part: any = {
+        functionCall: {
+          name: tc.function?.name || tc.name,
+          args: JSON.parse(tc.function?.arguments || '{}')
+        }
+      };
+
+      // Add thought signature AT THE SAME LEVEL as functionCall (not as separate part)
+      // Google API returns it this way and expects it back this way
+      if (tc.thought_signature) {
+        part.thoughtSignature = tc.thought_signature;
+        console.log('[GEMINI-DEBUG] ✅ Added thought_signature to functionCall part:', {
+          functionName: part.functionCall.name,
+          signaturePreview: typeof tc.thought_signature === 'string'
+            ? tc.thought_signature.substring(0, 50) + '...'
+            : 'not a string'
+        });
+      } else {
+        console.log('[GEMINI-DEBUG] ⚠️ Tool call missing thought_signature:', {
+          functionName: part.functionCall.name,
+          availableFields: Object.keys(tc)
+        });
       }
-    }));
+
+      return part;
+    });
+
+    console.log('[GEMINI-DEBUG] Final functionCallParts:', JSON.stringify(functionCallParts, null, 2));
 
     messages.push({
       role: 'model',
@@ -745,22 +829,24 @@ export class ConversationContextBuilder {
     });
 
     // Add tool result messages
+    // Use 'user' role instead of 'tool' for better compatibility with providers like Google via OpenRouter
     toolResults.forEach((result, index) => {
       const toolCall = toolCalls[index];
+      const toolName = toolCall.function?.name || toolCall.name;
       const resultContent = result.success
         ? JSON.stringify(result.result || {})
         : JSON.stringify({ error: result.error || 'Tool execution failed' });
 
+      // Format as user message with tool result context for better provider compatibility
       const toolMessage = {
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: resultContent
+        role: 'user',
+        content: `Tool "${toolName}" result:\n${resultContent}`
       };
 
       // Log tool result for debugging
       console.log('[ConversationContextBuilder] 🔧 Adding tool result:', {
         toolCallId: toolCall.id,
-        toolName: toolCall.function?.name || toolCall.name,
+        toolName,
         success: result.success,
         contentLength: resultContent.length,
         contentPreview: resultContent.substring(0, 200) + (resultContent.length > 200 ? '...' : '')

@@ -10,7 +10,7 @@ export const GOOGLE_MODELS: ModelSpec[] = [
   {
     provider: 'google',
     name: 'Gemini 3.0 Pro Preview',
-    apiName: 'models/gemini-3-pro-preview',
+    apiName: 'gemini-3-pro-preview',
     contextWindow: 1048576,
     maxTokens: 8192,
     inputCostPerMillion: 2.00,
@@ -58,4 +58,4 @@ export const GOOGLE_MODELS: ModelSpec[] = [
   }
 ];
 
-export const GOOGLE_DEFAULT_MODEL = 'models/gemini-3-pro-preview';
+export const GOOGLE_DEFAULT_MODEL = 'gemini-3-pro-preview';

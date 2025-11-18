@@ -123,9 +123,20 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       // Add :online suffix for web search
       const model = options?.webSearch ? `${baseModel}:online` : baseModel;
 
+      const messages = options?.conversationHistory || this.buildMessages(prompt, options?.systemPrompt);
+
+      console.log('[OPENROUTER-DEBUG] Request details:', {
+        model,
+        messagesCount: messages?.length,
+        hasConversationHistory: !!options?.conversationHistory,
+        prompt: prompt?.substring(0, 100),
+        firstMessage: messages?.[0] ? JSON.stringify(messages[0]) : 'none',
+        lastMessage: messages?.[messages.length - 1] ? JSON.stringify(messages[messages.length - 1]) : 'none'
+      });
+
       const requestBody = {
         model,
-        messages: options?.conversationHistory || this.buildMessages(prompt, options?.systemPrompt),
+        messages,
         temperature: options?.temperature,
         max_tokens: options?.maxTokens,
         top_p: options?.topP,
@@ -136,6 +147,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         tools: options?.tools ? this.convertTools(options.tools) : undefined,
         stream: true // Enable streaming
       };
+
+      console.log('[OPENROUTER-DEBUG] Full request body:', JSON.stringify(requestBody, null, 2));
 
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',

@@ -180,16 +180,41 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           }
 
           // Accumulate function calls
+          // Preserve thought_signature if present (required for Gemini 3.0+)
           if (part.functionCall) {
+            console.log('[GEMINI-DEBUG] Raw part received from API:', JSON.stringify(part, null, 2));
+
             const toolId = part.functionCall.name + '_' + Date.now();
-            toolCallAccumulator.set(toolId, {
+            const toolCall: any = {
               id: toolId,
               type: 'function',
               function: {
                 name: part.functionCall.name,
                 arguments: JSON.stringify(part.functionCall.args || {})
               }
-            });
+            };
+
+            // Preserve thought signature if present
+            if (part.thoughtSignature || part.thought_signature) {
+              toolCall.thought_signature = part.thoughtSignature || part.thought_signature;
+              console.log('[GEMINI-DEBUG] ✅ Thought signature captured:', {
+                toolId,
+                functionName: part.functionCall.name,
+                hasThoughtSignature: true,
+                signaturePreview: typeof toolCall.thought_signature === 'string'
+                  ? toolCall.thought_signature.substring(0, 50) + '...'
+                  : 'not a string'
+              });
+            } else {
+              console.log('[GEMINI-DEBUG] ⚠️ No thought signature in part:', {
+                toolId,
+                functionName: part.functionCall.name,
+                partKeys: Object.keys(part)
+              });
+            }
+
+            console.log('[GEMINI-DEBUG] Tool call object created:', JSON.stringify(toolCall, null, 2));
+            toolCallAccumulator.set(toolId, toolCall);
           }
         }
 
