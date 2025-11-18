@@ -17,6 +17,22 @@ export const OPENAI_MODELS: ModelSpec[] = [
   // GPT-5 model family (latest flagship models)
   {
     provider: 'openai',
+    name: 'GPT-5.1',
+    apiName: 'gpt-5.1-2025-11-13',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 1.25,
+    outputCostPerMillion: 10.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openai',
     name: 'GPT-5',
     apiName: 'gpt-5',
     contextWindow: 400000,
@@ -135,4 +151,4 @@ export const OPENAI_MODELS: ModelSpec[] = [
   // These models use a different parameter structure and would need special handling
 ];
 
-export const OPENAI_DEFAULT_MODEL = 'gpt-5';
+export const OPENAI_DEFAULT_MODEL = 'gpt-5.1-2025-11-13';

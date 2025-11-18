@@ -12,6 +12,22 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
   // OpenAI GPT-5 models via OpenRouter
   {
     provider: 'openrouter',
+    name: 'GPT-5.1',
+    apiName: 'openai/gpt-5.1',
+    contextWindow: 400000,
+    maxTokens: 128000,
+    inputCostPerMillion: 1.25,
+    outputCostPerMillion: 10.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openrouter',
     name: 'GPT-5',
     apiName: 'openai/gpt-5',
     contextWindow: 400000,
@@ -128,6 +144,22 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
   // Google models via OpenRouter
   {
     provider: 'openrouter',
+    name: 'Gemini 3.0 Pro Preview',
+    apiName: 'google/gemini-3-pro-preview',
+    contextWindow: 1048576,
+    maxTokens: 8192,
+    inputCostPerMillion: 2.00,
+    outputCostPerMillion: 12.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openrouter',
     name: 'Gemini 2.5 Pro',
     apiName: 'google/gemini-2.5-pro',
     contextWindow: 1048576,
@@ -226,4 +258,4 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
   },
 ];
 
-export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-5';
+export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-5.1';

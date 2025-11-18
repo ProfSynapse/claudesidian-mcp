@@ -6,7 +6,24 @@
 import { ModelSpec } from '../modelTypes';
 
 export const GOOGLE_MODELS: ModelSpec[] = [
-  // Gemini 2.5 models (latest)
+  // Gemini 3.0 models (latest)
+  {
+    provider: 'google',
+    name: 'Gemini 3.0 Pro Preview',
+    apiName: 'models/gemini-3-pro-preview',
+    contextWindow: 1048576,
+    maxTokens: 8192,
+    inputCostPerMillion: 2.00,
+    outputCostPerMillion: 12.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  // Gemini 2.5 models
   {
     provider: 'google',
     name: 'Gemini 2.5 Pro',
@@ -41,4 +58,4 @@ export const GOOGLE_MODELS: ModelSpec[] = [
   }
 ];
 
-export const GOOGLE_DEFAULT_MODEL = 'gemini-2.5-flash';
+export const GOOGLE_DEFAULT_MODEL = 'models/gemini-3-pro-preview';
