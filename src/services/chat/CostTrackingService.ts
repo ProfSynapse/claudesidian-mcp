@@ -66,8 +66,6 @@ export class CostTrackingService {
     usage: any,
     cost: any
   ): Promise<void> {
-    console.log('[CostTrackingService] Async usage available:', { usage, cost, messageId });
-
     try {
       // Load conversation, find message, update it, save back
       const conversation = await this.conversationService.getConversation(conversationId);
@@ -101,14 +99,6 @@ export class CostTrackingService {
         await this.updateConversationCost(conversationId, cost);
       }
 
-      console.log('[CostTrackingService] Message updated with async usage:', {
-        messageId,
-        usage,
-        cost,
-        hadCost,
-        updatedConversationCost: !hadCost
-      });
-
     } catch (error) {
       console.error('[CostTrackingService] Failed to update message with async usage:', error);
     }
@@ -139,12 +129,6 @@ export class CostTrackingService {
       // Save updated conversation (pass ID and updates separately)
       await this.conversationService.updateConversation(conversationId, { cost: conversation.cost });
 
-      console.log('[CostTrackingService] Conversation cost updated:', {
-        conversationId,
-        newTotal: conversation.cost.totalCost,
-        addedCost: messageCost.totalCost
-      });
-
     } catch (error) {
       console.error('[CostTrackingService] Failed to update conversation cost:', error);
     }
@@ -170,8 +154,6 @@ export class CostTrackingService {
     model: string,
     usage: UsageData
   ): Promise<CostData | null> {
-    console.log('[CostTrackingService] Tracking usage for message:', { messageId, usage });
-
     // Calculate cost from usage
     const cost = this.calculateCost(provider, model, usage);
 
@@ -179,8 +161,6 @@ export class CostTrackingService {
       console.warn('[CostTrackingService] Could not calculate cost for message:', messageId);
       return null;
     }
-
-    console.log('[CostTrackingService] Cost calculated:', cost);
 
     // Update conversation-level cost
     await this.updateConversationCost(conversationId, cost);

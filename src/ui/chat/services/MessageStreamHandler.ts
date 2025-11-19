@@ -86,18 +86,8 @@ export class MessageStreamHandler {
       if (chunk.toolCalls) {
         toolCalls = chunk.toolCalls;
 
-        console.log('[MessageStreamHandler] Tool calls detected in chunk', {
-          messageId: aiMessageId,
-          toolCallsCount: toolCalls.length,
-          isComplete: chunk.complete
-        });
-
         // Emit tool calls event for final chunk
         if (chunk.complete) {
-          console.log('[MessageStreamHandler] Emitting onToolCallsDetected event', {
-            messageId: aiMessageId,
-            toolCallsCount: toolCalls.length
-          });
           this.events.onToolCallsDetected(aiMessageId, toolCalls);
         }
       }
@@ -128,7 +118,6 @@ export class MessageStreamHandler {
           break;
         } else {
           // Intermediate complete - waiting for tool execution results
-          console.log('[MessageStreamHandler] Intermediate complete - waiting for tool execution results');
         }
       }
     }

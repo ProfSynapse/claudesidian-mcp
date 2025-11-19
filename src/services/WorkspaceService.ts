@@ -9,7 +9,7 @@ import { IndexManager } from './storage/IndexManager';
 import { IndividualWorkspace, WorkspaceMetadata, SessionData, MemoryTrace, StateData } from '../types/storage/StorageTypes';
 
 // Export constant for backward compatibility
-export const GLOBAL_WORKSPACE_ID = 'global-workspace';
+export const GLOBAL_WORKSPACE_ID = 'default';
 
 export class WorkspaceService {
   constructor(

@@ -132,7 +132,7 @@ export class ModelAgentManager {
         }
       }
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to restore workspace:', error);
+      // Failed to restore workspace
     }
   }
 
@@ -161,7 +161,7 @@ export class ModelAgentManager {
       this.events.onAgentChanged(null);
       this.events.onSystemPromptChanged(null);
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to initialize default model:', error);
+      // Failed to initialize default model
     }
   }
 
@@ -191,7 +191,7 @@ export class ModelAgentManager {
 
       await this.conversationService.updateConversationMetadata(conversationId, metadata);
     } catch (error) {
-      console.error('[ModelAgentManager] Failed to save to conversation:', error);
+      // Failed to save to conversation
     }
   }
 
@@ -214,7 +214,6 @@ export class ModelAgentManager {
     const availableModels = await this.getAvailableModels();
     const defaultModel = await ModelSelectionUtility.findDefaultModelOption(this.app, availableModels);
 
-    console.log('[ModelAgentManager] getSelectedModelOrDefault - returning default model:', defaultModel?.modelName);
     return defaultModel;
   }
 

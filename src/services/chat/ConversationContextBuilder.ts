@@ -343,13 +343,6 @@ export class ConversationContextBuilder {
     previousMessages?: any[],
     systemPrompt?: string
   ): any[] | string {
-    console.log('[ARCHITECTURE-FIX] 🔧 buildToolContinuation called', {
-      provider,
-      hasUserPrompt: !!userPrompt,
-      previousMessagesCount: previousMessages?.length || 0,
-      toolCallsCount: toolCalls.length
-    });
-
     switch (provider.toLowerCase()) {
       case 'anthropic':
         return this.buildAnthropicToolContinuation(
@@ -427,12 +420,6 @@ export class ConversationContextBuilder {
     toolResults: any[],
     previousMessages: any[]
   ): any[] {
-    console.log('[ARCHITECTURE-FIX] 📎 appendToolExecution called', {
-      provider,
-      previousMessagesCount: previousMessages.length,
-      toolCallsCount: toolCalls.length
-    });
-
     switch (provider.toLowerCase()) {
       case 'anthropic':
         return this.appendAnthropicToolExecution(toolCalls, toolResults, previousMessages);
@@ -482,7 +469,6 @@ export class ConversationContextBuilder {
       content: toolResultBlocks
     });
 
-    console.log('[ARCHITECTURE-FIX] ✅ Anthropic: appended tool execution, messages:', messages.length);
     return messages;
   }
 
@@ -523,7 +509,6 @@ export class ConversationContextBuilder {
       });
     });
 
-    console.log('[ARCHITECTURE-FIX] ✅ OpenAI: appended tool execution, messages:', messages.length);
     return messages;
   }
 
@@ -603,7 +588,6 @@ export class ConversationContextBuilder {
       parts: functionResponseParts
     });
 
-    console.log('[ARCHITECTURE-FIX] ✅ Google: appended tool execution, messages:', messages.length);
     return messages;
   }
 

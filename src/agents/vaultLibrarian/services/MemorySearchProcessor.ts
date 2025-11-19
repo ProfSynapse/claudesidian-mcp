@@ -6,7 +6,7 @@
  * Used by: SearchMemoryMode for processing search requests and enriching results
  */
 
-import { Plugin } from 'obsidian';
+import { Plugin, prepareFuzzySearch } from 'obsidian';
 import {
   MemorySearchParameters,
   MemorySearchResult,
@@ -34,9 +34,15 @@ export interface MemorySearchProcessorInterface {
 export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   private plugin: Plugin;
   private configuration: MemoryProcessorConfiguration;
+  private workspaceService?: WorkspaceService;
   
-  constructor(plugin: Plugin, config?: Partial<MemoryProcessorConfiguration>) {
+  constructor(
+    plugin: Plugin, 
+    config?: Partial<MemoryProcessorConfiguration>,
+    workspaceService?: WorkspaceService
+  ) {
     this.plugin = plugin;
+    this.workspaceService = workspaceService;
     this.configuration = {
       defaultLimit: 20,
       maxLimit: 100,
@@ -197,6 +203,8 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
         const enriched = await this.enrichSingleResult(result, context);
         if (enriched) {
           enrichedResults.push(enriched);
+        } else {
+          console.warn('[MemorySearchProcessor] enrichSingleResult returned null for:', result.trace?.id);
         }
       } catch (error) {
         console.warn('[MemorySearchProcessor] Failed to enrich result:', error);
@@ -225,41 +233,101 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   private buildSearchOptions(params: MemorySearchParameters): MemorySearchExecutionOptions {
     return {
       workspaceId: (params as any).workspaceId || params.workspace,
-      sessionId: params.context.sessionId,
+      sessionId: params.filterBySession ? params.context.sessionId : undefined,
       limit: params.limit || this.configuration.defaultLimit,
       toolCallFilters: params.toolCallFilters
     };
   }
 
   private async searchLegacyTraces(query: string, options: MemorySearchExecutionOptions): Promise<RawMemoryResult[]> {
-    const memoryService = this.getMemoryService();
-    if (!memoryService) return [];
+    const workspaceService = this.workspaceService || this.getWorkspaceService();
+    
+    if (!workspaceService) {
+      console.warn('[MemorySearchProcessor] No workspaceService available');
+      return [];
+    }
 
     try {
-      // Get all traces from workspace (with fallback to global workspace)
-      const allTraces = await memoryService.getMemoryTraces(
-        options.workspaceId || GLOBAL_WORKSPACE_ID,
-        options.sessionId
-      );
+      const workspaceId = options.workspaceId || GLOBAL_WORKSPACE_ID;
+      
+      // Get the entire workspace
+      const workspace = await workspaceService.getWorkspace(workspaceId);
+      if (!workspace) {
+        console.warn('[MemorySearchProcessor] Workspace not found:', workspaceId);
+        return [];
+      }
 
-      // Filter by query
-      const queryLower = query.toLowerCase();
-      const filtered = allTraces.filter(trace =>
-        trace.content?.toLowerCase().includes(queryLower) ||
-        trace.type?.toLowerCase().includes(queryLower)
-      );
+      // Use Obsidian's native fuzzy search API
+      const fuzzySearch = prepareFuzzySearch(query.toLowerCase());
+      const results: RawMemoryResult[] = [];
+      
+      // Loop through all sessions
+      if (workspace.sessions) {
+        for (const [sessionId, session] of Object.entries(workspace.sessions)) {
+          // Loop through all traces in each session
+          const traces = Object.values(session.memoryTraces || {});
+          
+          for (const trace of traces) {
+            // Convert THIS trace to JSON string
+            const traceJSON = JSON.stringify(trace);
+            
+            // Fuzzy search this individual trace's JSON
+            const match = fuzzySearch(traceJSON);
+            
+            if (match) {
+              // Normalize fuzzy score (negative to positive)
+              const normalizedScore = Math.max(0, Math.min(1, 1 + (match.score / 100)));
+              
+              // Return the FULL trace object with workspaceId and sessionId added
+              results.push({
+                trace: {
+                  ...trace,
+                  workspaceId,
+                  sessionId
+                },
+                similarity: normalizedScore
+              });
+            }
+          }
+        }
+      }
+
+      // Sort by score (highest first)
+      results.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
 
       // Apply limit if specified
-      const limited = options.limit ? filtered.slice(0, options.limit) : filtered;
+      const limited = options.limit ? results.slice(0, options.limit) : results;
 
-      return limited.map(result => ({
-        trace: result,
-        similarity: 1.0 // Default similarity since we don't have semantic search
-      }));
+      return limited;
     } catch (error) {
       console.error('[MemorySearchProcessor] Error searching legacy traces:', error);
       return [];
     }
+  }
+
+  /**
+   * Extract searchable text from a memory trace
+   * Combines all relevant fields for comprehensive search
+   */
+  private getSearchableText(trace: any): string {
+    const parts: string[] = [];
+    
+    if (trace.content) parts.push(trace.content);
+    if (trace.type) parts.push(trace.type);
+    if (trace.metadata) {
+      // Include metadata fields in search
+      if (trace.metadata.tool) parts.push(trace.metadata.tool);
+      if (trace.metadata.params) {
+        // Stringify params for search
+        try {
+          parts.push(JSON.stringify(trace.metadata.params));
+        } catch (e) {
+          // Ignore JSON errors
+        }
+      }
+    }
+    
+    return parts.join(' ');
   }
 
   private async searchToolCallTraces(query: string, options: MemorySearchExecutionOptions): Promise<RawMemoryResult[]> {
@@ -402,16 +470,24 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
       // Generate context
       const searchContext = this.generateSearchContext(trace, query, resultType);
 
-      return {
+      const enrichedResult = {
         type: resultType,
         id: trace.id,
         highlight,
         metadata,
         context: searchContext,
-        score: result.similarity || 0
-      };
+        score: result.similarity || 0,
+        // Attach the raw trace for later access
+        _rawTrace: trace
+      } as any;
+      
+      return enrichedResult;
     } catch (error) {
-      console.warn('[MemorySearchProcessor] Failed to enrich result:', error);
+      console.error('[MemorySearchProcessor] Failed to enrich result:', {
+        error,
+        traceId: trace?.id,
+        trace
+      });
       return null;
     }
   }

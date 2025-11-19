@@ -115,7 +115,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
     this.workspaceService = workspaceService;
     
     // Initialize services with dependency injection support
-    this.processor = processor || new MemorySearchProcessor(plugin);
+    this.processor = processor || new MemorySearchProcessor(plugin, undefined, workspaceService);
     this.filters = filters || new MemorySearchFilters();
     this.formatter = formatter || new ResultFormatter();
   }
@@ -142,32 +142,89 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       // Core processing through extracted services
       let results = await this.processor.process(searchParams);
       
-      // Apply filters if specified
-      if (this.shouldApplyFilters(searchParams)) {
-        const filterOptions = this.buildFilterOptions(searchParams);
-        results = this.filters.filter(results, filterOptions);
-      }
+      // Skip filters - return results directly
       
-      // Format results if needed (currently returns results as-is for compatibility)
-      const formatOptions = this.buildFormatOptions(searchParams);
-      // Note: Formatting is available but not applied by default to maintain compatibility
-      
-      // Build summary
-      const summary = await this.formatter.buildSummary(results);
-      const executionTime = Date.now() - startTime;
-      summary.executionTime = executionTime;
+      // Transform results to simple format with just content, tool, and context
+      // Use the raw trace data attached during enrichment
+      const simplifiedResults = results.map((result) => {
+        try {
+          // Access the raw trace that was attached during enrichment
+          const trace = (result as any)._rawTrace;
+          if (!trace) {
+            console.warn('[SearchMemoryMode] No raw trace found for result:', result.id);
+            return null;
+          }
 
-      console.log('[SearchMemoryMode] Search completed:', {
-        totalResults: results.length,
-        executionTime: `${executionTime}ms`,
-        query: params.query
+          // Target exactly what was requested: metadata.params.context
+          let context = trace.metadata?.params?.context;
+          let source = 'params';
+
+          // DEBUG: Log ONLY if we found context
+          if (context) {
+             console.log(`[SearchMemoryMode] Found raw context in params for ${trace.id}. Keys: ${Object.keys(context).join(', ')}`);
+          }
+          
+          // SPECIAL DEBUG for the missing trace
+          if (trace.id === 'trace_1760973194387_zu0svvtd4') {
+             console.log('!!! FOUND THE MISSING TRACE !!!');
+             console.log('Raw Params Context:', trace.metadata?.params?.context);
+          }
+
+          // CHECK RESULT CONTEXT if params context is missing or "thin" (only IDs)
+          const isThinContext = !context || (Object.keys(context).length <= 2 && context.sessionId);
+          
+          if (isThinContext && trace.metadata?.result?.context) {
+             console.log(`[SearchMemoryMode] Params context is thin. Checking result context for ${trace.id}...`);
+             const resultContext = trace.metadata.result.context;
+             console.log(`[SearchMemoryMode] Found raw context in RESULT for ${trace.id}. Keys: ${Object.keys(resultContext).join(', ')}`);
+             
+             // Use result context if it looks richer
+             if (Object.keys(resultContext).length > Object.keys(context || {}).length) {
+                 context = resultContext;
+                 source = 'result';
+             }
+          }
+
+          // Safety check: Ensure it's actually an object before trying to clean it
+          if (context && typeof context === 'object' && !Array.isArray(context)) {
+            // Clone it so we don't mutate the original data
+            context = { ...context };
+            
+            // Remove the technical IDs we don't want
+            delete context.sessionId;
+            delete context.workspaceId;
+            
+            // Log the final cleaned context
+            if (Object.keys(context).length > 0) {
+                console.log(`[SearchMemoryMode] Final context for ${trace.id} (from ${source}):`, context);
+            }
+          } else {
+            // Fallback to empty if it's not a valid object
+            context = {};
+          }
+          
+          return {
+            content: trace.content || '',
+            tool: trace.metadata?.tool || '',
+            context: context,
+            score: result.score,
+            id: trace.id,
+            timestamp: trace.timestamp
+          };
+        } catch (error) {
+          console.warn('[SearchMemoryMode] Failed to simplify result:', error);
+          return null;
+        }
       });
+      
+      // Filter out nulls
+      const finalResults = simplifiedResults.filter(r => r !== null);
 
       const result = {
         success: true,
         query: params.query,
-        results: results,
-        totalResults: results.length,
+        results: finalResults,
+        totalResults: finalResults.length,
         searchCapabilities: this.getCapabilities(),
         executionTime: Date.now() - startTime
       };

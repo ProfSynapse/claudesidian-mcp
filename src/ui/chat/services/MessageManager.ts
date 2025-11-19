@@ -100,11 +100,6 @@ export class MessageManager {
     let aiMessageId: string | null = null;
 
     try {
-      console.log('[MessageManager] ========== SENDING MESSAGE ==========');
-      console.log('[MessageManager] Message:', message);
-      console.log('[MessageManager] Options:', options);
-      console.log('[MessageManager] ==========================================');
-
       this.setLoading(true);
 
       // Add user message and get real ID from storage
@@ -216,7 +211,6 @@ export class MessageManager {
       await this.alternativeService.createAlternativeResponse(conversation, aiMessage.id, options);
     } else {
       // No AI response exists - generate a fresh one
-      console.log('[MessageManager] No AI response found after user message - generating fresh response');
       await this.generateFreshAIResponse(conversation, userMessage, options);
     }
   }

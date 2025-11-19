@@ -137,16 +137,10 @@ export class StreamingOrchestrator {
         // For Google, build proper conversation history in Google format
         const googleConversationHistory: any[] = [];
 
-        console.log('[StreamingOrchestrator] Building Google conversation history', {
-          messagesCount: messages.length,
-          messages: messages.map(m => ({ role: m.role, contentLength: m.content?.length }))
-        });
-
         // Add all messages in Google format
         for (const msg of messages) {
           // Skip messages with empty content
           if (!msg.content || !msg.content.trim()) {
-            console.log('[StreamingOrchestrator] Skipping empty message', { role: msg.role });
             continue;
           }
 
@@ -162,12 +156,6 @@ export class StreamingOrchestrator {
             });
           }
         }
-
-        console.log('[StreamingOrchestrator] Google conversation history built', {
-          historyLength: googleConversationHistory.length,
-          firstMessage: JSON.stringify(googleConversationHistory[0]),
-          lastMessage: JSON.stringify(googleConversationHistory[googleConversationHistory.length - 1])
-        });
 
         generateOptions = {
           model,
@@ -265,12 +253,6 @@ export class StreamingOrchestrator {
       }
 
       // Tool calls detected - execute tools and continue streaming (pingpong)
-      console.log('[StreamingOrchestrator] 🔄 Starting tool execution and continuation', {
-        provider,
-        toolCallsCount: detectedToolCalls.length,
-        toolNames: detectedToolCalls.map(tc => tc.function?.name || tc.name)
-      });
-
       yield* this.executeToolsAndContinue(
         adapter,
         provider,
@@ -322,17 +304,11 @@ export class StreamingOrchestrator {
     options: StreamingOptions | undefined,
     initialUsage: any
   ): AsyncGenerator<StreamYield, void, unknown> {
-    console.log('[StreamingOrchestrator] 🔧 executeToolsAndContinue ENTERED', {
-      provider,
-      toolCallsCount: detectedToolCalls.length
-    });
-
     let completeToolCallsWithResults: any[] = [];
     let toolIterationCount = 1;
 
     try {
       // Step 1: Execute tools via MCP to get results
-      console.log('[StreamingOrchestrator] 📞 Executing MCP tool calls...');
       const mcpToolCalls = detectedToolCalls.map((tc: any) => ({
         id: tc.id,
         function: {
@@ -341,12 +317,6 @@ export class StreamingOrchestrator {
         }
       }));
 
-      console.log('[StreamingOrchestrator] 🔧 MCP tool calls prepared:', {
-        count: mcpToolCalls.length,
-        calls: mcpToolCalls.map(tc => ({ id: tc.id, name: tc.function.name }))
-      });
-
-      console.log('[StreamingOrchestrator] ⏳ Awaiting MCPToolExecution.executeToolCalls...');
       const toolResults = await MCPToolExecution.executeToolCalls(
         adapter as any,
         mcpToolCalls,
@@ -357,11 +327,6 @@ export class StreamingOrchestrator {
 
       // Small delay to allow file system operations to complete (prevents race conditions)
       await new Promise(resolve => setTimeout(resolve, 100));
-
-      console.log('[StreamingOrchestrator] ✅ Tool execution completed!', {
-        resultsCount: toolResults.length,
-        results: toolResults.map(r => ({ id: r.id, success: r.success, hasResult: !!r.result }))
-      });
 
       // Build complete tool calls with execution results
       completeToolCallsWithResults = detectedToolCalls.map(originalCall => {
@@ -391,16 +356,6 @@ export class StreamingOrchestrator {
       }
 
       // Step 2: Build continuation for pingpong pattern
-      console.log('[StreamingOrchestrator] 🔨 Building continuation options for provider:', provider);
-      console.log('[StreamingOrchestrator] 📋 Tool results being passed to continuation:', {
-        count: toolResults.length,
-        results: toolResults.map(r => ({
-          id: r.id,
-          success: r.success,
-          hasResult: !!r.result,
-          resultPreview: r.result ? JSON.stringify(r.result).substring(0, 150) + '...' : 'null'
-        }))
-      });
       const continuationOptions = this.buildContinuationOptions(
         provider,
         userPrompt,
@@ -411,22 +366,7 @@ export class StreamingOrchestrator {
         options
       );
 
-      console.log('[StreamingOrchestrator] ✅ Continuation options built', {
-        hasConversationHistory: !!continuationOptions.conversationHistory,
-        historyLength: continuationOptions.conversationHistory?.length,
-        hasSystemPrompt: !!continuationOptions.systemPrompt
-      });
-
-      // Debug: For Google provider, log conversation history details
-      if (provider === 'google') {
-        console.log('[GEMINI-DEBUG] Continuation conversation history:',
-          JSON.stringify(continuationOptions.conversationHistory, null, 2)
-        );
-      }
-
       // Step 3: Start NEW stream with continuation (pingpong)
-      console.log('[StreamingOrchestrator] 🚀 Starting continuation stream...');
-
       // Add spacing before continuation response (for better formatting between tool executions)
       yield {
         chunk: '\n\n',
@@ -680,7 +620,6 @@ export class StreamingOrchestrator {
   ): any[] {
     // Use appendToolExecution which does NOT add the user message
     // This is the architectural fix - we only append tool execution, not the full continuation
-    console.log('[ARCHITECTURE-FIX] 🔄 updatePreviousMessagesWithToolExecution using appendToolExecution');
 
     const updatedMessages = ConversationContextBuilder.appendToolExecution(
       provider === 'anthropic' ? 'anthropic' :

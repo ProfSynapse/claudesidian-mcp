@@ -184,9 +184,27 @@ export class AgentInitializationService {
    * Initialize VaultLibrarian agent
    */
   async initializeVaultLibrarian(enableSearchModes: boolean, memorySettings: any): Promise<void> {
+    // Get required services
+    let memoryService: any = null;
+    let workspaceService: any = null;
+
+    if (this.serviceManager) {
+      memoryService = this.serviceManager.getServiceIfReady('memoryService');
+      workspaceService = this.serviceManager.getServiceIfReady('workspaceService');
+    } else {
+      // Fallback to plugin's direct service access
+      const pluginServices = (this.plugin as any).services;
+      if (pluginServices) {
+        memoryService = pluginServices.memoryService;
+        workspaceService = pluginServices.workspaceService;
+      }
+    }
+
     const vaultLibrarianAgent = new VaultLibrarianAgent(
       this.app,
-      enableSearchModes  // Pass search modes enabled status
+      enableSearchModes,  // Pass search modes enabled status
+      memoryService,
+      workspaceService
     );
 
     // Update VaultLibrarian with memory settings

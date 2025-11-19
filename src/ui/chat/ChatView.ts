@@ -363,14 +363,10 @@ export class ChatView extends ItemView {
   }
 
   private handleConversationUpdated(conversation: ConversationData): void {
-    console.log('[ChatView] handleConversationUpdated called, conversation:', conversation.id);
-    console.log('[ChatView] Message count:', conversation.messages.length);
-
     this.conversationManager.updateCurrentConversation(conversation);
     this.messageDisplay.setConversation(conversation);
     this.updateChatTitle();
 
-    console.log('[ChatView] About to call updateContextProgress');
     this.updateContextProgress();
   }
 
@@ -382,18 +378,15 @@ export class ChatView extends ItemView {
     const currentConversation = this.conversationManager.getCurrentConversation();
 
     if (!currentConversation) {
-      console.log('[ChatView] Cannot send message - no active conversation');
       return;
     }
 
     try {
       if (enhancement) {
-        console.log('[ChatView] Setting message enhancement:', enhancement);
         this.modelAgentManager.setMessageEnhancement(enhancement);
       }
 
       const messageOptions = await this.modelAgentManager.getMessageOptions();
-      console.log('[ChatView] Message options with enhancement:', messageOptions);
 
       await this.messageManager.sendMessage(
         currentConversation,
@@ -404,7 +397,6 @@ export class ChatView extends ItemView {
     } finally {
       this.modelAgentManager.clearMessageEnhancement();
       this.chatInput?.clearMessageEnhancer();
-      console.log('[ChatView] Cleared message enhancement from both ModelAgentManager and ChatInput');
     }
   }
 
@@ -471,8 +463,6 @@ export class ChatView extends ItemView {
   private async getContextUsage() {
     const conversation = this.conversationManager.getCurrentConversation();
     const selectedModel = await this.modelAgentManager.getSelectedModelOrDefault();
-
-    console.log('[ChatView] getContextUsage - selectedModel from ModelAgentManager:', selectedModel);
 
     const usage = await TokenCalculator.getContextUsage(
       selectedModel,

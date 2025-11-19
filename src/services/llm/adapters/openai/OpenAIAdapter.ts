@@ -70,14 +70,10 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
 
       // If tools are provided (pre-converted by ChatService), use tool-enabled generation
       if (options?.tools && options.tools.length > 0) {
-        console.log('[OpenAI Adapter] Using tool-enabled generation', {
-          toolCount: options.tools.length
-        });
         return await this.generateWithProvidedTools(prompt, options);
       }
 
       // Otherwise use basic Responses API without tools
-      console.log('[OpenAI Adapter] Using basic Responses API (no tools)');
       return await this.generateWithResponsesAPI(prompt, options);
     } catch (error) {
       throw this.handleError(error, 'generation');
@@ -148,15 +144,6 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
         if (options?.topP !== undefined) responseParams.top_p = options.topP;
         if (options?.frequencyPenalty !== undefined) responseParams.frequency_penalty = options.frequencyPenalty;
         if (options?.presencePenalty !== undefined) responseParams.presence_penalty = options.presencePenalty;
-
-        console.log('[OpenAIAdapter] Creating Responses API stream with params:', {
-          model: responseParams.model,
-          hasInput: !!responseParams.input,
-          inputType: Array.isArray(responseParams.input) ? 'array' : 'string',
-          hasInstructions: !!responseParams.instructions,
-          hasPreviousResponseId: !!responseParams.previous_response_id,
-          toolCount: responseParams.tools?.length || 0
-        });
 
         // Create Responses API stream
         return await this.client.responses.create(responseParams) as any;
@@ -274,16 +261,11 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
               metadata // Include response ID for tracking
             };
 
-            if (metadata) {
-              console.log('[OpenAIAdapter] ✅ Response ID for continuation:', metadata.responseId);
-            }
             break;
 
           default:
-            // Log other event types for debugging
-            if (event.type) {
-              console.log('[OpenAIAdapter] Unhandled event type:', event.type);
-            }
+            // Ignore other event types
+            break;
         }
       }
     } catch (error) {

@@ -23,26 +23,10 @@ export class ToolEventCoordinator {
    * Handle tool calls detected event
    */
   handleToolCallsDetected(messageId: string, toolCalls: any[]): void {
-    console.log('[ToolEventCoordinator] Tool calls detected', {
-      messageId,
-      toolCallsCount: toolCalls?.length || 0,
-      toolCalls: toolCalls
-    });
-
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
-    console.log('[ToolEventCoordinator] Message bubble lookup', {
-      messageId,
-      found: !!messageBubble,
-      hasToolCalls: !!(toolCalls && toolCalls.length > 0)
-    });
 
     if (messageBubble && toolCalls && toolCalls.length > 0) {
       for (const toolCall of toolCalls) {
-        console.log('[ToolEventCoordinator] Processing tool call', {
-          id: toolCall.id,
-          functionName: toolCall.function?.name,
-          name: toolCall.name
-        });
 
         const metadata = getToolNameMetadata(
           toolCall.function?.name || toolCall.name
@@ -73,21 +57,8 @@ export class ToolEventCoordinator {
           isComplete: toolCall.isComplete
         };
 
-        console.log('[ToolEventCoordinator] Calling messageBubble.handleToolEvent', {
-          event: 'detected',
-          toolId: toolData.id,
-          toolName: toolData.name,
-          technicalName: toolData.technicalName
-        });
-
         messageBubble.handleToolEvent('detected', toolData);
       }
-    } else {
-      console.log('[ToolEventCoordinator] Skipping tool processing', {
-        hasMessageBubble: !!messageBubble,
-        hasToolCalls: !!(toolCalls && toolCalls.length > 0),
-        toolCallsLength: toolCalls?.length
-      });
     }
   }
 
