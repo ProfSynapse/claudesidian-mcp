@@ -5,6 +5,7 @@
 
 import { WorkspaceContext } from '../../database/types/workspace/WorkspaceTypes';
 import { WorkspaceStateSnapshot } from '../../database/types/session/SessionTypes';
+import { TraceMetadata } from '../../database/types/memory/MemoryTypes';
 
 /**
  * Individual conversation file structure (conversations/{id}.json)
@@ -143,12 +144,7 @@ export interface MemoryTrace {
   timestamp: number;
   type: string;
   content: string;
-  metadata?: {
-    tool?: string;
-    params?: any;
-    result?: any;
-    relatedFiles?: string[];
-  };
+  metadata?: TraceMetadata;
 }
 
 /**

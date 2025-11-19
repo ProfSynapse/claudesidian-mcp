@@ -75,9 +75,11 @@ export class PrefetchManager extends EventEmitter {
             const relatedFiles = new Set<string>();
 
             for (const trace of traces) {
-                if (trace.metadata?.relatedFiles) {
-                    trace.metadata.relatedFiles.forEach(f => relatedFiles.add(f));
-                }
+                const files =
+                  (trace.metadata?.input?.files && Array.isArray(trace.metadata.input.files)
+                    ? trace.metadata.input.files
+                    : trace.metadata?.legacy?.relatedFiles) || [];
+                files.forEach((f: string) => relatedFiles.add(f));
             }
 
             // Prefetch file metadata

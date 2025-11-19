@@ -6,7 +6,7 @@
  * Used by MemoryTraceService, ToolCallTraceProcessor, and TraceSearchService.
  */
 
-import { WorkspaceMemoryTrace } from '../../database/workspace-types';
+import { WorkspaceMemoryTrace, TraceMetadata, LegacyWorkspaceTraceMetadata } from '../../database/workspace-types';
 // import type { PendingToolCallCapture } from '../../services/toolcall-capture/ToolCallCaptureService';
 type PendingToolCallCapture = any;
 
@@ -26,12 +26,7 @@ export interface MemoryTraceSearchOptions {
 export interface ActivityTraceData {
   type: string;
   content: string;
-  metadata: {
-    tool: string;
-    params: any;
-    result: any;
-    relatedFiles: string[];
-  };
+  metadata: TraceMetadata | LegacyWorkspaceTraceMetadata;
   sessionId?: string;
 }
 
@@ -47,9 +42,9 @@ export interface ToolCallMemoryTrace extends WorkspaceMemoryTrace {
   toolName: string;
   
   // Enhanced metadata with complete JSON preservation
-  metadata: {
+  metadata: TraceMetadata & {
     // Tool call request data (complete JSON preservation)
-    request: {
+    request?: {
       originalParams: Record<string, any>;
       normalizedParams: Record<string, any>;
       workspaceContext?: {
@@ -61,7 +56,7 @@ export interface ToolCallMemoryTrace extends WorkspaceMemoryTrace {
     };
     
     // Tool call response data (complete JSON preservation)
-    response: {
+    response?: {
       result: Record<string, any> | null;
       success: boolean;
       error?: {
@@ -75,11 +70,14 @@ export interface ToolCallMemoryTrace extends WorkspaceMemoryTrace {
       affectedResources?: string[];
     };
     
-    // Legacy compatibility fields
-    tool: string;
-    params: any;
-    result: any;
-    relatedFiles: string[];
+    // Execution details specific to tool calls
+    execution?: {
+      agent: string;
+      mode: string;
+      executionTime: number;
+      timestamp: number;
+      toolName: string;
+    };
   };
   
   // Execution context

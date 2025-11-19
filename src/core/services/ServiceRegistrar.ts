@@ -11,6 +11,7 @@ import type { ServiceManager } from '../ServiceManager';
 import { FileSystemService } from '../../services/storage/FileSystemService';
 import { IndexManager } from '../../services/storage/IndexManager';
 import { DataMigrationService } from '../../services/migration/DataMigrationService';
+import { TraceSchemaMigrationService } from '../../services/migration/TraceSchemaMigrationService';
 import { normalizePath } from 'obsidian';
 import { CORE_SERVICE_DEFINITIONS, ADDITIONAL_SERVICE_FACTORIES } from './ServiceDefinitions';
 import type { ServiceCreationContext } from './ServiceDefinitions';
@@ -103,6 +104,14 @@ export class ServiceRegistrar {
                 }
             } catch (error) {
                 console.error('[ServiceRegistrar] Metadata migration failed:', error);
+            }
+
+            // Normalize memory trace schema across all workspaces (idempotent)
+            try {
+                const traceMigrationService = new TraceSchemaMigrationService(plugin, fileSystem);
+                await traceMigrationService.migrateIfNeeded();
+            } catch (error) {
+                console.error('[ServiceRegistrar] Trace schema migration failed:', error);
             }
 
             // Legacy data directory handling (can be removed after migration)

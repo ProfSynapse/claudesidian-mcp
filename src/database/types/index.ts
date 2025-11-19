@@ -34,7 +34,14 @@ export type {
 
 // Memory types
 export type {
-  WorkspaceMemoryTrace
+  WorkspaceMemoryTrace,
+  TraceMetadata,
+  TraceToolMetadata,
+  TraceContextMetadata,
+  TraceInputMetadata,
+  TraceOutcomeMetadata,
+  TraceLegacyMetadata,
+  LegacyWorkspaceTraceMetadata
 } from './memory/MemoryTypes';
 
 // Cache types

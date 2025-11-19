@@ -1,0 +1,125 @@
+import { normalizePath, Plugin } from 'obsidian';
+import { FileSystemService } from '../storage/FileSystemService';
+import { normalizeLegacyTraceMetadata } from '../memory/LegacyTraceMetadataNormalizer';
+
+const TRACE_SCHEMA_VERSION = 1;
+
+interface TraceSchemaStatus {
+  version: number;
+  migratedAt: number;
+}
+
+export class TraceSchemaMigrationService {
+  private markerPath = normalizePath('.workspaces/.trace-schema.json');
+  private workspacesPath = normalizePath('.workspaces');
+  private backupsPath = normalizePath('.workspaces/backups');
+
+  constructor(
+    private plugin: Plugin,
+    private fileSystem: FileSystemService
+  ) {}
+
+  async migrateIfNeeded(): Promise<{ migratedWorkspaces: number; skipped: boolean }> {
+    try {
+      const status = await this.readStatus();
+      if (status && status.version >= TRACE_SCHEMA_VERSION) {
+        console.log('[TraceSchemaMigration] Schema already up-to-date.');
+        return { migratedWorkspaces: 0, skipped: true };
+      }
+
+      console.log('[TraceSchemaMigration] Starting trace schema migration...');
+      const workspaceIds = await this.fileSystem.listWorkspaceIds();
+      let migratedCount = 0;
+
+      for (const workspaceId of workspaceIds) {
+        const workspace = await this.fileSystem.readWorkspace(workspaceId);
+        if (!workspace) continue;
+
+        let workspaceUpdated = false;
+
+        for (const session of Object.values(workspace.sessions)) {
+          for (const trace of Object.values(session.memoryTraces)) {
+            if (trace.metadata && (trace.metadata as any).schemaVersion >= TRACE_SCHEMA_VERSION) {
+              continue;
+            }
+
+            const normalized = normalizeLegacyTraceMetadata({
+              workspaceId: workspace.id,
+              sessionId: session.id,
+              traceType: trace.type,
+              metadata: trace.metadata
+            });
+
+            if (normalized) {
+              trace.metadata = normalized;
+              workspaceUpdated = true;
+            }
+          }
+        }
+
+        if (workspaceUpdated) {
+          await this.createBackup(workspaceId);
+          await this.fileSystem.writeWorkspace(workspaceId, workspace);
+          migratedCount++;
+          console.log(`[TraceSchemaMigration] Migrated workspace ${workspaceId}`);
+        }
+      }
+
+      await this.writeStatus({
+        version: TRACE_SCHEMA_VERSION,
+        migratedAt: Date.now()
+      });
+
+      console.log(`[TraceSchemaMigration] Completed. Workspaces migrated: ${migratedCount}`);
+      return { migratedWorkspaces: migratedCount, skipped: false };
+    } catch (error) {
+      console.error('[TraceSchemaMigrationService] Migration failed:', error);
+      return { migratedWorkspaces: 0, skipped: false };
+    }
+  }
+
+  private async readStatus(): Promise<TraceSchemaStatus | null> {
+    try {
+      const exists = await this.plugin.app.vault.adapter.exists(this.markerPath);
+      if (!exists) {
+        return null;
+      }
+
+      const content = await this.plugin.app.vault.adapter.read(this.markerPath);
+      return JSON.parse(content);
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeStatus(status: TraceSchemaStatus): Promise<void> {
+    const json = JSON.stringify(status, null, 2);
+    await this.plugin.app.vault.adapter.write(this.markerPath, json);
+  }
+
+  private async ensureBackupsDir(): Promise<void> {
+    const exists = await this.plugin.app.vault.adapter.exists(this.backupsPath);
+    if (!exists) {
+      await this.plugin.app.vault.adapter.mkdir(this.backupsPath);
+    }
+  }
+
+  private async createBackup(workspaceId: string): Promise<void> {
+    try {
+      const filePath = normalizePath(`${this.workspacesPath}/${workspaceId}.json`);
+      const exists = await this.plugin.app.vault.adapter.exists(filePath);
+      if (!exists) {
+        return;
+      }
+
+      const content = await this.plugin.app.vault.adapter.read(filePath);
+      await this.ensureBackupsDir();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupPath = normalizePath(`${this.backupsPath}/${workspaceId}-${timestamp}.json.bak`);
+      await this.plugin.app.vault.adapter.write(backupPath, content);
+      console.log(`[TraceSchemaMigration] Backed up ${workspaceId} to ${backupPath}`);
+    } catch (error) {
+      console.error(`[TraceSchemaMigration] Failed to backup workspace ${workspaceId}:`, error);
+    }
+  }
+}

@@ -142,9 +142,11 @@ export class EntityCache extends EventEmitter {
             const associatedFiles = new Set<string>();
             // Note: WorkspaceSession doesn't have activeNote property
             traces.forEach(trace => {
-                if (trace.metadata?.relatedFiles) {
-                    trace.metadata.relatedFiles.forEach((f: string) => associatedFiles.add(f));
-                }
+                const files =
+                  (trace.metadata?.input?.files && Array.isArray(trace.metadata.input.files)
+                    ? trace.metadata.input.files
+                    : trace.metadata?.legacy?.relatedFiles) || [];
+                files.forEach((f: string) => associatedFiles.add(f));
             });
 
             // Cache the session

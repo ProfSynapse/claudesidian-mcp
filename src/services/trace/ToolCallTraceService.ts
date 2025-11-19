@@ -7,6 +7,8 @@ import { Plugin } from 'obsidian';
 import { MemoryService } from '../../agents/memoryManager/services/MemoryService';
 import { SessionContextManager } from '../SessionContextManager';
 import { WorkspaceService } from '../WorkspaceService';
+import { TraceMetadataBuilder } from '../memory/TraceMetadataBuilder';
+import { TraceContextMetadata, TraceOutcomeMetadata } from '../../database/workspace-types';
 
 export interface ToolCallCaptureData {
   toolName: string;
@@ -76,15 +78,18 @@ export class ToolCallTraceService {
       const traceContent = this.buildTraceContent(agent, mode, params, response, success);
 
       // 5. Build trace metadata (structured data)
-      const traceMetadata = this.buildTraceMetadata(
+      const relatedFiles = this.extractRelatedFiles(response, params);
+      const traceMetadata = this.buildCanonicalMetadata({
         toolName,
         agent,
         mode,
         params,
         response,
         success,
-        executionTime
-      );
+        sessionId,
+        workspaceId,
+        relatedFiles
+      });
 
       // 6. Record the trace via MemoryService
       await this.memoryService.recordActivityTrace({
@@ -157,60 +162,88 @@ export class ToolCallTraceService {
     return description;
   }
 
-  /**
-   * Build structured metadata for the trace
-   * Includes request, response, execution details, and affected resources
-   */
-  private buildTraceMetadata(
-    toolName: string,
-    agent: string,
-    mode: string,
-    params: any,
-    response: any,
-    success: boolean,
-    executionTime: number
-  ): any {
-    // Extract related files from response and params
-    const relatedFiles = this.extractRelatedFiles(response, params);
+  private buildCanonicalMetadata(options: {
+    toolName: string;
+    agent: string;
+    mode: string;
+    params: any;
+    response: any;
+    success: boolean;
+    sessionId: string;
+    workspaceId: string;
+    relatedFiles: string[];
+  }) {
+    const context = this.buildContextMetadata(options.workspaceId, options.sessionId, options.params);
+    const sanitizedParams = this.sanitizeParams(options.params);
+    const input =
+      sanitizedParams || options.relatedFiles.length > 0
+        ? {
+            arguments: sanitizedParams,
+            files: options.relatedFiles.length > 0 ? options.relatedFiles : undefined
+          }
+        : undefined;
 
-    // Build comprehensive metadata structure
+    const outcome = this.buildOutcomeMetadata(options.success, options.response);
+
+    return TraceMetadataBuilder.create({
+      tool: {
+        id: `${options.agent}.${options.mode}`,
+        agent: options.agent,
+        mode: options.mode
+      },
+      context,
+      input,
+      outcome,
+      legacy: {
+        params: options.params,
+        result: options.response,
+        relatedFiles: options.relatedFiles
+      }
+    });
+  }
+
+  private buildContextMetadata(
+    workspaceId: string,
+    sessionId: string,
+    params: any
+  ): TraceContextMetadata {
+    const contextSource = params?.context || {};
+
     return {
-      // Legacy compatibility fields (for existing code)
-      tool: toolName,
-      params: params,
-      result: response,
-      relatedFiles: relatedFiles,
+      workspaceId,
+      sessionId,
+      sessionDescription: contextSource.sessionDescription,
+      sessionMemory: contextSource.sessionMemory,
+      toolContext: contextSource.toolContext,
+      primaryGoal: contextSource.primaryGoal,
+      subgoal: contextSource.subgoal,
+      tags: contextSource.tags,
+      additionalContext: contextSource.additionalContext
+    };
+  }
 
-      // Enhanced request data
-      request: {
-        originalParams: params,
-        normalizedParams: params,
-        workspaceContext: params?.workspaceContext || params?.context,
-        source: 'mcp-client' as const
-      },
+  private sanitizeParams(params: any): any {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) {
+      return params;
+    }
 
-      // Enhanced response data
-      response: {
-        result: success ? response : null,
-        success: success,
-        error: success ? undefined : {
-          type: response?.error?.type || 'ExecutionError',
-          message: response?.error?.message || response?.error || 'Unknown error',
-          code: response?.error?.code,
-          stack: response?.error?.stack
-        },
-        resultType: this.inferResultType(response),
-        resultSummary: this.generateResultSummary(response),
-        affectedResources: relatedFiles
-      },
+    const { context, workspaceContext, ...rest } = params;
+    return Object.keys(rest).length > 0 ? rest : undefined;
+  }
 
-      // Execution details
-      execution: {
-        agent: agent,
-        mode: mode,
-        executionTime: executionTime,
-        timestamp: Date.now(),
-        toolName: toolName
+  private buildOutcomeMetadata(success: boolean, response: any): TraceOutcomeMetadata {
+    if (success) {
+      return { success: true };
+    }
+
+    const errorSource = response?.error || response?.result?.error;
+    return {
+      success: false,
+      error: {
+        type: errorSource?.type,
+        message:
+          errorSource?.message || (typeof errorSource === 'string' ? errorSource : 'Unknown error'),
+        code: errorSource?.code
       }
     };
   }
@@ -259,36 +292,4 @@ export class ToolCallTraceService {
     return [...new Set(files.filter(f => f && f.trim()))];
   }
 
-  /**
-   * Infer the result type from the response object
-   */
-  private inferResultType(response: any): string {
-    if (response === null || response === undefined) return 'null';
-    if (Array.isArray(response)) return 'array';
-    if (typeof response === 'object') return 'object';
-    return typeof response;
-  }
-
-  /**
-   * Generate a brief summary of the response
-   */
-  private generateResultSummary(response: any): string {
-    if (!response) return 'no result';
-
-    if (typeof response === 'string') {
-      return response.length > 100 ? `${response.substring(0, 100)}...` : response;
-    }
-
-    if (typeof response === 'object') {
-      if (Array.isArray(response)) {
-        return `array with ${response.length} items`;
-      }
-
-      const keys = Object.keys(response);
-      const keyPreview = keys.slice(0, 3).join(', ');
-      return `object with ${keys.length} properties (${keyPreview})${keys.length > 3 ? '...' : ''}`;
-    }
-
-    return String(response);
-  }
 }

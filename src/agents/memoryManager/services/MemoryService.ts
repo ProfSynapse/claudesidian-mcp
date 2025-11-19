@@ -5,7 +5,12 @@
 
 import { Plugin } from 'obsidian';
 import { WorkspaceService } from '../../../services/WorkspaceService';
-import { WorkspaceMemoryTrace, WorkspaceSession, WorkspaceStateSnapshot } from '../../../database/workspace-types';
+import {
+  WorkspaceMemoryTrace,
+  WorkspaceSession,
+  WorkspaceStateSnapshot
+} from '../../../database/workspace-types';
+import { normalizeLegacyTraceMetadata } from '../../../services/memory/LegacyTraceMetadataNormalizer';
 
 /**
  * MemoryService provides agent-specific logic for memory management
@@ -83,7 +88,12 @@ export class MemoryService {
       timestamp: trace.timestamp || Date.now(),
       type: trace.type || 'generic',
       content: trace.content || '',
-      metadata: trace.metadata
+      metadata: normalizeLegacyTraceMetadata({
+        workspaceId,
+        sessionId,
+        traceType: trace.type,
+        metadata: trace.metadata
+      })
     });
 
     return createdTrace.id;
@@ -305,4 +315,5 @@ export class MemoryService {
     // Save workspace
     await this.workspaceService.updateWorkspace(workspaceId, workspace);
   }
+
 }

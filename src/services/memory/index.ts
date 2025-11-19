@@ -6,8 +6,9 @@
  */
 
 import { SimpleMemoryMonitor } from './SimpleMemoryMonitor';
+import { TraceMetadataBuilder, buildTraceMetadata } from './TraceMetadataBuilder';
 
-export { SimpleMemoryMonitor };
+export { SimpleMemoryMonitor, TraceMetadataBuilder, buildTraceMetadata };
 
 // Create singleton instance for easy access
 export const memoryMonitor = SimpleMemoryMonitor.getInstance();

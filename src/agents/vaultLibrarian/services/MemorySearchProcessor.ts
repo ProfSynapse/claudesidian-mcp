@@ -522,15 +522,17 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   }
 
   private buildMetadata(trace: any, resultType: MemoryType): any {
+    const metadata = trace.metadata || {};
+    const context = metadata.context || {};
     const baseMetadata = {
       created: trace.timestamp ? new Date(trace.timestamp).toISOString() : 
                trace.startTime ? new Date(trace.startTime).toISOString() :
                trace.created ? new Date(trace.created).toISOString() : 
                new Date().toISOString(),
-      sessionId: trace.sessionId,
-      workspaceId: trace.workspaceId,
-      primaryGoal: '',
-      filesReferenced: trace.metadata?.relatedFiles || trace.relationships?.relatedFiles || [],
+      sessionId: context.sessionId || trace.sessionId,
+      workspaceId: context.workspaceId || trace.workspaceId,
+      primaryGoal: context.primaryGoal || '',
+      filesReferenced: this.getFilesReferenced(trace),
       type: trace.type
     };
 
@@ -538,22 +540,22 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
       const toolCallTrace = trace as any;
       return {
         ...baseMetadata,
-        toolUsed: toolCallTrace.toolName,
-        modeUsed: toolCallTrace.mode,
+        toolUsed: metadata.tool?.id || toolCallTrace.toolName,
+        modeUsed: metadata.tool?.mode || toolCallTrace.mode,
         toolCallId: toolCallTrace.toolCallId,
-        agent: toolCallTrace.agent,
-        mode: toolCallTrace.mode,
+        agent: metadata.tool?.agent || toolCallTrace.agent,
+        mode: metadata.tool?.mode || toolCallTrace.mode,
         executionTime: toolCallTrace.executionContext?.timing?.executionTime,
-        success: toolCallTrace.metadata?.response?.success,
-        errorMessage: toolCallTrace.metadata?.response?.error?.message,
-        affectedResources: toolCallTrace.relationships?.affectedResources || []
+        success: metadata.outcome?.success ?? toolCallTrace.metadata?.response?.success,
+        errorMessage: metadata.outcome?.error?.message || toolCallTrace.metadata?.response?.error?.message,
+        affectedResources: toolCallTrace.relationships?.affectedResources || metadata.legacy?.relatedFiles || []
       };
     }
 
     return {
       ...baseMetadata,
-      toolUsed: trace.metadata?.tool,
-      modeUsed: '',
+      toolUsed: metadata.tool?.id || metadata.legacy?.params?.tool || trace.metadata?.tool,
+      modeUsed: metadata.tool?.mode || '',
       updated: trace.endTime ? new Date(trace.endTime).toISOString() : 
                trace.lastAccessed ? new Date(trace.lastAccessed).toISOString() : undefined
     };
@@ -594,8 +596,10 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   }
 
   private enhanceToolCallContext(context: any, toolCallTrace: any): any {
-    const toolInfo = `${toolCallTrace.agent}.${toolCallTrace.mode}`;
-    const statusInfo = toolCallTrace.metadata?.response?.success ? 'SUCCESS' : 'FAILED';
+    const toolMetadata = toolCallTrace.metadata?.tool;
+    const toolInfo = toolMetadata ? `${toolMetadata.agent}.${toolMetadata.mode}` : `${toolCallTrace.agent}.${toolCallTrace.mode}`;
+    const success = toolCallTrace.metadata?.outcome?.success ?? toolCallTrace.metadata?.response?.success;
+    const statusInfo = success === false ? 'FAILED' : 'SUCCESS';
     const executionTime = toolCallTrace.executionContext?.timing?.executionTime;
     
     return {
@@ -618,6 +622,23 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     }
     
     return unique;
+  }
+
+  private getFilesReferenced(trace: any): string[] {
+    const metadata = trace.metadata || {};
+    if (Array.isArray(metadata.input?.files) && metadata.input.files.length > 0) {
+      return metadata.input.files;
+    }
+
+    if (Array.isArray(metadata.legacy?.relatedFiles) && metadata.legacy.relatedFiles.length > 0) {
+      return metadata.legacy.relatedFiles;
+    }
+
+    if (Array.isArray(trace.relationships?.relatedFiles) && trace.relationships.relatedFiles.length > 0) {
+      return trace.relationships.relatedFiles;
+    }
+
+    return [];
   }
 
   // Service access methods

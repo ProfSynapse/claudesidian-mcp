@@ -5,6 +5,7 @@
 
 import { IndividualConversation, IndividualWorkspace } from '../../types/storage/StorageTypes';
 import { ChromaCollectionData } from './ChromaDataLoader';
+import { normalizeLegacyTraceMetadata } from '../memory/LegacyTraceMetadataNormalizer';
 
 export class DataTransformer {
 
@@ -133,7 +134,7 @@ export class DataTransformer {
             startTime: session.metadata?.startTime || session.metadata?.created || Date.now(),
             endTime: session.metadata?.endTime,
             isActive: session.metadata?.isActive ?? true,
-            memoryTraces: this.transformTraces(sessionTraces),
+            memoryTraces: this.transformTraces(sessionTraces, workspaceId, session.id),
             states: this.transformStates(sessionStates)
           };
 
@@ -150,25 +151,36 @@ export class DataTransformer {
     return result;
   }
 
-  private transformTraces(traces: any[]): Record<string, any> {
+  private transformTraces(traces: any[], workspaceId: string, sessionId: string): Record<string, any> {
     const result: Record<string, any> = {};
 
     for (const trace of traces) {
       try {
         // Extract content from either document.content or direct content
         const content = trace.document?.content || trace.content || trace.metadata?.content || '';
+        const legacyParams = this.parseJSONString(trace.metadata?.params);
+        const legacyResult = this.parseJSONString(trace.metadata?.result);
+        const legacyFiles = this.parseJSONString(trace.metadata?.relatedFiles) || [];
+        const mergedMetadata = {
+          ...(trace.metadata || {}),
+          params: legacyParams,
+          result: legacyResult,
+          relatedFiles: legacyFiles
+        };
+
+        const metadata = normalizeLegacyTraceMetadata({
+          workspaceId,
+          sessionId,
+          traceType: trace.metadata?.activityType || trace.metadata?.type,
+          metadata: mergedMetadata
+        });
 
         result[trace.id] = {
           id: trace.id,
           timestamp: trace.metadata?.timestamp || trace.document?.timestamp || Date.now(),
           type: trace.metadata?.activityType || trace.metadata?.type || 'unknown',
           content: content,
-          metadata: {
-            tool: trace.metadata?.tool || trace.document?.tool,
-            params: this.parseJSONString(trace.metadata?.params),
-            result: this.parseJSONString(trace.metadata?.result),
-            relatedFiles: this.parseJSONString(trace.metadata?.relatedFiles) || []
-          }
+          metadata
         };
       } catch (error) {
         console.error(`[DataTransformer] Error transforming trace ${trace.id}:`, error);

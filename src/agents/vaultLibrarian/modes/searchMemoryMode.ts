@@ -120,6 +120,20 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
     this.formatter = formatter || new ResultFormatter();
   }
 
+  private isThinContext(context: any): boolean {
+    if (!context || typeof context !== 'object') {
+      return true;
+    }
+
+    const keys = Object.keys(context);
+    if (keys.length === 0) {
+      return true;
+    }
+
+    const nonIdKeys = keys.filter(key => !['sessionId', 'workspaceId'].includes(key));
+    return nonIdKeys.length === 0;
+  }
+
   async execute(params: SearchMemoryParams): Promise<SearchMemoryResult> {
     const startTime = Date.now();
     
@@ -155,34 +169,21 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
             return null;
           }
 
-          // Target exactly what was requested: metadata.params.context
-          let context = trace.metadata?.params?.context;
-          let source = 'params';
+          // Target canonical metadata context first, then legacy fallbacks
+          let context = trace.metadata?.context;
+          let source = 'metadata.context';
 
-          // DEBUG: Log ONLY if we found context
-          if (context) {
-             console.log(`[SearchMemoryMode] Found raw context in params for ${trace.id}. Keys: ${Object.keys(context).join(', ')}`);
-          }
-          
-          // SPECIAL DEBUG for the missing trace
-          if (trace.id === 'trace_1760973194387_zu0svvtd4') {
-             console.log('!!! FOUND THE MISSING TRACE !!!');
-             console.log('Raw Params Context:', trace.metadata?.params?.context);
+          const legacyParamsContext = trace.metadata?.legacy?.params?.context;
+          const legacyResultContext = trace.metadata?.legacy?.result?.context;
+
+          if (this.isThinContext(context) && legacyParamsContext) {
+            context = legacyParamsContext;
+            source = 'legacy.params';
           }
 
-          // CHECK RESULT CONTEXT if params context is missing or "thin" (only IDs)
-          const isThinContext = !context || (Object.keys(context).length <= 2 && context.sessionId);
-          
-          if (isThinContext && trace.metadata?.result?.context) {
-             console.log(`[SearchMemoryMode] Params context is thin. Checking result context for ${trace.id}...`);
-             const resultContext = trace.metadata.result.context;
-             console.log(`[SearchMemoryMode] Found raw context in RESULT for ${trace.id}. Keys: ${Object.keys(resultContext).join(', ')}`);
-             
-             // Use result context if it looks richer
-             if (Object.keys(resultContext).length > Object.keys(context || {}).length) {
-                 context = resultContext;
-                 source = 'result';
-             }
+          if (this.isThinContext(context) && legacyResultContext) {
+            context = legacyResultContext;
+            source = 'legacy.result';
           }
 
           // Safety check: Ensure it's actually an object before trying to clean it
