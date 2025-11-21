@@ -222,6 +222,7 @@ export class ChatService {
       messageId?: string;
       abortSignal?: AbortSignal;
       excludeFromMessageId?: string;
+      streamingTarget?: 'conversation' | 'branch';
     }
   ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string; toolCalls?: any[] }, void, unknown> {
     // Store current provider and session for backward compatibility
@@ -296,6 +297,54 @@ export class ChatService {
   /** Get conversation service (alias for getConversationRepository) */
   getConversationService(): any {
     return this.conversationQueryService.getConversationService();
+  }
+
+  /** Create a branch draft for an assistant message */
+  async createBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId?: string;
+    provider?: string;
+    model?: string;
+    metadata?: Record<string, any>;
+  }): Promise<any> {
+    return this.dependencies.conversationService.createMessageBranchDraft(params);
+  }
+
+  /** Update branch draft content/tool calls */
+  async updateBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId: string;
+    content?: string;
+    appendContent?: string;
+    status?: 'draft' | 'streaming' | 'complete' | 'aborted';
+    toolCalls?: any[];
+    metadata?: Record<string, any>;
+  }): Promise<any> {
+    return this.dependencies.conversationService.updateMessageBranchDraft(params);
+  }
+
+  /** Finalize branch draft */
+  async finalizeBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId: string;
+    status?: 'draft' | 'streaming' | 'complete' | 'aborted';
+    makeActive?: boolean;
+    toolCalls?: any[];
+    messageState?: 'draft' | 'streaming' | 'complete' | 'aborted';
+  }): Promise<any> {
+    return this.dependencies.conversationService.finalizeMessageBranchDraft(params);
+  }
+
+  /** Discard branch draft */
+  async discardBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    return this.dependencies.conversationService.discardMessageBranchDraft(params);
   }
 
   /**

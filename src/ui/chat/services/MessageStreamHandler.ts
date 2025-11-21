@@ -25,6 +25,10 @@ export interface StreamOptions {
   messageId?: string;
   excludeFromMessageId?: string;
   abortSignal?: AbortSignal;
+  streamingTarget?: 'conversation' | 'branch';
+  streamingMessageId?: string;
+  onChunk?: (chunk: { chunk: string; complete: boolean }) => Promise<void> | void;
+  onToolChunk?: (toolCalls: any[], isComplete: boolean) => Promise<void> | void;
 }
 
 export interface StreamResult {
@@ -54,23 +58,41 @@ export class MessageStreamHandler {
     let streamedContent = '';
     let toolCalls: any[] | undefined = undefined;
     let hasStartedStreaming = false;
+    let hasLoggedFirstChunk = false;
+    let hasLoggedToolChunk = false;
+    const { onChunk, streamingMessageId, ...serviceOptions } = options;
+    const streamingTarget = options.streamingTarget || 'conversation';
+    const isBranchStream = streamingTarget === 'branch';
+    const eventMessageId = streamingMessageId || aiMessageId;
+
+    console.log('[MessageStreamHandler] streamResponse start', {
+      aiMessageId,
+      eventMessageId,
+      streamingTarget,
+      provider: options.provider,
+      model: options.model
+    });
 
     // Stream the AI response
     for await (const chunk of this.chatService.generateResponseStreaming(
       conversation.id,
       userMessageContent,
       {
-        ...options,
-        messageId: aiMessageId
+        ...serviceOptions,
+        messageId: options.messageId || aiMessageId
       }
     )) {
       // Handle token chunks
       if (chunk.chunk) {
+        if (onChunk) {
+          await onChunk({ chunk: chunk.chunk, complete: !!chunk.complete });
+        }
+
         // Update state to streaming on first chunk
         if (!hasStartedStreaming) {
           hasStartedStreaming = true;
           const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-          if (placeholderMessageIndex >= 0) {
+          if (placeholderMessageIndex >= 0 && !isBranchStream) {
             conversation.messages[placeholderMessageIndex].state = 'streaming';
             conversation.messages[placeholderMessageIndex].isLoading = false;
           }
@@ -79,21 +101,37 @@ export class MessageStreamHandler {
         streamedContent += chunk.chunk;
 
         // Send only the new chunk to UI for incremental updates
-        this.events.onStreamingUpdate(aiMessageId, chunk.chunk, false, true);
+        this.events.onStreamingUpdate(eventMessageId, chunk.chunk, false, true);
       }
 
       // Extract tool calls when available
       if (chunk.toolCalls) {
         toolCalls = chunk.toolCalls;
+        if (!hasLoggedToolChunk || chunk.complete) {
+          console.log('[MessageStreamHandler] tool calls chunk', {
+            eventMessageId,
+            count: toolCalls.length,
+            complete: !!chunk.complete
+          });
+          hasLoggedToolChunk = true;
+        }
+
+        if (options.onToolChunk) {
+          await options.onToolChunk(chunk.toolCalls, !!chunk.complete);
+        }
 
         // Emit tool calls event for final chunk
         if (chunk.complete) {
-          this.events.onToolCallsDetected(aiMessageId, toolCalls);
+          this.events.onToolCallsDetected(eventMessageId, toolCalls);
         }
       }
 
       // Handle completion
       if (chunk.complete) {
+        if (onChunk) {
+          await onChunk({ chunk: '', complete: true });
+        }
+
         // Check if this is TRULY the final complete
         const hasToolCalls = toolCalls && toolCalls.length > 0;
         const toolCallsHaveResults = hasToolCalls && toolCalls!.some((tc: any) =>
@@ -103,22 +141,36 @@ export class MessageStreamHandler {
 
         if (isFinalComplete) {
           // Update conversation with final content
-          const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-          if (placeholderMessageIndex >= 0) {
-            conversation.messages[placeholderMessageIndex] = {
-              ...conversation.messages[placeholderMessageIndex],
-              content: streamedContent,
-              state: 'complete',
-              toolCalls: toolCalls
-            };
+          if (!isBranchStream) {
+            const placeholderMessageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
+            if (placeholderMessageIndex >= 0) {
+              conversation.messages[placeholderMessageIndex] = {
+                ...conversation.messages[placeholderMessageIndex],
+                content: streamedContent,
+                state: 'complete',
+                toolCalls: toolCalls
+              };
+            }
           }
 
           // Send final complete content
-          this.events.onStreamingUpdate(aiMessageId, streamedContent, true, false);
+          this.events.onStreamingUpdate(eventMessageId, streamedContent, true, false);
+          console.log('[MessageStreamHandler] streaming complete', {
+            eventMessageId,
+            isBranchStream,
+            contentLength: streamedContent.length,
+            toolCallsCount: toolCalls?.length || 0
+          });
           break;
         } else {
           // Intermediate complete - waiting for tool execution results
         }
+      } else if (!hasLoggedFirstChunk && chunk.chunk) {
+        hasLoggedFirstChunk = true;
+        console.log('[MessageStreamHandler] first chunk received', {
+          eventMessageId,
+          chunkLength: chunk.chunk.length
+        });
       }
     }
 

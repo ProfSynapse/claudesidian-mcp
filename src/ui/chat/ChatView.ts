@@ -16,6 +16,7 @@ import { ContextProgressBar } from './components/ContextProgressBar';
 import { ChatSettingsModal } from './components/ChatSettingsModal';
 import { ChatService } from '../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../types/chat/ChatTypes';
+import { BranchFinalizedEvent } from '../../types/chat/BranchEvents';
 import { MessageEnhancement } from './components/suggesters/base/SuggesterInterfaces';
 
 // Services
@@ -150,6 +151,7 @@ export class ChatView extends ItemView {
       onStreamingUpdate: (messageId, content, isComplete, isIncremental) =>
         this.handleStreamingUpdate(messageId, content, isComplete, isIncremental),
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
+      onBranchFinalized: (event) => this.handleBranchFinalized(event),
       onLoadingStateChanged: (loading) => this.handleLoadingStateChanged(loading),
       onError: (message) => this.uiStateController.showError(message),
       onToolCallsDetected: (messageId, toolCalls) => this.toolEventCoordinator.handleToolCallsDetected(messageId, toolCalls),
@@ -348,8 +350,26 @@ export class ChatView extends ItemView {
 
   private handleStreamingUpdate(messageId: string, content: string, isComplete: boolean, isIncremental?: boolean): void {
     const currentConversation = this.conversationManager?.getCurrentConversation();
-    const message = currentConversation?.messages.find((m: any) => m.id === messageId);
-    const isRetry = message && message.alternatives && message.alternatives.length > 0;
+    const context = this.findStreamingContext(currentConversation || null, messageId);
+    if (!context) {
+      console.warn('[ChatView] Streaming update ignored - no context found', {
+        messageId,
+        isComplete,
+        isIncremental
+      });
+      return;
+    }
+
+    if (context.branchId) {
+      console.debug('[ChatView] Branch streaming update', {
+        messageId,
+        branchId: context.branchId,
+        isComplete,
+        isIncremental
+      });
+      this.messageDisplay.updateBranchContent(context.message.id, context.branchId);
+      return;
+    }
 
     if (isIncremental) {
       this.streamingController.updateStreamingChunk(messageId, content);
@@ -363,11 +383,29 @@ export class ChatView extends ItemView {
   }
 
   private handleConversationUpdated(conversation: ConversationData): void {
-    this.conversationManager.updateCurrentConversation(conversation);
-    this.messageDisplay.setConversation(conversation);
-    this.updateChatTitle();
+    const currentConversation = this.conversationManager.getCurrentConversation();
+    const messageCountChanged = !currentConversation ||
+                                 currentConversation.messages.length !== conversation.messages.length;
 
+    this.conversationManager.updateCurrentConversation(conversation);
+
+    if (messageCountChanged) {
+      // Full re-render only when messages are added/removed
+      this.messageDisplay.setConversation(conversation);
+    } else {
+      // Just update changed messages without re-creating all bubbles
+      conversation.messages.forEach(msg => {
+        this.messageDisplay.updateMessage(msg.id, msg);
+      });
+    }
+
+    this.updateChatTitle();
     this.updateContextProgress();
+  }
+
+  private handleBranchFinalized(event: BranchFinalizedEvent): void {
+    // Delegate to MessageDisplay for targeted update, passing fresh message
+    this.messageDisplay.handleBranchFinalized(event.messageId, event.branchId, event.message);
   }
 
   private async handleSendMessage(
@@ -542,5 +580,44 @@ export class ChatView extends ItemView {
     this.contextProgressBar?.cleanup();
     this.uiStateController?.cleanup();
     this.streamingController?.cleanup();
+  }
+
+  /**
+   * Resolve whether a streaming update targets a base message or a branch alternative
+   */
+  private findStreamingContext(
+    conversation: ConversationData | null,
+    messageId: string
+  ): { message: ConversationMessage; branchId?: string } | null {
+    if (!conversation) {
+      return null;
+    }
+
+    const directMessage = conversation.messages.find(msg => msg.id === messageId);
+    if (directMessage) {
+      console.debug('[ChatView] Streaming context resolved to base message', { messageId });
+      return { message: directMessage };
+    }
+
+    for (const msg of conversation.messages) {
+      const branch = msg.alternativeBranches?.find(b => b.id === messageId);
+      if (branch) {
+        console.debug('[ChatView] Streaming context resolved to branch', {
+          messageId,
+          baseMessageId: msg.id
+        });
+        return { message: msg, branchId: branch.id };
+      }
+      const legacyAlt = msg.alternatives?.find(alt => alt.id === messageId);
+      if (legacyAlt) {
+        console.debug('[ChatView] Streaming context resolved to legacy alternative', {
+          messageId,
+          baseMessageId: msg.id
+        });
+        return { message: msg, branchId: legacyAlt.id };
+      }
+    }
+
+    return null;
   }
 }

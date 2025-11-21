@@ -14,6 +14,8 @@ export interface ChatMessage {
   tokens?: number;
   alternatives?: ChatMessage[];
   activeAlternativeIndex?: number;
+  alternativeBranches?: MessageAlternativeBranch[];
+  activeAlternativeId?: string;
   isLoading?: boolean;
   metadata?: Record<string, any>;
 }
@@ -33,6 +35,22 @@ export interface ToolCall {
   error?: string;
   parameters?: any;
   executionTime?: number;
+}
+
+export type MessageAlternativeStatus = 'draft' | 'streaming' | 'complete' | 'aborted';
+
+export interface MessageAlternativeBranch {
+  id: string;
+  parentMessageId: string;
+  status: MessageAlternativeStatus;
+  content: string;
+  toolCalls?: ToolCall[];
+  provider?: string;
+  model?: string;
+  createdAt: number;
+  updatedAt: number;
+  metadata?: Record<string, any>;
+  isDraft?: boolean;
 }
 
 export interface Conversation {

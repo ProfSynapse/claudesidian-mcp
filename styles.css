@@ -3088,6 +3088,17 @@ a:hover {
   padding: 0 2px;
 }
 
+.branch-streaming-status {
+  margin-top: 6px;
+}
+
+.branch-streaming-status .ai-loading {
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 /* Branch buttons - extend message-action-btn styles */
 .message-action-btn.message-branch-prev svg,
 .message-action-btn.message-branch-next svg {

@@ -5,14 +5,16 @@
 
 import { ChatService } from '../../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
+import { BranchLifecycleEvents } from '../../../types/chat/BranchEvents';
 import { BranchManager } from './BranchManager';
 import { ReferenceMetadata } from '../utils/ReferenceExtractor';
 import { MessageAlternativeService } from './MessageAlternativeService';
 import { MessageStreamHandler } from './MessageStreamHandler';
 import { MessageStateManager } from './MessageStateManager';
 import { AbortHandler } from '../utils/AbortHandler';
+import { BranchStreamPersistence } from './BranchStreamPersistence';
 
-export interface MessageManagerEvents {
+export interface MessageManagerEvents extends BranchLifecycleEvents {
   onMessageAdded: (message: ConversationMessage) => void;
   onAIMessageStarted: (message: ConversationMessage) => void;
   onStreamingUpdate: (messageId: string, content: string, isComplete: boolean, isIncremental?: boolean) => void;
@@ -36,6 +38,7 @@ export class MessageManager {
   private abortHandler: AbortHandler;
   private stateManager: MessageStateManager;
   private alternativeService: MessageAlternativeService;
+  private branchPersistence: BranchStreamPersistence;
 
   constructor(
     private chatService: ChatService,
@@ -60,9 +63,12 @@ export class MessageManager {
       onConversationUpdated: events.onConversationUpdated
     });
 
+    this.branchPersistence = new BranchStreamPersistence(chatService);
+
     this.alternativeService = new MessageAlternativeService(
       chatService,
       branchManager,
+      this.branchPersistence,
       this.streamHandler,
       this.abortHandler,
       {
@@ -70,7 +76,8 @@ export class MessageManager {
         onConversationUpdated: events.onConversationUpdated,
         onToolCallsDetected: events.onToolCallsDetected,
         onLoadingStateChanged: (loading) => this.setLoading(loading),
-        onError: events.onError
+        onError: events.onError,
+        onBranchFinalized: events.onBranchFinalized
       }
     );
   }
@@ -163,6 +170,11 @@ export class MessageManager {
   ): Promise<void> {
     const message = conversation.messages.find(msg => msg.id === messageId);
     if (!message) return;
+    console.log('[MessageManager] handleRetryMessage diag', {
+      messageId,
+      role: message.role,
+      conversationId: conversation.id
+    });
 
     try {
       // For user messages, regenerate the AI response
@@ -178,6 +190,7 @@ export class MessageManager {
       this.events.onConversationUpdated(conversation);
 
     } catch (error) {
+      console.error('[MessageManager] Failed to retry message', error);
       this.events.onError('Failed to retry message');
     }
   }

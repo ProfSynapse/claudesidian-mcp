@@ -83,11 +83,11 @@ export class MessageBranchNavigator {
 
     const alternativeCount = this.getAlternativeCount();
     const currentIndex = this.currentMessage.activeAlternativeIndex || 0;
-    
+
     // Show and update the indicator (1-based display)
     this.show();
     this.branchIndicator.textContent = `${currentIndex + 1}/${alternativeCount}`;
-    
+
     // Update button states
     this.updateButtonStates(currentIndex, alternativeCount);
   }
@@ -140,21 +140,38 @@ export class MessageBranchNavigator {
    * Check if current message has alternatives
    */
   private hasAlternatives(): boolean {
-    return !!(this.currentMessage?.alternatives && this.currentMessage.alternatives.length > 0);
+    if (!this.currentMessage) {
+      return false;
+    }
+    if (this.currentMessage.alternativeBranches && this.currentMessage.alternativeBranches.length > 0) {
+      return true;
+    }
+    return !!(this.currentMessage.alternatives && this.currentMessage.alternatives.length > 0);
   }
 
   /**
    * Get total alternative count (including the original message)
    */
   private getAlternativeCount(): number {
-    if (!this.hasAlternatives()) return 1;
-    return (this.currentMessage!.alternatives!.length) + 1; // +1 for original message
+    if (!this.currentMessage) {
+      return 1;
+    }
+    if (this.currentMessage.alternativeBranches && this.currentMessage.alternativeBranches.length > 0) {
+      return this.currentMessage.alternativeBranches.length + 1;
+    }
+    if (this.currentMessage.alternatives && this.currentMessage.alternatives.length > 0) {
+      return this.currentMessage.alternatives.length + 1;
+    }
+    return 1;
   }
 
   /**
    * Show the navigator
    */
   private show(): void {
+    if (this.container.hasClass('message-branch-navigator-visible')) {
+      return;
+    }
     this.container.removeClass('message-branch-navigator-hidden');
     this.container.addClass('message-branch-navigator-visible');
   }
@@ -163,6 +180,9 @@ export class MessageBranchNavigator {
    * Hide the navigator
    */
   private hide(): void {
+    if (this.container.hasClass('message-branch-navigator-hidden')) {
+      return;
+    }
     this.container.removeClass('message-branch-navigator-visible');
     this.container.addClass('message-branch-navigator-hidden');
   }

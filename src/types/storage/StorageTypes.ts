@@ -60,6 +60,8 @@ export interface ConversationMessage {
   };
   provider?: string;
   model?: string;
+  alternativeBranches?: MessageAlternativeBranch[];
+  activeAlternativeId?: string;
 }
 
 /**
@@ -77,6 +79,22 @@ export interface ToolCall {
   result?: any;
   success?: boolean;
   error?: string;
+}
+
+export type MessageAlternativeStatus = 'draft' | 'streaming' | 'complete' | 'aborted';
+
+export interface MessageAlternativeBranch {
+  id: string;
+  parentMessageId: string;
+  status: MessageAlternativeStatus;
+  content: string;
+  toolCalls?: ToolCall[];
+  provider?: string;
+  model?: string;
+  createdAt: number;
+  updatedAt: number;
+  metadata?: Record<string, any>;
+  isDraft?: boolean;
 }
 
 /**

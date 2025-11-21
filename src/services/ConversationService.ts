@@ -356,4 +356,206 @@ export class ConversationService {
 
     return stats;
   }
+
+  /**
+   * Create a new branch draft for an AI message
+   */
+  async createMessageBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId?: string;
+    provider?: string;
+    model?: string;
+    metadata?: Record<string, any>;
+  }): Promise<any> {
+    const conversation = await this.fileSystem.readConversation(params.conversationId);
+    if (!conversation) {
+      return null;
+    }
+
+    const message = conversation.messages.find(msg => msg.id === params.parentMessageId);
+    if (!message) {
+      return null;
+    }
+
+    const now = Date.now();
+    const branchId = params.branchId || `branch_${now}_${Math.random().toString(36).substr(2, 8)}`;
+
+    const branch: any = {
+      id: branchId,
+      parentMessageId: params.parentMessageId,
+      status: 'draft',
+      content: '',
+      toolCalls: [],
+      provider: params.provider,
+      model: params.model,
+      createdAt: now,
+      updatedAt: now,
+      metadata: params.metadata,
+      isDraft: true
+    };
+
+    // Initialize alternativeBranches array if needed
+    if (!message.alternativeBranches) {
+      message.alternativeBranches = [];
+    }
+
+    // Add or update branch
+    const existingIndex = message.alternativeBranches.findIndex(b => b.id === branchId);
+    if (existingIndex >= 0) {
+      message.alternativeBranches[existingIndex] = branch;
+    } else {
+      message.alternativeBranches.push(branch);
+    }
+
+    // Set as active
+    message.activeAlternativeId = branchId;
+
+    // Persist to storage
+    await this.updateConversation(params.conversationId, { messages: conversation.messages });
+
+    return branch;
+  }
+
+  /**
+   * Update a branch draft (append content, update tool calls, change status)
+   */
+  async updateMessageBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId: string;
+    content?: string;
+    appendContent?: string;
+    status?: 'draft' | 'streaming' | 'complete' | 'aborted';
+    toolCalls?: any[];
+    metadata?: Record<string, any>;
+  }): Promise<any> {
+    const conversation = await this.fileSystem.readConversation(params.conversationId);
+    if (!conversation) {
+      return null;
+    }
+
+    const message = conversation.messages.find(msg => msg.id === params.parentMessageId);
+    if (!message || !message.alternativeBranches) {
+      return null;
+    }
+
+    const branch = message.alternativeBranches.find(b => b.id === params.branchId);
+    if (!branch) {
+      return null;
+    }
+
+    // Update branch properties
+    if (typeof params.content === 'string') {
+      branch.content = params.content;
+    } else if (typeof params.appendContent === 'string' && params.appendContent.length > 0) {
+      branch.content = (branch.content || '') + params.appendContent;
+    }
+
+    if (params.status) {
+      branch.status = params.status;
+    }
+
+    if (params.toolCalls) {
+      branch.toolCalls = params.toolCalls;
+    }
+
+    if (params.metadata) {
+      branch.metadata = {
+        ...(branch.metadata || {}),
+        ...params.metadata
+      };
+    }
+
+    branch.updatedAt = Date.now();
+
+    // Persist to storage
+    await this.updateConversation(params.conversationId, { messages: conversation.messages });
+
+    return branch;
+  }
+
+  /**
+   * Finalize a branch draft - mark complete, set as active, update message-level state
+   * This is the STORAGE-FIRST method that persists ALL state atomically
+   */
+  async finalizeMessageBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId: string;
+    status?: 'draft' | 'streaming' | 'complete' | 'aborted';
+    makeActive?: boolean;
+    toolCalls?: any[];
+    messageState?: 'draft' | 'streaming' | 'complete' | 'aborted';
+  }): Promise<any> {
+    const conversation = await this.fileSystem.readConversation(params.conversationId);
+    if (!conversation) {
+      return null;
+    }
+
+    const message = conversation.messages.find(msg => msg.id === params.parentMessageId);
+    if (!message) {
+      return null;
+    }
+
+    // Find the branch
+    const branch = message.alternativeBranches?.find(b => b.id === params.branchId);
+    if (!branch) {
+      return null;
+    }
+
+    // Update branch properties
+    branch.status = params.status || 'complete';
+    branch.isDraft = false;
+    if (params.toolCalls) {
+      branch.toolCalls = params.toolCalls;
+    }
+
+    // Update message-level properties atomically
+    if (params.makeActive) {
+      message.activeAlternativeId = params.branchId;
+    }
+    if (params.messageState !== undefined) {
+      message.state = params.messageState;
+    }
+    // Note: isLoading is NOT persisted - it's a runtime-only UI state
+
+    // Persist ALL changes atomically
+    await this.updateConversation(params.conversationId, { messages: conversation.messages });
+
+    return branch;
+  }
+
+  /**
+   * Discard a branch draft (e.g., on error/abort)
+   */
+  async discardMessageBranchDraft(params: {
+    conversationId: string;
+    parentMessageId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    const conversation = await this.fileSystem.readConversation(params.conversationId);
+    if (!conversation) {
+      return false;
+    }
+
+    const message = conversation.messages.find(msg => msg.id === params.parentMessageId);
+    if (!message || !message.alternativeBranches) {
+      return false;
+    }
+
+    const beforeLength = message.alternativeBranches.length;
+    message.alternativeBranches = message.alternativeBranches.filter(b => b.id !== params.branchId);
+
+    if (message.activeAlternativeId === params.branchId) {
+      message.activeAlternativeId = message.alternativeBranches[0]?.id;
+    }
+
+    if (beforeLength === message.alternativeBranches.length) {
+      return false;
+    }
+
+    await this.updateConversation(params.conversationId, { messages: conversation.messages });
+    return true;
+  }
 }

@@ -92,6 +92,34 @@ export class MessageDisplay {
   }
 
   /**
+   * Update branch content for a specific message without re-rendering entire view
+   */
+  updateBranchContent(baseMessageId: string, branchId: string): void {
+    if (!this.conversation) {
+      return;
+    }
+    console.debug('[MessageDisplay] updateBranchContent', { baseMessageId, branchId });
+
+    const message = this.conversation.messages.find(msg => msg.id === baseMessageId);
+    if (!message) {
+      console.warn('[MessageDisplay] Branch update skipped - base message not found:', { baseMessageId, branchId });
+      return;
+    }
+
+    if (message.activeAlternativeId !== branchId) {
+      message.activeAlternativeId = branchId;
+      this.syncActiveAlternativeIndex(message, branchId);
+    }
+
+    const bubble = this.findMessageBubble(baseMessageId);
+    if (bubble) {
+      bubble.updateWithNewMessage(message);
+    } else {
+      console.warn('[MessageDisplay] Branch update skipped - bubble not found:', { baseMessageId, branchId });
+    }
+  }
+
+  /**
    * Update a specific message with new data (including tool calls) without full re-render
    */
   updateMessage(messageId: string, updatedMessage: ConversationMessage): void {
@@ -123,6 +151,27 @@ export class MessageDisplay {
       // Update message bubble
       messageBubble.updateWithNewMessage(updatedMessage);
       // Message bubble updated
+    }
+  }
+
+  /**
+   * Handle branch finalized event - targeted update for completed branches
+   * This creates action buttons (copy, navigator) without full re-render
+   *
+   * @param messageId - The ID of the message containing the branch
+   * @param branchId - The ID of the finalized branch
+   * @param freshMessage - Fresh message object from storage with updated state
+   */
+  handleBranchFinalized(messageId: string, branchId: string, freshMessage: ConversationMessage): void {
+    // Find the MessageBubble instance for this message
+    const messageBubble = this.messageBubbles.find(bubble => {
+      const element = bubble.getElement();
+      return element?.getAttribute('data-message-id') === messageId;
+    });
+
+    if (messageBubble) {
+      // Delegate to MessageBubble to handle the finalized branch, passing fresh message
+      messageBubble.handleBranchFinalized(branchId, freshMessage);
     }
   }
 
@@ -196,6 +245,13 @@ export class MessageDisplay {
    * Create a message bubble element
    */
   private createMessageBubble(message: ConversationMessage): HTMLElement {
+    if (message.alternativeBranches?.length) {
+      console.debug('[MessageDisplay] Creating bubble with branches', {
+        messageId: message.id,
+        branchCount: message.alternativeBranches.length,
+        activeAlternativeId: message.activeAlternativeId
+      });
+    }
     const bubble = new MessageBubble(
       message,
       this.app,
@@ -268,12 +324,37 @@ export class MessageDisplay {
    */
   findMessageBubble(messageId: string): MessageBubble | undefined {
     if (!this.conversation) return undefined;
-    
-    const messageIndex = this.conversation.messages.findIndex(msg => msg.id === messageId);
-    if (messageIndex === -1) return undefined;
-    
-    // MessageBubbles are created in same order as messages
-    return this.messageBubbles[messageIndex];
+
+    const directIndex = this.conversation.messages.findIndex(msg => msg.id === messageId);
+    if (directIndex !== -1) {
+      console.debug('[MessageDisplay] findMessageBubble direct match', { messageId });
+      return this.messageBubbles[directIndex];
+    }
+
+    const contextualIndex = this.findMessageIndexByAlternativeId(messageId);
+    if (contextualIndex === -1) {
+      console.warn('[MessageDisplay] findMessageBubble no match found', { messageId });
+      return undefined;
+    }
+
+    const message = this.conversation.messages[contextualIndex];
+    if (this.applyAlternativeContext(message, messageId)) {
+      const bubble = this.messageBubbles[contextualIndex];
+      bubble?.updateWithNewMessage(message);
+      console.debug('[MessageDisplay] findMessageBubble resolved via alternative', {
+        messageId,
+        baseMessageId: message.id,
+        activeAlternativeId: message.activeAlternativeId,
+        activeAlternativeIndex: message.activeAlternativeIndex
+      });
+      return bubble;
+    }
+
+    console.debug('[MessageDisplay] findMessageBubble fallback to base bubble', {
+      messageId,
+      baseMessageId: message.id
+    });
+    return this.messageBubbles[contextualIndex];
   }
 
   /**
@@ -323,5 +404,52 @@ export class MessageDisplay {
   cleanup(): void {
     this.messageBubbles.forEach(bubble => bubble.cleanup());
     this.messageBubbles = [];
+  }
+
+  private syncActiveAlternativeIndex(message: ConversationMessage, branchId: string): void {
+    if (message.alternativeBranches) {
+      const branchIndex = message.alternativeBranches.findIndex(branch => branch.id === branchId);
+      if (branchIndex >= 0) {
+        message.activeAlternativeIndex = branchIndex + 1;
+        return;
+      }
+    }
+
+    if (message.alternatives) {
+      const alternativeIndex = message.alternatives.findIndex(alt => alt.id === branchId);
+      if (alternativeIndex >= 0) {
+        message.activeAlternativeIndex = alternativeIndex + 1;
+      }
+    }
+  }
+
+  private findMessageIndexByAlternativeId(targetId: string): number {
+    if (!this.conversation) {
+      return -1;
+    }
+
+    return this.conversation.messages.findIndex(msg => {
+      const hasBranch = msg.alternativeBranches?.some(branch => branch.id === targetId);
+      const hasLegacyAlternative = msg.alternatives?.some(alt => alt.id === targetId);
+      return hasBranch || hasLegacyAlternative;
+    });
+  }
+
+  private applyAlternativeContext(message: ConversationMessage, targetId: string): boolean {
+    if (message.alternativeBranches?.some(branch => branch.id === targetId)) {
+      message.activeAlternativeId = targetId;
+      this.syncActiveAlternativeIndex(message, targetId);
+      return true;
+    }
+
+    if (message.alternatives?.some(alt => alt.id === targetId)) {
+      const altIndex = message.alternatives.findIndex(alt => alt.id === targetId);
+      if (altIndex >= 0) {
+        message.activeAlternativeIndex = altIndex + 1;
+        return true;
+      }
+    }
+
+    return false;
   }
 }

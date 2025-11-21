@@ -32,6 +32,7 @@ export interface StreamingOptions {
   messageId?: string;
   abortSignal?: AbortSignal;
   excludeFromMessageId?: string; // Exclude this message and everything after from context (for retry)
+  streamingTarget?: 'conversation' | 'branch';
 }
 
 export interface StreamingChunk {
@@ -68,16 +69,20 @@ export class StreamingResponseService {
     try {
       const messageId = options?.messageId || `msg_${Date.now()}_ai`;
       let accumulatedContent = '';
+      const streamingTarget = options?.streamingTarget || 'conversation';
+      const shouldPersist = streamingTarget === 'conversation';
 
       // Get defaults from LLMService if user didn't select provider/model
       const defaultModel = this.dependencies.llmService.getDefaultModel();
 
       // Check if message already exists (retry case)
       const existingConv = await this.dependencies.conversationService.getConversation(conversationId);
-      const messageExists = existingConv?.messages.some((m: any) => m.id === messageId);
+      const messageExists = shouldPersist
+        ? existingConv?.messages.some((m: any) => m.id === messageId)
+        : false;
 
       // Only create placeholder if message doesn't exist (prevents duplicate during retry)
-      if (!messageExists) {
+      if (shouldPersist && !messageExists) {
         await this.dependencies.conversationService.addMessage({
           conversationId,
           role: 'assistant',
@@ -173,7 +178,7 @@ export class StreamingResponseService {
 
           // Save assistant message with tool calls immediately when detected (before pingpong)
           // This happens ONCE when tool calls are first complete
-          if (chunk.toolCallsReady && !toolCallsSaved) {
+        if (shouldPersist && chunk.toolCallsReady && !toolCallsSaved) {
             await this.dependencies.conversationService.addMessage({
               conversationId,
               role: 'assistant',
@@ -210,47 +215,49 @@ export class StreamingResponseService {
             }
           }
 
-          // Update the placeholder message with final content
-          const conv = await this.dependencies.conversationService.getConversation(conversationId);
-          if (conv) {
-            const msg = conv.messages.find((m: any) => m.id === messageId);
-            if (msg) {
-              // Update existing placeholder message
-              msg.content = accumulatedContent;
+          if (shouldPersist) {
+            // Update the placeholder message with final content
+            const conv = await this.dependencies.conversationService.getConversation(conversationId);
+            if (conv) {
+              const msg = conv.messages.find((m: any) => m.id === messageId);
+              if (msg) {
+                // Update existing placeholder message
+                msg.content = accumulatedContent;
 
-              // Only update cost/usage if we have values (don't overwrite with undefined)
-              // This prevents overwriting async updates from OpenRouter's generation API
-              if (finalCost) {
-                msg.cost = finalCost;
+                // Only update cost/usage if we have values (don't overwrite with undefined)
+                // This prevents overwriting async updates from OpenRouter's generation API
+                if (finalCost) {
+                  msg.cost = finalCost;
+                }
+                if (finalUsage) {
+                  msg.usage = finalUsage;
+                }
+
+                msg.provider = provider;
+                msg.model = llmOptions.model;
+
+                // Save updated conversation
+                await this.dependencies.conversationService.updateConversation(conversationId, {
+                  messages: conv.messages,
+                  metadata: conv.metadata
+                });
               }
-              if (finalUsage) {
-                msg.usage = finalUsage;
-              }
+            }
 
-              msg.provider = provider;
-              msg.model = llmOptions.model;
-
-              // Save updated conversation
-              await this.dependencies.conversationService.updateConversation(conversationId, {
-                messages: conv.messages,
-                metadata: conv.metadata
+            // Handle tool calls - if present, add separate message for pingpong response
+            if (toolCalls && toolCalls.length > 0) {
+              // Had tool calls - the placeholder is the tool call message, add pingpong response separately
+              await this.dependencies.conversationService.addMessage({
+                conversationId,
+                role: 'assistant',
+                content: accumulatedContent, // Pingpong response text
+                cost: finalCost,
+                usage: finalUsage,
+                provider: provider,
+                model: llmOptions.model
+                // No toolCalls - this is the response AFTER seeing tool results
               });
             }
-          }
-
-          // Handle tool calls - if present, add separate message for pingpong response
-          if (toolCalls && toolCalls.length > 0) {
-            // Had tool calls - the placeholder is the tool call message, add pingpong response separately
-            await this.dependencies.conversationService.addMessage({
-              conversationId,
-              role: 'assistant',
-              content: accumulatedContent, // Pingpong response text
-              cost: finalCost,
-              usage: finalUsage,
-              provider: provider,
-              model: llmOptions.model
-              // No toolCalls - this is the response AFTER seeing tool results
-            });
           }
         }
 

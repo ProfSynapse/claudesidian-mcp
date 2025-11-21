@@ -7,7 +7,7 @@
 
 // import { ConversationRepository } from '../../../database/services/chat/ConversationRepository';
 type ConversationRepository = any;
-import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
+import { ConversationData, ConversationMessage, MessageAlternativeBranch } from '../../../types/chat/ChatTypes';
 
 export interface BranchManagerEvents {
   onMessageAlternativeCreated: (messageId: string, alternativeIndex: number) => void;
@@ -38,24 +38,19 @@ export class BranchManager {
       }
 
       const message = conversation.messages[messageIndex];
-      
-      // Initialize alternatives array if it doesn't exist
-      if (!message.alternatives) {
-        message.alternatives = [];
-      }
 
-      // Add the new alternative
-      message.alternatives.push(alternativeResponse);
-      const alternativeIndex = message.alternatives.length - 1;
+      const legacyIndex = this.upsertLegacyAlternative(message, alternativeResponse);
+      const branchIndex = this.upsertBranchFromAlternative(message, alternativeResponse, messageId);
 
       // Set the new alternative as active
-      message.activeAlternativeIndex = alternativeIndex + 1; // +1 because 0 is the original message
+      message.activeAlternativeIndex = branchIndex + 1; // +1 because 0 is the original message
+      message.activeAlternativeId = alternativeResponse.id;
 
       // Save the updated conversation to repository
       await this.conversationRepo.updateConversation(conversation.id, { messages: conversation.messages });
 
-      this.events.onMessageAlternativeCreated(messageId, alternativeIndex + 1);
-      return alternativeIndex + 1;
+      this.events.onMessageAlternativeCreated(messageId, legacyIndex + 1);
+      return legacyIndex + 1;
 
     } catch (error) {
       console.error('[BranchManager] Failed to create message alternative:', error);
@@ -91,6 +86,12 @@ export class BranchManager {
 
       // Update the active alternative index
       message.activeAlternativeIndex = alternativeIndex;
+      if (alternativeIndex === 0) {
+        message.activeAlternativeId = undefined;
+      } else {
+        const branch = this.getBranchByLegacyIndex(message, alternativeIndex);
+        message.activeAlternativeId = branch?.id;
+      }
 
       // Save the updated conversation to repository
       await this.conversationRepo.updateConversation(conversation.id, { messages: conversation.messages });
@@ -109,20 +110,18 @@ export class BranchManager {
    * Get the currently active message content (original or alternative)
    */
   getActiveMessageContent(message: ConversationMessage): string {
+    const activeBranch = this.getActiveBranch(message);
+    if (activeBranch) {
+      return activeBranch.content || '';
+    }
     const activeIndex = message.activeAlternativeIndex || 0;
-    
-    // Index 0 is the original message
     if (activeIndex === 0) {
       return message.content;
     }
-
-    // Alternative indices are 1-based, so subtract 1 to get array index
     const alternativeArrayIndex = activeIndex - 1;
     if (message.alternatives && alternativeArrayIndex < message.alternatives.length) {
       return message.alternatives[alternativeArrayIndex].content;
     }
-
-    // Fallback to original content if alternative not found
     return message.content;
   }
 
@@ -130,20 +129,18 @@ export class BranchManager {
    * Get the currently active message tool calls
    */
   getActiveMessageToolCalls(message: ConversationMessage): any[] | undefined {
+    const activeBranch = this.getActiveBranch(message);
+    if (activeBranch) {
+      return activeBranch.toolCalls;
+    }
     const activeIndex = message.activeAlternativeIndex || 0;
-    
-    // Index 0 is the original message
     if (activeIndex === 0) {
       return message.toolCalls;
     }
-
-    // Alternative indices are 1-based, so subtract 1 to get array index
     const alternativeArrayIndex = activeIndex - 1;
     if (message.alternatives && alternativeArrayIndex < message.alternatives.length) {
       return message.alternatives[alternativeArrayIndex].toolCalls;
     }
-
-    // Fallback to original tool calls if alternative not found
     return message.toolCalls;
   }
 
@@ -165,6 +162,9 @@ export class BranchManager {
    * Get total alternative count for a message (including original)
    */
   private getMessageAlternativeCount(message: ConversationMessage): number {
+    if (message.alternativeBranches && message.alternativeBranches.length > 0) {
+      return message.alternativeBranches.length + 1;
+    }
     const alternativesCount = message.alternatives?.length || 0;
     return alternativesCount + 1; // +1 for the original message
   }
@@ -173,6 +173,9 @@ export class BranchManager {
    * Check if a message has alternatives
    */
   hasMessageAlternatives(message: ConversationMessage): boolean {
+    if (message.alternativeBranches && message.alternativeBranches.length > 0) {
+      return true;
+    }
     return !!(message.alternatives && message.alternatives.length > 0);
   }
 
@@ -180,12 +183,16 @@ export class BranchManager {
    * Get all alternatives for a message (including original as index 0)
    */
   getAllMessageAlternatives(message: ConversationMessage): ConversationMessage[] {
-    const alternatives: ConversationMessage[] = [message]; // Original message at index 0
-    
+    const alternatives: ConversationMessage[] = [message];
+    if (message.alternativeBranches && message.alternativeBranches.length > 0) {
+      for (const branch of message.alternativeBranches) {
+        alternatives.push(this.convertBranchToMessage(branch, message));
+      }
+      return alternatives;
+    }
     if (message.alternatives) {
       alternatives.push(...message.alternatives);
     }
-    
     return alternatives;
   }
 
@@ -204,5 +211,95 @@ export class BranchManager {
     const currentIndex = message.activeAlternativeIndex || 0;
     const totalCount = this.getMessageAlternativeCount(message);
     return currentIndex < totalCount - 1 ? currentIndex + 1 : null;
+  }
+
+  /**
+   * Legacy helper: ensure alternatives array has entry matching branch
+   */
+  private upsertLegacyAlternative(message: ConversationMessage, alternative: ConversationMessage): number {
+    if (!message.alternatives) {
+      message.alternatives = [];
+    }
+    const idx = message.alternatives.findIndex(alt => alt.id === alternative.id);
+    if (idx >= 0) {
+      message.alternatives[idx] = alternative;
+      return idx;
+    }
+    message.alternatives.push(alternative);
+    return message.alternatives.length - 1;
+  }
+
+  /**
+   * Sync alternativeResponse into branch data structure
+   */
+  private upsertBranchFromAlternative(
+    message: ConversationMessage,
+    alternative: ConversationMessage,
+    parentMessageId: string
+  ): number {
+    if (!message.alternativeBranches) {
+      message.alternativeBranches = [];
+    }
+
+    const branch: MessageAlternativeBranch = {
+      id: alternative.id,
+      parentMessageId,
+      status: alternative.state === 'aborted' ? 'aborted' : 'complete',
+      content: alternative.content,
+      toolCalls: alternative.toolCalls,
+      createdAt: alternative.timestamp || Date.now(),
+      updatedAt: alternative.timestamp || Date.now(),
+      metadata: alternative.metadata
+    };
+
+    const index = message.alternativeBranches.findIndex(b => b.id === branch.id);
+    if (index >= 0) {
+      message.alternativeBranches[index] = branch;
+      return index;
+    }
+    message.alternativeBranches.push(branch);
+    return message.alternativeBranches.length - 1;
+  }
+
+  private getBranchByLegacyIndex(message: ConversationMessage, legacyIndex: number): MessageAlternativeBranch | undefined {
+    if (legacyIndex <= 0) return undefined;
+    const targetIndex = legacyIndex - 1;
+    if (message.alternativeBranches && message.alternativeBranches[targetIndex]) {
+      return message.alternativeBranches[targetIndex];
+    }
+    if (message.alternatives && message.alternatives[targetIndex]) {
+      const alt = message.alternatives[targetIndex];
+      return {
+        id: alt.id,
+        parentMessageId: message.id,
+        status: alt.state === 'aborted' ? 'aborted' : 'complete',
+        content: alt.content,
+        toolCalls: alt.toolCalls,
+        createdAt: alt.timestamp || Date.now(),
+        updatedAt: alt.timestamp || Date.now(),
+        metadata: alt.metadata
+      };
+    }
+    return undefined;
+  }
+
+  private getActiveBranch(message: ConversationMessage): MessageAlternativeBranch | null {
+    if (!message.activeAlternativeId || !message.alternativeBranches) {
+      return null;
+    }
+    return message.alternativeBranches.find(branch => branch.id === message.activeAlternativeId) || null;
+  }
+
+  private convertBranchToMessage(branch: MessageAlternativeBranch, parent: ConversationMessage): ConversationMessage {
+    return {
+      id: branch.id,
+      role: 'assistant',
+      content: branch.content || '',
+      timestamp: branch.updatedAt || branch.createdAt,
+      conversationId: parent.conversationId,
+      state: branch.status === 'complete' ? 'complete' : branch.status,
+      toolCalls: branch.toolCalls,
+      metadata: branch.metadata
+    };
   }
 }
