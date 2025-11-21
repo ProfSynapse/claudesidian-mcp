@@ -82,7 +82,7 @@ export class MessageBranchNavigator {
     }
 
     const alternativeCount = this.getAlternativeCount();
-    const currentIndex = this.currentMessage.activeAlternativeIndex || 0;
+    const currentIndex = this.getCurrentAlternativeIndex();
 
     // Show and update the indicator (1-based display)
     this.show();
@@ -112,8 +112,8 @@ export class MessageBranchNavigator {
    */
   private async handlePreviousAlternative(): Promise<void> {
     if (!this.currentMessage) return;
-    
-    const currentIndex = this.currentMessage.activeAlternativeIndex || 0;
+
+    const currentIndex = this.getCurrentAlternativeIndex();
     if (currentIndex <= 0) return;
 
     const newIndex = currentIndex - 1;
@@ -126,8 +126,8 @@ export class MessageBranchNavigator {
    */
   private async handleNextAlternative(): Promise<void> {
     if (!this.currentMessage) return;
-    
-    const currentIndex = this.currentMessage.activeAlternativeIndex || 0;
+
+    const currentIndex = this.getCurrentAlternativeIndex();
     const totalCount = this.getAlternativeCount();
     if (currentIndex >= totalCount - 1) return;
 
@@ -147,6 +147,36 @@ export class MessageBranchNavigator {
       return true;
     }
     return !!(this.currentMessage.alternatives && this.currentMessage.alternatives.length > 0);
+  }
+
+  /**
+   * Get current alternative index (0-based)
+   * Handles both new branch system (activeAlternativeId) and legacy (activeAlternativeIndex)
+   */
+  private getCurrentAlternativeIndex(): number {
+    if (!this.currentMessage) {
+      return 0;
+    }
+
+    // Check new branch system first
+    if (this.currentMessage.alternativeBranches && this.currentMessage.alternativeBranches.length > 0) {
+      // If no active branch ID, original message is active (index 0)
+      if (!this.currentMessage.activeAlternativeId) {
+        return 0;
+      }
+
+      // Find the index of the active branch (index 0 = original, 1+ = branches)
+      const branchIndex = this.currentMessage.alternativeBranches.findIndex(
+        branch => branch.id === this.currentMessage!.activeAlternativeId
+      );
+
+      // If active branch found, return index + 1 (0 = original message)
+      // If not found, return 0 (original message)
+      return branchIndex >= 0 ? branchIndex + 1 : 0;
+    }
+
+    // Fall back to legacy activeAlternativeIndex
+    return this.currentMessage.activeAlternativeIndex || 0;
   }
 
   /**
@@ -192,10 +222,10 @@ export class MessageBranchNavigator {
    */
   getCurrentAlternativeInfo(): { current: number; total: number; hasAlternatives: boolean } | null {
     if (!this.currentMessage) return null;
-    
-    const currentIndex = this.currentMessage.activeAlternativeIndex || 0;
+
+    const currentIndex = this.getCurrentAlternativeIndex();
     const totalCount = this.getAlternativeCount();
-    
+
     return {
       current: currentIndex + 1, // 1-based for display
       total: totalCount,
