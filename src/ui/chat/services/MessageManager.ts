@@ -5,7 +5,7 @@
 
 import { ChatService } from '../../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
-import { BranchLifecycleEvents } from '../../../types/chat/BranchEvents';
+// BranchLifecycleEvents import removed - migrated to event bus
 import { BranchManager } from './BranchManager';
 import { ReferenceMetadata } from '../utils/ReferenceExtractor';
 import { MessageAlternativeService } from './MessageAlternativeService';
@@ -14,7 +14,9 @@ import { MessageStateManager } from './MessageStateManager';
 import { AbortHandler } from '../utils/AbortHandler';
 import { BranchStreamPersistence } from './BranchStreamPersistence';
 
-export interface MessageManagerEvents extends BranchLifecycleEvents {
+export interface MessageManagerEvents {
+  // Note: onBranchFinalized removed - now handled via event bus
+  // No longer extends BranchLifecycleEvents since we're migrating to event bus
   onMessageAdded: (message: ConversationMessage) => void;
   onAIMessageStarted: (message: ConversationMessage) => void;
   onStreamingUpdate: (messageId: string, content: string, isComplete: boolean, isIncremental?: boolean) => void;
@@ -76,8 +78,8 @@ export class MessageManager {
         onConversationUpdated: events.onConversationUpdated,
         onToolCallsDetected: events.onToolCallsDetected,
         onLoadingStateChanged: (loading) => this.setLoading(loading),
-        onError: events.onError,
-        onBranchFinalized: events.onBranchFinalized
+        onError: events.onError
+        // onBranchFinalized removed - now handled via event bus
       }
     );
   }

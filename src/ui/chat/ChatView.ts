@@ -16,7 +16,7 @@ import { ContextProgressBar } from './components/ContextProgressBar';
 import { ChatSettingsModal } from './components/ChatSettingsModal';
 import { ChatService } from '../../services/chat/ChatService';
 import { ConversationData, ConversationMessage } from '../../types/chat/ChatTypes';
-import { BranchFinalizedEvent } from '../../types/chat/BranchEvents';
+// BranchFinalizedEvent import removed - now handled via event bus
 import { MessageEnhancement } from './components/suggesters/base/SuggesterInterfaces';
 
 // Services
@@ -40,6 +40,10 @@ import { ChatEventBinder } from './utils/ChatEventBinder';
 import { TokenCalculator } from './utils/TokenCalculator';
 import { ReferenceMetadata } from './utils/ReferenceExtractor';
 
+// Event Bus
+import { eventBus } from '../../events/EventBus';
+import { ChatEventNames } from '../../events/ChatEvents';
+
 export const CHAT_VIEW_TYPE = 'claudesidian-chat';
 
 export class ChatView extends ItemView {
@@ -62,6 +66,9 @@ export class ChatView extends ItemView {
 
   // Layout elements
   private layoutElements!: ChatLayoutElements;
+
+  // Event Bus
+  private eventBusUnsubscribe: (() => void) | null = null;
 
   constructor(leaf: WorkspaceLeaf, private chatService: ChatService) {
     super(leaf);
@@ -114,6 +121,7 @@ export class ChatView extends ItemView {
     this.initializeControllers();
     this.initializeComponents();
     this.wireEventHandlers();
+    this.setupEventLogging();
   }
 
   /**
@@ -151,7 +159,7 @@ export class ChatView extends ItemView {
       onStreamingUpdate: (messageId, content, isComplete, isIncremental) =>
         this.handleStreamingUpdate(messageId, content, isComplete, isIncremental),
       onConversationUpdated: (conversation) => this.handleConversationUpdated(conversation),
-      onBranchFinalized: (event) => this.handleBranchFinalized(event),
+      // onBranchFinalized removed - now handled via event bus in MessageBubble
       onLoadingStateChanged: (loading) => this.handleLoadingStateChanged(loading),
       onError: (message) => this.uiStateController.showError(message),
       onToolCallsDetected: (messageId, toolCalls) => this.toolEventCoordinator.handleToolCallsDetected(messageId, toolCalls),
@@ -403,10 +411,7 @@ export class ChatView extends ItemView {
     this.updateContextProgress();
   }
 
-  private handleBranchFinalized(event: BranchFinalizedEvent): void {
-    // Delegate to MessageDisplay for targeted update, passing fresh message
-    this.messageDisplay.handleBranchFinalized(event.messageId, event.branchId, event.message);
-  }
+  // handleBranchFinalized removed - now handled via event bus in MessageBubble
 
   private async handleSendMessage(
     message: string,
@@ -573,7 +578,65 @@ export class ChatView extends ItemView {
     }
   }
 
+  /**
+   * Set up event bus logging for debugging
+   * Logs all events to console with formatted output
+   */
+  private setupEventLogging(): void {
+    // Skip high-frequency events to reduce console spam
+    const skipEvents = new Set([
+      'streaming.update',  // Fires on every chunk (very frequent)
+      'tool.updated'       // Fires on every parameter update (very frequent)
+    ]);
+
+    // Subscribe to all events with wildcard listener
+    this.eventBusUnsubscribe = eventBus.onAll(({ event, data }) => {
+      // Skip noisy high-frequency events
+      if (skipEvents.has(event)) {
+        return;
+      }
+
+      // Group events by category for cleaner logs
+      const category = event.split('.')[0];
+      const action = event.split('.')[1];
+
+      // Color-code by category
+      const colors: Record<string, string> = {
+        branch: '#4CAF50',     // Green
+        streaming: '#2196F3',  // Blue
+        tool: '#FF9800',       // Orange
+        message: '#9C27B0',    // Purple
+        conversation: '#00BCD4' // Cyan
+      };
+
+      const color = colors[category] || '#757575'; // Gray default
+
+      // Format the log output
+      console.groupCollapsed(
+        `%c[EventBus] ${category}.${action}`,
+        `color: ${color}; font-weight: bold;`
+      );
+      console.log('Event:', event);
+      console.log('Data:', data);
+      console.log('Timestamp:', new Date().toISOString());
+      console.log('Listener Count:', eventBus.getListenerCount(event));
+      console.groupEnd();
+    });
+
+    console.log(
+      '%c[EventBus] Event logging initialized',
+      'color: #4CAF50; font-weight: bold;',
+      '\nTotal listeners:', eventBus.getListenerCount()
+    );
+  }
+
   private cleanup(): void {
+    // Unsubscribe from event bus
+    if (this.eventBusUnsubscribe) {
+      this.eventBusUnsubscribe();
+      this.eventBusUnsubscribe = null;
+    }
+
     this.conversationList?.cleanup();
     this.messageDisplay?.cleanup();
     this.chatInput?.cleanup();
@@ -607,14 +670,6 @@ export class ChatView extends ItemView {
           baseMessageId: msg.id
         });
         return { message: msg, branchId: branch.id };
-      }
-      const legacyAlt = msg.alternatives?.find(alt => alt.id === messageId);
-      if (legacyAlt) {
-        console.debug('[ChatView] Streaming context resolved to legacy alternative', {
-          messageId,
-          baseMessageId: msg.id
-        });
-        return { message: msg, branchId: legacyAlt.id };
       }
     }
 

@@ -10,6 +10,8 @@
 
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { ChatService } from '../../../services/chat/ChatService';
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames } from '../../../events/ChatEvents';
 
 export interface AbortHandlerEvents {
   onStreamingUpdate: (messageId: string, content: string, isComplete: boolean, isIncremental?: boolean) => void;
@@ -62,6 +64,14 @@ export class AbortHandler {
       // Save conversation with cleaned partial message
       await this.chatService.updateConversation(conversation);
 
+      // MIGRATION: Emit streaming aborted event
+      eventBus.emit(ChatEventNames.STREAMING_ABORTED, {
+        messageId: aiMessageId,
+        branchId: '',
+        reason: 'User aborted generation',
+        branch: null as any
+      });
+
       // Finalize streaming with partial content (stops animation, renders final content)
       this.events.onStreamingUpdate(aiMessageId, aiMessage.content, true, false);
 
@@ -77,6 +87,14 @@ export class AbortHandler {
 
       // Save conversation without the empty message
       await this.chatService.updateConversation(conversation);
+
+      // MIGRATION: Emit streaming aborted event
+      eventBus.emit(ChatEventNames.STREAMING_ABORTED, {
+        messageId: aiMessageId,
+        branchId: '',
+        reason: 'No content generated before abort',
+        branch: null as any
+      });
 
       // Update UI to remove the empty message bubble
       this.events.onConversationUpdated(conversation);

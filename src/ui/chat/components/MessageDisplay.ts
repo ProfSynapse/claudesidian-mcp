@@ -8,6 +8,8 @@ import { ConversationData, ConversationMessage } from '../../../types/chat/ChatT
 import { MessageBubble } from './MessageBubble';
 import { BranchManager } from '../services/BranchManager';
 import { App, setIcon } from 'obsidian';
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames } from '../../../events/ChatEvents';
 
 export class MessageDisplay {
   private conversation: ConversationData | null = null;
@@ -154,26 +156,8 @@ export class MessageDisplay {
     }
   }
 
-  /**
-   * Handle branch finalized event - targeted update for completed branches
-   * This creates action buttons (copy, navigator) without full re-render
-   *
-   * @param messageId - The ID of the message containing the branch
-   * @param branchId - The ID of the finalized branch
-   * @param freshMessage - Fresh message object from storage with updated state
-   */
-  handleBranchFinalized(messageId: string, branchId: string, freshMessage: ConversationMessage): void {
-    // Find the MessageBubble instance for this message
-    const messageBubble = this.messageBubbles.find(bubble => {
-      const element = bubble.getElement();
-      return element?.getAttribute('data-message-id') === messageId;
-    });
-
-    if (messageBubble) {
-      // Delegate to MessageBubble to handle the finalized branch, passing fresh message
-      messageBubble.handleBranchFinalized(branchId, freshMessage);
-    }
-  }
+  // handleBranchFinalized removed - now handled via event bus in MessageBubble
+  // MessageBubble subscribes directly to branch.finalized events
 
   /**
    * Escape HTML for safe display
@@ -278,6 +262,10 @@ export class MessageDisplay {
     const message = this.findMessage(messageId);
     if (message) {
       navigator.clipboard.writeText(message.content).then(() => {
+        // MIGRATION: Emit via event bus
+        eventBus.emit(ChatEventNames.MESSAGE_COPIED, {
+          messageId
+        });
         // Message copied to clipboard
       }).catch(err => {
         // Failed to copy message
@@ -289,6 +277,16 @@ export class MessageDisplay {
    * Handle retry message action
    */
   private handleRetryMessage(messageId: string): void {
+    // MIGRATION: Emit via event bus
+    const message = this.findMessage(messageId);
+    if (message) {
+      const userMessageId = message.role === 'user' ? messageId : '';
+      eventBus.emit(ChatEventNames.RETRY_REQUESTED, {
+        messageId,
+        userMessageId
+      });
+    }
+
     if (this.onRetryMessage) {
       this.onRetryMessage(messageId);
     }
@@ -414,13 +412,7 @@ export class MessageDisplay {
         return;
       }
     }
-
-    if (message.alternatives) {
-      const alternativeIndex = message.alternatives.findIndex(alt => alt.id === branchId);
-      if (alternativeIndex >= 0) {
-        message.activeAlternativeIndex = alternativeIndex + 1;
-      }
-    }
+    // No legacy alternative support
   }
 
   private findMessageIndexByAlternativeId(targetId: string): number {
@@ -429,9 +421,7 @@ export class MessageDisplay {
     }
 
     return this.conversation.messages.findIndex(msg => {
-      const hasBranch = msg.alternativeBranches?.some(branch => branch.id === targetId);
-      const hasLegacyAlternative = msg.alternatives?.some(alt => alt.id === targetId);
-      return hasBranch || hasLegacyAlternative;
+      return msg.alternativeBranches?.some(branch => branch.id === targetId);
     });
   }
 
@@ -442,14 +432,7 @@ export class MessageDisplay {
       return true;
     }
 
-    if (message.alternatives?.some(alt => alt.id === targetId)) {
-      const altIndex = message.alternatives.findIndex(alt => alt.id === targetId);
-      if (altIndex >= 0) {
-        message.activeAlternativeIndex = altIndex + 1;
-        return true;
-      }
-    }
-
+    // No legacy alternative support
     return false;
   }
 }

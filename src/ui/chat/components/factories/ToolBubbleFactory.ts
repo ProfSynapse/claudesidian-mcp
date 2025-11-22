@@ -133,7 +133,8 @@ export class ToolBubbleFactory {
     });
 
     // Message branch navigator for messages with alternatives
-    if (message.alternatives && message.alternatives.length > 0 && messageBranchNavigator) {
+    // Only alternativeBranches are supported - legacy alternatives removed
+    if (messageBranchNavigator) {
       const navigatorEvents = {
         onAlternativeChanged: (messageId: string, alternativeIndex: number) => {
           if (onMessageAlternativeChanged) {
@@ -180,18 +181,13 @@ export class ToolBubbleFactory {
    * Get the active content for the message (original or alternative)
    */
   private static getActiveMessageContent(message: ConversationMessage): string {
-    const activeIndex = message.activeAlternativeIndex || 0;
-
-    // Index 0 is the original message
-    if (activeIndex === 0) {
-      return message.content;
-    }
-
-    // Alternative messages start at index 1
-    if (message.alternatives && message.alternatives.length > 0) {
-      const alternativeIndex = activeIndex - 1;
-      if (alternativeIndex >= 0 && alternativeIndex < message.alternatives.length) {
-        return message.alternatives[alternativeIndex].content;
+    // Check if there's an active branch
+    if (message.activeAlternativeId && message.alternativeBranches) {
+      const activeBranch = message.alternativeBranches.find(
+        branch => branch.id === message.activeAlternativeId
+      );
+      if (activeBranch) {
+        return activeBranch.content || '';
       }
     }
 

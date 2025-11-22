@@ -114,14 +114,7 @@ export class BranchManager {
     if (activeBranch) {
       return activeBranch.content || '';
     }
-    const activeIndex = message.activeAlternativeIndex || 0;
-    if (activeIndex === 0) {
-      return message.content;
-    }
-    const alternativeArrayIndex = activeIndex - 1;
-    if (message.alternatives && alternativeArrayIndex < message.alternatives.length) {
-      return message.alternatives[alternativeArrayIndex].content;
-    }
+    // If no active branch, return original content
     return message.content;
   }
 
@@ -133,14 +126,7 @@ export class BranchManager {
     if (activeBranch) {
       return activeBranch.toolCalls;
     }
-    const activeIndex = message.activeAlternativeIndex || 0;
-    if (activeIndex === 0) {
-      return message.toolCalls;
-    }
-    const alternativeArrayIndex = activeIndex - 1;
-    if (message.alternatives && alternativeArrayIndex < message.alternatives.length) {
-      return message.alternatives[alternativeArrayIndex].toolCalls;
-    }
+    // If no active branch, return original tool calls
     return message.toolCalls;
   }
 
@@ -165,18 +151,15 @@ export class BranchManager {
     if (message.alternativeBranches && message.alternativeBranches.length > 0) {
       return message.alternativeBranches.length + 1;
     }
-    const alternativesCount = message.alternatives?.length || 0;
-    return alternativesCount + 1; // +1 for the original message
+    // No alternatives - just the original message
+    return 1;
   }
 
   /**
    * Check if a message has alternatives
    */
   hasMessageAlternatives(message: ConversationMessage): boolean {
-    if (message.alternativeBranches && message.alternativeBranches.length > 0) {
-      return true;
-    }
-    return !!(message.alternatives && message.alternatives.length > 0);
+    return !!(message.alternativeBranches && message.alternativeBranches.length > 0);
   }
 
   /**
@@ -188,10 +171,6 @@ export class BranchManager {
       for (const branch of message.alternativeBranches) {
         alternatives.push(this.convertBranchToMessage(branch, message));
       }
-      return alternatives;
-    }
-    if (message.alternatives) {
-      alternatives.push(...message.alternatives);
     }
     return alternatives;
   }
@@ -214,19 +193,12 @@ export class BranchManager {
   }
 
   /**
-   * Legacy helper: ensure alternatives array has entry matching branch
+   * DEPRECATED: Legacy helper - no longer used
+   * Kept for backwards compatibility during migration period
    */
   private upsertLegacyAlternative(message: ConversationMessage, alternative: ConversationMessage): number {
-    if (!message.alternatives) {
-      message.alternatives = [];
-    }
-    const idx = message.alternatives.findIndex(alt => alt.id === alternative.id);
-    if (idx >= 0) {
-      message.alternatives[idx] = alternative;
-      return idx;
-    }
-    message.alternatives.push(alternative);
-    return message.alternatives.length - 1;
+    console.warn('[BranchManager] DEPRECATED: upsertLegacyAlternative called - should not be used');
+    return 0;
   }
 
   /**
@@ -267,19 +239,7 @@ export class BranchManager {
     if (message.alternativeBranches && message.alternativeBranches[targetIndex]) {
       return message.alternativeBranches[targetIndex];
     }
-    if (message.alternatives && message.alternatives[targetIndex]) {
-      const alt = message.alternatives[targetIndex];
-      return {
-        id: alt.id,
-        parentMessageId: message.id,
-        status: alt.state === 'aborted' ? 'aborted' : 'complete',
-        content: alt.content,
-        toolCalls: alt.toolCalls,
-        createdAt: alt.timestamp || Date.now(),
-        updatedAt: alt.timestamp || Date.now(),
-        metadata: alt.metadata
-      };
-    }
+    // Legacy alternatives no longer supported
     return undefined;
   }
 

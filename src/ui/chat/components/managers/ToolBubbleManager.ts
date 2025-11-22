@@ -60,6 +60,7 @@ export class ToolBubbleManager {
       this.toolBubbleElement.remove();
       this.toolBubbleElement = null;
     }
+
     this.cleanupProgressiveAccordions();
   }
 

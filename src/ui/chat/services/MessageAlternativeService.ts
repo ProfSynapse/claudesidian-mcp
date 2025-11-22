@@ -16,6 +16,10 @@ import { BranchStreamPersistence } from './BranchStreamPersistence';
 import { MessageStreamHandler } from './MessageStreamHandler';
 import { AbortHandler } from '../utils/AbortHandler';
 
+// Event Bus
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames } from '../../../events/ChatEvents';
+
 export interface MessageAlternativeServiceEvents extends BranchLifecycleEvents {
   onStreamingUpdate: (messageId: string, content: string, isComplete: boolean, isIncremental?: boolean) => void;
   onConversationUpdated: (conversation: ConversationData) => void;
@@ -130,16 +134,15 @@ export class MessageAlternativeService {
         aiMessage = conversation.messages.find(m => m.id === aiMessageId);
       }
 
-      // Fire event with fresh data
+      // Fire event with fresh data via event bus (callback removed - no active subscribers)
       const streamingBranch = aiMessage?.alternativeBranches?.find(b => b.id === branchId);
-      if (streamingBranch && this.events.onBranchStatusChanged) {
-        this.events.onBranchStatusChanged({
+      if (streamingBranch) {
+        eventBus.emit(ChatEventNames.BRANCH_STATUS_CHANGED, {
           messageId: aiMessageId,
           branchId,
-          oldStatus: 'draft',
-          newStatus: 'streaming',
-          branch: streamingBranch,
-          timestamp: Date.now()
+          oldStatus: 'draft' as const,
+          newStatus: 'streaming' as const,
+          branch: streamingBranch
         });
       }
       this.events.onConversationUpdated(conversation);
@@ -224,14 +227,14 @@ export class MessageAlternativeService {
       const freshMessage = freshConversation.messages.find(msg => msg.id === aiMessageId);
       const finalizedBranch = freshMessage?.alternativeBranches?.find(b => b.id === branchId);
 
-      if (this.events.onBranchFinalized && finalizedBranch && freshMessage) {
-        this.events.onBranchFinalized({
+      // Emit via event bus (replaces old callback delegation chain)
+      if (finalizedBranch && freshMessage) {
+        eventBus.emit(ChatEventNames.BRANCH_FINALIZED, {
           messageId: aiMessageId,
           branchId,
           branch: finalizedBranch,
-          message: freshMessage,  // Include fresh message for immediate state access
-          finalStatus: 'complete',
-          timestamp: Date.now()
+          message: freshMessage,
+          finalStatus: 'complete' as const
         });
       }
 
@@ -287,6 +290,7 @@ export class MessageAlternativeService {
 
   /**
    * Legacy fallback for when branch persistence is not available
+   * DEPRECATED: This path should never execute in modern usage
    */
   private async createAlternativeResponseLegacy(
     conversation: ConversationData,
@@ -297,89 +301,9 @@ export class MessageAlternativeService {
     originalState: string | undefined,
     options?: any
   ): Promise<void> {
-    try {
-      // Clear the AI message
-      const messageIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-      if (messageIndex >= 0) {
-        conversation.messages[messageIndex].content = '';
-        conversation.messages[messageIndex].toolCalls = undefined;
-        conversation.messages[messageIndex].state = 'draft';
-        this.events.onStreamingUpdate(aiMessageId, '', false, false);
-        this.events.onConversationUpdated(conversation);
-      }
-
-      this.currentAbortController = new AbortController();
-      this.currentStreamingMessageId = aiMessageId;
-
-      const { streamedContent, toolCalls } = await this.streamHandler.streamResponse(
-        conversation,
-        userMessage.content,
-        aiMessageId,
-        {
-          ...options,
-          excludeFromMessageId: aiMessageId,
-          abortSignal: this.currentAbortController.signal
-        }
-      );
-
-      // Restore original
-      const restoreIndex = conversation.messages.findIndex(msg => msg.id === aiMessageId);
-      if (restoreIndex >= 0) {
-        conversation.messages[restoreIndex].content = originalContent;
-        conversation.messages[restoreIndex].toolCalls = originalToolCalls;
-        conversation.messages[restoreIndex].state = (originalState as any) || 'complete';
-      }
-
-      // Create alternative using legacy BranchManager
-      const alternativeResponse: ConversationMessage = {
-        id: `alt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
-        role: 'assistant',
-        content: streamedContent,
-        timestamp: Date.now(),
-        conversationId: conversation.id,
-        state: 'complete',
-        toolCalls: toolCalls
-      };
-
-      await this.branchManager.createMessageAlternative(
-        conversation,
-        aiMessageId,
-        alternativeResponse
-      );
-
-      // Reload from storage
-      const freshConversation = await this.chatService.getConversation(conversation.id);
-      if (freshConversation) {
-        Object.assign(conversation, freshConversation);
-      }
-
-      this.events.onConversationUpdated(conversation);
-
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        await this.abortHandler.handleAbort(
-          conversation,
-          aiMessageId,
-          async (hasContent, aiMsg) => {
-            if (hasContent) {
-              aiMsg.toolCalls = undefined;
-              aiMsg.state = 'aborted';
-              await this.chatService.updateConversation(conversation);
-              this.events.onStreamingUpdate(aiMessageId, aiMsg.content, true, false);
-              this.events.onConversationUpdated(conversation);
-            } else {
-              aiMsg.content = originalContent;
-              aiMsg.toolCalls = originalToolCalls;
-              aiMsg.state = (originalState as any) || 'complete';
-              await this.chatService.updateConversation(conversation);
-              this.events.onConversationUpdated(conversation);
-            }
-          }
-        );
-      } else {
-        this.events.onError('Failed to generate alternative response');
-      }
-    }
+    console.error('[MessageAlternativeService] CRITICAL: Legacy path invoked - this should not happen');
+    console.error('[MessageAlternativeService] Branch persistence should always be available');
+    this.events.onError('Branch persistence not available - cannot retry message');
   }
 
   /**

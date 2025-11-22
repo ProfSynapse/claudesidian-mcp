@@ -10,6 +10,8 @@
 
 import { ChatService } from '../../../services/chat/ChatService';
 import { ConversationData } from '../../../types/chat/ChatTypes';
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames } from '../../../events/ChatEvents';
 
 export interface StreamHandlerEvents {
   onStreamingUpdate: (messageId: string, content: string, isComplete: boolean, isIncremental?: boolean) => void;
@@ -96,11 +98,25 @@ export class MessageStreamHandler {
             conversation.messages[placeholderMessageIndex].state = 'streaming';
             conversation.messages[placeholderMessageIndex].isLoading = false;
           }
+
+          // MIGRATION: Emit streaming started event
+          eventBus.emit(ChatEventNames.STREAMING_STARTED, {
+            messageId: eventMessageId,
+            branchId: isBranchStream ? eventMessageId : '',
+            branch: null as any // TODO: Pass actual branch if needed
+          });
         }
 
         streamedContent += chunk.chunk;
 
-        // Send only the new chunk to UI for incremental updates
+        // MIGRATION: Emit via event bus + keep callback for backward compatibility
+        eventBus.emit(ChatEventNames.STREAMING_UPDATE, {
+          messageId: eventMessageId,
+          branchId: isBranchStream ? eventMessageId : '',
+          delta: chunk.chunk,
+          fullContent: streamedContent,
+          branch: null as any // TODO: Pass actual branch if needed
+        });
         this.events.onStreamingUpdate(eventMessageId, chunk.chunk, false, true);
       }
 
@@ -122,6 +138,17 @@ export class MessageStreamHandler {
 
         // Emit tool calls event for final chunk
         if (chunk.complete) {
+          // MIGRATION: Emit tool detected event via event bus
+          toolCalls.forEach(tc => {
+            eventBus.emit(ChatEventNames.TOOL_DETECTED, {
+              messageId: eventMessageId,
+              branchId: isBranchStream ? eventMessageId : '',
+              toolId: tc.id || `${tc.name}_${Date.now()}`,
+              toolName: tc.name,
+              parameters: tc.parameters || {},
+              isComplete: true
+            });
+          });
           this.events.onToolCallsDetected(eventMessageId, toolCalls);
         }
       }
@@ -152,6 +179,14 @@ export class MessageStreamHandler {
               };
             }
           }
+
+          // MIGRATION: Emit streaming completed event
+          eventBus.emit(ChatEventNames.STREAMING_COMPLETED, {
+            messageId: eventMessageId,
+            branchId: isBranchStream ? eventMessageId : '',
+            finalContent: streamedContent,
+            branch: null as any // TODO: Pass actual branch if needed
+          });
 
           // Send final complete content
           this.events.onStreamingUpdate(eventMessageId, streamedContent, true, false);
@@ -191,6 +226,12 @@ export class MessageStreamHandler {
 
     // Save conversation to storage
     await this.chatService.updateConversation(conversation);
+
+    // MIGRATION: Emit conversation saved event
+    eventBus.emit(ChatEventNames.CONVERSATION_SAVED, {
+      conversationId: conversation.id,
+      timestamp: Date.now()
+    });
 
     return result;
   }

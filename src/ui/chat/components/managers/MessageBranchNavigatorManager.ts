@@ -9,12 +9,10 @@
 import { ConversationMessage } from '../../../../types/chat/ChatTypes';
 import { MessageBranchNavigator, MessageBranchNavigatorEvents } from '../MessageBranchNavigator';
 import { BranchStateHelper } from '../utils/BranchStateHelper';
-import { DiagnosticLogger } from '../utils/DiagnosticLogger';
 
 export class MessageBranchNavigatorManager {
   private messageBranchNavigator: MessageBranchNavigator | null = null;
   private navigatorContainer: HTMLElement | null = null;
-  private diagnosticLogger: DiagnosticLogger = new DiagnosticLogger();
 
   constructor(
     private onAlternativeChanged?: (messageId: string, alternativeIndex: number) => void
@@ -30,18 +28,11 @@ export class MessageBranchNavigatorManager {
     const shouldShow = this.shouldShowNavigator(message);
     const hasNavigator = !!this.messageBranchNavigator;
 
-    // Only log when state changes (reduce spam)
-    const stateChanged = this.diagnosticLogger.logNavigatorStateChange(
-      { shouldShow, hasNavigator },
-      message.id
-    );
-
     if (shouldShow && !this.messageBranchNavigator) {
       this.createNavigator(message, actionContainer);
     } else if (!shouldShow && this.messageBranchNavigator) {
       this.destroyNavigator();
     } else if (shouldShow && this.messageBranchNavigator) {
-      // Update existing navigator (no log - happens frequently)
       this.messageBranchNavigator.updateMessage(message);
     }
   }
@@ -57,24 +48,14 @@ export class MessageBranchNavigatorManager {
       return false;
     }
 
-    // Must have alternatives to show navigator
-    const hasAlternatives = (message.alternativeBranches?.length ?? 0) > 0 ||
-      (message.alternatives?.length ?? 0) > 0;
-    if (!hasAlternatives) {
-      return false;
-    }
+    // Must have multiple alternatives to show navigator (2+ branches)
+    const branchCount = message.alternativeBranches?.length ?? 0;
+    const legacyAltCount = message.alternatives?.length ?? 0;
+    const hasMultipleBranches = branchCount > 1 || legacyAltCount > 1;
 
-    // Don't show during streaming - only check the ACTIVE branch/message, not all branches
-    const activeBranch = BranchStateHelper.getActiveBranch(message);
-
-    // Check streaming status - be defensive about undefined values
-    // isLoading is runtime-only (not persisted), so it may be undefined after reload
-    const isLoading = message.isLoading === true;  // Explicitly check for true
-    const branchStreaming = activeBranch?.status === 'streaming';
-    const messageStreaming = message.state === 'streaming';
-    const isStreaming = isLoading || branchStreaming || messageStreaming;
-
-    return !isStreaming;
+    // Always show navigator when there are multiple branches, even during streaming
+    // This allows users to switch between completed and streaming branches during retry
+    return hasMultipleBranches;
   }
 
   /**
@@ -84,16 +65,8 @@ export class MessageBranchNavigatorManager {
    */
   private createNavigator(message: ConversationMessage, actionContainer: HTMLElement | null): void {
     if (!actionContainer) {
-      this.diagnosticLogger.logNavigatorEvent('Cannot create navigator - actionContainer is null', {
-        messageId: message.id
-      });
       return;
     }
-
-    this.diagnosticLogger.logNavigatorEvent('Creating navigator', {
-      messageId: message.id,
-      hasExistingContainer: !!this.navigatorContainer
-    });
 
     const navigatorEvents: MessageBranchNavigatorEvents = {
       onAlternativeChanged: (messageId, alternativeIndex) => {
@@ -112,26 +85,12 @@ export class MessageBranchNavigatorManager {
 
     this.messageBranchNavigator = new MessageBranchNavigator(this.navigatorContainer, navigatorEvents);
     this.messageBranchNavigator.updateMessage(message);
-
-    // Check DOM attachment after a tick (element may not be in DOM yet during initial render)
-    setTimeout(() => {
-      this.diagnosticLogger.logNavigatorEvent('Navigator created successfully', {
-        messageId: message.id,
-        navigatorExists: !!this.messageBranchNavigator,
-        containerInDOM: document.body.contains(this.navigatorContainer),
-        containerClasses: this.navigatorContainer?.className,
-        branchCount: message.alternativeBranches?.length ?? 0,
-        activeBranchId: message.activeAlternativeId
-      });
-    }, 0);
   }
 
   /**
    * Destroy the navigator component
    */
   private destroyNavigator(): void {
-    this.diagnosticLogger.logNavigatorEvent('Destroying navigator', {});
-
     if (this.messageBranchNavigator) {
       this.messageBranchNavigator.destroy();
       this.messageBranchNavigator = null;
@@ -148,6 +107,5 @@ export class MessageBranchNavigatorManager {
    */
   cleanup(): void {
     this.destroyNavigator();
-    this.diagnosticLogger.reset();
   }
 }

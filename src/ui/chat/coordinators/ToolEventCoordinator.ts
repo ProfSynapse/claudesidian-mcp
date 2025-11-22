@@ -15,6 +15,8 @@
 
 import { getToolNameMetadata } from '../../../utils/toolNameUtils';
 import { MessageDisplay } from '../components/MessageDisplay';
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames } from '../../../events/ChatEvents';
 
 export class ToolEventCoordinator {
   constructor(private messageDisplay: MessageDisplay) {}
@@ -66,6 +68,15 @@ export class ToolEventCoordinator {
    * Handle tool execution started event
    */
   handleToolExecutionStarted(messageId: string, toolCall: { id: string; name: string; parameters?: any }): void {
+    // MIGRATION: Emit via event bus
+    eventBus.emit(ChatEventNames.TOOL_STARTED, {
+      messageId,
+      branchId: '',
+      toolId: toolCall.id,
+      toolName: toolCall.name,
+      parameters: toolCall.parameters || {}
+    });
+
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent('started', toolCall);
   }
@@ -74,6 +85,16 @@ export class ToolEventCoordinator {
    * Handle tool execution completed event
    */
   handleToolExecutionCompleted(messageId: string, toolId: string, result: any, success: boolean, error?: string): void {
+    // MIGRATION: Emit via event bus
+    eventBus.emit(ChatEventNames.TOOL_COMPLETED, {
+      messageId,
+      branchId: '',
+      toolId,
+      result,
+      success,
+      error
+    });
+
     const messageBubble = this.messageDisplay.findMessageBubble(messageId);
     messageBubble?.handleToolEvent('completed', { toolId, result, success, error });
   }

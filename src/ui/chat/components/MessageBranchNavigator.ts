@@ -143,22 +143,19 @@ export class MessageBranchNavigator {
     if (!this.currentMessage) {
       return false;
     }
-    if (this.currentMessage.alternativeBranches && this.currentMessage.alternativeBranches.length > 0) {
-      return true;
-    }
-    return !!(this.currentMessage.alternatives && this.currentMessage.alternatives.length > 0);
+    return !!(this.currentMessage.alternativeBranches && this.currentMessage.alternativeBranches.length > 0);
   }
 
   /**
    * Get current alternative index (0-based)
-   * Handles both new branch system (activeAlternativeId) and legacy (activeAlternativeIndex)
+   * Uses activeAlternativeId from branch system
    */
   private getCurrentAlternativeIndex(): number {
     if (!this.currentMessage) {
       return 0;
     }
 
-    // Check new branch system first
+    // Check branch system
     if (this.currentMessage.alternativeBranches && this.currentMessage.alternativeBranches.length > 0) {
       // If no active branch ID, original message is active (index 0)
       if (!this.currentMessage.activeAlternativeId) {
@@ -175,8 +172,8 @@ export class MessageBranchNavigator {
       return branchIndex >= 0 ? branchIndex + 1 : 0;
     }
 
-    // Fall back to legacy activeAlternativeIndex
-    return this.currentMessage.activeAlternativeIndex || 0;
+    // No branches - return 0 (original message)
+    return 0;
   }
 
   /**
@@ -189,9 +186,7 @@ export class MessageBranchNavigator {
     if (this.currentMessage.alternativeBranches && this.currentMessage.alternativeBranches.length > 0) {
       return this.currentMessage.alternativeBranches.length + 1;
     }
-    if (this.currentMessage.alternatives && this.currentMessage.alternatives.length > 0) {
-      return this.currentMessage.alternatives.length + 1;
-    }
+    // No alternatives - just original message
     return 1;
   }
 

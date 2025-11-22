@@ -27,6 +27,10 @@ import { MessageContentRendererEnhanced } from './renderers/MessageContentRender
 import { ToolBubbleFactory } from './factories/ToolBubbleFactory';
 import { ToolEventParser } from '../utils/ToolEventParser';
 
+// Event Bus
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames, BranchFinalizedEvent } from '../../../events/ChatEvents';
+
 export class MessageBubble extends Component {
   private element: HTMLElement | null = null;
   private toolBubbleElement: HTMLElement | null = null;
@@ -38,6 +42,9 @@ export class MessageBubble extends Component {
   private actionButtonManager: MessageActionButtonManager;
   private navigatorManager: MessageBranchNavigatorManager;
   private contentRenderer: MessageContentRendererEnhanced;
+
+  // Event Bus
+  private eventBusUnsubscribers: Array<() => void> = [];
 
   constructor(
     private message: ConversationMessage,
@@ -56,6 +63,69 @@ export class MessageBubble extends Component {
     this.actionButtonManager = new MessageActionButtonManager(message, onCopy, onRetry, onEdit);
     this.navigatorManager = new MessageBranchNavigatorManager(onMessageAlternativeChanged);
     this.contentRenderer = new MessageContentRendererEnhanced();
+
+    // Subscribe to event bus events
+    this.setupEventBusSubscriptions();
+  }
+
+  /**
+   * Set up event bus subscriptions
+   */
+  private setupEventBusSubscriptions(): void {
+    // Branch finalized
+    this.eventBusUnsubscribers.push(
+      eventBus.on<BranchFinalizedEvent>(
+        ChatEventNames.BRANCH_FINALIZED,
+        (event) => {
+          if (event.messageId === this.message.id) {
+            this.handleBranchFinalized(event.branchId, event.message);
+          }
+        }
+      )
+    );
+
+    // Tool events - need to check both base message ID and any branch IDs
+    this.eventBusUnsubscribers.push(
+      eventBus.on(ChatEventNames.TOOL_DETECTED, (event: any) => {
+        if (this.isEventForThisMessage(event.messageId)) {
+          this.handleToolEvent('detected', event);
+        }
+      })
+    );
+
+    this.eventBusUnsubscribers.push(
+      eventBus.on(ChatEventNames.TOOL_STARTED, (event: any) => {
+        if (this.isEventForThisMessage(event.messageId)) {
+          this.handleToolEvent('started', event);
+        }
+      })
+    );
+
+    this.eventBusUnsubscribers.push(
+      eventBus.on(ChatEventNames.TOOL_COMPLETED, (event: any) => {
+        if (this.isEventForThisMessage(event.messageId)) {
+          this.handleToolEvent('completed', event);
+        }
+      })
+    );
+  }
+
+  /**
+   * Check if an event messageId belongs to this message bubble
+   * Handles both base message ID and branch IDs (for retry streaming)
+   */
+  private isEventForThisMessage(eventMessageId: string): boolean {
+    // Check base message ID
+    if (eventMessageId === this.message.id) {
+      return true;
+    }
+
+    // Check if it's a branch ID for this message
+    const isBranchId = this.message.alternativeBranches?.some(
+      branch => branch.id === eventMessageId
+    );
+
+    return !!isBranchId;
   }
 
   /**
@@ -238,16 +308,6 @@ export class MessageBubble extends Component {
     // CRITICAL: Capture whether message object changed BEFORE any updates to this.message
     const messageObjectChanged = this.message !== newMessage;
 
-    console.log('[MessageBubble] updateWithNewMessage', {
-      messageId: this.message.id,
-      sameObject: this.message === newMessage,
-      messageObjectChanged,
-      oldActiveBranchId: this.message.activeAlternativeId,
-      newActiveBranchId: newMessage.activeAlternativeId,
-      oldToolCalls: BranchStateHelper.getActiveToolCalls(this.message)?.length,
-      newToolCalls: BranchStateHelper.getActiveToolCalls(newMessage)?.length
-    });
-
     // Capture previous state from OLD message object before updating reference
     const previousActiveBranchId = this.message.activeAlternativeId;
     const previousActiveBranch = BranchStateHelper.getActiveBranch(this.message);
@@ -288,49 +348,25 @@ export class MessageBubble extends Component {
     // Get the NEW active branch from newMessage to detect changes
     const newActiveBranch = BranchStateHelper.getActiveBranch(newMessage);
     const branchChanged = previousActiveBranchId !== newActiveBranch?.id;
-    const branchStatusChanged = previousActiveBranchStatus !== newActiveBranch?.status;
-    const isStreamingStatus = newActiveBranch?.status === 'streaming';
 
-    console.log('[MessageBubble] Branch change check', {
-      messageId: this.message.id,
-      branchChanged,
-      branchStatusChanged,
-      isStreamingStatus,
-      shouldReset: branchChanged || (branchStatusChanged && !isStreamingStatus)
-    });
+    // NEVER reset/render tool bubble in updateWithNewMessage during retry flow
+    // Let handleBranchFinalized be the sole handler for retry completion rendering
+    // Only reset when switching branches (user clicks branch navigator)
+    const hasMultipleBranches = (newMessage.alternativeBranches?.length ?? 0) > 1;
+    const shouldResetToolBubble = branchChanged && !hasMultipleBranches;
 
-    // Reset tool bubble when branch changes (retry clicked) OR when status changes to complete/aborted
-    const shouldResetToolBubble = branchChanged || (branchStatusChanged && !isStreamingStatus);
     if (shouldResetToolBubble) {
-      console.log('[MessageBubble] Resetting tool bubble');
       this.toolBubbleManager.reset();
-    }
-
-    // Only render tool bubble if:
-    // 1. We just reset it (state transition), OR
-    // 2. Message object changed (immutable update)
-    const shouldRenderToolBubble = shouldResetToolBubble || messageObjectChanged;
-
-    // Check for tool calls in the NEW message
-    const activeToolCalls = BranchStateHelper.getActiveToolCalls(newMessage);
-    console.log('[MessageBubble] Tool calls check', {
-      messageId: this.message.id,
-      hasToolCalls: !!activeToolCalls,
-      toolCallCount: activeToolCalls?.length,
-      messageObjectChanged,
-      shouldRenderToolBubble,
-      willRender: shouldRenderToolBubble && newMessage.role === 'assistant' && activeToolCalls && activeToolCalls.length > 0
-    });
-
-    if (shouldRenderToolBubble && newMessage.role === 'assistant' && activeToolCalls && activeToolCalls.length > 0) {
-      console.log('[MessageBubble] Rendering tool bubble content');
-      this.toolBubbleManager.render(activeToolCalls, this.element);
+      const activeToolCalls = BranchStateHelper.getActiveToolCalls(newMessage);
+      if (newMessage.role === 'assistant' && activeToolCalls && activeToolCalls.length > 0) {
+        this.toolBubbleManager.render(activeToolCalls, this.element);
+      }
     }
 
     // Update thinking animation
     this.loadingAnimationManager.showThinking(newMessage, newActiveBranch, this.textBubbleElement, this.element);
 
-    // Sync navigator state based on new message state
+    // Always sync navigator - it has internal logic to prevent redundant updates
     this.navigatorManager.sync(newMessage, this.actionButtonManager.getContainer());
   }
 
@@ -351,13 +387,19 @@ export class MessageBubble extends Component {
 
     // Only act if this is the active branch
     if (activeBranch?.id !== branchId) {
-      console.log('[MessageBubble] handleBranchFinalized - not active branch', {
-        messageId: this.message.id,
-        branchId,
-        activeBranchId: activeBranch?.id
-      });
       return;
     }
+
+    // Clean up progressive tool accordions and render final static tool bubble
+    const activeToolCalls = BranchStateHelper.getActiveToolCalls(this.message);
+
+    if (activeToolCalls && activeToolCalls.length > 0) {
+      this.toolBubbleManager.reset(); // Clean up progressive accordions
+      this.toolBubbleManager.render(activeToolCalls, this.element); // Render final static bubble
+    }
+
+    // Hide thinking animation
+    this.loadingAnimationManager.hideThinking();
 
     // Sync navigator (will create it if it should exist)
     this.navigatorManager.sync(this.message, this.actionButtonManager.getContainer());
@@ -369,8 +411,8 @@ export class MessageBubble extends Component {
   handleToolEvent(event: 'detected' | 'updated' | 'started' | 'completed', data: any): void {
     const info = ToolEventParser.getToolEventInfo(data);
     const toolId = info.toolId;
+
     if (!toolId) {
-      console.warn('[MessageBubble] Tool event missing ID:', data);
       return;
     }
 
@@ -394,7 +436,6 @@ export class MessageBubble extends Component {
     }
 
     if (!accordion) {
-      console.warn('[MessageBubble] No accordion found for tool:', toolId);
       return;
     }
 
@@ -435,9 +476,34 @@ export class MessageBubble extends Component {
 
   /**
    * Create tool bubble on-demand during streaming
+   * Converts message-container to message-group if needed
    */
   createToolBubbleOnDemand(): void {
+    if (!this.element) {
+      return;
+    }
+
+    // Check if we need to convert message-container to message-group
+    if (this.element.classList.contains('message-container')) {
+      // Change class from message-container to message-group
+      this.element.classList.remove('message-container');
+      this.element.classList.add('message-group');
+
+      // The message-bubble div becomes the text bubble in the group structure
+      const messageBubble = this.element.querySelector('.message-bubble');
+      if (messageBubble) {
+        this.textBubbleElement = messageBubble as HTMLElement;
+      }
+    }
+
+    // Create the tool bubble via manager
     this.toolBubbleManager.createOnDemand(this.element);
+
+    // Sync the tool bubble element reference from manager to MessageBubble
+    const createdToolBubble = this.element.querySelector('.message-tool');
+    if (createdToolBubble) {
+      this.toolBubbleElement = createdToolBubble as HTMLElement;
+    }
   }
 
   /**
@@ -465,6 +531,10 @@ export class MessageBubble extends Component {
    * Cleanup resources
    */
   cleanup(): void {
+    // Unsubscribe from all event bus subscriptions
+    this.eventBusUnsubscribers.forEach(unsub => unsub());
+    this.eventBusUnsubscribers = [];
+
     this.loadingAnimationManager.cleanup();
     this.toolBubbleManager.cleanup();
     this.navigatorManager.cleanup();

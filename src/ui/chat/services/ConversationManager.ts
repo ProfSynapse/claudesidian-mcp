@@ -7,6 +7,8 @@ import { ChatService } from '../../../services/chat/ChatService';
 import { ConversationData } from '../../../types/chat/ChatTypes';
 import { BranchManager } from './BranchManager';
 import { ConversationTitleModal } from '../components/ConversationTitleModal';
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames } from '../../../events/ChatEvents';
 
 export interface ConversationManagerEvents {
   onConversationSelected: (conversation: ConversationData) => void;
@@ -69,6 +71,13 @@ export class ConversationManager {
 
       if (fullConversation) {
         this.currentConversation = fullConversation;
+
+        // MIGRATION: Emit via event bus
+        eventBus.emit(ChatEventNames.CONVERSATION_LOADED, {
+          conversationId: fullConversation.id,
+          messageCount: fullConversation.messages.length
+        });
+
         this.events.onConversationSelected(fullConversation);
       }
     } catch (error) {
@@ -156,19 +165,30 @@ export class ConversationManager {
   async deleteConversation(conversationId: string): Promise<void> {
     try {
       const success = await this.chatService.deleteConversation(conversationId);
-      
+
       if (success) {
+        // MIGRATION: Emit via event bus
+        eventBus.emit(ChatEventNames.CONVERSATION_CLEARED, {
+          conversationId
+        });
+
         // If this was the current conversation, clear it
         if (this.currentConversation?.id === conversationId) {
           this.currentConversation = null;
         }
-        
+
         // Reload conversation list
         await this.loadConversations();
       } else {
         this.events.onError('Failed to delete conversation');
       }
     } catch (error) {
+      // MIGRATION: Emit error event
+      eventBus.emit(ChatEventNames.CONVERSATION_ERROR, {
+        conversationId,
+        error: error instanceof Error ? error : new Error('Failed to delete conversation'),
+        context: 'deleteConversation'
+      });
       this.events.onError('Failed to delete conversation');
     }
   }

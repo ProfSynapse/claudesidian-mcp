@@ -37,20 +37,6 @@ export class BranchStateHelper {
       }
     }
 
-    // Check legacy alternatives (same pattern - prefer alternative data)
-    const activeIndex = message.activeAlternativeIndex || 0;
-
-    if (activeIndex === 0) {
-      return message.content;
-    }
-
-    if (message.alternatives && message.alternatives.length > 0) {
-      const alternativeIndex = activeIndex - 1;
-      if (alternativeIndex >= 0 && alternativeIndex < message.alternatives.length) {
-        return message.alternatives[alternativeIndex].content;
-      }
-    }
-
     // Fallback to parent message content
     return message.content;
   }
@@ -72,14 +58,7 @@ export class BranchStateHelper {
       }
     }
 
-    // Check legacy alternatives (same pattern - prefer alternative data)
-    const activeIndex = message.activeAlternativeIndex || 0;
-    if (activeIndex > 0 && message.alternatives && message.alternatives.length >= activeIndex) {
-      const alternative = message.alternatives[activeIndex - 1];
-      return alternative.toolCalls ?? [];
-    }
-
-    // Only fallback to parent when NO active alternative
+    // Fallback to parent message tool calls
     return message.toolCalls;
   }
 }

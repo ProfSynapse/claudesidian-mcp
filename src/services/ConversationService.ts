@@ -398,6 +398,28 @@ export class ConversationService {
     // Initialize alternativeBranches array if needed
     if (!message.alternativeBranches) {
       message.alternativeBranches = [];
+
+      // Migrate original message content into a branch (first retry)
+      if (message.content || message.toolCalls) {
+        const originalBranchId = `branch_original_${now}`;
+        const originalBranch: any = {
+          id: originalBranchId,
+          parentMessageId: params.parentMessageId,
+          status: 'complete',
+          content: message.content || '',
+          toolCalls: message.toolCalls || [],
+          provider: message.provider,
+          model: message.model,
+          createdAt: message.timestamp || now,
+          updatedAt: message.timestamp || now,
+          metadata: {},
+          isDraft: false
+        };
+        message.alternativeBranches.push(originalBranch);
+
+        // Set original as initially active
+        message.activeAlternativeId = originalBranchId;
+      }
     }
 
     // Add or update branch
@@ -408,7 +430,7 @@ export class ConversationService {
       message.alternativeBranches.push(branch);
     }
 
-    // Set as active
+    // Set new branch as active (switching to retry)
     message.activeAlternativeId = branchId;
 
     // Persist to storage

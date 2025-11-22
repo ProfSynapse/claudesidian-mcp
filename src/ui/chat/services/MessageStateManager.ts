@@ -10,6 +10,8 @@
 
 import { ConversationData, ConversationMessage } from '../../../types/chat/ChatTypes';
 import { ChatService } from '../../../services/chat/ChatService';
+import { eventBus } from '../../../events/EventBus';
+import { ChatEventNames } from '../../../events/ChatEvents';
 
 export interface MessageStateManagerEvents {
   onMessageAdded: (message: ConversationMessage) => void;
@@ -48,6 +50,14 @@ export class MessageStateManager {
 
     // Add to conversation and display immediately
     conversation.messages.push(userMessage);
+
+    // MIGRATION: Emit via event bus
+    eventBus.emit(ChatEventNames.MESSAGE_ADDED, {
+      conversationId: conversation.id,
+      message: userMessage,
+      index: conversation.messages.length - 1
+    });
+
     this.events.onMessageAdded(userMessage);
 
     // Persist to storage and get real ID
@@ -119,6 +129,13 @@ export class MessageStateManager {
   removeMessage(conversation: ConversationData, messageId: string): void {
     const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
     if (messageIndex >= 0) {
+      // MIGRATION: Emit via event bus before removing
+      eventBus.emit(ChatEventNames.MESSAGE_DELETED, {
+        conversationId: conversation.id,
+        messageId,
+        index: messageIndex
+      });
+
       conversation.messages.splice(messageIndex, 1);
       this.events.onConversationUpdated(conversation);
     }
@@ -144,6 +161,20 @@ export class MessageStateManager {
     // Persist to storage
     await this.chatService.updateConversation(conversation);
 
+    // MIGRATION: Emit conversation saved event
+    eventBus.emit(ChatEventNames.CONVERSATION_SAVED, {
+      conversationId: conversation.id,
+      timestamp: Date.now()
+    });
+
+    // MIGRATION: Emit via event bus
+    eventBus.emit(ChatEventNames.MESSAGE_EDITED, {
+      messageId,
+      oldContent: conversation.messages[messageIndex].content || '',
+      newContent,
+      message: conversation.messages[messageIndex]
+    });
+
     // Notify about conversation update
     this.events.onConversationUpdated(conversation);
   }
@@ -158,7 +189,16 @@ export class MessageStateManager {
   ): void {
     const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
     if (messageIndex >= 0) {
+      const oldState = conversation.messages[messageIndex].state;
       conversation.messages[messageIndex].state = state;
+
+      // MIGRATION: Emit via event bus
+      eventBus.emit(ChatEventNames.MESSAGE_UPDATED, {
+        conversationId: conversation.id,
+        messageId,
+        message: conversation.messages[messageIndex],
+        changes: ['state']
+      });
     }
   }
 
