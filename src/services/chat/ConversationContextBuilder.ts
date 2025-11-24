@@ -876,19 +876,13 @@ export class ConversationContextBuilder {
     });
 
     // Add tool result messages
-    // Use 'user' role instead of 'tool' for better compatibility with providers like Google via OpenRouter
+    // Use 'tool' role with tool_call_id for proper OpenAI Chat Completions API format
     toolResults.forEach((result, index) => {
       const toolCall = toolCalls[index];
       const toolName = toolCall.function?.name || toolCall.name;
       const resultContent = result.success
         ? JSON.stringify(result.result || {})
         : JSON.stringify({ error: result.error || 'Tool execution failed' });
-
-      // Format as user message with tool result context for better provider compatibility
-      const toolMessage = {
-        role: 'user',
-        content: `Tool "${toolName}" result:\n${resultContent}`
-      };
 
       // Log tool result for debugging
       console.log('[ConversationContextBuilder] 🔧 Adding tool result:', {
@@ -899,7 +893,12 @@ export class ConversationContextBuilder {
         contentPreview: resultContent.substring(0, 200) + (resultContent.length > 200 ? '...' : '')
       });
 
-      messages.push(toolMessage);
+      // Format with proper 'tool' role and tool_call_id for OpenAI-compatible APIs
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: resultContent
+      });
     });
 
     console.log('[ConversationContextBuilder] ✅ Built OpenAI continuation with', messages.length, 'messages');
