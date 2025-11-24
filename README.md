@@ -148,6 +148,7 @@ The plugin supports multiple LLM providers with comprehensive model management:
 - **Google Gemini**
 - **Groq**
 - **Ollama**
+- **LM Studio (Local)**
 - **Perplexity**
 - **OpenRouter**
 - **Mistral**
@@ -169,6 +170,7 @@ To use LLM features, configure your API keys in the plugin settings:
    - **Mistral**: Get your key from [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys)
    - **Requesty**: Get your key from [requesty.ai](https://requesty.ai) - Unified LLM platform
    - **Ollama**: No API key needed for local setup
+   - **LM Studio**: No API key required—enter your LM Studio server URL (default `http://127.0.0.1:1234`) and ensure the local server is running
 4. **Set Default Model**: Choose your preferred default model and provider
 5. **Test Configuration**: Use the `listModels` mode to verify your setup
 

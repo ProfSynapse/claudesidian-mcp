@@ -98,6 +98,16 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
         requestParams.tools = this.convertTools(options.tools);
       }
 
+      // Add web search tool if requested
+      if (options?.webSearch) {
+        requestParams.tools = requestParams.tools || [];
+        requestParams.tools.push({
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 5
+        });
+      }
+
       // Add beta headers if model requires them (for 1M context window)
       const modelSpec = ANTHROPIC_MODELS.find(m => m.apiName === this.normalizeModelId(options?.model || this.currentModel));
       if (modelSpec?.betaHeaders && modelSpec.betaHeaders.length > 0) {
@@ -300,6 +310,16 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
               type: 'enabled',
               budget_tokens: 16000
             };
+          }
+
+          // Add web search tool if requested
+          if (options?.webSearch) {
+            requestParams.tools = requestParams.tools || [];
+            requestParams.tools.push({
+              type: 'web_search_20250305',
+              name: 'web_search',
+              max_uses: 5
+            });
           }
 
           // Add beta headers if model requires them (for 1M context window)

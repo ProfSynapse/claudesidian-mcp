@@ -54,6 +54,11 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     let request: any;
     try {
+      // Validate web search support
+      if (options?.webSearch) {
+        WebSearchUtils.validateWebSearchRequest('google', options.webSearch);
+      }
+
       // Build contents - use conversation history if provided (for tool continuations)
       let contents: any[];
       if (options?.conversationHistory && options.conversationHistory.length > 0) {
@@ -92,6 +97,12 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         };
       }
 
+      // Add web search grounding if requested (must be before other tools)
+      if (options?.webSearch) {
+        config.tools = config.tools || [];
+        config.tools.push({ googleSearch: {} });
+      }
+
       // Add tools if provided (inside config)
       if (options?.tools && options.tools.length > 0) {
         // Google recommends max 10-20 tools for optimal performance
@@ -101,22 +112,34 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           console.warn('[Google Adapter] Consider using bounded-context tool packs (see CLAUDE.md)');
         }
 
-        config.tools = this.convertTools(options.tools);
+        const convertedTools = this.convertTools(options.tools);
+
+        // Merge with existing tools array if web search was added
+        if (config.tools && config.tools.length > 0) {
+          config.tools.push(...convertedTools);
+        } else {
+          config.tools = convertedTools;
+        }
 
         // Validate each tool schema before sending to Google
         let validationFailures = 0;
-        for (const tool of config.tools[0]?.functionDeclarations || []) {
-          const validation = SchemaValidator.validateGoogleSchema(tool.parameters, tool.name);
-          if (!validation.valid) {
-            validationFailures++;
-            console.error(`[Google Adapter] ⚠️ Schema validation failed for tool "${tool.name}":`);
-            console.error(`[Google Adapter]    ${validation.error}`);
-            console.error(`[Google Adapter]    This may cause MALFORMED_FUNCTION_CALL errors`);
+        for (const toolWrapper of config.tools) {
+          const functionDeclarations = toolWrapper.functionDeclarations;
+          if (functionDeclarations) {
+            for (const tool of functionDeclarations) {
+              const validation = SchemaValidator.validateGoogleSchema(tool.parameters, tool.name);
+              if (!validation.valid) {
+                validationFailures++;
+                console.error(`[Google Adapter] ⚠️ Schema validation failed for tool "${tool.name}":`);
+                console.error(`[Google Adapter]    ${validation.error}`);
+                console.error(`[Google Adapter]    This may cause MALFORMED_FUNCTION_CALL errors`);
+              }
+            }
           }
         }
 
         if (validationFailures > 0) {
-          console.error(`[Google Adapter] ❌ ${validationFailures} of ${config.tools[0]?.functionDeclarations?.length} tools have schema validation issues`);
+          console.error(`[Google Adapter] ❌ ${validationFailures} tool(s) have schema validation issues`);
         }
 
         // Add function calling config - let model decide when to use tools
@@ -430,28 +453,10 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
       };
     }
 
-    // Add web search tool if requested
+    // Add web search grounding if requested
+    // Google Search grounding uses special googleSearch tool, not a function
     if (options?.webSearch) {
-      const tools = [{
-        type: 'function',
-        function: {
-          name: 'google_search',
-          description: 'Search the web for current information',
-          parameters: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: 'Search query' }
-            },
-            required: ['query']
-          }
-        }
-      }];
-      request.tools = this.convertTools(tools);
-      request.toolConfig = {
-        functionCallingConfig: {
-          mode: 'AUTO'
-        }
-      };
+      request.tools = [{ googleSearch: {} }];
     }
 
     const response = await this.client.models.generateContent(request);
