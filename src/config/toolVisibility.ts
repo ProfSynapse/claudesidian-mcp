@@ -26,14 +26,6 @@ export interface AgentVisibilityConfig {
 export const TOOL_VISIBILITY: {
     [agentName: string]: AgentVisibilityConfig;
 } = {
-    agentManager: {
-        modes: {
-            executePrompt: {
-                hidden: true,
-                reason: 'Causing issues and not providing enough value currently (2025-11-06)'
-            }
-        }
-    },
     commandManager: {
         hidden: true,
         reason: 'Causing issues and not providing enough value currently (2025-11-06)'

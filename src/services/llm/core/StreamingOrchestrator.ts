@@ -242,12 +242,6 @@ export class StreamingOrchestrator {
 
       // If no tool calls detected, we're done
       if (detectedToolCalls.length === 0 || !generateOptions.tools || generateOptions.tools.length === 0) {
-        console.log('[StreamingOrchestrator] No tool calls to execute:', {
-          detectedToolCallsCount: detectedToolCalls.length,
-          hasTools: !!generateOptions.tools,
-          toolsCount: generateOptions.tools?.length || 0
-        });
-
         yield {
           chunk: '',
           complete: true,
@@ -259,11 +253,6 @@ export class StreamingOrchestrator {
       }
 
       // Tool calls detected - execute tools and continue streaming (pingpong)
-      console.log('[StreamingOrchestrator] Executing tools and continuing...', {
-        toolCallsCount: detectedToolCalls.length,
-        tools: detectedToolCalls.map((tc: any) => tc.function?.name)
-      });
-
       yield* this.executeToolsAndContinue(
         adapter,
         provider,
@@ -328,13 +317,6 @@ export class StreamingOrchestrator {
         }
       }));
 
-      console.log('[StreamingOrchestrator] Executing MCP tool calls:', {
-        toolCallsCount: mcpToolCalls.length,
-        tools: mcpToolCalls.map((tc: any) => tc.function.name),
-        sessionId: options?.sessionId,
-        workspaceId: options?.workspaceId
-      });
-
       const toolResults = await MCPToolExecution.executeToolCalls(
         adapter as any,
         mcpToolCalls,
@@ -342,15 +324,6 @@ export class StreamingOrchestrator {
         generateOptions.onToolEvent,
         { sessionId: options?.sessionId, workspaceId: options?.workspaceId }
       );
-
-      console.log('[StreamingOrchestrator] Tool execution completed:', {
-        resultsCount: toolResults.length,
-        results: toolResults.map((r: any) => ({
-          tool: r.tool_call_id,
-          success: !r.error,
-          error: r.error
-        }))
-      });
 
       // Small delay to allow file system operations to complete (prevents race conditions)
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -464,8 +437,8 @@ export class StreamingOrchestrator {
 
     } catch (toolError) {
       // Log tool execution errors (don't swallow them silently)
-      console.error('[StreamingOrchestrator] Tool execution error:', toolError);
-      console.error('[StreamingOrchestrator] Error details:', {
+      console.error('Streaming tool execution error:', {
+        error: toolError,
         message: toolError instanceof Error ? toolError.message : String(toolError),
         stack: toolError instanceof Error ? toolError.stack : undefined
       });

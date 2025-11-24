@@ -444,13 +444,6 @@ export abstract class BaseAdapter {
     finishReason?: 'stop' | 'length' | 'tool_calls' | 'content_filter',
     toolCalls?: any[]
   ): Promise<LLMResponse> {
-    console.log('[BaseAdapter Cost Debug] buildLLMResponse called:', {
-      provider: this.name,
-      model,
-      hasUsage: !!usage,
-      usage: usage
-    });
-
     const response: LLMResponse = {
       text: content,
       model,
@@ -468,22 +461,11 @@ export abstract class BaseAdapter {
 
     // Calculate cost if usage is available
     if (usage) {
-      console.log('[BaseAdapter Cost Debug] Attempting to calculate cost for usage:', usage);
       const cost = await this.calculateCost(usage, model);
       if (cost) {
-        console.log('[BaseAdapter Cost Debug] Cost calculated successfully:', cost);
         response.cost = cost;
-      } else {
-        console.warn('[BaseAdapter Cost Debug] calculateCost returned null');
       }
-    } else {
-      console.warn('[BaseAdapter Cost Debug] No usage data provided, skipping cost calculation');
     }
-
-    console.log('[BaseAdapter Cost Debug] Final response:', {
-      hasCost: !!response.cost,
-      cost: response.cost
-    });
 
     return response;
   }

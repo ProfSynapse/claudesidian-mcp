@@ -41,15 +41,6 @@ export class LLMCostCalculator {
       cachedCost = (usage.cachedTokens / 1_000_000) * modelPricing.rateInputPerMillion * cachingDiscount;
       inputCost = freshCost + cachedCost;
 
-      console.log('[LLMCostCalculator] Applied caching discount:', {
-        model,
-        cachingDiscount,
-        freshTokens,
-        cachedTokens: usage.cachedTokens,
-        freshCost,
-        cachedCost,
-        totalInputCost: inputCost
-      });
     } else {
       // No cached tokens, use standard pricing
       inputCost = (usage.promptTokens / 1_000_000) * modelPricing.rateInputPerMillion;
@@ -74,16 +65,6 @@ export class LLMCostCalculator {
         cost: cachedCost
       };
     }
-
-    console.log('[LLMCostCalculator] Calculated cost successfully:', {
-      model,
-      usage,
-      rates: {
-        input: modelPricing.rateInputPerMillion,
-        output: modelPricing.rateOutputPerMillion
-      },
-      calculatedCosts: costDetails
-    });
 
     return costDetails;
   }

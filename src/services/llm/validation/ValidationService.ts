@@ -317,14 +317,14 @@ export class LLMValidationService {
       } else {
         const errorData = response.json || {};
         const errorMessage = errorData.error?.message || JSON.stringify(errorData) || `HTTP ${response.status}`;
-        console.error('[OpenRouter Validation] Error:', errorMessage);
+        console.error('OpenRouter validation error:', errorMessage);
         return { 
           success: false, 
           error: errorMessage
         };
       }
     } catch (error: any) {
-      console.error('[OpenRouter Validation] Exception:', error);
+      console.error('OpenRouter validation exception:', error);
       return { 
         success: false, 
         error: error.message || 'OpenRouter API key validation failed' 

@@ -125,15 +125,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       const messages = options?.conversationHistory || this.buildMessages(prompt, options?.systemPrompt);
 
-      console.log('[OPENROUTER-DEBUG] Request details:', {
-        model,
-        messagesCount: messages?.length,
-        hasConversationHistory: !!options?.conversationHistory,
-        prompt: prompt?.substring(0, 100),
-        firstMessage: messages?.[0] ? JSON.stringify(messages[0]) : 'none',
-        lastMessage: messages?.[messages.length - 1] ? JSON.stringify(messages[messages.length - 1]) : 'none'
-      });
-
       const requestBody = {
         model,
         messages,
@@ -148,8 +139,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         stream: true // Enable streaming
       };
 
-      console.log('[OPENROUTER-DEBUG] Full request body:', JSON.stringify(requestBody, null, 2));
-
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -163,7 +152,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       if (!response.ok) {
         const errorBody = await response.text();
-        console.error('[OpenRouter-DEBUG-ERROR] Streaming response body:', errorBody);
         throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorBody}`);
       }
 
@@ -179,7 +167,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           // Capture generation ID from first chunk
           if (!generationId && parsed.id) {
             generationId = parsed.id;
-            console.log('[OpenRouter Streaming] Generation ID captured:', generationId);
           }
 
           // Process all available choices - reasoning models may use multiple choices
@@ -212,12 +199,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
               // When we detect completion, trigger async usage fetch (only once)
               if (generationId && options?.onUsageAvailable && !usageFetchTriggered) {
                 usageFetchTriggered = true;
-                console.log('[OpenRouter Streaming] Triggering async usage fetch for generation:', generationId);
-
                 // Fire and forget - don't await
-                this.fetchAndNotifyUsage(generationId, baseModel, options.onUsageAvailable).catch(error => {
-                  console.error('[OpenRouter Streaming] Error in async usage fetch:', error);
-                });
+                this.fetchAndNotifyUsage(generationId, baseModel, options.onUsageAvailable).catch(() => undefined);
               }
 
               return choice.finish_reason;
@@ -247,30 +230,19 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     onUsageAvailable: (usage: any, cost?: any) => void
   ): Promise<void> {
     try {
-      console.log('[OpenRouter Async] Fetching usage for generation:', generationId);
-
       const usage = await this.fetchGenerationStats(generationId);
 
       if (!usage) {
-        console.warn('[OpenRouter Async] Failed to fetch usage data');
         return;
       }
-
-      console.log('[OpenRouter Async] ✓ Usage data retrieved:', usage);
 
       // Calculate cost
       const cost = await this.calculateCost(usage, model);
 
-      if (cost) {
-        console.log('[OpenRouter Async] ✓ Cost calculated:', cost);
-      }
-
       // Notify via callback
       onUsageAvailable(usage, cost || undefined);
-      console.log('[OpenRouter Async] ✓ Callback notified with usage and cost');
 
     } catch (error) {
-      console.error('[OpenRouter Async] Error fetching/calculating usage:', error);
       throw error;
     }
   }
@@ -289,7 +261,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         // Linear backoff: 800ms, 1000ms, 1200ms, 1400ms, 1600ms
         if (attempt > 0) {
           const delay = baseDelay + (incrementDelay * attempt);
-          console.log(`[OpenRouter] Retry ${attempt}/${maxRetries - 1} - waiting ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
 
@@ -304,17 +275,14 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
         if (response.status === 404) {
           // Stats not ready yet, retry
-          console.log(`[OpenRouter] Generation stats not ready yet (404), attempt ${attempt + 1}/${maxRetries}`);
           continue;
         }
 
         if (!response.ok) {
-          console.error('[OpenRouter] Failed to fetch generation stats:', response.status, response.statusText);
           return null;
         }
 
         const data = await response.json();
-        console.log('[OpenRouter] Generation stats response:', data);
 
         // Extract token counts from response
         // OpenRouter returns: tokens_prompt, tokens_completion, native_tokens_prompt, native_tokens_completion
@@ -322,7 +290,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         const completionTokens = data.data?.native_tokens_completion || data.data?.tokens_completion || 0;
 
         if (promptTokens > 0 || completionTokens > 0) {
-          console.log(`[OpenRouter] ✓ Successfully fetched stats on attempt ${attempt + 1}`);
           return {
             promptTokens,
             completionTokens,
@@ -331,17 +298,13 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         }
 
         // Data returned but no tokens - might not be ready yet
-        console.log(`[OpenRouter] Stats returned but no tokens yet, attempt ${attempt + 1}/${maxRetries}`);
-
       } catch (error) {
-        console.error(`[OpenRouter] Error fetching generation stats (attempt ${attempt + 1}):`, error);
         if (attempt === maxRetries - 1) {
           return null;
         }
       }
     }
 
-    console.error('[OpenRouter] Failed to fetch generation stats after all retries');
     return null;
   }
 
@@ -574,7 +537,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       );
 
     } catch (error) {
-      console.error('[OpenRouter Adapter] Post-stream tool execution failed:', error);
+      console.error('OpenRouter adapter post-stream tool execution failed:', error);
       throw this.handleError(error, 'post-stream tool execution');
     }
   }

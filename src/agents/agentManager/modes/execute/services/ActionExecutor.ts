@@ -98,15 +98,7 @@ export class ActionExecutor {
         context: string,
         webSearchResults?: any[]
     ): Promise<{ success: boolean; error?: string }> {
-        console.log('executeContentAction called with:', {
-            actionType: action.type,
-            targetPath: action.targetPath,
-            contentLength: content.length,
-            hasAgentManager: !!this.agentManager
-        });
-
         if (!this.agentManager) {
-            console.error('executeContentAction: Agent manager not available');
             return { success: false, error: 'Agent manager not available' };
         }
 
@@ -135,44 +127,30 @@ export class ActionExecutor {
                 filePath: action.targetPath
             };
 
-            console.log('executeContentAction: Preparing to call agent with params:', {
-                actionType: action.type,
-                paramsKeys: Object.keys(actionParams),
-                targetPath: action.targetPath,
-                hasContent: !!content,
-                contentLength: content?.length || 0
-            });
-
             switch (action.type) {
                 case 'create':
-                    console.log('executeContentAction: Calling createContent mode');
                     await this.agentManager.executeAgentMode('contentManager', 'createContent', actionParams);
                     break;
 
                 case 'append':
-                    console.log('executeContentAction: Calling appendContent mode');
                     await this.agentManager.executeAgentMode('contentManager', 'appendContent', actionParams);
                     break;
 
                 case 'prepend':
-                    console.log('executeContentAction: Calling prependContent mode');
                     await this.agentManager.executeAgentMode('contentManager', 'prependContent', actionParams);
                     break;
 
                 case 'replace':
                     if (action.position !== undefined) {
                         actionParams.line = action.position;
-                        console.log('executeContentAction: Calling replaceByLine mode');
                         await this.agentManager.executeAgentMode('contentManager', 'replaceByLine', actionParams);
                     } else {
-                        console.log('executeContentAction: Calling replaceContent mode');
                         await this.agentManager.executeAgentMode('contentManager', 'replaceContent', actionParams);
                     }
                     break;
 
                 case 'findReplace':
                     if (!action.findText) {
-                        console.error('executeContentAction: findText is required for findReplace action');
                         return { success: false, error: 'findText is required for findReplace action' };
                     }
                     actionParams.findText = action.findText;
@@ -180,19 +158,15 @@ export class ActionExecutor {
                     actionParams.replaceAll = action.replaceAll ?? false;
                     actionParams.caseSensitive = action.caseSensitive ?? true;
                     actionParams.wholeWord = action.wholeWord ?? false;
-                    console.log('executeContentAction: Calling findReplaceContent mode');
                     await this.agentManager.executeAgentMode('contentManager', 'findReplaceContent', actionParams);
                     break;
 
                 default:
-                    console.error('executeContentAction: Unknown action type:', action.type);
                     return { success: false, error: `Unknown action type: ${action.type}` };
             }
 
-            console.log('executeContentAction: Agent mode execution completed successfully');
             return { success: true };
         } catch (error) {
-            console.error('executeContentAction: Agent mode execution failed:', error);
             return { 
                 success: false, 
                 error: error instanceof Error ? error.message : 'Unknown error' 

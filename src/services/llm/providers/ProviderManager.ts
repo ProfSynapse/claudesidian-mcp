@@ -117,13 +117,11 @@ export class LLMProviderManager {
           const adapter = this.llmService.getAdapter('lmstudio');
 
           if (!adapter) {
-            console.warn('ProviderManager: LM Studio adapter not found in registry. Check if server URL is configured and provider is enabled.');
+            console.warn('LM Studio adapter not found in registry. Check if server URL is configured and provider is enabled.');
             continue;
           }
 
-          console.log('ProviderManager: Fetching models from LM Studio server...');
           const lmstudioModels = await adapter.listModels();
-          console.log(`ProviderManager: Found ${lmstudioModels.length} LM Studio models:`, lmstudioModels.map(m => m.id));
 
           for (const model of lmstudioModels) {
             allModels.push({
@@ -148,8 +146,8 @@ export class LLMProviderManager {
             });
           }
         } catch (error) {
-          console.error('ProviderManager: Error loading LM Studio models:', error);
-          console.error('ProviderManager: Error details:', {
+          console.error('Error loading LM Studio models:', error);
+          console.error('LM Studio model load details:', {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined
           });

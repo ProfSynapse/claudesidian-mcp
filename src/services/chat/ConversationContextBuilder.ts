@@ -884,15 +884,6 @@ export class ConversationContextBuilder {
         ? JSON.stringify(result.result || {})
         : JSON.stringify({ error: result.error || 'Tool execution failed' });
 
-      // Log tool result for debugging
-      console.log('[ConversationContextBuilder] 🔧 Adding tool result:', {
-        toolCallId: toolCall.id,
-        toolName,
-        success: result.success,
-        contentLength: resultContent.length,
-        contentPreview: resultContent.substring(0, 200) + (resultContent.length > 200 ? '...' : '')
-      });
-
       // Format with proper 'tool' role and tool_call_id for OpenAI-compatible APIs
       messages.push({
         role: 'tool',
@@ -901,7 +892,6 @@ export class ConversationContextBuilder {
       });
     });
 
-    console.log('[ConversationContextBuilder] ✅ Built OpenAI continuation with', messages.length, 'messages');
     return messages;
   }
 
@@ -925,4 +915,4 @@ export class ConversationContextBuilder {
         return 'openai-compatible';
     }
   }
-}
+}``
