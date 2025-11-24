@@ -325,7 +325,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
                     required: ['type', 'targetPath']
                 }
             },
-            required: ['prompt', 'provider', 'model']
+            required: ['prompt']
         };
         
         return this.getMergedSchema(customSchema);

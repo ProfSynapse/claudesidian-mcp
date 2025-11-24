@@ -42,6 +42,7 @@ export class ModelRegistry {
   /**
    * Get all models for a specific provider
    * For Ollama, returns user-configured model dynamically
+   * For LM Studio, returns empty array (models discovered via adapter.listModels())
    */
   static getProviderModels(provider: string, settings?: LLMProviderSettings): ModelSpec[] {
     // Special handling for Ollama - user-configured models only
@@ -69,6 +70,12 @@ export class ModelRegistry {
           supportsThinking: false
         }
       }];
+    }
+
+    // Special handling for LM Studio - models discovered dynamically
+    // Return empty array here; models will be loaded via adapter.listModels()
+    if (provider === 'lmstudio') {
+      return [];
     }
 
     // Standard behavior for other providers

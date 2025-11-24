@@ -393,6 +393,13 @@ export class LLMProviderTab {
         keyFormat: 'http://127.0.0.1:11434',
         signupUrl: 'https://ollama.com/download',
         docsUrl: 'https://github.com/ollama/ollama'
+      },
+      lmstudio: {
+        name: 'LM Studio (Local)',
+        description: '',
+        keyFormat: 'http://127.0.0.1:1234',
+        signupUrl: 'https://lmstudio.ai',
+        docsUrl: 'https://lmstudio.ai/docs'
       }
     };
   }

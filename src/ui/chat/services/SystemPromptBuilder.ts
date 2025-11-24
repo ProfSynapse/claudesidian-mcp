@@ -85,35 +85,48 @@ export class SystemPromptBuilder {
 
   /**
    * Build session context section for tool calls
+   * Always includes workspace context with default fallback
    */
   private buildSessionContext(sessionId?: string, workspaceId?: string): string | null {
-    if (!sessionId && !workspaceId) {
-      return null;
-    }
+    // Always provide session context even if values are undefined
+    // This ensures the LLM knows about the default workspace
+    const hasSession = !!sessionId;
+    const hasWorkspace = !!workspaceId;
 
     let prompt = '<session_context>\n';
     prompt += 'IMPORTANT: When using tools, you must include these values in your tool call parameters:\n\n';
 
-    if (sessionId) {
+    if (hasSession) {
       prompt += `- sessionId: "${sessionId}"\n`;
+    } else {
+      prompt += '- sessionId: Generate a unique session ID in the format "session_[timestamp]_[random]" if not provided\n';
     }
 
-    if (workspaceId) {
-      prompt += `- workspaceId: "${workspaceId}"\n`;
+    if (hasWorkspace) {
+      prompt += `- workspaceId: "${workspaceId}" (current workspace)\n`;
+    } else {
+      prompt += '- workspaceId: "default" (use this when no specific workspace is selected)\n';
     }
 
     prompt += '\nInclude these in the "context" parameter of your tool calls, like this:\n';
     prompt += '{\n';
     prompt += '  "context": {\n';
-    if (sessionId) {
+    if (hasSession) {
       prompt += `    "sessionId": "${sessionId}",\n`;
+    } else {
+      prompt += '    "sessionId": "session_[timestamp]_[random]",\n';
     }
-    if (workspaceId) {
-      prompt += `    "workspaceId": "${workspaceId}"\n`;
+    if (hasWorkspace) {
+      prompt += `    "workspaceId": "${workspaceId}",\n`;
+    } else {
+      prompt += '    "workspaceId": "default",\n';
     }
+    prompt += '    "sessionDescription": "Brief description of what we\'re working on",\n';
+    prompt += '    "sessionMemory": "Summary of conversation context and progress"\n';
     prompt += '  },\n';
     prompt += '  ... other parameters ...\n';
     prompt += '}\n';
+    prompt += '\nNOTE: If workspaceId is not specified above, ALWAYS use "default" as the workspaceId in your tool calls.\n';
     prompt += '</session_context>';
 
     return prompt;

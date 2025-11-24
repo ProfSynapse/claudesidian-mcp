@@ -169,7 +169,8 @@ export type SupportedProvider =
   | 'requesty'
   | 'groq'
   | 'perplexity'
-  | 'ollama';
+  | 'ollama'
+  | 'lmstudio';
 
 export type SupportedModel = 
   // OpenAI

@@ -343,6 +343,17 @@ export class ConversationContextBuilder {
     previousMessages?: any[],
     systemPrompt?: string
   ): any[] | string {
+    // Check if provider uses custom tool call format (LM Studio, Ollama)
+    if (provider === 'lmstudio' || provider === 'ollama') {
+      return this.buildCustomFormatToolContinuation(
+        userPrompt,
+        toolCalls,
+        toolResults,
+        previousMessages,
+        systemPrompt
+      );
+    }
+
     switch (provider.toLowerCase()) {
       case 'anthropic':
         return this.buildAnthropicToolContinuation(
@@ -586,6 +597,58 @@ export class ConversationContextBuilder {
     messages.push({
       role: 'user',
       parts: functionResponseParts
+    });
+
+    return messages;
+  }
+
+  /**
+   * Build custom format tool continuation for text-based tool calls
+   * Used by LM Studio and Ollama fine-tuned models
+   * Returns message array with formatted tool results in text
+   *
+   * @private
+   */
+  private static buildCustomFormatToolContinuation(
+    userPrompt: string,
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages?: any[],
+    systemPrompt?: string
+  ): any[] {
+    const messages: any[] = [];
+
+    // Add previous conversation history if provided
+    if (previousMessages && previousMessages.length > 0) {
+      messages.push(...previousMessages);
+    }
+
+    // Add user message if not already in history
+    const hasUserMessage = messages.some(
+      msg => msg.role === 'user' && msg.content === userPrompt
+    );
+    if (!hasUserMessage) {
+      messages.push({ role: 'user', content: userPrompt });
+    }
+
+    // Format tool results in text-based format
+    // Model output: "tool_call: toolName\narguments: {...}"
+    // We respond: "tool_result: toolName\nresult: {...}"
+    const toolResultTexts = toolResults.map((result, index) => {
+      const toolCall = toolCalls[index];
+      const toolName = toolCall.function?.name || toolCall.name || 'unknown';
+
+      const resultData = result.success
+        ? result.result || {}
+        : { error: result.error || 'Tool execution failed' };
+
+      return `tool_result: ${toolName}\nresult: ${JSON.stringify(resultData, null, 2)}`;
+    });
+
+    // Add assistant message with formatted tool results
+    messages.push({
+      role: 'assistant',
+      content: toolResultTexts.join('\n\n')
     });
 
     return messages;

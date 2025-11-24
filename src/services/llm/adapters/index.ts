@@ -16,6 +16,7 @@ export { RequestyAdapter } from './requesty/RequestyAdapter';
 export { GroqAdapter } from './groq/GroqAdapter';
 export { PerplexityAdapter } from './perplexity/PerplexityAdapter';
 export { OllamaAdapter } from './ollama/OllamaAdapter';
+export { LMStudioAdapter } from './lmstudio/LMStudioAdapter';
 
 // Model registry and cost calculation
 export * from './modelTypes';
@@ -32,6 +33,7 @@ import { RequestyAdapter } from './requesty/RequestyAdapter';
 import { GroqAdapter } from './groq/GroqAdapter';
 import { PerplexityAdapter } from './perplexity/PerplexityAdapter';
 import { OllamaAdapter } from './ollama/OllamaAdapter';
+import { LMStudioAdapter } from './lmstudio/LMStudioAdapter';
 import { SupportedProvider, LLMProviderError } from './types';
 
 /**
@@ -64,6 +66,10 @@ export function createAdapter(provider: SupportedProvider, model?: string): Base
         process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
         model || 'llama3.1' // Factory function requires a model parameter
       );
+    case 'lmstudio':
+      return new LMStudioAdapter(
+        process.env.LMSTUDIO_URL || 'http://127.0.0.1:1234'
+      );
     default:
       throw new LLMProviderError(
         `Unsupported provider: ${provider}`,
@@ -77,7 +83,7 @@ export function createAdapter(provider: SupportedProvider, model?: string): Base
  * Get all available providers
  */
 export function getAvailableProviders(): SupportedProvider[] {
-  return ['openai', 'google', 'anthropic', 'mistral', 'openrouter', 'requesty', 'groq', 'perplexity', 'ollama'];
+  return ['openai', 'google', 'anthropic', 'mistral', 'openrouter', 'requesty', 'groq', 'perplexity', 'ollama', 'lmstudio'];
 }
 
 /**
@@ -147,6 +153,7 @@ export async function selectBestProvider(criteria?: {
       'anthropic': 4, // Claude 4 - best reasoning
       'openai': 3,    // GPT-4 Turbo - reliable
       'ollama': 3,    // Local models - good performance, no cost
+      'lmstudio': 3,  // Local models - good performance, no cost
       'mistral': 2,   // Good specialized models
       'openrouter': 1, // Good for variety
       'requesty': 1   // Good for cost optimization
@@ -158,6 +165,7 @@ export async function selectBestProvider(criteria?: {
       // Adjust for cost (lower cost = higher score)
       const costScores: Record<string, number> = {
         'ollama': 5,    // Free local models
+        'lmstudio': 5,  // Free local models
         'groq': 3,      // Very competitive pricing
         'google': 3,    // Gemini Flash - best value
         'mistral': 2,   // Good pricing
@@ -174,6 +182,7 @@ export async function selectBestProvider(criteria?: {
       const speedScores: Record<string, number> = {
         'groq': 5,      // Ultra-fast inference (up to 750 tokens/sec)
         'ollama': 4,    // Local inference - very fast, no network latency
+        'lmstudio': 4,  // Local inference - very fast, no network latency
         'google': 3,    // Gemini Flash
         'openai': 2,    // GPT-4 Turbo
         'openrouter': 2,

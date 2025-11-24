@@ -3,7 +3,7 @@
  * Modal-based editing for LLM provider settings and model descriptions
  */
 
-import { Modal, App, Setting, ButtonComponent, Notice } from 'obsidian';
+import { Modal, App, Setting, ButtonComponent, Notice, requestUrl } from 'obsidian';
 import { LLMProviderConfig, ModelConfig } from '../types';
 import { LLMProviderManager } from '../services/llm/providers/ProviderManager';
 import { StaticModelsService, ModelWithProvider } from '../services/StaticModelsService';
@@ -29,6 +29,7 @@ export class LLMProviderModal extends Modal {
   private isValidated = false;
   private validationTimeout: NodeJS.Timeout | null = null;
   private ollamaModel: string = ''; // Temporary storage for Ollama model
+  private lmstudioDiscoveredModels: string[] = []; // Discovered LM Studio models
   private testButton?: HTMLButtonElement; // Reference to test button
   private autoSaveTimeout: NodeJS.Timeout | null = null;
   private saveStatusEl?: HTMLElement;
@@ -100,7 +101,7 @@ export class LLMProviderModal extends Modal {
     // Special handling for Ollama - URL instead of API key
     if (this.config.providerId === 'ollama') {
       section.createEl('h2', { text: 'Ollama Server URL' });
-      
+
       new Setting(section)
         .setDesc('Enter your Ollama server URL (default: http://127.0.0.1:11434)')
         .addText(text => {
@@ -114,17 +115,17 @@ export class LLMProviderModal extends Modal {
               this.isValidated = false;
               this.apiKeyInput.removeClass('success');
               this.apiKeyInput.removeClass('error');
-              
+
               // Clear validation cache when URL changes
               this.config.config.lastValidated = undefined;
               this.config.config.validationHash = undefined;
-              
+
               // Clear existing timeout
               if (this.validationTimeout) {
                 clearTimeout(this.validationTimeout);
                 this.validationTimeout = null;
               }
-              
+
               // Show yellow outline immediately when typing
               if (value.trim()) {
                 this.apiKeyInput.addClass('validating');
@@ -132,7 +133,7 @@ export class LLMProviderModal extends Modal {
                 this.validationTimeout = setTimeout(() => {
                   this.validateApiKey();
                 }, 2000);
-                
+
                 // Auto-enable when URL is added
                 if (!this.config.config.enabled) {
                   this.config.config.enabled = true;
@@ -150,6 +151,61 @@ export class LLMProviderModal extends Modal {
             .setTooltip('Test connection to Ollama server with the configured model')
             .onClick(() => {
               this.testOllamaConnection();
+            });
+        });
+    } else if (this.config.providerId === 'lmstudio') {
+      // Special handling for LM Studio - URL instead of API key
+      section.createEl('h2', { text: 'LM Studio Server URL' });
+
+      new Setting(section)
+        .setDesc('Enter your LM Studio server URL (default: http://127.0.0.1:1234)')
+        .addText(text => {
+          this.apiKeyInput = text.inputEl;
+          this.apiKeyInput.addClass('llm-provider-input');
+          text
+            .setPlaceholder('http://127.0.0.1:1234')
+            .setValue(this.config.config.apiKey || 'http://127.0.0.1:1234')
+            .onChange((value) => {
+              // Reset validation when URL changes
+              this.isValidated = false;
+              this.apiKeyInput.removeClass('success');
+              this.apiKeyInput.removeClass('error');
+
+              // Clear validation cache when URL changes
+              this.config.config.lastValidated = undefined;
+              this.config.config.validationHash = undefined;
+
+              // Clear existing timeout
+              if (this.validationTimeout) {
+                clearTimeout(this.validationTimeout);
+                this.validationTimeout = null;
+              }
+
+              // Show yellow outline immediately when typing
+              if (value.trim()) {
+                this.apiKeyInput.addClass('validating');
+                // Auto-validate after 2 second delay
+                this.validationTimeout = setTimeout(() => {
+                  this.validateApiKey();
+                }, 2000);
+
+                // Auto-enable when URL is added
+                if (!this.config.config.enabled) {
+                  this.config.config.enabled = true;
+                  this.autoSave();
+                }
+              } else {
+                this.apiKeyInput.removeClass('validating');
+              }
+            });
+        })
+        .addButton(button => {
+          this.testButton = button.buttonEl;
+          button
+            .setButtonText('Discover Models')
+            .setTooltip('Connect to LM Studio server and discover available models')
+            .onClick(() => {
+              this.testLMStudioConnection();
             });
         });
     } else {
@@ -240,7 +296,7 @@ export class LLMProviderModal extends Modal {
             }
           })
         );
-      
+
       // Add helpful information
       this.modelsContainer.createDiv('models-info').innerHTML = `
         <p><strong>ℹ️ Ollama Model Configuration:</strong></p>
@@ -251,6 +307,25 @@ export class LLMProviderModal extends Modal {
           <li>View installed models: <code>ollama list</code></li>
           <li>Enter the exact model name above - this will be your only available model</li>
         </ol>
+      `;
+    } else if (this.config.providerId === 'lmstudio') {
+      // Special handling for LM Studio - auto-discovered models
+      // Add helpful information
+      this.modelsContainer.createDiv('models-info').innerHTML = `
+        <p><strong>ℹ️ LM Studio Model Discovery:</strong></p>
+        <p>Models are automatically discovered from your LM Studio server:</p>
+        <ol>
+          <li>Start LM Studio and load your desired models</li>
+          <li>Start the local server in LM Studio (usually on port 1234)</li>
+          <li>Click "Discover Models" above to fetch available models</li>
+          <li>Models will appear below once discovered</li>
+        </ol>
+        ${this.lmstudioDiscoveredModels.length > 0 ? `
+          <p><strong>✅ Discovered Models (${this.lmstudioDiscoveredModels.length}):</strong></p>
+          <ul>
+            ${this.lmstudioDiscoveredModels.map(m => `<li><code>${m}</code></li>`).join('')}
+          </ul>
+        ` : '<p><em>No models discovered yet. Click "Discover Models" to scan the server.</em></p>'}
       `;
     } else {
       // For other providers, load and display static models
@@ -442,13 +517,18 @@ export class LLMProviderModal extends Modal {
 
     try {
       // First, test if the server is running
-      const serverResponse = await fetch(`${serverUrl}/api/tags`);
-      if (!serverResponse.ok) {
-        throw new Error(`Server not responding: ${serverResponse.status} ${serverResponse.statusText}`);
+      // Use Obsidian's requestUrl to bypass CORS restrictions
+      const serverResponse = await requestUrl({
+        url: `${serverUrl}/api/tags`,
+        method: 'GET'
+      });
+
+      if (serverResponse.status !== 200) {
+        throw new Error(`Server not responding: ${serverResponse.status}`);
       }
 
       // Check if the model is available
-      const serverData = await serverResponse.json();
+      const serverData = serverResponse.json;
       const availableModels = serverData.models || [];
       const modelExists = availableModels.some((model: any) => model.name === modelName);
 
@@ -458,7 +538,8 @@ export class LLMProviderModal extends Modal {
       }
 
       // Test a simple generation request with the model
-      const testResponse = await fetch(`${serverUrl}/api/generate`, {
+      const testResponse = await requestUrl({
+        url: `${serverUrl}/api/generate`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -473,12 +554,11 @@ export class LLMProviderModal extends Modal {
         })
       });
 
-      if (!testResponse.ok) {
-        const errorText = await testResponse.text();
-        throw new Error(`Model test failed: ${testResponse.status} ${testResponse.statusText} - ${errorText}`);
+      if (testResponse.status !== 200) {
+        throw new Error(`Model test failed: ${testResponse.status}`);
       }
 
-      const testData = await testResponse.json();
+      const testData = testResponse.json;
       if (testData.response) {
         new Notice(`✅ Ollama connection successful! Model '${modelName}' is working.`);
 
@@ -511,6 +591,106 @@ export class LLMProviderModal extends Modal {
       // Restore button state
       if (this.testButton) {
         this.testButton.textContent = 'Test Connection';
+        this.testButton.disabled = false;
+      }
+    }
+  }
+
+  /**
+   * Test LM Studio connection and discover available models
+   */
+  private async testLMStudioConnection(): Promise<void> {
+    const serverUrl = this.apiKeyInput.value.trim();
+
+    if (!serverUrl) {
+      new Notice('Please enter a server URL first');
+      return;
+    }
+
+    // Validate URL format
+    try {
+      new URL(serverUrl);
+    } catch (e) {
+      new Notice('Please enter a valid URL (e.g., http://127.0.0.1:1234)');
+      return;
+    }
+
+    // Show testing state
+    if (this.testButton) {
+      this.testButton.textContent = 'Discovering...';
+      this.testButton.disabled = true;
+    }
+
+    try {
+      // Query LM Studio's OpenAI-compatible /v1/models endpoint
+      // Use Obsidian's requestUrl to bypass CORS restrictions
+      const modelsResponse = await requestUrl({
+        url: `${serverUrl}/v1/models`,
+        method: 'GET'
+      });
+
+      if (modelsResponse.status !== 200) {
+        throw new Error(`Server not responding: ${modelsResponse.status}. Make sure LM Studio server is running.`);
+      }
+
+      const modelsData = modelsResponse.json;
+
+      if (!modelsData.data || !Array.isArray(modelsData.data)) {
+        throw new Error('Invalid response format from LM Studio server');
+      }
+
+      // Extract model IDs
+      this.lmstudioDiscoveredModels = modelsData.data.map((model: any) => model.id);
+
+      if (this.lmstudioDiscoveredModels.length === 0) {
+        new Notice('⚠️ No models loaded in LM Studio. Please load a model first.');
+        return;
+      }
+
+      new Notice(`✅ LM Studio connection successful! Discovered ${this.lmstudioDiscoveredModels.length} model(s).`);
+
+      // Mark as validated and auto-save
+      this.isValidated = true;
+      this.apiKeyInput.removeClass('validating');
+      this.apiKeyInput.removeClass('error');
+      this.apiKeyInput.addClass('success');
+
+      // Auto-save the validated LM Studio configuration
+      this.config.config.apiKey = serverUrl;
+      this.config.config.enabled = true;
+      this.autoSave();
+
+      // Refresh the models section to show discovered models
+      this.modelsContainer.empty();
+      this.modelsContainer.createDiv('models-info').innerHTML = `
+        <p><strong>ℹ️ LM Studio Model Discovery:</strong></p>
+        <p>Models are automatically discovered from your LM Studio server:</p>
+        <ol>
+          <li>Start LM Studio and load your desired models</li>
+          <li>Start the local server in LM Studio (usually on port 1234)</li>
+          <li>Click "Discover Models" above to fetch available models</li>
+          <li>Models will appear below once discovered</li>
+        </ol>
+        <p><strong>✅ Discovered Models (${this.lmstudioDiscoveredModels.length}):</strong></p>
+        <ul>
+          ${this.lmstudioDiscoveredModels.map(m => `<li><code>${m}</code></li>`).join('')}
+        </ul>
+      `;
+
+    } catch (error) {
+      console.error('LM Studio connection test failed:', error);
+
+      this.isValidated = false;
+      this.apiKeyInput.removeClass('validating');
+      this.apiKeyInput.removeClass('success');
+      this.apiKeyInput.addClass('error');
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      new Notice(`❌ LM Studio test failed: ${errorMessage}`);
+    } finally {
+      // Restore button state
+      if (this.testButton) {
+        this.testButton.textContent = 'Discover Models';
         this.testButton.disabled = false;
       }
     }

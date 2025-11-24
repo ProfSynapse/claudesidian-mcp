@@ -20,6 +20,7 @@ import {
   PerplexityAdapter
 } from '../adapters';
 import { OllamaAdapter } from '../adapters/ollama/OllamaAdapter';
+import { LMStudioAdapter } from '../adapters/lmstudio/LMStudioAdapter';
 import { BaseAdapter } from '../adapters/BaseAdapter';
 import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
 
@@ -168,6 +169,17 @@ export class AdapterRegistry implements IAdapterRegistry {
       } catch (error) {
         console.error('AdapterRegistry: Failed to initialize Ollama adapter:', error);
         this.logError('ollama', error);
+      }
+    }
+
+    // LM Studio has special handling - apiKey is actually the server URL
+    // Models are discovered dynamically from the server
+    if (providers.lmstudio?.enabled && providers.lmstudio.apiKey) {
+      try {
+        this.adapters.set('lmstudio', new LMStudioAdapter(providers.lmstudio.apiKey, this.mcpConnector));
+      } catch (error) {
+        console.error('AdapterRegistry: Failed to initialize LM Studio adapter:', error);
+        this.logError('lmstudio', error);
       }
     }
   }

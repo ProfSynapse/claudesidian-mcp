@@ -4,12 +4,13 @@
  * Local LLM provider for text generation
  */
 
+import { requestUrl } from 'obsidian';
 import { BaseAdapter } from '../BaseAdapter';
-import { 
-  GenerateOptions, 
-  StreamChunk, 
-  LLMResponse, 
-  ModelInfo, 
+import {
+  GenerateOptions,
+  StreamChunk,
+  LLMResponse,
+  ModelInfo,
   ProviderCapabilities,
   ModelPricing,
   TokenUsage,
@@ -297,7 +298,7 @@ export class OllamaAdapter extends BaseAdapter {
       supportsStreaming: true,
       supportsJSON: false, // Ollama doesn't have built-in JSON mode
       supportsImages: false, // Depends on specific model
-      supportsFunctions: false,
+      supportsFunctions: false, // Standard Ollama doesn't support function calling
       supportsThinking: false,
       maxContextWindow: 128000, // Varies by model, this is a reasonable default
       supportedFeatures: ['streaming', 'local', 'privacy']
@@ -320,10 +321,11 @@ export class OllamaAdapter extends BaseAdapter {
 
   async isAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.ollamaUrl}/api/tags`, {
+      const response = await requestUrl({
+        url: `${this.ollamaUrl}/api/tags`,
         method: 'GET'
       });
-      return response.ok;
+      return response.status === 200;
     } catch (error) {
       return false;
     }

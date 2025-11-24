@@ -111,6 +111,50 @@ export class LLMProviderManager {
             userDescription: this.settings.providers.ollama?.userDescription
           });
         }
+      } else if (provider.id === 'lmstudio') {
+        // Special handling for LM Studio - dynamically discover models from server
+        try {
+          const adapter = this.llmService.getAdapter('lmstudio');
+
+          if (!adapter) {
+            console.warn('ProviderManager: LM Studio adapter not found in registry. Check if server URL is configured and provider is enabled.');
+            continue;
+          }
+
+          console.log('ProviderManager: Fetching models from LM Studio server...');
+          const lmstudioModels = await adapter.listModels();
+          console.log(`ProviderManager: Found ${lmstudioModels.length} LM Studio models:`, lmstudioModels.map(m => m.id));
+
+          for (const model of lmstudioModels) {
+            allModels.push({
+              provider: 'lmstudio',
+              id: model.id,
+              name: model.name,
+              contextWindow: model.contextWindow,
+              maxOutputTokens: model.maxOutputTokens || 2048,
+              supportsJSON: model.supportsJSON,
+              supportsImages: model.supportsImages,
+              supportsFunctions: model.supportsFunctions,
+              supportsStreaming: model.supportsStreaming,
+              supportsThinking: model.supportsThinking,
+              pricing: {
+                inputPerMillion: 0, // Local models are free
+                outputPerMillion: 0,
+                currency: 'USD',
+                lastUpdated: new Date().toISOString()
+              },
+              isDefault: defaultModel.provider === 'lmstudio' && defaultModel.model === model.id,
+              userDescription: this.settings.providers.lmstudio?.userDescription
+            });
+          }
+        } catch (error) {
+          console.error('ProviderManager: Error loading LM Studio models:', error);
+          console.error('ProviderManager: Error details:', {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+          });
+          // Don't fail the entire method, just skip LM Studio models
+        }
       } else {
         // For other providers, use static models
         const providerModels = staticModelsService.getModelsForProvider(provider.id);
@@ -201,6 +245,11 @@ export class LLMProviderManager {
         id: 'ollama',
         name: 'Ollama (Local)',
         description: 'Local LLM execution with complete privacy and no API costs'
+      },
+      {
+        id: 'lmstudio',
+        name: 'LM Studio (Local)',
+        description: 'Local LLM execution with OpenAI-compatible API and model management'
       }
     ];
 
@@ -208,9 +257,9 @@ export class LLMProviderManager {
       const config = this.settings.providers[provider.id];
       const isAvailable = this.llmService.isProviderAvailable(provider.id);
 
-      // For Ollama, check if server URL is configured
+      // For Ollama and LM Studio, check if server URL is configured
       let hasApiKey = false;
-      if (provider.id === 'ollama') {
+      if (provider.id === 'ollama' || provider.id === 'lmstudio') {
         hasApiKey = !!(config?.apiKey && config.apiKey.trim());
       } else {
         hasApiKey = !!(config?.apiKey && config.apiKey.length > 0);
@@ -233,9 +282,9 @@ export class LLMProviderManager {
     const allProviders = this.getProviderInfo();
     const enabled = allProviders.filter(provider => {
       if (!provider.isEnabled) return false;
-      
-      // For Ollama, hasApiKey check should consider server URL
-      if (provider.id === 'ollama') {
+
+      // For Ollama and LM Studio, hasApiKey check should consider server URL
+      if (provider.id === 'ollama' || provider.id === 'lmstudio') {
         const config = this.settings.providers[provider.id];
         return !!(config?.apiKey && config.apiKey.trim());
       } else {

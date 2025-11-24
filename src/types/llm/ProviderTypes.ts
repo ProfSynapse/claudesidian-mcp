@@ -84,6 +84,10 @@ export const DEFAULT_LLM_PROVIDER_SETTINGS: LLMProviderSettings = {
       apiKey: 'http://127.0.0.1:11434',
       enabled: false,
       ollamaModel: '' // User must configure their installed model
+    },
+    lmstudio: {
+      apiKey: 'http://127.0.0.1:1234',
+      enabled: false
     }
   },
   defaultModel: {
