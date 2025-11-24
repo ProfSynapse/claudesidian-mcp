@@ -47,16 +47,21 @@ export class MessageBubble extends Component {
    * For assistant messages with toolCalls, returns a fragment containing tool bubble + text bubble
    */
   createElement(): HTMLElement {
-    const hasToolCalls = this.message.role === 'assistant' && this.message.toolCalls && this.message.toolCalls.length > 0;
+    const activeToolCalls = this.getActiveToolCalls(this.message);
+    const hasToolCalls = this.message.role === 'assistant' && activeToolCalls && activeToolCalls.length > 0;
+    const activeContent = this.getActiveMessageContent(this.message);
 
     if (hasToolCalls) {
       const wrapper = document.createElement('div');
       wrapper.addClass('message-group');
       wrapper.setAttribute('data-message-id', this.message.id);
 
+      // Render using the active alternative's tool calls so retries/branches preserve the accordion
+      const renderMessage: ConversationMessage = { ...this.message, toolCalls: activeToolCalls };
+
       // Create tool bubble using factory
       this.toolBubbleElement = ToolBubbleFactory.createToolBubble({
-        message: this.message,
+        message: renderMessage,
         parseParameterValue: ToolEventParser.parseParameterValue,
         getToolCallArguments: ToolEventParser.getToolCallArguments,
         progressiveToolAccordions: this.progressiveToolAccordions
@@ -64,9 +69,9 @@ export class MessageBubble extends Component {
       wrapper.appendChild(this.toolBubbleElement);
 
       // Create text bubble if there's content
-      if (this.message.content && this.message.content.trim()) {
+      if (activeContent && activeContent.trim()) {
         this.textBubbleElement = ToolBubbleFactory.createTextBubble(
-          this.message,
+          renderMessage,
           (container, content) => this.renderContent(container, content),
           this.onCopy,
           (button) => this.showCopyFeedback(button),
@@ -74,6 +79,24 @@ export class MessageBubble extends Component {
           this.onMessageAlternativeChanged
         );
         wrapper.appendChild(this.textBubbleElement);
+
+        // Add branch navigator for assistant messages with tool bubbles
+        if (renderMessage.alternatives && renderMessage.alternatives.length > 0) {
+          const actions = this.textBubbleElement.querySelector('.message-actions-external');
+          if (actions instanceof HTMLElement) {
+            const navigatorEvents: MessageBranchNavigatorEvents = {
+              onAlternativeChanged: (messageId, alternativeIndex) => {
+                if (this.onMessageAlternativeChanged) {
+                  this.onMessageAlternativeChanged(messageId, alternativeIndex);
+                }
+              },
+              onError: (message) => console.error('[MessageBubble] Branch navigation error:', message)
+            };
+
+            this.messageBranchNavigator = new MessageBranchNavigator(actions, navigatorEvents);
+            this.messageBranchNavigator.updateMessage(renderMessage);
+          }
+        }
       }
 
       this.element = wrapper;
@@ -108,7 +131,6 @@ export class MessageBubble extends Component {
 
     // Message content
     const content = bubble.createDiv('message-content');
-    const activeContent = this.getActiveMessageContent(this.message);
     this.renderContent(content, activeContent).catch(error => {
       console.error('[MessageBubble] Error rendering initial content:', error);
     });
@@ -288,8 +310,9 @@ export class MessageBubble extends Component {
    */
   updateWithNewMessage(newMessage: ConversationMessage): void {
     // Handle progressive accordion transition to static
-    if (this.progressiveToolAccordions.size > 0 && newMessage.toolCalls) {
-      const hasCompletedTools = newMessage.toolCalls.some(tc =>
+    const activeToolCalls = this.getActiveToolCalls(newMessage);
+    if (this.progressiveToolAccordions.size > 0 && activeToolCalls) {
+      const hasCompletedTools = activeToolCalls.some(tc =>
         tc.result !== undefined || tc.success !== undefined
       );
 
@@ -429,6 +452,26 @@ export class MessageBubble extends Component {
     }
 
     return message.content;
+  }
+
+  /**
+   * Get the active tool calls for the message (original or alternative)
+   */
+  private getActiveToolCalls(message: ConversationMessage): any[] | undefined {
+    const activeIndex = message.activeAlternativeIndex || 0;
+
+    if (activeIndex === 0) {
+      return message.toolCalls;
+    }
+
+    if (message.alternatives && message.alternatives.length > 0) {
+      const alternativeIndex = activeIndex - 1;
+      if (alternativeIndex >= 0 && alternativeIndex < message.alternatives.length) {
+        return message.alternatives[alternativeIndex].toolCalls;
+      }
+    }
+
+    return message.toolCalls;
   }
 
   /**

@@ -196,8 +196,17 @@ export class MessageDisplay {
    * Create a message bubble element
    */
   private createMessageBubble(message: ConversationMessage): HTMLElement {
+    // Render using the currently active alternative content/tool calls so branch selection persists across re-renders
+    const displayMessage = this.branchManager
+      ? {
+          ...message,
+          content: this.branchManager.getActiveMessageContent(message),
+          toolCalls: this.branchManager.getActiveMessageToolCalls(message)
+        }
+      : message;
+
     const bubble = new MessageBubble(
-      message,
+      displayMessage,
       this.app,
       (messageId: string) => this.onCopyMessage(messageId),
       (messageId: string) => this.handleRetryMessage(messageId),
