@@ -194,6 +194,22 @@ export const OPENROUTER_MODELS: ModelSpec[] = [
   // Anthropic models via OpenRouter
   {
     provider: 'openrouter',
+    name: 'Claude 4.5 Opus',
+    apiName: 'anthropic/claude-opus-4.5',
+    contextWindow: 200000,
+    maxTokens: 32000,
+    inputCostPerMillion: 5.00,
+    outputCostPerMillion: 25.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+  {
+    provider: 'openrouter',
     name: 'Claude 4.5 Haiku',
     apiName: 'anthropic/claude-haiku-4-5',
     contextWindow: 200000,

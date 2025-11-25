@@ -24,6 +24,24 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
     }
   },
 
+  // Claude 4.5 Opus
+  {
+    provider: 'anthropic',
+    name: 'Claude 4.5 Opus',
+    apiName: 'claude-opus-4-5-20251101',
+    contextWindow: 200000,
+    maxTokens: 32000,
+    inputCostPerMillion: 5.00,
+    outputCostPerMillion: 25.00,
+    capabilities: {
+      supportsJSON: true,
+      supportsImages: true,
+      supportsFunctions: true,
+      supportsStreaming: true,
+      supportsThinking: true
+    }
+  },
+
   // Claude 4 models
   {
     provider: 'anthropic',
