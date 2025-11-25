@@ -32,10 +32,13 @@ export interface RawToolCall {
 
 export class ToolCallContentParser {
   /** Pattern to detect [TOOL_CALLS] prefix */
-  private static readonly TOOL_CALLS_PATTERN = /\[TOOL_CALLS\]\s*/;
+  private static readonly TOOL_CALLS_PATTERN = /\[TOOL_CALLS\]/;
 
   /** Pattern to extract JSON array after [TOOL_CALLS] */
   private static readonly TOOL_CALLS_JSON_PATTERN = /\[TOOL_CALLS\]\s*(\[[\s\S]*\])/;
+
+  /** Pattern to strip [/TOOL_CALLS] end tag if present */
+  private static readonly END_TAG_PATTERN = /\[\/TOOL_CALLS\]\s*$/;
 
   /**
    * Check if content contains [TOOL_CALLS] format
@@ -63,17 +66,20 @@ export class ToolCallContentParser {
     }
 
     try {
+      // Strip [/TOOL_CALLS] end tag if present before parsing
+      const normalizedContent = content.replace(this.END_TAG_PATTERN, '');
+
       // Find the position of [TOOL_CALLS]
-      const toolCallsMatch = content.match(this.TOOL_CALLS_PATTERN);
+      const toolCallsMatch = normalizedContent.match(this.TOOL_CALLS_PATTERN);
       if (!toolCallsMatch || toolCallsMatch.index === undefined) {
         return result;
       }
 
       // Extract any content before [TOOL_CALLS]
-      result.prefixContent = content.slice(0, toolCallsMatch.index).trim();
+      result.prefixContent = normalizedContent.slice(0, toolCallsMatch.index).trim();
 
       // Extract the JSON array after [TOOL_CALLS]
-      const jsonMatch = content.match(this.TOOL_CALLS_JSON_PATTERN);
+      const jsonMatch = normalizedContent.match(this.TOOL_CALLS_JSON_PATTERN);
       if (!jsonMatch || !jsonMatch[1]) {
         console.warn('[ToolCallContentParser] Found [TOOL_CALLS] but could not extract JSON array');
         return result;
@@ -96,8 +102,8 @@ export class ToolCallContentParser {
 
       result.hasToolCalls = result.toolCalls.length > 0;
 
-      // Clean content: remove [TOOL_CALLS] and JSON, keep any remaining text
-      const afterJson = content.slice(
+      // Clean content: remove [TOOL_CALLS], JSON, and end tag - keep any remaining text
+      const afterJson = normalizedContent.slice(
         (jsonMatch.index || 0) + jsonMatch[0].length
       ).trim();
 
@@ -105,8 +111,6 @@ export class ToolCallContentParser {
         .filter(Boolean)
         .join('\n')
         .trim();
-
-      console.log('[ToolCallContentParser] Successfully parsed', result.toolCalls.length, 'tool calls');
 
     } catch (error) {
       console.error('[ToolCallContentParser] Failed to parse tool calls:', error);

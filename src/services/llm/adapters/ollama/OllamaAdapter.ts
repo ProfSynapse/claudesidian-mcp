@@ -35,42 +35,156 @@ export class OllamaAdapter extends BaseAdapter {
   }
 
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
-    // Non-streaming fallback - call regular generate() and yield as single chunk
-    const result = await this.generate(prompt, options);
-    yield { content: result.text || '', complete: true, usage: result.usage };
+    try {
+      const model = options?.model || this.currentModel;
+
+      // Check for pre-built conversation history (tool continuations)
+      let messages: any[];
+      if (options?.conversationHistory && options.conversationHistory.length > 0) {
+        messages = options.conversationHistory;
+      } else {
+        messages = this.buildMessages(prompt, options?.systemPrompt);
+      }
+
+      // Build options object, removing undefined values
+      const ollamaOptions: any = {
+        temperature: options?.temperature,
+        num_predict: options?.maxTokens,
+        stop: options?.stopSequences,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty
+      };
+      Object.keys(ollamaOptions).forEach(key => {
+        if (ollamaOptions[key] === undefined) {
+          delete ollamaOptions[key];
+        }
+      });
+
+      // Use /api/chat endpoint (supports messages array and tool calling)
+      const response = await fetch(`${this.ollamaUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          messages: messages,
+          stream: true,
+          options: ollamaOptions
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new LLMProviderError(
+          `Ollama API error: ${response.status} ${response.statusText} - ${errorText}`,
+          'streaming',
+          'API_ERROR'
+        );
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new LLMProviderError(
+          'No response body available for streaming',
+          'streaming',
+          'NO_RESPONSE_BODY'
+        );
+      }
+
+      const decoder = new TextDecoder();
+      let fullContent = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(line => line.trim());
+
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line);
+
+              // /api/chat returns message.content instead of response
+              if (data.message?.content) {
+                fullContent += data.message.content;
+                yield { content: data.message.content, complete: false };
+              }
+
+              if (data.done) {
+                yield {
+                  content: '',
+                  complete: true,
+                  usage: {
+                    promptTokens: data.prompt_eval_count || 0,
+                    completionTokens: data.eval_count || 0,
+                    totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+                  }
+                };
+              }
+            } catch (parseError) {
+              // Skip invalid JSON lines
+              continue;
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      if (error instanceof LLMProviderError) {
+        throw error;
+      }
+      throw new LLMProviderError(
+        `Ollama streaming failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'streaming',
+        'NETWORK_ERROR'
+      );
+    }
   }
 
   async generateUncached(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
       const model = options?.model || this.currentModel;
-      
-      const requestBody: any = {
-        model: model,
-        prompt: prompt,
-        stream: false,
-        options: {
-          temperature: options?.temperature,
-          num_predict: options?.maxTokens,
-          stop: options?.stopSequences,
-          top_p: options?.topP,
-          frequency_penalty: options?.frequencyPenalty,
-          presence_penalty: options?.presencePenalty
-        }
+
+      // Check for pre-built conversation history (tool continuations)
+      let messages: any[];
+      if (options?.conversationHistory && options.conversationHistory.length > 0) {
+        messages = options.conversationHistory;
+      } else {
+        messages = this.buildMessages(prompt, options?.systemPrompt);
+      }
+
+      // Build options object
+      const ollamaOptions: any = {
+        temperature: options?.temperature,
+        num_predict: options?.maxTokens,
+        stop: options?.stopSequences,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty
       };
 
       // Remove undefined values
-      Object.keys(requestBody.options).forEach(key => {
-        if (requestBody.options[key] === undefined) {
-          delete requestBody.options[key];
+      Object.keys(ollamaOptions).forEach(key => {
+        if (ollamaOptions[key] === undefined) {
+          delete ollamaOptions[key];
         }
       });
 
-      const response = await fetch(`${this.ollamaUrl}/api/generate`, {
+      // Use /api/chat endpoint (supports messages array and tool calling)
+      const response = await fetch(`${this.ollamaUrl}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          model: model,
+          messages: messages,
+          stream: false,
+          options: ollamaOptions
+        })
       });
 
       if (!response.ok) {
@@ -84,9 +198,10 @@ export class OllamaAdapter extends BaseAdapter {
 
       const data = await response.json();
 
-      if (!data.response) {
+      // /api/chat returns message.content instead of response
+      if (!data.message?.content) {
         throw new LLMProviderError(
-          'Invalid response format from Ollama API: missing response field',
+          'Invalid response format from Ollama API: missing message.content field',
           'generation',
           'INVALID_RESPONSE'
         );
@@ -110,7 +225,7 @@ export class OllamaAdapter extends BaseAdapter {
       };
 
       return await this.buildLLMResponse(
-        data.response,
+        data.message.content,
         model,
         usage,
         metadata,
@@ -131,32 +246,42 @@ export class OllamaAdapter extends BaseAdapter {
   async generateStream(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     try {
       const model = options?.model || this.currentModel;
-      
-      const requestBody: any = {
-        model: model,
-        prompt: prompt,
-        stream: true,
-        options: {
-          temperature: options?.temperature,
-          num_predict: options?.maxTokens,
-          stop: options?.stopSequences,
-          top_p: options?.topP
-        }
+
+      // Check for pre-built conversation history (tool continuations)
+      let messages: any[];
+      if (options?.conversationHistory && options.conversationHistory.length > 0) {
+        messages = options.conversationHistory;
+      } else {
+        messages = this.buildMessages(prompt, options?.systemPrompt);
+      }
+
+      // Build options object
+      const ollamaOptions: any = {
+        temperature: options?.temperature,
+        num_predict: options?.maxTokens,
+        stop: options?.stopSequences,
+        top_p: options?.topP
       };
 
       // Remove undefined values
-      Object.keys(requestBody.options).forEach(key => {
-        if (requestBody.options[key] === undefined) {
-          delete requestBody.options[key];
+      Object.keys(ollamaOptions).forEach(key => {
+        if (ollamaOptions[key] === undefined) {
+          delete ollamaOptions[key];
         }
       });
 
-      const response = await fetch(`${this.ollamaUrl}/api/generate`, {
+      // Use /api/chat endpoint (supports messages array and tool calling)
+      const response = await fetch(`${this.ollamaUrl}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          model: model,
+          messages: messages,
+          stream: true,
+          options: ollamaOptions
+        })
       });
 
       if (!response.ok) {
@@ -188,31 +313,31 @@ export class OllamaAdapter extends BaseAdapter {
 
       try {
         const decoder = new TextDecoder();
-        
+
         while (true) {
           const { done, value } = await reader.read();
-          
+
           if (done) break;
-          
+
           const chunk = decoder.decode(value);
           const lines = chunk.split('\n').filter(line => line.trim());
-          
+
           for (const line of lines) {
             try {
               const data = JSON.parse(line);
-              
-              if (data.response) {
-                fullText += data.response;
-                // Token callback removed - use generateStreamAsync for streaming
+
+              // /api/chat returns message.content instead of response
+              if (data.message?.content) {
+                fullText += data.message.content;
               }
-              
+
               if (data.done) {
                 usage = {
                   promptTokens: data.prompt_eval_count || 0,
                   completionTokens: data.eval_count || 0,
                   totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
                 };
-                
+
                 metadata = {
                   modelDetails: data.model,
                   totalDuration: data.total_duration,
@@ -220,7 +345,7 @@ export class OllamaAdapter extends BaseAdapter {
                   promptEvalDuration: data.prompt_eval_duration,
                   evalDuration: data.eval_duration
                 };
-                
+
                 finishReason = 'stop';
                 break;
               }
@@ -255,12 +380,10 @@ export class OllamaAdapter extends BaseAdapter {
         }
       };
 
-      // Completion callback removed - use generateStreamAsync for streaming
       return result;
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error('Unknown streaming error');
-      // Error callback removed - use generateStreamAsync for streaming
-      
+
       if (error instanceof LLMProviderError) {
         throw error;
       }

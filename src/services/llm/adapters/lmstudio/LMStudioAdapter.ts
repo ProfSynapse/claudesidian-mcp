@@ -48,9 +48,17 @@ export class LMStudioAdapter extends BaseAdapter {
     try {
       const model = options?.model || this.currentModel;
 
+      // Check for pre-built conversation history (tool continuations)
+      let messages: any[];
+      if (options?.conversationHistory && options.conversationHistory.length > 0) {
+        messages = options.conversationHistory;
+      } else {
+        messages = this.buildMessages(prompt, options?.systemPrompt);
+      }
+
       const requestBody: any = {
         model: model,
-        messages: this.buildMessages(prompt, options?.systemPrompt),
+        messages: messages,
         stream: false,
         temperature: options?.temperature,
         max_tokens: options?.maxTokens,
@@ -61,7 +69,9 @@ export class LMStudioAdapter extends BaseAdapter {
       };
 
       // Add tools if provided (function calling support)
-      if (options?.tools && options.tools.length > 0) {
+      // Skip for fine-tuned models that have internalized tool schemas (saves context window)
+      const skipToolSchemas = LMStudioAdapter.usesToolCallsContentFormat(model);
+      if (options?.tools && options.tools.length > 0 && !skipToolSchemas) {
         requestBody.tools = this.convertTools(options.tools);
       }
 
@@ -113,14 +123,12 @@ export class LMStudioAdapter extends BaseAdapter {
       // Check for [TOOL_CALLS] format in content (used by fine-tuned models like Nexus)
       // This format embeds tool calls in the content rather than tool_calls array
       if (ToolCallContentParser.hasToolCallsFormat(content)) {
-        console.log('[LMStudioAdapter] Detected [TOOL_CALLS] format in content, parsing...');
         const parsed = ToolCallContentParser.parse(content);
 
         if (parsed.hasToolCalls) {
           // Use parsed tool calls if standard tool_calls is empty
           if (toolCalls.length === 0) {
             toolCalls = parsed.toolCalls;
-            console.log('[LMStudioAdapter] Extracted', toolCalls.length, 'tool calls from content');
           }
           // Clean the content (remove [TOOL_CALLS] JSON)
           content = parsed.cleanContent;
@@ -173,9 +181,17 @@ export class LMStudioAdapter extends BaseAdapter {
     try {
       const model = options?.model || this.currentModel;
 
+      // Check for pre-built conversation history (tool continuations)
+      let messages: any[];
+      if (options?.conversationHistory && options.conversationHistory.length > 0) {
+        messages = options.conversationHistory;
+      } else {
+        messages = this.buildMessages(prompt, options?.systemPrompt);
+      }
+
       const requestBody: any = {
         model: model,
-        messages: this.buildMessages(prompt, options?.systemPrompt),
+        messages: messages,
         stream: true,
         temperature: options?.temperature,
         max_tokens: options?.maxTokens,
@@ -186,8 +202,9 @@ export class LMStudioAdapter extends BaseAdapter {
       };
 
       // Add tools if provided (function calling support)
-      // Note: Fine-tuned models may not need tools sent - they have internalized them
-      if (options?.tools && options.tools.length > 0) {
+      // Skip for fine-tuned models that have internalized tool schemas (saves context window)
+      const skipToolSchemas = LMStudioAdapter.usesToolCallsContentFormat(model);
+      if (options?.tools && options.tools.length > 0 && !skipToolSchemas) {
         requestBody.tools = this.convertTools(options.tools);
       }
 
@@ -248,24 +265,19 @@ export class LMStudioAdapter extends BaseAdapter {
         // Check for [TOOL_CALLS] format early in stream
         if (!hasToolCallsFormat && ToolCallContentParser.hasToolCallsFormat(accumulatedContent)) {
           hasToolCallsFormat = true;
-          console.log('[LMStudioAdapter] Detected [TOOL_CALLS] format - will parse at completion');
         }
 
         // If [TOOL_CALLS] detected, buffer chunks and transform at end
         // This prevents showing raw JSON to the user
         if (hasToolCallsFormat) {
           if (!chunk.complete) {
-            // Show a "processing" indicator instead of raw JSON
-            if (pendingChunks.length === 0) {
-              yield { content: 'Processing tool call...', complete: false };
-            }
+            // Buffer chunks silently - UI has its own thinking indicator
             pendingChunks.push(chunk);
           } else {
             // Stream complete - parse [TOOL_CALLS] and yield transformed result
             const parsed = ToolCallContentParser.parse(accumulatedContent);
 
             if (parsed.hasToolCalls) {
-              console.log('[LMStudioAdapter] Parsed', parsed.toolCalls.length, 'tool calls from content');
               yield {
                 content: parsed.cleanContent,
                 complete: true,

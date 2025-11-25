@@ -436,6 +436,10 @@ export class ConversationContextBuilder {
         return this.appendAnthropicToolExecution(toolCalls, toolResults, previousMessages);
       case 'google':
         return this.appendGoogleToolExecution(toolCalls, toolResults, previousMessages);
+      case 'lmstudio':
+      case 'ollama':
+        // Custom text-based format for fine-tuned models
+        return this.appendCustomFormatToolExecution(toolCalls, toolResults, previousMessages);
       default:
         // OpenAI-compatible providers (openrouter, groq, mistral, perplexity)
         return this.appendOpenAIToolExecution(toolCalls, toolResults, previousMessages);
@@ -524,6 +528,48 @@ export class ConversationContextBuilder {
   }
 
   /**
+   * Append custom format tool execution for LM Studio/Ollama (NO user message added)
+   * Uses text-based [TOOL_CALLS] format for fine-tuned models
+   * @private
+   */
+  private static appendCustomFormatToolExecution(
+    toolCalls: any[],
+    toolResults: any[],
+    previousMessages: any[]
+  ): any[] {
+    const messages = [...previousMessages];
+
+    // Add assistant message with the original tool call request
+    // This represents what the model said (the [TOOL_CALLS] format)
+    const toolCallTexts = toolCalls.map(toolCall => {
+      const toolName = toolCall.function?.name || toolCall.name || 'unknown';
+      const args = toolCall.function?.arguments || toolCall.arguments || '{}';
+      const parsedArgs = typeof args === 'string' ? args : JSON.stringify(args);
+      return JSON.stringify({ name: toolName, arguments: JSON.parse(parsedArgs) });
+    });
+
+    messages.push({
+      role: 'assistant',
+      content: `[TOOL_CALLS][${toolCallTexts.join(',')}][/TOOL_CALLS]`
+    });
+
+    // Format tool results - just the raw result object to match training data
+    const toolResultObjects = toolResults.map((result) => {
+      return result.success
+        ? (result.result || {})
+        : { error: result.error || 'Tool execution failed' };
+    });
+
+    // Add user message with tool results (raw JSON to match training format)
+    messages.push({
+      role: 'user',
+      content: JSON.stringify(toolResultObjects.length === 1 ? toolResultObjects[0] : toolResultObjects, null, 2)
+    });
+
+    return messages;
+  }
+
+  /**
    * Append Google tool execution (NO user message added)
    * @private
    */
@@ -536,20 +582,7 @@ export class ConversationContextBuilder {
 
     // Add model message with functionCall parts
     // Gemini 3.0+ requires preserving thought_signature from original response
-    console.log('[GEMINI-DEBUG] Building functionCall parts from toolCalls:', {
-      toolCallsCount: toolCalls.length,
-      toolCalls: toolCalls.map(tc => ({
-        id: tc.id,
-        name: tc.function?.name || tc.name,
-        hasThoughtSignature: !!tc.thought_signature,
-        toolCallKeys: Object.keys(tc)
-      }))
-    });
-
     const functionCallParts = toolCalls.map(tc => {
-      console.log('[GEMINI-DEBUG] Processing tool call:', JSON.stringify(tc, null, 2));
-
-      // Create part with functionCall
       const part: any = {
         functionCall: {
           name: tc.function?.name || tc.name,
@@ -557,27 +590,13 @@ export class ConversationContextBuilder {
         }
       };
 
-      // Add thought signature AT THE SAME LEVEL as functionCall (not as separate part)
-      // Google API returns it this way and expects it back this way
+      // Add thought signature at the same level as functionCall
       if (tc.thought_signature) {
         part.thoughtSignature = tc.thought_signature;
-        console.log('[GEMINI-DEBUG] ✅ Added thought_signature to functionCall part:', {
-          functionName: part.functionCall.name,
-          signaturePreview: typeof tc.thought_signature === 'string'
-            ? tc.thought_signature.substring(0, 50) + '...'
-            : 'not a string'
-        });
-      } else {
-        console.log('[GEMINI-DEBUG] ⚠️ Tool call missing thought_signature:', {
-          functionName: part.functionCall.name,
-          availableFields: Object.keys(tc)
-        });
       }
 
       return part;
     });
-
-    console.log('[GEMINI-DEBUG] Final functionCallParts:', JSON.stringify(functionCallParts, null, 2));
 
     messages.push({
       role: 'model',
@@ -607,6 +626,12 @@ export class ConversationContextBuilder {
    * Used by LM Studio and Ollama fine-tuned models
    * Returns message array with formatted tool results in text
    *
+   * LM Studio requires STRICT alternation: user/assistant/user/assistant
+   * This method ensures proper ordering by:
+   * 1. Keeping system messages first
+   * 2. Ensuring user prompt comes after system, before any assistant
+   * 3. Building tool cycles (assistant→user) in proper order
+   *
    * @private
    */
   private static buildCustomFormatToolContinuation(
@@ -614,41 +639,85 @@ export class ConversationContextBuilder {
     toolCalls: any[],
     toolResults: any[],
     previousMessages?: any[],
-    systemPrompt?: string
+    _systemPrompt?: string
   ): any[] {
     const messages: any[] = [];
 
-    // Add previous conversation history if provided
+    // Separate system messages from conversation messages
+    const systemMessages: any[] = [];
+    const conversationMessages: any[] = [];
+
     if (previousMessages && previousMessages.length > 0) {
-      messages.push(...previousMessages);
+      for (const msg of previousMessages) {
+        if (msg.role === 'system') {
+          systemMessages.push(msg);
+        } else {
+          conversationMessages.push(msg);
+        }
+      }
     }
 
-    // Add user message if not already in history
-    const hasUserMessage = messages.some(
+    // Add system messages first
+    messages.push(...systemMessages);
+
+    // Check if user prompt already exists in conversation history
+    const hasUserPrompt = conversationMessages.some(
       msg => msg.role === 'user' && msg.content === userPrompt
     );
-    if (!hasUserMessage) {
+
+    // If user prompt isn't in history, add it first (after system)
+    if (!hasUserPrompt) {
       messages.push({ role: 'user', content: userPrompt });
     }
 
-    // Format tool results in text-based format
-    // Model output: "tool_call: toolName\narguments: {...}"
-    // We respond: "tool_result: toolName\nresult: {...}"
-    const toolResultTexts = toolResults.map((result, index) => {
-      const toolCall = toolCalls[index];
+    // Add existing conversation history
+    // But filter out any incomplete tool cycles (assistant without following user result)
+    for (let i = 0; i < conversationMessages.length; i++) {
+      const msg = conversationMessages[i];
+
+      // If this is a user message matching the prompt, it's already added above
+      if (msg.role === 'user' && msg.content === userPrompt && !hasUserPrompt) {
+        continue;
+      }
+
+      messages.push(msg);
+    }
+
+    // Check last message for duplicate detection
+    const lastMsg = messages[messages.length - 1];
+
+    // Build the current tool call text
+    const toolCallTexts = toolCalls.map(toolCall => {
       const toolName = toolCall.function?.name || toolCall.name || 'unknown';
-
-      const resultData = result.success
-        ? result.result || {}
-        : { error: result.error || 'Tool execution failed' };
-
-      return `tool_result: ${toolName}\nresult: ${JSON.stringify(resultData, null, 2)}`;
+      const args = toolCall.function?.arguments || toolCall.arguments || '{}';
+      const parsedArgs = typeof args === 'string' ? args : JSON.stringify(args);
+      return JSON.stringify({ name: toolName, arguments: JSON.parse(parsedArgs) });
     });
 
-    // Add assistant message with formatted tool results
+    // Only add assistant tool call if we don't already end with one matching these tool calls
+    const assistantToolCallContent = `[TOOL_CALLS][${toolCallTexts.join(',')}][/TOOL_CALLS]`;
+    const lastIsMatchingAssistant = lastMsg &&
+      lastMsg.role === 'assistant' &&
+      lastMsg.content?.includes('[TOOL_CALLS]');
+
+    if (!lastIsMatchingAssistant) {
+      messages.push({
+        role: 'assistant',
+        content: assistantToolCallContent
+      });
+    }
+
+    // Format tool results - just the raw result object to match training data
+    const toolResultObjects = toolResults.map((result) => {
+      return result.success
+        ? (result.result || {})
+        : { error: result.error || 'Tool execution failed' };
+    });
+
+    // Add user message with tool results (raw JSON to match training format)
     messages.push({
-      role: 'assistant',
-      content: toolResultTexts.join('\n\n')
+      role: 'user',
+      content: JSON.stringify(toolResultObjects.length === 1 ? toolResultObjects[0] : toolResultObjects, null, 2)
     });
 
     return messages;
@@ -764,20 +833,7 @@ export class ConversationContextBuilder {
 
     // Add model message with functionCall parts
     // Gemini 3.0+ requires preserving thought_signature from original response
-    console.log('[GEMINI-DEBUG] Building functionCall parts from toolCalls:', {
-      toolCallsCount: toolCalls.length,
-      toolCalls: toolCalls.map(tc => ({
-        id: tc.id,
-        name: tc.function?.name || tc.name,
-        hasThoughtSignature: !!tc.thought_signature,
-        toolCallKeys: Object.keys(tc)
-      }))
-    });
-
     const functionCallParts = toolCalls.map(tc => {
-      console.log('[GEMINI-DEBUG] Processing tool call:', JSON.stringify(tc, null, 2));
-
-      // Create part with functionCall
       const part: any = {
         functionCall: {
           name: tc.function?.name || tc.name,
@@ -785,27 +841,13 @@ export class ConversationContextBuilder {
         }
       };
 
-      // Add thought signature AT THE SAME LEVEL as functionCall (not as separate part)
-      // Google API returns it this way and expects it back this way
+      // Add thought signature at the same level as functionCall
       if (tc.thought_signature) {
         part.thoughtSignature = tc.thought_signature;
-        console.log('[GEMINI-DEBUG] ✅ Added thought_signature to functionCall part:', {
-          functionName: part.functionCall.name,
-          signaturePreview: typeof tc.thought_signature === 'string'
-            ? tc.thought_signature.substring(0, 50) + '...'
-            : 'not a string'
-        });
-      } else {
-        console.log('[GEMINI-DEBUG] ⚠️ Tool call missing thought_signature:', {
-          functionName: part.functionCall.name,
-          availableFields: Object.keys(tc)
-        });
       }
 
       return part;
     });
-
-    console.log('[GEMINI-DEBUG] Final functionCallParts:', JSON.stringify(functionCallParts, null, 2));
 
     messages.push({
       role: 'model',
