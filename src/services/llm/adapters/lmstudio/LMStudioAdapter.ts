@@ -2,6 +2,10 @@
  * LM Studio Adapter
  * Provides local LLM models via LM Studio's OpenAI-compatible API
  * Supports model auto-discovery, streaming, and function calling
+ *
+ * Special support for fine-tuned models that use [TOOL_CALLS] content format
+ * (e.g., Nexus tools SFT models) which embed tool calls in message content
+ * rather than using the standard tool_calls array.
  */
 
 import { requestUrl } from 'obsidian';
@@ -16,6 +20,7 @@ import {
   TokenUsage,
   LLMProviderError
 } from '../types';
+import { ToolCallContentParser } from './ToolCallContentParser';
 
 export class LMStudioAdapter extends BaseAdapter {
   readonly name = 'lmstudio';
@@ -102,8 +107,25 @@ export class LMStudioAdapter extends BaseAdapter {
       }
 
       const choice = data.choices[0];
-      const content = choice.message?.content || '';
-      const toolCalls = choice.message?.tool_calls || [];
+      let content = choice.message?.content || '';
+      let toolCalls = choice.message?.tool_calls || [];
+
+      // Check for [TOOL_CALLS] format in content (used by fine-tuned models like Nexus)
+      // This format embeds tool calls in the content rather than tool_calls array
+      if (ToolCallContentParser.hasToolCallsFormat(content)) {
+        console.log('[LMStudioAdapter] Detected [TOOL_CALLS] format in content, parsing...');
+        const parsed = ToolCallContentParser.parse(content);
+
+        if (parsed.hasToolCalls) {
+          // Use parsed tool calls if standard tool_calls is empty
+          if (toolCalls.length === 0) {
+            toolCalls = parsed.toolCalls;
+            console.log('[LMStudioAdapter] Extracted', toolCalls.length, 'tool calls from content');
+          }
+          // Clean the content (remove [TOOL_CALLS] JSON)
+          content = parsed.cleanContent;
+        }
+      }
 
       // Extract usage information
       const usage: TokenUsage = {
@@ -125,7 +147,8 @@ export class LMStudioAdapter extends BaseAdapter {
         model,
         usage,
         metadata,
-        finishReason,
+        // If we have tool calls, report tool_calls as finish reason
+        toolCalls.length > 0 ? 'tool_calls' : finishReason,
         toolCalls
       );
     } catch (error) {
@@ -143,6 +166,8 @@ export class LMStudioAdapter extends BaseAdapter {
   /**
    * Generate streaming response using async generator
    * Falls back to non-streaming if CORS is blocked
+   *
+   * Supports [TOOL_CALLS] content format from fine-tuned models
    */
   async* generateStreamAsync(prompt: string, options?: GenerateOptions): AsyncGenerator<StreamChunk, void, unknown> {
     try {
@@ -161,6 +186,7 @@ export class LMStudioAdapter extends BaseAdapter {
       };
 
       // Add tools if provided (function calling support)
+      // Note: Fine-tuned models may not need tools sent - they have internalized them
       if (options?.tools && options.tools.length > 0) {
         requestBody.tools = this.convertTools(options.tools);
       }
@@ -194,8 +220,15 @@ export class LMStudioAdapter extends BaseAdapter {
         );
       }
 
-      // Process SSE stream using BaseAdapter's processSSEStream
-      yield* this.processSSEStream(response, {
+      // Use existing SSE stream processor with post-processing for [TOOL_CALLS] format
+      // The [TOOL_CALLS] content format embeds tool calls in message content rather
+      // than using the standard tool_calls array - we detect and parse at completion
+      let accumulatedContent = '';
+      let pendingChunks: StreamChunk[] = [];
+      let hasToolCallsFormat = false;
+
+      // Process SSE stream using existing infrastructure
+      for await (const chunk of this.processSSEStream(response, {
         debugLabel: 'LM Studio',
         extractContent: (parsed) => parsed.choices?.[0]?.delta?.content || null,
         extractToolCalls: (parsed) => parsed.choices?.[0]?.delta?.tool_calls || null,
@@ -206,7 +239,51 @@ export class LMStudioAdapter extends BaseAdapter {
           initialYield: true,
           progressInterval: 50
         }
-      });
+      })) {
+        // Accumulate content for [TOOL_CALLS] detection
+        if (chunk.content) {
+          accumulatedContent += chunk.content;
+        }
+
+        // Check for [TOOL_CALLS] format early in stream
+        if (!hasToolCallsFormat && ToolCallContentParser.hasToolCallsFormat(accumulatedContent)) {
+          hasToolCallsFormat = true;
+          console.log('[LMStudioAdapter] Detected [TOOL_CALLS] format - will parse at completion');
+        }
+
+        // If [TOOL_CALLS] detected, buffer chunks and transform at end
+        // This prevents showing raw JSON to the user
+        if (hasToolCallsFormat) {
+          if (!chunk.complete) {
+            // Show a "processing" indicator instead of raw JSON
+            if (pendingChunks.length === 0) {
+              yield { content: 'Processing tool call...', complete: false };
+            }
+            pendingChunks.push(chunk);
+          } else {
+            // Stream complete - parse [TOOL_CALLS] and yield transformed result
+            const parsed = ToolCallContentParser.parse(accumulatedContent);
+
+            if (parsed.hasToolCalls) {
+              console.log('[LMStudioAdapter] Parsed', parsed.toolCalls.length, 'tool calls from content');
+              yield {
+                content: parsed.cleanContent,
+                complete: true,
+                toolCalls: parsed.toolCalls,
+                toolCallsReady: true,
+                usage: chunk.usage
+              };
+            } else {
+              // Parsing failed - yield original chunk
+              console.warn('[LMStudioAdapter] [TOOL_CALLS] parsing failed, yielding raw content');
+              yield chunk;
+            }
+          }
+        } else {
+          // Standard response - yield as-is (existing tool call handling applies)
+          yield chunk;
+        }
+      }
 
     } catch (error) {
       console.error('[LMStudioAdapter] Streaming error:', error);
@@ -216,11 +293,13 @@ export class LMStudioAdapter extends BaseAdapter {
         console.warn('[LMStudioAdapter] CORS blocked - falling back to non-streaming mode');
         console.warn('[LMStudioAdapter] To enable streaming, configure LM Studio to allow CORS from app://obsidian.md');
 
-        // Fall back to non-streaming
+        // Fall back to non-streaming (which also handles [TOOL_CALLS])
         const result = await this.generateUncached(prompt, options);
         yield {
           content: result.text || '',
           complete: true,
+          toolCalls: result.toolCalls,
+          toolCallsReady: result.toolCalls && result.toolCalls.length > 0,
           usage: result.usage,
           metadata: result.metadata
         };
@@ -365,14 +444,29 @@ export class LMStudioAdapter extends BaseAdapter {
   /**
    * Detect if a model supports tool/function calling based on name patterns
    * Many newer models support function calling
+   *
+   * Note: Models with "nexus" or "tools" in the name likely use [TOOL_CALLS] format
+   * which is automatically parsed by this adapter
    */
   private detectToolSupport(modelId: string): boolean {
     const toolSupportedKeywords = [
       'gpt', 'mistral', 'mixtral', 'hermes', 'nous', 'qwen',
-      'deepseek', 'dolphin', 'functionary', 'gorilla'
+      'deepseek', 'dolphin', 'functionary', 'gorilla',
+      // Fine-tuned models that use [TOOL_CALLS] format
+      'nexus', 'tools-sft', 'tool-calling'
     ];
     const lowerModelId = modelId.toLowerCase();
     return toolSupportedKeywords.some(keyword => lowerModelId.includes(keyword));
+  }
+
+  /**
+   * Check if a model uses the [TOOL_CALLS] content format
+   * These are typically fine-tuned models that have internalized tool schemas
+   */
+  static usesToolCallsContentFormat(modelId: string): boolean {
+    const contentFormatKeywords = ['nexus', 'tools-sft', 'claudesidian'];
+    const lowerModelId = modelId.toLowerCase();
+    return contentFormatKeywords.some(keyword => lowerModelId.includes(keyword));
   }
 
   /**

@@ -51,11 +51,15 @@ function detectVisionSupport(modelId: string): boolean {
 /**
  * Detect if a model supports tool/function calling based on common name patterns
  * Many newer models support function calling
+ *
+ * Note: Models with "nexus" or "tools-sft" use [TOOL_CALLS] content format
  */
 function detectToolSupport(modelId: string): boolean {
   const toolSupportedKeywords = [
     'gpt', 'mistral', 'mixtral', 'hermes', 'nous', 'qwen',
-    'deepseek', 'dolphin', 'functionary', 'gorilla'
+    'deepseek', 'dolphin', 'functionary', 'gorilla',
+    // Fine-tuned models with [TOOL_CALLS] format
+    'nexus', 'tools-sft', 'tool-calling'
   ];
   const lowerModelId = modelId.toLowerCase();
   return toolSupportedKeywords.some(keyword => lowerModelId.includes(keyword));
