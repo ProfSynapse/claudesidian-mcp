@@ -7,7 +7,7 @@ import { ModelOption } from '../components/ModelSelector';
 import { AgentOption } from '../components/AgentSelector';
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
 import { MessageEnhancement } from '../components/suggesters/base/SuggesterInterfaces';
-import { SystemPromptBuilder } from './SystemPromptBuilder';
+import { SystemPromptBuilder, AgentSummary } from './SystemPromptBuilder';
 import { ContextNotesManager } from './ContextNotesManager';
 import { ModelSelectionUtility } from '../utils/ModelSelectionUtility';
 import { AgentConfigurationUtility } from '../utils/AgentConfigurationUtility';
@@ -25,6 +25,7 @@ export class ModelAgentManager {
   private currentSystemPrompt: string | null = null;
   private selectedWorkspaceId: string | null = null;
   private workspaceContext: WorkspaceContext | null = null;
+  private loadedWorkspaceData: any = null; // Full comprehensive workspace data from LoadWorkspaceMode
   private contextNotesManager: ContextNotesManager;
   private currentConversationId: string | null = null;
   private messageEnhancement: MessageEnhancement | null = null;
@@ -113,26 +114,28 @@ export class ModelAgentManager {
   }
 
   /**
-   * Restore workspace from settings
+   * Restore workspace from settings - loads full comprehensive data
    */
   private async restoreWorkspace(workspaceId: string, sessionId?: string): Promise<void> {
     this.selectedWorkspaceId = workspaceId;
 
     try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
-      const workspaceService = await plugin?.getService('workspaceService');
+      // Load full comprehensive workspace data (same as #workspace suggester)
+      const fullWorkspaceData = await this.workspaceIntegration.loadWorkspace(workspaceId);
 
-      if (workspaceService) {
-        const workspace = await workspaceService.getWorkspace(workspaceId);
-        if (workspace?.context) {
-          this.workspaceContext = workspace.context;
-
-          // Bind session to workspace
-          await this.workspaceIntegration.bindSessionToWorkspace(sessionId, workspaceId);
-        }
+      if (fullWorkspaceData) {
+        this.loadedWorkspaceData = fullWorkspaceData;
+        // Also extract basic context for backward compatibility
+        this.workspaceContext = fullWorkspaceData.context || fullWorkspaceData.workspaceContext || null;
       }
+
+      // Bind session to workspace
+      await this.workspaceIntegration.bindSessionToWorkspace(sessionId, workspaceId);
     } catch (error) {
-      // Failed to restore workspace
+      console.error('[ModelAgentManager] Failed to restore workspace:', error);
+      // Clear workspace data on failure
+      this.loadedWorkspaceData = null;
+      this.workspaceContext = null;
     }
   }
 
@@ -155,6 +158,7 @@ export class ModelAgentManager {
       this.currentSystemPrompt = null;
       this.selectedWorkspaceId = null;
       this.workspaceContext = null;
+      this.loadedWorkspaceData = null;
       this.contextNotesManager.clear();
 
       // Notify listeners about the state reset
@@ -265,11 +269,24 @@ export class ModelAgentManager {
   }
 
   /**
-   * Set workspace context
+   * Set workspace context - loads full comprehensive data
+   * When a workspace is selected in chat settings, load the same rich data
+   * as the #workspace suggester (file structure, sessions, states, etc.)
    */
   async setWorkspaceContext(workspaceId: string, context: WorkspaceContext): Promise<void> {
     this.selectedWorkspaceId = workspaceId;
-    this.workspaceContext = context;
+    this.workspaceContext = context; // Keep basic context for backward compatibility
+
+    // Load full comprehensive workspace data (same as #workspace suggester)
+    try {
+      const fullWorkspaceData = await this.workspaceIntegration.loadWorkspace(workspaceId);
+      if (fullWorkspaceData) {
+        this.loadedWorkspaceData = fullWorkspaceData;
+      }
+    } catch (error) {
+      console.error('[ModelAgentManager] Failed to load full workspace data:', error);
+      this.loadedWorkspaceData = null;
+    }
 
     // Get session ID from current conversation
     const sessionId = await this.getCurrentSessionId();
@@ -287,6 +304,7 @@ export class ModelAgentManager {
   async clearWorkspaceContext(): Promise<void> {
     this.selectedWorkspaceId = null;
     this.workspaceContext = null;
+    this.loadedWorkspaceData = null;
     this.events.onSystemPromptChanged(await this.buildSystemPromptWithWorkspace());
   }
 
@@ -380,10 +398,16 @@ export class ModelAgentManager {
   }
 
   /**
-   * Build system prompt with workspace context
+   * Build system prompt with workspace context and dynamic context
+   * Dynamic context (vault structure, workspaces, agents) is always fetched fresh
    */
   private async buildSystemPromptWithWorkspace(): Promise<string | null> {
     const sessionId = await this.getCurrentSessionId();
+
+    // Fetch dynamic context (always fresh)
+    const vaultStructure = this.workspaceIntegration.getVaultStructure();
+    const availableWorkspaces = await this.workspaceIntegration.listAvailableWorkspaces();
+    const availableAgents = await this.getAvailableAgentSummaries();
 
     return await this.systemPromptBuilder.build({
       sessionId,
@@ -391,8 +415,25 @@ export class ModelAgentManager {
       contextNotes: this.contextNotesManager.getNotes(),
       messageEnhancement: this.messageEnhancement,
       agentPrompt: this.currentSystemPrompt,
-      workspaceContext: this.workspaceContext
+      workspaceContext: this.workspaceContext,
+      loadedWorkspaceData: this.loadedWorkspaceData, // Full comprehensive workspace data
+      // Dynamic context (always loaded fresh)
+      vaultStructure,
+      availableWorkspaces,
+      availableAgents
     });
+  }
+
+  /**
+   * Get available agents as AgentSummary for system prompt
+   */
+  private async getAvailableAgentSummaries(): Promise<AgentSummary[]> {
+    const agents = await this.getAvailableAgents();
+    return agents.map(agent => ({
+      id: agent.id,
+      name: agent.name,
+      description: agent.description || 'Custom agent'
+    }));
   }
 
   /**

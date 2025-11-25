@@ -14,6 +14,33 @@
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
 import { MessageEnhancement } from '../components/suggesters/base/SuggesterInterfaces';
 
+/**
+ * Vault structure for system prompt context
+ */
+export interface VaultStructure {
+  rootFolders: string[];
+  rootFiles: string[];
+}
+
+/**
+ * Available workspace summary for system prompt
+ */
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  description?: string;
+  rootFolder: string;
+}
+
+/**
+ * Available agent summary for system prompt
+ */
+export interface AgentSummary {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface SystemPromptOptions {
   sessionId?: string;
   workspaceId?: string;
@@ -21,6 +48,12 @@ export interface SystemPromptOptions {
   messageEnhancement?: MessageEnhancement | null;
   agentPrompt?: string | null;
   workspaceContext?: WorkspaceContext | null;
+  // Full comprehensive workspace data from LoadWorkspaceMode (when workspace selected in settings)
+  loadedWorkspaceData?: any | null;
+  // Dynamic context (always loaded fresh)
+  vaultStructure?: VaultStructure | null;
+  availableWorkspaces?: WorkspaceSummary[];
+  availableAgents?: AgentSummary[];
 }
 
 export class SystemPromptBuilder {
@@ -41,7 +74,25 @@ export class SystemPromptBuilder {
       sections.push(sessionSection);
     }
 
-    // 2. Context files section
+    // 2. Vault structure (dynamic - always fresh)
+    const vaultStructureSection = this.buildVaultStructureSection(options.vaultStructure);
+    if (vaultStructureSection) {
+      sections.push(vaultStructureSection);
+    }
+
+    // 3. Available workspaces (dynamic - always fresh)
+    const availableWorkspacesSection = this.buildAvailableWorkspacesSection(options.availableWorkspaces);
+    if (availableWorkspacesSection) {
+      sections.push(availableWorkspacesSection);
+    }
+
+    // 4. Available agents (dynamic - always fresh)
+    const availableAgentsSection = this.buildAvailableAgentsSection(options.availableAgents);
+    if (availableAgentsSection) {
+      sections.push(availableAgentsSection);
+    }
+
+    // 5. Context files section
     const filesSection = await this.buildFilesSection(
       options.contextNotes || [],
       options.messageEnhancement
@@ -50,32 +101,35 @@ export class SystemPromptBuilder {
       sections.push(filesSection);
     }
 
-    // 3. Tool hints from /suggester
+    // 6. Tool hints from /suggester
     const toolHintsSection = this.buildToolHintsSection(options.messageEnhancement);
     if (toolHintsSection) {
       sections.push(toolHintsSection);
     }
 
-    // 4. Custom agents from @suggester
+    // 7. Custom agents from @suggester
     const customAgentsSection = this.buildCustomAgentsSection(options.messageEnhancement);
     if (customAgentsSection) {
       sections.push(customAgentsSection);
     }
 
-    // 5. Workspace references from #suggester
+    // 8. Workspace references from #suggester
     const workspaceReferencesSection = await this.buildWorkspaceReferencesSection(options.messageEnhancement);
     if (workspaceReferencesSection) {
       sections.push(workspaceReferencesSection);
     }
 
-    // 6. Agent prompt (if agent selected)
+    // 9. Agent prompt (if agent selected)
     const agentSection = this.buildAgentSection(options.agentPrompt);
     if (agentSection) {
       sections.push(agentSection);
     }
 
-    // 7. Workspace context (legacy single workspace support)
-    const workspaceSection = this.buildWorkspaceSection(options.workspaceContext);
+    // 10. Selected workspace context (comprehensive data from settings selection)
+    const workspaceSection = this.buildSelectedWorkspaceSection(
+      options.loadedWorkspaceData,
+      options.workspaceContext
+    );
     if (workspaceSection) {
       sections.push(workspaceSection);
     }
@@ -310,14 +364,155 @@ export class SystemPromptBuilder {
   }
 
   /**
-   * Build workspace section
+   * Build selected workspace section with comprehensive data
+   * When a workspace is selected in chat settings, include the full workspace data
+   * (same rich context as the #workspace suggester)
    */
-  private buildWorkspaceSection(workspaceContext?: WorkspaceContext | null): string | null {
+  private buildSelectedWorkspaceSection(
+    loadedWorkspaceData?: any | null,
+    workspaceContext?: WorkspaceContext | null
+  ): string | null {
+    // If we have full comprehensive data, use that
+    if (loadedWorkspaceData) {
+      const workspaceName = loadedWorkspaceData.context?.name ||
+                           loadedWorkspaceData.name ||
+                           'Selected Workspace';
+      const workspaceId = loadedWorkspaceData.id || 'unknown';
+
+      let prompt = `<selected_workspace name="${this.escapeXmlAttribute(workspaceName)}" id="${this.escapeXmlAttribute(workspaceId)}">\n`;
+      prompt += 'This workspace is currently selected. Use its context for your responses:\n\n';
+
+      // Format comprehensive data similar to buildWorkspaceReferencesSection
+      const formattedData: any = {};
+
+      if (loadedWorkspaceData.context) {
+        formattedData.context = loadedWorkspaceData.context;
+      }
+      if (loadedWorkspaceData.workflows && loadedWorkspaceData.workflows.length > 0) {
+        formattedData.workflows = loadedWorkspaceData.workflows;
+      }
+      if (loadedWorkspaceData.workspaceStructure && loadedWorkspaceData.workspaceStructure.length > 0) {
+        formattedData.workspaceStructure = loadedWorkspaceData.workspaceStructure;
+      }
+      if (loadedWorkspaceData.recentFiles && loadedWorkspaceData.recentFiles.length > 0) {
+        formattedData.recentFiles = loadedWorkspaceData.recentFiles;
+      }
+      if (loadedWorkspaceData.keyFiles && Object.keys(loadedWorkspaceData.keyFiles).length > 0) {
+        formattedData.keyFiles = loadedWorkspaceData.keyFiles;
+      }
+      if (loadedWorkspaceData.preferences) {
+        formattedData.preferences = loadedWorkspaceData.preferences;
+      }
+      if (loadedWorkspaceData.sessions && loadedWorkspaceData.sessions.length > 0) {
+        formattedData.sessions = loadedWorkspaceData.sessions;
+      }
+      if (loadedWorkspaceData.states && loadedWorkspaceData.states.length > 0) {
+        formattedData.states = loadedWorkspaceData.states;
+      }
+
+      prompt += this.escapeXmlContent(JSON.stringify(formattedData, null, 2));
+      prompt += '\n</selected_workspace>';
+
+      return prompt;
+    }
+
+    // Fallback to basic context if no comprehensive data
     if (!workspaceContext) {
       return null;
     }
 
-    return `<workspace>\n${JSON.stringify(workspaceContext, null, 2)}\n</workspace>`;
+    return `<selected_workspace>\n${JSON.stringify(workspaceContext, null, 2)}\n</selected_workspace>`;
+  }
+
+  /**
+   * Build vault structure section (dynamic - shows root folders and files)
+   * Provides the LLM with awareness of the vault's organization
+   */
+  private buildVaultStructureSection(vaultStructure?: VaultStructure | null): string | null {
+    if (!vaultStructure) {
+      return null;
+    }
+
+    const { rootFolders, rootFiles } = vaultStructure;
+
+    // Don't include section if vault is empty
+    if (rootFolders.length === 0 && rootFiles.length === 0) {
+      return null;
+    }
+
+    let prompt = '<vault_structure>\n';
+    prompt += 'The following is the root-level structure of the Obsidian vault:\n\n';
+
+    if (rootFolders.length > 0) {
+      prompt += 'Folders:\n';
+      for (const folder of rootFolders) {
+        prompt += `  - ${folder}/\n`;
+      }
+      prompt += '\n';
+    }
+
+    if (rootFiles.length > 0) {
+      prompt += 'Files:\n';
+      for (const file of rootFiles) {
+        prompt += `  - ${file}\n`;
+      }
+    }
+
+    prompt += '\nUse vaultManager or vaultLibrarian tools to explore subfolders or search for specific content.\n';
+    prompt += '</vault_structure>';
+
+    return prompt;
+  }
+
+  /**
+   * Build available workspaces section (dynamic - lists all workspaces)
+   * Helps the LLM understand what workspaces exist and can be loaded
+   */
+  private buildAvailableWorkspacesSection(workspaces?: WorkspaceSummary[]): string | null {
+    if (!workspaces || workspaces.length === 0) {
+      return null;
+    }
+
+    let prompt = '<available_workspaces>\n';
+    prompt += 'The following workspaces are available in this vault:\n\n';
+
+    for (const workspace of workspaces) {
+      prompt += `- ${this.escapeXmlContent(workspace.name)} (id: "${workspace.id}")\n`;
+      if (workspace.description) {
+        prompt += `  Description: ${this.escapeXmlContent(workspace.description)}\n`;
+      }
+      prompt += `  Root folder: ${workspace.rootFolder}\n`;
+      prompt += '\n';
+    }
+
+    prompt += 'Use memoryManager with loadWorkspace mode to get full workspace context.\n';
+    prompt += '</available_workspaces>';
+
+    return prompt;
+  }
+
+  /**
+   * Build available agents section (dynamic - lists custom agents)
+   * Informs the LLM about custom agents that can be used
+   */
+  private buildAvailableAgentsSection(agents?: AgentSummary[]): string | null {
+    if (!agents || agents.length === 0) {
+      return null;
+    }
+
+    let prompt = '<available_agents>\n';
+    prompt += 'The following custom agents are available in this workspace:\n\n';
+
+    for (const agent of agents) {
+      prompt += `- ${this.escapeXmlContent(agent.name)} (id: "${agent.id}")\n`;
+      prompt += `  ${this.escapeXmlContent(agent.description)}\n\n`;
+    }
+
+    prompt += 'Note: These are custom prompt agents created by the user. ';
+    prompt += 'Built-in agents (ContentManager, VaultLibrarian, MemoryManager, etc.) are always available via MCP tools.\n';
+    prompt += '</available_agents>';
+
+    return prompt;
   }
 
   /**

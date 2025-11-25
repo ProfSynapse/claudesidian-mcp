@@ -1,15 +1,16 @@
 /**
  * Location: /src/ui/chat/services/WorkspaceIntegrationService.ts
  *
- * Purpose: Handles workspace loading and session binding
+ * Purpose: Handles workspace loading, session binding, and dynamic context retrieval
  * Extracted from ModelAgentManager.ts to follow Single Responsibility Principle
  *
- * Used by: ModelAgentManager for workspace operations
- * Dependencies: WorkspaceService, SessionContextManager
+ * Used by: ModelAgentManager for workspace operations and dynamic context
+ * Dependencies: WorkspaceService, SessionContextManager, Obsidian Vault API
  */
 
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
-import { TFile } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
+import { VaultStructure, WorkspaceSummary } from './SystemPromptBuilder';
 
 /**
  * Service for workspace integration with chat
@@ -110,6 +111,71 @@ export class WorkspaceIntegrationService {
       }
     } catch (error) {
       console.error('[WorkspaceIntegrationService] Failed to bind session to workspace:', error);
+    }
+  }
+
+  /**
+   * Get the root-level vault structure (folders and files)
+   * Used to give the LLM awareness of the vault's organization
+   */
+  getVaultStructure(): VaultStructure {
+    const rootFolders: string[] = [];
+    const rootFiles: string[] = [];
+
+    try {
+      const root = this.app.vault.getRoot();
+
+      if (root && root.children) {
+        for (const child of root.children) {
+          if (child instanceof TFolder) {
+            // Skip hidden folders (starting with .)
+            if (!child.name.startsWith('.')) {
+              rootFolders.push(child.name);
+            }
+          } else if (child instanceof TFile) {
+            // Skip hidden files (starting with .)
+            if (!child.name.startsWith('.')) {
+              rootFiles.push(child.name);
+            }
+          }
+        }
+      }
+
+      // Sort alphabetically for consistent presentation
+      rootFolders.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      rootFiles.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    } catch (error) {
+      console.error('[WorkspaceIntegrationService] Failed to get vault structure:', error);
+    }
+
+    return { rootFolders, rootFiles };
+  }
+
+  /**
+   * Get all available workspaces with summary information
+   * Used to give the LLM awareness of what workspaces exist
+   */
+  async listAvailableWorkspaces(): Promise<WorkspaceSummary[]> {
+    try {
+      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const workspaceService = await plugin?.getService('workspaceService');
+
+      if (!workspaceService) {
+        return [];
+      }
+
+      // Use listWorkspaces for lightweight index-based listing
+      const workspaces = await workspaceService.listWorkspaces();
+
+      return workspaces.map((ws: any) => ({
+        id: ws.id,
+        name: ws.name,
+        description: ws.description || undefined,
+        rootFolder: ws.rootFolder || '/'
+      }));
+    } catch (error) {
+      console.error('[WorkspaceIntegrationService] Failed to list workspaces:', error);
+      return [];
     }
   }
 }
