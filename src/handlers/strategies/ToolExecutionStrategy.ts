@@ -69,7 +69,8 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             
             return this.dependencies.responseFormatter.formatToolExecutionResponse(
                 result,
-                context.sessionInfo
+                context.sessionInfo,
+                { mode: context.mode }
             );
         } catch (error) {
             // Trigger error response capture callback if available
@@ -134,7 +135,8 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             
             return this.dependencies.responseFormatter.formatToolExecutionResponse(
                 errorResult,
-                context?.sessionInfo
+                context?.sessionInfo,
+                { mode: context?.mode }
             );
         }
     }

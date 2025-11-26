@@ -32,7 +32,7 @@ export interface IToolExecutionService {
 
 
 export interface IResponseFormatter {
-    formatToolExecutionResponse(result: any, sessionInfo?: any): any;
+    formatToolExecutionResponse(result: any, sessionInfo?: any, context?: { mode?: string }): any;
     formatSessionInstructions(sessionId: string, result: any): any;
     formatErrorResponse(error: Error): any;
 }
