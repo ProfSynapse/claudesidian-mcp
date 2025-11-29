@@ -11,6 +11,7 @@ import { MessageAlternativeService } from './MessageAlternativeService';
 import { MessageStreamHandler } from './MessageStreamHandler';
 import { MessageStateManager } from './MessageStateManager';
 import { AbortHandler } from '../utils/AbortHandler';
+import { getWebLLMLifecycleManager } from '../../../services/llm/adapters/webllm/WebLLMLifecycleManager';
 
 export interface MessageManagerEvents {
   onMessageAdded: (message: ConversationMessage) => void;
@@ -101,6 +102,9 @@ export class MessageManager {
 
     try {
       this.setLoading(true);
+
+      // Record activity for Nexus lifecycle manager (resets idle timer)
+      getWebLLMLifecycleManager().recordActivity();
 
       // Add user message and get real ID from storage
       await this.stateManager.addUserMessage(conversation, message, metadata);

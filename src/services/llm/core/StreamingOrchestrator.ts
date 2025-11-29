@@ -120,7 +120,9 @@ export class StreamingOrchestrator {
       // Get adapter
       const adapter = this.adapterRegistry.getAdapter(provider);
       if (!adapter) {
-        throw new Error(`Provider not available: ${provider}`);
+        const availableProviders = this.adapterRegistry.getAvailableProviders();
+        console.error(`[StreamingOrchestrator] Provider '${provider}' not available. Available providers:`, availableProviders);
+        throw new Error(`Provider not available: ${provider}. Available: [${availableProviders.join(', ')}]`);
       }
 
       // Get only the latest user message as the actual prompt

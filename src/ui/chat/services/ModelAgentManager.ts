@@ -12,6 +12,7 @@ import { ContextNotesManager } from './ContextNotesManager';
 import { ModelSelectionUtility } from '../utils/ModelSelectionUtility';
 import { AgentConfigurationUtility } from '../utils/AgentConfigurationUtility';
 import { WorkspaceIntegrationService } from './WorkspaceIntegrationService';
+import { getWebLLMLifecycleManager } from '../../../services/llm/adapters/webllm/WebLLMLifecycleManager';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -253,8 +254,19 @@ export class ModelAgentManager {
    * Handle model selection change
    */
   handleModelChange(model: ModelOption | null): void {
+    const previousProvider = this.selectedModel?.providerId || '';
+    const newProvider = model?.providerId || '';
+
     this.selectedModel = model;
     this.events.onModelChanged(model);
+
+    // Notify Nexus lifecycle manager of provider changes
+    if (previousProvider !== newProvider) {
+      const lifecycleManager = getWebLLMLifecycleManager();
+      lifecycleManager.handleProviderChanged(previousProvider, newProvider).catch((error) => {
+        console.warn('[ModelAgentManager] Nexus lifecycle manager error:', error);
+      });
+    }
   }
 
   /**

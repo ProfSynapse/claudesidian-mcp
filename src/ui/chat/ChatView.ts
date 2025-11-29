@@ -39,6 +39,9 @@ import { ChatEventBinder } from './utils/ChatEventBinder';
 import { TokenCalculator } from './utils/TokenCalculator';
 import { ReferenceMetadata } from './utils/ReferenceExtractor';
 
+// Nexus Lifecycle
+import { getWebLLMLifecycleManager } from '../../services/llm/adapters/webllm/WebLLMLifecycleManager';
+
 export const CHAT_VIEW_TYPE = 'claudesidian-chat';
 
 export class ChatView extends ItemView {
@@ -98,9 +101,21 @@ export class ChatView extends ItemView {
 
     this.initializeArchitecture();
     await this.loadInitialData();
+
+    // Notify Nexus lifecycle manager that ChatView is open
+    // This triggers pre-loading if Nexus is the default provider
+    const lifecycleManager = getWebLLMLifecycleManager();
+    lifecycleManager.handleChatViewOpened().catch((error) => {
+      console.warn('[ChatView] Nexus lifecycle manager error on open:', error);
+    });
   }
 
   async onClose(): Promise<void> {
+    // Notify Nexus lifecycle manager that ChatView is closing
+    // This starts the idle timer for potential model unloading
+    const lifecycleManager = getWebLLMLifecycleManager();
+    lifecycleManager.handleChatViewClosed();
+
     this.cleanup();
   }
 

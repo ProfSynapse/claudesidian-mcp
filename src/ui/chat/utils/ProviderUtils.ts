@@ -13,6 +13,7 @@ export class ProviderUtils {
       'mistral': 'Mistral AI',
       'ollama': 'Ollama',
       'lmstudio': 'LM Studio',
+      'webllm': 'Nexus (Local)',
       'openrouter': 'OpenRouter',
       'google': 'Google',
       'cohere': 'Cohere',
@@ -75,6 +76,7 @@ export class ProviderUtils {
       'mistral': '#ff6b35',
       'ollama': '#000000',
       'lmstudio': '#4A90E2',
+      'webllm': '#00d4aa',  // WebGPU green
       'openrouter': '#8b5cf6',
       'google': '#4285f4',
       'cohere': '#39c6b9',
@@ -93,6 +95,7 @@ export class ProviderUtils {
       'mistral': '🌪️',
       'ollama': '🦙',
       'lmstudio': '🖥️',
+      'webllm': '🌐',
       'openrouter': '🔀',
       'google': '🔍',
       'cohere': '🧬',
@@ -124,6 +127,7 @@ export class ProviderUtils {
       'mistral': 'MST',
       'ollama': 'OLL',
       'lmstudio': 'LMS',
+      'webllm': 'WEB',
       'openrouter': 'OR',
       'google': 'GGL',
       'cohere': 'COH',
@@ -142,6 +146,7 @@ export class ProviderUtils {
       'mistral',
       'ollama',
       'lmstudio',    // ✅ LM Studio streaming via OpenAI-compatible API
+      'webllm',      // ✅ WebLLM streaming via MLC.ai WebGPU
       'openrouter',
       'google',      // ✅ Google Gemini streaming via generateContentStream
       'groq'         // ✅ Groq streaming support
@@ -157,6 +162,7 @@ export class ProviderUtils {
     const functionCallingProviders = [
       'openai',      // ✅ Native OpenAI function calling
       'lmstudio',    // ✅ OpenAI-compatible function calling (model-dependent)
+      'webllm',      // ✅ [TOOL_CALLS] content format for fine-tuned models
       'openrouter',  // ✅ OpenAI-compatible function calling
       'groq',        // ✅ OpenAI-compatible function calling
       'mistral',     // ✅ Native Mistral function calling

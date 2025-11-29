@@ -9,6 +9,7 @@ import { LLMProviderManager } from '../services/llm/providers/ProviderManager';
 import { CardManager, CardManagerConfig, CardItem } from './CardManager';
 import { LLMProviderModal, LLMProviderModalConfig } from './LLMProviderModal';
 import { StaticModelsService } from '../services/StaticModelsService';
+import { WEBLLM_MODELS } from '../services/llm/adapters/webllm/WebLLMModels';
 
 export interface LLMProviderTabOptions {
   containerEl: HTMLElement;
@@ -95,7 +96,14 @@ export class LLMProviderTab {
       .setDesc('The LLM provider to use when none is specified')
       .addDropdown(dropdown => {
         const enabledProviders = Object.keys(this.settings.providers)
-          .filter(id => this.settings.providers[id]?.enabled && this.settings.providers[id]?.apiKey);
+          .filter(id => {
+            const config = this.settings.providers[id];
+            if (!config?.enabled) return false;
+            // WebLLM doesn't need an API key
+            if (id === 'webllm') return true;
+            // Other providers need an API key (or URL)
+            return !!config.apiKey;
+          });
         
         if (enabledProviders.length === 0) {
           dropdown.addOption('', 'No providers enabled');
@@ -138,7 +146,41 @@ export class LLMProviderTab {
         );
       return;
     }
-    
+
+    // Special handling for WebLLM - use WebLLM models
+    if (providerId === 'webllm') {
+      this.modelDropdownSetting
+        .setName('Default Model')
+        .setDesc('The WebLLM model to use (runs locally in browser)')
+        .addDropdown(dropdown => {
+          if (WEBLLM_MODELS.length === 0) {
+            dropdown.addOption('', 'No models available');
+            dropdown.setValue('');
+            return;
+          }
+
+          WEBLLM_MODELS.forEach(model => {
+            dropdown.addOption(model.id, model.name);
+          });
+
+          const currentModel = this.settings.defaultModel.model;
+          const modelExists = WEBLLM_MODELS.some(m => m.id === currentModel);
+
+          if (modelExists) {
+            dropdown.setValue(currentModel);
+          } else if (WEBLLM_MODELS.length > 0) {
+            dropdown.setValue(WEBLLM_MODELS[0].id);
+            this.settings.defaultModel.model = WEBLLM_MODELS[0].id;
+          }
+
+          dropdown.onChange((value: string) => {
+            this.settings.defaultModel.model = value;
+            this.onSettingsChange(this.settings);
+          });
+        });
+      return;
+    }
+
     // Standard dropdown for other providers
     this.modelDropdownSetting
       .setName('Default Model')
@@ -213,18 +255,24 @@ export class LLMProviderTab {
       items: this.getProviderCardItems(),
       onAdd: () => {}, // No add functionality for providers
       onToggle: async (item: ProviderCardItem, enabled: boolean) => {
+        // WebLLM doesn't need an API key - always open modal for setup/download
+        if (item.providerId === 'webllm') {
+          this.openProviderModal(item.providerId, item.displayConfig, item.config);
+          return;
+        }
+
         if (!item.config.apiKey && enabled) {
           // If trying to enable without API key, open modal instead
           this.openProviderModal(item.providerId, item.displayConfig, item.config);
           return;
         }
-        
+
         this.settings.providers[item.providerId] = {
           ...item.config,
           enabled: enabled
         };
         this.onSettingsChange(this.settings);
-        
+
         // Refresh both provider and model dropdowns when toggling providers
         this.updateProviderDropdown();
         this.updateModelDropdown(this.settings.defaultModel.provider).catch(console.error);
@@ -243,7 +291,7 @@ export class LLMProviderTab {
    */
   private getProviderCardItems(): ProviderCardItem[] {
     const providerConfigs = this.getProviderConfigs();
-    
+
     return Object.keys(providerConfigs).map(providerId => {
       const providerConfig = this.settings.providers[providerId] || {
         apiKey: '',
@@ -251,14 +299,22 @@ export class LLMProviderTab {
         userDescription: '',
         models: {}
       };
-      
-      const hasValidatedApiKey = !!(providerConfig.apiKey && providerConfig.apiKey.length > 0);
-      
+
+      // WebLLM doesn't need an API key - it's enabled if the config says so
+      // Other providers need an API key (or URL for Ollama/LMStudio)
+      let isEnabled: boolean;
+      if (providerId === 'webllm') {
+        isEnabled = providerConfig.enabled === true;
+      } else {
+        const hasValidatedApiKey = !!(providerConfig.apiKey && providerConfig.apiKey.length > 0);
+        isEnabled = hasValidatedApiKey && providerConfig.enabled;
+      }
+
       return {
         id: providerId,
         name: providerConfigs[providerId].name,
         description: '', // No description for providers
-        isEnabled: hasValidatedApiKey && providerConfig.enabled,
+        isEnabled,
         providerId,
         config: providerConfig,
         displayConfig: providerConfigs[providerId]
@@ -331,6 +387,14 @@ export class LLMProviderTab {
    */
   private getProviderConfigs(): { [key: string]: ProviderDisplayConfig } {
     return {
+      // Nexus (Local) - Fine-tuned model for tool calling, shown first
+      webllm: {
+        name: 'Nexus (Local)',
+        description: '',
+        keyFormat: 'No API key required',
+        signupUrl: '',
+        docsUrl: ''
+      },
       openai: {
         name: 'OpenAI',
         description: '',

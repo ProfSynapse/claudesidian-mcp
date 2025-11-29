@@ -8,6 +8,11 @@ import { LLMProviderConfig, ModelConfig } from '../types';
 import { LLMProviderManager } from '../services/llm/providers/ProviderManager';
 import { StaticModelsService, ModelWithProvider } from '../services/StaticModelsService';
 import { LLMValidationService } from '../services/llm/validation/ValidationService';
+import { WebLLMVRAMDetector } from '../services/llm/adapters/webllm/WebLLMVRAMDetector';
+import { VRAMInfo, DownloadProgress, WebLLMModelSpec } from '../services/llm/adapters/webllm/types';
+import { WEBLLM_MODELS, getModelsForVRAM, getWebLLMModel } from '../services/llm/adapters/webllm/WebLLMModels';
+import { WebLLMModelManager } from '../services/llm/adapters/webllm/WebLLMModelManager';
+import { WebLLMAdapter } from '../services/llm/adapters/webllm/WebLLMAdapter';
 
 export interface LLMProviderModalConfig {
   providerId: string;
@@ -31,8 +36,15 @@ export class LLMProviderModal extends Modal {
   private ollamaModel: string = ''; // Temporary storage for Ollama model
   private lmstudioDiscoveredModels: string[] = []; // Discovered LM Studio models
   private testButton?: HTMLButtonElement; // Reference to test button
+  private webllmVramInfo: VRAMInfo | null = null; // WebLLM VRAM detection info
+  private webllmSelectedModel: string = ''; // Selected WebLLM model
+  private webllmSelectedQuantization: 'q4f16' | 'q5f16' | 'q8f16' = 'q4f16'; // Selected quantization
   private autoSaveTimeout: NodeJS.Timeout | null = null;
   private saveStatusEl?: HTMLElement;
+  private webllmModelManager: WebLLMModelManager | null = null; // WebLLM model manager
+  private webllmAdapter: WebLLMAdapter | null = null; // WebLLM adapter for direct loading
+  private webllmIsDownloading: boolean = false; // Download in progress flag
+  private webllmDownloadContainer?: HTMLElement; // Container for download UI
 
   constructor(app: App, config: LLMProviderModalConfig, providerManager: LLMProviderManager) {
     super(app);
@@ -50,6 +62,16 @@ export class LLMProviderModal extends Modal {
           this.ollamaModel = settings.defaultModel.model || '';
         }
       }
+    }
+
+    // Initialize WebLLM settings if editing existing config
+    if (this.config.providerId === 'webllm') {
+      this.webllmSelectedModel = this.config.config.webllmModel || 'nexus-tools-q4f16';
+      this.webllmSelectedQuantization = this.config.config.webllmQuantization || 'q4f16';
+      // Initialize model manager with vault
+      this.webllmModelManager = new WebLLMModelManager(this.app.vault);
+      // Initialize adapter for direct model loading (WebLLM handles its own caching)
+      this.webllmAdapter = new WebLLMAdapter(this.app.vault);
     }
   }
 
@@ -208,6 +230,16 @@ export class LLMProviderModal extends Modal {
               this.testLMStudioConnection();
             });
         });
+    } else if (this.config.providerId === 'webllm') {
+      // Special handling for Nexus (Local) - no API key, VRAM detection instead
+      section.createEl('h2', { text: 'Device Status' });
+
+      const statusContainer = section.createDiv('webllm-status-container');
+      statusContainer.innerHTML = `<p>🔍 Checking device compatibility...</p>`;
+
+      // Async VRAM detection
+      this.detectWebGPUCapabilities(statusContainer);
+
     } else {
       // Standard API key handling for other providers
       section.createEl('h2', { text: 'API Key' });
@@ -327,6 +359,11 @@ export class LLMProviderModal extends Modal {
           </ul>
         ` : '<p><em>No models discovered yet. Click "Discover Models" to scan the server.</em></p>'}
       `;
+    } else if (this.config.providerId === 'webllm') {
+      // Special handling for WebLLM - model/quantization selection
+      // Show loading state while checking installation status
+      this.modelsContainer.createDiv('setting-item-description').setText('Loading model status...');
+      this.createWebLLMModelsSection();
     } else {
       // For other providers, load and display static models
       this.loadModels();
@@ -697,6 +734,329 @@ export class LLMProviderModal extends Modal {
   }
 
   /**
+   * Detect WebGPU capabilities and display status
+   */
+  private async detectWebGPUCapabilities(container: HTMLElement): Promise<void> {
+    try {
+      this.webllmVramInfo = await WebLLMVRAMDetector.detect();
+
+      container.empty();
+
+      if (!this.webllmVramInfo.webGPUSupported) {
+        container.innerHTML = `
+          <div class="webllm-status webllm-status-error">
+            <p><strong>❌ Device Not Compatible</strong></p>
+            <p>Nexus requires WebGPU support for local inference. Your system does not support WebGPU.</p>
+            <p><strong>Requirements:</strong></p>
+            <ul>
+              <li>Chrome 113+ or Edge 113+ (recommended)</li>
+              <li>Safari 17+ on macOS Sonoma or later</li>
+              <li>Firefox with WebGPU flag enabled</li>
+            </ul>
+          </div>
+        `;
+        return;
+      }
+
+      const vramGB = this.webllmVramInfo.estimatedVRAM.toFixed(1);
+      const gpuName = this.webllmVramInfo.gpuName || 'Unknown GPU';
+      const quantizations = this.webllmVramInfo.recommendedQuantizations;
+
+      if (quantizations.length === 0) {
+        container.innerHTML = `
+          <div class="webllm-status webllm-status-warning">
+            <p><strong>⚠️ Insufficient GPU Memory</strong></p>
+            <p><strong>GPU:</strong> ${gpuName}</p>
+            <p><strong>Estimated Memory:</strong> ~${vramGB} GB</p>
+            <p>Minimum 5GB GPU memory required. Nexus may not run well on this system.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="webllm-status webllm-status-success">
+          <p><strong>✅ Device Compatible</strong></p>
+          <p><strong>GPU:</strong> ${gpuName}</p>
+          <p><strong>Estimated Memory:</strong> ~${vramGB} GB</p>
+        </div>
+      `;
+
+      // Auto-enable when WebGPU is available
+      if (!this.config.config.enabled && quantizations.length > 0) {
+        this.config.config.enabled = true;
+        this.autoSave();
+      }
+
+      // Refresh the models section now that we have VRAM info
+      this.createWebLLMModelsSection();
+
+    } catch (error) {
+      console.error('WebGPU detection failed:', error);
+      container.innerHTML = `
+        <div class="webllm-status webllm-status-error">
+          <p><strong>❌ Detection Failed</strong></p>
+          <p>${error instanceof Error ? error.message : 'Unknown error during WebGPU detection'}</p>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Create WebLLM model selection section with download UI
+   */
+  private async createWebLLMModelsSection(): Promise<void> {
+    this.modelsContainer.empty();
+
+    // Get available models based on VRAM
+    const estimatedVRAM = this.webllmVramInfo?.estimatedVRAM || 0;
+    const availableModels = getModelsForVRAM(estimatedVRAM);
+
+    if (availableModels.length === 0) {
+      this.modelsContainer.createDiv('setting-item-description').setText(
+        'Your GPU does not have enough memory for Nexus. Minimum 5GB required.'
+      );
+      return;
+    }
+
+    // Check if model is already loaded in the adapter
+    const selectedModel = getWebLLMModel(this.webllmSelectedModel) || availableModels[0];
+    // WebLLM uses browser Cache API for caching - we check adapter state, not local files
+    const isLoaded = this.webllmAdapter?.isModelLoaded() ?? false;
+
+    // Model selection dropdown
+    new Setting(this.modelsContainer)
+      .setName('Model')
+      .setDesc('Select the Nexus model variant')
+      .addDropdown(dropdown => {
+        availableModels.forEach(model => {
+          dropdown.addOption(model.id, `${model.name} (~${model.vramRequired}GB)`);
+        });
+
+        dropdown.setValue(this.webllmSelectedModel || availableModels[0].id);
+        dropdown.onChange(async value => {
+          this.webllmSelectedModel = value;
+
+          // Extract quantization from model ID
+          const match = value.match(/(q[458]f16)/);
+          if (match) {
+            this.webllmSelectedQuantization = match[1] as 'q4f16' | 'q5f16' | 'q8f16';
+          }
+
+          this.config.config.webllmModel = value;
+          this.config.config.webllmQuantization = this.webllmSelectedQuantization;
+          this.autoSave();
+
+          // Refresh to show updated install status
+          await this.createWebLLMModelsSection();
+        });
+      });
+
+    // Download/Status section
+    this.webllmDownloadContainer = this.modelsContainer.createDiv('webllm-download-section');
+
+    if (isLoaded) {
+      // Model is loaded - show status and unload option
+      this.renderWebLLMLoadedState(selectedModel);
+    } else {
+      // Model not loaded - show load button
+      this.renderWebLLMDownloadButton(selectedModel);
+    }
+
+    // Feature info (collapsible style like Obsidian)
+    const infoEl = this.modelsContainer.createDiv('setting-item');
+    const infoDesc = infoEl.createDiv('setting-item-description');
+    infoDesc.style.marginTop = '1em';
+    infoDesc.innerHTML = `
+      <details>
+        <summary style="cursor: pointer; font-weight: 500;">About Nexus</summary>
+        <div style="margin-top: 0.5em; padding-left: 1em;">
+          <p>A fine-tuned model optimized for Claudesidian's tool system. Runs entirely on your device.</p>
+          <ul style="margin: 0.5em 0;">
+            <li>Trained specifically for tool calling</li>
+            <li>Works offline after download</li>
+            <li>Complete privacy - no data leaves your vault</li>
+            <li>Free - no API costs</li>
+          </ul>
+        </div>
+      </details>
+    `;
+  }
+
+  /**
+   * Render the loaded state UI for WebLLM
+   */
+  private renderWebLLMLoadedState(model: WebLLMModelSpec): void {
+    if (!this.webllmDownloadContainer) return;
+    this.webllmDownloadContainer.empty();
+
+    const statusSetting = new Setting(this.webllmDownloadContainer)
+      .setName('Model Status')
+      .setDesc(`${model.name} is loaded in GPU memory and ready to use`);
+
+    // Add a checkmark indicator
+    const statusEl = statusSetting.settingEl.createDiv('webllm-status-indicator');
+    statusEl.innerHTML = '<span style="color: var(--text-success);">✓ Loaded</span>';
+    statusEl.style.marginLeft = 'auto';
+    statusEl.style.marginRight = '1em';
+
+    // Unload button (frees GPU memory, model stays cached in browser)
+    statusSetting.addButton(button => button
+      .setButtonText('Unload')
+      .setWarning()
+      .onClick(async () => {
+        if (this.webllmAdapter) {
+          button.setButtonText('Unloading...');
+          button.setDisabled(true);
+
+          try {
+            await this.webllmAdapter.unloadModel();
+            new Notice(`Model ${model.name} unloaded from GPU memory`);
+
+            // Refresh UI
+            await this.createWebLLMModelsSection();
+          } catch (error) {
+            new Notice(`Failed to unload model: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            button.setButtonText('Unload');
+            button.setDisabled(false);
+          }
+        }
+      })
+    );
+  }
+
+  /**
+   * Render the load button UI for WebLLM
+   */
+  private renderWebLLMDownloadButton(model: WebLLMModelSpec): void {
+    if (!this.webllmDownloadContainer) return;
+    this.webllmDownloadContainer.empty();
+
+    const downloadSetting = new Setting(this.webllmDownloadContainer)
+      .setName('Load Model')
+      .setDesc(`Load ${model.name} into GPU memory. First load downloads ~4GB from HuggingFace.`);
+
+    downloadSetting.addButton(button => button
+      .setButtonText('Load Model')
+      .setCta()
+      .onClick(async () => {
+        if (this.webllmIsDownloading) return;
+
+        this.webllmIsDownloading = true;
+        button.setDisabled(true);
+        button.setButtonText('Starting...');
+
+        // Replace button with progress UI
+        this.renderWebLLMDownloadProgress(model);
+      })
+    );
+  }
+
+  /**
+   * Render the download progress UI for WebLLM
+   * Uses WebLLM's native model loading which downloads via browser Cache API
+   */
+  private renderWebLLMDownloadProgress(model: WebLLMModelSpec): void {
+    if (!this.webllmDownloadContainer || !this.webllmAdapter) return;
+    this.webllmDownloadContainer.empty();
+
+    // Create progress container
+    const progressContainer = this.webllmDownloadContainer.createDiv('webllm-progress-container');
+    progressContainer.style.padding = '1em 0';
+
+    // Status text
+    const statusText = progressContainer.createDiv('webllm-progress-status');
+    statusText.style.marginBottom = '0.5em';
+    statusText.style.fontSize = '0.9em';
+    statusText.setText('Initializing WebLLM engine...');
+
+    // Progress bar container (Obsidian style)
+    const progressBarContainer = progressContainer.createDiv('webllm-progress-bar-container');
+    progressBarContainer.style.height = '4px';
+    progressBarContainer.style.backgroundColor = 'var(--background-modifier-border)';
+    progressBarContainer.style.borderRadius = '2px';
+    progressBarContainer.style.overflow = 'hidden';
+
+    // Progress bar fill
+    const progressBarFill = progressBarContainer.createDiv('webllm-progress-bar-fill');
+    progressBarFill.style.height = '100%';
+    progressBarFill.style.backgroundColor = 'var(--interactive-accent)';
+    progressBarFill.style.width = '0%';
+    progressBarFill.style.transition = 'width 0.3s ease';
+
+    // Progress percentage
+    const progressPercent = progressContainer.createDiv('webllm-progress-percent');
+    progressPercent.style.marginTop = '0.5em';
+    progressPercent.style.fontSize = '0.85em';
+    progressPercent.style.color = 'var(--text-muted)';
+    progressPercent.setText('0%');
+
+    // Show initial notice that download has started
+    new Notice(`Loading Nexus model... First load downloads ~4GB from HuggingFace.`, 5000);
+
+    // Track last progress update for periodic notices
+    let lastNoticePercent = 0;
+
+    // Initialize adapter first
+    this.webllmAdapter.initialize().then(() => {
+      // Load model using WebLLM's native mechanism (downloads via browser Cache API)
+      return this.webllmAdapter!.loadModel(model, (progress: number, stage: string) => {
+        const percent = Math.round(progress * 100);
+
+        // Update modal UI (if still open)
+        try {
+          progressBarFill.style.width = `${percent}%`;
+          progressPercent.setText(`${percent}%`);
+          statusText.setText(`${stage}: ${percent}%`);
+        } catch {
+          // Modal might be closed, ignore UI update errors
+        }
+
+        // Show periodic notice every 25% progress
+        if (percent >= lastNoticePercent + 25) {
+          lastNoticePercent = Math.floor(percent / 25) * 25;
+          if (percent < 100) {
+            new Notice(`Nexus: ${stage} ${percent}%`, 3000);
+          }
+        }
+      });
+    }).then(async () => {
+      // Model loaded successfully
+      this.webllmIsDownloading = false;
+
+      // Show success notice (always visible even if modal closed)
+      new Notice(`✅ Nexus loaded successfully! Ready for local inference.`, 10000);
+
+      // Enable the provider
+      this.config.config.enabled = true;
+      this.config.config.webllmModel = model.id;
+      this.config.config.webllmQuantization = model.quantization;
+      this.autoSave();
+
+      // Try to refresh UI (if modal still open)
+      try {
+        await this.createWebLLMModelsSection();
+      } catch {
+        // Modal might be closed, ignore
+      }
+    }).catch(error => {
+      // Loading failed
+      this.webllmIsDownloading = false;
+      console.error('Nexus loading failed:', error);
+
+      // Show error notice (always visible)
+      new Notice(`❌ Nexus loading failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 10000);
+
+      // Try to show download button again (if modal still open)
+      try {
+        this.renderWebLLMDownloadButton(model);
+      } catch {
+        // Modal might be closed, ignore
+      }
+    });
+  }
+
+  /**
    * Auto-save with debouncing and visual feedback
    */
   private autoSave(): void {
@@ -716,6 +1076,12 @@ export class LLMProviderModal extends Modal {
       // For Ollama, include model if available
       if (this.config.providerId === 'ollama' && this.ollamaModel) {
         this.config.config.ollamaModel = this.ollamaModel;
+      }
+
+      // For WebLLM, include model and quantization settings
+      if (this.config.providerId === 'webllm') {
+        this.config.config.webllmModel = this.webllmSelectedModel;
+        this.config.config.webllmQuantization = this.webllmSelectedQuantization;
       }
 
       // Call the save callback

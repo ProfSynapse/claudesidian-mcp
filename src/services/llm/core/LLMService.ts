@@ -3,6 +3,7 @@
  * Provides unified interface to all LLM providers with Obsidian integration
  */
 
+import { Vault } from 'obsidian';
 import { BaseAdapter } from '../adapters/BaseAdapter';
 import { GenerateOptions, LLMResponse, ModelInfo } from '../adapters/types';
 import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
@@ -50,11 +51,13 @@ export class LLMService {
   private modelDiscovery: ModelDiscoveryService;
   private fileContentService?: FileContentService;
   private settings: LLMProviderSettings;
+  private vault?: Vault;
 
-  constructor(settings: LLMProviderSettings, private mcpConnector?: any) {
+  constructor(settings: LLMProviderSettings, mcpConnector?: any, vault?: Vault) {
     this.settings = settings;
-    this.adapterRegistry = new AdapterRegistry(settings, mcpConnector);
-    this.adapterRegistry.initialize(settings, mcpConnector);
+    this.vault = vault;
+    this.adapterRegistry = new AdapterRegistry(settings, mcpConnector, vault);
+    this.adapterRegistry.initialize(settings, mcpConnector, vault);
     this.modelDiscovery = new ModelDiscoveryService(this.adapterRegistry, settings);
   }
 

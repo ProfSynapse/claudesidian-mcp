@@ -60,3 +60,10 @@ claude-flow
 claude-flow.bat
 claude-flow.ps1
 hive-mind-prompt-*.txt
+
+# MLC/WebLLM model compilation
+mlc-venv/
+nexus-tools-merged/
+nexus-tools-*-mlc/
+*.wasm
+models/

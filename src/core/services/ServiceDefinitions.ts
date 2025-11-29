@@ -191,7 +191,7 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
                 throw new Error('Invalid LLM provider settings');
             }
 
-            const llmService = new LLMService(llmProviders, context.connector); // Pass mcpConnector for tool execution
+            const llmService = new LLMService(llmProviders, context.connector, context.app.vault); // Pass mcpConnector for tool execution and vault for WebLLM/Nexus
 
             // Inject VaultOperations for file reading
             const vaultOperations = await context.serviceManager.getService('vaultOperations') as InstanceType<typeof VaultOperations>;

@@ -9,6 +9,7 @@
  * - Handling adapter cleanup
  */
 
+import { Vault } from 'obsidian';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -21,6 +22,8 @@ import {
 } from '../adapters';
 import { OllamaAdapter } from '../adapters/ollama/OllamaAdapter';
 import { LMStudioAdapter } from '../adapters/lmstudio/LMStudioAdapter';
+import { WebLLMAdapter } from '../adapters/webllm/WebLLMAdapter';
+import { getWebLLMLifecycleManager } from '../adapters/webllm/WebLLMLifecycleManager';
 import { BaseAdapter } from '../adapters/BaseAdapter';
 import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
 
@@ -31,7 +34,7 @@ export interface IAdapterRegistry {
   /**
    * Initialize all adapters based on provider settings
    */
-  initialize(settings: LLMProviderSettings, mcpConnector?: any): void;
+  initialize(settings: LLMProviderSettings, mcpConnector?: any, vault?: Vault): void;
 
   /**
    * Update settings and reinitialize adapters
@@ -67,18 +70,22 @@ export class AdapterRegistry implements IAdapterRegistry {
   private adapters: Map<string, BaseAdapter> = new Map();
   private settings: LLMProviderSettings;
   private mcpConnector?: any;
+  private vault?: Vault;
+  private webllmAdapter?: WebLLMAdapter;
 
-  constructor(settings: LLMProviderSettings, mcpConnector?: any) {
+  constructor(settings: LLMProviderSettings, mcpConnector?: any, vault?: Vault) {
     this.settings = settings;
     this.mcpConnector = mcpConnector;
+    this.vault = vault;
   }
 
   /**
    * Initialize all adapters based on provider settings
    */
-  initialize(settings: LLMProviderSettings, mcpConnector?: any): void {
+  initialize(settings: LLMProviderSettings, mcpConnector?: any, vault?: Vault): void {
     this.settings = settings;
     this.mcpConnector = mcpConnector;
+    if (vault) this.vault = vault;
     this.adapters.clear();
     this.initializeAdapters();
   }
@@ -87,7 +94,7 @@ export class AdapterRegistry implements IAdapterRegistry {
    * Update settings and reinitialize all adapters
    */
   updateSettings(settings: LLMProviderSettings): void {
-    this.initialize(settings, this.mcpConnector);
+    this.initialize(settings, this.mcpConnector, this.vault);
   }
 
   /**
@@ -115,7 +122,25 @@ export class AdapterRegistry implements IAdapterRegistry {
    * Clear all adapters
    */
   clear(): void {
+    // Dispose Nexus adapter properly (cleanup GPU resources)
+    if (this.webllmAdapter) {
+      // Clear lifecycle manager reference first
+      const lifecycleManager = getWebLLMLifecycleManager();
+      lifecycleManager.setAdapter(null);
+
+      this.webllmAdapter.dispose().catch((error) => {
+        console.warn('AdapterRegistry: Failed to dispose Nexus adapter:', error);
+      });
+      this.webllmAdapter = undefined;
+    }
     this.adapters.clear();
+  }
+
+  /**
+   * Get the WebLLM adapter instance (for model management)
+   */
+  getWebLLMAdapter(): WebLLMAdapter | undefined {
+    return this.webllmAdapter;
   }
 
   /**
@@ -181,6 +206,42 @@ export class AdapterRegistry implements IAdapterRegistry {
         console.error('AdapterRegistry: Failed to initialize LM Studio adapter:', error);
         this.logError('lmstudio', error);
       }
+    }
+
+    // WebLLM/Nexus - Native local LLM via WebGPU
+    // Requires Vault for model storage, no API key needed
+    console.log('[AdapterRegistry] Nexus check:', {
+      webllmEnabled: providers.webllm?.enabled,
+      hasVault: !!this.vault,
+      vaultName: this.vault?.getName?.() || 'N/A'
+    });
+
+    if (providers.webllm?.enabled && this.vault) {
+      try {
+        console.log('[AdapterRegistry] Creating Nexus adapter...');
+        this.webllmAdapter = new WebLLMAdapter(this.vault, this.mcpConnector);
+        // Add adapter immediately so it's available for use
+        // The adapter will initialize lazily on first use
+        this.adapters.set('webllm', this.webllmAdapter);
+        console.log('[AdapterRegistry] Nexus adapter registered, available adapters:', Array.from(this.adapters.keys()));
+
+        // Connect to lifecycle manager for smart loading/unloading
+        const lifecycleManager = getWebLLMLifecycleManager();
+        lifecycleManager.setAdapter(this.webllmAdapter);
+
+        // Start async initialization in background (WebGPU detection)
+        this.webllmAdapter.initialize().then(() => {
+          console.log('[AdapterRegistry] Nexus adapter initialized (WebGPU ready)');
+        }).catch((error) => {
+          console.warn('[AdapterRegistry] Nexus background initialization failed:', error);
+          // Don't remove from adapters - let it fail gracefully on use
+        });
+      } catch (error) {
+        console.error('[AdapterRegistry] Failed to create Nexus adapter:', error);
+        this.logError('webllm', error);
+      }
+    } else if (providers.webllm?.enabled && !this.vault) {
+      console.warn('[AdapterRegistry] Nexus is enabled but vault is not available - adapter will not be created');
     }
   }
 

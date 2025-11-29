@@ -33,7 +33,7 @@ export class ModelSelectionUtility {
       }
 
       // Allowed providers for chat view
-      const allowedProviders = ['openai', 'openrouter', 'anthropic', 'google', 'ollama'];
+      const allowedProviders = ['openai', 'openrouter', 'anthropic', 'google', 'ollama', 'lmstudio', 'webllm'];
 
       // Get all available models from ModelDiscoveryService (via LLMService)
       const allModels = await llmService.getAvailableModels();
