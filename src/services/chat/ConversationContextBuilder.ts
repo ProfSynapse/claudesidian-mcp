@@ -343,8 +343,9 @@ export class ConversationContextBuilder {
     previousMessages?: any[],
     systemPrompt?: string
   ): any[] | string {
-    // Check if provider uses custom tool call format (LM Studio, Ollama)
-    if (provider === 'lmstudio' || provider === 'ollama') {
+    // Check if provider uses custom tool call format (LM Studio, Ollama, WebLLM)
+    // These are all fine-tuned local models that use [TOOL_CALLS] text format
+    if (provider === 'lmstudio' || provider === 'ollama' || provider === 'webllm') {
       return this.buildCustomFormatToolContinuation(
         userPrompt,
         toolCalls,
@@ -438,7 +439,8 @@ export class ConversationContextBuilder {
         return this.appendGoogleToolExecution(toolCalls, toolResults, previousMessages);
       case 'lmstudio':
       case 'ollama':
-        // Custom text-based format for fine-tuned models
+      case 'webllm':
+        // Custom text-based format for fine-tuned models using [TOOL_CALLS]
         return this.appendCustomFormatToolExecution(toolCalls, toolResults, previousMessages);
       default:
         // OpenAI-compatible providers (openrouter, groq, mistral, perplexity)
@@ -946,6 +948,10 @@ export class ConversationContextBuilder {
         return 'anthropic';
       case 'google':
         return 'google';
+      case 'lmstudio':
+      case 'ollama':
+      case 'webllm':
+        return 'custom-format';
       case 'openai':
       case 'openrouter':
       case 'groq':

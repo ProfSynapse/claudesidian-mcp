@@ -214,10 +214,13 @@ export class WebLLMAdapter extends BaseAdapter {
 
     try {
       this.state.status = 'generating';
+      console.log('[WebLLMAdapter] Starting generation with messages:', messages.length);
+      console.log('[WebLLMAdapter] Options:', { temp: options?.temperature, maxTokens: options?.maxTokens });
 
       let accumulatedContent = '';
       let hasToolCallsFormat = false;
       let finalUsage: TokenUsage | undefined;
+      let chunkCount = 0;
 
       for await (const response of this.engine.generateStream(messages, {
         temperature: options?.temperature,
@@ -229,6 +232,10 @@ export class WebLLMAdapter extends BaseAdapter {
         if ('tokenCount' in response && !('usage' in response)) {
           // This is a StreamChunk from the engine
           const chunk = response;
+          chunkCount++;
+          if (chunkCount <= 3 || chunkCount % 20 === 0) {
+            console.log(`[WebLLMAdapter] Chunk ${chunkCount}:`, chunk.content.slice(0, 50));
+          }
           accumulatedContent += chunk.content;
 
           // Check for [TOOL_CALLS] format early in stream
@@ -245,6 +252,7 @@ export class WebLLMAdapter extends BaseAdapter {
           }
         } else if ('usage' in response) {
           // This is a GenerationResult (final)
+          console.log(`[WebLLMAdapter] Generation complete. Total chunks: ${chunkCount}, Content length: ${accumulatedContent.length}`);
           const complete = response as GenerationResult;
 
           finalUsage = {

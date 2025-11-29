@@ -78,6 +78,26 @@ export class ModelRegistry {
       return [];
     }
 
+    // Special handling for WebLLM - local models with $0 cost
+    if (provider === 'webllm') {
+      return [{
+        provider: 'webllm',
+        name: 'Nexus 7B',
+        apiName: 'nexus-tools-q4f16',
+        contextWindow: 32768,
+        maxTokens: 4096,
+        inputCostPerMillion: 0,
+        outputCostPerMillion: 0,
+        capabilities: {
+          supportsJSON: true,
+          supportsImages: false,
+          supportsFunctions: true,
+          supportsStreaming: true,
+          supportsThinking: false
+        }
+      }];
+    }
+
     // Standard behavior for other providers
     return AI_MODELS[provider] || [];
   }

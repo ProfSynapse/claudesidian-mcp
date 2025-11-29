@@ -923,6 +923,73 @@ export class LLMProviderModal extends Modal {
         }
       })
     );
+
+    // Clear cache button - add after status setting
+    this.addClearCacheButton(this.webllmDownloadContainer!, model);
+  }
+
+  /**
+   * Add a clear cache button for WebLLM
+   */
+  private addClearCacheButton(container: HTMLElement, model: WebLLMModelSpec): void {
+    const cacheSetting = new Setting(container)
+      .setName('Clear Model Cache')
+      .setDesc('Delete cached model files and re-download fresh from HuggingFace');
+
+    cacheSetting.addButton(button => button
+      .setButtonText('Clear Cache')
+      .onClick(async () => {
+        button.setButtonText('Clearing...');
+        button.setDisabled(true);
+
+        try {
+          // Unload model first if loaded
+          if (this.webllmAdapter?.isModelLoaded()) {
+            await this.webllmAdapter.unloadModel();
+          }
+
+          // Clear browser caches used by WebLLM
+          await this.clearWebLLMCache();
+
+          new Notice('WebLLM cache cleared. Model will be re-downloaded on next load.');
+
+          // Refresh UI
+          await this.createWebLLMModelsSection();
+        } catch (error) {
+          new Notice(`Failed to clear cache: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          button.setButtonText('Clear Cache');
+          button.setDisabled(false);
+        }
+      })
+    );
+  }
+
+  /**
+   * Clear WebLLM browser caches (Cache API and IndexedDB)
+   */
+  private async clearWebLLMCache(): Promise<void> {
+    // Clear Cache API entries
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      for (const name of cacheNames) {
+        // WebLLM uses caches with 'webllm' or 'tvmjs' in the name
+        if (name.includes('webllm') || name.includes('tvmjs') || name.includes('mlc')) {
+          await caches.delete(name);
+          console.log(`[WebLLM] Deleted cache: ${name}`);
+        }
+      }
+    }
+
+    // Clear IndexedDB databases used by WebLLM
+    if ('indexedDB' in window) {
+      const databases = await indexedDB.databases?.() || [];
+      for (const db of databases) {
+        if (db.name && (db.name.includes('webllm') || db.name.includes('tvmjs') || db.name.includes('mlc'))) {
+          indexedDB.deleteDatabase(db.name);
+          console.log(`[WebLLM] Deleted IndexedDB: ${db.name}`);
+        }
+      }
+    }
   }
 
   /**
@@ -950,6 +1017,9 @@ export class LLMProviderModal extends Modal {
         this.renderWebLLMDownloadProgress(model);
       })
     );
+
+    // Add clear cache button for when model is not loaded
+    this.addClearCacheButton(this.webllmDownloadContainer!, model);
   }
 
   /**

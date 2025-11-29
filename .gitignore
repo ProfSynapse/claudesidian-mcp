@@ -67,3 +67,4 @@ nexus-tools-merged/
 nexus-tools-*-mlc/
 *.wasm
 models/
+nexus-tools-q4f16-mlc-new

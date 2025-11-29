@@ -84,7 +84,7 @@ async function loadWebLLM(): Promise<typeof WebLLMTypes> {
  * Check if we should use stock WebLLM model for testing
  * Set to true to test with stock Mistral model instead of custom Nexus model
  */
-const USE_STOCK_MODEL_FOR_TESTING = true;
+const USE_STOCK_MODEL_FOR_TESTING = false; // Updated config with missing gen params
 
 /**
  * Stock WebLLM model ID for testing
@@ -282,8 +282,18 @@ export class WebLLMEngine {
       let fullContent = '';
       let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
       let finishReason = 'stop';
+      let chunkCount = 0;
+
+      console.log('[WebLLMEngine] Starting stream iteration...');
 
       for await (const chunk of stream) {
+        chunkCount++;
+
+        // Log first few chunks in detail
+        if (chunkCount <= 5) {
+          console.log(`[WebLLMEngine] Raw chunk ${chunkCount}:`, JSON.stringify(chunk, null, 2).slice(0, 500));
+        }
+
         // Check for abort
         if (this.abortController?.signal.aborted) {
           finishReason = 'abort';
@@ -304,6 +314,7 @@ export class WebLLMEngine {
         // Capture finish reason
         if (chunk.choices[0]?.finish_reason) {
           finishReason = chunk.choices[0].finish_reason;
+          console.log(`[WebLLMEngine] Finish reason: ${finishReason}`);
         }
 
         // Capture usage from final chunk
@@ -313,8 +324,11 @@ export class WebLLMEngine {
             completionTokens: chunk.usage.completion_tokens || 0,
             totalTokens: chunk.usage.total_tokens || 0,
           };
+          console.log(`[WebLLMEngine] Usage:`, usage);
         }
       }
+
+      console.log(`[WebLLMEngine] Stream complete. Chunks: ${chunkCount}, Content: "${fullContent.slice(0, 100)}..."`)
 
       // Yield final result
       yield {
