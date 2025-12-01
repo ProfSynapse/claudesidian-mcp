@@ -1,3 +1,5 @@
+![Nexus Obsidian Banner](https://picoshare-production-7223.up.railway.app/-aQ3KvppDZ2/nexus%20obsidian.png)
+
 # Nexus MCP for Obsidian
 
 Nexus turns your Obsidian vault into an MCP-enabled workspace. It exposes safe, structured tools (agents + modes) that AI copilots can call to read/write notes, manage folders, run searches, and maintain long‑term memory—all while keeping data local to your vault.
