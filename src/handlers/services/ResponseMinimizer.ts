@@ -49,6 +49,17 @@ export class ResponseMinimizer {
 
         const lower = modeName.toLowerCase();
 
+        // Special case: findReplace is a write operation despite containing "find"
+        if (lower.includes('findreplace')) {
+            return false;
+        }
+
+        // Special case: executePrompt and batchExecutePrompt are read operations (return content)
+        // despite containing "execute"
+        if (lower.includes('executeprompt')) {
+            return true;
+        }
+
         // Check read patterns first
         if (ResponseMinimizer.READ_PATTERNS.some(p => lower.includes(p))) {
             return true;
@@ -74,6 +85,22 @@ export class ResponseMinimizer {
         // Preserve data (the actual content)
         if (result.data !== undefined) {
             minimized.data = result.data;
+        }
+
+        // Preserve top-level results (common in search modes)
+        if (result.results !== undefined) {
+            minimized.results = result.results;
+        }
+
+        // Preserve search metadata
+        if (result.totalResults !== undefined) {
+            minimized.totalResults = result.totalResults;
+        }
+        if (result.query !== undefined) {
+            minimized.query = result.query;
+        }
+        if (result.searchedPaths !== undefined) {
+            minimized.searchedPaths = result.searchedPaths;
         }
 
         // Preserve recommendations
@@ -120,6 +147,7 @@ export class ResponseMinimizer {
     private extractWriteConfirmation(data: any): any {
         const confirmFields = [
             'filePath',
+            'imagePath',
             'created',
             'appendedLength',
             'prependedLength',
