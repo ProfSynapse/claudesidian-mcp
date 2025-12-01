@@ -1,4 +1,4 @@
-![Nexus Obsidian Banner](https://picoshare-production-7223.up.railway.app/-aQ3KvppDZ2/nexus%20obsidian.png)
+![Nexus Obsidian Banner](https://picoshare-production-7223.up.railway.app/-vXLL7jFB53/nexus%20obsidian.png)
 
 # Nexus MCP for Obsidian
 
