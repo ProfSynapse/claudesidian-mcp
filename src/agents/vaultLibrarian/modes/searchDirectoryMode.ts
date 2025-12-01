@@ -312,12 +312,13 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
           type: 'array',
           items: { type: 'string' },
           minItems: 1,
-          description: '📁 REQUIRED: Array of directory paths to search within. Cannot be empty. Use ["/"] to search the entire vault root. Examples: ["/"] for whole vault, ["Projects/WebApp"] for specific folder, ["Notes", "Archive"] for multiple folders.',
+          description: '📁 REQUIRED: Array of directory paths to search within. Supports glob patterns (e.g., "folder/*.md", "**/*.ts"). Cannot be empty. Use ["/"] to search the entire vault root. Examples: ["/"] for whole vault, ["Projects/WebApp"] for specific folder, ["Notes", "Archive"] for multiple folders.',
           examples: [
             ['/'],
             ['Projects/WebApp'],
             ['Notes', 'Archive'],
-            ['Work/Current Projects', 'Personal/Ideas']
+            ['Work/Current Projects', 'Personal/Ideas'],
+            ['**/*.md']
           ]
         },
         searchType: {
