@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '../../utils/logger';
+import { BRAND_NAME } from '../../constants/branding';
 
 export interface MCPServerConfig {
   /** Server URL (HTTP/HTTPS endpoint) */
@@ -230,8 +231,8 @@ export class MCPConfigurationManager extends EventEmitter {
     return {
       server: {
         url: 'http://localhost:3000/sse',
-        label: 'Claudesidian',
-        description: 'Local Claudesidian MCP server providing vault operations and AI agents',
+        label: BRAND_NAME,
+        description: `Local ${BRAND_NAME} MCP server providing vault operations and AI agents`,
         enabled: false,
         requireApproval: 'never'
       },

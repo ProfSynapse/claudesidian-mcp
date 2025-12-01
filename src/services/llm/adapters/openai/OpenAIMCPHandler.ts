@@ -7,6 +7,7 @@ import OpenAI from 'openai';
 import { GenerateOptions, LLMResponse, TokenUsage } from '../types';
 import { LLMProviderError } from '../types';
 import { logger } from '../../../../utils/logger';
+import { SERVER_LABELS, BRAND_NAME } from '../../../../constants/branding';
 
 export interface MCPToolConfig {
   type: 'mcp';
@@ -46,7 +47,7 @@ export class OpenAIMCPHandler {
   constructor(
     private client: OpenAI,
     serverUrl: string,
-    serverLabel: string = 'claudesidian'
+    serverLabel: string = SERVER_LABELS.current
   ) {
     this.serverUrl = serverUrl;
     this.serverLabel = serverLabel;
@@ -63,8 +64,8 @@ export class OpenAIMCPHandler {
       console.log('[OpenAI MCP] Building tool config with connector script');
       const mcpTool: MCPToolConfig = {
         type: 'mcp',
-        server_label: 'claudesidian',
-        server_description: 'Claudesidian MCP server providing vault operations and AI agents',
+        server_label: SERVER_LABELS.current,
+        server_description: `${BRAND_NAME} MCP server providing vault operations and AI agents`,
         command: 'node',
         args: ['connector.js'], // Relative path - OpenRouter will resolve from plugin directory
         env: {
@@ -106,7 +107,7 @@ export class OpenAIMCPHandler {
       if ((error as any).message?.includes('ECONNREFUSED') || 
           (error as any).code === 'ECONNREFUSED') {
         throw new LLMProviderError(
-          'MCP server not reachable. Please ensure the Claudesidian MCP server is running.',
+          `MCP server not reachable. Please ensure the ${BRAND_NAME} MCP server is running.`,
           'openai',
           'MCP_SERVER_UNREACHABLE',
           error as Error

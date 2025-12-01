@@ -1,6 +1,6 @@
 # WebLLM Model Setup Guide
 
-This guide covers how to prepare your fine-tuned LoRA model (`professorsynapse/nexus-tools_sft17`) for use with WebLLM in Claudesidian.
+This guide covers how to prepare your fine-tuned LoRA model (`professorsynapse/nexus-tools_sft17`) for use with WebLLM in Nexus.
 
 ## Overview
 
@@ -256,7 +256,7 @@ nexus-tools-webllm/
 
 ---
 
-## Update Claudesidian
+## Update Nexus
 
 ### Step 1: Update WebLLMModels.ts
 

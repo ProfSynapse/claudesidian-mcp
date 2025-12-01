@@ -6,6 +6,7 @@ import { MemoryService } from "./services/MemoryService";
 import { WorkspaceService } from "../../services/WorkspaceService";
 import { getErrorMessage } from '../../utils/errorUtils';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
+import { getNexusPlugin } from '../../utils/pluginLocator';
 
 // Import consolidated modes
 import { CreateSessionMode } from './modes/sessions/CreateSessionMode';
@@ -169,7 +170,7 @@ export class MemoryManagerAgent extends BaseAgent {
    * Get the CacheManager service instance
    */
   getCacheManager() {
-    const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as any;
+    const plugin = getNexusPlugin(this.app) as any;
     return plugin?.getServiceIfReady('cacheManager') || null;
   }
 

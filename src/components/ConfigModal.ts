@@ -1,6 +1,7 @@
 import { App, Modal, Platform, Setting } from 'obsidian';
 import * as path from 'path';
-import { sanitizeVaultName } from '../utils/vaultUtils';
+import { existsSync } from 'fs';
+import { getAllPluginIds, getPrimaryServerKey, BRAND_NAME } from '../constants/branding';
 
 /**
  * Configuration modal for the plugin
@@ -120,7 +121,7 @@ export class ConfigModal extends Modal {
         this.tabContents['windows'] = windowsContent;
         
         const instructions = windowsContent.createEl('div');
-        instructions.createEl('p', { text: 'To configure Claude Desktop to work with Claudesidian MCP on Windows:' });
+        instructions.createEl('p', { text: `To configure Claude Desktop to work with ${BRAND_NAME} on Windows:` });
 
         const steps = instructions.createEl('ol');
 
@@ -190,7 +191,7 @@ export class ConfigModal extends Modal {
         this.tabContents['mac'] = macContent;
         
         const instructions = macContent.createEl('div');
-        instructions.createEl('p', { text: 'To configure Claude Desktop to work with Claudesidian MCP on Mac:' });
+        instructions.createEl('p', { text: `To configure Claude Desktop to work with ${BRAND_NAME} on Mac:` });
 
         const steps = instructions.createEl('ol');
 
@@ -260,7 +261,7 @@ export class ConfigModal extends Modal {
         this.tabContents['linux'] = linuxContent;
         
         const instructions = linuxContent.createEl('div');
-        instructions.createEl('p', { text: 'To configure Claude Desktop to work with Claudesidian MCP on Linux:' });
+        instructions.createEl('p', { text: `To configure Claude Desktop to work with ${BRAND_NAME} on Linux:` });
 
         const steps = instructions.createEl('ol');
 
@@ -383,31 +384,13 @@ export class ConfigModal extends Modal {
      * @returns Configuration object
      */
     /**
-     * Gets a sanitized version of the vault name suitable for use in a configuration key
-     * Uses the centralized sanitizeVaultName utility function
-     * @returns Sanitized vault name
-     */
-    private getSanitizedVaultName(): string {
-        // Get the vault name from the app
-        const vaultName = this.app.vault.getName();
-        
-        // Use the centralized utility function to sanitize the vault name
-        return sanitizeVaultName(vaultName);
-    }
-    
-    /**
      * Get the configuration object for a specific OS
      * @param os Operating system (windows, mac, linux)
      * @returns Configuration object
      */
     private getConfiguration(os: string) {
         const connectorPath = this.getConnectorPath(os);
-        
-        // Get the sanitized vault name for the server key
-        const sanitizedVaultName = this.getSanitizedVaultName();
-        
-        // Create the server key with vault name
-        const serverKey = `claudesidian-mcp-${sanitizedVaultName}`;
+        const serverKey = getPrimaryServerKey(this.app.vault.getName());
         
         // Create server configuration
         const serverConfig = {
@@ -438,17 +421,17 @@ export class ConfigModal extends Modal {
         // Get the vault's root path
         const vaultRoot = (this.app.vault.adapter as any).basePath;
         
-        // Build the path based on the OS
-        if (os === 'windows') {
-            return path.join(vaultRoot, '.obsidian', 'plugins', 'claudesidian-mcp', 'connector.js');
-        } else if (os === 'mac') {
-            return path.join(vaultRoot, '.obsidian', 'plugins', 'claudesidian-mcp', 'connector.js');
-        } else if (os === 'linux') {
-            return path.join(vaultRoot, '.obsidian', 'plugins', 'claudesidian-mcp', 'connector.js');
+        // Build potential plugin paths (new + legacy)
+        const pluginFolders = getAllPluginIds();
+        for (const folder of pluginFolders) {
+            const connectorPath = path.join(vaultRoot, '.obsidian', 'plugins', folder, 'connector.js');
+            if (existsSync(connectorPath)) {
+                return connectorPath;
+            }
         }
-        
-        // Default to a generic path
-        return path.join(vaultRoot, '.obsidian', 'plugins', 'claudesidian-mcp', 'connector.js');
+
+        // Default to the primary folder if none exist yet
+        return path.join(vaultRoot, '.obsidian', 'plugins', pluginFolders[0], 'connector.js');
     }
     
     /**

@@ -9,7 +9,7 @@
  */
 
 import { App, Plugin } from 'obsidian';
-import ClaudesidianPlugin from '../../main';
+import NexusPlugin from '../../main';
 import { AgentManager } from '../AgentManager';
 import { EventManager } from '../EventManager';
 import type { ServiceManager } from '../../core/ServiceManager';
@@ -66,7 +66,7 @@ export class AgentRegistrationService implements AgentRegistrationServiceInterfa
 
   constructor(
     private app: App,
-    private plugin: Plugin | ClaudesidianPlugin,
+    private plugin: Plugin | NexusPlugin,
     private eventManager: EventManager,
     private serviceManager?: ServiceManager,
     private customPromptStorage?: CustomPromptStorageService

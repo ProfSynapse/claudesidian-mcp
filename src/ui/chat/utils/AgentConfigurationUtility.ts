@@ -10,6 +10,7 @@
 
 import { AgentOption } from '../components/AgentSelector';
 import { AgentDiscoveryService } from '../../../services/agents/AgentDiscoveryService';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Utility class for agent configuration and discovery
@@ -26,7 +27,7 @@ export class AgentConfigurationUtility {
     }
 
     try {
-      const plugin = app.plugins.plugins['claudesidian-mcp'];
+      const plugin = getNexusPlugin(app) as any;
       if (!plugin) {
         return null;
       }

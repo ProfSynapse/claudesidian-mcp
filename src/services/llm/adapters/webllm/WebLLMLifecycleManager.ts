@@ -14,6 +14,7 @@
 import { WebLLMAdapter } from './WebLLMAdapter';
 import { WEBLLM_MODELS } from './WebLLMModels';
 import { Notice } from 'obsidian';
+import { getAllPluginIds } from '../../../../constants/branding';
 
 export interface WebLLMLifecycleCallbacks {
   onLoadingStart?: () => void;
@@ -53,8 +54,19 @@ export class WebLLMLifecycleManager {
    */
   private isNexusDefaultProvider(): boolean {
     try {
-      const plugin = (window as any).app?.plugins?.plugins?.['claudesidian-mcp'];
-      return plugin?.settings?.llmProviders?.defaultModel?.provider === 'webllm';
+      const registry = (window as any).app?.plugins?.plugins;
+      if (!registry) {
+        return false;
+      }
+
+      for (const id of getAllPluginIds()) {
+        const plugin = registry[id];
+        if (plugin?.settings?.llmProviders?.defaultModel?.provider === 'webllm') {
+          return true;
+        }
+      }
+
+      return false;
     } catch {
       return false;
     }

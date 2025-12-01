@@ -12,6 +12,7 @@ import {
 } from './base/SuggesterInterfaces';
 import { MessageEnhancer } from '../../services/MessageEnhancer';
 import { formatToolDisplayName } from '../../../../utils/toolNameUtils';
+import { getNexusPlugin } from '../../../../utils/pluginLocator';
 
 export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggestionItem> {
   private messageEnhancer: MessageEnhancer;
@@ -37,7 +38,7 @@ export class TextAreaToolSuggester extends ContentEditableSuggester<ToolSuggesti
    */
   private async loadTools(): Promise<void> {
     try {
-      const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+      const plugin = getNexusPlugin(this.app) as any;
       if (!plugin) {
         return;
       }

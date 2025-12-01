@@ -398,7 +398,7 @@ export class WebLLMAdapter extends BaseAdapter {
 
   /**
    * Check if a model uses [TOOL_CALLS] content format
-   * All Nexus/Claudesidian fine-tuned models use this format
+   * All Nexus fine-tuned models use this format (legacy identifiers included for compatibility)
    */
   static usesToolCallsContentFormat(modelId: string): boolean {
     const contentFormatKeywords = ['nexus', 'tools-sft', 'claudesidian'];

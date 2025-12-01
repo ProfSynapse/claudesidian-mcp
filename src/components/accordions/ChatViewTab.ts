@@ -61,7 +61,7 @@ export class ChatViewTab {
         feedbackParagraph.createSpan({ text: 'Found an issue? ' });
         const feedbackLink = feedbackParagraph.createEl('a', {
             text: 'Report it on GitHub',
-            href: 'https://github.com/ProfSynapse/claudesidian-mcp/issues'
+            href: 'https://github.com/ProfSynapse/nexus/issues'
         });
         feedbackLink.setAttribute('target', '_blank');
         feedbackLink.setAttribute('rel', 'noopener noreferrer');

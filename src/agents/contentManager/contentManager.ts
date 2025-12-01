@@ -13,7 +13,7 @@ import {
   BatchContentMode
 } from './modes';
 // import { AgentManager } from '../../services/AgentManager';
-import ClaudesidianPlugin from '../../main';
+import NexusPlugin from '../../main';
 import { WorkspaceService } from '../../services/WorkspaceService';
 import { MemoryService } from '../memoryManager/services/MemoryService';
 
@@ -23,7 +23,7 @@ import { MemoryService } from '../memoryManager/services/MemoryService';
  */
 export class ContentManagerAgent extends BaseAgent {
   protected app: App;
-  protected plugin: ClaudesidianPlugin | null = null;
+  protected plugin: NexusPlugin | null = null;
   
   private workspaceService: WorkspaceService | null = null;
   private memoryService: MemoryService | null = null;
@@ -31,13 +31,13 @@ export class ContentManagerAgent extends BaseAgent {
   /**
    * Create a new ContentManagerAgent
    * @param app Obsidian app instance
-   * @param plugin Claudesidian plugin instance
+ * @param plugin Nexus plugin instance
    * @param memoryService Optional injected memory service
    * @param workspaceService Optional injected workspace service
    */
   constructor(
     app: App,
-    plugin?: ClaudesidianPlugin,
+    plugin?: NexusPlugin,
     memoryService?: MemoryService | null,
     workspaceService?: WorkspaceService | null
   ) {
@@ -54,7 +54,7 @@ export class ContentManagerAgent extends BaseAgent {
     if (memoryService) {
       this.memoryService = memoryService;
     } else if (plugin?.services?.memoryService) {
-      this.memoryService = plugin.services.memoryService;
+        this.memoryService = plugin.services.memoryService;
     }
 
     if (workspaceService) {

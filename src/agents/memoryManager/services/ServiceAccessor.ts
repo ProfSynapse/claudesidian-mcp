@@ -8,8 +8,10 @@
  * Dependencies: App (Obsidian)
  */
 
-import { App } from 'obsidian';
+import { App, Plugin } from 'obsidian';
 import { getErrorMessage } from '../../../utils/errorUtils';
+import { getAllPluginIds } from '../../../constants/branding';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 export interface ServiceStatus {
   available: boolean;
@@ -42,7 +44,7 @@ export interface ServiceIntegrationConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
 }
 
-export interface ClaudesidianPlugin {
+export interface NexusPluginBridge extends Plugin {
   services?: Record<string, any>;
   serviceContainer?: {
     getIfReady<T>(serviceName: string): T | null;
@@ -88,9 +90,10 @@ export class ServiceAccessor {
         attempts++;
         this.log('debug', `[ServiceAccessor] Attempting to get ${displayName} (attempt ${attempts}/${this.config.maxRetries + 1})`);
 
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+        const plugin = getNexusPlugin<NexusPluginBridge>(this.app);
         if (!plugin) {
-          lastError = `Plugin 'claudesidian-mcp' not found`;
+          const knownIds = getAllPluginIds().join(`' or '`);
+          lastError = `Plugin '${knownIds}' not found`;
           this.log('error', `[ServiceAccessor] ${lastError}`);
 
           if (attempts <= this.config.maxRetries) {
@@ -200,9 +203,10 @@ export class ServiceAccessor {
     const startTime = Date.now();
 
     try {
-      const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+      const plugin = getNexusPlugin<NexusPluginBridge>(this.app);
       if (!plugin) {
-        const error = `Plugin 'claudesidian-mcp' not found`;
+        const knownIds = getAllPluginIds().join(`' or '`);
+        const error = `Plugin '${knownIds}' not found`;
         const status = this.updateServiceStatus(serviceName, false, error);
         return this.createResult<T>(false, null, error, status, {
           pluginFound: false,

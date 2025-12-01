@@ -1,5 +1,5 @@
 import { App, Plugin } from 'obsidian';
-import ClaudesidianPlugin from './main';
+import NexusPlugin from './main';
 import { EventManager } from './services/EventManager';
 import { SessionContextManager, WorkspaceContext } from './services/SessionContextManager';
 import type { ServiceManager } from './core/ServiceManager';
@@ -40,7 +40,7 @@ export class MCPConnector {
 
     constructor(
         private app: App,
-        private plugin: Plugin | ClaudesidianPlugin
+        private plugin: Plugin | NexusPlugin
     ) {
         // Initialize core components
         this.eventManager = new EventManager();

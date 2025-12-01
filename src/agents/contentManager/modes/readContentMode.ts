@@ -7,6 +7,7 @@ import { MemoryService } from '../../memoryManager/services/MemoryService';
 import { getErrorMessage, createErrorMessage } from '../../../utils/errorUtils';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
 import { NudgeHelpers } from '../../../utils/nudgeHelpers';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Mode for reading content from a file
@@ -152,7 +153,7 @@ export class ReadContentMode extends BaseMode<ReadContentParams, ReadContentResu
     if (!this.memoryService) {
       try {
         // Try to get the memory service from the plugin
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = getNexusPlugin(this.app) as any;
         if (plugin?.services?.memoryService) {
           this.memoryService = plugin.services.memoryService;
         } else {

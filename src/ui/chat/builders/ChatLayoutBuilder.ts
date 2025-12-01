@@ -77,7 +77,7 @@ export class ChatLayoutBuilder {
     warningBanner.innerHTML = `
       <span class="warning-icon">⚠️</span>
       <span class="warning-text">Experimental Feature: AI Chat is in beta.</span>
-      <a href="https://github.com/ProfSynapse/claudesidian-mcp/issues" target="_blank" rel="noopener noreferrer" class="warning-link">Report issues</a>
+      <a href="https://github.com/ProfSynapse/nexus/issues" target="_blank" rel="noopener noreferrer" class="warning-link">Report issues</a>
       <span class="warning-text">• Use at your own risk</span>
     `;
 

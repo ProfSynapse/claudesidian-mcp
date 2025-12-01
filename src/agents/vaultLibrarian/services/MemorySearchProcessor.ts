@@ -21,6 +21,7 @@ import {
 } from '../../../types/memory/MemorySearchTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 export interface MemorySearchProcessorInterface {
   process(params: MemorySearchParameters): Promise<MemorySearchResult[]>;
@@ -644,7 +645,8 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   // Service access methods
   private getMemoryService(): MemoryService | undefined {
     try {
-      const plugin = (this.plugin as any)?.app?.plugins?.getPlugin('claudesidian-mcp');
+      const app = (this.plugin as any)?.app;
+      const plugin = app ? (getNexusPlugin(app) as any) : null;
       if (plugin?.serviceContainer) {
         return plugin.serviceContainer.getIfReady('memoryService') || undefined;
       }
@@ -658,7 +660,8 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
 
   private getWorkspaceService(): WorkspaceService | undefined {
     try {
-      const plugin = (this.plugin as any)?.app?.plugins?.getPlugin('claudesidian-mcp');
+      const app = (this.plugin as any)?.app;
+      const plugin = app ? (getNexusPlugin(app) as any) : null;
       if (plugin?.serviceContainer) {
         return plugin.serviceContainer.getIfReady('workspaceService') || undefined;
       }

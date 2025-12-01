@@ -9,7 +9,7 @@
  */
 
 import { App, Plugin } from 'obsidian';
-import ClaudesidianPlugin from '../../main';
+import NexusPlugin from '../../main';
 import { AgentManager } from '../AgentManager';
 import { ServiceManager } from '../../core/ServiceManager';
 import {
@@ -31,7 +31,7 @@ import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 export class AgentInitializationService {
   constructor(
     private app: App,
-    private plugin: Plugin | ClaudesidianPlugin,
+    private plugin: Plugin | NexusPlugin,
     private agentManager: AgentManager,
     private serviceManager?: ServiceManager,
     private customPromptStorage?: CustomPromptStorageService
@@ -43,7 +43,7 @@ export class AgentInitializationService {
   async initializeContentManager(): Promise<void> {
     const contentManagerAgent = new ContentManagerAgent(
       this.app,
-      this.plugin as ClaudesidianPlugin
+      this.plugin as NexusPlugin
     );
 
     this.agentManager.registerAgent(contentManagerAgent);

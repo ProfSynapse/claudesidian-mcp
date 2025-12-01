@@ -6,6 +6,7 @@
 import { App } from 'obsidian';
 import { UsageTracker, UsageData, BudgetStatus } from '../services/UsageTracker';
 import { UsageChart } from './shared/UsageChart';
+import { getNexusPlugin } from '../utils/pluginLocator';
 
 export interface LLMUsageTabOptions {
     containerEl: HTMLElement;
@@ -24,7 +25,7 @@ export class LLMUsageTab {
         this.app = options.app;
         
         // Get settings from plugin
-        const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+        const plugin = getNexusPlugin(this.app) as any;
         const settings = plugin?.settings || {};
         
         // Initialize usage tracker for LLM usage
@@ -101,7 +102,7 @@ export class LLMUsageTab {
             await this.refreshUsageData();
             
             // Show success message
-            const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+            const plugin = getNexusPlugin(this.app) as any;
             if (plugin?.showNotice) {
                 plugin.showNotice('Monthly LLM usage reset successfully');
             }
@@ -109,7 +110,7 @@ export class LLMUsageTab {
             console.error('Error resetting monthly LLM usage:', error);
             
             // Show error message
-            const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+            const plugin = getNexusPlugin(this.app) as any;
             if (plugin?.showNotice) {
                 plugin.showNotice('Failed to reset monthly usage', 'error');
             }
@@ -129,7 +130,7 @@ export class LLMUsageTab {
             }, 100);
             
             // Show success message
-            const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+            const plugin = getNexusPlugin(this.app) as any;
             if (plugin?.showNotice) {
                 if (budget > 0) {
                     plugin.showNotice(`Monthly LLM budget set to $${budget.toFixed(2)}`);
@@ -141,7 +142,7 @@ export class LLMUsageTab {
             console.error('Error setting LLM budget:', error);
             
             // Show error message
-            const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+            const plugin = getNexusPlugin(this.app) as any;
             if (plugin?.showNotice) {
                 plugin.showNotice('Failed to set budget', 'error');
             }

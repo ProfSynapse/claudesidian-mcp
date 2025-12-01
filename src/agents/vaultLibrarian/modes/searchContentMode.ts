@@ -1,6 +1,7 @@
 import { Plugin, TFile, prepareFuzzySearch } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
+import { BRAND_NAME } from '../../../constants/branding';
 
 export interface ContentSearchParams {
   query: string;
@@ -75,7 +76,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
         context: params.context
       };
 
-      console.log('[Claudesidian] Starting content search:', { query: searchParams.query, limit: searchParams.limit });
+      console.log(`[${BRAND_NAME}] Starting content search:`, { query: searchParams.query, limit: searchParams.limit });
 
       // Get all markdown files
       let allFiles = this.plugin.app.vault.getMarkdownFiles();
@@ -98,7 +99,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
 
       const executionTime = performance.now() - startTime;
 
-      console.log('[Claudesidian] Content search completed:', {
+      console.log(`[${BRAND_NAME}] Content search completed:`, {
         resultsCount: searchResults.length,
         executionTime: Math.round(executionTime)
       });
@@ -113,7 +114,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
 
     } catch (error) {
       const executionTime = performance.now() - startTime;
-      console.error('[Claudesidian] Content search failed:', error);
+      console.error(`[${BRAND_NAME}] Content search failed:`, error);
 
       return this.prepareResult(false, undefined, `Search failed: ${getErrorMessage(error)}`, params.context);
     }
@@ -206,7 +207,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
           }
         }
       } catch (error) {
-        console.warn('[Claudesidian] Failed to read file content:', file.path, error);
+        console.warn(`[${BRAND_NAME}] Failed to read file content:`, file.path, error);
       }
     } else {
       // Even if not including content, still extract frontmatter
@@ -217,7 +218,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
           delete frontmatter.position;
         }
       } catch (error) {
-        console.warn('[Claudesidian] Failed to extract frontmatter:', file.path, error);
+        console.warn(`[${BRAND_NAME}] Failed to extract frontmatter:`, file.path, error);
       }
     }
 

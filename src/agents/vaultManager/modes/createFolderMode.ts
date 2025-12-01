@@ -5,6 +5,7 @@ import { FileOperations } from '../utils/FileOperations';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import {parseWorkspaceContext} from '../../../utils/contextUtils';
 import { createErrorMessage } from '../../../utils/errorUtils';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Mode to create a new folder
@@ -31,7 +32,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParams, CreateFolderR
     // Try to get memory service from plugin if not provided
     if (!this.memoryService) {
       try {
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = getNexusPlugin(this.app) as any;
         if (plugin?.services?.memoryService) {
           this.memoryService = plugin.services.memoryService;
         }
@@ -151,7 +152,7 @@ export class CreateFolderMode extends BaseMode<CreateFolderParams, CreateFolderR
       // Try to get memory service from plugin if not available
       if (!this.memoryService) {
         try {
-          const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+          const plugin = getNexusPlugin(this.app) as any;
           if (plugin?.services?.memoryService) {
             this.memoryService = plugin.services.memoryService;
             // Try again with the newly found service

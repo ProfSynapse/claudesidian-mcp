@@ -38,11 +38,13 @@ import { ChatEventBinder } from './utils/ChatEventBinder';
 // Utils
 import { TokenCalculator } from './utils/TokenCalculator';
 import { ReferenceMetadata } from './utils/ReferenceExtractor';
+import { CHAT_VIEW_TYPES } from '../../constants/branding';
+import { getNexusPlugin } from '../../utils/pluginLocator';
 
 // Nexus Lifecycle
 import { getWebLLMLifecycleManager } from '../../services/llm/adapters/webllm/WebLLMLifecycleManager';
 
-export const CHAT_VIEW_TYPE = 'claudesidian-chat';
+export const CHAT_VIEW_TYPE = CHAT_VIEW_TYPES.current;
 
 export class ChatView extends ItemView {
   // Core components
@@ -266,7 +268,7 @@ export class ChatView extends ItemView {
    * Open chat settings modal
    */
   private async openChatSettingsModal(): Promise<void> {
-    const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+    const plugin = getNexusPlugin(this.app) as any;
     if (!plugin) {
       console.error('[ChatView] Plugin not found');
       return;

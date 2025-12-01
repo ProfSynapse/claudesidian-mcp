@@ -17,6 +17,7 @@ import {
 import { ModelRegistry } from '../ModelRegistry';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 import { WebSearchUtils } from '../../utils/WebSearchUtils';
+import { BRAND_NAME } from '../../../../constants/branding';
 
 export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'openrouter';
@@ -75,7 +76,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
           'HTTP-Referer': 'https://www.synapticlabs.ai',
-          'X-Title': 'Claudesidian'
+          'X-Title': BRAND_NAME
         },
         body: JSON.stringify(requestBody)
       });
@@ -145,7 +146,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
           'HTTP-Referer': 'https://www.synapticlabs.ai',
-          'X-Title': 'Claudesidian'
+          'X-Title': BRAND_NAME
         },
         body: JSON.stringify(requestBody)
       });
@@ -269,7 +270,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'HTTP-Referer': 'https://www.synapticlabs.ai',
-            'X-Title': 'Claudesidian'
+            'X-Title': BRAND_NAME
           }
         });
 
@@ -401,7 +402,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
               ...this.buildHeaders(),
               'Authorization': `Bearer ${this.apiKey}`,
               'HTTP-Referer': 'https://www.synapticlabs.ai',
-              'X-Title': 'Claudesidian'
+              'X-Title': BRAND_NAME
             },
             body: JSON.stringify(requestBody)
           });
@@ -497,7 +498,7 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
           'HTTP-Referer': 'https://www.synapticlabs.ai',
-          'X-Title': 'Claudesidian'
+          'X-Title': BRAND_NAME
         },
         body: JSON.stringify(requestBody)
       });

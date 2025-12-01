@@ -1,8 +1,8 @@
 import { Accordion } from '../Accordion';
 
-export class WhatIsClaudesidianAccordion {
+export class WhatIsNexusAccordion {
     constructor(container: HTMLElement) {
-        const accordion = new Accordion(container, 'What is Claudesidian?', false);
+        const accordion = new Accordion(container, 'What is Nexus?', false);
         const content = accordion.getContentEl();
         this.createContent(content);
     }
@@ -15,14 +15,14 @@ export class WhatIsClaudesidianAccordion {
 
     private createContent(content: HTMLElement): void {
         content.createEl('p', {
-            text: 'Claudesidian MCP transforms your Obsidian vault into a natural language programming environment that enables powerful AI-assisted note-taking and knowledge management by connecting the Claude Desktop App to your vault, and giving it tools to take actions.'
+            text: 'Nexus transforms your Obsidian vault into a natural language programming environment that enables powerful AI-assisted note-taking and knowledge management by connecting the Claude Desktop App to your vault, and giving it tools to take actions.'
         });
 
         // Natural Language Programming explanation
         const nlpInfo = content.createEl('div', { cls: 'mcp-section' });
         nlpInfo.createEl('h4', { text: 'Natural Language Programming' });
         nlpInfo.createEl('p', {
-            text: 'Work with your notes using natural language commands and structured templates. Claudesidian understands your vault organization and can help you:'
+            text: 'Work with your notes using natural language commands and structured templates. Nexus understands your vault organization and can help you:'
         });
         
         const nlpList = nlpInfo.createEl('ul');

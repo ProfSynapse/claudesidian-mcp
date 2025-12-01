@@ -5,6 +5,7 @@ import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { MemoryService } from '../../memoryManager/services/MemoryService';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Mode for prepending content to a file
@@ -166,7 +167,7 @@ export class PrependContentMode extends BaseMode<PrependContentParams, PrependCo
     if (!this.memoryService) {
       try {
         // Try to get the memory service from the plugin
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = getNexusPlugin(this.app) as any;
         if (plugin?.services?.memoryService) {
           this.memoryService = plugin.services.memoryService;
         } else {

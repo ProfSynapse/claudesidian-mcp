@@ -10,6 +10,7 @@
 
 import { ModelOption } from '../components/ModelSelector';
 import { ProviderUtils } from '../utils/ProviderUtils';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Utility class for model selection and management
@@ -21,7 +22,7 @@ export class ModelSelectionUtility {
   static async getAvailableModels(app: any): Promise<ModelOption[]> {
     try {
       // Get plugin instance to access LLMService
-      const plugin = app.plugins.plugins['claudesidian-mcp'];
+      const plugin = getNexusPlugin(app) as any;
       if (!plugin) {
         return [];
       }
@@ -54,7 +55,7 @@ export class ModelSelectionUtility {
    */
   static async getDefaultModel(app: any): Promise<{ provider: string; model: string }> {
     try {
-      const plugin = app.plugins.plugins['claudesidian-mcp'];
+      const plugin = getNexusPlugin(app) as any;
       if (!plugin) {
         throw new Error('Plugin not found');
       }

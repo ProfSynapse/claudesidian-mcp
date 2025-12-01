@@ -20,7 +20,10 @@ interface GitHubRelease {
  * - manifest.json
  */
 export class UpdateManager {
-    private readonly GITHUB_API = 'https://api.github.com/repos/ProfSynapse/claudesidian-mcp';
+    private readonly GITHUB_API_ENDPOINTS = [
+        'https://api.github.com/repos/ProfSynapse/nexus',
+        'https://api.github.com/repos/ProfSynapse/claudesidian-mcp'
+    ];
     private readonly REQUIRED_FILES = ['main.js', 'connector.js', 'styles.css', 'manifest.json'];
 
     constructor(private plugin: Plugin) {}
@@ -131,20 +134,33 @@ export class UpdateManager {
      * Fetch latest release information from GitHub
      */
     private async fetchLatestRelease(): Promise<GitHubRelease> {
-        const response = await requestUrl({
-            url: `${this.GITHUB_API}/releases/latest`,
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'User-Agent': 'Obsidian-Plugin-Updater'
+        const errors: Error[] = [];
+
+        for (const endpoint of this.GITHUB_API_ENDPOINTS) {
+            try {
+                const response = await requestUrl({
+                    url: `${endpoint}/releases/latest`,
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'User-Agent': 'Obsidian-Plugin-Updater'
+                    }
+                });
+
+                if (response.status === 200) {
+                    return response.json;
+                }
+
+                errors.push(new Error(`GitHub API error: ${response.status} (${endpoint})`));
+            } catch (error) {
+                const err = error as Error;
+                console.warn(`Failed to fetch release info from ${endpoint}: ${err.message}`);
+                errors.push(err);
             }
-        });
-        
-        if (response.status !== 200) {
-            throw new Error(`GitHub API error: ${response.status}`);
         }
-        
-        return response.json;
+
+        const lastError = errors[errors.length - 1];
+        throw new Error(`Failed to fetch release info: ${lastError?.message ?? 'Unknown error'}`);
     }
 
     /**

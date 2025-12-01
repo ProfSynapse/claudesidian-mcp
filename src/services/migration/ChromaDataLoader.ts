@@ -4,6 +4,7 @@
 // Dependencies: FileSystemService for ChromaDB collection file reading
 
 import { FileSystemService } from '../storage/FileSystemService';
+import { BRAND_NAME } from '../../constants/branding';
 
 export interface ChromaCollectionData {
   memoryTraces: any[];
@@ -21,7 +22,7 @@ export class ChromaDataLoader {
   }
 
   async loadAllCollections(): Promise<ChromaCollectionData> {
-    console.log('[Claudesidian] Loading all ChromaDB collections...');
+    console.log(`[${BRAND_NAME}] Loading all ChromaDB collections...`);
 
     const [memoryTraces, sessions, conversations, workspaces, snapshots] = await Promise.all([
       this.fileSystem.readChromaCollection('memory_traces'),
@@ -39,7 +40,7 @@ export class ChromaDataLoader {
       snapshots
     };
 
-    console.log('[Claudesidian] Collection counts:', {
+      console.log(`[${BRAND_NAME}] Collection counts:`, {
       memoryTraces: memoryTraces.length,
       sessions: sessions.length,
       conversations: conversations.length,
@@ -47,7 +48,7 @@ export class ChromaDataLoader {
       snapshots: snapshots.length
     });
 
-    console.log(`[Claudesidian] Loaded collections:`, {
+      console.log(`[${BRAND_NAME}] Loaded collections:`, {
       memoryTraces: result.memoryTraces.length,
       sessions: result.sessions.length,
       conversations: result.conversations.length,

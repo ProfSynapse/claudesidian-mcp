@@ -7,6 +7,7 @@ import { App } from 'obsidian';
 import { sanitizeVaultName } from '../../utils/vaultUtils';
 import { logger } from '../../utils/logger';
 import { platform } from 'os';
+import { getPrimaryServerKey, getPrimaryIpcPath } from '../../constants/branding';
 
 export interface ServerConfigurationOptions {
     serverName?: string;
@@ -72,7 +73,7 @@ export class ServerConfiguration {
             return this.serverName;
         }
         
-        return `claudesidian-mcp-${this.sanitizedVaultName}`;
+        return getPrimaryServerKey(this.vaultName);
     }
 
     /**
@@ -98,9 +99,7 @@ export class ServerConfiguration {
      * Get the IPC path for this server
      */
     getIPCPath(): string {
-        return platform() === 'win32'
-            ? `\\\\.\\pipe\\claudesidian_mcp_${this.sanitizedVaultName}`
-            : `/tmp/claudesidian_mcp_${this.sanitizedVaultName}.sock`;
+        return getPrimaryIpcPath(this.vaultName, this.isWindows());
     }
 
     /**

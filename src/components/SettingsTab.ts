@@ -1,8 +1,8 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, ButtonComponent } from 'obsidian';
 import { Settings } from '../settings';
 // import { ConfigModal } from './ConfigModal';
-import { 
-    WhatIsClaudesidianAccordion, 
+import {
+    WhatIsNexusAccordion,
     SetupInstructionsAccordion,
     MemoryManagementAccordion,
     AgentManagementAccordion
@@ -18,7 +18,7 @@ import { CustomPromptStorageService } from "../agents/agentManager/services/Cust
 import type { ServiceManager } from '../core/ServiceManager';
 
 /**
- * Settings tab for the Claudesidian MCP plugin
+ * Settings tab for the Nexus plugin
  * Provides configuration options and agent explanations
  */
 export class SettingsTab extends PluginSettingTab {
@@ -283,8 +283,8 @@ export class SettingsTab extends PluginSettingTab {
         // Setup Instructions accordion
         new SetupInstructionsAccordion(containerEl, this.app);
 
-        // What is Claudesidian? accordion
-        new WhatIsClaudesidianAccordion(containerEl);
+        // What is Nexus? accordion
+        new WhatIsNexusAccordion(containerEl);
 
         // Add CSS styles
         this.addStyles();

@@ -15,7 +15,9 @@
  * - Fetch agent data by name (legacy fallback)
  */
 
+import type { App } from 'obsidian';
 import { ProjectWorkspace } from '../../../database/types/workspace/WorkspaceTypes';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Agent information returned from resolution operations
@@ -40,7 +42,7 @@ export class WorkspaceAgentResolver {
    */
   async fetchWorkspaceAgent(
     workspace: ProjectWorkspace,
-    app: any
+    app: App
   ): Promise<AgentInfo | null> {
     try {
       // Check if workspace has a dedicated agent
@@ -76,11 +78,11 @@ export class WorkspaceAgentResolver {
   async fetchAgentById(
     agentId: string,
     agentName: string,
-    app: any
+    app: App
   ): Promise<AgentInfo | null> {
     try {
       // Get CustomPromptStorageService through plugin's agentManager
-      const plugin = app.plugins.getPlugin('claudesidian-mcp') as any;
+      const plugin = getNexusPlugin(app) as any;
       if (!plugin || !plugin.agentManager) {
         console.warn('[WorkspaceAgentResolver] AgentManager not available');
         return null;
@@ -119,11 +121,11 @@ export class WorkspaceAgentResolver {
    */
   async fetchAgentByName(
     agentName: string,
-    app: any
+    app: App
   ): Promise<AgentInfo | null> {
     try {
       // Get CustomPromptStorageService through plugin's agentManager
-      const plugin = app.plugins.getPlugin('claudesidian-mcp') as any;
+      const plugin = getNexusPlugin(app) as any;
       if (!plugin || !plugin.agentManager) {
         console.warn('[WorkspaceAgentResolver] AgentManager not available');
         return null;

@@ -11,6 +11,7 @@ import { MemorySettings, DEFAULT_MEMORY_SETTINGS } from '../../types';
 import { MemoryService } from "../memoryManager/services/MemoryService";
 import { WorkspaceService } from '../../services/WorkspaceService';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { getNexusPlugin } from '../../utils/pluginLocator';
 
 /**
  * Agent for searching and navigating the vault
@@ -55,7 +56,7 @@ export class VaultLibrarianAgent extends BaseAgent {
       let plugin: any = null;
       try {
         if (app.plugins) {
-          plugin = app.plugins.getPlugin('claudesidian-mcp');
+          plugin = getNexusPlugin(app);
           if (plugin) {
             const pluginAny = plugin as any;
             const memorySettings = pluginAny.settings?.settings?.memory;
@@ -82,7 +83,7 @@ export class VaultLibrarianAgent extends BaseAgent {
     let pluginRef: any = null;
     try {
       if (app.plugins) {
-        pluginRef = app.plugins.getPlugin('claudesidian-mcp');
+        pluginRef = getNexusPlugin(app);
       }
     } catch (error) {
       console.warn('[VaultLibrarian] Failed to get plugin reference:', error);

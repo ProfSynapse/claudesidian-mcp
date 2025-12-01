@@ -5,7 +5,7 @@ export const CONFIG = {
     /**
      * Plugin name
      */
-    PLUGIN_NAME: 'Claudesidian MCP',
+    PLUGIN_NAME: 'Nexus',
     
     /**
      * Plugin version

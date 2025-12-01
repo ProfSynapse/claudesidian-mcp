@@ -35,10 +35,10 @@ const sanitizeVaultName = (vaultName) => {
  * Extracts the vault name from the script execution path
  *
  * The script path follows the pattern:
- * /path/to/vault_name/.obsidian/plugins/claudesidian-mcp/connector.js
+ * /path/to/vault_name/.obsidian/plugins/nexus/connector.js
  *
  * We need to go up 4 levels from the script path to reach the vault name:
- * 1. dirname(scriptPath) -> /path/to/vault_name/.obsidian/plugins/claudesidian-mcp
+ * 1. dirname(scriptPath) -> /path/to/vault_name/.obsidian/plugins/nexus
  * 2. dirname() -> /path/to/vault_name/.obsidian/plugins
  * 3. dirname() -> /path/to/vault_name/.obsidian
  * 4. dirname() -> /path/to/vault_name
@@ -59,7 +59,7 @@ const extractVaultName = () => {
         process.stderr.write(`DEBUG: Script path: ${scriptPath}\n`);
         
         // Go up 4 levels in the directory hierarchy to reach the vault name
-        // 1. claudesidian-mcp directory
+        // 1. nexus plugin directory
         const pluginDir = dirname(scriptPath);
         process.stderr.write(`DEBUG: Plugin directory: ${pluginDir}\n`);
         
@@ -107,8 +107,8 @@ const getIPCPath = () => {
     
     // Add the sanitized vault name to the IPC path
     return process.platform === 'win32'
-        ? `\\\\.\\pipe\\claudesidian_mcp_${sanitizedVaultName}`
-        : `/tmp/claudesidian_mcp_${sanitizedVaultName}.sock`;
+        ? `\\\\.\\pipe\\nexus_mcp_${sanitizedVaultName}`
+        : `/tmp/nexus_mcp_${sanitizedVaultName}.sock`;
 };
 
 // Maximum number of connection attempts
@@ -147,7 +147,7 @@ function connectWithRetry() {
             if (nodeErr.code === 'ENOENT') {
                 process.stderr.write(`The IPC path does not exist. This may indicate:\n`);
                 process.stderr.write(`1. Obsidian is not running\n`);
-                process.stderr.write(`2. The Claudesidian MCP plugin is not enabled\n`);
+                process.stderr.write(`2. The Nexus plugin is not enabled\n`);
                 process.stderr.write(`3. The vault name extraction failed (extracted: "${sanitizeVaultName(extractVaultName())}")\n`);
             } else if (nodeErr.code === 'ECONNREFUSED') {
                 process.stderr.write(`Connection refused. The server may have stopped or is not listening.\n`);
@@ -161,7 +161,7 @@ function connectWithRetry() {
             } else {
                 process.stderr.write(`Maximum retry attempts reached. Please ensure:\n`);
                 process.stderr.write(`1. Obsidian is running\n`);
-                process.stderr.write(`2. The Claudesidian MCP plugin is enabled\n`);
+                process.stderr.write(`2. The Nexus plugin is enabled\n`);
                 process.stderr.write(`3. The plugin settings are correctly configured\n`);
                 process.stderr.write(`4. Check the extracted vault name: "${extractVaultName()}"\n`);
                 process.exit(1);

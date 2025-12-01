@@ -15,7 +15,7 @@ import { ContextProgressBar, ContextUsage } from './components/ContextProgressBa
 import { ChatService } from '../../services/chat/ChatService';
 import { ConversationData } from '../../types/chat/ChatTypes';
 
-export const CHAT_VIEW_TYPE = 'claudesidian-chat';
+export const CHAT_VIEW_TYPE = 'nexus-chat';
 
 export class ChatView extends ItemView {
   private chatService: ChatService;
@@ -675,7 +675,7 @@ export class ChatView extends ItemView {
   private async getAvailableModels(): Promise<ModelOption[]> {
     try {
       // Get plugin instance to access settings data
-      const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+      const plugin = (this.app as any).plugins.plugins['nexus'];
       if (!plugin) {
         console.warn('[ChatView] Plugin not found for model loading');
         return [];
@@ -732,7 +732,7 @@ export class ChatView extends ItemView {
   private async getAvailableAgents(): Promise<AgentOption[]> {
     try {
       // Get plugin instance to access settings data
-      const plugin = (this.app as any).plugins.plugins['claudesidian-mcp'];
+      const plugin = (this.app as any).plugins.plugins['nexus'];
       if (!plugin) {
         console.warn('[ChatView] Plugin not found for agent loading');
         return [];

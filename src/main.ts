@@ -3,8 +3,9 @@ import { MCPConnector } from './connector';
 import { Settings } from './settings';
 import { ServiceManager } from './core/ServiceManager';
 import { PluginLifecycleManager, type PluginLifecycleConfig } from './core/PluginLifecycleManager';
+import { BRAND_NAME } from './constants/branding';
 
-export default class ClaudesidianPlugin extends Plugin {
+export default class NexusPlugin extends Plugin {
     public settings!: Settings;
     private connector!: MCPConnector;
     private serviceManager!: ServiceManager;
@@ -20,7 +21,7 @@ export default class ClaudesidianPlugin extends Plugin {
         try {
             return await this.serviceManager.getService<T>(name);
         } catch (error) {
-            console.error(`[Claudesidian] Failed to get service ${name}:`, error);
+            console.error(`[${BRAND_NAME}] Failed to get service ${name}:`, error);
             return null;
         }
     }
@@ -74,8 +75,8 @@ export default class ClaudesidianPlugin extends Plugin {
             await this.lifecycleManager.initialize();
 
         } catch (error) {
-            console.error('[Claudesidian] Plugin loading failed:', error);
-            new Notice('Claudesidian: Plugin failed to load. Check console for details.');
+            console.error(`[${BRAND_NAME}] Plugin loading failed:`, error);
+            new Notice(`${BRAND_NAME}: Plugin failed to load. Check console for details.`);
             throw error;
         }
     }

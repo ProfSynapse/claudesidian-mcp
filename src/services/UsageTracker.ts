@@ -39,13 +39,17 @@ export interface UsageResponse {
 export class UsageTracker {
     private readonly storageKeyPrefix: string;
     private readonly budgetKey: string;
+    private readonly legacyStorageKeys: string[];
+    private readonly legacyBudgetKeys: string[];
     
     constructor(
         private usageType: UsageType,
         private settings: any
     ) {
-        this.storageKeyPrefix = `claudesidian-usage-${usageType}`;
-        this.budgetKey = `claudesidian-budget-${usageType}`;
+        this.storageKeyPrefix = `nexus-usage-${usageType}`;
+        this.budgetKey = `nexus-budget-${usageType}`;
+        this.legacyStorageKeys = [`claudesidian-usage-${usageType}`];
+        this.legacyBudgetKeys = [`claudesidian-budget-${usageType}`];
     }
 
     /**
@@ -131,6 +135,7 @@ export class UsageTracker {
         
         try {
             localStorage.setItem(this.budgetKey, budget.toString());
+            this.cleanupLegacyKeys(this.legacyBudgetKeys);
         } catch (error) {
             console.warn(`Failed to save ${this.usageType} budget:`, error);
         }
@@ -143,7 +148,7 @@ export class UsageTracker {
         if (typeof localStorage === 'undefined') return 0;
         
         try {
-            const budget = localStorage.getItem(this.budgetKey);
+            const budget = this.getWithLegacyKeys(this.budgetKey, this.legacyBudgetKeys);
             return budget ? parseFloat(budget) : 0;
         } catch (error) {
             console.warn(`Failed to load ${this.usageType} budget:`, error);
@@ -169,7 +174,7 @@ export class UsageTracker {
         }
 
         try {
-            const stored = localStorage.getItem(this.storageKeyPrefix);
+            const stored = this.getWithLegacyKeys(this.storageKeyPrefix, this.legacyStorageKeys);
             if (!stored) return defaultData;
 
             const parsed = JSON.parse(stored) as UsageData;
@@ -197,8 +202,45 @@ export class UsageTracker {
 
         try {
             localStorage.setItem(this.storageKeyPrefix, JSON.stringify(data));
+            this.cleanupLegacyKeys(this.legacyStorageKeys);
         } catch (error) {
             console.warn(`Failed to save ${this.usageType} usage data:`, error);
+        }
+    }
+
+    private getWithLegacyKeys(primaryKey: string, legacyKeys: string[]): string | null {
+        if (typeof localStorage === 'undefined') return null;
+
+        const primaryValue = localStorage.getItem(primaryKey);
+        if (primaryValue) {
+            return primaryValue;
+        }
+
+        for (const key of legacyKeys) {
+            const legacyValue = localStorage.getItem(key);
+            if (legacyValue) {
+                try {
+                    localStorage.setItem(primaryKey, legacyValue);
+                    this.cleanupLegacyKeys(legacyKeys);
+                } catch (error) {
+                    console.warn(`Failed to migrate ${this.usageType} data from ${key}:`, error);
+                }
+                return legacyValue;
+            }
+        }
+
+        return null;
+    }
+
+    private cleanupLegacyKeys(keys: string[]): void {
+        if (typeof localStorage === 'undefined') return;
+
+        for (const key of keys) {
+            try {
+                localStorage.removeItem(key);
+            } catch {
+                // Ignore cleanup errors
+            }
         }
     }
 

@@ -16,6 +16,9 @@ import { App } from 'obsidian';
 import { MemoryService } from "../services/MemoryService";
 import { WorkspaceService } from '../../../services/WorkspaceService';
 import { getErrorMessage } from '../../../utils/errorUtils';
+import { getAllPluginIds } from '../../../constants/branding';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
+import type { NexusPluginBridge } from '../services/ServiceAccessor';
 
 /**
  * Service availability status
@@ -55,20 +58,6 @@ export interface ServiceAccessResult<T> {
     methodUsed: string;
     duration: number;
   };
-}
-
-/**
- * Plugin interface for service access
- */
-export interface ClaudesidianPlugin {
-  services?: {
-    memoryService?: MemoryService;
-    workspaceService?: WorkspaceService;
-  };
-  serviceContainer?: {
-    getIfReady<T>(serviceName: string): T | null;
-  };
-  getService?<T>(serviceName: string): Promise<T>;
 }
 
 /**
@@ -148,9 +137,10 @@ export class ServiceIntegration {
         attempts++;
         this.log('debug', `[ServiceIntegration] Attempting to get ${displayName} (attempt ${attempts}/${this.config.maxRetries + 1})`);
 
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+        const plugin = getNexusPlugin<NexusPluginBridge>(this.app);
         if (!plugin) {
-          lastError = `Plugin 'claudesidian-mcp' not found`;
+          const knownIds = getAllPluginIds().join(`' or '`);
+          lastError = `Plugin '${knownIds}' not found`;
           this.log('error', `[ServiceIntegration] ${lastError}`);
           
           if (attempts <= this.config.maxRetries) {
@@ -260,9 +250,10 @@ export class ServiceIntegration {
     const startTime = Date.now();
     
     try {
-      const plugin = this.app.plugins.getPlugin('claudesidian-mcp') as ClaudesidianPlugin;
+      const plugin = getNexusPlugin<NexusPluginBridge>(this.app);
       if (!plugin) {
-        const error = `Plugin 'claudesidian-mcp' not found`;
+        const knownIds = getAllPluginIds().join(`' or '`);
+        const error = `Plugin '${knownIds}' not found`;
         const status = this.updateServiceStatus(serviceName, false, error);
         return this.createResult<T>(false, null, error, status, {
           pluginFound: false,

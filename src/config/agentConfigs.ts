@@ -14,7 +14,7 @@ export interface AgentDescriptor {
 }
 
 /**
- * The 6 core agents available in the Claudesidian MCP plugin
+ * The 6 core agents available in the Nexus plugin
  * These map directly to the agent implementations in /src/agents/
  */
 export const AGENTS: AgentDescriptor[] = [

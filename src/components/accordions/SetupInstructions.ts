@@ -3,6 +3,8 @@ import { Setting, App, Notice, ButtonComponent } from 'obsidian';
 import { ConfigModal } from '../ConfigModal';
 import { MCPConfigGenerator } from '../../services/mcp/MCPConfigGenerator';
 import * as path from 'path';
+import { existsSync } from 'fs';
+import { getAllPluginIds, BRAND_NAME } from '../../constants/branding';
 
 export class SetupInstructionsAccordion {
     private app: App;
@@ -135,11 +137,11 @@ export class SetupInstructionsAccordion {
             });
         } else if (!status.hasOurServer) {
             statusEl.createEl('span', {
-                text: `⚠️ .mcp.json exists (${status.totalServers} MCP ${status.totalServers === 1 ? 'server' : 'servers'}), but Claudesidian not configured`,
+                text: `⚠️ .mcp.json exists (${status.totalServers} MCP ${status.totalServers === 1 ? 'server' : 'servers'}), but ${BRAND_NAME} not configured`,
                 cls: 'mcp-status-warning'
             });
             statusEl.createEl('p', {
-                text: 'Click to add Claudesidian to your existing MCP configuration',
+                text: `Click to add ${BRAND_NAME} to your existing MCP configuration`,
                 cls: 'mcp-status-hint'
             });
         } else if (!status.isUpToDate) {
@@ -233,7 +235,7 @@ export class SetupInstructionsAccordion {
         const stepsList = steps.createEl('ol');
         stepsList.createEl('li', { text: 'Keep this Obsidian vault open' });
         stepsList.createEl('li', { text: 'Configure your MCP client to use this vault\'s .mcp.json' });
-        stepsList.createEl('li', { text: 'The client will have access to all Claudesidian agents and modes' });
+        stepsList.createEl('li', { text: `The client will have access to all ${BRAND_NAME} agents and modes` });
 
         // Auto-hide after 15 seconds
         setTimeout(() => nextSteps.remove(), 15000);
@@ -241,7 +243,16 @@ export class SetupInstructionsAccordion {
 
     private getConfigGenerator(): MCPConfigGenerator {
         const vaultPath = (this.app.vault.adapter as any).basePath;
-        const pluginPath = path.join(vaultPath, '.obsidian', 'plugins', 'claudesidian-mcp');
+        const pluginFolders = getAllPluginIds();
+        let pluginFolder = pluginFolders[0];
+        for (const folder of pluginFolders) {
+            const folderPath = path.join(vaultPath, '.obsidian', 'plugins', folder);
+            if (existsSync(folderPath)) {
+                pluginFolder = folder;
+                break;
+            }
+        }
+        const pluginPath = path.join(vaultPath, '.obsidian', 'plugins', pluginFolder);
         return new MCPConfigGenerator(this.app, vaultPath, pluginPath);
     }
 }

@@ -1,6 +1,6 @@
 import { App, Notice } from 'obsidian';
 import * as path from 'path';
-import { sanitizeVaultName } from '../../utils/vaultUtils';
+import { BRAND_NAME, getPrimaryServerKey, getServerKeyCandidates } from '../../constants/branding';
 
 /**
  * Location: src/services/mcp/MCPConfigGenerator.ts
@@ -9,7 +9,7 @@ import { sanitizeVaultName } from '../../utils/vaultUtils';
  * in the vault root for universal MCP client compatibility.
  *
  * This enables any MCP-compatible tool (coding assistants, AI development tools, etc.)
- * to connect to the Obsidian vault through the Claudesidian MCP server.
+ * to connect to the Obsidian vault through the Nexus MCP server.
  */
 
 export interface MCPConfigStatus {
@@ -38,6 +38,7 @@ export interface MCPConfigResult {
 export class MCPConfigGenerator {
     private mcpJsonPath: string;
     private ourServerKey: string;
+    private serverKeyCandidates: string[];
     private ourServerConfig: any;
 
     constructor(
@@ -48,7 +49,9 @@ export class MCPConfigGenerator {
         // Ensure we normalize the path and don't duplicate
         const normalizedVaultPath = path.normalize(this.vaultPath);
         this.mcpJsonPath = path.join(normalizedVaultPath, '.mcp.json');
-        this.ourServerKey = `claudesidian-mcp-${sanitizeVaultName(this.app.vault.getName())}`;
+        const vaultName = this.app.vault.getName();
+        this.ourServerKey = getPrimaryServerKey(vaultName);
+        this.serverKeyCandidates = getServerKeyCandidates(vaultName);
         this.ourServerConfig = {
             command: "node",
             args: [path.normalize(path.join(this.pluginPath, 'connector.js'))]
@@ -80,9 +83,13 @@ export class MCPConfigGenerator {
 
             // Determine if this is a create or update
             const fileExists = await this.configFileExists();
-            const hadOurServer = existingConfig.mcpServers[this.ourServerKey] != null;
+            const existingKey = this.findExistingServerKey(existingConfig);
+            const hadOurServer = existingKey != null;
 
             // Add/update our server configuration
+            if (existingKey && existingKey !== this.ourServerKey) {
+                delete existingConfig.mcpServers[existingKey];
+            }
             existingConfig.mcpServers[this.ourServerKey] = this.ourServerConfig;
 
             // Write the file
@@ -98,10 +105,10 @@ export class MCPConfigGenerator {
             } else if (!hadOurServer) {
                 action = 'updated';
                 const totalServers = Object.keys(existingConfig.mcpServers).length;
-                message = `.mcp.json updated with Claudesidian configuration (${totalServers} total ${totalServers === 1 ? 'server' : 'servers'})`;
+                message = `.mcp.json updated with ${BRAND_NAME} configuration (${totalServers} total ${totalServers === 1 ? 'server' : 'servers'})`;
             } else {
                 action = 'updated';
-                message = 'Claudesidian configuration updated to current vault path';
+                message = `${BRAND_NAME} configuration updated to current vault path`;
             }
 
             return {
@@ -137,7 +144,7 @@ export class MCPConfigGenerator {
             }
 
             const config = await this.readExistingConfig();
-            const hasOurServer = config.mcpServers?.[this.ourServerKey] != null;
+            const hasOurServer = this.findExistingServerKey(config) != null;
             const isUpToDate = this.isConfigUpToDate(config);
             const totalServers = Object.keys(config.mcpServers || {}).length;
 
@@ -199,7 +206,11 @@ export class MCPConfigGenerator {
      * Check if our server config is up to date in the given config
      */
     private isConfigUpToDate(config: any): boolean {
-        const existingServer = config.mcpServers?.[this.ourServerKey];
+        const existingKey = this.findExistingServerKey(config);
+        if (!existingKey) {
+            return false;
+        }
+        const existingServer = config.mcpServers?.[existingKey];
 
         if (!existingServer) {
             return false;
@@ -223,5 +234,22 @@ export class MCPConfigGenerator {
      */
     getServerKey(): string {
         return this.ourServerKey;
+    }
+
+    /**
+     * Find an existing server key that matches one of our known identifiers
+     */
+    private findExistingServerKey(config: any): string | null {
+        if (!config.mcpServers) {
+            return null;
+        }
+
+        for (const key of this.serverKeyCandidates) {
+            if (config.mcpServers[key]) {
+                return key;
+            }
+        }
+
+        return null;
     }
 }

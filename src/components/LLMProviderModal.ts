@@ -871,7 +871,7 @@ export class LLMProviderModal extends Modal {
       <details>
         <summary style="cursor: pointer; font-weight: 500;">About Nexus</summary>
         <div style="margin-top: 0.5em; padding-left: 1em;">
-          <p>A fine-tuned model optimized for Claudesidian's tool system. Runs entirely on your device.</p>
+          <p>A fine-tuned model optimized for Nexus's tool system. Runs entirely on your device.</p>
           <ul style="margin: 0.5em 0;">
             <li>Trained specifically for tool calling</li>
             <li>Works offline after download</li>

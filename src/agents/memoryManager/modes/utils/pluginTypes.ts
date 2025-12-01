@@ -3,9 +3,9 @@ import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { MemoryService } from "../../services/MemoryService";
 
 /**
- * Custom interface for the Claudesidian plugin with services
+ * Custom interface for the Nexus plugin with services
  */
-export interface ClaudesidianPlugin extends Plugin {
+export interface NexusPluginWithServices extends Plugin {
   services: {
     workspaceService: WorkspaceService;
     memoryService: MemoryService;

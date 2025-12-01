@@ -10,6 +10,7 @@ import { TextAreaWorkspaceSuggester } from './TextAreaWorkspaceSuggester';
 import { MessageEnhancer } from '../../services/MessageEnhancer';
 import { CustomPromptStorageService } from '../../../../agents/agentManager/services/CustomPromptStorageService';
 import { WorkspaceService } from '../../../../services/WorkspaceService';
+import { getNexusPlugin } from '../../../../utils/pluginLocator';
 
 export interface SuggesterInstances {
   noteSuggester: TextAreaNoteSuggester;
@@ -34,7 +35,7 @@ export function initializeSuggesters(
   let agentSuggester: TextAreaAgentSuggester | undefined;
   let workspaceSuggester: TextAreaWorkspaceSuggester | undefined;
   try {
-    const plugin = (app as any).plugins.plugins['claudesidian-mcp'];
+    const plugin = getNexusPlugin(app) as any;
     if (plugin && plugin.settings) {
       const promptStorage = new CustomPromptStorageService(plugin.settings);
       agentSuggester = new TextAreaAgentSuggester(app, element, messageEnhancer, promptStorage);

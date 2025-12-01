@@ -5,6 +5,7 @@ import { ContentOperations } from '../utils/ContentOperations';
 import { createErrorMessage, getErrorMessage } from '../../../utils/errorUtils';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
 import { MemoryService } from '../../memoryManager/services/MemoryService';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Mode for replacing content in a file
@@ -177,7 +178,7 @@ export class ReplaceContentMode extends BaseMode<ReplaceContentParams, ReplaceCo
     if (!this.memoryService) {
       try {
         // Try to get the memory service from the plugin
-        const plugin = this.app.plugins.getPlugin('claudesidian-mcp');
+        const plugin = getNexusPlugin(this.app) as any;
         if (plugin?.services?.memoryService) {
           this.memoryService = plugin.services.memoryService;
         } else {

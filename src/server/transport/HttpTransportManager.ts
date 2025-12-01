@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
+import { SERVER_LABELS } from '../../constants/branding';
 
 /**
  * Modern HTTP transport manager using StreamableHTTP
@@ -65,10 +66,10 @@ export class HttpTransportManager {
     private setupRoutes(): void {
         // Health check endpoint
         this.app.get('/health', (req, res) => {
-            res.json({ 
-                status: 'healthy', 
-                server: 'claudesidian-mcp',
-                timestamp: new Date().toISOString() 
+            res.json({
+                status: 'healthy',
+                server: SERVER_LABELS.current,
+                timestamp: new Date().toISOString()
             });
         });
 

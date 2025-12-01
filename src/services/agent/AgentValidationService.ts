@@ -9,7 +9,7 @@
  */
 
 import { Plugin } from 'obsidian';
-import ClaudesidianPlugin from '../../main';
+import NexusPlugin from '../../main';
 import { LLMValidationService } from '../llm/validation/ValidationService';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../../types';
 import { logger } from '../../utils/logger';
@@ -18,7 +18,7 @@ import { logger } from '../../utils/logger';
  * Service for validating agent capabilities and API keys
  */
 export class AgentValidationService {
-  constructor(private plugin: Plugin | ClaudesidianPlugin) {}
+  constructor(private plugin: Plugin | NexusPlugin) {}
 
   /**
    * Validate API keys for LLM providers used in agent modes

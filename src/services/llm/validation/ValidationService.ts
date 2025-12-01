@@ -6,6 +6,7 @@
 import OpenAI from 'openai';
 import { requestUrl } from 'obsidian';
 import { createHash } from 'crypto';
+import { BRAND_NAME } from '../../../constants/branding';
 
 export class LLMValidationService {
   private static readonly VALIDATION_TIMEOUT = 10000; // 10 seconds
@@ -307,7 +308,7 @@ export class LLMValidationService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
           'HTTP-Referer': 'https://www.synapticlabs.ai',
-          'X-Title': 'Claudesidian'
+          'X-Title': BRAND_NAME
         },
         body: JSON.stringify(requestBody)
       });

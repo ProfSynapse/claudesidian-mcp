@@ -11,6 +11,7 @@
 import { WorkspaceContext } from '../../../database/types/workspace/WorkspaceTypes';
 import { TFile, TFolder } from 'obsidian';
 import { VaultStructure, WorkspaceSummary } from './SystemPromptBuilder';
+import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
  * Service for workspace integration with chat
@@ -24,7 +25,7 @@ export class WorkspaceIntegrationService {
    */
   async loadWorkspace(workspaceId: string): Promise<any> {
     try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const plugin = getNexusPlugin(this.app) as any;
 
       // Try to get the memoryManager agent and execute LoadWorkspaceMode
       const memoryManager = plugin?.agentManager?.getAgent('memoryManager');
@@ -60,7 +61,7 @@ export class WorkspaceIntegrationService {
 
       // Fallback: try basic workspace loading
       try {
-        const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+        const plugin = getNexusPlugin(this.app) as any;
         const workspaceService = await plugin?.getService('workspaceService');
         if (workspaceService) {
           return await workspaceService.getWorkspace(workspaceId);
@@ -100,7 +101,7 @@ export class WorkspaceIntegrationService {
     }
 
     try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const plugin = getNexusPlugin(this.app) as any;
       const sessionContextManager = await plugin.getService('sessionContextManager');
 
       if (sessionContextManager) {
@@ -157,7 +158,7 @@ export class WorkspaceIntegrationService {
    */
   async listAvailableWorkspaces(): Promise<WorkspaceSummary[]> {
     try {
-      const plugin = this.app.plugins.plugins['claudesidian-mcp'];
+      const plugin = getNexusPlugin(this.app) as any;
       const workspaceService = await plugin?.getService('workspaceService');
 
       if (!workspaceService) {

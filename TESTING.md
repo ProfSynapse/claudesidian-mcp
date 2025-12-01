@@ -12,7 +12,7 @@ Paste this into the console:
 ```javascript
 // Service Health Check
 (async () => {
-  const plugin = app.plugins.getPlugin('claudesidian-mcp');
+  const plugin = app.plugins.getPlugin('nexus');
   if (!plugin) {
     console.error('❌ Plugin not found');
     return;
@@ -108,7 +108,7 @@ Run the service health check above. All services should show ✅.
 ### Phase 2: Settings & Configuration
 
 #### ✅ Test Settings Tab
-1. Open Settings → Claudesidian MCP
+1. Open Settings → Nexus MCP
 2. Check all tabs load without errors:
    - [ ] General
    - [ ] LLM Providers
@@ -172,7 +172,7 @@ Run the service health check above. All services should show ✅.
 ### Phase 4: Chat Interface
 
 #### ✅ Test Chat View
-1. Open command palette: `Claudesidian: Open Chat`
+1. Open command palette: `Nexus: Open Chat`
 2. Check chat view loads without errors
 3. Create new conversation
 4. **Check console**: No errors about missing services
@@ -194,7 +194,7 @@ After sending messages, check session data:
 ```javascript
 // Check if session is being tracked
 (async () => {
-  const plugin = app.plugins.getPlugin('claudesidian-mcp');
+  const plugin = app.plugins.getPlugin('nexus');
   const sessionService = await plugin.getService('sessionService');
   const currentSession = await sessionService.getCurrentSession();
 
@@ -222,7 +222,7 @@ After executing any agent operation, check:
 ```javascript
 // Check if activity was recorded
 (async () => {
-  const plugin = app.plugins.getPlugin('claudesidian-mcp');
+  const plugin = app.plugins.getPlugin('nexus');
   const memoryService = plugin.services.memoryService;
 
   if (!memoryService) {
@@ -293,7 +293,7 @@ Run this comprehensive test:
 (async () => {
   console.log('🧪 Starting Comprehensive Test Suite\n');
 
-  const plugin = app.plugins.getPlugin('claudesidian-mcp');
+  const plugin = app.plugins.getPlugin('nexus');
   const results = { passed: 0, failed: 0, warnings: 0 };
 
   // Test 1: Plugin loaded

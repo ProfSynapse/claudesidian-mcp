@@ -476,6 +476,7 @@ export class LMStudioAdapter extends BaseAdapter {
    * These are typically fine-tuned models that have internalized tool schemas
    */
   static usesToolCallsContentFormat(modelId: string): boolean {
+    // Include legacy identifiers for backward compatibility with older fine-tunes
     const contentFormatKeywords = ['nexus', 'tools-sft', 'claudesidian'];
     const lowerModelId = modelId.toLowerCase();
     return contentFormatKeywords.some(keyword => lowerModelId.includes(keyword));
