@@ -5,7 +5,7 @@
  * The original workspace-types.ts file has been broken down into domain-specific modules:
  * 
  * - src/database/types/workspace/: Core workspace types and parameter definitions
- * - src/database/types/session/: Session tracking and state snapshot types
+ * - src/database/types/session/: Session tracking and state types
  * - src/database/types/memory/: Memory traces and file search types
  * - src/database/types/cache/: Cache management types
  * 

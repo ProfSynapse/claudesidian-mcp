@@ -139,7 +139,7 @@ export interface DeleteSessionParams extends Omit<MemoryParams, 'sessionId'> {
   deleteMemoryTraces?: boolean;
   
   /**
-   * Whether to also delete associated states/snapshots
+   * Whether to also delete associated states
    */
   deleteAssociatedStates?: boolean;
 }

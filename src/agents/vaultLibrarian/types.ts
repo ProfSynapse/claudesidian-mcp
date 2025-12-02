@@ -17,13 +17,13 @@ export interface GraphBoostOptions {
 /**
  * Universal search category types
  */
-export type CategoryType = 
+export type CategoryType =
   | 'files'
-  | 'folders' 
+  | 'folders'
   | 'content'
   | 'workspaces'
   | 'sessions'
-  | 'snapshots'
+  | 'states'
   | 'memory_traces'
   | 'tags'
   | 'properties';
@@ -212,7 +212,7 @@ export interface UniversalSearchResult extends CommonResult {
     content?: SearchResultCategory;
     workspaces?: SearchResultCategory;
     sessions?: SearchResultCategory;
-    snapshots?: SearchResultCategory;
+    states?: SearchResultCategory;
     memory_traces?: SearchResultCategory;
     tags?: SearchResultCategory;
     properties?: SearchResultCategory;
@@ -282,7 +282,7 @@ export interface BatchUniversalSearchResult extends CommonResult {
       content?: SearchResultCategory;
       workspaces?: SearchResultCategory;
       sessions?: SearchResultCategory;
-      snapshots?: SearchResultCategory;
+      states?: SearchResultCategory;
       memory_traces?: SearchResultCategory;
       tags?: SearchResultCategory;
       properties?: SearchResultCategory;

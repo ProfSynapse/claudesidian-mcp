@@ -3,7 +3,7 @@
  * Purpose: Resolves agent information from workspaces
  *
  * This service handles looking up agent data associated with workspaces,
- * supporting both ID-based and name-based agent lookup with backward
+ * supporting both ID-based and unified name/ID lookup with backward
  * compatibility for legacy workspace structures.
  *
  * Used by: LoadWorkspaceMode for resolving workspace agents
@@ -11,8 +11,8 @@
  *
  * Responsibilities:
  * - Resolve workspace agent from dedicatedAgent or legacy agents array
- * - Fetch agent data by ID (preferred method)
- * - Fetch agent data by name (legacy fallback)
+ * - Fetch agent data by ID (for when ID is known)
+ * - Fetch agent data by name or ID (unified lookup)
  */
 
 import type { App } from 'obsidian';
@@ -52,15 +52,15 @@ export class WorkspaceAgentResolver {
         if (legacyAgents && Array.isArray(legacyAgents) && legacyAgents.length > 0) {
           const legacyAgentRef = legacyAgents[0];
           if (legacyAgentRef && legacyAgentRef.name) {
-            return await this.fetchAgentByName(legacyAgentRef.name, app);
+            return await this.fetchAgentByNameOrId(legacyAgentRef.name, app);
           }
         }
         return null;
       }
 
-      // Use the new dedicated agent structure
-      const { agentId, agentName } = workspace.context.dedicatedAgent;
-      return await this.fetchAgentById(agentId, agentName, app);
+      // Use the new dedicated agent structure - use unified lookup
+      const { agentId } = workspace.context.dedicatedAgent;
+      return await this.fetchAgentByNameOrId(agentId, app);
 
     } catch (error) {
       console.warn('[WorkspaceAgentResolver] Failed to fetch workspace agent:', error);
@@ -69,15 +69,14 @@ export class WorkspaceAgentResolver {
   }
 
   /**
-   * Fetch agent by ID (preferred method)
-   * @param agentId The agent ID
-   * @param agentName The agent name (for logging)
+   * Fetch agent by name or ID (unified lookup)
+   * Tries ID first (more specific), then falls back to name
+   * @param identifier The agent name or ID
    * @param app The Obsidian app instance
    * @returns Agent info or null if not found
    */
-  async fetchAgentById(
-    agentId: string,
-    agentName: string,
+  async fetchAgentByNameOrId(
+    identifier: string,
     app: App
   ): Promise<AgentInfo | null> {
     try {
@@ -94,10 +93,10 @@ export class WorkspaceAgentResolver {
         return null;
       }
 
-      // Fetch agent by ID (more reliable)
-      const agent = agentManagerAgent.storageService.getPromptById(agentId);
+      // Use unified lookup that tries ID first, then name
+      const agent = agentManagerAgent.storageService.getPromptByNameOrId(identifier);
       if (!agent) {
-        console.warn(`[WorkspaceAgentResolver] Agent with ID '${agentId}' not found in storage`);
+        console.warn(`[WorkspaceAgentResolver] Agent '${identifier}' not found in storage (searched by both name and ID)`);
         return null;
       }
 
@@ -108,50 +107,7 @@ export class WorkspaceAgentResolver {
       };
 
     } catch (error) {
-      console.warn(`[WorkspaceAgentResolver] Failed to fetch agent by ID '${agentId}':`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch agent by name (legacy fallback)
-   * @param agentName The agent name
-   * @param app The Obsidian app instance
-   * @returns Agent info or null if not found
-   */
-  async fetchAgentByName(
-    agentName: string,
-    app: App
-  ): Promise<AgentInfo | null> {
-    try {
-      // Get CustomPromptStorageService through plugin's agentManager
-      const plugin = getNexusPlugin(app) as any;
-      if (!plugin || !plugin.agentManager) {
-        console.warn('[WorkspaceAgentResolver] AgentManager not available');
-        return null;
-      }
-
-      const agentManagerAgent = plugin.agentManager.getAgent('agentManager');
-      if (!agentManagerAgent || !agentManagerAgent.storageService) {
-        console.warn('[WorkspaceAgentResolver] AgentManagerAgent or storage service not available');
-        return null;
-      }
-
-      // Fetch agent by name (legacy method)
-      const agent = agentManagerAgent.storageService.getPromptByName(agentName);
-      if (!agent) {
-        console.warn(`[WorkspaceAgentResolver] Agent '${agentName}' not found in storage`);
-        return null;
-      }
-
-      return {
-        id: agent.id,
-        name: agent.name,
-        systemPrompt: agent.prompt
-      };
-
-    } catch (error) {
-      console.warn(`[WorkspaceAgentResolver] Failed to fetch agent by name '${agentName}':`, error);
+      console.warn(`[WorkspaceAgentResolver] Failed to fetch agent '${identifier}':`, error);
       return null;
     }
   }

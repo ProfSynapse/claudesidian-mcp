@@ -36,7 +36,7 @@ export const AGENTS: AgentDescriptor[] = [
   },
   {
     name: "memoryManager",
-    description: "Session management, workspace management, context/state snapshots"
+    description: "Session management, workspace management, and states"
   }
   // Temporarily hidden (2025-11-06) - See /src/config/toolVisibility.ts
   // {

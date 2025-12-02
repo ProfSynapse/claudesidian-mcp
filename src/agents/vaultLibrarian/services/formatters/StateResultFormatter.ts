@@ -3,7 +3,7 @@
  * Location: /src/agents/vaultLibrarian/services/formatters/StateResultFormatter.ts
  *
  * Handles formatting of state memory results with state identification
- * and snapshot information.
+ * and context information.
  *
  * Used by: ResultFormatter for STATE type results
  */
@@ -20,8 +20,9 @@ export class StateResultFormatter extends BaseResultFormatter {
   }
 
   protected addTypeSpecificMetadata(formatted: Record<string, string>, metadata: any): void {
-    if (metadata.snapshotId) {
-      formatted['Snapshot ID'] = metadata.snapshotId;
+    // Support both legacy and new property names
+    if (metadata.stateId || metadata.snapshotId) {
+      formatted['State ID'] = metadata.stateId || metadata.snapshotId;
     }
     if (metadata.version) {
       formatted['Version'] = metadata.version.toString();

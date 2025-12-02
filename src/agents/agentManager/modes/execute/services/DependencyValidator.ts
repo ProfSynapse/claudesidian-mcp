@@ -109,8 +109,9 @@ export class DependencyValidator {
 
     /**
      * Validate custom prompt agent availability
+     * Supports both agent name and agent ID for lookup
      */
-    async validateCustomPromptAgent(agentName: string): Promise<DependencyValidationResult> {
+    async validateCustomPromptAgent(agentIdentifier: string): Promise<DependencyValidationResult> {
         if (!this.dependencies.promptStorage) {
             return {
                 isValid: false,
@@ -119,19 +120,20 @@ export class DependencyValidator {
         }
 
         try {
-            const customPrompt = await this.dependencies.promptStorage.getPromptByName(agentName);
-            
+            // Use unified lookup that tries ID first, then name
+            const customPrompt = await this.dependencies.promptStorage.getPromptByNameOrId(agentIdentifier);
+
             if (!customPrompt) {
                 return {
                     isValid: false,
-                    error: `Custom prompt agent '${agentName}' not found`
+                    error: `Custom prompt agent '${agentIdentifier}' not found (searched by both name and ID)`
                 };
             }
 
             if (!customPrompt.isEnabled) {
                 return {
                     isValid: false,
-                    error: `Custom prompt agent '${agentName}' is disabled`
+                    error: `Custom prompt agent '${agentIdentifier}' is disabled`
                 };
             }
 

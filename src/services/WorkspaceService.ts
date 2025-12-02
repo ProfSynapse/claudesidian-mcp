@@ -390,7 +390,7 @@ export class WorkspaceService {
       id: stateId,
       name: stateData.name || 'Untitled State',
       created: stateData.created || Date.now(),
-      snapshot: stateData.snapshot || {} as any
+      state: stateData.state || (stateData as any).snapshot || {} as any  // Support both new and legacy property names
     };
 
     // Add to session
@@ -480,6 +480,86 @@ export class WorkspaceService {
     const active = workspaces.find(ws => ws.isActive);
 
     return active || null;
+  }
+
+  /**
+   * Get workspace by name or ID (unified lookup)
+   * Tries ID lookup first (more specific), then falls back to name lookup (case-insensitive)
+   * @param identifier Workspace name or ID
+   * @returns Full workspace data or null if not found
+   */
+  async getWorkspaceByNameOrId(identifier: string): Promise<IndividualWorkspace | null> {
+    // Try ID lookup first (more specific)
+    const byId = await this.getWorkspace(identifier);
+    if (byId) {
+      return byId;
+    }
+
+    // Fall back to name lookup (case-insensitive)
+    const index = await this.indexManager.loadWorkspaceIndex();
+    const workspaces = Object.values(index.workspaces);
+    const matchingWorkspace = workspaces.find(
+      ws => ws.name.toLowerCase() === identifier.toLowerCase()
+    );
+
+    if (!matchingWorkspace) {
+      return null;
+    }
+
+    return this.getWorkspace(matchingWorkspace.id);
+  }
+
+  /**
+   * Get session by name or ID within a workspace (unified lookup)
+   * Tries ID lookup first, then falls back to name lookup (case-insensitive)
+   * @param workspaceId Workspace ID to search in
+   * @param identifier Session name or ID
+   * @returns Session data or null if not found
+   */
+  async getSessionByNameOrId(workspaceId: string, identifier: string): Promise<SessionData | null> {
+    // Try ID lookup first
+    const byId = await this.getSession(workspaceId, identifier);
+    if (byId) {
+      return byId;
+    }
+
+    // Fall back to name lookup (case-insensitive)
+    const workspace = await this.fileSystem.readWorkspace(workspaceId);
+    if (!workspace) {
+      return null;
+    }
+
+    const sessions = Object.values(workspace.sessions);
+    return sessions.find(
+      session => session.name?.toLowerCase() === identifier.toLowerCase()
+    ) || null;
+  }
+
+  /**
+   * Get state by name or ID within a session (unified lookup)
+   * Tries ID lookup first, then falls back to name lookup (case-insensitive)
+   * @param workspaceId Workspace ID
+   * @param sessionId Session ID to search in
+   * @param identifier State name or ID
+   * @returns State data or null if not found
+   */
+  async getStateByNameOrId(workspaceId: string, sessionId: string, identifier: string): Promise<StateData | null> {
+    // Try ID lookup first
+    const byId = await this.getState(workspaceId, sessionId, identifier);
+    if (byId) {
+      return byId;
+    }
+
+    // Fall back to name lookup (case-insensitive)
+    const workspace = await this.fileSystem.readWorkspace(workspaceId);
+    if (!workspace || !workspace.sessions[sessionId]) {
+      return null;
+    }
+
+    const states = Object.values(workspace.sessions[sessionId].states);
+    return states.find(
+      state => state.name?.toLowerCase() === identifier.toLowerCase()
+    ) || null;
   }
 
   /**

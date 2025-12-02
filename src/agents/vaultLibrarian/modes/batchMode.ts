@@ -138,7 +138,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
     let totalResults = 0;
 
     // Combine results from each category across all searches
-    const categoryNames = ['files', 'folders', 'content', 'workspaces', 'sessions', 'snapshots', 'memory_traces', 'tags', 'properties'] as const;
+    const categoryNames = ['files', 'folders', 'content', 'workspaces', 'sessions', 'states', 'memory_traces', 'tags', 'properties'] as const;
     
     for (const categoryName of categoryNames) {
       const categoryResults = results
@@ -214,7 +214,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
                 description: 'Categories to exclude from this search',
                 items: {
                   type: 'string',
-                  enum: ['files', 'folders', 'content', 'workspaces', 'sessions', 'snapshots', 'memory_traces', 'tags', 'properties']
+                  enum: ['files', 'folders', 'content', 'workspaces', 'sessions', 'states', 'memory_traces', 'tags', 'properties']
                 }
               },
               prioritizeCategories: {
@@ -222,7 +222,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
                 description: 'Categories to prioritize for this search',
                 items: {
                   type: 'string',
-                  enum: ['files', 'folders', 'content', 'workspaces', 'sessions', 'snapshots', 'memory_traces', 'tags', 'properties']
+                  enum: ['files', 'folders', 'content', 'workspaces', 'sessions', 'states', 'memory_traces', 'tags', 'properties']
                 }
               },
               paths: {

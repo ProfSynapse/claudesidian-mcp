@@ -5,7 +5,7 @@
 
 import { CommonParameters, CommonResult } from '../../../types/mcp';
 import { ProjectWorkspace, WorkspaceContext } from './WorkspaceTypes';
-import { StateSnapshot } from '../session/SessionTypes';
+import { StateContext } from '../session/SessionTypes';
 
 /**
  * Create workspace parameters - LLM must provide complete WorkspaceContext structure
@@ -121,7 +121,7 @@ export interface LoadWorkspaceResult extends CommonResult {
 }
 
 /**
- * Create state parameters - LLM must provide complete StateSnapshot structure
+ * Create state parameters - LLM must provide complete StateContext structure
  */
 export interface CreateStateParameters extends CommonParameters {
   /**

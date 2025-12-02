@@ -253,22 +253,23 @@ export class PromptExecutor {
   /**
    * Resolve custom agent/prompt configuration
    */
-  private async resolveCustomPrompt(agentName?: string): Promise<{ systemPrompt: string; agentUsed: string }> {
+  private async resolveCustomPrompt(agentIdentifier?: string): Promise<{ systemPrompt: string; agentUsed: string }> {
     let systemPrompt = '';
     let agentUsed = 'default';
-    
-    if (agentName && this.promptStorage) {
+
+    if (agentIdentifier && this.promptStorage) {
       try {
-        const customPrompt = await this.promptStorage.getPromptByName(agentName);
+        // Use unified lookup (tries ID first, then name)
+        const customPrompt = await this.promptStorage.getPromptByNameOrId(agentIdentifier);
         if (customPrompt && customPrompt.isEnabled) {
           systemPrompt = customPrompt.prompt;
           agentUsed = customPrompt.name;
         }
       } catch (error) {
-        console.warn(`Failed to resolve custom prompt "${agentName}":`, error);
+        console.warn(`Failed to resolve custom prompt "${agentIdentifier}":`, error);
       }
     }
-    
+
     return { systemPrompt, agentUsed };
   }
 }

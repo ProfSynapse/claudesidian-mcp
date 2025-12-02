@@ -156,21 +156,22 @@ export class LoadSessionMode extends BaseMode<LoadSessionParams, SessionResult> 
 
     /**
      * Load session data (consolidated from StateRetriever logic)
+     * Supports lookup by both session ID and session name
      */
-    private async loadSessionData(workspaceId: string, sessionId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
+    private async loadSessionData(workspaceId: string, sessionIdentifier: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
         try {
-            // Get session from memory service
-            const session = await memoryService.getSession(workspaceId, sessionId);
+            // Get session from memory service using unified lookup (ID or name)
+            const session = await memoryService.getSessionByNameOrId(workspaceId, sessionIdentifier);
             if (!session) {
-                return { success: false, error: `Session not found: ${sessionId}` };
+                return { success: false, error: `Session '${sessionIdentifier}' not found (searched by both name and ID)` };
             }
 
-            // Get session traces for context
-            const traces = await memoryService.getMemoryTraces(workspaceId, sessionId);
+            // Get session traces for context using the actual session ID
+            const traces = await memoryService.getMemoryTraces(workspaceId, session.id);
 
-            return { 
-                success: true, 
-                data: { 
+            return {
+                success: true,
+                data: {
                     session,
                     traces: traces || []
                 }

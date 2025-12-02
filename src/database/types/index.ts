@@ -29,6 +29,11 @@ export type {
 // Session types
 export type {
   WorkspaceSession,
+  StateContext,
+  State,
+  WorkspaceState,
+  // Deprecated aliases for backward compatibility
+  StateSnapshot,
   WorkspaceStateSnapshot
 } from './session/SessionTypes';
 

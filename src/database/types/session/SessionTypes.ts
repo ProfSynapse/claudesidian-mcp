@@ -32,9 +32,9 @@ export interface WorkspaceSession {
 }
 
 /**
- * State snapshot data - everything needed to resume work
+ * State context data - everything needed to resume work
  */
-export interface StateSnapshot {
+export interface StateContext {
   /**
    * Workspace context at save time
    */
@@ -74,14 +74,14 @@ export interface State {
   name: string;
   workspaceId: string;
   created: number;
-  snapshot: StateSnapshot;
+  context: StateContext;
 }
 
 /**
- * Legacy WorkspaceStateSnapshot interface for backward compatibility
- * Extends the simple State with optional legacy fields
+ * WorkspaceState interface - full state with optional legacy fields
+ * Extends the simple State with additional metadata
  */
-export interface WorkspaceStateSnapshot extends State {
+export interface WorkspaceState extends State {
   // Legacy fields for backward compatibility
   sessionId?: string;
   timestamp?: number;
@@ -93,3 +93,13 @@ export interface WorkspaceStateSnapshot extends State {
     metadata: Record<string, any>;
   };
 }
+
+/**
+ * @deprecated Use StateContext instead
+ */
+export type StateSnapshot = StateContext;
+
+/**
+ * @deprecated Use WorkspaceState instead
+ */
+export type WorkspaceStateSnapshot = WorkspaceState;

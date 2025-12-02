@@ -3,7 +3,7 @@
  * Purpose: Fetches sessions and states data for workspaces
  *
  * This service handles fetching and filtering workspace-related data
- * including sessions and state snapshots from the memory service.
+ * including sessions and states from the memory service.
  *
  * Used by: LoadWorkspaceMode for retrieving workspace sessions and states
  * Integrates with: MemoryService for data access
@@ -113,7 +113,7 @@ export class WorkspaceDataFetcher {
         return [];
       }
 
-      const states = await memoryService.getStateSnapshots(workspaceId);
+      const states = await memoryService.getStates(workspaceId);
 
       // Defensive validation: ensure all states belong to workspace
       const validStates = states.filter((state: any) =>

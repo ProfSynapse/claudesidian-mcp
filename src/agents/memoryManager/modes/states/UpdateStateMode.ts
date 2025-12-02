@@ -82,9 +82,10 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
         const workspaceId = parsedContext?.workspaceId || 'default-workspace';
         const sessionId = params.context?.sessionId || 'current';
 
-        const existingState = await memoryService.getStateSnapshot(workspaceId, sessionId, params.stateId);
+        // Get existing state using unified lookup (ID or name)
+        const existingState = await memoryService.getStateByNameOrId(workspaceId, sessionId, params.stateId);
         if (!existingState) {
-            return this.prepareResult(false, undefined, `State not found: ${params.stateId}`);
+            return this.prepareResult(false, undefined, `State '${params.stateId}' not found (searched by both name and ID)`);
         }
 
         const updates: any = {};
@@ -118,17 +119,13 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
             return this.prepareResult(false, undefined, 'No updates provided for state');
         }
 
-        // Get current snapshot and apply updates
-        const currentSnapshot = await memoryService.getStateSnapshot(workspaceId, sessionId, params.stateId);
-        if (!currentSnapshot) {
-            return this.prepareResult(false, undefined, `State ${params.stateId} not found`);
-        }
+        // Apply updates using actual state ID
+        const stateWithUpdates = { ...existingState, ...updates };
+        const actualStateId = existingState.id || params.stateId;
+        await memoryService.updateState(workspaceId, sessionId, actualStateId, stateWithUpdates);
 
-        const updatedSnapshot = { ...currentSnapshot, ...updates };
-        await memoryService.updateSnapshot(workspaceId, sessionId, params.stateId, updatedSnapshot);
-
-        // Use updated snapshot for result
-        const updatedState = await memoryService.getStateSnapshot(workspaceId, sessionId, params.stateId);
+        // Use updated state for result
+        const updatedState = await memoryService.getState(workspaceId, sessionId, actualStateId);
         if (!updatedState) {
             return this.prepareResult(false, undefined, 'Failed to retrieve updated state');
         }
@@ -197,12 +194,12 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
                 age: this.calculateStateAge(state.created || state.timestamp)
             };
 
-            if (includeContext && state.snapshot) {
+            if (includeContext && state.state?.context) {
                 enhanced.context = {
-                    files: state.snapshot.activeFiles || [],
+                    files: state.state.context.activeFiles || [],
                     traceCount: 0, // Could be enhanced to count related traces
-                    tags: state.state?.metadata?.tags || [],
-                    summary: state.snapshot.activeTask || 'No active task recorded'
+                    tags: state.state?.state?.metadata?.tags || [],
+                    summary: state.state.context.activeTask || 'No active task recorded'
                 };
             }
 
@@ -231,7 +228,7 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
             type: 'object',
             properties: {
                 // Edit parameters
-                stateId: { type: 'string', description: 'ID of state to edit or delete' },
+                stateId: { type: 'string', description: 'ID or name of state to edit or delete. Accepts either the unique state ID or the state name.' },
                 name: { type: 'string', description: 'New state name (for edit operations)' },
                 description: { type: 'string', description: 'New state description (for edit operations)' },
                 addTags: { type: 'array', items: { type: 'string' }, description: 'Tags to add (for edit operations)' },

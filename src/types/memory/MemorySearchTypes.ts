@@ -238,7 +238,7 @@ export interface ValidationResult {
 // Search options for different search types
 export interface SearchOptions {
   includeTraces?: boolean;
-  includeSnapshots?: boolean;
+  includeStates?: boolean;
   includeMessages?: boolean;
   workspaceId?: string;
   sessionId?: string;

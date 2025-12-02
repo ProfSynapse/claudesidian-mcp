@@ -92,12 +92,12 @@ export const AGENT_REGISTRY = {
   },
 
   /**
-   * Memory Manager - Manages workspaces, memory sessions, and state snapshots
+   * Memory Manager - Manages workspaces, memory sessions, and states
    */
   memoryManager: {
-    name: 'memoryManager', 
+    name: 'memoryManager',
     displayName: 'Memory Manager',
-    description: 'Manages workspaces, memory sessions, and state snapshots for contextual recall',
+    description: 'Manages workspaces, memory sessions, and states for contextual recall',
     version: '1.2.0',
     category: AGENT_CATEGORIES.MEMORY_MANAGEMENT,
     modes: [
