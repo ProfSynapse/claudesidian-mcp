@@ -4,6 +4,7 @@
  */
 
 import { Plugin, TFile } from 'obsidian';
+import { isGlobPattern, globToRegex } from '../../../../../utils/pathUtils';
 import { MemoryService } from "../../../../memoryManager/services/MemoryService";
 import { WorkspaceService } from '../../../../../services/WorkspaceService';
 import { GraphOperations } from '../../../../../database/utils/graph/GraphOperations';
@@ -72,6 +73,20 @@ export class UniversalSearchService {
   }
 
   /**
+   * Filter files by paths (supporting glob patterns)
+   */
+  private filterFilesByPaths(files: TFile[], paths: string[]): TFile[] {
+    const globPatterns = paths.filter(p => isGlobPattern(p)).map(p => globToRegex(p));
+    const literalPaths = paths.filter(p => !isGlobPattern(p));
+    
+    return files.filter(file => {
+      const matchesLiteral = literalPaths.some(path => file.path.startsWith(path));
+      const matchesGlob = globPatterns.some(regex => regex.test(file.path));
+      return matchesLiteral || matchesGlob;
+    });
+  }
+
+  /**
    * Initialize all services
    */
   private async initializeServices(): Promise<void> {
@@ -128,8 +143,15 @@ export class UniversalSearchService {
 
       const parsedQuery = parseResult.parsed!;
 
-      // 2. Filter files by metadata if needed
+      // 2. Filter files by metadata and paths
       let filteredFiles: TFile[] | undefined;
+
+      // Apply path filtering if paths are provided
+      if (params.paths && params.paths.length > 0) {
+        const allFiles = this.plugin.app.vault.getMarkdownFiles();
+        filteredFiles = this.filterFilesByPaths(allFiles, params.paths);
+      }
+
       if (parsedQuery.tags.length > 0 || parsedQuery.properties.length > 0) {
         const filterStart = performance.now();
         
@@ -140,7 +162,15 @@ export class UniversalSearchService {
         };
         
         if (this.metadataSearchService) {
-          filteredFiles = await this.metadataSearchService.getFilesMatchingMetadata(criteria);
+          const metadataFiles = await this.metadataSearchService.getFilesMatchingMetadata(criteria);
+          
+          if (filteredFiles) {
+            // Intersect with existing filtered files
+            const metadataPathSet = new Set(metadataFiles.map((f: TFile) => f.path));
+            filteredFiles = filteredFiles.filter(f => metadataPathSet.has(f.path));
+          } else {
+            filteredFiles = metadataFiles;
+          }
           const filterTime = performance.now() - filterStart;
         }
       }
@@ -190,8 +220,15 @@ export class UniversalSearchService {
 
       const parsedQuery = parseResult.parsed!;
 
-      // 2. Filter files by metadata if needed
+      // 2. Filter files by metadata and paths
       let filteredFiles: TFile[] | undefined;
+
+      // Apply path filtering if paths are provided
+      if (params.paths && params.paths.length > 0) {
+        const allFiles = this.plugin.app.vault.getMarkdownFiles();
+        filteredFiles = this.filterFilesByPaths(allFiles, params.paths);
+      }
+
       if (parsedQuery.tags.length > 0 || parsedQuery.properties.length > 0) {
         const criteria: MetadataSearchCriteria = {
           tags: parsedQuery.tags,
@@ -200,14 +237,22 @@ export class UniversalSearchService {
         };
         
         if (this.metadataSearchService) {
-          filteredFiles = await this.metadataSearchService.getFilesMatchingMetadata(criteria);
+          const metadataFiles = await this.metadataSearchService.getFilesMatchingMetadata(criteria);
+          
+          if (filteredFiles) {
+            // Intersect with existing filtered files
+            const metadataPathSet = new Set(metadataFiles.map((f: TFile) => f.path));
+            filteredFiles = filteredFiles.filter(f => metadataPathSet.has(f.path));
+          } else {
+            filteredFiles = metadataFiles;
+          }
         }
       }
 
       // 3. Execute parallel searches
       const [contentResult, fileResult, tagResult, propertyResult] = await Promise.all([
         this.contentSearchStrategy.searchContent(parsedQuery.cleanQuery, filteredFiles, limit, params),
-        this.fileSearchStrategy.searchFiles(query, limit),
+        this.fileSearchStrategy.searchFiles(query, limit, filteredFiles),
         this.metadataSearchStrategy.searchTags(query, limit),
         this.metadataSearchStrategy.searchProperties(query, limit)
       ]);

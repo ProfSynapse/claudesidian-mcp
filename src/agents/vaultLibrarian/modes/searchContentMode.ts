@@ -2,6 +2,7 @@ import { Plugin, TFile, prepareFuzzySearch } from 'obsidian';
 import { BaseMode } from '../../baseMode';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { BRAND_NAME } from '../../../constants/branding';
+import { isGlobPattern, globToRegex } from '../../../utils/pathUtils';
 
 export interface ContentSearchParams {
   query: string;
@@ -83,9 +84,18 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
 
       // Filter by paths if specified
       if (searchParams.paths.length > 0) {
-        allFiles = allFiles.filter(file =>
-          searchParams.paths.some(path => file.path.startsWith(path))
-        );
+        const globPatterns = searchParams.paths
+          .filter(p => isGlobPattern(p))
+          .map(p => globToRegex(p));
+        
+        const literalPaths = searchParams.paths
+          .filter(p => !isGlobPattern(p));
+
+        allFiles = allFiles.filter(file => {
+          const matchesLiteral = literalPaths.some(path => file.path.startsWith(path));
+          const matchesGlob = globPatterns.some(regex => regex.test(file.path));
+          return matchesLiteral || matchesGlob;
+        });
       }
 
       // Perform combined fuzzy + keyword search
@@ -350,7 +360,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
         },
         paths: {
           type: 'array',
-          description: 'Restrict search to specific folder paths',
+          description: 'Restrict search to specific folder paths. Supports glob patterns (e.g., "folder/*.md", "**/*.ts").',
           items: { type: 'string' }
         }
       },

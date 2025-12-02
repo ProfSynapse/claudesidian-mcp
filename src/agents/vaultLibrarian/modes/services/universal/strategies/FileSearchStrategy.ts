@@ -22,7 +22,7 @@ export class FileSearchStrategy {
   /**
    * Search files by name using fuzzy search
    */
-  async searchFiles(query: string, limit = 10): Promise<FileSearchResult> {
+  async searchFiles(query: string, limit = 10, filteredFiles?: TFile[]): Promise<FileSearchResult> {
     try {
       if (!query || query.trim().length === 0) {
         return {
@@ -33,8 +33,8 @@ export class FileSearchStrategy {
 
       const normalizedQuery = query.toLowerCase().trim();
       
-      // Get all files
-      const allFiles = this.plugin.app.vault.getMarkdownFiles();
+      // Get files (use filtered list if provided, otherwise all markdown files)
+      const allFiles = filteredFiles || this.plugin.app.vault.getMarkdownFiles();
       
       // Use Obsidian's fuzzy search for file names
       const fuzzySearch = prepareFuzzySearch(normalizedQuery);
