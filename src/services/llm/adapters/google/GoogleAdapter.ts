@@ -18,6 +18,7 @@ import {
 import { GOOGLE_MODELS, GOOGLE_DEFAULT_MODEL } from './GoogleModels';
 import { WebSearchUtils } from '../../utils/WebSearchUtils';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
+import { ReasoningPreserver } from '../shared/ReasoningPreserver';
 import { SchemaValidator } from '../../utils/SchemaValidator';
 
 export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
@@ -202,11 +203,8 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
             };
           }
 
-          // Accumulate function calls
-          // Preserve thought_signature if present (required for Gemini 3.0+)
+          // Accumulate function calls with thought signature preservation (Gemini 3.0+)
           if (part.functionCall) {
-            console.log('[GEMINI-DEBUG] Raw part received from API:', JSON.stringify(part, null, 2));
-
             const toolId = part.functionCall.name + '_' + Date.now();
             const toolCall: any = {
               id: toolId,
@@ -217,26 +215,13 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
               }
             };
 
-            // Preserve thought signature if present
-            if (part.thoughtSignature || part.thought_signature) {
-              toolCall.thought_signature = part.thoughtSignature || part.thought_signature;
-              console.log('[GEMINI-DEBUG] ✅ Thought signature captured:', {
-                toolId,
-                functionName: part.functionCall.name,
-                hasThoughtSignature: true,
-                signaturePreview: typeof toolCall.thought_signature === 'string'
-                  ? toolCall.thought_signature.substring(0, 50) + '...'
-                  : 'not a string'
-              });
-            } else {
-              console.log('[GEMINI-DEBUG] ⚠️ No thought signature in part:', {
-                toolId,
-                functionName: part.functionCall.name,
-                partKeys: Object.keys(part)
-              });
+            // Preserve thought signature using centralized utility
+            const thoughtSignature = ReasoningPreserver.extractThoughtSignatureFromPart(part);
+            if (thoughtSignature) {
+              toolCall.thought_signature = thoughtSignature;
+              console.log('[Google] ✅ Thought signature captured for:', part.functionCall.name);
             }
 
-            console.log('[GEMINI-DEBUG] Tool call object created:', JSON.stringify(toolCall, null, 2));
             toolCallAccumulator.set(toolId, toolCall);
           }
         }

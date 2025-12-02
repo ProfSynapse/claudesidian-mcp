@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { ModelRegistry } from '../ModelRegistry';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
+import { ReasoningPreserver } from '../shared/ReasoningPreserver';
 import { WebSearchUtils } from '../../utils/WebSearchUtils';
 import { BRAND_NAME } from '../../../../constants/branding';
 
@@ -126,7 +127,11 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       const messages = options?.conversationHistory || this.buildMessages(prompt, options?.systemPrompt);
 
-      const requestBody = {
+      // Check if this model requires reasoning preservation (Gemini via OpenRouter)
+      const needsReasoning = ReasoningPreserver.requiresReasoningPreservation(baseModel, 'openrouter');
+      const hasTools = options?.tools && options.tools.length > 0;
+
+      const requestBody: any = {
         model,
         messages,
         temperature: options?.temperature,
@@ -137,7 +142,9 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
         stop: options?.stopSequences,
         tools: options?.tools ? this.convertTools(options.tools) : undefined,
-        stream: true // Enable streaming
+        stream: true,
+        // Enable reasoning for Gemini models to capture thought signatures
+        ...ReasoningPreserver.getReasoningRequestParams(baseModel, 'openrouter', hasTools || false)
       };
 
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -159,6 +166,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       // Track generation ID for async usage retrieval
       let generationId: string | null = null;
       let usageFetchTriggered = false;
+      // Track reasoning data for models that need preservation (Gemini via OpenRouter)
+      let capturedReasoning: any[] | undefined = undefined;
 
       // Use unified stream processing (automatically uses SSE parsing for Response objects)
       yield* this.processStream(response, {
@@ -170,8 +179,15 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
             generationId = parsed.id;
           }
 
+          // Capture reasoning_details using centralized utility
+          if (needsReasoning && !capturedReasoning) {
+            capturedReasoning = ReasoningPreserver.extractFromStreamChunk(parsed);
+            if (capturedReasoning) {
+              console.log('[OpenRouter] Captured reasoning_details for Gemini model');
+            }
+          }
+
           // Process all available choices - reasoning models may use multiple choices
-          // Choice 0 might be reasoning, Choice 1 might be actual response
           for (const choice of parsed.choices || []) {
             const delta = choice?.delta;
             const content = delta?.content || delta?.text || choice?.text;
@@ -185,8 +201,15 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         extractToolCalls: (parsed: any) => {
           // Extract tool calls from any choice that has them
           for (const choice of parsed.choices || []) {
-            const toolCalls = choice?.delta?.tool_calls || choice?.delta?.toolCalls;
+            let toolCalls = choice?.delta?.tool_calls || choice?.delta?.toolCalls;
             if (toolCalls) {
+              // Attach reasoning data to tool calls using centralized utility
+              if (capturedReasoning) {
+                toolCalls = ReasoningPreserver.attachToToolCalls(
+                  toolCalls,
+                  { reasoning_details: capturedReasoning }
+                );
+              }
               return toolCalls;
             }
           }
@@ -364,8 +387,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
   private async generateWithProvidedTools(prompt: string, options?: GenerateOptions): Promise<LLMResponse> {
     // Use centralized tool execution wrapper to eliminate code duplication
     const model = options?.model || this.currentModel;
+    const hasTools = options?.tools && options.tools.length > 0;
 
-    
     return MCPToolExecution.executeWithToolSupport(
       this,
       'openrouter',
@@ -377,9 +400,9 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         onToolEvent: options?.onToolEvent
       },
       {
-        buildMessages: (prompt: string, systemPrompt?: string) => 
+        buildMessages: (prompt: string, systemPrompt?: string) =>
           this.buildMessages(prompt, systemPrompt),
-        
+
         buildRequestBody: (messages: any[], isInitial: boolean) => ({
           model,
           messages,
@@ -392,7 +415,9 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           presence_penalty: options?.presencePenalty,
           response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
           stop: options?.stopSequences,
-          usage: { include: true } // Enable token usage and cost tracking
+          usage: { include: true },
+          // Enable reasoning for Gemini models using centralized utility
+          ...ReasoningPreserver.getReasoningRequestParams(model, 'openrouter', hasTools || false)
         }),
         
         makeApiCall: async (requestBody: any) => {
@@ -414,13 +439,37 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           }
           const data = await response.json();
           const choice = data.choices[0];
-          
+
+          // Extract tool calls and reasoning using centralized utility
+          let toolCalls = choice?.message?.tool_calls || choice?.message?.toolCalls;
+          const reasoning = ReasoningPreserver.extractFromResponse(choice);
+
+          // Attach reasoning to tool calls for preservation through execution flow
+          if (toolCalls && reasoning) {
+            toolCalls = ReasoningPreserver.attachToToolCalls(toolCalls, reasoning);
+            console.log('[OpenRouter] Attached reasoning_details to tool calls');
+          }
+
+          // Build message with reasoning preserved at message level
+          const messageWithDetails: any = {
+            ...choice?.message,
+            toolCalls
+          };
+
+          // CRITICAL: Preserve reasoning at message level for MCPToolExecution continuations
+          if (reasoning?.reasoning_details) {
+            messageWithDetails.reasoning_details = reasoning.reasoning_details;
+          }
+
           return {
             content: choice?.message?.content || '',
             usage: this.extractUsage(data),
             finishReason: choice?.finish_reason || 'stop',
-            toolCalls: choice?.message?.toolCalls,
-            choice: choice
+            toolCalls,
+            choice: {
+              ...choice,
+              message: messageWithDetails
+            }
           };
         },
         
@@ -456,8 +505,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       // Execute tool calls directly using MCPToolExecution
       const toolResults = await MCPToolExecution.executeToolCalls(
-        this, 
-        mcpToolCalls, 
+        this,
+        mcpToolCalls,
         'openrouter',
         options?.onToolEvent
       );
@@ -465,13 +514,19 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
 
       // Now do the "pingpong" - send the conversation with tool results back to the LLM
       const messages = this.buildMessages(prompt, options?.systemPrompt);
-      
-      // Add the assistant message with tool calls
-      messages.push({
-        role: 'assistant' as const,
-        content: '', // Empty content since this was a tool call
-        toolCalls: detectedToolCalls
-      });
+
+      // Build assistant message with reasoning preserved using centralized utility
+      const assistantMessage = ReasoningPreserver.buildAssistantMessageWithReasoning(
+        detectedToolCalls,
+        '' // Empty content since this was a tool call
+      );
+
+      const reasoning = ReasoningPreserver.extractFromToolCalls(detectedToolCalls);
+      if (reasoning?.reasoning_details) {
+        console.log('[OpenRouter] Preserving reasoning_details in tool continuation');
+      }
+
+      messages.push(assistantMessage);
 
       // Add tool result messages
       const toolMessages = MCPToolExecution.buildToolMessages(toolResults, 'openrouter');

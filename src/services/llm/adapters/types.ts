@@ -127,6 +127,10 @@ export interface ToolCall {
     name: string;
     arguments: string;
   };
+  // OpenRouter: reasoning_details for Gemini models (must be preserved in continuations)
+  reasoning_details?: any[];
+  // Google Gemini: thought_signature for thinking models
+  thought_signature?: string;
 }
 
 export interface ProviderConfig {
