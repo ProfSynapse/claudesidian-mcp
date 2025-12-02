@@ -222,8 +222,10 @@ export class ChatService {
       messageId?: string;
       abortSignal?: AbortSignal;
       excludeFromMessageId?: string;
+      enableThinking?: boolean;
+      thinkingEffort?: 'low' | 'medium' | 'high';
     }
-  ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string; toolCalls?: any[] }, void, unknown> {
+  ): AsyncGenerator<{ chunk: string; complete: boolean; messageId: string; toolCalls?: any[]; reasoning?: string; reasoningComplete?: boolean }, void, unknown> {
     // Store current provider and session for backward compatibility
     if (options?.provider) {
       this.currentProvider = options.provider;

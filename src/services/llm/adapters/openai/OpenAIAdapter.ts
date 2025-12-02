@@ -18,6 +18,7 @@ import { ModelRegistry } from '../ModelRegistry';
 import { DeepResearchHandler } from './DeepResearchHandler';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 import { WebSearchUtils } from '../../utils/WebSearchUtils';
+import { OPENAI_MODELS } from './OpenAIModels';
 
 export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'openai';
@@ -145,6 +146,21 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
         if (options?.frequencyPenalty !== undefined) responseParams.frequency_penalty = options.frequencyPenalty;
         if (options?.presencePenalty !== undefined) responseParams.presence_penalty = options.presencePenalty;
 
+        // Enable reasoning for GPT-5/o-series models if thinking is enabled
+        // This enables chain-of-thought reasoning that streams to the UI
+        if (options?.enableThinking && this.supportsReasoning(model)) {
+          console.log('[OpenAI] Enabling reasoning for model:', model, 'effort:', options.thinkingEffort || 'medium');
+          responseParams.reasoning = {
+            effort: options.thinkingEffort || 'medium',  // Use user-selected effort level
+            summary: 'auto'    // Can be 'auto', 'concise', or 'detailed'
+          };
+          // Include encrypted_content for multi-turn conversations
+          responseParams.include = responseParams.include || [];
+          responseParams.include.push('reasoning.encrypted_content');
+        } else if (options?.enableThinking) {
+          console.log('[OpenAI] Thinking requested but model does not support reasoning:', model);
+        }
+
         // Create Responses API stream
         return await this.client.responses.create(responseParams) as any;
       });
@@ -161,6 +177,7 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
   /**
    * Process Responses API stream events
    * Handles ResponseStreamEvent format from OpenAI Responses API
+   * Includes reasoning/thinking support for GPT-5 and o-series models
    * @private
    */
   private async* processResponsesStream(stream: any): AsyncGenerator<StreamChunk, void, unknown> {
@@ -169,8 +186,18 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
     const toolCallsMap = new Map<number, any>();
     let usage: any = null;
 
+    // Reasoning tracking for GPT-5/o-series models
+    let currentReasoningId: string | null = null;
+    let currentReasoningEncryptedContent: string | null = null;
+    let isInReasoningPart = false;
+
     try {
       for await (const event of stream) {
+        // Debug: Log all event types to understand stream structure
+        if (event.type && event.type.includes('reasoning')) {
+          console.log('[OpenAI Reasoning] Event:', event.type, JSON.stringify(event).substring(0, 300));
+        }
+
         // Extract response ID from events
         if (event.response?.id && !currentResponseId) {
           currentResponseId = event.response.id;
@@ -191,12 +218,25 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
             break;
 
           case 'response.output_item.added':
-            // New output item added (could be message or function call)
+            // New output item added (could be message, function call, or reasoning)
+            console.log('[OpenAI] output_item.added:', event.item?.type, event.item?.id);
             if (event.item) {
               const item = event.item;
 
+              // Handle reasoning item (GPT-5/o-series chain-of-thought)
+              if (item.type === 'reasoning') {
+                console.log('[OpenAI Reasoning] Reasoning item started:', item.id);
+                currentReasoningId = item.id;
+                yield {
+                  content: '',
+                  complete: false,
+                  reasoning: '',  // Initial empty to signal reasoning started
+                  reasoningComplete: false,
+                  reasoningId: item.id
+                };
+              }
               // Handle message with text content (only for messages, not function calls)
-              if (item.type === 'message' && item.content) {
+              else if (item.type === 'message' && item.content) {
                 for (const content of item.content) {
                   if (content.type === 'text' && content.text) {
                     fullContent += content.text;
@@ -211,8 +251,46 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
             }
             break;
 
+          case 'response.content_part.added':
+            // Content part added - check for reasoning_text
+            console.log('[OpenAI] content_part.added:', event.part?.type);
+            if (event.part?.type === 'reasoning_text') {
+              console.log('[OpenAI Reasoning] reasoning_text part added:', event.part.text?.substring(0, 100));
+              isInReasoningPart = true;
+              if (event.part.text) {
+                yield {
+                  content: '',
+                  complete: false,
+                  reasoning: event.part.text,
+                  reasoningComplete: false,
+                  reasoningId: currentReasoningId || undefined
+                };
+              }
+            }
+            break;
+
+          case 'response.content_part.delta':
+            // Incremental content delta - check if we're in a reasoning part
+            if (isInReasoningPart && event.delta) {
+              yield {
+                content: '',
+                complete: false,
+                reasoning: event.delta,
+                reasoningComplete: false,
+                reasoningId: currentReasoningId || undefined
+              };
+            }
+            break;
+
+          case 'response.content_part.done':
+            // Content part finished
+            if (event.part?.type === 'reasoning_text') {
+              isInReasoningPart = false;
+            }
+            break;
+
           case 'response.output_item.done':
-            // Output item complete - capture function calls here with full arguments
+            // Output item complete - capture function calls or reasoning completion
             if (event.item) {
               const item = event.item;
 
@@ -227,6 +305,18 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
                     arguments: item.arguments || '{}'
                   }
                 });
+              } else if (item.type === 'reasoning') {
+                // Reasoning item complete - capture encrypted_content for multi-turn
+                currentReasoningEncryptedContent = item.encrypted_content || null;
+                yield {
+                  content: '',
+                  complete: false,
+                  reasoning: '',
+                  reasoningComplete: true,
+                  reasoningId: item.id,
+                  reasoningEncryptedContent: currentReasoningEncryptedContent || undefined
+                };
+                currentReasoningId = null;
               }
             }
             break;
@@ -234,6 +324,44 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
           case 'response.function_call_arguments.delta':
             // Arguments are streamed but we capture the complete call in output_item.done
             // No action needed here - just let the deltas flow
+            break;
+
+          // Handle reasoning summary events (GPT-5 sends these instead of reasoning_text)
+          case 'response.reasoning_summary_text.delta':
+            // Incremental reasoning summary text
+            if (event.delta) {
+              yield {
+                content: '',
+                complete: false,
+                reasoning: event.delta,
+                reasoningComplete: false,
+                reasoningId: event.item_id || currentReasoningId || undefined
+              };
+            }
+            break;
+
+          case 'response.reasoning_summary_text.done':
+            // Reasoning summary text complete - yield the full text
+            if (event.text) {
+              yield {
+                content: '',
+                complete: false,
+                reasoning: '', // Already streamed via delta events
+                reasoningComplete: true,
+                reasoningId: event.item_id || currentReasoningId || undefined
+              };
+            }
+            break;
+
+          case 'response.reasoning_summary_part.done':
+            // Reasoning summary part complete - mark reasoning as done
+            yield {
+              content: '',
+              complete: false,
+              reasoning: '',
+              reasoningComplete: true,
+              reasoningId: event.item_id || currentReasoningId || undefined
+            };
             break;
 
           case 'response.done':
@@ -467,6 +595,13 @@ export class OpenAIAdapter extends BaseAdapter implements MCPCapableAdapter {
     return MCPToolExecution.supportsMCP(this);
   }
 
+  /**
+   * Check if model supports reasoning/thinking (uses model registry)
+   */
+  private supportsReasoning(modelId: string): boolean {
+    const model = OPENAI_MODELS.find(m => m.apiName === modelId);
+    return model?.capabilities.supportsThinking || false;
+  }
 
   /**
    * Get provider capabilities

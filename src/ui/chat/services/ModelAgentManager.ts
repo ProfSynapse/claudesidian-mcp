@@ -13,6 +13,7 @@ import { ModelSelectionUtility } from '../utils/ModelSelectionUtility';
 import { AgentConfigurationUtility } from '../utils/AgentConfigurationUtility';
 import { WorkspaceIntegrationService } from './WorkspaceIntegrationService';
 import { getWebLLMLifecycleManager } from '../../../services/llm/adapters/webllm/WebLLMLifecycleManager';
+import { ThinkingSettings } from '../components/settings/types';
 
 export interface ModelAgentManagerEvents {
   onModelChanged: (model: ModelOption | null) => void;
@@ -32,6 +33,7 @@ export class ModelAgentManager {
   private messageEnhancement: MessageEnhancement | null = null;
   private systemPromptBuilder: SystemPromptBuilder;
   private workspaceIntegration: WorkspaceIntegrationService;
+  private thinkingSettings: ThinkingSettings = { enabled: false, effort: 'medium' };
 
   constructor(
     private app: any, // Obsidian App
@@ -112,6 +114,14 @@ export class ModelAgentManager {
     if (settings.contextNotes && Array.isArray(settings.contextNotes)) {
       this.contextNotesManager.setNotes(settings.contextNotes);
     }
+
+    // Restore thinking settings
+    if (settings.thinking) {
+      this.thinkingSettings = {
+        enabled: settings.thinking.enabled ?? false,
+        effort: settings.thinking.effort ?? 'medium'
+      };
+    }
   }
 
   /**
@@ -190,7 +200,8 @@ export class ModelAgentManager {
           agentId: this.selectedAgent?.id,
           workspaceId: this.selectedWorkspaceId,
           contextNotes: this.contextNotesManager.getNotes(),
-          sessionId: existingSessionId // Preserve the session ID
+          sessionId: existingSessionId, // Preserve the session ID
+          thinking: this.thinkingSettings
         }
       };
 
@@ -354,6 +365,20 @@ export class ModelAgentManager {
   }
 
   /**
+   * Get thinking settings
+   */
+  getThinkingSettings(): ThinkingSettings {
+    return { ...this.thinkingSettings };
+  }
+
+  /**
+   * Set thinking settings
+   */
+  setThinkingSettings(settings: ThinkingSettings): void {
+    this.thinkingSettings = { ...settings };
+  }
+
+  /**
    * Set message enhancement from suggesters
    */
   setMessageEnhancement(enhancement: MessageEnhancement | null): void {
@@ -397,6 +422,8 @@ export class ModelAgentManager {
     systemPrompt?: string;
     workspaceId?: string;
     sessionId?: string;
+    enableThinking?: boolean;
+    thinkingEffort?: 'low' | 'medium' | 'high';
   }> {
     const sessionId = await this.getCurrentSessionId();
 
@@ -405,7 +432,9 @@ export class ModelAgentManager {
       model: this.selectedModel?.modelId,
       systemPrompt: await this.buildSystemPromptWithWorkspace() || undefined,
       workspaceId: this.selectedWorkspaceId || undefined,
-      sessionId: sessionId
+      sessionId: sessionId,
+      enableThinking: this.thinkingSettings.enabled,
+      thinkingEffort: this.thinkingSettings.effort
     };
   }
 

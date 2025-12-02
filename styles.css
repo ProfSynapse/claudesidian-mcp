@@ -959,6 +959,95 @@
     }
 }
 
+/* =================================================================
+   Reasoning Accordion - LLM Thinking/Reasoning Display
+   ================================================================= */
+
+/* Reasoning item container */
+.progressive-tool-item.reasoning-item {
+    background: var(--background-secondary);
+    border-left: 3px solid var(--text-accent);
+    padding: 0.5rem 0.75rem;
+}
+
+.progressive-tool-item.reasoning-item[data-type="reasoning"] {
+    border-left-color: var(--color-purple);
+}
+
+/* Reasoning header styling */
+.reasoning-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.reasoning-icon {
+    display: flex;
+    align-items: center;
+    color: var(--color-purple);
+}
+
+.reasoning-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Reasoning streaming state */
+.reasoning-streaming {
+    color: var(--text-accent);
+    font-style: italic;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Reasoning content section */
+.reasoning-content-section {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: var(--background-primary);
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Reasoning text display */
+.reasoning-text {
+    white-space: pre-wrap;
+    font-family: var(--font-text);
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+/* Streaming indicator for reasoning */
+.reasoning-streaming-indicator {
+    display: inline-block;
+    color: var(--text-accent);
+    font-size: 1.2em;
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+/* Reasoning item when streaming */
+.progressive-tool-item.reasoning-item.tool-streaming {
+    opacity: 1;
+    border-left-color: var(--color-purple);
+}
+
+/* Reasoning item when complete */
+.progressive-tool-item.reasoning-item.tool-completed {
+    background: var(--background-primary);
+    border-left-color: var(--text-success);
+}
+
+.progressive-tool-item.reasoning-item.tool-completed .reasoning-icon {
+    color: var(--text-success);
+}
+
 /* Chat Input */
 .chat-input {
     padding: 1rem;
@@ -3654,4 +3743,172 @@ a:hover {
     text-align: center;
     color: var(--text-muted);
     font-size: 13px;
+}
+
+/* ===========================================
+   Chat Settings Modal - Complete Styling
+   =========================================== */
+
+/* Modal Container */
+.chat-settings-modal {
+    max-width: 600px;
+}
+
+/* Header */
+.chat-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.chat-settings-header h2 {
+    margin: 0;
+}
+
+/* Button Containers */
+.chat-settings-button-container {
+    display: flex;
+    gap: 8px;
+}
+
+/* Sections */
+.chat-settings-section {
+    margin-bottom: 16px;
+}
+
+/* Workspace Info Section */
+.workspace-context-summary {
+    padding: 12px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    margin-top: 12px;
+}
+
+.workspace-context-summary h4 {
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.workspace-context-summary .context-item {
+    margin-bottom: 4px;
+}
+
+/* Context Notes */
+.context-notes-section {
+    margin-top: 16px;
+}
+
+.context-notes-list {
+    margin-top: 8px;
+}
+
+.context-notes-empty {
+    padding: 12px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.add-context-note-container {
+    margin-top: 12px;
+}
+
+/* ===========================================
+   Note Picker Modal - Complete Styling
+   =========================================== */
+
+/* Header */
+.note-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.note-picker-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.note-picker-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Form */
+.note-picker-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.note-picker-search {
+    margin-bottom: 12px;
+}
+
+/* File List */
+.note-picker-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    margin-top: 12px;
+}
+
+.note-picker-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--background-modifier-border);
+    transition: background-color 0.1s ease;
+}
+
+.note-picker-item:last-child {
+    border-bottom: none;
+}
+
+.note-picker-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.note-picker-item.is-selected {
+    background-color: var(--background-modifier-hover);
+    font-weight: 600;
+}
+
+.note-picker-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.note-picker-item.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ===========================================
+   Thinking Section - New Styling
+   =========================================== */
+
+.thinking-settings-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Effort slider label */
+.thinking-effort-value {
+    min-width: 60px;
+    text-align: center;
+    font-weight: 500;
+    margin-left: 8px;
+}
+
+/* ===========================================
+   Generic Utility Classes
+   =========================================== */
+
+/* Hidden utility - used for conditional visibility */
+.is-hidden {
+    display: none !important;
 }

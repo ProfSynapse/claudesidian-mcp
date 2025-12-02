@@ -20,6 +20,7 @@ import { WebSearchUtils } from '../../utils/WebSearchUtils';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
 import { ReasoningPreserver } from '../shared/ReasoningPreserver';
 import { SchemaValidator } from '../../utils/SchemaValidator';
+import { ThinkingEffortMapper } from '../../utils/ThinkingEffortMapper';
 
 export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'google';
@@ -75,6 +76,11 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         }];
       }
 
+      // Determine thinking budget based on options or tools
+      const effort = options?.thinkingEffort || 'medium';
+      const googleThinkingParams = ThinkingEffortMapper.getGoogleParams({ enabled: true, effort });
+      const thinkingBudget = googleThinkingParams?.thinkingBudget || 8192;
+
       // Build config object with all generation settings
       const config: any = {
         generationConfig: {
@@ -83,10 +89,10 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
           maxOutputTokens: options?.maxTokens || 4096,
           topK: 40,
           topP: 0.95,
-          // Enable thinking mode when tools are present for better function calling accuracy
+          // Enable thinking mode when tools are present or explicitly requested
           // Gemini 2.5 Flash supports 0-24576 token thinking budget
-          ...(options?.tools && options.tools.length > 0 && {
-            thinkingBudget: 8192  // Moderate thinking budget for tool calling
+          ...((options?.enableThinking || (options?.tools && options.tools.length > 0)) && {
+            thinkingBudget
           })
         }
       };
@@ -196,6 +202,17 @@ export class GoogleAdapter extends BaseAdapter implements MCPCapableAdapter {
         }
 
         for (const part of parts) {
+          // Handle thinking/reasoning content (Gemini 2.0+ with thinking enabled)
+          if (part.thought || part.thinking) {
+            const thinkingText = part.thought || part.thinking;
+            yield {
+              content: '',
+              complete: false,
+              reasoning: thinkingText,
+              reasoningComplete: false
+            };
+          }
+
           if (part.text) {
             yield {
               content: part.text,

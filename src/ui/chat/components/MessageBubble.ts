@@ -44,20 +44,23 @@ export class MessageBubble extends Component {
 
   /**
    * Create the message bubble element
-   * For assistant messages with toolCalls, returns a fragment containing tool bubble + text bubble
+   * For assistant messages with toolCalls or reasoning, returns a fragment containing tool bubble + text bubble
    */
   createElement(): HTMLElement {
     const activeToolCalls = this.getActiveToolCalls(this.message);
     const hasToolCalls = this.message.role === 'assistant' && activeToolCalls && activeToolCalls.length > 0;
+    const activeReasoning = this.getActiveReasoning(this.message);
+    const hasReasoning = this.message.role === 'assistant' && activeReasoning;
+    const showToolBubble = hasToolCalls || hasReasoning;
     const activeContent = this.getActiveMessageContent(this.message);
 
-    if (hasToolCalls) {
+    if (showToolBubble) {
       const wrapper = document.createElement('div');
       wrapper.addClass('message-group');
       wrapper.setAttribute('data-message-id', this.message.id);
 
-      // Render using the active alternative's tool calls so retries/branches preserve the accordion
-      const renderMessage: ConversationMessage = { ...this.message, toolCalls: activeToolCalls };
+      // Render using the active alternative's tool calls and reasoning so retries/branches preserve them
+      const renderMessage: ConversationMessage = { ...this.message, toolCalls: activeToolCalls, reasoning: activeReasoning };
 
       // Create tool bubble using factory
       this.toolBubbleElement = ToolBubbleFactory.createToolBubble({
@@ -390,7 +393,12 @@ export class MessageBubble extends Component {
           name: info.displayName,
           technicalName: info.technicalName,
           parameters: info.parameters,
-          isComplete: info.isComplete
+          isComplete: info.isComplete,
+          // Pass reasoning-specific properties
+          type: info.type,
+          result: info.result,
+          status: info.status,
+          isVirtual: info.isVirtual
         });
         break;
 
@@ -472,6 +480,26 @@ export class MessageBubble extends Component {
     }
 
     return message.toolCalls;
+  }
+
+  /**
+   * Get the active reasoning for the message (original or alternative)
+   */
+  private getActiveReasoning(message: ConversationMessage): string | undefined {
+    const activeIndex = message.activeAlternativeIndex || 0;
+
+    if (activeIndex === 0) {
+      return message.reasoning;
+    }
+
+    if (message.alternatives && message.alternatives.length > 0) {
+      const alternativeIndex = activeIndex - 1;
+      if (alternativeIndex >= 0 && alternativeIndex < message.alternatives.length) {
+        return message.alternatives[alternativeIndex].reasoning;
+      }
+    }
+
+    return message.reasoning;
   }
 
   /**

@@ -54,7 +54,13 @@ export class ToolEventCoordinator {
           actionName: metadata.actionName,
           rawName: toolCall.function?.name || toolCall.name,
           parameters: parameters,
-          isComplete: toolCall.isComplete
+          isComplete: toolCall.isComplete,
+          // Pass through reasoning-specific properties
+          type: toolCall.type,
+          result: toolCall.result,
+          status: toolCall.status,
+          isVirtual: toolCall.isVirtual,
+          success: toolCall.success
         };
 
         messageBubble.handleToolEvent('detected', toolData);

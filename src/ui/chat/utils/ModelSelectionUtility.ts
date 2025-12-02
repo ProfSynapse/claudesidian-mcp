@@ -104,7 +104,8 @@ export class ModelSelectionUtility {
       providerName: ModelSelectionUtility.getProviderDisplayName(model.provider),
       modelId: model.id,
       modelName: model.name,
-      contextWindow: model.contextWindow || 128000 // Default if not specified
+      contextWindow: model.contextWindow || 128000, // Default if not specified
+      supportsThinking: model.supportsThinking || false
     };
   }
 

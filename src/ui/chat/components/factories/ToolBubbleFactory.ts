@@ -45,6 +45,28 @@ export class ToolBubbleFactory {
     // Content area for tool accordions
     const content = bubble.createDiv('tool-bubble-content');
 
+    // Create reasoning accordion if message has persisted reasoning
+    if (message.reasoning) {
+      const reasoningAccordion = new ProgressiveToolAccordion();
+      const reasoningEl = reasoningAccordion.createElement();
+
+      // Create synthetic reasoning tool call for display
+      const reasoningId = `reasoning_${message.id}`;
+      reasoningAccordion.detectTool({
+        id: reasoningId,
+        name: 'Reasoning',
+        technicalName: 'extended_thinking',
+        type: 'reasoning',
+        result: message.reasoning,
+        status: 'completed',
+        isVirtual: true,
+        isComplete: true
+      });
+
+      content.appendChild(reasoningEl);
+      progressiveToolAccordions.set(reasoningId, reasoningAccordion);
+    }
+
     // Create one ProgressiveToolAccordion per tool
     if (message.toolCalls) {
       message.toolCalls.forEach(toolCall => {

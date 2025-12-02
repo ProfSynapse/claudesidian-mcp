@@ -376,6 +376,42 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           // OpenRouter doesn't include usage in streaming responses
           // We'll fetch it asynchronously using the generation ID when completion is detected
           return null;
+        },
+
+        // Extract reasoning from reasoning_details array (OpenRouter unified format)
+        extractReasoning: (parsed: any) => {
+          // Check for reasoning_details in delta or message
+          const reasoningDetails =
+            parsed.choices?.[0]?.delta?.reasoning_details ||
+            parsed.choices?.[0]?.message?.reasoning_details ||
+            parsed.reasoning_details;
+
+          if (reasoningDetails && Array.isArray(reasoningDetails)) {
+            // Find reasoning.text entries (these contain the actual reasoning text)
+            const textEntries = reasoningDetails.filter((r: any) => r.type === 'reasoning.text');
+            if (textEntries.length > 0) {
+              const reasoningText = textEntries.map((r: any) => r.text || '').join('');
+              if (reasoningText) {
+                return {
+                  text: reasoningText,
+                  complete: false  // We can't know if reasoning is complete from streaming
+                };
+              }
+            }
+
+            // Also check for reasoning.summary entries
+            const summaryEntries = reasoningDetails.filter((r: any) => r.type === 'reasoning.summary');
+            if (summaryEntries.length > 0) {
+              const summaryText = summaryEntries.map((r: any) => r.text || r.summary || '').join('');
+              if (summaryText) {
+                return {
+                  text: summaryText,
+                  complete: false
+                };
+              }
+            }
+          }
+          return null;
         }
       });
 

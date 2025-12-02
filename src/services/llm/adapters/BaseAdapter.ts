@@ -107,6 +107,8 @@ export abstract class BaseAdapter {
       extractToolCalls: (chunk: any) => any[] | null;
       extractFinishReason: (chunk: any) => string | null;
       extractUsage?: (chunk: any) => any;
+      // Reasoning/thinking extraction for models that support it
+      extractReasoning?: (parsed: any) => { text: string; complete: boolean } | null;
       debugLabel?: string;
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {

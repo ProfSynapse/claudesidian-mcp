@@ -95,6 +95,8 @@ export class MessageManager {
       systemPrompt?: string;
       workspaceId?: string;
       sessionId?: string;
+      enableThinking?: boolean;
+      thinkingEffort?: 'low' | 'medium' | 'high';
     },
     metadata?: ReferenceMetadata
   ): Promise<void> {
@@ -163,6 +165,8 @@ export class MessageManager {
       systemPrompt?: string;
       workspaceId?: string;
       sessionId?: string;
+      enableThinking?: boolean;
+      thinkingEffort?: 'low' | 'medium' | 'high';
     }
   ): Promise<void> {
     const message = conversation.messages.find(msg => msg.id === messageId);

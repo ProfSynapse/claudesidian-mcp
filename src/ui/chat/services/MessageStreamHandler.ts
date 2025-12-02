@@ -25,11 +25,36 @@ export interface StreamOptions {
   messageId?: string;
   excludeFromMessageId?: string;
   abortSignal?: AbortSignal;
+  enableThinking?: boolean;
+  thinkingEffort?: 'low' | 'medium' | 'high';
 }
 
 export interface StreamResult {
   streamedContent: string;
   toolCalls?: any[];
+  reasoning?: string;  // Accumulated reasoning text
+}
+
+/**
+ * Create a synthetic tool call to represent reasoning/thinking in the UI
+ * This allows reasoning to be displayed in the ProgressiveToolAccordion
+ */
+function createReasoningToolCall(messageId: string, reasoningText: string, isComplete: boolean): any {
+  return {
+    id: `reasoning_${messageId}`,
+    type: 'reasoning',  // Special type for reasoning display
+    name: 'Reasoning',
+    displayName: 'Reasoning',
+    technicalName: 'extended_thinking',
+    function: {
+      name: 'reasoning',
+      arguments: ''  // Not used
+    },
+    result: reasoningText,
+    status: isComplete ? 'completed' : 'streaming',
+    success: true,
+    isVirtual: true  // Flag to indicate this is not a real tool
+  };
 }
 
 /**
@@ -54,6 +79,10 @@ export class MessageStreamHandler {
     let streamedContent = '';
     let toolCalls: any[] | undefined = undefined;
     let hasStartedStreaming = false;
+
+    // Reasoning accumulation
+    let reasoningAccumulator = '';
+    let reasoningEmitted = false;
 
     // Stream the AI response
     for await (const chunk of this.chatService.generateResponseStreaming(
@@ -80,6 +109,30 @@ export class MessageStreamHandler {
 
         // Send only the new chunk to UI for incremental updates
         this.events.onStreamingUpdate(aiMessageId, chunk.chunk, false, true);
+      }
+
+      // Handle reasoning/thinking content (Claude, GPT-5, Gemini)
+      if (chunk.reasoning) {
+        reasoningAccumulator += chunk.reasoning;
+
+        // Emit reasoning as a synthetic tool call for UI display
+        const reasoningToolCall = createReasoningToolCall(
+          aiMessageId,
+          reasoningAccumulator,
+          chunk.reasoningComplete || false
+        );
+        this.events.onToolCallsDetected(aiMessageId, [reasoningToolCall]);
+        reasoningEmitted = true;
+      }
+
+      // Mark reasoning as complete if signaled
+      if (chunk.reasoningComplete && reasoningEmitted) {
+        const finalReasoningToolCall = createReasoningToolCall(
+          aiMessageId,
+          reasoningAccumulator,
+          true
+        );
+        this.events.onToolCallsDetected(aiMessageId, [finalReasoningToolCall]);
       }
 
       // Extract tool calls when available
@@ -109,7 +162,9 @@ export class MessageStreamHandler {
               ...conversation.messages[placeholderMessageIndex],
               content: streamedContent,
               state: 'complete',
-              toolCalls: toolCalls
+              toolCalls: toolCalls,
+              // Persist reasoning for re-render from storage
+              reasoning: reasoningAccumulator || undefined
             };
           }
 
@@ -122,7 +177,11 @@ export class MessageStreamHandler {
       }
     }
 
-    return { streamedContent, toolCalls };
+    return {
+      streamedContent,
+      toolCalls,
+      reasoning: reasoningAccumulator || undefined
+    };
   }
 
   /**

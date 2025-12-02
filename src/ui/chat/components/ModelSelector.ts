@@ -11,6 +11,7 @@ export interface ModelOption {
   modelId: string;
   modelName: string;
   contextWindow: number;
+  supportsThinking?: boolean;
 }
 
 export class ModelSelector {

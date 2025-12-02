@@ -13,6 +13,7 @@ export interface ProgressiveToolCall {
   id: string;
   name: string;
   technicalName?: string;
+  type?: string;  // Tool type: 'function', 'reasoning', etc.
   parameters?: any;
   status: 'pending' | 'streaming' | 'executing' | 'completed' | 'failed';
   result?: any;
@@ -20,6 +21,7 @@ export interface ProgressiveToolCall {
   executionTime?: number;
   startTime?: number;
   parametersComplete?: boolean; // True when parameters are fully streamed
+  isVirtual?: boolean; // True for synthetic tools like reasoning (not executable)
 }
 
 export class ProgressiveToolAccordion {
@@ -64,32 +66,54 @@ export class ProgressiveToolAccordion {
 
   /**
    * Detect a tool (parameters streaming) - shows it immediately with streaming state
+   * Handles special tool types like 'reasoning' differently
    */
-  detectTool(toolCall: { id: string; name: string; technicalName?: string; parameters?: any; isComplete?: boolean }): void {
+  detectTool(toolCall: { id: string; name: string; technicalName?: string; type?: string; parameters?: any; result?: any; isComplete?: boolean; isVirtual?: boolean; status?: string }): void {
+    // Special handling for reasoning tools - update result instead of parameters
+    const isReasoningTool = toolCall.type === 'reasoning';
+
     // Check if tool already exists
     const existingTool = this.tools.find(t => t.id === toolCall.id);
     if (existingTool) {
-      // Tool already detected, just update metadata and parameters
+      // Tool already detected, just update
       existingTool.name = toolCall.name;
       existingTool.technicalName = toolCall.technicalName;
-      this.updateToolParameters(toolCall.id, toolCall.parameters, toolCall.isComplete || false);
-      this.updateToolItem(existingTool);
+
+      if (isReasoningTool) {
+        // For reasoning tools, update the result (reasoning text) and status
+        existingTool.result = toolCall.result;
+        existingTool.status = toolCall.status === 'completed' ? 'completed' : 'streaming';
+        this.updateReasoningItem(existingTool);
+      } else {
+        // For regular tools, update parameters
+        this.updateToolParameters(toolCall.id, toolCall.parameters, toolCall.isComplete || false);
+        this.updateToolItem(existingTool);
+      }
       return;
     }
 
+    // Create new tool entry
     const progressiveTool: ProgressiveToolCall = {
       id: toolCall.id,
       name: toolCall.name,
       technicalName: toolCall.technicalName,
+      type: toolCall.type,
       parameters: toolCall.parameters,
-      status: toolCall.isComplete ? 'pending' : 'streaming',
+      result: isReasoningTool ? toolCall.result : undefined,  // Reasoning stores content in result
+      status: isReasoningTool ? 'streaming' : (toolCall.isComplete ? 'pending' : 'streaming'),
       parametersComplete: toolCall.isComplete || false,
+      isVirtual: toolCall.isVirtual,
       startTime: Date.now()
     };
 
     this.tools.push(progressiveTool);
     this.updateDisplay();
-    this.renderToolItem(progressiveTool);
+
+    if (isReasoningTool) {
+      this.renderReasoningItem(progressiveTool);
+    } else {
+      this.renderToolItem(progressiveTool);
+    }
   }
 
   /**
@@ -278,6 +302,107 @@ export class ProgressiveToolAccordion {
     errorSection.style.display = 'none'; // Hidden unless failed
 
     content.appendChild(item);
+  }
+
+  /**
+   * Render a reasoning item (special display for LLM thinking/reasoning)
+   * Displays as collapsible accordion showing streamed reasoning text
+   */
+  private renderReasoningItem(tool: ProgressiveToolCall): void {
+    if (!this.element) return;
+
+    const content = this.element.querySelector('.progressive-tool-content') as HTMLElement;
+
+    const item = document.createElement('div');
+    item.addClass('progressive-tool-item');
+    item.addClass('reasoning-item');  // Special class for styling
+    item.addClass(`tool-${tool.status}`);
+    item.setAttribute('data-tool-id', tool.id);
+    item.setAttribute('data-type', 'reasoning');
+
+    // Reasoning header with brain icon
+    const header = item.createDiv('progressive-tool-header-item reasoning-header');
+
+    // Brain icon for reasoning
+    const iconSpan = header.createSpan('reasoning-icon');
+    setIcon(iconSpan, 'brain');
+
+    // Title
+    const name = header.createSpan('tool-name');
+    name.textContent = tool.name || 'Reasoning';
+
+    // Status indicator
+    const meta = header.createSpan('tool-meta');
+    if (tool.status === 'streaming') {
+      meta.textContent = 'thinking...';
+      meta.addClass('reasoning-streaming');
+    } else {
+      meta.textContent = '';
+    }
+
+    // Reasoning content section (shows the actual reasoning text)
+    const reasoningSection = item.createDiv('reasoning-content-section');
+    const reasoningContent = reasoningSection.createDiv('reasoning-text');
+    reasoningContent.setAttribute('data-reasoning-content', tool.id);
+
+    // Display reasoning text with proper formatting
+    if (tool.result) {
+      reasoningContent.textContent = tool.result;
+    } else {
+      reasoningContent.textContent = '';
+    }
+
+    // Add streaming indicator if still streaming
+    if (tool.status === 'streaming') {
+      const streamingIndicator = reasoningSection.createDiv('reasoning-streaming-indicator');
+      streamingIndicator.textContent = '⋯';
+    }
+
+    content.appendChild(item);
+  }
+
+  /**
+   * Update reasoning item with new content
+   */
+  private updateReasoningItem(tool: ProgressiveToolCall): void {
+    if (!this.element) return;
+
+    const item = this.element.querySelector(`[data-tool-id="${tool.id}"]`) as HTMLElement;
+    if (!item) {
+      // Item doesn't exist yet, render it
+      this.renderReasoningItem(tool);
+      return;
+    }
+
+    // Update status classes
+    item.className = item.className.replace(/tool-(pending|streaming|executing|completed|failed)/g, '');
+    item.addClass(`tool-${tool.status}`);
+
+    // Update the reasoning text content
+    const reasoningContent = item.querySelector(`[data-reasoning-content="${tool.id}"]`) as HTMLElement;
+    if (reasoningContent && tool.result) {
+      reasoningContent.textContent = tool.result;
+    }
+
+    // Update meta status
+    const meta = item.querySelector('.tool-meta') as HTMLElement;
+    if (meta) {
+      if (tool.status === 'streaming') {
+        meta.textContent = 'thinking...';
+        meta.addClass('reasoning-streaming');
+      } else if (tool.status === 'completed') {
+        meta.textContent = '';
+        meta.removeClass('reasoning-streaming');
+      }
+    }
+
+    // Remove streaming indicator if complete
+    if (tool.status === 'completed') {
+      const streamingIndicator = item.querySelector('.reasoning-streaming-indicator');
+      if (streamingIndicator) {
+        streamingIndicator.remove();
+      }
+    }
   }
 
   /**

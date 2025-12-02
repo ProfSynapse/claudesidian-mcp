@@ -32,6 +32,8 @@ export interface StreamingOptions {
   messageId?: string;
   abortSignal?: AbortSignal;
   excludeFromMessageId?: string; // Exclude this message and everything after from context (for retry)
+  enableThinking?: boolean;
+  thinkingEffort?: 'low' | 'medium' | 'high';
 }
 
 export interface StreamingChunk {
@@ -39,6 +41,9 @@ export interface StreamingChunk {
   complete: boolean;
   messageId: string;
   toolCalls?: any[];
+  // Reasoning/thinking support (Claude, GPT-5, Gemini, etc.)
+  reasoning?: string;           // Incremental reasoning text
+  reasoningComplete?: boolean;  // True when reasoning finished
 }
 
 export interface StreamingDependencies {
@@ -134,7 +139,9 @@ export class StreamingResponseService {
         toolChoice: openAITools.length > 0 ? 'auto' : undefined,
         abortSignal: options?.abortSignal,
         sessionId: options?.sessionId,
-        workspaceId: options?.workspaceId
+        workspaceId: options?.workspaceId,
+        enableThinking: options?.enableThinking,
+        thinkingEffort: options?.thinkingEffort
       };
 
       // Add tool event callback for live UI updates (delegates to ToolCallService)
@@ -258,7 +265,10 @@ export class StreamingResponseService {
           chunk: chunk.chunk,
           complete: chunk.complete,
           messageId,
-          toolCalls: toolCalls
+          toolCalls: toolCalls,
+          // Pass through reasoning for UI display
+          reasoning: chunk.reasoning,
+          reasoningComplete: chunk.reasoningComplete
         };
 
         if (chunk.complete) {

@@ -6,16 +6,17 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { BaseAdapter } from '../BaseAdapter';
-import { 
-  GenerateOptions, 
-  StreamChunk, 
-  LLMResponse, 
-  ModelInfo, 
+import {
+  GenerateOptions,
+  StreamChunk,
+  LLMResponse,
+  ModelInfo,
   ProviderCapabilities,
   ModelPricing
 } from '../types';
 import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './AnthropicModels';
 import { MCPToolExecution, MCPCapableAdapter } from '../shared/MCPToolExecution';
+import { ThinkingEffortMapper } from '../../utils/ThinkingEffortMapper';
 
 export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
   readonly name = 'anthropic';
@@ -87,9 +88,11 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
 
       // Extended thinking mode for Claude 4 models
       if (options?.enableThinking && this.supportsThinking(options?.model || this.currentModel)) {
+        const effort = options?.thinkingEffort || 'medium';
+        const thinkingParams = ThinkingEffortMapper.getAnthropicParams({ enabled: true, effort });
         requestParams.thinking = {
           type: 'enabled',
-          budget_tokens: 16000
+          budget_tokens: thinkingParams?.budget_tokens || 16000
         };
       }
 
@@ -118,6 +121,7 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
 
       let usage: any = undefined;
       const toolCalls: Map<number, any> = new Map();
+      let thinkingBlockIndex: number | null = null;  // Track thinking block for completion
 
       for await (const event of stream) {
         if ('type' in event) {
@@ -139,6 +143,9 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
                     arguments: ''
                   }
                 });
+              } else if (startEvent.content_block?.type === 'thinking') {
+                // Track thinking block index for completion signaling
+                thinkingBlockIndex = startEvent.index;
               }
               break;
 
@@ -152,13 +159,13 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
                   complete: false
                 };
               } else if (delta.type === 'thinking_delta' && delta.thinking) {
-                // Stream thinking content if enabled
-                if (options?.enableThinking) {
-                  yield {
-                    content: delta.thinking,
-                    complete: false
-                  };
-                }
+                // Stream thinking content as reasoning (displayed in Reasoning accordion)
+                yield {
+                  content: '',  // Don't mix with regular content
+                  reasoning: delta.thinking,
+                  reasoningComplete: false,
+                  complete: false
+                };
               } else if (delta.type === 'input_json_delta' && delta.partial_json) {
                 // Accumulate tool input JSON
                 const toolCall = toolCalls.get(deltaIndex);
@@ -188,7 +195,18 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
               break;
               
             case 'content_block_stop':
-              // Content block completed - already tracked in our map
+              // Check if this is the thinking block completing
+              const stopEvent = event as any;
+              if (thinkingBlockIndex !== null && stopEvent.index === thinkingBlockIndex) {
+                yield {
+                  content: '',
+                  reasoning: '',  // No new content, just signaling completion
+                  reasoningComplete: true,
+                  complete: false
+                };
+                thinkingBlockIndex = null;  // Reset for potential next thinking block
+              }
+              // Tool call blocks already tracked in our map
               break;
 
             default:
@@ -306,9 +324,11 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
 
           // Extended thinking mode for Claude 4 models
           if (options?.enableThinking && this.supportsThinking(model)) {
+            const effort = options?.thinkingEffort || 'medium';
+            const thinkingParams = ThinkingEffortMapper.getAnthropicParams({ enabled: true, effort });
             requestParams.thinking = {
               type: 'enabled',
-              budget_tokens: 16000
+              budget_tokens: thinkingParams?.budget_tokens || 16000
             };
           }
 
@@ -396,9 +416,11 @@ export class AnthropicAdapter extends BaseAdapter implements MCPCapableAdapter {
 
     // Extended thinking mode for Claude 4 models
     if (options?.enableThinking && this.supportsThinking(options?.model || this.currentModel)) {
+      const effort = options?.thinkingEffort || 'medium';
+      const thinkingParams = ThinkingEffortMapper.getAnthropicParams({ enabled: true, effort });
       requestParams.thinking = {
         type: 'enabled',
-        budget_tokens: 16000
+        budget_tokens: thinkingParams?.budget_tokens || 16000
       };
     }
 

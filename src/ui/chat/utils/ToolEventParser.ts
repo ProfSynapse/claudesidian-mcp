@@ -19,6 +19,11 @@ export interface ToolEventInfo {
   technicalName?: string;
   parameters?: any;
   isComplete: boolean;
+  // Reasoning-specific properties
+  type?: string;
+  result?: any;
+  status?: string;
+  isVirtual?: boolean;
 }
 
 export class ToolEventParser {
@@ -55,12 +60,23 @@ export class ToolEventParser {
         ? Boolean(data.isComplete)
         : Boolean(toolCall?.parametersComplete);
 
+    // Extract reasoning-specific properties
+    const type = data?.type;
+    const result = data?.result;
+    const status = data?.status;
+    const isVirtual = data?.isVirtual;
+
     return {
       toolId,
       displayName,
       technicalName,
       parameters,
-      isComplete
+      isComplete,
+      // Include reasoning properties if present
+      type,
+      result,
+      status,
+      isVirtual
     };
   }
 

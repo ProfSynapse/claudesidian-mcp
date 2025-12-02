@@ -13,6 +13,7 @@ export interface GenerateOptions {
   stopSequences?: string[];
   enableThinking?: boolean;
   enableInteractiveThinking?: boolean;
+  thinkingEffort?: 'low' | 'medium' | 'high';
   tools?: Tool[];
   enableTools?: boolean;
   webSearch?: boolean;
@@ -42,6 +43,11 @@ export interface StreamChunk {
   toolCalls?: ToolCall[];
   toolCallsReady?: boolean; // True when tool calls are complete and safe to execute
   metadata?: Record<string, any>; // For provider-specific metadata (e.g., OpenAI response ID)
+  // Reasoning/thinking support (Claude, GPT-5, Gemini, etc.)
+  reasoning?: string;           // Incremental reasoning text
+  reasoningComplete?: boolean;  // True when reasoning finished
+  reasoningId?: string;         // Unique ID for the reasoning block (OpenAI)
+  reasoningEncryptedContent?: string; // OpenAI: encrypted_content for multi-turn preservation
 }
 
 export interface SearchResult {

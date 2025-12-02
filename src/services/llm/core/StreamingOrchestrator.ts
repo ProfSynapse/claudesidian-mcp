@@ -32,6 +32,9 @@ export interface StreamingOptions {
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
+  // Thinking/reasoning settings
+  enableThinking?: boolean;
+  thinkingEffort?: 'low' | 'medium' | 'high';
 }
 
 export interface StreamYield {
@@ -41,6 +44,9 @@ export interface StreamYield {
   toolCalls?: any[];
   toolCallsReady?: boolean;
   usage?: any;
+  // Reasoning/thinking support (Claude, GPT-5, Gemini, etc.)
+  reasoning?: string;           // Incremental reasoning text
+  reasoningComplete?: boolean;  // True when reasoning finished
 }
 
 export class StreamingOrchestrator {
@@ -165,7 +171,9 @@ export class StreamingOrchestrator {
           conversationHistory: googleConversationHistory, // Pass structured history
           tools: options?.tools,
           onToolEvent: options?.onToolEvent,
-          onUsageAvailable: options?.onUsageAvailable
+          onUsageAvailable: options?.onUsageAvailable,
+          enableThinking: options?.enableThinking,
+          thinkingEffort: options?.thinkingEffort
         };
       } else {
         // For other providers (OpenAI, Anthropic), use text-based system prompt
@@ -181,7 +189,9 @@ export class StreamingOrchestrator {
           systemPrompt: systemPrompt || options?.systemPrompt,
           tools: options?.tools,
           onToolEvent: options?.onToolEvent,
-          onUsageAvailable: options?.onUsageAvailable
+          onUsageAvailable: options?.onUsageAvailable,
+          enableThinking: options?.enableThinking,
+          thinkingEffort: options?.thinkingEffort
         };
       }
 
@@ -213,6 +223,18 @@ export class StreamingOrchestrator {
             complete: false,
             content: fullContent,
             toolCalls: undefined
+          };
+        }
+
+        // Handle reasoning/thinking content (Claude, GPT-5, Gemini)
+        if (chunk.reasoning) {
+          yield {
+            chunk: '',
+            complete: false,
+            content: fullContent,
+            toolCalls: undefined,
+            reasoning: chunk.reasoning,
+            reasoningComplete: chunk.reasoningComplete
           };
         }
 

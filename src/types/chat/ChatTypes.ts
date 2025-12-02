@@ -16,6 +16,8 @@ export interface ChatMessage {
   activeAlternativeIndex?: number;
   isLoading?: boolean;
   metadata?: Record<string, any>;
+  // Reasoning/thinking content from LLMs that support it (Claude, GPT-5, Gemini)
+  reasoning?: string;
 }
 
 export interface ToolCall {

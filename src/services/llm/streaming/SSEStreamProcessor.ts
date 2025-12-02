@@ -55,6 +55,8 @@ export interface SSEStreamOptions {
   extractToolCalls: (parsed: any) => any[] | null;
   extractFinishReason: (parsed: any) => string | null;
   extractUsage?: (parsed: any) => any;
+  // Reasoning/thinking extraction for models that support it
+  extractReasoning?: (parsed: any) => { text: string; complete: boolean } | null;
   onParseError?: (error: Error, rawData: string) => void;
   debugLabel?: string;
   // Tool call accumulation settings
@@ -139,6 +141,19 @@ export class SSEStreamProcessor {
             content,
             complete: false
           });
+        }
+
+        // Extract reasoning/thinking using adapter-specific logic (if provided)
+        if (options.extractReasoning) {
+          const reasoning = options.extractReasoning(parsed);
+          if (reasoning) {
+            eventQueue.push({
+              content: '',
+              complete: false,
+              reasoning: reasoning.text,
+              reasoningComplete: reasoning.complete
+            });
+          }
         }
 
         // Extract tool calls using adapter-specific logic
