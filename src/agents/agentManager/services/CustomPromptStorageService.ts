@@ -48,6 +48,22 @@ export class CustomPromptStorageService {
     }
 
     /**
+     * Get a specific prompt by name or ID (unified lookup)
+     * Tries ID lookup first (more specific), then falls back to name lookup
+     * @param identifier Prompt name or ID
+     * @returns Custom prompt or undefined if not found
+     */
+    getPromptByNameOrId(identifier: string): CustomPrompt | undefined {
+        // Try ID lookup first (more specific)
+        const byId = this.getPrompt(identifier);
+        if (byId) {
+            return byId;
+        }
+        // Fall back to name lookup
+        return this.getPromptByName(identifier);
+    }
+
+    /**
      * Create a new custom prompt
      * @param prompt Prompt data (without id - will be generated)
      * @returns Created prompt with generated ID

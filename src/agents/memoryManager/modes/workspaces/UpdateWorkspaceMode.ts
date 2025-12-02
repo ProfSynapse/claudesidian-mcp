@@ -69,15 +69,15 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
             
             const workspaceService = serviceResult.service;
             
-            // Validate workspace exists
-            const existingWorkspace = await workspaceService.getWorkspace(params.workspaceId);
+            // Validate workspace exists using unified lookup (ID or name)
+            const existingWorkspace = await workspaceService.getWorkspaceByNameOrId(params.workspaceId);
             if (!existingWorkspace) {
                 return this.prepareResult(false, {
                     workspaceId: params.workspaceId,
                     updated: false,
                     fieldPath: params.fieldPath,
                     newValue: params.newValue
-                }, `Workspace with ID ${params.workspaceId} not found`);
+                }, `Workspace '${params.workspaceId}' not found (searched by both name and ID)`);
             }
 
             // Validate field path
@@ -134,11 +134,11 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
             // Activity history not supported in split-file storage architecture
             workspaceCopy.lastAccessed = now;
 
-            // Perform the update
-            await workspaceService.updateWorkspace(params.workspaceId, workspaceCopy);
-            
+            // Perform the update using actual workspace ID
+            await workspaceService.updateWorkspace(existingWorkspace.id, workspaceCopy);
+
             // Get the updated workspace
-            const updatedWorkspace = await workspaceService.getWorkspace(params.workspaceId);
+            const updatedWorkspace = await workspaceService.getWorkspace(existingWorkspace.id);
 
             return this.prepareResult(true, {
                 workspaceId: params.workspaceId,
@@ -163,9 +163,9 @@ export class UpdateWorkspaceMode extends BaseMode<UpdateWorkspaceParameters, Upd
         const customSchema = {
             type: 'object',
             properties: {
-                workspaceId: { 
-                    type: 'string', 
-                    description: 'ID of the workspace to update (REQUIRED)' 
+                workspaceId: {
+                    type: 'string',
+                    description: 'ID or name of the workspace to update (REQUIRED). Accepts either the unique workspace ID or the workspace name.'
                 },
                 fieldPath: {
                     type: 'string',

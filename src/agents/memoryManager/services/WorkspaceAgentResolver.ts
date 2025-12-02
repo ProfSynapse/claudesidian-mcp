@@ -94,8 +94,8 @@ export class WorkspaceAgentResolver {
         return null;
       }
 
-      // Fetch agent by ID (more reliable)
-      const agent = agentManagerAgent.storageService.getPromptById(agentId);
+      // Fetch agent by ID (using correct method name: getPrompt)
+      const agent = agentManagerAgent.storageService.getPrompt(agentId);
       if (!agent) {
         console.warn(`[WorkspaceAgentResolver] Agent with ID '${agentId}' not found in storage`);
         return null;
@@ -109,6 +109,50 @@ export class WorkspaceAgentResolver {
 
     } catch (error) {
       console.warn(`[WorkspaceAgentResolver] Failed to fetch agent by ID '${agentId}':`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch agent by name or ID (unified lookup)
+   * Tries ID first (more specific), then falls back to name
+   * @param identifier The agent name or ID
+   * @param app The Obsidian app instance
+   * @returns Agent info or null if not found
+   */
+  async fetchAgentByNameOrId(
+    identifier: string,
+    app: App
+  ): Promise<AgentInfo | null> {
+    try {
+      // Get CustomPromptStorageService through plugin's agentManager
+      const plugin = getNexusPlugin(app) as any;
+      if (!plugin || !plugin.agentManager) {
+        console.warn('[WorkspaceAgentResolver] AgentManager not available');
+        return null;
+      }
+
+      const agentManagerAgent = plugin.agentManager.getAgent('agentManager');
+      if (!agentManagerAgent || !agentManagerAgent.storageService) {
+        console.warn('[WorkspaceAgentResolver] AgentManagerAgent or storage service not available');
+        return null;
+      }
+
+      // Use unified lookup that tries ID first, then name
+      const agent = agentManagerAgent.storageService.getPromptByNameOrId(identifier);
+      if (!agent) {
+        console.warn(`[WorkspaceAgentResolver] Agent '${identifier}' not found in storage (searched by both name and ID)`);
+        return null;
+      }
+
+      return {
+        id: agent.id,
+        name: agent.name,
+        systemPrompt: agent.prompt
+      };
+
+    } catch (error) {
+      console.warn(`[WorkspaceAgentResolver] Failed to fetch agent '${identifier}':`, error);
       return null;
     }
   }

@@ -483,6 +483,127 @@ export class WorkspaceService {
   }
 
   /**
+   * Get workspace by name (uses index for efficient lookup)
+   * @param name Workspace name to search for (case-insensitive)
+   * @returns Workspace metadata or null if not found
+   */
+  async getWorkspaceByName(name: string): Promise<IndividualWorkspace | null> {
+    const index = await this.indexManager.loadWorkspaceIndex();
+    const workspaces = Object.values(index.workspaces);
+
+    // Find workspace with matching name (case-insensitive)
+    const matchingWorkspace = workspaces.find(
+      ws => ws.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (!matchingWorkspace) {
+      return null;
+    }
+
+    // Load full workspace data
+    return this.getWorkspace(matchingWorkspace.id);
+  }
+
+  /**
+   * Get workspace by name or ID (unified lookup)
+   * Tries ID lookup first (more specific), then falls back to name lookup
+   * @param identifier Workspace name or ID
+   * @returns Full workspace data or null if not found
+   */
+  async getWorkspaceByNameOrId(identifier: string): Promise<IndividualWorkspace | null> {
+    // Try ID lookup first (more specific)
+    const byId = await this.getWorkspace(identifier);
+    if (byId) {
+      return byId;
+    }
+
+    // Fall back to name lookup
+    return this.getWorkspaceByName(identifier);
+  }
+
+  /**
+   * Get session by name within a workspace
+   * @param workspaceId Workspace ID to search in
+   * @param sessionName Session name to search for (case-insensitive)
+   * @returns Session data or null if not found
+   */
+  async getSessionByName(workspaceId: string, sessionName: string): Promise<SessionData | null> {
+    const workspace = await this.fileSystem.readWorkspace(workspaceId);
+
+    if (!workspace) {
+      return null;
+    }
+
+    // Find session with matching name (case-insensitive)
+    const sessions = Object.values(workspace.sessions);
+    const matchingSession = sessions.find(
+      session => session.name?.toLowerCase() === sessionName.toLowerCase()
+    );
+
+    return matchingSession || null;
+  }
+
+  /**
+   * Get session by name or ID within a workspace (unified lookup)
+   * Tries ID lookup first, then falls back to name lookup
+   * @param workspaceId Workspace ID to search in
+   * @param identifier Session name or ID
+   * @returns Session data or null if not found
+   */
+  async getSessionByNameOrId(workspaceId: string, identifier: string): Promise<SessionData | null> {
+    // Try ID lookup first
+    const byId = await this.getSession(workspaceId, identifier);
+    if (byId) {
+      return byId;
+    }
+
+    // Fall back to name lookup
+    return this.getSessionByName(workspaceId, identifier);
+  }
+
+  /**
+   * Get state by name within a session
+   * @param workspaceId Workspace ID
+   * @param sessionId Session ID to search in
+   * @param stateName State name to search for (case-insensitive)
+   * @returns State data or null if not found
+   */
+  async getStateByName(workspaceId: string, sessionId: string, stateName: string): Promise<StateData | null> {
+    const workspace = await this.fileSystem.readWorkspace(workspaceId);
+
+    if (!workspace || !workspace.sessions[sessionId]) {
+      return null;
+    }
+
+    // Find state with matching name (case-insensitive)
+    const states = Object.values(workspace.sessions[sessionId].states);
+    const matchingState = states.find(
+      state => state.name?.toLowerCase() === stateName.toLowerCase()
+    );
+
+    return matchingState || null;
+  }
+
+  /**
+   * Get state by name or ID within a session (unified lookup)
+   * Tries ID lookup first, then falls back to name lookup
+   * @param workspaceId Workspace ID
+   * @param sessionId Session ID to search in
+   * @param identifier State name or ID
+   * @returns State data or null if not found
+   */
+  async getStateByNameOrId(workspaceId: string, sessionId: string, identifier: string): Promise<StateData | null> {
+    // Try ID lookup first
+    const byId = await this.getState(workspaceId, sessionId, identifier);
+    if (byId) {
+      return byId;
+    }
+
+    // Fall back to name lookup
+    return this.getStateByName(workspaceId, sessionId, identifier);
+  }
+
+  /**
    * Migrate legacy array-based workflow steps to string format
    * @param workspace Workspace to migrate
    * @returns true if migration was performed, false otherwise

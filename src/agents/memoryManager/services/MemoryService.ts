@@ -186,6 +186,23 @@ export class MemoryService {
   }
 
   /**
+   * Get session by name or ID (unified lookup)
+   * Tries ID lookup first, then falls back to name lookup
+   */
+  async getSessionByNameOrId(workspaceId: string, identifier: string): Promise<WorkspaceSession | null> {
+    const session = await this.workspaceService.getSessionByNameOrId(workspaceId, identifier);
+
+    if (!session) {
+      return null;
+    }
+
+    return {
+      ...session,
+      workspaceId
+    };
+  }
+
+  /**
    * Delete session
    */
   async deleteSession(workspaceId: string, sessionId: string): Promise<void> {
@@ -220,6 +237,24 @@ export class MemoryService {
     stateId: string
   ): Promise<WorkspaceStateSnapshot | null> {
     const state = await this.workspaceService.getState(workspaceId, sessionId, stateId);
+
+    if (!state) {
+      return null;
+    }
+
+    return state.snapshot;
+  }
+
+  /**
+   * Get state snapshot by name or ID (unified lookup)
+   * Tries ID lookup first, then falls back to name lookup
+   */
+  async getStateSnapshotByNameOrId(
+    workspaceId: string,
+    sessionId: string,
+    identifier: string
+  ): Promise<WorkspaceStateSnapshot | null> {
+    const state = await this.workspaceService.getStateByNameOrId(workspaceId, sessionId, identifier);
 
     if (!state) {
       return null;

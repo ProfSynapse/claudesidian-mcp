@@ -266,7 +266,7 @@ export class ExecutePromptMode extends BaseMode<ExecutePromptParams, ExecuteProm
             properties: {
                 agent: {
                     type: 'string',
-                    description: 'Custom prompt agent name/id to use as system prompt (optional - if not provided, uses raw prompt only)'
+                    description: 'Custom prompt agent name or ID to use as system prompt (optional - if not provided, uses raw prompt only). Accepts either the unique agent ID or the agent name.'
                 },
                 filepaths: {
                     type: 'array',

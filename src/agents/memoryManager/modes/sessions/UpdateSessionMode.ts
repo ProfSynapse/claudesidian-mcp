@@ -97,10 +97,10 @@ export class UpdateSessionMode extends BaseMode<EditSessionParams, SessionResult
             (typeof params.workspaceContext === 'string' ? JSON.parse(params.workspaceContext) : params.workspaceContext) : null;
         const workspaceId = parsedContext?.workspaceId || 'default-workspace';
 
-        // Phase 3: Load existing session
-        const existingSession = await memoryService.getSession(workspaceId, targetSessionId);
+        // Phase 3: Load existing session using unified lookup (ID or name)
+        const existingSession = await memoryService.getSessionByNameOrId(workspaceId, targetSessionId);
         if (!existingSession) {
-            return this.prepareResult(false, undefined, `Session not found: ${targetSessionId}`, extractContextFromParams(params));
+            return this.prepareResult(false, undefined, `Session '${targetSessionId}' not found (searched by both name and ID)`, extractContextFromParams(params));
         }
 
         // Phase 4: Prepare updates
@@ -126,14 +126,9 @@ export class UpdateSessionMode extends BaseMode<EditSessionParams, SessionResult
             return this.prepareResult(false, undefined, 'No updates provided for session');
         }
 
-        // Phase 5: Get current session and apply updates
-        const currentSession = await memoryService.getSession(workspaceId, targetSessionId);
-        if (!currentSession) {
-            return this.prepareResult(false, undefined, `Session ${targetSessionId} not found`);
-        }
-
-        const updatedSession = { ...currentSession, ...updates };
-        await memoryService.updateSession(workspaceId, targetSessionId, updatedSession);
+        // Phase 5: Apply updates using actual session ID
+        const updatedSession = { ...existingSession, ...updates };
+        await memoryService.updateSession(workspaceId, existingSession.id, updatedSession);
 
         // Phase 6: Prepare result
         return this.prepareResult(
@@ -197,7 +192,7 @@ export class UpdateSessionMode extends BaseMode<EditSessionParams, SessionResult
                 // Edit operation parameters
                 targetSessionId: {
                     type: 'string',
-                    description: 'ID of session to edit'
+                    description: 'ID or name of session to edit. Accepts either the unique session ID or the session name.'
                 },
                 name: {
                     type: 'string',

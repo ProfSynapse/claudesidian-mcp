@@ -90,18 +90,20 @@ export class PromptExecutor {
     }
 
     /**
-     * Get custom prompt by name
+     * Get custom prompt by name or ID (unified lookup)
+     * Supports both agent name and agent ID for flexibility
      */
-    private async getCustomPrompt(agentName?: string): Promise<any> {
-        if (!agentName) {
+    private async getCustomPrompt(agentIdentifier?: string): Promise<any> {
+        if (!agentIdentifier) {
             return null;
         }
 
         try {
-            const customPrompt = await this.promptStorage.getPromptByName(agentName);
+            // Use unified lookup that tries ID first, then name
+            const customPrompt = await this.promptStorage.getPromptByNameOrId(agentIdentifier);
             return customPrompt && customPrompt.isEnabled ? customPrompt : null;
         } catch (error) {
-            console.warn(`Failed to get custom prompt '${agentName}':`, error);
+            console.warn(`Failed to get custom prompt '${agentIdentifier}':`, error);
             return null;
         }
     }

@@ -159,28 +159,30 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
 
     /**
      * Load state data (consolidated from StateRetriever logic)
+     * Supports lookup by both state ID and state name
      */
-    private async loadStateData(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
+    private async loadStateData(workspaceId: string, sessionId: string, stateIdentifier: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
         try {
-            // Get state snapshot from memory service
-            const stateSnapshot = await memoryService.getStateSnapshot(workspaceId, sessionId, stateId);
+            // Get state snapshot from memory service using unified lookup (ID or name)
+            const stateSnapshot = await memoryService.getStateSnapshotByNameOrId(workspaceId, sessionId, stateIdentifier);
             if (!stateSnapshot) {
-                return { success: false, error: `State not found: ${stateId}` };
+                return { success: false, error: `State '${stateIdentifier}' not found (searched by both name and ID)` };
             }
 
-            // Get related traces if available
+            // Get related traces if available using the actual state's session ID
             let relatedTraces: any[] = [];
             try {
-                if (sessionId && sessionId !== 'current') {
-                    relatedTraces = await memoryService.getMemoryTraces(workspaceId, sessionId);
+                const effectiveSessionId = stateSnapshot.sessionId || sessionId;
+                if (effectiveSessionId && effectiveSessionId !== 'current') {
+                    relatedTraces = await memoryService.getMemoryTraces(workspaceId, effectiveSessionId);
                 }
             } catch {
                 // Ignore errors getting traces - not critical for state loading
             }
 
-            return { 
-                success: true, 
-                data: { 
+            return {
+                success: true,
+                data: {
                     stateSnapshot,
                     relatedTraces: relatedTraces || []
                 }
@@ -532,7 +534,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             properties: {
                 stateId: {
                     type: 'string',
-                    description: 'ID of the state to load (REQUIRED)'
+                    description: 'ID or name of the state to load (REQUIRED). Accepts either the unique state ID or the state name.'
                 },
                 sessionName: {
                     type: 'string',
@@ -554,7 +556,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             required: ['stateId'],
             additionalProperties: false
         };
-        
+
         return this.getMergedSchema(customSchema);
     }
 

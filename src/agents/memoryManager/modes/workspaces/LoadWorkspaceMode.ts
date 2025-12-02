@@ -82,10 +82,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         return this.createErrorResult('WorkspaceService not available', params);
       }
 
-      // Get the workspace by ID
+      // Get the workspace by ID or name (unified lookup)
       let workspace: ProjectWorkspace | undefined;
       try {
-        workspace = await workspaceService.getWorkspace(params.id);
+        workspace = await workspaceService.getWorkspaceByNameOrId(params.id);
       } catch (queryError) {
         console.error('[LoadWorkspaceMode] Failed to load workspace:', queryError);
         return this.createErrorResult(
@@ -96,12 +96,12 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
 
       if (!workspace) {
         console.error('[LoadWorkspaceMode] Workspace not found:', params.id);
-        return this.createErrorResult(`Workspace with ID '${params.id}' not found`, params);
+        return this.createErrorResult(`Workspace '${params.id}' not found (searched by both name and ID)`, params);
       }
 
-      // Update last accessed timestamp
+      // Update last accessed timestamp (use actual workspace ID, not the identifier)
       try {
-        await workspaceService.updateLastAccessed(params.id);
+        await workspaceService.updateLastAccessed(workspace.id);
       } catch (updateError) {
         console.warn('[LoadWorkspaceMode] Failed to update last accessed timestamp:', updateError);
         // Continue - this is not critical
@@ -226,7 +226,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       properties: {
         id: {
           type: 'string',
-          description: 'Workspace ID to load (REQUIRED)'
+          description: 'Workspace ID or name to load (REQUIRED). Accepts either the unique workspace ID or the workspace name.'
         },
         limit: {
           type: 'number',
