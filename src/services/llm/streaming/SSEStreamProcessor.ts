@@ -5,6 +5,35 @@
  * Extracted from BaseAdapter.ts to follow Single Responsibility Principle.
  * Handles Server-Sent Events (SSE) streaming with automatic tool call accumulation.
  *
+ * ## Why Two Stream Processors?
+ *
+ * LLM providers deliver streaming data in two fundamentally different formats:
+ *
+ * 1. **SDK Streams (StreamChunkProcessor.ts)** - Used by OpenAI, Groq, Mistral SDKs
+ *    - SDKs return `AsyncIterable<Chunk>` with pre-parsed JavaScript objects
+ *    - Clean iteration: `for await (const chunk of stream)`
+ *    - SDK handles HTTP, buffering, and JSON parsing internally
+ *
+ * 2. **SSE Streams (this processor)** - Used by OpenRouter, Requesty, Perplexity
+ *    - Return raw `Response` objects with Server-Sent Events text format:
+ *      ```
+ *      data: {"choices":[{"delta":{"content":"Hello"}}]}
+ *      data: {"choices":[{"delta":{"content":" world"}}]}
+ *      data: [DONE]
+ *      ```
+ *    - Requires manual: byte-to-text decoding, SSE protocol parsing (`data:`, newlines),
+ *      JSON parsing of each event, buffer management for partial chunks
+ *    - More complex error recovery and reconnection handling
+ *
+ * OpenRouter uses SSE because it's a proxy service (100+ models) that exposes a raw HTTP API
+ * rather than a typed SDK. This allows them to:
+ * - Support any HTTP client/language
+ * - Add custom headers (cost tracking, routing metadata)
+ * - Unify different provider formats into one consistent SSE stream
+ *
+ * Both processors must preserve `reasoning_details` and `thought_signature` for Gemini models
+ * which require this data to be sent back in tool continuation requests.
+ *
  * Usage:
  * - Used by BaseAdapter.processSSEStream()
  * - Handles buffering, parsing, and error recovery for SSE streams
@@ -121,15 +150,27 @@ export class SSEStreamProcessor {
             const index = toolCall.index || 0;
 
             if (!toolCallsAccumulator.has(index)) {
-              // Initialize new tool call
-              toolCallsAccumulator.set(index, {
+              // Initialize new tool call - preserve reasoning_details and thought_signature
+              const accumulated: any = {
                 id: toolCall.id || '',
                 type: toolCall.type || 'function',
                 function: {
                   name: toolCall.function?.name || '',
                   arguments: toolCall.function?.arguments || ''
                 }
-              });
+              };
+
+              // Preserve reasoning data for OpenRouter Gemini and Google models
+              if (toolCall.reasoning_details) {
+                accumulated.reasoning_details = toolCall.reasoning_details;
+                console.log('[SSEStreamProcessor:3] ✅ Preserved reasoning_details on new tool call');
+              }
+              if (toolCall.thought_signature) {
+                accumulated.thought_signature = toolCall.thought_signature;
+                console.log('[SSEStreamProcessor:3] ✅ Preserved thought_signature on new tool call');
+              }
+
+              toolCallsAccumulator.set(index, accumulated);
               shouldYieldToolCalls = options.toolCallThrottling?.initialYield !== false;
             } else {
               // Accumulate existing tool call
@@ -143,6 +184,15 @@ export class SSEStreamProcessor {
                 const argLength = existing.function.arguments.length;
                 const interval = options.toolCallThrottling?.progressInterval || 50;
                 shouldYieldToolCalls = argLength > 0 && argLength % interval === 0;
+              }
+              // Also preserve reasoning data if it arrives in later chunks
+              if (toolCall.reasoning_details && !existing.reasoning_details) {
+                existing.reasoning_details = toolCall.reasoning_details;
+                console.log('[SSEStreamProcessor:3] ✅ Preserved reasoning_details on existing tool call');
+              }
+              if (toolCall.thought_signature && !existing.thought_signature) {
+                existing.thought_signature = toolCall.thought_signature;
+                console.log('[SSEStreamProcessor:3] ✅ Preserved thought_signature on existing tool call');
               }
             }
           }

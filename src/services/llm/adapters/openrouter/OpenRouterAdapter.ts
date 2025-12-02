@@ -167,7 +167,11 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
       let generationId: string | null = null;
       let usageFetchTriggered = false;
       // Track reasoning data for models that need preservation (Gemini via OpenRouter)
+      // Gemini requires TWO different fields for tool continuations:
+      // - reasoning_details: array of reasoning objects from OpenRouter
+      // - thought_signature: string signature required by Google for function call continuations
       let capturedReasoning: any[] | undefined = undefined;
+      let capturedThoughtSignature: string | undefined = undefined;
 
       // Use unified stream processing (automatically uses SSE parsing for Response objects)
       yield* this.processStream(response, {
@@ -179,11 +183,51 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
             generationId = parsed.id;
           }
 
-          // Capture reasoning_details using centralized utility
+          // Capture reasoning_details for Gemini models (required for tool continuations)
           if (needsReasoning && !capturedReasoning) {
-            capturedReasoning = ReasoningPreserver.extractFromStreamChunk(parsed);
+            capturedReasoning =
+              parsed.reasoning_details ||
+              parsed.choices?.[0]?.message?.reasoning_details ||
+              parsed.choices?.[0]?.delta?.reasoning_details ||
+              parsed.choices?.[0]?.reasoning_details ||
+              ReasoningPreserver.extractFromStreamChunk(parsed);
+
             if (capturedReasoning) {
-              console.log('[OpenRouter] Captured reasoning_details for Gemini model');
+              console.log('[OpenRouter:1] ✅ Captured reasoning_details from stream:',
+                JSON.stringify(capturedReasoning).substring(0, 150) + '...');
+              // DEBUG: Check what else is in the chunk that has reasoning_details
+              const delta = parsed.choices?.[0]?.delta;
+              console.log('[OpenRouter DEBUG] Chunk with reasoning_details:', {
+                parsed_keys: Object.keys(parsed),
+                delta_keys: delta ? Object.keys(delta) : 'no delta',
+                delta_full: JSON.stringify(delta).substring(0, 500)
+              });
+            }
+          }
+
+          // Capture thought_signature for Gemini models (OpenAI compatibility format)
+          // Per Google docs, this can be in: extra_content.google.thought_signature
+          // or directly on the delta/message
+          if (needsReasoning && !capturedThoughtSignature) {
+            const delta = parsed.choices?.[0]?.delta;
+            const message = parsed.choices?.[0]?.message;
+
+            capturedThoughtSignature =
+              // OpenAI compatibility format per Google docs
+              delta?.extra_content?.google?.thought_signature ||
+              message?.extra_content?.google?.thought_signature ||
+              parsed.extra_content?.google?.thought_signature ||
+              // Direct formats
+              delta?.thought_signature ||
+              delta?.thoughtSignature ||
+              message?.thought_signature ||
+              message?.thoughtSignature ||
+              parsed.thought_signature ||
+              parsed.thoughtSignature;
+
+            if (capturedThoughtSignature) {
+              console.log('[OpenRouter:1b] ✅ Captured thought_signature from stream:',
+                capturedThoughtSignature.substring(0, 50) + '...');
             }
           }
 
@@ -203,12 +247,76 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           for (const choice of parsed.choices || []) {
             let toolCalls = choice?.delta?.tool_calls || choice?.delta?.toolCalls;
             if (toolCalls) {
-              // Attach reasoning data to tool calls using centralized utility
-              if (capturedReasoning) {
+              // DEBUG: Dump full structure to find where thought_signature is
+              console.log('[OpenRouter DEBUG] Full parsed structure with tool_calls:', {
+                parsed_keys: Object.keys(parsed),
+                choice_keys: Object.keys(choice),
+                delta_keys: choice?.delta ? Object.keys(choice.delta) : 'no delta',
+                toolCall_0_keys: toolCalls[0] ? Object.keys(toolCalls[0]) : 'no tc',
+                toolCall_0_full: JSON.stringify(toolCalls[0]).substring(0, 300),
+                choice_delta_full: JSON.stringify(choice?.delta).substring(0, 500),
+                parsed_extra_content: parsed.extra_content,
+                choice_extra_content: choice.extra_content,
+                delta_extra_content: choice?.delta?.extra_content
+              });
+
+              // Extract reasoning_details from this chunk (it may contain encrypted thought signatures)
+              const chunkReasoningDetails = choice?.delta?.reasoning_details;
+              if (chunkReasoningDetails && Array.isArray(chunkReasoningDetails)) {
+                // Look for reasoning.encrypted entries - these contain the thought_signature
+                for (const entry of chunkReasoningDetails) {
+                  if (entry.type === 'reasoning.encrypted' && entry.data && entry.id) {
+                    // Match encrypted entry to tool call by id
+                    for (const tc of toolCalls) {
+                      if (tc.id === entry.id || tc.id?.startsWith(entry.id?.split('_').slice(0, -1).join('_'))) {
+                        tc.thought_signature = entry.data;
+                        console.log('[OpenRouter:1c] ✅ Extracted thought_signature from reasoning.encrypted for tool:', tc.id);
+                      }
+                    }
+                    // Also store as fallback
+                    if (!capturedThoughtSignature) {
+                      capturedThoughtSignature = entry.data;
+                    }
+                  }
+                }
+                // Update capturedReasoning to include all entries (both text and encrypted)
+                if (!capturedReasoning) {
+                  capturedReasoning = chunkReasoningDetails;
+                } else if (Array.isArray(capturedReasoning)) {
+                  // Merge in new entries
+                  capturedReasoning = [...capturedReasoning, ...chunkReasoningDetails];
+                }
+              }
+
+              // Also check direct thought_signature fields (fallback)
+              for (const tc of toolCalls) {
+                const tcThoughtSig =
+                  tc.thought_signature ||
+                  tc.thoughtSignature ||
+                  tc.extra_content?.google?.thought_signature;
+                if (tcThoughtSig && !tc.thought_signature) {
+                  tc.thought_signature = tcThoughtSig;
+                  console.log('[OpenRouter:1c] ✅ Found direct thought_signature on tool_call');
+                }
+              }
+
+              // Attach reasoning data (both reasoning_details AND thought_signature)
+              const hasReasoning = capturedReasoning || capturedThoughtSignature;
+              if (hasReasoning) {
                 toolCalls = ReasoningPreserver.attachToToolCalls(
                   toolCalls,
-                  { reasoning_details: capturedReasoning }
+                  {
+                    reasoning_details: capturedReasoning,
+                    thought_signature: capturedThoughtSignature
+                  }
                 );
+                console.log('[OpenRouter:2] ✅ Attached reasoning to tool calls:', {
+                  hasReasoningDetails: !!capturedReasoning,
+                  hasThoughtSignature: !!capturedThoughtSignature,
+                  toolCallsHaveThoughtSig: toolCalls.some((tc: any) => tc.thought_signature)
+                });
+              } else {
+                console.log('[OpenRouter:2] ⚠️ No reasoning data to attach to tool calls');
               }
               return toolCalls;
             }
@@ -220,6 +328,37 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           // Extract finish reason from any choice
           for (const choice of parsed.choices || []) {
             if (choice?.finish_reason) {
+              // DEBUG: Check final chunk for thought_signature
+              console.log('[OpenRouter DEBUG] Final chunk with finish_reason:', {
+                finish_reason: choice.finish_reason,
+                parsed_keys: Object.keys(parsed),
+                choice_keys: Object.keys(choice),
+                delta_keys: choice?.delta ? Object.keys(choice.delta) : 'no delta',
+                message_keys: choice?.message ? Object.keys(choice.message) : 'no message',
+                parsed_thought_signature: parsed.thought_signature,
+                choice_thought_signature: choice.thought_signature,
+                delta_thought_signature: choice?.delta?.thought_signature,
+                extra_content: parsed.extra_content || choice.extra_content || choice?.delta?.extra_content
+              });
+
+              // Last chance to capture thought_signature from final chunk
+              if (needsReasoning && !capturedThoughtSignature) {
+                const delta = choice?.delta;
+                const message = choice?.message;
+                capturedThoughtSignature =
+                  delta?.extra_content?.google?.thought_signature ||
+                  message?.extra_content?.google?.thought_signature ||
+                  parsed.extra_content?.google?.thought_signature ||
+                  delta?.thought_signature ||
+                  message?.thought_signature ||
+                  parsed.thought_signature ||
+                  choice?.thought_signature;
+
+                if (capturedThoughtSignature) {
+                  console.log('[OpenRouter:1d] ✅ Captured thought_signature from FINAL chunk!');
+                }
+              }
+
               // When we detect completion, trigger async usage fetch (only once)
               if (generationId && options?.onUsageAvailable && !usageFetchTriggered) {
                 usageFetchTriggered = true;
@@ -447,7 +586,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           // Attach reasoning to tool calls for preservation through execution flow
           if (toolCalls && reasoning) {
             toolCalls = ReasoningPreserver.attachToToolCalls(toolCalls, reasoning);
-            console.log('[OpenRouter] Attached reasoning_details to tool calls');
           }
 
           // Build message with reasoning preserved at message level
@@ -520,11 +658,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         detectedToolCalls,
         '' // Empty content since this was a tool call
       );
-
-      const reasoning = ReasoningPreserver.extractFromToolCalls(detectedToolCalls);
-      if (reasoning?.reasoning_details) {
-        console.log('[OpenRouter] Preserving reasoning_details in tool continuation');
-      }
 
       messages.push(assistantMessage);
 

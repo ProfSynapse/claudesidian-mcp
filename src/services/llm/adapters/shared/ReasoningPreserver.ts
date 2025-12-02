@@ -44,12 +44,29 @@ export class ReasoningPreserver {
   /**
    * Extract reasoning data from a streaming chunk (OpenRouter format)
    * Returns the reasoning_details array if present
+   *
+   * In streaming, reasoning_details appears in choice.delta.reasoning_details
+   * See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
    */
   static extractFromStreamChunk(parsed: any): any[] | undefined {
+    // Check top-level first
+    if (parsed.reasoning_details) {
+      return parsed.reasoning_details;
+    }
+
+    // Check each choice
     for (const choice of parsed.choices || []) {
-      const message = choice?.message || choice?.delta;
-      if (message?.reasoning_details) {
-        return message.reasoning_details;
+      // Streaming: check delta
+      if (choice?.delta?.reasoning_details) {
+        return choice.delta.reasoning_details;
+      }
+      // Non-streaming: check message
+      if (choice?.message?.reasoning_details) {
+        return choice.message.reasoning_details;
+      }
+      // Also check at choice level
+      if (choice?.reasoning_details) {
+        return choice.reasoning_details;
       }
     }
     return undefined;
@@ -123,6 +140,10 @@ export class ReasoningPreserver {
   /**
    * Build an assistant message with reasoning preserved (OpenRouter/OpenAI format)
    * Used for tool continuation requests
+   *
+   * CRITICAL: Must preserve reasoning_details and thought_signature at BOTH levels:
+   * 1. On each individual tool_call (required by Gemini for function calls)
+   * 2. On the message itself (for some providers)
    */
   static buildAssistantMessageWithReasoning(
     toolCalls: any[],
@@ -133,17 +154,31 @@ export class ReasoningPreserver {
     const message: any = {
       role: 'assistant',
       content,
-      tool_calls: toolCalls.map(tc => ({
-        id: tc.id,
-        type: 'function',
-        function: {
-          name: tc.function?.name || tc.name,
-          arguments: tc.function?.arguments || JSON.stringify(tc.parameters || {})
+      tool_calls: toolCalls.map(tc => {
+        const toolCall: any = {
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.function?.name || tc.name,
+            arguments: tc.function?.arguments || JSON.stringify(tc.parameters || {})
+          }
+        };
+
+        // CRITICAL: Preserve reasoning data on each tool call (Gemini requires this)
+        if (tc.reasoning_details) {
+          toolCall.reasoning_details = tc.reasoning_details;
+          console.log('[ReasoningPreserver:5] ✅ Preserved reasoning_details on tool_call in message');
         }
-      }))
+        if (tc.thought_signature) {
+          toolCall.thought_signature = tc.thought_signature;
+          console.log('[ReasoningPreserver:5] ✅ Preserved thought_signature on tool_call in message');
+        }
+
+        return toolCall;
+      })
     };
 
-    // CRITICAL: Preserve reasoning_details for OpenRouter Gemini continuations
+    // Also preserve reasoning_details at message level for OpenRouter Gemini continuations
     if (reasoning?.reasoning_details) {
       message.reasoning_details = reasoning.reasoning_details;
     }
@@ -187,8 +222,16 @@ export class ReasoningPreserver {
 
     if (this.requiresReasoningPreservation(model, provider)) {
       if (provider === 'openrouter') {
-        // OpenRouter uses the reasoning parameter
-        return { reasoning: { max_tokens: 8192 } };
+        // OpenRouter unified reasoning parameter format
+        // See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+        // Note: effort is for OpenAI models, max_tokens is for Anthropic/Google
+        // Since we're targeting Gemini, use max_tokens
+        return {
+          reasoning: {
+            max_tokens: 8192,
+            exclude: false  // Include reasoning in response
+          }
+        };
       }
       if (provider === 'google') {
         // Google uses thinkingBudget in generationConfig

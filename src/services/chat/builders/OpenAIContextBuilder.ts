@@ -118,6 +118,19 @@ export class OpenAIContextBuilder implements IContextBuilder {
 
     // Build assistant message with reasoning preserved using centralized utility
     const assistantMessage = ReasoningPreserver.buildAssistantMessageWithReasoning(toolCalls, null);
+
+    // Diagnostic logging for reasoning preservation
+    const hasReasoningOnToolCalls = toolCalls.some((tc: any) => tc.reasoning_details);
+    const hasReasoningOnMessage = !!assistantMessage.reasoning_details;
+    console.log('[OpenAIContextBuilder:4] buildToolContinuation:', {
+      toolCallCount: toolCalls.length,
+      hasReasoningOnToolCalls,
+      hasReasoningOnMessage,
+      reasoningPreview: assistantMessage.reasoning_details
+        ? JSON.stringify(assistantMessage.reasoning_details).substring(0, 100) + '...'
+        : 'none'
+    });
+
     messages.push(assistantMessage);
 
     // Add tool result messages
@@ -149,6 +162,19 @@ export class OpenAIContextBuilder implements IContextBuilder {
 
     // Build assistant message with reasoning preserved using centralized utility
     const assistantMessage = ReasoningPreserver.buildAssistantMessageWithReasoning(toolCalls, null);
+
+    // Diagnostic logging for reasoning preservation
+    const hasReasoningOnToolCalls = toolCalls.some((tc: any) => tc.reasoning_details);
+    const hasReasoningOnMessage = !!assistantMessage.reasoning_details;
+    console.log('[OpenAIContextBuilder:4] appendToolExecution:', {
+      toolCallCount: toolCalls.length,
+      hasReasoningOnToolCalls,
+      hasReasoningOnMessage,
+      reasoningPreview: assistantMessage.reasoning_details
+        ? JSON.stringify(assistantMessage.reasoning_details).substring(0, 100) + '...'
+        : 'none'
+    });
+
     messages.push(assistantMessage);
 
     // Add tool result messages
